@@ -310,7 +310,7 @@ public final class Driver implements AutoCloseable
 			// A user's command
 			case CampaignEvent.Confirm _, CampaignEvent.ExtendFork _, CampaignEvent.Revise _, CampaignEvent.Choose _,
 				CampaignEvent.ResolveConflict _, CampaignEvent.Cancel _, CampaignEvent.Close _,
-				CampaignEvent.ReportUnavailable _,
+				CampaignEvent.ReportUnavailable _, CampaignEvent.PilotFailed _,
 				// A test revision's result, which the run command records before the slice starts
 				CampaignEvent.ReviseTests _, CampaignEvent.ReportTestSound _, CampaignEvent.BlockTestRevision _ ->
 			{

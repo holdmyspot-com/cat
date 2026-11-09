@@ -5,7 +5,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * The guard pilot of one prompt test: its control trials of development test cases in the test's weakest cell, which
@@ -20,13 +22,16 @@ import java.util.List;
  * @param cellId the cell that the trials ran in
  * @param control the identity of the conditions that the trials ran in: the control source's files, the session
  *   environment version and the judge version
- * @param trials the trials that the proposed built-in tools or judge decided, in completion order
- * @param failedRuns why each trial that ended without a decision ended, one entry per trial, such as a session that
- *   failed or a judge whose output never matched its result schema
+ * @param seed the seed of the development stream that draws the trials' test cases, which a resumed pilot draws again
+ * @param trials the trials that the proposed built-in tools or judge decided, in draw order
+ * @param failedRuns why each trial that the proposed built-in tools could not decide ended, one entry per trial
  * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
+ * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times,
+ *   which the user answers by choosing to retry or to stop; {@code false} if the pilot ran every trial or stopped for
+ *   another reason
  */
-public record PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, List<PilotTrial> trials,
-	List<String> failedRuns, String stopReason)
+public record PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, long seed,
+	List<PilotTrial> trials, List<String> failedRuns, String stopReason, boolean paused)
 {
 	/**
 	 * Creates a pilot result.
@@ -35,13 +40,16 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran
 	 * @param cellId the cell that the trials ran in
 	 * @param control the identity of the conditions that the trials ran in
-	 * @param trials the trials that the proposed built-in tools or judge decided, in completion order
-	 * @param failedRuns why each trial that ended without a decision ended, one entry per trial
+	 * @param seed the seed of the development stream that draws the trials' test cases
+	 * @param trials the trials that the proposed built-in tools or judge decided, in draw order
+	 * @param failedRuns why each trial that the proposed built-in tools could not decide ended, one entry per trial
 	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
+	 * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times
 	 * @throws NullPointerException if any argument other than {@code stopReason} is null, or {@code trials} or
 	 *   {@code failedRuns} contains null
 	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedRuns} or a non-null
-	 *   {@code stopReason} are blank
+	 *   {@code stopReason} are blank, two trials hold one position, or {@code paused} is {@code true} and
+	 *   {@code stopReason} is null
 	 */
 	public PilotResult
 	{
@@ -50,11 +58,19 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 		requireThat(cellId, "cellId").isNotBlank();
 		requireThat(control, "control").isNotNull();
 		trials = List.copyOf(trials);
+		Set<Integer> positions = new HashSet<>();
+		for (PilotTrial trial : trials)
+		{
+			if (!positions.add(trial.position()))
+				throw new IllegalArgumentException("Two trials hold the position " + trial.position());
+		}
 		failedRuns = List.copyOf(failedRuns);
 		for (String reason : failedRuns)
 			requireThat(reason, "reason").isNotBlank();
 		if (stopReason != null)
 			requireThat(stopReason, "stopReason").isNotBlank();
+		else if (paused)
+			throw new IllegalArgumentException("A paused pilot must say why it paused");
 	}
 
 	/**
@@ -129,10 +145,25 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 */
 	public boolean appliesTo(Sha256 definition, String cellId, Sha256 control)
 	{
+		return stopReason == null && failedRuns.isEmpty() && ranIn(definition, cellId, control);
+	}
+
+	/**
+	 * Indicates whether this pilot's trials ran under the current definition, cell and conditions, so that a pilot that
+	 * did not finish keeps them and runs only the trials that it lacks.
+	 *
+	 * @param definition the current identity of the prompt test and the requirements that it checks
+	 * @param cellId the test's current weakest cell
+	 * @param control the identity of the current conditions of control trials: the control source's files, the
+	 *   session environment version and the judge version
+	 * @return {@code true} if the trials still describe the test
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public boolean ranIn(Sha256 definition, String cellId, Sha256 control)
+	{
 		requireThat(definition, "definition").isNotNull();
 		requireThat(cellId, "cellId").isNotNull();
 		requireThat(control, "control").isNotNull();
-		return stopReason == null && failedRuns.isEmpty() && this.definition.equals(definition) &&
-			this.cellId.equals(cellId) && this.control.equals(control);
+		return this.definition.equals(definition) && this.cellId.equals(cellId) && this.control.equals(control);
 	}
 }

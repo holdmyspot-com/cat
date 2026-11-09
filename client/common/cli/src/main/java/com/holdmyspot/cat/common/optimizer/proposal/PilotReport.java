@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
+import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.math.BigDecimal;
@@ -85,10 +86,21 @@ final class PilotReport
 	 */
 	private static void test(StringBuilder text, Contract contract, PromptTest test, PilotResult pilot)
 	{
+		int reruns = 0;
+		for (PilotTrial trial : pilot.trials())
+			reruns += trial.infrastructureAttempts().size();
 		text.append("\n### `").append(test.id()).append("` in cell `").append(pilot.cellId()).append("`\n\n").
 			append(count(pilot.trials().size(), "trial", "trials")).append(" decided, ").
-			append(count(pilot.failedRuns().size(), "failed run", "failed runs")).append(".\n");
-		if (pilot.stopReason() != null)
+			append(count(pilot.failedRuns().size(), "failed run", "failed runs"));
+		if (reruns > 0)
+		{
+			text.append(", ").append(count(reruns, "run", "runs")).
+				append(" that ended without an outcome and ran again");
+		}
+		text.append(".\n");
+		if (pilot.paused())
+			text.append("\nThe pilot paused before it finished: ").append(pilot.stopReason()).append('\n');
+		else if (pilot.stopReason() != null)
 		{
 			text.append("\nThe pilot stopped before it finished: ").append(pilot.stopReason()).
 				append(" Run `start` again to finish it.\n");

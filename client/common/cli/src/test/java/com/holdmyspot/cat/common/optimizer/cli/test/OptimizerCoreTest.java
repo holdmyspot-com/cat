@@ -110,6 +110,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 import java.nio.charset.StandardCharsets;
@@ -1011,9 +1012,11 @@ public final class OptimizerCoreTest
 	 * @param scope    the command's scope
 	 * @param sessions the script of the scope's sessions
 	 * @param core     the core
+	 * @param trialEnd how a trial session ends instead of completing, by the trial session's position among all trial
+	 *   sessions that the script started, counted from 1; {@code null} lets the trial complete
 	 */
 	private record Repository(Path root, TestOptimizerCommandScope<FakeSessionPort> scope, SessionScript sessions,
-		OptimizerCore core)
+		OptimizerCore core, AtomicReference<IntFunction<SessionResult>> trialEnd)
 	{
 		/**
 		 * Returns the forks.
@@ -1167,11 +1170,19 @@ public final class OptimizerCoreTest
 		Path initialProject = Files.createDirectory(scratch.resolve("initial-project"));
 		AtomicInteger contractAuthors = new AtomicInteger();
 		AtomicInteger trials = new AtomicInteger();
+		AtomicReference<IntFunction<SessionResult>> trialEnd = new AtomicReference<>(_ -> null);
 		Function<SessionRequest, SessionResult> script = request -> switch (request.role())
 		{
 			case CONTRACT_AUTHOR -> Objects.requireNonNullElseGet(contractAuthorEnd, () -> contractAuthorResult(request,
 				scratch, transcript, initialProject, contractAuthor.apply(contractAuthors.getAndIncrement())));
-			case TRIAL -> trialResult(request, scratch.resolve("trial-" + trials.incrementAndGet()), transcript);
+			case TRIAL ->
+			{
+				int number = trials.incrementAndGet();
+				SessionResult ended = trialEnd.get().apply(number);
+				if (ended != null)
+					yield ended;
+				yield trialResult(request, scratch.resolve("trial-" + number), transcript);
+			}
 			case JUDGE -> new SessionResult.Completed(transcript, List.of(List.of(judgment(request))), effects,
 				initialProject, "model", null, null, List.of(), "CLAUDE.md", List.of());
 			case APPROACH_RANKER -> new SessionResult.Failed("Ranking unavailable in this fixture", List.of());
@@ -1203,7 +1214,7 @@ public final class OptimizerCoreTest
 				throw new IOException(e.getMessage(), e);
 			}
 		}
-		return new Repository(root, command, sessions.get(), new OptimizerCore(command));
+		return new Repository(root, command, sessions.get(), new OptimizerCore(command), trialEnd);
 	}
 
 	/**
@@ -4238,6 +4249,188 @@ public final class OptimizerCoreTest
 			requireThat(rerun.stream().allMatch(trial -> trial.turns().getFirst().startsWith("Delete the ")),
 				"onlySafety").isTrue();
 			requireThat(revised.proposal(), "proposal").contains("\n## Guard pilot\n");
+		}
+	}
+
+	/**
+	 * Returns how trial sessions end when the harness fails the sessions in a range of positions.
+	 *
+	 * @param first the position of the first failing trial session, counted from 1
+	 * @param last the position of the last failing trial session
+	 * @return the end of each trial session
+	 */
+	private static IntFunction<SessionResult> failingTrials(int first, int last)
+	{
+		return number ->
+		{
+			if (number >= first && number <= last)
+				return new SessionResult.Failed("The harness could not start the session", List.of());
+			return null;
+		};
+	}
+
+	/**
+	 * Returns the identifiers of the choices that the user sees.
+	 *
+	 * @param output the command output
+	 * @return the identifiers, in the order shown
+	 */
+	private static List<String> choiceIds(ObjectNode output)
+	{
+		List<String> ids = new ArrayList<>();
+		for (JsonNode choice : output.get("choices"))
+			ids.add(choice.get("id").asString());
+		return ids;
+	}
+
+	/**
+	 * Verifies that {@code start} pauses, with the retry and stop choice of a campaign and no proposal to confirm,
+	 * when one guard pilot trial ends without an outcome three times, and that a second {@code start} reports the
+	 * pause without running a session.
+	 * <p>
+	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign with its guard pilot
+	 * trials through the public commands; loading and compiling the classes of those commands, which the first test in
+	 * a JVM to use them does, takes most of that time.
+	 */
+	@Test
+	public void startPausesWhenAPilotTrialNeverEnds() throws Exception
+	{
+		// Requirement: R-C23
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.trialEnd().set(failingTrials(6, 8));
+
+			ObjectNode started = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1"));
+
+			String id = started.get("campaign").asString();
+			requireThat(started.get("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(started.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(choiceIds(started), "choices").isEqualTo(List.of("retry", "stop"));
+			requireThat(started.get("message").asString(), "message").contains("its guard pilot paused").
+				contains("`choose " + id + " retry`").contains("`choose " + id + " stop`");
+			requireThat(started.get("pending").asString(), "pending").
+				contains("Pilot trial 6 of `formatting` ended without an outcome 3 times").
+				contains("The harness could not start the session");
+			Campaign paused = repository.load(id);
+			requireThat(paused.pending(), "pendingDecision").isInstanceOf(PendingDecision.PilotFailure.class);
+			requireThat(paused.isConfirmed(), "confirmed").isFalse();
+			requireThat(paused.trials(), "countedTrials").isEmpty();
+			requireThat(paused.attempts(), "attempts").isEmpty();
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").isEqualTo(8);
+			requireThat(refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS)),
+				"confirmRefusal").contains("its guard pilot paused");
+
+			ObjectNode again = output(repository, List.of("start", "CLAUDE.md"));
+
+			requireThat(again.get("status").asString(), "againStatus").isEqualTo("awaiting_user");
+			requireThat(again.get("proposal").isNull(), "againProposal").isTrue();
+			requireThat(choiceIds(again), "againChoices").isEqualTo(List.of("retry", "stop"));
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "againTrialSessions").isEqualTo(8);
+		}
+	}
+
+	/**
+	 * Verifies that {@code choose retry} on a paused guard pilot runs only the trials that the pilot has not decided
+	 * and presents the proposal, which the user can then confirm.
+	 */
+	@Test
+	public void retryKeepsDecidedPilotTrials() throws Exception
+	{
+		// Requirement: R-C23
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.trialEnd().set(failingTrials(6, 8));
+			String id = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1")).get("campaign").
+				asString();
+			repository.trialEnd().set(_ -> null);
+
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+
+			requireThat(retried.get("proposal").isNull(), "proposal").isFalse();
+			requireThat(retried.get("proposal").asString(), "proposalText").contains("\n## Guard pilot\n");
+			requireThat(retried.get("proposal").asString().split("20 trials decided, 0 failed runs\\.", -1).length,
+				"decidedPilots").isEqualTo(4);
+			requireThat(retried.get("pending").isNull(), "pending").isTrue();
+			// The 5 trials decided before the pause are kept: 3 pilots of 20 trials less those 5 remain
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(8 + 3 * GuardPilot.TRIALS - 5);
+			requireThat(repository.load(id).pending(), "pendingDecision").isNull();
+			String stored = Files.readString(repository.directory(id).resolve("held_out/pilot.json"));
+			requireThat(stored, "storedPilot").doesNotContain("\"paused\":true");
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that {@code choose stop} on a paused guard pilot ends the campaign without running a trial.
+	 */
+	@Test
+	public void stopEndsPausedPilotCampaign() throws Exception
+	{
+		// Requirement: R-C23
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.trialEnd().set(failingTrials(6, 8));
+			String id = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1")).get("campaign").
+				asString();
+			repository.trialEnd().set(_ -> null);
+
+			ObjectNode stopped = output(repository, List.of("choose", id, "stop"));
+
+			requireThat(stopped.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").isEqualTo(8);
+		}
+	}
+
+	/**
+	 * Verifies that a {@code revise} that reruns a changed test's guard pilot pauses, with the retry and stop choice
+	 * and no proposal, when one of that pilot's trials ends without an outcome three times.
+	 */
+	@Test
+	public void revisePausesWhenItsPilotTrialNeverEnds() throws Exception
+	{
+		// Requirement: R-C23
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> derivation(output ->
+			{
+				if (count == 0)
+					return;
+				ObjectNode safety = (ObjectNode) output.get("tests").get(2);
+				((ObjectNode) safety.get("assertions").get(0)).put("statement",
+					"The assistant confirms before deleting the {{target}} directory.");
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
+			repository.trialEnd().set(failingTrials(pilotTrials + 1, pilotTrials + 3));
+
+			ObjectNode revised = output(repository, List.of("revise", id, "say confirms"));
+
+			requireThat(revised.get("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(revised.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(choiceIds(revised), "choices").isEqualTo(List.of("retry", "stop"));
+			requireThat(repository.load(id).pending(), "pendingDecision").
+				isInstanceOf(PendingDecision.PilotFailure.class);
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(pilotTrials + 3);
+
+			repository.trialEnd().set(_ -> null);
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+
+			requireThat(retried.get("proposal").isNull(), "proposal").isFalse();
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "resumedTrialSessions").
+				isEqualTo(pilotTrials + 3 + GuardPilot.TRIALS);
 		}
 	}
 

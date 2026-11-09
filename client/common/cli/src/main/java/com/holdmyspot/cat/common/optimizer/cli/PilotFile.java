@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -38,7 +39,7 @@ final class PilotFile
 	/**
 	 * The version of the file's layout.
 	 */
-	private static final int FORMAT_VERSION = 2;
+	private static final int FORMAT_VERSION = 3;
 	private final Path file;
 	private final JsonMapper json;
 	private final FileReplacer replacer;
@@ -81,6 +82,8 @@ final class PilotFile
 			test.put("definition", pilot.definition().hex());
 			test.put("cell", pilot.cellId());
 			test.put("control", pilot.control().hex());
+			test.put("seed", pilot.seed());
+			test.put("paused", pilot.paused());
 			ArrayNode failedRuns = test.putArray("failed_runs");
 			pilot.failedRuns().forEach(failedRuns::add);
 			if (pilot.stopReason() == null)
@@ -91,12 +94,15 @@ final class PilotFile
 			for (PilotTrial trial : pilot.trials())
 			{
 				ObjectNode node = trials.addObject();
+				node.put("position", trial.position());
 				ObjectNode values = node.putObject("values");
 				trial.values().forEach(values::put);
 				node.put("expected_outcome", trial.expectedOutcome());
 				ObjectNode assertions = node.putObject("assertions");
 				trial.assertions().forEach(assertions::put);
 				node.put("record", trial.record());
+				ArrayNode attempts = node.putArray("infrastructure_attempts");
+				trial.infrastructureAttempts().forEach(attempts::add);
 			}
 		}
 		Files.createDirectories(file.getParent());
@@ -161,8 +167,18 @@ final class PilotFile
 					throw new IllegalArgumentException("A trial's assertions must be booleans: " + node);
 				assertions.put(assertion.getKey(), assertion.getValue().asBoolean());
 			}
-			trials.add(new PilotTrial(values, text(node.path("expected_outcome")), assertions,
-				text(node.path("record"))));
+			if (!node.path("position").isInt() || node.get("position").asInt() >= GuardPilot.TRIALS)
+			{
+				throw new IllegalArgumentException("A trial's \"position\" must be an integer below " +
+					GuardPilot.TRIALS + ": " + node);
+			}
+			if (!node.path("infrastructure_attempts").isArray())
+				throw new IllegalArgumentException("\"infrastructure_attempts\" must be an array: " + node);
+			List<String> attempts = new ArrayList<>();
+			for (JsonNode reason : node.get("infrastructure_attempts"))
+				attempts.add(text(reason));
+			trials.add(new PilotTrial(node.get("position").asInt(), values, text(node.path("expected_outcome")),
+				assertions, text(node.path("record")), attempts));
 		}
 		String stopReason = null;
 		if (!test.path("stop_reason").isNull())
@@ -172,8 +188,13 @@ final class PilotFile
 		List<String> failedRuns = new ArrayList<>();
 		for (JsonNode reason : test.get("failed_runs"))
 			failedRuns.add(text(reason));
+		if (!test.path("seed").isIntegralNumber())
+			throw new IllegalArgumentException("\"seed\" must be an integer: " + test);
+		if (!test.path("paused").isBoolean())
+			throw new IllegalArgumentException("\"paused\" must be a boolean: " + test);
 		return new PilotResult(text(test.path("test")), new Sha256(text(test.path("definition"))),
-			text(test.path("cell")), new Sha256(text(test.path("control"))), trials, failedRuns, stopReason);
+			text(test.path("cell")), new Sha256(text(test.path("control"))), test.get("seed").asLong(), trials,
+			failedRuns, stopReason, test.get("paused").asBoolean());
 	}
 
 	/**

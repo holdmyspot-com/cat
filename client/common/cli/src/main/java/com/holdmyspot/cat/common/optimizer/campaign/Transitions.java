@@ -106,6 +106,11 @@ public final class Transitions
 				requireActive(draft);
 				draft.raise(new PendingDecision.CalibrationFailure(failed.detail()));
 			}
+			case CampaignEvent.PilotFailed failed ->
+			{
+				requireActive(draft);
+				draft.raise(new PendingDecision.PilotFailure(failed.detail()));
+			}
 			case CampaignEvent.FindConflict found ->
 			{
 				requireConfirmed(draft);

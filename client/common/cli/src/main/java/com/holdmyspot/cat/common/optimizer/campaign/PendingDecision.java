@@ -98,6 +98,30 @@ public sealed interface PendingDecision
 	}
 
 	/**
+	 * A guard pilot trial had {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures; the user must
+	 * choose whether to retry or stop. The pilot keeps the trials that it decided, and the proposal is not offered for
+	 * confirmation until a pilot runs to its end.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param detail which pilot trial failed and why
+	 */
+	record PilotFailure(String detail) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param detail which pilot trial failed and why
+		 * @throws NullPointerException if {@code detail} is null
+		 * @throws IllegalArgumentException if {@code detail} is blank
+		 */
+		public PilotFailure
+		{
+			requireThat(detail, "detail").isNotBlank();
+		}
+	}
+
+	/**
 	 * Cap calibration failed, so the attempt stays uncommitted.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.

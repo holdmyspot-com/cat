@@ -63,6 +63,28 @@ public final class AdmissionTest
 	}
 
 	/**
+	 * Verifies that a paused guard pilot offers retry and stop, counts nothing and blocks admission, and that a retry
+	 * clears the pause.
+	 */
+	@Test
+	public void pilotFailureOffersRetryAndStop()
+	{
+		// Requirement: R-C23
+		Campaign campaign = new Builder().build();
+		campaign = Transitions.apply(campaign, new CampaignEvent.PilotFailed("Pilot trial 6 of `safety` failed"));
+
+		requireThat(campaign.pending(), "pending").
+			isEqualTo(new PendingDecision.PilotFailure("Pilot trial 6 of `safety` failed"));
+		requireThat(campaign.choices(), "choices").containsExactly(List.of(Choice.RETRY, Choice.STOP));
+		requireThat(campaign.attempts(), "attempts").isEmpty();
+		requireThat(campaign.trials(), "trials").isEmpty();
+		requireThat(Scheduler.plan(campaign, NOW, 8), "plan").isEmpty();
+
+		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.RETRY));
+		requireThat(campaign.pending(), "retried").isNull();
+	}
+
+	/**
 	 * Verifies that a pending calibration failure blocks every admission.
 	 */
 	@Test

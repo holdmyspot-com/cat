@@ -440,7 +440,8 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 			}
 			case PendingDecision.ConflictFound _ -> choices.add(Choice.RESOLUTION);
 			case PendingDecision.UnownedChange _ -> choices.add(Choice.RESUME);
-			case PendingDecision.TrialFailures _, PendingDecision.CalibrationFailure _ -> choices.add(Choice.RETRY);
+			case PendingDecision.TrialFailures _, PendingDecision.CalibrationFailure _, PendingDecision.PilotFailure _ ->
+				choices.add(Choice.RETRY);
 			case PendingDecision.CheckpointReached _ ->
 			{
 				choices.add(Choice.MORE_EVIDENCE);

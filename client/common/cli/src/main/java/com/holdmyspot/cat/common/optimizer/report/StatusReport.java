@@ -429,6 +429,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			case PendingDecision.UnownedChange change -> "a change that CAT did not make: " + change.description();
 			case PendingDecision.TrialFailures _ -> "a trial ran without an outcome and needs a retry";
 			case PendingDecision.CalibrationFailure failure -> "calibration failed: " + failure.detail();
+			case PendingDecision.PilotFailure failure ->
+				"a guard pilot trial ran without an outcome and needs a retry: " + failure.detail();
 			case PendingDecision.CheckpointReached checkpoint ->
 				"review checkpoint reached in cell " + checkpoint.cell() + " after " + checkpoint.outcomes() +
 					" outcomes";

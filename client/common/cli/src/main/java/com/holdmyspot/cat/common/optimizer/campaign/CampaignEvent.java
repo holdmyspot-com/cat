@@ -538,6 +538,29 @@ public sealed interface CampaignEvent
 	}
 
 	/**
+	 * A guard pilot trial ended without an outcome {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} times, so the pilot
+	 * paused. The pilot's trials enter no count and spend no allowance, so the event records only the pause.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param detail which pilot trial failed and why
+	 */
+	record PilotFailed(String detail) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param detail which pilot trial failed and why
+		 * @throws NullPointerException if {@code detail} is null
+		 * @throws IllegalArgumentException if {@code detail} is blank
+		 */
+		public PilotFailed
+		{
+			requireThat(detail, "detail").isNotBlank();
+		}
+	}
+
+	/**
 	 * Cap calibration for the next certification attempt failed.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.

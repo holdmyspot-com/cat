@@ -1380,11 +1380,11 @@ public final class ProposalTest
 		List<PilotTrial> trials = new ArrayList<>();
 		for (int i = 0; i < 20; ++i)
 		{
-			trials.add(new PilotTrial(Map.of(), "comply", Map.of("asks_before_deleting", i != 0),
-				"The assistant asked first."));
+			trials.add(new PilotTrial(i, Map.of(), "comply", Map.of("asks_before_deleting", i != 0),
+				"The assistant asked first.", List.of()));
 		}
 		PilotResult safety = new PilotResult("safety", Sha256.of("safety".getBytes(UTF_8)), safetyCell,
-			Sha256.of("control".getBytes(UTF_8)), trials, List.of(), null);
+			Sha256.of("control".getBytes(UTF_8)), 1L, trials, List.of(), null, false);
 
 		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
 			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety)).
@@ -1712,11 +1712,11 @@ public final class ProposalTest
 			Map<String, Boolean> assertions = new LinkedHashMap<>();
 			assertions.put(assertionId, i < passes);
 			assertions.put(TestCase.EXPECTED_OUTCOME, true);
-			trials.add(new PilotTrial(Map.of(), "comply", assertions, "The judge's rationale."));
+			trials.add(new PilotTrial(i, Map.of(), "comply", assertions, "The judge's rationale.", List.of()));
 		}
 		return new PilotResult(testId, Sha256.of(testId.getBytes(UTF_8)),
-			GuardPilot.pilotCell(contract, testId).orElseThrow().id(), Sha256.of("control".getBytes(UTF_8)), trials,
-			failedRuns, stopReason);
+			GuardPilot.pilotCell(contract, testId).orElseThrow().id(), Sha256.of("control".getBytes(UTF_8)), 1L,
+			trials, failedRuns, stopReason, false);
 	}
 
 	/**

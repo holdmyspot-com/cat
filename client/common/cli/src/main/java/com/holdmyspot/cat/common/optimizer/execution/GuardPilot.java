@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
@@ -55,6 +56,11 @@ import tools.jackson.databind.json.JsonMapper;
  * a guard that the agent fails even before any prompt is optimized.
  * <p>
  * Pilot trials are targeted: they enter no count, record no campaign event and spend no allowance.
+ * <p>
+ * A session that ends without an outcome is an infrastructure attempt, and its logical trial runs again with the same
+ * test case. After {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures of one logical trial, the
+ * pilot pauses: it starts no further session, and its result says that the user must choose to retry or to stop. A
+ * pilot that runs again keeps the trials that it decided.
  */
 public final class GuardPilot
 {
@@ -138,11 +144,19 @@ public final class GuardPilot
 	 * its cell, the control source's files, the selection, the session environment version and the judge version are
 	 * unchanged, so a revision reruns only the tests whose definition changed or whose earlier pilot has a failed run,
 	 * and every test once the trials' projects or the sessions change what the model receives or how the judge
-	 * decides. A test whose cell is unknown, or that
+	 * decides. A stored pilot that is unfinished but otherwise unchanged keeps the trials that it decided, with their
+	 * test cases, and runs only the others. A test whose cell is unknown, or that
 	 * has no development test case, has no pilot. A session that the provider rejects because of a rate limit, or
 	 * refuses, runs again once the harness's shared hold ends: a trial with the same test case, and a judge without
 	 * spending one of its attempts. A refusal that follows a 30-minute hold starts no further session, because waiting
 	 * does not fix it, and each unfinished test's result records why the pilot stopped.
+	 * <p>
+	 * A trial session that fails, is interrupted or cannot start, a judge that fails
+	 * {@value Driver#JUDGE_ATTEMPTS} times, and a trial record that cannot be read are infrastructure attempts: the
+	 * logical trial runs again with the same test case. When one logical trial has
+	 * {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures, no further session starts, and each
+	 * unfinished test's result is paused. A trial whose built-in tool cannot be decided from its record is not an
+	 * infrastructure attempt: the proposal's tool is the cause, so the trial is a failed run that says why.
 	 *
 	 * @param contract the proposed contract
 	 * @param plugins the campaign's trial plugins, which every trial installs
@@ -182,13 +196,17 @@ public final class GuardPilot
 			if (cell.isEmpty() || contract.split().testCases(test, Part.DEVELOPMENT).isEmpty())
 				continue;
 			Sha256 definition = definition(contract, test);
-			PilotResult reused = stored.get(test.id());
-			if (reused != null && reused.appliesTo(definition, cell.get().id(), files))
+			PilotResult earlier = stored.get(test.id());
+			if (earlier != null && earlier.appliesTo(definition, cell.get().id(), files))
 			{
-				pilots.put(test.id(), reused);
+				pilots.put(test.id(), earlier);
 				continue;
 			}
-			Pilot pilot = new Pilot(test, cell.get(), definition, random.nextLong());
+			Pilot pilot;
+			if (earlier != null && earlier.ranIn(definition, cell.get().id(), files))
+				pilot = new Pilot(test, cell.get(), definition, earlier.seed(), earlier.trials());
+			else
+				pilot = new Pilot(test, cell.get(), definition, random.nextLong(), List.of());
 			pending.add(pilot);
 			// Reserves the test's place in contract order
 			pilots.put(test.id(), null);
@@ -205,6 +223,24 @@ public final class GuardPilot
 	}
 
 	/**
+	 * Returns why the pilots paused.
+	 *
+	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @return the reason, which names the logical trial whose runs ended without an outcome; empty if no pilot paused
+	 * @throws NullPointerException if {@code pilots} is null
+	 */
+	public static Optional<String> pauseReason(Map<String, PilotResult> pilots)
+	{
+		requireThat(pilots, "pilots").isNotNull();
+		for (PilotResult pilot : pilots.values())
+		{
+			if (pilot.paused())
+				return Optional.of(pilot.stopReason());
+		}
+		return Optional.empty();
+	}
+
+	/**
 	 * The pilot of one prompt test while it runs.
 	 */
 	private static final class Pilot
@@ -214,12 +250,17 @@ public final class GuardPilot
 		private final Sha256 definition;
 		private final long seed;
 		/**
-		 * The record of each finished trial, by draw position; {@code null} for a trial that is unfinished or failed.
+		 * The record of each decided trial, by draw position; {@code null} for a trial that is undecided.
 		 */
 		private final PilotTrial[] trials = new PilotTrial[TRIALS];
+		/**
+		 * Why each run of a logical trial ended without an outcome, by draw position.
+		 */
+		private final List<List<String>> attempts = new ArrayList<>();
 		private final List<String> failedRuns = new ArrayList<>();
 		private int finished;
 		private String stopReason;
+		private boolean paused;
 
 		/**
 		 * Creates a pilot.
@@ -228,25 +269,61 @@ public final class GuardPilot
 		 * @param cell the cell that the trials run in
 		 * @param definition the identity of the test's definition
 		 * @param seed the seed of the test's development stream
+		 * @param kept the trials that an earlier run of this pilot decided, which this pilot keeps
 		 */
-		Pilot(PromptTest test, Cell cell, Sha256 definition, long seed)
+		Pilot(PromptTest test, Cell cell, Sha256 definition, long seed, List<PilotTrial> kept)
 		{
 			this.test = test;
 			this.cell = cell;
 			this.definition = definition;
 			this.seed = seed;
+			for (int position = 0; position < TRIALS; ++position)
+				attempts.add(new ArrayList<>());
+			for (PilotTrial trial : kept)
+			{
+				trials[trial.position()] = trial;
+				++finished;
+			}
+		}
+
+		/**
+		 * Indicates whether a trial was decided.
+		 *
+		 * @param position the trial's draw position
+		 * @return {@code true} if the trial has a decision
+		 */
+		boolean isDecided(int position)
+		{
+			return trials[position] != null;
 		}
 
 		/**
 		 * Records a decided trial.
 		 *
 		 * @param position the trial's draw position
-		 * @param trial the trial's record
+		 * @param testCase the trial's test case
+		 * @param assertions whether the trial passed each assertion that it decided, by assertion identifier
+		 * @param record the judge's rationale, or the record of the failed built-in tools
 		 */
-		void decided(int position, PilotTrial trial)
+		void decided(int position, DrawnTestCase testCase, Map<String, Boolean> assertions, String record)
 		{
-			trials[position] = trial;
+			trials[position] = new PilotTrial(position, testCase.testCase().describedValues(),
+				testCase.testCase().expectedOutcome(), assertions, record, attempts.get(position));
 			++finished;
+		}
+
+		/**
+		 * Records a run of a logical trial that ended without an outcome.
+		 *
+		 * @param position the trial's draw position
+		 * @param reason why the run ended without an outcome
+		 * @return the runs of the logical trial that ended without an outcome so far, including this one
+		 */
+		List<String> infrastructureAttempt(int position, String reason)
+		{
+			List<String> runs = attempts.get(position);
+			runs.add(reason);
+			return List.copyOf(runs);
 		}
 
 		/**
@@ -274,7 +351,8 @@ public final class GuardPilot
 				if (trial != null)
 					decided.add(trial);
 			}
-			return new PilotResult(test.id(), definition, cell.id(), control, decided, failedRuns, stopReason);
+			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedRuns, stopReason,
+				paused);
 		}
 	}
 
@@ -311,6 +389,13 @@ public final class GuardPilot
 		 * @return the position
 		 */
 		int position();
+
+		/**
+		 * Returns the test case of the trial that the session runs or judges.
+		 *
+		 * @return the test case
+		 */
+		DrawnTestCase testCase();
 	}
 
 	/**
@@ -366,6 +451,10 @@ public final class GuardPilot
 		private final Map<Job, SessionHandle> inFlight = new HashMap<>();
 		private String stopReason;
 		/**
+		 * {@code true} if {@link #stopReason} is a pause for the user's choice to retry or to stop.
+		 */
+		private boolean paused;
+		/**
 		 * The failure to delete a passing trial's project copies, which ends the run once its running sessions end;
 		 * {@code null} if every deletion succeeded.
 		 */
@@ -403,8 +492,10 @@ public final class GuardPilot
 				DrawStream stream = DrawStream.create(DrawStream.Kind.DEVELOPMENT, pilot.seed);
 				for (int position = 0; position < TRIALS; ++position)
 				{
+					// A kept trial still draws, so that every later trial keeps its test case
 					DrawnTestCase drawn = generator.markTargeted(generator.draw(pilot.cell.id(), stream));
-					queue.add(new TrialJob(pilot, position, drawn));
+					if (!pilot.isDecided(position))
+						queue.add(new TrialJob(pilot, position, drawn));
 				}
 			}
 			try
@@ -445,7 +536,10 @@ public final class GuardPilot
 			for (Pilot pilot : pilots)
 			{
 				if (pilot.finished < TRIALS)
+				{
 					pilot.stopReason = stopReason;
+					pilot.paused = paused;
+				}
 			}
 		}
 
@@ -506,13 +600,13 @@ public final class GuardPilot
 		{
 			switch (result)
 			{
-				case null -> trial.pilot().failed("The trial session failed: " + Driver.describe(failure));
+				case null -> infrastructureFailed(trial, "The trial session failed: " + Driver.describe(failure));
 				case SessionResult.Completed completed -> decideTools(trial, completed);
 				// The trial reruns once the harness's shared hold ends
 				case SessionResult.RateLimited _ -> queue.addFirst(trial);
 				case SessionResult.Refused refused -> refused(trial, refused);
-				case SessionResult.Interrupted _ -> trial.pilot().failed("The trial session was interrupted");
-				case SessionResult.Failed failed -> trial.pilot().failed(failed.reason());
+				case SessionResult.Interrupted _ -> infrastructureFailed(trial, "The trial session was interrupted");
+				case SessionResult.Failed failed -> infrastructureFailed(trial, failed.reason());
 				// Every later session is refused the same way until the user acts
 				case SessionResult.LaunchRefused refused -> stop(refused.reason());
 			}
@@ -522,8 +616,8 @@ public final class GuardPilot
 		 * Runs a completed trial's built-in tools. A failed tool whose {@code on_tool_failure} is {@code fail} decides
 		 * the trial without a judge; otherwise the trial waits for a judge of the assertions without a {@code tool}, of
 		 * the assertions whose failed tool leaves them to the judge, and of the assertion
-		 * {@value TestCase#EXPECTED_OUTCOME}. A tool that the trial's record cannot decide, or evidence that cannot be
-		 * rendered, makes the trial a failed run that records why.
+		 * {@value TestCase#EXPECTED_OUTCOME}. A tool that the trial's record cannot decide makes the trial a failed run
+		 * that records why; evidence that cannot be read or rendered makes the run an infrastructure attempt.
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
@@ -541,9 +635,14 @@ public final class GuardPilot
 				if (contract.judge().prompt().contains("{{evidence}}"))
 					section = evidence.render();
 			}
-			catch (IOException | UndecidableToolException e)
+			catch (UndecidableToolException e)
 			{
 				pilot.failed("The built-in tools could not be decided: " + Driver.describe(e));
+				return;
+			}
+			catch (IOException e)
+			{
+				infrastructureFailed(trial, "The built-in tools could not be decided: " + Driver.describe(e));
 				return;
 			}
 			if (results.stream().anyMatch(BuiltInToolResult::failsTrial))
@@ -561,8 +660,7 @@ public final class GuardPilot
 					if (result.failsTrial())
 						record.append("\n- ").append(result.describe());
 				}
-				pilot.decided(trial.position(), new PilotTrial(testCase.testCase().describedValues(),
-					testCase.testCase().expectedOutcome(), assertions, record.toString()));
+				pilot.decided(trial.position(), testCase, assertions, record.toString());
 				return;
 			}
 			List<JudgedAssertion> judged = JudgedAssertion.of(pilot.test, contract.requirements(), results);
@@ -621,9 +719,7 @@ public final class GuardPilot
 				String id = assertion.assertion().id();
 				assertions.put(id, !failed.contains(id));
 			}
-			DrawnTestCase testCase = judging.testCase();
-			judging.pilot().decided(judging.position(), new PilotTrial(testCase.testCase().describedValues(),
-				testCase.testCase().expectedOutcome(), assertions, judgment.rationale()));
+			judging.pilot().decided(judging.position(), judging.testCase(), assertions, judgment.rationale());
 			if (assertions.containsValue(false))
 				return;
 			try
@@ -642,7 +738,8 @@ public final class GuardPilot
 
 		/**
 		 * Consumes a session that failed to start or ended without a usable result. A judge reruns until it has
-		 * failed {@value Driver#JUDGE_ATTEMPTS} times; then, like a failed trial, its trial is a failed run.
+		 * failed {@value Driver#JUDGE_ATTEMPTS} times; then, like a failed trial, its trial is an infrastructure
+		 * attempt.
 		 *
 		 * @param job the session's work
 		 * @param reason why the session failed
@@ -651,12 +748,45 @@ public final class GuardPilot
 		{
 			switch (job)
 			{
-				case TrialJob trial -> trial.pilot().failed(reason);
+				case TrialJob trial -> infrastructureFailed(trial, reason);
 				case JudgeJob judging when judging.attempt() < Driver.JUDGE_ATTEMPTS ->
 					queue.addFirst(new JudgeJob(judging.pilot(), judging.position(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section(), judging.attempt() + 1));
-				case JudgeJob judging -> judging.pilot().failed("The judge failed " + Driver.JUDGE_ATTEMPTS +
+				case JudgeJob judging -> infrastructureFailed(judging, "The judge failed " + Driver.JUDGE_ATTEMPTS +
 					" times. Last failure: " + reason);
+			}
+		}
+
+		/**
+		 * Records a run of a logical trial that ended without an outcome. The logical trial runs again with the same
+		 * test case, unless it has now ended without an outcome {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} times:
+		 * then the pilot pauses.
+		 *
+		 * @param job the session's work, which belongs to the logical trial
+		 * @param reason why the run ended without an outcome
+		 */
+		private void infrastructureFailed(Job job, String reason)
+		{
+			Pilot pilot = job.pilot();
+			List<String> runs = pilot.infrastructureAttempt(job.position(), reason);
+			if (runs.size() < Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
+			{
+				queue.addFirst(new TrialJob(pilot, job.position(), job.testCase()));
+				return;
+			}
+			StringBuilder pause = new StringBuilder(128).append("Pilot trial ").append(job.position() + 1).
+				append(" of `").append(pilot.test.id()).append("` ended without an outcome ").append(runs.size()).
+				append(" times:");
+			for (int i = 0; i < runs.size(); ++i)
+			{
+				if (i > 0)
+					pause.append(';');
+				pause.append(" (").append(i + 1).append(") ").append(runs.get(i));
+			}
+			if (stopReason == null)
+			{
+				stopReason = pause.toString();
+				paused = true;
 			}
 		}
 

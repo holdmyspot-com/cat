@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
@@ -312,14 +313,19 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A trial whose judge never returns valid output, after {@value Driver#JUDGE_ATTEMPTS} attempts, counts as a
-	 * failed run rather than a decided trial.
+	 * A trial whose judge never returns valid output, after {@value Driver#JUDGE_ATTEMPTS} attempts, is an
+	 * infrastructure attempt: the trial runs again, and when one logical trial has ended without an outcome three
+	 * times, the pilot pauses, names the logical trial and why each run ended, and is not reused.
+	 * <p>
+	 * Runtime includes the 20 trials of the test that runs before the failing one, one session at a time so that the
+	 * failing trial's runs follow each other, with a scripted judge session for each. Fewer trials or concurrent
+	 * sessions would lose the order that makes the failing trial's three runs consecutive. No harness or model runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test
-	public void invalidJudgeOutputIsFailedRun() throws IOException, InterruptedException
+	public void invalidJudgeOutputPausesPilot() throws IOException, InterruptedException
 	{
 		// Requirement: R-C23
 		Contract contract = TierFixtures.tieredContract();
@@ -333,15 +339,25 @@ public final class GuardPilotTest
 				return "pass";
 			});
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				SELECTION, Map.of(), new SplittableRandom(4)).get("safety");
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(4));
 
+			PilotResult safety = pilots.get("safety");
 			requireThat(safety.trials(), "trials").isEmpty();
-			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
-				"The judge failed " + Driver.JUDGE_ATTEMPTS + " times. Last failure: The judge's output does not match " +
-					"its result schema"));
+			requireThat(safety.failedRuns(), "failedRuns").isEmpty();
+			requireThat(safety.paused(), "paused").isTrue();
+			String judgeFailure = "The judge failed " + Driver.JUDGE_ATTEMPTS + " times. Last failure: The judge's " +
+				"output does not match its result schema";
+			String expected = "Pilot trial 1 of `safety` ended without an outcome 3 times: (1) " + judgeFailure +
+				"; (2) " + judgeFailure + "; (3) " + judgeFailure;
+			requireThat(safety.stopReason(), "stopReason").isEqualTo(expected);
+			requireThat(GuardPilot.pauseReason(pilots), "pauseReason").isEqualTo(Optional.of(expected));
+			requireThat(safety.appliesTo(safety.definition(), safety.cellId(), safety.control()), "applies").
+				isFalse();
 			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals("invalid")).count(), "judges").
-				isEqualTo((long) GuardPilot.TRIALS * Driver.JUDGE_ATTEMPTS);
+				isEqualTo(3L * Driver.JUDGE_ATTEMPTS);
+			for (PilotResult pilot : pilots.values())
+				requireThat(pilot.trials().size() == GuardPilot.TRIALS || pilot.paused(), "finishedOrPaused").isTrue();
 		}
 	}
 
@@ -375,14 +391,15 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A trial session that ends with an exception counts as a failed run that names the exception's type, so that a
-	 * message that holds only a file name, as a missing file's does, still says what went wrong.
+	 * A trial session that ends with an exception is an infrastructure attempt whose reason names the exception's
+	 * type, so that a message that holds only a file name, as a missing file's does, still says what went wrong. When
+	 * one logical trial has ended without an outcome three times, the pilot pauses.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test
-	public void crashedTrialSessionRecordsExceptionType() throws IOException, InterruptedException
+	public void crashedTrialSessionNamesExceptionType() throws IOException, InterruptedException
 	{
 		Contract contract = TierFixtures.tieredContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -392,12 +409,172 @@ public final class GuardPilotTest
 			String manifest = directory.resolve("runs/claude/mw9qj3hn-1x2ce9sid1/run.json").toString();
 			sessions.crashTrials(new NoSuchFileException(manifest));
 
-			PilotResult safety = pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(),
-				SELECTION, Map.of(), new SplittableRandom(6)).get("safety");
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(6));
 
-			requireThat(safety.trials(), "trials").isEmpty();
-			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
-				"The trial session failed: java.nio.file.NoSuchFileException: " + manifest));
+			String crash = "The trial session failed: java.nio.file.NoSuchFileException: " + manifest;
+			String first = pilots.keySet().iterator().next();
+			String expected = "Pilot trial 1 of `" + first + "` ended without an outcome 3 times: (1) " + crash +
+				"; (2) " + crash + "; (3) " + crash;
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trialSessions").isEqualTo(3);
+			for (PilotResult pilot : pilots.values())
+			{
+				requireThat(pilot.trials(), "trials").isEmpty();
+				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.paused(), "paused").isTrue();
+				requireThat(pilot.stopReason(), "stopReason").isEqualTo(expected);
+			}
+		}
+	}
+
+	/**
+	 * A trial session that fails once runs again with the same test case and is decided, and the decided trial
+	 * records the one infrastructure attempt, so that the pilot still decides every trial and does not pause.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void trialThatFailsOnceIsDecided() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-once"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			sessions.rejectAfter(SessionRole.TRIAL, 2, List.of(new SessionResult.Failed("The harness crashed",
+				List.of())));
+
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(12));
+
+			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
+			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS * pilots.size() + 1);
+			requireThat(trials.get(3).turns(), "rerunTurns").isEqualTo(trials.get(2).turns());
+			int attempts = 0;
+			for (PilotResult pilot : pilots.values())
+			{
+				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.stopReason(), "stopReason").isNull();
+				requireThat(pilot.paused(), "paused").isFalse();
+				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
+					isTrue();
+				for (PilotTrial trial : pilot.trials())
+					attempts += trial.infrastructureAttempts().size();
+			}
+			requireThat(attempts, "attempts").isEqualTo(1);
+			PilotTrial rerun = pilots.values().iterator().next().trials().get(2);
+			requireThat(rerun.infrastructureAttempts(), "infrastructureAttempts").
+				isEqualTo(List.of("The harness crashed"));
+		}
+	}
+
+	/**
+	 * A judge that fails {@value Driver#JUDGE_ATTEMPTS} times makes its trial an infrastructure attempt: the trial
+	 * runs again with the same test case and is judged, and the decided trial records why its first run ended
+	 * without an outcome.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void judgeThatFailsRerunsItsTrial() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-judge-fails"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			sessions.reject(SessionRole.JUDGE, Collections.nCopies(Driver.JUDGE_ATTEMPTS,
+				new SessionResult.Failed("The judge crashed", List.of())));
+
+			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(13));
+
+			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
+			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS * pilots.size() + 1);
+			requireThat(trials.get(1).turns(), "rerunTurns").isEqualTo(trials.getFirst().turns());
+			requireThat(sessions.requests(SessionRole.JUDGE).size(), "judges").
+				isEqualTo(GuardPilot.TRIALS * pilots.size() + Driver.JUDGE_ATTEMPTS);
+			for (PilotResult pilot : pilots.values())
+			{
+				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+				requireThat(pilot.paused(), "paused").isFalse();
+			}
+			requireThat(pilots.values().iterator().next().trials().getFirst().infrastructureAttempts(),
+				"infrastructureAttempts").isEqualTo(List.of("The judge failed " + Driver.JUDGE_ATTEMPTS +
+				" times. Last failure: The judge crashed"));
+		}
+	}
+
+	/**
+	 * A pilot that paused keeps the trials that it decided and, with the same conditions, draws the same test cases:
+	 * a later run runs only the trials that are undecided, so that its trials equal those of a pilot that no session
+	 * ever failed.
+	 * <p>
+	 * Runtime includes three pilot runs of two tests with 20 trials each, scripted and with staged trial files; no
+	 * harness or model runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void resumedPilotKeepsDecidedTrials() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-resume"));
+			SessionScript reference = new SessionScript(directory.resolve("reference"), _ -> "pass");
+			Map<String, PilotResult> clean = pilot(reference, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(7));
+			SessionScript paused = new SessionScript(directory.resolve("paused"), _ -> "pass");
+			paused.rejectAfter(SessionRole.TRIAL, 5, Collections.nCopies(Campaign.INFRASTRUCTURE_FAILURE_LIMIT,
+				new SessionResult.Failed("The harness crashed", List.of())));
+
+			Map<String, PilotResult> first = pilot(paused, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(7));
+
+			String name = first.keySet().iterator().next();
+			PilotResult interrupted = first.get(name);
+			requireThat(interrupted.trials().size(), "decidedBeforePause").isEqualTo(5);
+			requireThat(interrupted.paused(), "paused").isTrue();
+			requireThat(interrupted.stopReason(), "stopReason").startsWith("Pilot trial 6 of `" + name +
+				"` ended without an outcome 3 times:");
+			requireThat(interrupted.appliesTo(interrupted.definition(), interrupted.cellId(), interrupted.control()),
+				"applies").isFalse();
+			requireThat(interrupted.ranIn(interrupted.definition(), interrupted.cellId(), interrupted.control()),
+				"ranIn").isTrue();
+			requireThat(GuardPilot.pauseReason(first), "pauseReason").isEqualTo(Optional.of(
+				interrupted.stopReason()));
+
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, first, new SplittableRandom(99));
+
+			List<SessionRequest> trials = resumed.requests(SessionRole.TRIAL);
+			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS * second.size() - 5);
+			List<SessionRequest> expected = reference.requests(SessionRole.TRIAL);
+			for (int i = 0; i < GuardPilot.TRIALS - 5; ++i)
+				requireThat(trials.get(i).turns(), "turns" + i).isEqualTo(expected.get(5 + i).turns());
+			PilotResult completed = second.get(name);
+			requireThat(completed.seed(), "seed").isEqualTo(interrupted.seed());
+			requireThat(completed.trials().subList(0, 5), "keptTrials").isEqualTo(interrupted.trials());
+			for (Map.Entry<String, PilotResult> entry : second.entrySet())
+			{
+				PilotResult pilot = entry.getValue();
+				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+				requireThat(pilot.paused(), "paused").isFalse();
+				requireThat(pilot.stopReason(), "stopReason").isNull();
+				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
+					isTrue();
+				requireThat(pilot.trials().stream().map(PilotTrial::record).toList(), "records").
+					isEqualTo(clean.get(entry.getKey()).trials().stream().map(PilotTrial::record).toList());
+			}
 		}
 	}
 
@@ -459,11 +636,12 @@ public final class GuardPilotTest
 
 	/**
 	 * A stored pilot with a trial that ended without a decision runs again even though its test is unchanged, so that a
-	 * session failure does not stand in for the control trials.
+	 * session failure does not stand in for the control trials. It keeps the trials that it decided and runs only the
+	 * others.
 	 * <p>
-	 * Runtime includes generating a prior pilot with failed safety runs, then completing its required 20-trial
-	 * replacement while reusing the successful formatting pilot. Both phases use scripted sessions and staged
-	 * trial files; no harness or model runs.
+	 * Runtime includes generating a prior pilot, then completing its one trial that ended without a decision while
+	 * reusing the successful formatting pilot. Both phases use scripted sessions and staged trial files; no harness or
+	 * model runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -476,24 +654,32 @@ public final class GuardPilotTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-failed"));
-			SessionScript failing = new SessionScript(directory, request ->
-			{
-				if (isSafety(request))
-					return "invalid";
-				return "pass";
-			});
-			Map<String, PilotResult> first = pilot(failing, workspace(directory), 4).
+			SessionScript complete = new SessionScript(directory.resolve("complete"), _ -> "pass");
+			Map<String, PilotResult> clean = pilot(complete, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(10));
-			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			PilotResult whole = clean.get("safety");
+			PilotResult failed = new PilotResult("safety", whole.definition(), whole.cellId(), whole.control(),
+				whole.seed(), whole.trials().subList(0, GuardPilot.TRIALS - 1),
+				List.of("The built-in tools could not be decided: `notes.md` was not a file when the trial started"),
+				null, false);
+			requireThat(failed.appliesTo(failed.definition(), failed.cellId(), failed.control()), "storedApplies").
+				isFalse();
+			Map<String, PilotResult> first = new HashMap<>(clean);
+			first.put("safety", failed);
+			SessionScript sessions = new SessionScript(directory.resolve("rerun"), _ -> "pass");
 
 			Map<String, PilotResult> second = pilot(sessions, workspace(directory), 4).
 				run(contract, List.of(), control(), Set.of(), SELECTION, first, new SplittableRandom(11));
 
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
-			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS);
-			requireThat(trials.stream().allMatch(GuardPilotTest::isSafety), "onlySafety").isTrue();
-			requireThat(second.get("formatting"), "formatting").isEqualTo(first.get("formatting"));
+			requireThat(trials.size(), "trials").isEqualTo(1);
+			requireThat(trials.getFirst().turns(), "turns").isEqualTo(complete.requests(SessionRole.TRIAL).
+				stream().filter(GuardPilotTest::isSafety).toList().getLast().turns());
+			requireThat(second.get("formatting"), "formatting").isEqualTo(clean.get("formatting"));
 			requireThat(second.get("safety").failedRuns(), "failedRuns").isEmpty();
+			requireThat(second.get("safety").trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+			requireThat(second.get("safety").trials().subList(0, GuardPilot.TRIALS - 1), "keptTrials").
+				isEqualTo(failed.trials());
 		}
 	}
 
@@ -908,6 +1094,7 @@ public final class GuardPilotTest
 		private final List<String> judgedReplies = new ArrayList<>();
 		private final JudgePrompt judgePrompt;
 		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
+		private final Map<SessionRole, Integer> skips = new EnumMap<>(SessionRole.class);
 		private volatile Throwable trialCrash;
 
 		/**
@@ -1001,6 +1188,22 @@ public final class GuardPilotTest
 		}
 
 		/**
+		 * Makes the provider reject or refuse the sessions of a role that follow its next sessions, which run as usual.
+		 *
+		 * @param role    the role
+		 * @param skip    the number of sessions of the role that run as usual first
+		 * @param results the results of the rejected or refused sessions that follow
+		 */
+		void rejectAfter(SessionRole role, int skip, List<SessionResult> results)
+		{
+			synchronized (lock)
+			{
+				skips.put(role, skip);
+			}
+			reject(role, results);
+		}
+
+		/**
 		 * Makes every trial session end with an exception instead of a result, as a session does when CAT cannot
 		 * determine how it ended.
 		 *
@@ -1055,8 +1258,14 @@ public final class GuardPilotTest
 			synchronized (lock)
 			{
 				Deque<SessionResult> queued = rejections.get(request.role());
+				int skipped = skips.getOrDefault(request.role(), 0);
 				if (queued == null)
 					rejection = null;
+				else if (skipped > 0)
+				{
+					skips.put(request.role(), skipped - 1);
+					rejection = null;
+				}
 				else
 					rejection = queued.pollFirst();
 			}

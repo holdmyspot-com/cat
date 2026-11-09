@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import java.util.Collections;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -12,34 +13,44 @@ import java.util.Map;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
+ * @param position the trial's position in the draw of its prompt test's development test cases, which a resumed
+ *   pilot uses to tell the trials it already decided from the ones left to run
  * @param values the value of each variable of the test case, by variable name, in declaration order: the text of a
  *   text value, and the call of a generated value
  * @param expectedOutcome the result that a compliant reply gives
  * @param assertions indicates whether the trial passed each assertion that it decided, by assertion identifier. A
  *   failed built-in tool ends the trial without a judge, so the assertions that the judge decides are absent.
  * @param record the judge's rationale, or the record of the failed built-in tools
+ * @param infrastructureAttempts why each earlier run of this logical trial ended without an outcome, in the order the
+ *   runs ended; the trial reran with the same test case until a run decided it
  */
-public record PilotTrial(Map<String, String> values, String expectedOutcome, Map<String, Boolean> assertions,
-	String record)
+public record PilotTrial(int position, Map<String, String> values, String expectedOutcome,
+	Map<String, Boolean> assertions, String record, List<String> infrastructureAttempts)
 {
 	/**
 	 * Creates a trial record.
 	 *
+	 * @param position the trial's position in the draw of its prompt test's development test cases
 	 * @param values the value of each variable of the test case, by variable name, in declaration order: the text of
 	 *   a text value, and the call of a generated value
 	 * @param expectedOutcome the result that a compliant reply gives
 	 * @param assertions whether the trial passed each assertion that it decided, by assertion identifier
 	 * @param record the judge's rationale, or the record of the failed built-in tools
-	 * @throws NullPointerException if any of the arguments are null, or a map holds null
-	 * @throws IllegalArgumentException if {@code expectedOutcome} or {@code record} are blank, or {@code assertions}
-	 *   is empty
+	 * @param infrastructureAttempts why each earlier run of this logical trial ended without an outcome
+	 * @throws NullPointerException if any of the arguments are null, or a map or list holds null
+	 * @throws IllegalArgumentException if {@code position} is negative, {@code expectedOutcome}, {@code record} or a
+	 *   reason in {@code infrastructureAttempts} are blank, or {@code assertions} is empty
 	 */
 	public PilotTrial
 	{
+		requireThat(position, "position").isNotNegative();
 		requireThat(values, "values").isNotNull();
 		requireThat(expectedOutcome, "expectedOutcome").isNotBlank();
 		requireThat(assertions, "assertions").isNotEmpty();
 		requireThat(record, "record").isNotBlank();
+		infrastructureAttempts = List.copyOf(infrastructureAttempts);
+		for (String reason : infrastructureAttempts)
+			requireThat(reason, "reason").isNotBlank();
 		values = Collections.unmodifiableMap(new LinkedHashMap<>(values));
 		assertions = Collections.unmodifiableMap(new LinkedHashMap<>(assertions));
 		for (Map.Entry<String, String> value : values.entrySet())

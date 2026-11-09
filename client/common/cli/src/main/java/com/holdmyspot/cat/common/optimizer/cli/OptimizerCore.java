@@ -617,6 +617,8 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The campaign " + id + " was cancelled, so start did not continue " +
 				"it. To continue it, run `choose " + id + " " + new ChoiceItem(Choice.RESUME, 0, false, 0).id() + "`.");
 		}
+		if (campaign.pending() instanceof PendingDecision.PilotFailure)
+			return report(root, campaign, null, pilotPausedNotice(campaign));
 		if (campaign.isConfirmed() && !campaign.revisionRequested())
 			return report(root, campaign, null, null);
 		try (CampaignLock _ = lock(header.id()))
@@ -1449,6 +1451,11 @@ public final class OptimizerCore implements Core
 			fork = fork.extend(root, participants);
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin);
+		Optional<String> pause = GuardPilot.pauseReason(pilots);
+		// The revised contract is not confirmed on a pilot that did not finish. The user chooses to retry or to stop,
+		// and the test revisions run again with the next run.
+		if (pause.isPresent())
+			return List.of(new CampaignEvent.PilotFailed(pause.get()));
 		// The proposal previews its confirmation, which needs the campaign that awaits the revised contract
 		CampaignEvent.ReviseTests revise = new CampaignEvent.ReviseTests(revisions);
 		Proposal proposal = proposal(root, Transitions.apply(campaign, revise), fork, revised, pilots, plugin);
@@ -1733,6 +1740,11 @@ public final class OptimizerCore implements Core
 		CampaignLock lock) throws CommandRefusedException, IOException
 	{
 		String campaign = loaded.header().id();
+		if (loaded.pending() instanceof PendingDecision.PilotFailure)
+		{
+			throw new CommandRefusedException("Campaign " + campaign + " has no proposal to confirm yet. " +
+				pilotPausedNotice(loaded));
+		}
 		ForkView fork = openFork(root, loaded);
 		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
 			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
@@ -2025,8 +2037,15 @@ public final class OptimizerCore implements Core
 					// The contract author derives the revised contract from the change, which the user then confirms
 					return reviseBody(campaign, blocked.proposedChange(), lock);
 				}
+				boolean retriesPilot = choice == Choice.RETRY && loaded.pending() instanceof PendingDecision.PilotFailure;
+				if (retriesPilot)
+					refuseUnlaunchable();
 				result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)), lock);
 				Campaign chosen = require(scope.store(), campaign, true);
+				// The retry runs the pilot's remaining trials and presents the proposal. A confirmed campaign's test
+				// revision pilot runs again with its test revision, when the user runs the campaign.
+				if (retriesPilot && !(chosen.isConfirmed() && !chosen.revisionRequested()))
+					return resumeHeld(root, scope.store(), chosen);
 				if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
 				{
 					// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
@@ -2367,8 +2386,55 @@ public final class OptimizerCore implements Core
 
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, derived, plugin);
+		Optional<String> pause = GuardPilot.pauseReason(pilots);
+		campaign = settlePilotPause(store, campaign, pause);
+		// A proposal whose pilot did not finish cannot be confirmed, so the user first chooses to retry or to stop
+		if (pause.isPresent())
+			return report(root, campaign, null, pilotPausedNotice(campaign));
 		Proposal proposal = proposal(root, campaign, fork, derived, pilots, plugin);
 		return report(root, campaign, proposal.render(), null);
+	}
+
+	/**
+	 * Records that the guard pilot paused, or that it no longer pauses. The campaign's earlier pilot pause is answered
+	 * by this pilot's result, so it is cleared first.
+	 * <p>
+	 * The caller holds the campaign's write lock, so no other process writes the campaign meanwhile.
+	 *
+	 * @param store the store
+	 * @param campaign the campaign
+	 * @param pause why the pilot paused, or empty if no pilot paused
+	 * @return the campaign after the pilot's result
+	 * @throws IOException if the campaign cannot be stored
+	 */
+	private Campaign settlePilotPause(CampaignStore store, Campaign campaign, Optional<String> pause)
+		throws IOException
+	{
+		boolean answered = campaign.pending() instanceof PendingDecision.PilotFailure;
+		if (!answered && pause.isEmpty())
+			return campaign;
+		Campaign settled = campaign;
+		if (answered)
+			settled = Transitions.apply(settled, new CampaignEvent.Choose(Choice.RETRY, 0, 0));
+		if (pause.isPresent())
+			settled = Transitions.apply(settled, new CampaignEvent.PilotFailed(pause.get()));
+		store.replaceSnapshot(settled);
+		return settled;
+	}
+
+	/**
+	 * Returns the notice that tells the user how to answer a paused guard pilot.
+	 *
+	 * @param campaign the campaign
+	 * @return the notice
+	 */
+	private static String pilotPausedNotice(Campaign campaign)
+	{
+		String id = campaign.header().id();
+		return "The proposal is not shown, and cannot be confirmed, because its guard pilot paused. To run the " +
+			"pilot's remaining trials, which keeps the trials it decided, run `choose " + id + " " +
+			new ChoiceItem(Choice.RETRY, 0, false, 0).id() + "`. To stop the campaign, run `choose " + id + " " +
+			new ChoiceItem(Choice.STOP, 0, false, 0).id() + "`.";
 	}
 
 	/**

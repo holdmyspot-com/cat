@@ -1256,6 +1256,7 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.UnownedChange("CLAUDE.md changed outside CAT")).
 			pending(new PendingDecision.TrialFailures(baselineKey)).
 			pending(new PendingDecision.CalibrationFailure("cap exceeds 300")).
+			pending(new PendingDecision.PilotFailure("Pilot trial 6 of `safety` ended without an outcome 3 times")).
 			pending(new PendingDecision.CheckpointReached("safety", 200)).
 			pending(new PendingDecision.ImprovementProven(1)).
 			pending(new PendingDecision.RegressionTradeOff(2)).
