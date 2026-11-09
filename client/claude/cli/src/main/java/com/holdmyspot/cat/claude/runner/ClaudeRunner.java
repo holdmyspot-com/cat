@@ -3,10 +3,13 @@ package com.holdmyspot.cat.claude.runner;
 import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
+import com.holdmyspot.cat.claude.installer.Integration;
+import com.holdmyspot.cat.claude.optimizer.InstalledPlugins;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
@@ -26,6 +29,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
@@ -227,8 +231,8 @@ public final class ClaudeRunner
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			List<Path> plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
-				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
-					run, step));
+				FileReplacer.retrying(waiting), scope.json(), (command, step) -> HarnessCommand.execute(command, worktree,
+					isolatedEnvironment, executables, manager, run, step));
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
@@ -915,25 +919,38 @@ public final class ClaudeRunner
 	 * Installs CAT, when requested, and each trial plugin into an isolated Claude configuration, each from a
 	 * marketplace of its own. Claude Code runs an installed plugin's hooks without asking for approval, so no approval
 	 * is copied.
+	 * <p>
+	 * Installing CAT also merges into the isolated configuration's {@code settings.json} the entries that CAT's
+	 * installer writes for an installed plugin: the sandbox exclusions and permissions for its installer and request
+	 * server. They name the copy of CAT in the run's marketplace, and each copy that Claude Code's install records name
+	 * for CAT. The installer's other entries, which cover the user's shell startup files, the capacity locks and the
+	 * other harness's installation, are left out: the run's own sandbox policy covers its files, and the run shares
+	 * neither locks nor an installation with the user's.
 	 *
 	 * @param executable the Claude executable
 	 * @param artifact the complete Claude artifact, which is installed as CAT
 	 * @param installCat {@code true} to install CAT
 	 * @param trialPlugins the trial plugins, each installed under its manifest's name
 	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param replacer replaces {@code settings.json}
+	 * @param json parses Claude Code's install records
 	 * @param commands runs the commands that add each marketplace and install each plugin
 	 * @return the directory of each installed plugin, CAT first
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code executable} is blank
-	 * @throws IOException if a plugin's manifest cannot be read, a marketplace cannot be created or a command fails
+	 * @throws IOException if a plugin's manifest cannot be read, a marketplace cannot be created, a command fails,
+	 *   Claude Code's install records cannot be read or {@code settings.json} cannot be changed
 	 */
 	public static List<Path> installPlugins(String executable, Path artifact, boolean installCat,
-		List<Path> trialPlugins, Path isolatedConfiguration, SetupCommands commands) throws IOException
+		List<Path> trialPlugins, Path isolatedConfiguration, FileReplacer replacer, JsonMapper json,
+		SetupCommands commands) throws IOException
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		requireThat(isolatedConfiguration, "isolatedConfiguration").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
+		requireThat(json, "json").isNotNull();
 		requireThat(commands, "commands").isNotNull();
 		List<Path> plugins = new ArrayList<>();
 		if (installCat)
@@ -942,7 +959,9 @@ public final class ClaudeRunner
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, "cat");
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-install");
-			plugins.add(marketplace.resolve("plugins/cat"));
+			Path plugin = marketplace.resolve("plugins/cat");
+			installPermissions(isolatedConfiguration, plugin, replacer, json);
+			plugins.add(plugin);
 		}
 		for (Path trialPlugin : trialPlugins)
 		{
@@ -955,6 +974,28 @@ public final class ClaudeRunner
 			plugins.add(marketplace.resolve("plugins/" + name));
 		}
 		return plugins;
+	}
+
+	/**
+	 * Writes the entries that CAT's installer writes into {@code settings.json} for each installed copy of CAT: the copy
+	 * in the run's marketplace and each copy that Claude Code's install records name for CAT.
+	 *
+	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param marketplacePlugin the copy of CAT in the run's marketplace
+	 * @param replacer replaces {@code settings.json}
+	 * @param json parses Claude Code's install records
+	 * @throws IOException if the install records cannot be read or {@code settings.json} cannot be changed
+	 */
+	private static void installPermissions(Path isolatedConfiguration, Path marketplacePlugin, FileReplacer replacer,
+		JsonMapper json) throws IOException
+	{
+		Path configuration = isolatedConfiguration.toAbsolutePath().normalize();
+		Set<Path> copies = new LinkedHashSet<>();
+		copies.add(marketplacePlugin.toAbsolutePath().normalize());
+		copies.addAll(InstalledPlugins.of(configuration, "cat@cat", json));
+		Integration integration = new Integration();
+		for (Path copy : copies)
+			integration.installPermissions(configuration, copy.resolve(PluginDirectory.INSTALLER), replacer);
 	}
 
 	/**

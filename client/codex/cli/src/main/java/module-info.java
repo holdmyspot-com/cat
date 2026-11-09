@@ -1,6 +1,8 @@
 module com.holdmyspot.cat.codex.cli
 {
+	requires com.holdmyspot.cat.codex.installer;
 	requires com.holdmyspot.cat.common.cli;
+	requires com.holdmyspot.cat.common.installer;
 	requires com.holdmyspot.cat.claude.layout;
 	requires com.holdmyspot.cat.codex.layout;
 	requires io.github.cowwoc.requirements13.java;

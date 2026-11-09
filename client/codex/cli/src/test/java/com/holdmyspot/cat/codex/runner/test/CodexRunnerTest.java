@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.codex.installer.CodexIntegration;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunner;
@@ -17,13 +18,17 @@ import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.LocalMarketplace;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
+import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -42,6 +47,11 @@ import tools.jackson.dataformat.toml.TomlMapper;
  */
 public final class CodexRunnerTest
 {
+	/**
+	 * Quotes the paths that the rules name.
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
+
 	/**
 	 * Verifies an isolated home uses a credential file only when no usable environment authentication is available.
 	 */
@@ -95,7 +105,8 @@ public final class CodexRunnerTest
 			List<List<String>> commands = new ArrayList<>();
 
 			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs")),
-				root.resolve("host"), home, Map.of(), Yielding.executableFiles(), (command, step) ->
+				root.resolve("host"), home, Map.of(), Yielding.executableFiles(), Yielding.fileReplacer(),
+				(command, step) ->
 				{
 					commands.add(command);
 					steps.add(step);
@@ -109,6 +120,7 @@ public final class CodexRunnerTest
 			requireThat(Files.readString(marketplace.resolve("plugins/release-docs/README.md")), "copy").
 				isEqualTo("release-docs");
 			requireThat(Files.notExists(home.resolve("agents")), "catAgents").isTrue();
+			requireThat(Files.notExists(home.resolve("rules")), "rules").isTrue();
 		}
 	}
 
@@ -128,8 +140,8 @@ public final class CodexRunnerTest
 			List<String> steps = new ArrayList<>();
 
 			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs"),
-				plugin(root, "tools")), root.resolve("host"), home, Map.of(), Yielding.executableFiles(), (_,
-				step) -> steps.add(step));
+				plugin(root, "tools")), root.resolve("host"), home, Map.of(), Yielding.executableFiles(),
+				Yielding.fileReplacer(), (_, step) -> steps.add(step));
 
 			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
 				"trial-plugin-release-docs-add", "trial-plugin-tools-marketplace-add", "trial-plugin-tools-add"));
@@ -156,13 +168,18 @@ public final class CodexRunnerTest
 
 			Path withoutCat = root.resolve("without");
 			CodexRunner.installPlugins("codex", artifact, false, List.of(), root.resolve("host"), withoutCat, Map.of(),
-				Yielding.executableFiles(), (_, step) -> steps.add(step));
+				Yielding.executableFiles(), Yielding.fileReplacer(), (_, step) -> steps.add(step));
 			requireThat(steps, "withoutCatSteps").isEmpty();
 			requireThat(Files.notExists(withoutCat), "withoutCatHome").isTrue();
 
 			Path withCat = root.resolve("with");
+			SetupCommands codex = codexAdds(withCat, "1.0+b0123456789ab");
 			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat, Map.of(),
-				Yielding.executableFiles(), (_, step) -> steps.add(step));
+				Yielding.executableFiles(), Yielding.fileReplacer(), (command, step) ->
+				{
+					steps.add(step);
+					codex.execute(command, step);
+				});
 			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-add"));
 			requireThat(withCat.resolve("agents/cat-worker.toml"), "agent").isRegularFile();
 		}
@@ -185,9 +202,7 @@ public final class CodexRunnerTest
 				root.resolve("user"));
 
 			CodexRunner.installPlugins("codex", artifact(root), true, List.of(), root.resolve("host"), home, Map.of(),
-				Yielding.executableFiles(), (_, _) ->
-				{
-				});
+				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
 
 			requireThat(installation.marketplacePlugin().resolve("README.md"), "plugin").isRegularFile();
 			requireThat(installation.marketplaceManifest(), "manifest").isRegularFile();
@@ -229,9 +244,8 @@ public final class CodexRunnerTest
 			Path home = root.resolve("isolated");
 
 			CodexRunner.installPlugins("codex", artifact(root), true, List.of(plugin(root, "release-docs"),
-				plugin(root, "tools")), host, home, Map.of(), Yielding.executableFiles(), (_, _) ->
-				{
-				});
+				plugin(root, "tools")), host, home, Map.of(), Yielding.executableFiles(), Yielding.fileReplacer(),
+				codexAdds(home, "1.0+b0123456789ab"));
 
 			String configuration = Files.readString(home.resolve("config.toml"));
 			requireThat(configuration, "configuration").
@@ -240,6 +254,112 @@ public final class CodexRunnerTest
 				contains(approval("cat@cat", "d")).
 				doesNotContain("other@").doesNotContain("c".repeat(64));
 		}
+	}
+
+	/**
+	 * Verifies that installing CAT writes into the isolated home the entries that CAT's installer writes for the
+	 * installed version: the execution-policy rules for its installer and request server, and the hash of each of its
+	 * hooks, which replaces a copied approval of another hash. The runner's own configuration stays.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void installsCatRulesAndHookHashes() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-rules-"));
+			Path host = Files.createDirectories(root.resolve("host"));
+			Files.writeString(host.resolve("config.toml"), """
+				[hooks.state."cat@cat:hooks/hooks.json:session_start:0:0"]
+				trusted_hash = "sha256:%s"
+				""".formatted("d".repeat(64)));
+			Path home = Files.createDirectories(root.resolve("isolated"));
+			Path artifact = artifact(root);
+			Files.createDirectories(artifact.resolve("hooks"));
+			Files.writeString(artifact.resolve("hooks/hooks.json"), """
+				{"hooks": {"SessionStart": [{"hooks": [{"type": "command", "command": "run-session-start"}]}]}}
+				""");
+			CodexConnectionConfiguration.copy(host.resolve("config.toml"), home.resolve("config.toml"),
+				root.resolve("project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, Platform.current());
+
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), host, home, Map.of(),
+				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
+
+			Path installer = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab").
+				resolve(PluginDirectory.INSTALLER);
+			Map<String, List<String>> entries = new CodexIntegration().permissions(installer);
+			String rules = Files.readString(home.resolve("rules/cat-installer.rules"));
+			requireThat(rules, "rules").isEqualTo(entries.get("rules/cat-installer.rules#").get(0));
+			if (!Platform.current().isWindows())
+			{
+				requireThat(rules, "rules").contains("prefix_rule(pattern=[" +
+					JSON.writeValueAsString(installer.resolveSibling("request-server").toString()) +
+					"], decision=\"allow\")");
+			}
+			String hash = null;
+			for (Map.Entry<String, List<String>> entry : entries.entrySet())
+			{
+				if (entry.getKey().startsWith("config.toml#hooks.state."))
+					hash = entry.getValue().get(0);
+			}
+			requireThat(hash, "hash").isNotNull();
+			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(home.resolve("config.toml")));
+			requireThat(configuration.path("hooks").path("state").path("cat@cat:hooks/hooks.json:session_start:0:0").
+				path("trusted_hash").asString(), "trustedHash").isEqualTo(hash);
+			requireThat(configuration.path("default_permissions").asString(), "defaultPermissions").isNotEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that installing CAT fails, and writes no rules, unless Codex's cache holds exactly one copy of it.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void requiresOneCachedCatCopy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-rules-"));
+			for (String[] versions : new String[][]
+				{
+					{},
+					{"1.0+b0123456789ab", "1.1+b0123456789ab"}
+				})
+			{
+				Path home = root.resolve("isolated" + versions.length);
+				IOException e = expectThrows(IOException.class, () -> CodexRunner.installPlugins("codex", artifact(root),
+					true, List.of(), root.resolve("host"), home, Map.of(), Yielding.executableFiles(),
+					Yielding.fileReplacer(), codexAdds(home, versions)));
+
+				requireThat(e.getMessage(), "message").contains("Codex did not install exactly one copy of cat@cat");
+				requireThat(Files.notExists(home.resolve("rules")), "rules").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Returns the setup commands of a Codex that installs CAT: {@code plugin add} copies CAT from its marketplace into
+	 * the cache folder of each version, and records CAT as installed in {@code config.toml}.
+	 *
+	 * @param home the isolated Codex home
+	 * @param versions the names of the version folders that Codex's cache ends up holding
+	 * @return the setup commands, which change nothing for any other step
+	 */
+	private static SetupCommands codexAdds(Path home, String... versions)
+	{
+		return (_, step) ->
+		{
+			if (!step.equals("plugin-add"))
+				return;
+			for (String version : versions)
+				LocalMarketplace.copy(home.resolve("plugins/cat-marketplace/plugins/cat"),
+					home.resolve("plugins/cache/cat/cat").resolve(version));
+			Files.writeString(home.resolve("config.toml"), System.lineSeparator() + "[plugins.\"cat@cat\"]" +
+				System.lineSeparator() + "enabled = true" + System.lineSeparator(), StandardOpenOption.CREATE,
+				StandardOpenOption.APPEND);
+		};
 	}
 
 	/**

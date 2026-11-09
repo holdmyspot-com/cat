@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.claude.installer.Integration;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
@@ -21,6 +22,8 @@ import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -48,6 +51,10 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class ClaudeRunnerTest
 {
+	/**
+	 * Reads and writes the fixtures' settings and install records.
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().build();
 	/**
 	 * The Claude Code variables that decide whether and how a session starts subagents.
 	 */
@@ -1058,7 +1065,7 @@ public final class ClaudeRunnerTest
 			List<String> steps = new ArrayList<>();
 			List<List<String>> commands = new ArrayList<>();
 
-			List<Path> installed = ClaudeRunner.installPlugins("claude", plugin(root, "cat-artifact", "cat"), false,
+			List<Path> installed = install(plugin(root, "cat-artifact", "cat"), false,
 				List.of(plugin(root, "docs-source", "release-docs")), configuration, (command, step) ->
 				{
 					commands.add(command);
@@ -1072,6 +1079,7 @@ public final class ClaudeRunnerTest
 			requireThat(commands, "commands").isEqualTo(ClaudeRunner.pluginSetupCommands("claude", marketplace,
 				"release-docs"));
 			requireThat(Files.notExists(configuration.resolve("plugins/cat-marketplace")), "catMarketplace").isTrue();
+			requireThat(Files.notExists(configuration.resolve("settings.json")), "settings").isTrue();
 		}
 	}
 
@@ -1090,7 +1098,7 @@ public final class ClaudeRunnerTest
 			Path configuration = root.resolve("home/.claude");
 			List<String> steps = new ArrayList<>();
 
-			List<Path> installed = ClaudeRunner.installPlugins("claude", plugin(root, "cat-artifact", "cat"), false,
+			List<Path> installed = install(plugin(root, "cat-artifact", "cat"), false,
 				List.of(plugin(root, "docs-source", "release-docs"), plugin(root, "tools-source", "tools")),
 				configuration, (_, step) -> steps.add(step));
 
@@ -1120,17 +1128,126 @@ public final class ClaudeRunnerTest
 			List<String> steps = new ArrayList<>();
 
 			Path withoutCat = root.resolve("without/.claude");
-			requireThat(ClaudeRunner.installPlugins("claude", artifact, false, List.of(), withoutCat,
-				(_, step) -> steps.add(step)), "withoutCat").isEmpty();
+			requireThat(install(artifact, false, List.of(), withoutCat, (_, step) -> steps.add(step)), "withoutCat").
+				isEmpty();
 			requireThat(steps, "withoutCatSteps").isEmpty();
 			requireThat(Files.notExists(withoutCat), "withoutCatConfiguration").isTrue();
 
 			Path withCat = root.resolve("with/.claude");
-			List<Path> installed = ClaudeRunner.installPlugins("claude", artifact, true, List.of(), withCat,
-				(_, step) -> steps.add(step));
+			List<Path> installed = install(artifact, true, List.of(), withCat, (_, step) -> steps.add(step));
 			requireThat(installed, "withCat").isEqualTo(List.of(withCat.resolve("plugins/cat-marketplace/plugins/cat")));
 			requireThat(steps, "withCatSteps").isEqualTo(List.of("marketplace-add", "plugin-install"));
 		}
+	}
+
+	/**
+	 * Verifies that installing CAT adds to the isolated settings the entries that CAT's installer writes for the
+	 * installed plugin, beside the settings that are already there.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void installsCatSettingsEntries() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-settings-"));
+			Path configuration = Files.createDirectories(root.resolve("home/.claude"));
+			Files.writeString(configuration.resolve("settings.json"), """
+				{"model": "opus", "permissions": {"allow": ["Skill"]}}
+				""");
+
+			List<Path> installed = install(plugin(root, "cat-artifact", "cat"), true, List.of(), configuration,
+				(_, _) ->
+				{
+				});
+
+			Path installer = installed.get(0).resolve(PluginDirectory.INSTALLER);
+			Map<String, List<String>> entries = new Integration().permissions(installer);
+			JsonNode settings = JSON.readTree(Files.readString(configuration.resolve("settings.json")));
+			requireThat(settings.path("model").asString(), "model").isEqualTo("opus");
+			List<String> excluded = strings(settings.path("sandbox").path("excludedCommands"));
+			requireThat(excluded, "excluded").isEqualTo(entries.get("settings.json#sandbox.excludedCommands"));
+			List<String> allowed = new ArrayList<>(List.of("Skill"));
+			allowed.addAll(entries.get("settings.json#permissions.allow"));
+			requireThat(strings(settings.path("permissions").path("allow")), "allowed").isEqualTo(allowed);
+			if (!Platform.current().isWindows())
+			{
+				String server = installer.resolveSibling("request-server").toString();
+				requireThat(excluded, "excluded").contains(server);
+				requireThat(allowed, "allowed").contains("Bash(" + server + ")");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that installing CAT adds the installer's entries for each copy of CAT that Claude Code's install
+	 * records name, beside the copy in the run's marketplace.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void installsEntriesForRecordedCopy() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-settings-"));
+			Path configuration = root.resolve("home/.claude");
+			Path recorded = plugin(root, "cache/cat/cat/1.0-a", "cat");
+
+			List<Path> installed = install(plugin(root, "cat-artifact", "cat"), true, List.of(), configuration,
+				(_, step) ->
+				{
+					if (step.equals("plugin-install"))
+					{
+						Files.createDirectories(configuration.resolve("plugins"));
+						Files.writeString(configuration.resolve("plugins/installed_plugins.json"), JSON.writeValueAsString(
+							Map.of("version", 2, "plugins", Map.of("cat@cat", List.of(Map.of("scope", "user",
+								"installPath", recorded.toString()))))));
+					}
+				});
+
+			Integration integration = new Integration();
+			JsonNode settings = JSON.readTree(Files.readString(configuration.resolve("settings.json")));
+			List<String> excluded = strings(settings.path("sandbox").path("excludedCommands"));
+			List<String> expected = new ArrayList<>();
+			for (Path plugin : List.of(installed.get(0), recorded))
+				expected.addAll(integration.permissions(plugin.resolve(PluginDirectory.INSTALLER)).
+					get("settings.json#sandbox.excludedCommands"));
+			requireThat(excluded, "excluded").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * Installs plugins into an isolated Claude configuration with a file replacer that yields instead of sleeping.
+	 *
+	 * @param artifact the CAT artifact
+	 * @param installCat {@code true} to install CAT
+	 * @param trialPlugins the trial plugins
+	 * @param configuration the isolated Claude configuration directory
+	 * @param commands runs the setup commands
+	 * @return the directory of each installed plugin
+	 * @throws IOException if the installation fails
+	 */
+	private static List<Path> install(Path artifact, boolean installCat, List<Path> trialPlugins, Path configuration,
+		SetupCommands commands) throws IOException
+	{
+		return ClaudeRunner.installPlugins("claude", artifact, installCat, trialPlugins, configuration,
+			Yielding.fileReplacer(), JSON, commands);
+	}
+
+	/**
+	 * Returns the text of each element of a JSON array.
+	 *
+	 * @param array the array
+	 * @return the elements' text, in order
+	 */
+	private static List<String> strings(JsonNode array)
+	{
+		List<String> strings = new ArrayList<>();
+		for (JsonNode element : array)
+			strings.add(element.asString());
+		return strings;
 	}
 
 	/**

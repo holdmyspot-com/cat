@@ -10,7 +10,8 @@ module com.holdmyspot.cat.codex.installer
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.toml;
 
-	exports com.holdmyspot.cat.codex.installer to com.holdmyspot.cat.codex.installer.test;
+	exports com.holdmyspot.cat.codex.installer to com.holdmyspot.cat.codex.installer.test,
+		com.holdmyspot.cat.codex.cli, com.holdmyspot.cat.codex.cli.test;
 
 	provides com.holdmyspot.cat.common.installer.activation.PluginActivation with
 		com.holdmyspot.cat.codex.installer.CodexActivation;

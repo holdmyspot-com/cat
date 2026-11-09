@@ -23,6 +23,10 @@
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-claude-installer</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-codex-layout</artifactId>
 		</dependency>
 		<dependency>

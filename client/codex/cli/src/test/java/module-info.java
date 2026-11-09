@@ -2,9 +2,11 @@ module com.holdmyspot.cat.codex.cli.test
 {
 	requires com.holdmyspot.cat.claude.layout;
 	requires com.holdmyspot.cat.codex.cli;
+	requires com.holdmyspot.cat.codex.installer;
 	requires com.holdmyspot.cat.codex.layout;
 	requires com.holdmyspot.cat.common.cli;
 	requires com.holdmyspot.cat.common.cli.test;
+	requires com.holdmyspot.cat.common.installer;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.toml;

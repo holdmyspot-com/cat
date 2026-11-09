@@ -5,9 +5,12 @@ import static com.holdmyspot.cat.codex.CodexPluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.codex.installer.CodexIntegration;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
+import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
@@ -24,6 +27,7 @@ import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
@@ -77,6 +81,10 @@ public final class CodexRunner
 	 * The path of a Codex plugin's manifest, relative to the plugin directory.
 	 */
 	static final Path MANIFEST = Path.of(".codex-plugin/plugin.json");
+	/**
+	 * CAT as Codex identifies an installed plugin: its name and its marketplace's.
+	 */
+	private static final String CAT_PLUGIN_ID = CodexMarketplace.CAT + "@" + CodexMarketplace.CAT;
 	/**
 	 * The text of Codex's failure to start a thread when bubblewrap cannot set up the sandbox's loopback interface.
 	 */
@@ -208,8 +216,8 @@ public final class CodexRunner
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
 				executables, manager, run), featureFlags(pluginsInstalled), policy.hosts());
 			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
-				executables, (setup, step) -> HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables,
-					manager, run, step));
+				executables, FileReplacer.retrying(waiting), (setup, step) -> HarnessCommand.execute(setup, worktree,
+					isolatedEnvironment, executables, manager, run, step));
 			List<String> command = sandbox.command();
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			lock = manager.acquireLock(run);
@@ -735,6 +743,13 @@ public final class CodexRunner
 	 * Installs CAT, when requested, and each trial plugin into an isolated Codex home, each from a marketplace of its
 	 * own, with the user's approvals of its hooks. Plugin hooks are untrusted in every fresh home, so the approvals are
 	 * copied from the user's configuration; Codex rejects an approval whose hook's normalized declaration differs.
+	 * <p>
+	 * Installing CAT also writes into the isolated home the entries that CAT's installer writes for the installed
+	 * plugin version: the execution-policy rules for its installer and request server, and the hash of each of its
+	 * hooks in {@code config.toml}, which replaces a copied approval that the version's hooks no longer match. The
+	 * installer's other entries, which cover the user's sandbox mode, shell startup files, capacity locks and the other
+	 * harness's installation, are left out: the run's own sandbox policy covers its files, and the run shares neither
+	 * locks nor an installation with the user's.
 	 *
 	 * @param executable the Codex executable
 	 * @param artifact the complete Codex artifact, which is installed as CAT
@@ -744,15 +759,16 @@ public final class CodexRunner
 	 * @param isolatedHome the isolated Codex home
 	 * @param isolatedEnvironment the isolated environment, which seeding CAT's curated plugin cache runs in
 	 * @param executables runs Git while seeding CAT's curated plugin cache
+	 * @param replacer replaces the rules file and {@code config.toml}
 	 * @param commands runs the commands that add each marketplace and each plugin
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code executable} is blank
 	 * @throws IOException if a plugin's manifest cannot be read, a configuration or marketplace cannot be written, CAT's
-	 *   agents cannot be copied or a command fails
+	 *   agents cannot be copied, a command fails, or Codex did not install exactly one copy of CAT
 	 */
 	public static void installPlugins(String executable, Path artifact, boolean installCat, List<Path> trialPlugins,
 		Path hostHome, Path isolatedHome, Map<String, String> isolatedEnvironment, ExecutableFiles executables,
-		SetupCommands commands) throws IOException
+		FileReplacer replacer, SetupCommands commands) throws IOException
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(artifact, "artifact").isNotNull();
@@ -761,6 +777,7 @@ public final class CodexRunner
 		requireThat(isolatedHome, "isolatedHome").isNotNull();
 		requireThat(isolatedEnvironment, "isolatedEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
+		requireThat(replacer, "replacer").isNotNull();
 		requireThat(commands, "commands").isNotNull();
 		Path hostConfiguration = configuration(hostHome);
 		Path isolatedConfiguration = configuration(isolatedHome);
@@ -783,6 +800,7 @@ public final class CodexRunner
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace);
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-add");
+			installPermissions(isolatedHome, replacer);
 		}
 		for (int i = 0; i < trialPlugins.size(); ++i)
 		{
@@ -793,6 +811,25 @@ public final class CodexRunner
 			commands.execute(pluginCommands.get(0), "trial-plugin-" + name + "-marketplace-add");
 			commands.execute(pluginCommands.get(1), "trial-plugin-" + name + "-add");
 		}
+	}
+
+	/**
+	 * Writes the entries that CAT's installer writes for the CAT version that Codex installed into the isolated home.
+	 *
+	 * @param isolatedHome the isolated Codex home
+	 * @param replacer replaces the rules file and {@code config.toml}
+	 * @throws IOException if Codex did not install exactly one copy of CAT, or an entry cannot be written
+	 */
+	private static void installPermissions(Path isolatedHome, FileReplacer replacer) throws IOException
+	{
+		Path home = isolatedHome.toAbsolutePath().normalize();
+		List<Path> copies = InstalledPlugins.of(home, CAT_PLUGIN_ID);
+		if (copies.size() != 1)
+		{
+			throw new IOException("Codex did not install exactly one copy of " + CAT_PLUGIN_ID + " into " + home +
+				": " + copies);
+		}
+		new CodexIntegration().installPermissions(home, copies.get(0).resolve(PluginDirectory.INSTALLER), replacer);
 	}
 
 	/**

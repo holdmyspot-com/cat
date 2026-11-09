@@ -11,7 +11,8 @@ module com.holdmyspot.cat.claude.installer
 	requires tools.jackson.core;
 	requires tools.jackson.databind;
 
-	exports com.holdmyspot.cat.claude.installer to com.holdmyspot.cat.claude.installer.test;
+	exports com.holdmyspot.cat.claude.installer to com.holdmyspot.cat.claude.installer.test,
+		com.holdmyspot.cat.claude.cli, com.holdmyspot.cat.claude.cli.test;
 
 	provides com.holdmyspot.cat.common.installer.activation.PluginActivation
 		with com.holdmyspot.cat.claude.installer.Activation;
