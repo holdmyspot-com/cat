@@ -866,7 +866,7 @@ public final class ClaudeRunnerCliTest
 
 			// The session starts and fails only because the test runs no CAT artifact
 			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(failure.getMessage(), "message").doesNotContain("/login");
+			requireThat(failure.getMessage(), "message").doesNotContain("Log in to Claude Code with /login");
 			requireThat(errors.toString(), "errors").isEmpty();
 		}
 	}
@@ -901,7 +901,7 @@ public final class ClaudeRunnerCliTest
 
 			// The session starts and fails only because the test runs no CAT artifact
 			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
-			requireThat(failure.getMessage(), "message").doesNotContain("/login");
+			requireThat(failure.getMessage(), "message").doesNotContain("Log in to Claude Code with /login");
 			requireThat(errors.toString(), "errors").isEmpty();
 		}
 	}

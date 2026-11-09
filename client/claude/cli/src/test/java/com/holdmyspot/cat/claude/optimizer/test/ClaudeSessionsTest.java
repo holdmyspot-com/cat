@@ -850,6 +850,32 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that the port classifies a session's host as a subscription when the session's environment names a
+	 * login store that holds a subscription login and a configuration directory that holds none, as the environment
+	 * of a session that CAT's runner starts does.
+	 *
+	 * @throws IOException if a credential fixture cannot be created
+	 */
+	@Test(timeOut = 120_000)
+	public void classifiesTheLoginStoreOfARunSession() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path store = Files.createDirectories(root.resolve("store"));
+				Files.writeString(store.resolve(".credentials.json"), "{\"claudeAiOauth\":{}}", UTF_8);
+
+				HostLogin login = loginPort(jvm, root.resolve("session-home"),
+					Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString())).hostLogin();
+
+				requireThat(login, "login").isEqualTo(HostLogin.SUBSCRIPTION);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the port reports an unknown login when the host has neither a credential file nor a login
 	 * variable.
 	 *

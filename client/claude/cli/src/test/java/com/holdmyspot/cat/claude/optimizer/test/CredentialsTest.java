@@ -119,4 +119,79 @@ public final class CredentialsTest
 			requireThat(Credentials.classify(configuration, Map.of(), JSON), "notJson").isEqualTo(HostLogin.UNKNOWN);
 		}
 	}
+
+	/**
+	 * Verifies that a login in the login store that {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names marks a
+	 * subscription, although the configuration directory holds no login: a run's session has its own configuration
+	 * directory and the user's login in the store.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void loginStoreSubscriptionIsSubscription() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-"));
+			Path store = cleanup.add(Files.createTempDirectory("cat-claude-store-"));
+			writeCredentials(store, "{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			Map<String, String> environment = Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
+			requireThat(Credentials.classify(configuration, environment, JSON), "login").
+				isEqualTo(HostLogin.SUBSCRIPTION);
+		}
+	}
+
+	/**
+	 * Verifies that an API key in the environment selects an API key even when the login store holds a
+	 * subscription login.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void environmentApiKeyOverridesStore() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-"));
+			Path store = cleanup.add(Files.createTempDirectory("cat-claude-store-"));
+			writeCredentials(store, "{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			Map<String, String> environment = Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString(),
+				"ANTHROPIC_API_KEY", "placeholder");
+			requireThat(Credentials.classify(configuration, environment, JSON), "login").isEqualTo(HostLogin.API_KEY);
+		}
+	}
+
+	/**
+	 * Verifies that a login store that is empty, names no directory, or is unset leaves the classification to the
+	 * configuration directory, and that a store without a login does not hide the configuration directory's login.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void emptyLoginStoreKeepsFileClassification() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path configuration = cleanup.add(Files.createTempDirectory("cat-claude-config-"));
+			Path emptyStore = cleanup.add(Files.createTempDirectory("cat-claude-store-"));
+			Path missingStore = emptyStore.resolve("missing");
+			requireThat(Credentials.classify(configuration, Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", ""), JSON),
+				"emptyVariableWithoutLogin").isEqualTo(HostLogin.UNKNOWN);
+			requireThat(Credentials.classify(configuration,
+				Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", emptyStore.toString()), JSON), "storeWithoutLogin").
+				isEqualTo(HostLogin.UNKNOWN);
+			requireThat(Credentials.classify(configuration,
+				Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", missingStore.toString()), JSON), "missingStore").
+				isEqualTo(HostLogin.UNKNOWN);
+
+			writeCredentials(configuration, "{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
+			requireThat(Credentials.classify(configuration, Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", ""), JSON),
+				"emptyVariableWithLogin").isEqualTo(HostLogin.SUBSCRIPTION);
+			requireThat(Credentials.classify(configuration,
+				Map.of("CLAUDE_SECURESTORAGE_CONFIG_DIR", emptyStore.toString()), JSON), "storeWithoutLoginAndFile").
+				isEqualTo(HostLogin.SUBSCRIPTION);
+			requireThat(Credentials.classify(configuration, Map.of(), JSON), "unset").
+				isEqualTo(HostLogin.SUBSCRIPTION);
+		}
+	}
 }
