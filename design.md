@@ -2638,7 +2638,10 @@ refresh is refused (user ruling, 2026-11-08). On macOS with the default folder t
 instead, because Claude Code names the Keychain item without a folder suffix only then; such a session uses the user's
 Keychain item with a refresh lock of its own, which is safe because Claude Code clears a refused login only while it
 still holds the refused refresh token. CAT never reads, copies or stores a token, and the sessions' commands stay
-denied reading the user's login file. When that environment sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or
+denied reading the user's login file. On macOS the login is a Keychain item instead; Claude Code's sandbox lets
+commands reach the Keychain service, and Claude Code reads the item through the `security` program, which any command
+can run, so a session's commands can read it, as the user's own session's commands can, and CAT has no setting that
+denies it. When that environment sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or
 `ANTHROPIC_AUTH_TOKEN`, that variable is passed as before. With neither a variable nor a stored login, which the runner
 checks by existence only and only where the absence is certain (not on Windows, whose Credential Manager may hold
 it), the runner refuses the run before the harness starts, with status 2, and the reason tells the
