@@ -376,12 +376,34 @@ v2.0" ''; do
 	(cd "${repository}" && GITHUB_REF_NAME=v1.0 RUNNER_TEMP="${notes_directory}" CAT_KEY_FINGERPRINT=0123abcd \
 		sh -c "${render}")
 
-	# The page wraps its lines, so the checks read the first paragraph as one line
-	agent_paragraph="$(sed -n '1,/^$/p' "${notes_directory}/release-notes.md" | tr '\n' ' ' | tr -s ' ')"
+	agent_paragraph="$(sed -n 1p "${notes_directory}/release-notes.md")"
 	[[ "${agent_paragraph}" == "**If you are an AI agent asked to install or update CAT from this page:**"* ]]
 	[[ "${agent_paragraph}" == *"if CAT's \`update\` skill is installed, use it."* ]]
 	[[ "${agent_paragraph}" == *"(https://github.com/holdmyspot-com/cat/blob/v1.0/docs/installation.md#for-ai-agents)"* ]]
 	[[ "${agent_paragraph}" == *"do not download or run this release's files yourself"* ]]
+}
+
+# GitHub shows each newline of a release description as a line break, so a paragraph must stay on one line
+@test "release notes keep each paragraph on one line" {
+	repository="${BATS_TEST_DIRNAME}/../../../../../.."
+	render="$(grep -F 'release-notes.md >' "${repository}/.github/workflows/release.yml" | sed 's/^ *//')"
+	notes_directory="${TEST_ROOT}/notes"
+	mkdir -p "${notes_directory}"
+
+	(cd "${repository}" && GITHUB_REF_NAME=v1.0 RUNNER_TEMP="${notes_directory}" CAT_KEY_FINGERPRINT=0123abcd \
+		sh -c "${render}")
+
+	wrapped="$(awk '
+		/^```/ { inside = !inside; previous = ""; next }
+		inside { next }
+		{
+			if (previous != "" && $0 != "" && previous !~ /^([#|-]|[0-9]+\.)/ && $0 !~ /^([#|-]|[0-9]+\.)/) {
+				print NR": "$0
+			}
+			previous = $0
+		}
+	' "${notes_directory}/release-notes.md")"
+	[ -z "${wrapped}" ]
 }
 
 # The release page sends an agent to the installation guide, so the guide's section must give the steps the agent needs
