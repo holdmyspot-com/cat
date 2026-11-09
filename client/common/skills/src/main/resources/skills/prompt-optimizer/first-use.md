@@ -21,8 +21,8 @@ outside this session's sandbox, inside that harness's own sandbox. Before step 1
 background, by its absolute path, as a command of its own with no arguments: in Claude Code as a background command,
 in Codex as a command that keeps running. It serves this session until the session ends. When a result shows a reason
 that says that no request server serves this session, start it that way and run the command again. When the request
-server exits with status `2` and its reason says that no request server serves a session of a CAT run, this session is
-one: its launches go to the run's runner, so continue with step 1. When it exits with status `2` for any other reason
+server exits with status `2` because this session runs inside a CAT run, skip the request server: the run's runner
+starts the sessions that this session requests. Continue with step 1. When it exits with status `2` for any other reason
 than another request server already serving this session, or a result shows a reason that contains "CAT cannot start
 the session:", show that reason to the user, which says what to do, such as starting a new session, and stop. Do not
 change sandbox settings yourself and do not start trials any other way. When the user continues in a new session,
