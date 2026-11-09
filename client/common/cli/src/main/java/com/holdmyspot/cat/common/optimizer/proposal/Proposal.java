@@ -452,9 +452,9 @@ public final class Proposal
 
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
-	 * requirements, dependents that the control source cannot remove, tests with too few
-	 * distinct expected outcomes in a part, unranked models and a described scope without described cells, in that
-	 * order.
+	 * requirements, dependents that the control source cannot remove, tests with too few distinct expected outcomes
+	 * in a part, a guard pilot that stopped before it finished, unranked models and a described scope without
+	 * described cells, in that order.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
@@ -469,6 +469,15 @@ public final class Proposal
 			reasons.add(links);
 		reasons.addAll(controlRefusals);
 		reasons.addAll(splitRefusals());
+		for (Map.Entry<String, PilotResult> entry : pilots.entrySet())
+		{
+			String stopReason = entry.getValue().stopReason();
+			if (stopReason != null)
+			{
+				reasons.add("The guard pilot of the test `" + entry.getKey() + "` did not finish (" + stopReason +
+					"). Run `start` again to finish it.");
+			}
+		}
 		TrialProfiles profiles = contract.profiles();
 		List<String> unranked = profiles.unranked();
 		if (!unranked.isEmpty())

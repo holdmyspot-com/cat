@@ -511,6 +511,102 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * Sessions that CAT interrupts are not infrastructure attempts, whatever their number: when every trial session is
+	 * interrupted, as an interrupt of the whole run does, the pilot stops without pausing, records no attempt and is
+	 * not reused, and a later run decides all of its trials.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void interruptedTrialsStopPilot() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-interrupted"));
+			SessionScript interrupted = new SessionScript(directory.resolve("interrupted"), _ -> "pass");
+			interrupted.reject(SessionRole.TRIAL, Collections.nCopies(10 * GuardPilot.TRIALS,
+				new SessionResult.Interrupted(List.of())));
+
+			Map<String, PilotResult> first = pilot(interrupted, workspace(directory), 4).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(14));
+
+			for (PilotResult pilot : first.values())
+			{
+				requireThat(pilot.trials(), "trials").isEmpty();
+				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.paused(), "paused").isFalse();
+				requireThat(pilot.stopReason(), "stopReason").isEqualTo("The trial session was interrupted");
+				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
+					isFalse();
+			}
+			requireThat(GuardPilot.pauseReason(first), "pauseReason").isEqualTo(Optional.empty());
+			requireThat(interrupted.requests(SessionRole.TRIAL).size(), "interruptedSessions").isLessThanOrEqualTo(4);
+
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 4).run(contract, List.of(),
+				control(), Set.of(), SELECTION, first, new SplittableRandom(15));
+
+			requireThat(resumed.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * second.size());
+			for (Map.Entry<String, PilotResult> entry : second.entrySet())
+			{
+				PilotResult pilot = entry.getValue();
+				requireThat(pilot.seed(), "seed").isEqualTo(first.get(entry.getKey()).seed());
+				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+				requireThat(pilot.stopReason(), "stopReason").isNull();
+				for (PilotTrial trial : pilot.trials())
+					requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * A judge session that CAT interrupts is not an infrastructure attempt either: the pilot stops without pausing
+	 * and records no attempt, and a later run decides the trial that the judge was deciding.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void interruptedJudgeStopsPilot() throws IOException, InterruptedException
+	{
+		// Requirement: R-C23
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-judge-interrupted"));
+			SessionScript interrupted = new SessionScript(directory.resolve("interrupted"), _ -> "pass");
+			interrupted.rejectAfter(SessionRole.JUDGE, 3, List.of(new SessionResult.Interrupted(List.of())));
+
+			Map<String, PilotResult> first = pilot(interrupted, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(16));
+
+			String name = first.keySet().iterator().next();
+			PilotResult stopped = first.get(name);
+			requireThat(stopped.trials().size(), "decided").isEqualTo(3);
+			requireThat(stopped.paused(), "paused").isFalse();
+			requireThat(stopped.stopReason(), "stopReason").isEqualTo("The judge session was interrupted");
+			requireThat(GuardPilot.pauseReason(first), "pauseReason").isEqualTo(Optional.empty());
+
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, first, new SplittableRandom(17));
+
+			requireThat(resumed.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * second.size() - 3);
+			for (PilotResult pilot : second.values())
+			{
+				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+				for (PilotTrial trial : pilot.trials())
+					requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * A pilot that paused keeps the trials that it decided and, with the same conditions, draws the same test cases:
 	 * a later run runs only the trials that are undecided, so that its trials equal those of a pilot that no session
 	 * ever failed.

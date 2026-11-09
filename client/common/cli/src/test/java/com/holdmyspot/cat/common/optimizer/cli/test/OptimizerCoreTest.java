@@ -4333,6 +4333,57 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that an interrupt that ends every guard pilot trial leaves a proposal that cannot be confirmed and
+	 * pauses nothing, however often it repeats, because an interruption is not an infrastructure attempt, and that the
+	 * next {@code start} resumes the pilot and presents a proposal that the user can confirm.
+	 */
+	@Test
+	public void interruptedPilotIsUnfinishedNotPaused() throws Exception
+	{
+		// Requirement: R-C23
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.trialEnd().set(_ -> new SessionResult.Interrupted(List.of()));
+
+			ObjectNode started = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1"));
+
+			String id = started.get("campaign").asString();
+			requireThat(started.get("proposal").isNull(), "proposal").isFalse();
+			requireThat(started.get("proposal").asString(), "proposalText").
+				contains("The pilot stopped before it finished: The trial session was interrupted").
+				contains("The proposal cannot be confirmed until the pilot finishes");
+			requireThat(started.get("message").asString(), "message").contains("cannot be confirmed").
+				contains("`start`");
+			requireThat(choiceIds(started), "choices").isEmpty();
+			requireThat(repository.load(id).pending(), "pendingDecision").isNull();
+			requireThat(refusal(() -> repository.core().confirm(id, CertificationScope.LATEST_VERSIONS)),
+				"confirmRefusal").contains("did not finish").contains("The trial session was interrupted");
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isFalse();
+
+			// Interrupts alone never reach the limit that pauses a trial, however often they repeat
+			for (int i = 0; i < Campaign.INFRASTRUCTURE_FAILURE_LIMIT; ++i)
+			{
+				output(repository, List.of("start", "CLAUDE.md"));
+				requireThat(repository.load(id).pending(), "againPending").isNull();
+			}
+
+			repository.trialEnd().set(_ -> null);
+			ObjectNode resumed = output(repository, List.of("start", "CLAUDE.md"));
+
+			requireThat(resumed.get("proposal").asString().split("20 trials decided, 0 failed runs\\.", -1).length,
+				"decidedPilots").isEqualTo(4);
+			requireThat(resumed.get("proposal").asString(), "resumedProposal").
+				doesNotContain("ended without an outcome and ran again").doesNotContain("stopped before it finished");
+			requireThat(resumed.get("message").isNull(), "resumedMessage").isTrue();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that {@code choose retry} on a paused guard pilot runs only the trials that the pilot has not decided
 	 * and presents the proposal, which the user can then confirm.
 	 */

@@ -134,6 +134,8 @@ launcher field.
 	- For a conflict pause, the choices are the conflict's resolutions and `stop`. Mark the entry whose `recommended` is
 		true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
 		<campaign> <feedback>`.
+	- When the chosen entry is `retry` on a guard pilot pause (the summary says a guard pilot trial ran without an
+		outcome), the result of `choose` holds the proposal: continue with step 2.
 	- Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its

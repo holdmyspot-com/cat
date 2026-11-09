@@ -103,7 +103,8 @@ final class PilotReport
 		else if (pilot.stopReason() != null)
 		{
 			text.append("\nThe pilot stopped before it finished: ").append(pilot.stopReason()).
-				append(" Run `start` again to finish it.\n");
+				append(" The proposal cannot be confirmed until the pilot finishes: ").
+				append("run `start` again to finish it.\n");
 		}
 		text.append('\n');
 		BigDecimal minimumPassRate = contract.minimumPassRate();

@@ -2392,7 +2392,14 @@ public final class OptimizerCore implements Core
 		if (pause.isPresent())
 			return report(root, campaign, null, pilotPausedNotice(campaign));
 		Proposal proposal = proposal(root, campaign, fork, derived, pilots, plugin);
-		return report(root, campaign, proposal.render(), null);
+		String unfinished = null;
+		if (pilots.values().stream().anyMatch(pilot -> pilot.stopReason() != null))
+		{
+			// An interrupted pilot is unfinished: the next `start` runs the trials that it has not decided
+			unfinished = "The proposal cannot be confirmed until its guard pilot finishes. Run `start` again to run " +
+				"the pilot's remaining trials, which keeps the trials it decided.";
+		}
+		return report(root, campaign, proposal.render(), unfinished);
 	}
 
 	/**

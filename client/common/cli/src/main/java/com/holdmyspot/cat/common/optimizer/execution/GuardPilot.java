@@ -151,11 +151,14 @@ public final class GuardPilot
 	 * spending one of its attempts. A refusal that follows a 30-minute hold starts no further session, because waiting
 	 * does not fix it, and each unfinished test's result records why the pilot stopped.
 	 * <p>
-	 * A trial session that fails, is interrupted or cannot start, a judge that fails
+	 * A trial session that fails or cannot start, a judge that fails
 	 * {@value Driver#JUDGE_ATTEMPTS} times, and a trial record that cannot be read are infrastructure attempts: the
 	 * logical trial runs again with the same test case. When one logical trial has
 	 * {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures, no further session starts, and each
-	 * unfinished test's result is paused. A trial whose built-in tool cannot be decided from its record is not an
+	 * unfinished test's result is paused. A trial or judge session that CAT interrupts is not an infrastructure
+	 * attempt, and nothing pauses on interruptions alone: no further session starts, each unfinished test's result
+	 * records the interruption as why the pilot stopped, and a later run keeps the decided trials and decides the
+	 * others. A trial whose built-in tool cannot be decided from its record is not an
 	 * infrastructure attempt: the proposal's tool is the cause, so the trial is a failed run that says why.
 	 *
 	 * @param contract the proposed contract
@@ -605,7 +608,9 @@ public final class GuardPilot
 				// The trial reruns once the harness's shared hold ends
 				case SessionResult.RateLimited _ -> queue.addFirst(trial);
 				case SessionResult.Refused refused -> refused(trial, refused);
-				case SessionResult.Interrupted _ -> infrastructureFailed(trial, "The trial session was interrupted");
+				// An interruption by CAT says nothing about the trial, so it is not an infrastructure attempt: the pilot stops
+				// and a later run decides the trial
+				case SessionResult.Interrupted _ -> stop("The trial session was interrupted");
 				case SessionResult.Failed failed -> infrastructureFailed(trial, failed.reason());
 				// Every later session is refused the same way until the user acts
 				case SessionResult.LaunchRefused refused -> stop(refused.reason());
@@ -693,7 +698,8 @@ public final class GuardPilot
 				// A rate limit is not a failure of the judge, which reruns once the shared hold ends
 				case SessionResult.RateLimited _ -> queue.addFirst(judging);
 				case SessionResult.Refused refused -> refused(judging, refused);
-				case SessionResult.Interrupted _ -> sessionFailed(judging, "The judge session was interrupted");
+				// Like an interrupted trial, an interrupted judge is not an attempt of the judge or of its trial
+				case SessionResult.Interrupted _ -> stop("The judge session was interrupted");
 				case SessionResult.Failed failed -> sessionFailed(judging, failed.reason());
 				case SessionResult.LaunchRefused refused -> stop(refused.reason());
 			}

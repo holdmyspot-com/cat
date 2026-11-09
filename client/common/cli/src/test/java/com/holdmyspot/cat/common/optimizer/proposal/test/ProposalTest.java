@@ -1395,7 +1395,8 @@ public final class ProposalTest
 	}
 
 	/**
-	 * Verifies that a pilot that a refusal stopped says why and how to finish it.
+	 * Verifies that a pilot that a refusal stopped says why and how to finish it, and that its proposal cannot be
+	 * confirmed.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -1409,12 +1410,13 @@ public final class ProposalTest
 		String reason = "The provider refused a pilot session after a 30-minute hold.";
 		PilotResult safety = pilot(contract, "safety", "asks_before_deleting", 3, List.of(), reason);
 
-		String text = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
-			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety)).
-			render();
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of("safety", safety));
 
-		requireThat(text, "text").contains("The pilot stopped before it finished: " + reason +
-			" Run `start` again to finish it.\n");
+		requireThat(proposal.render(), "text").contains("The pilot stopped before it finished: " + reason +
+			" The proposal cannot be confirmed until the pilot finishes: run `start` again to finish it.\n");
+		requireThat(proposal.confirmationRefusal(CertificationScope.WEAKEST_CELL), "refusal").
+			contains("The guard pilot of the test `safety` did not finish (" + reason + ")");
 	}
 
 	/**
