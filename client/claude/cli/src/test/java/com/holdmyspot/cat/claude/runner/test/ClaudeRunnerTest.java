@@ -318,11 +318,12 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run is refused, with a reason that tells the user to log in to Claude Code with {@code /login}
-	 * and names the user's Claude configuration directory, when no authentication variable holds a value and the
-	 * user's login store holds no login: the configuration directory holds no {@code .credentials.json} and, on
-	 * macOS, the Keychain holds no login item. The directory is the one that {@code CLAUDE_CONFIG_DIR} names when it
-	 * is set, even though {@code .claude} in the home directory then holds a login file.
+	 * Verifies that a run on Linux or macOS is refused, with a reason that tells the user to log in to Claude Code
+	 * with {@code /login} and names the user's Claude configuration directory, when no authentication variable holds
+	 * a value and the user's login store holds no login: the configuration directory holds no
+	 * {@code .credentials.json} and, on macOS, the Keychain holds no login item. The directory is the one that
+	 * {@code CLAUDE_CONFIG_DIR} names when it is set, even though {@code .claude} in the home directory then holds a
+	 * login file.
 	 *
 	 * @param platform    the platform whose login store the runner checks
 	 * @param configured  whether the caller's environment names the configuration directory in
@@ -357,6 +358,122 @@ public final class ClaudeRunnerTest
 
 			requireThat(refusal.getMessage(), "message").contains("/login").contains(loginDirectory.toString()).
 				doesNotContain("setup-token");
+		}
+	}
+
+	/**
+	 * Verifies that a run on Linux or macOS is refused, naming the directory of the user's login store, when the
+	 * caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} selects a login store that holds no login, although
+	 * {@code CLAUDE_CONFIG_DIR} names a directory that holds a login file: the store is the directory that the
+	 * variable names, or, when its value is empty, {@code .claude} in the home directory, whose Keychain item on
+	 * macOS has no hash in its name. The user's own Claude Code uses that store, and so does the session's.
+	 *
+	 * @param platform the platform whose login store the runner checks
+	 * @param named    whether the caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory, rather than
+	 *                 being empty
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "loginStorePlatforms")
+	public void refusesRunWithoutLoginInUserLoginStore(Platform platform, boolean named) throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+			Path defaultDirectory = Files.createDirectory(home.resolve(".claude"));
+			Path configured = Files.createDirectory(home.resolve("claude-config"));
+			Files.writeString(configured.resolve(".credentials.json"), "{}");
+			Map<String, String> caller = new HashMap<>();
+			caller.put("PATH", "");
+			caller.put("USER", "alice");
+			caller.put(platform.homeVariable(), home.toString());
+			caller.put("CLAUDE_CONFIG_DIR", configured.toString());
+			Path loginDirectory = defaultDirectory;
+			if (named)
+			{
+				Files.writeString(defaultDirectory.resolve(".credentials.json"), "{}");
+				loginDirectory = Files.createDirectory(home.resolve("login-store"));
+				caller.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", loginDirectory.toString());
+			}
+			else
+				caller.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", "");
+			Path expectedDirectory = loginDirectory;
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
+				ClaudeRunner.requireLogin(jvm, caller, platform));
+
+			requireThat(refusal.getMessage(), "message").contains("/login").contains(expectedDirectory.toString());
+			int lookups = 0;
+			if (platform == Platform.MACOS_ARM64)
+				lookups = 1;
+			requireThat(keychain.commands().size(), "lookups").isEqualTo(lookups);
+		}
+	}
+
+	/**
+	 * Verifies that a run starts without an authentication variable when the directory that the caller's
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names holds Claude Code's login file, although neither the directory
+	 * that {@code CLAUDE_CONFIG_DIR} names nor {@code .claude} in the home directory holds one, because the user's
+	 * Claude Code and the session's use the login there.
+	 *
+	 * @param platform the platform whose login store the runner checks
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "fileLoginPlatforms")
+	public void acceptsLoginFileInUserLoginStore(Platform platform) throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+			Files.createDirectory(home.resolve(".claude"));
+			Path configured = Files.createDirectory(home.resolve("claude-config"));
+			Path store = Files.createDirectory(home.resolve("login-store"));
+			Files.writeString(store.resolve(".credentials.json"), "{}");
+
+			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", platform.homeVariable(), home.toString(),
+				"CLAUDE_CONFIG_DIR", configured.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString()),
+				platform);
+
+			requireThat(keychain.commands(), "commands").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a run on Windows starts without an authentication variable although the user's Claude
+	 * configuration directory holds no login file, because Claude Code may keep the login in the Windows Credential
+	 * Manager, so the runner cannot tell that no login exists.
+	 *
+	 * @param configured whether the caller's environment names the configuration directory in
+	 *                   {@code CLAUDE_CONFIG_DIR}
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "configurationChoices")
+	public void startsRunOnWindowsWithoutLoginFile(boolean configured) throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+			Map<String, String> caller = new HashMap<>();
+			caller.put("PATH", "");
+			caller.put(Platform.WINDOWS_X64.homeVariable(), home.toString());
+			Files.createDirectory(home.resolve(".claude"));
+			if (configured)
+				caller.put("CLAUDE_CONFIG_DIR", Files.createDirectory(home.resolve("claude-config")).toString());
+
+			ClaudeRunner.requireLogin(jvm, caller, Platform.WINDOWS_X64);
+
+			requireThat(keychain.commands(), "commands").isEmpty();
 		}
 	}
 
@@ -400,16 +517,19 @@ public final class ClaudeRunnerTest
 	 * Verifies that on macOS a run starts without an authentication variable or login file when the Keychain holds
 	 * the user's Claude Code login item, and that the runner only asks whether the item exists, without {@code -w},
 	 * so that the Keychain reveals no secret: the item's account is the user's name, and its service is
-	 * {@code Claude Code-credentials}, followed, when {@code CLAUDE_CONFIG_DIR} names the configuration directory,
-	 * by {@code -} and the first eight hexadecimal digits of the SHA-256 hash of the variable's value in Unicode
-	 * normalization form C.
+	 * {@code Claude Code-credentials}, followed, when a variable names the directory of the login store, by
+	 * {@code -} and the first eight hexadecimal digits of the SHA-256 hash of that directory in Unicode normalization
+	 * form C. The caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names the store, or, when it is unset,
+	 * {@code CLAUDE_CONFIG_DIR} does; an empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names none.
 	 *
 	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR}, or an empty string if it sets none
+	 * @param store      the caller's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, or {@code null} if it sets
+	 *                   none
 	 * @param service    the Keychain service of the user's login item
 	 * @throws IOException if the fixture cannot be built
 	 */
 	@Test(dataProvider = "keychainServices")
-	public void acceptsKeychainLogin(String configured, String service) throws IOException
+	public void acceptsKeychainLogin(String configured, String store, String service) throws IOException
 	{
 		FakeKeychain keychain = new FakeKeychain(FakeKeychain.FOUND);
 		try (TestJvmScope build = new TestJvmScope();
@@ -424,6 +544,8 @@ public final class ClaudeRunnerTest
 			caller.put("USER", "alice");
 			if (!configured.isEmpty())
 				caller.put("CLAUDE_CONFIG_DIR", configured);
+			if (store != null)
+				caller.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", store);
 
 			ClaudeRunner.requireLogin(jvm, caller, Platform.MACOS_ARM64);
 
@@ -515,8 +637,6 @@ public final class ClaudeRunnerTest
 			{Platform.LINUX_X64, false, Map.of("PATH", "")},
 			{Platform.LINUX_X64, false, blank},
 			{Platform.LINUX_X64, true, Map.of("PATH", "")},
-			{Platform.WINDOWS_X64, false, Map.of("PATH", "")},
-			{Platform.WINDOWS_X64, true, Map.of("PATH", "")},
 			{Platform.MACOS_ARM64, false, Map.of("PATH", "", "USER", "alice")},
 			{Platform.MACOS_ARM64, true, blank}
 		};
@@ -542,8 +662,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Returns values of {@code CLAUDE_CONFIG_DIR} and the Keychain service of the login item that Claude Code stores
-	 * for each, including the same directory name in Unicode normalization forms D and C.
+	 * Returns values of {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} and the Keychain
+	 * service of the login item that Claude Code stores for each, including the same directory name in Unicode
+	 * normalization forms D and C.
 	 *
 	 * @return the values and services
 	 */
@@ -552,26 +673,84 @@ public final class ClaudeRunnerTest
 	{
 		return new Object[][]
 		{
-			{"", "Claude Code-credentials"},
-			{"/Users/alice/claude-config", "Claude Code-credentials-1ab0976d"},
-			{"/Users/alice/claude-café", "Claude Code-credentials-347c1370"},
-			{"/Users/alice/claude-café", "Claude Code-credentials-347c1370"}
+			{"", null, "Claude Code-credentials"},
+			{"/Users/alice/claude-config", null, "Claude Code-credentials-1ab0976d"},
+			{"/Users/alice/claude-café", null, "Claude Code-credentials-347c1370"},
+			{"/Users/alice/claude-café", null, "Claude Code-credentials-347c1370"},
+			{"/Users/alice/claude-config", "", "Claude Code-credentials"},
+			{"", "/Users/alice/claude-config", "Claude Code-credentials-1ab0976d"},
+			{"/Users/alice/other-config", "/Users/alice/claude-config", "Claude Code-credentials-1ab0976d"}
 		};
 	}
 
 	/**
-	 * Verifies that the Claude process environment points the session's Claude Code at the user's login store,
-	 * through {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, while its configuration directory stays the run's own: the
-	 * store is the directory that the caller's {@code CLAUDE_CONFIG_DIR} names, as written there, or else
-	 * {@code .claude} in the caller's home directory. The session therefore uses and refreshes the user's own Claude
-	 * login, and its settings stay its own.
+	 * Returns the platforms whose runner refuses a run that it knows to have no login, and whether the caller's
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory.
+	 *
+	 * @return the platforms and choices
+	 */
+	@DataProvider
+	public static Object[][] loginStorePlatforms()
+	{
+		return new Object[][]
+		{
+			{Platform.LINUX_X64, true},
+			{Platform.LINUX_X64, false},
+			{Platform.MACOS_ARM64, true},
+			{Platform.MACOS_ARM64, false}
+		};
+	}
+
+	/**
+	 * Returns the platforms.
+	 *
+	 * @return the platforms
+	 */
+	@DataProvider
+	public static Object[][] fileLoginPlatforms()
+	{
+		return new Object[][]
+		{
+			{Platform.LINUX_X64},
+			{Platform.WINDOWS_X64},
+			{Platform.MACOS_ARM64}
+		};
+	}
+
+	/**
+	 * Returns whether the caller's environment names its Claude configuration directory.
+	 *
+	 * @return the choices
+	 */
+	@DataProvider
+	public static Object[][] configurationChoices()
+	{
+		return new Object[][]
+		{
+			{false},
+			{true}
+		};
+	}
+
+	/**
+	 * Verifies that the Claude process environment points the session's Claude Code at the login store of the user's
+	 * own Claude Code, through {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, while its configuration directory stays the
+	 * run's own: the store is the directory that the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names,
+	 * or else, when that variable is unset, the one that its {@code CLAUDE_CONFIG_DIR} names, each as written there;
+	 * otherwise it is the default store, which on macOS an empty value selects, because only that value selects the
+	 * Keychain item of the user's default store, and elsewhere {@code .claude} in the caller's home directory. The
+	 * session therefore uses and refreshes the user's own Claude login, and its settings stay its own.
 	 *
 	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR} below the fixture's folder, or an empty
 	 *                   string if it sets none
+	 * @param store      the caller's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, below the fixture's folder
+	 *                   unless it is empty, or {@code null} if it sets none
+	 * @param expected   the session's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} below the fixture's folder, or
+	 *                   {@code null} for the default store
 	 * @throws IOException if the environment cannot be built
 	 */
 	@Test(dataProvider = "userConfigurations")
-	public void sharesUserLoginWithSession(String configured) throws IOException
+	public void sharesUserLoginWithSession(String configured, String store, String expected) throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -582,43 +761,85 @@ public final class ClaudeRunnerTest
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), userHome.toString());
-			String loginDirectory = userHome.resolve(".claude").toString();
 			if (!configured.isEmpty())
-			{
-				loginDirectory = root + configured;
-				environment.put("CLAUDE_CONFIG_DIR", loginDirectory);
-			}
+				environment.put("CLAUDE_CONFIG_DIR", root + configured);
+			if (store != null && store.isEmpty())
+				environment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", "");
+			else if (store != null)
+				environment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", root + store);
+			String loginStore;
+			if (expected != null)
+				loginStore = root + expected;
+			else if (Platform.current().isLinux() || Platform.current().isWindows())
+				loginStore = userHome.resolve(".claude").toString();
+			else
+				loginStore = "";
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
 				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
 
-			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginDirectory").isEqualTo(loginDirectory);
+			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").isEqualTo(loginStore);
 			requireThat(result.get("CLAUDE_CONFIG_DIR"), "configurationDirectory").
 				isEqualTo(runHome.resolve(".claude").toString());
 		}
 	}
 
 	/**
-	 * Returns values of {@code CLAUDE_CONFIG_DIR} below a folder, including one that ends in a name separator.
+	 * Verifies that the Claude process environment names a login store that the caller's
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names by a relative path as an absolute path, because the session's
+	 * Claude Code runs in another working directory.
+	 *
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test
+	public void namesRelativeLoginStoreAbsolutely() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
+			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
+				root.resolve("user").toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", "login-store");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+
+			Path loginStore = Path.of(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"));
+			requireThat(loginStore.isAbsolute(), "loginStore.isAbsolute()").isTrue();
+			requireThat(loginStore.getFileName().toString(), "loginStore.getFileName()").isEqualTo("login-store");
+		}
+	}
+
+	/**
+	 * Returns values of {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} below a folder,
+	 * including one that ends in a name separator, and the session's value of
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} below the folder, or {@code null} for the default store.
 	 *
 	 * @return the values
 	 */
 	@DataProvider
 	public static Object[][] userConfigurations()
 	{
+		String configured = File.separator + "claude-config";
+		String store = File.separator + "login-store";
 		return new Object[][]
 		{
-			{""},
-			{File.separator + "claude-config"},
-			{File.separator + "claude-config" + File.separator}
+			{"", null, null},
+			{configured, null, configured},
+			{configured + File.separator, null, configured + File.separator},
+			{"", store, store},
+			{configured, store, store},
+			{configured, "", null}
 		};
 	}
 
 	/**
 	 * Verifies that the commands of a session cannot read the user's Claude login file, in {@code .claude} in the
-	 * user's home directory or in the directory that {@code CLAUDE_CONFIG_DIR} names, although the session's Claude
-	 * Code uses the login there: the session's sandbox policy denies reading both files and lets the commands neither
-	 * write nor read again any directory that holds them.
+	 * user's home directory, in the directory that {@code CLAUDE_CONFIG_DIR} names or in the one that
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, although the session's Claude Code uses the login there: the
+	 * session's sandbox policy denies reading each file and lets the commands neither write nor read again any
+	 * directory that holds them.
 	 *
 	 * @throws IOException if the run or its settings cannot be created
 	 */
@@ -636,8 +857,10 @@ public final class ClaudeRunnerTest
 				resolve(".credentials.json"), "{}");
 			Path configured = Files.createDirectory(root.resolve("claude-config"));
 			Path configuredLogin = Files.writeString(configured.resolve(".credentials.json"), "{}");
+			Path store = Files.createDirectory(root.resolve("login-store"));
+			Path storeLogin = Files.writeString(store.resolve(".credentials.json"), "{}");
 			Map<String, String> environment = Map.of(Platform.current().homeVariable(), userHome.toString(),
-				"CLAUDE_CONFIG_DIR", configured.toString());
+				"CLAUDE_CONFIG_DIR", configured.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
@@ -650,13 +873,14 @@ public final class ClaudeRunnerTest
 				run.directory().resolve("home"), List.of(), run.directory(), deniedReads, "", null, project,
 				run.directory(), null, ExtraPermissions.NONE, "api.example");
 
-			requireThat(policy.readDenials(), "readDenials").contains(defaultLogin).contains(configuredLogin);
+			List<Path> logins = List.of(defaultLogin, configuredLogin, storeLogin);
+			requireThat(policy.readDenials(), "readDenials").containsAll(logins);
 			List<Path> grants = new ArrayList<>(policy.writeRoots());
 			grants.addAll(policy.readReallowances());
-			for (Path grant : grants)
+			for (Path login : logins)
 			{
-				requireThat(defaultLogin.startsWith(grant), "defaultLogin.startsWith(" + grant + ")").isFalse();
-				requireThat(configuredLogin.startsWith(grant), "configuredLogin.startsWith(" + grant + ")").isFalse();
+				for (Path grant : grants)
+					requireThat(login.startsWith(grant), login + ".startsWith(" + grant + ")").isFalse();
 			}
 		}
 	}

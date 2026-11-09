@@ -83,6 +83,11 @@ public final class ClaudeRunner
 	private static final Set<String> AUTHENTICATION_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN");
 	/**
+	 * The variable that names the Claude configuration directory whose login store Claude Code uses, in place of
+	 * the one that {@code CLAUDE_CONFIG_DIR} names.
+	 */
+	private static final String LOGIN_STORE_VARIABLE = "CLAUDE_SECURESTORAGE_CONFIG_DIR";
+	/**
 	 * How long the macOS {@code security} program may take to tell whether the Keychain holds a login item.
 	 */
 	private static final Duration KEYCHAIN_WAIT = Duration.ofSeconds(10);
@@ -312,10 +317,13 @@ public final class ClaudeRunner
 	 * Returns the environment of a run's Claude process. It holds the caller's generic operating-system variables, its
 	 * Claude connection variables and its settings for starting subagents, each from its environment or else its Claude
 	 * settings, so that the session starts subagents the way the caller does, and the shared dependency caches;
-	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; the user's
-	 * Claude configuration directory, which the caller's {@code CLAUDE_CONFIG_DIR} names or else is {@code .claude}
-	 * in the caller's home directory, in {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, so that the session's Claude Code
-	 * uses and refreshes the user's own Claude login there while its settings stay the run's; and the request for
+	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; in
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, the login store of the user's own Claude Code, so that the session's
+	 * Claude Code uses and refreshes the user's own Claude login there while its settings stay the run's: the
+	 * directory that the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable
+	 * is unset, the one that its non-blank {@code CLAUDE_CONFIG_DIR} names, each as it is written if it is absolute
+	 * or else made absolute; otherwise, on macOS, an empty value, which selects the Keychain item of Claude Code's
+	 * default store; otherwise {@code .claude} in the caller's home directory; and the request for
 	 * Claude's session state events, which the turn boundary depends on. CAT's hooks then find Claude's
 	 * configuration directory through the home directory, as {@code .claude} in it.
 	 * <p>
@@ -355,7 +363,7 @@ public final class ClaudeRunner
 		// A copy of the user's login in the run would stop working, even in the middle of a turn, once the user's
 		// session or another run refreshed the login, because a refresh replaces the refresh token. The session's
 		// Claude Code therefore reads and refreshes the user's own login in the user's login store.
-		isolatedEnvironment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", loginDirectory(environment, Platform.current()));
+		isolatedEnvironment.put(LOGIN_STORE_VARIABLE, loginStore(environment, Platform.current()));
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
@@ -570,36 +578,95 @@ public final class ClaudeRunner
 	{
 		assert environment != null;
 		assert platform != null;
-		String home = environment.get(platform.homeVariable());
-		Path homeDirectory;
-		// Retain the runner's working-directory fallback for optional host settings.
-		if (home == null || home.isBlank())
-			homeDirectory = Path.of("").toAbsolutePath();
-		else
-			homeDirectory = Path.of(home);
-		return ClaudeConfiguration.resolveDirectory(homeDirectory, environment.get("CLAUDE_CONFIG_DIR"));
+		return ClaudeConfiguration.resolveDirectory(homeDirectory(environment, platform),
+			environment.get("CLAUDE_CONFIG_DIR"));
 	}
 
 	/**
-	 * Returns the user's Claude configuration directory, whose login store holds the user's Claude login, as the
-	 * value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}: the value of the caller's {@code CLAUDE_CONFIG_DIR} as it is
-	 * written, or else made absolute if it is relative, or else {@code .claude} in the caller's home directory.
+	 * Returns the caller's home directory.
 	 *
-	 * @param environment the caller's environment
+	 * @param environment the caller environment
 	 * @param platform    the platform whose home variable names the caller's home directory
-	 * @return the absolute directory
+	 * @return the directory that the home variable names, or else the working directory
 	 */
-	private static String loginDirectory(Map<String, String> environment, Platform platform)
+	private static Path homeDirectory(Map<String, String> environment, Platform platform)
 	{
 		assert environment != null;
 		assert platform != null;
-		String configured = environment.get("CLAUDE_CONFIG_DIR");
-		Path directory = claudeConfigDirectory(environment, platform);
-		// On macOS, Claude Code names the Keychain item of a configured directory after a hash of the variable's text,
-		// which Path would change by dropping a trailing separator or a repeated one
-		if (configured != null && !configured.isBlank() && directory.isAbsolute())
-			return configured;
-		return directory.toAbsolutePath().toString();
+		String home = environment.get(platform.homeVariable());
+		// Retain the runner's working-directory fallback for optional host settings.
+		if (home == null || home.isBlank())
+			return Path.of("").toAbsolutePath();
+		return Path.of(home);
+	}
+
+	/**
+	 * Returns the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that makes a session's Claude Code use the login
+	 * store of the user's own Claude Code, which the caller's environment selects. The value is
+	 * <ul>
+	 *   <li>the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, or else its non-blank
+	 *   {@code CLAUDE_CONFIG_DIR}, as it is written if it is absolute, or else made absolute;</li>
+	 *   <li>otherwise, on macOS, an empty value;</li>
+	 *   <li>otherwise {@code .claude} in the caller's home directory, made absolute.</li>
+	 * </ul>
+	 *
+	 * @param environment the caller's environment
+	 * @param platform    the platform whose home variable names the caller's home directory
+	 * @return the value
+	 */
+	private static String loginStore(Map<String, String> environment, Platform platform)
+	{
+		assert environment != null;
+		assert platform != null;
+		String store = environment.get(LOGIN_STORE_VARIABLE);
+		if (store == null)
+		{
+			store = environment.get("CLAUDE_CONFIG_DIR");
+			if (store != null && store.isBlank())
+				store = "";
+		}
+		if (store != null && !store.isEmpty())
+		{
+			// On macOS, Claude Code names the Keychain item of a named store after a hash of the variable's text, which
+			// Path would change by dropping a trailing separator or a repeated one
+			Path directory = Path.of(store);
+			if (directory.isAbsolute())
+				return store;
+			return directory.toAbsolutePath().toString();
+		}
+		// The user's Claude Code keeps the login of its default store in the Keychain item without a hash in its name,
+		// which only an empty value selects. The session's refreshes then take its own lock, which is safe: a refresh
+		// that loses the race does not clear the winner's login, because Claude Code clears a stored login only while
+		// it still holds the refresh token that failed.
+		if (isMacOs(platform))
+			return "";
+		return defaultLoginDirectory(environment, platform).toString();
+	}
+
+	/**
+	 * Returns the Claude configuration directory of the user's login store when no variable names one.
+	 *
+	 * @param environment the caller's environment
+	 * @param platform    the platform whose home variable names the caller's home directory
+	 * @return {@code .claude} in the caller's home directory, made absolute
+	 */
+	private static Path defaultLoginDirectory(Map<String, String> environment, Platform platform)
+	{
+		assert environment != null;
+		assert platform != null;
+		return ClaudeConfiguration.resolveDirectory(homeDirectory(environment, platform), null).toAbsolutePath();
+	}
+
+	/**
+	 * Indicates whether a platform is macOS, whose Claude Code keeps its login in the Keychain.
+	 *
+	 * @param platform the platform
+	 * @return {@code true} for macOS
+	 */
+	private static boolean isMacOs(Platform platform)
+	{
+		assert platform != null;
+		return !platform.isLinux() && !platform.isWindows();
 	}
 
 	/**
@@ -639,20 +706,25 @@ public final class ClaudeRunner
 	 * Refuses a run that no Claude login could authenticate. A session of a run authenticates through
 	 * {@code CLAUDE_CODE_OAUTH_TOKEN}, {@code ANTHROPIC_API_KEY} or {@code ANTHROPIC_AUTH_TOKEN} when the caller's
 	 * environment or else the caller's Claude settings file sets one of them, as {@link #processEnvironment} passes
-	 * them to the session, and otherwise through the user's own Claude login, in the login store of the user's Claude
-	 * configuration directory, which {@link #processEnvironment} names to the session's Claude Code. The run is
-	 * refused only when none of those variables is set and the store holds no login: on Linux and Windows the
-	 * directory holds no {@code .credentials.json}, and on macOS it holds none and the Keychain holds no item of
-	 * Claude Code's login for the directory. The check only asks whether a login exists; it reads no login.
+	 * them to the session, and otherwise through the user's own Claude login, in the user's login store, which
+	 * {@link #processEnvironment} names to the session's Claude Code. The store's directory is the one that the
+	 * caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable is unset, the one
+	 * that its non-blank {@code CLAUDE_CONFIG_DIR} names, or else {@code .claude} in the caller's home directory.
+	 * <p>
+	 * The run is refused only when none of those variables is set and the store certainly holds no login: on Linux
+	 * the directory holds no {@code .credentials.json}, and on macOS it holds none and the Keychain holds no item of
+	 * Claude Code's login for the store. On Windows no run is refused for lack of a login, because Claude Code may
+	 * keep the login in the Windows Credential Manager, which the check cannot ask. The check only asks whether a
+	 * login exists; it reads no login.
 	 * <p>
 	 * On macOS the check asks the {@code security} program for the item, without {@code -w}, so that the Keychain
 	 * reveals no secret. The item's account is the user's name, or {@code claude-code-user} when the name holds a
 	 * character other than an ASCII letter, a digit, {@code .}, {@code _} or {@code -}; its service is
-	 * {@code Claude Code-credentials}, followed, when {@code CLAUDE_CONFIG_DIR} names the configuration directory, by
-	 * {@code -} and the first eight hexadecimal digits of the SHA-256 hash of the variable's value in Unicode
-	 * normalization form C. Claude Code names the item so. A Keychain that answers neither that it holds the item
-	 * nor that it holds none, such as a locked one, refuses nothing: the session's Claude Code then reports what keeps
-	 * it from the login.
+	 * {@code Claude Code-credentials}, followed, when a variable names the store's directory, by {@code -} and the
+	 * first eight hexadecimal digits of the SHA-256 hash, in Unicode normalization form C, of the directory that
+	 * {@link #processEnvironment} names. Claude Code names the item so. A Keychain that answers neither that it
+	 * holds the item nor that it holds none, such as a locked one, refuses nothing: the session's Claude Code then
+	 * reports what keeps it from the login.
 	 *
 	 * @param scope       the services that read the caller's Claude settings file and start the {@code security}
 	 *                    program
@@ -660,8 +732,8 @@ public final class ClaudeRunner
 	 * @param platform    the platform whose login store holds the user's login
 	 * @throws NullPointerException    if any of the arguments are null
 	 * @throws SessionRefusedException if no login could authenticate the run; the message tells the user to log in
-	 *                                 to Claude Code with {@code /login} and names the user's Claude configuration
-	 *                                 directory
+	 *                                 to Claude Code with {@code /login} and names the directory of the user's
+	 *                                 login store
 	 * @throws IOException             if the caller's Claude settings file cannot be read, or the {@code security}
 	 *                                 program cannot be started or does not end in time
 	 */
@@ -677,14 +749,18 @@ public final class ClaudeRunner
 			claudeConfigDirectory(environment, platform).resolve("settings.json"), authentication);
 		boolean authenticated = AUTHENTICATION_VARIABLES.stream().map(authentication::get).anyMatch(value ->
 			value != null && !value.isBlank());
-		if (authenticated)
+		if (authenticated || platform.isWindows())
 			return;
 
-		String directory = loginDirectory(environment, platform);
-		if (Files.exists(Path.of(directory, ".credentials.json")))
+		String store = loginStore(environment, platform);
+		Path directory;
+		if (store.isEmpty())
+			directory = defaultLoginDirectory(environment, platform);
+		else
+			directory = Path.of(store);
+		if (Files.exists(directory.resolve(".credentials.json")))
 			return;
-		boolean macOs = !platform.isLinux() && !platform.isWindows();
-		if (macOs && !keychainLacksLogin(scope, environment))
+		if (isMacOs(platform) && !keychainLacksLogin(scope, environment, store))
 			return;
 		throw new SessionRefusedException("CAT does not start the session: no Claude login can authenticate it. A " +
 			"session that CAT starts uses the Claude Code login of the user who starts it, and Claude Code holds no " +
@@ -699,16 +775,19 @@ public final class ClaudeRunner
 	 *
 	 * @param scope       the services that start the {@code security} program
 	 * @param environment the caller's environment
+	 * @param store       the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that the session receives
 	 * @return {@code true} if the Keychain holds no such item; {@code false} if it holds one, or does not tell
 	 * @throws IOException if the {@code security} program cannot be started, does not end within
 	 *                     {@link #KEYCHAIN_WAIT}, or the wait is interrupted
 	 */
-	private static boolean keychainLacksLogin(JvmScope scope, Map<String, String> environment) throws IOException
+	private static boolean keychainLacksLogin(JvmScope scope, Map<String, String> environment, String store)
+		throws IOException
 	{
 		assert scope != null;
 		assert environment != null;
+		assert store != null;
 		ProcessBuilder builder = new ProcessBuilder("/usr/bin/security", "find-generic-password", "-a",
-			keychainAccount(environment), "-s", keychainService(environment)).redirectOutput(Redirect.DISCARD).
+			keychainAccount(environment), "-s", keychainService(store)).redirectOutput(Redirect.DISCARD).
 			redirectError(Redirect.DISCARD);
 		try (Process process = scope.executableFiles().run(builder))
 		{
@@ -753,19 +832,18 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the service of the user's Claude Code login item in the macOS Keychain, as Claude Code names it:
-	 * {@code Claude Code-credentials}, followed, when {@code CLAUDE_CONFIG_DIR} names the configuration directory, by
-	 * {@code -} and the first eight hexadecimal digits of the SHA-256 hash of the variable's value in Unicode
-	 * normalization form C.
+	 * Returns the service of the Claude Code login item in the macOS Keychain that a session's Claude Code uses, as
+	 * Claude Code names it: {@code Claude Code-credentials}, followed, when the session's
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} is not empty, by {@code -} and the first eight hexadecimal digits of
+	 * the SHA-256 hash of its value in Unicode normalization form C.
 	 *
-	 * @param environment the caller's environment
+	 * @param store the value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} that the session receives
 	 * @return the service
 	 */
-	private static String keychainService(Map<String, String> environment)
+	private static String keychainService(String store)
 	{
-		assert environment != null;
-		String configured = environment.get("CLAUDE_CONFIG_DIR");
-		if (configured == null || configured.isBlank())
+		assert store != null;
+		if (store.isEmpty())
 			return "Claude Code-credentials";
 		MessageDigest sha256;
 		try
@@ -776,7 +854,7 @@ public final class ClaudeRunner
 		{
 			throw new AssertionError("Every Java platform implements SHA-256", e);
 		}
-		byte[] hash = sha256.digest(Normalizer.normalize(configured, Normalizer.Form.NFC).getBytes(UTF_8));
+		byte[] hash = sha256.digest(Normalizer.normalize(store, Normalizer.Form.NFC).getBytes(UTF_8));
 		return "Claude Code-credentials-" + HexFormat.of().formatHex(hash, 0, 4);
 	}
 

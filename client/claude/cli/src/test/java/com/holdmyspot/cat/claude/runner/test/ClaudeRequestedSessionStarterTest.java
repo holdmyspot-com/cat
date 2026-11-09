@@ -21,8 +21,10 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -81,14 +83,19 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 
 	/**
 	 * Verifies that a requested session, and a session that a requested session requests in turn, use the login of
-	 * the user whose session runs the request server: the runner of each receives the user's home directory and
-	 * {@code CLAUDE_CONFIG_DIR}, never a run's own, so the environment of its Claude process names the user's
-	 * Claude configuration directory in {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}.
+	 * the user whose session runs the request server: the runner of each receives the user's home directory,
+	 * {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, even an empty one, never a run's own, so
+	 * the environment of its Claude process names the login store of the user's own Claude Code in
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}: the store that the user's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names,
+	 * or else the user's Claude configuration directory; for an empty one, the default store, which on macOS an empty
+	 * value selects and elsewhere is {@code .claude} in the user's home directory.
 	 *
+	 * @param store the user's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}: {@code "named"} for a directory,
+	 *              {@code "empty"} for an empty value, or {@code "unset"}
 	 * @throws IOException if the starter or an environment fails
 	 */
-	@Test
-	public void requestedSessionsShareUserLogin() throws IOException
+	@Test(dataProvider = "userLoginStores")
+	public void requestedSessionsShareUserLogin(String store) throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			TestJvmScope jvm = new TestJvmScope();
@@ -100,8 +107,26 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 			Path userConfiguration = Files.createDirectory(root.resolve("claude-config"));
 			Path runHome = Files.createDirectory(root.resolve("run-home"));
 			Path directory = Files.createDirectory(root.resolve("requested"));
-			Map<String, String> userEnvironment = Map.of("PATH", "", Platform.current().homeVariable(),
-				userHome.toString(), "CLAUDE_CONFIG_DIR", userConfiguration.toString(), "CLAUDECODE", "1");
+			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
+				userHome.toString(), "CLAUDE_CONFIG_DIR", userConfiguration.toString(), "CLAUDECODE", "1"));
+			String loginStore = switch (store)
+			{
+				case "named" ->
+				{
+					String named = Files.createDirectory(root.resolve("login-store")).toString();
+					userEnvironment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", named);
+					yield named;
+				}
+				case "empty" ->
+				{
+					userEnvironment.put("CLAUDE_SECURESTORAGE_CONFIG_DIR", "");
+					if (Platform.current().isLinux() || Platform.current().isWindows())
+						yield userHome.resolve(".claude").toString();
+					yield "";
+				}
+				case "unset" -> userConfiguration.toString();
+				default -> throw new AssertionError(store);
+			};
 			try (LauncherStarts starts = new LauncherStarts(userEnvironment);
 				Process requested = starts.starter().start(HARNESS_ID, List.of("--model", "model-a"), directory))
 			{
@@ -119,12 +144,27 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 					{
 						Map<String, String> session = ClaudeRunner.processEnvironment(runner, environment,
 							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
-						requireThat(session.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginDirectory").
-							isEqualTo(userConfiguration.toString());
+						requireThat(session.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").isEqualTo(loginStore);
 					}
 				}
 			}
 		}
+	}
+
+	/**
+	 * Returns the kinds of the user's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}.
+	 *
+	 * @return the kinds
+	 */
+	@DataProvider
+	public static Object[][] userLoginStores()
+	{
+		return new Object[][]
+		{
+			{"unset"},
+			{"empty"},
+			{"named"}
+		};
 	}
 
 	/**

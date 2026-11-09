@@ -36,10 +36,13 @@ public final class SessionCommandLimits
 	public static final Set<String> CREDENTIAL_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"CLAUDE_CODE_OAUTH_TOKEN", "CODEX_API_KEY", "OPENAI_API_KEY");
 	/**
+	 * The file of Claude Code's login store that holds its login, where no system credential store holds it.
+	 */
+	private static final String CLAUDE_LOGIN = ".credentials.json";
+	/**
 	 * The files of Claude Code's configuration directory that hold its login and settings.
 	 */
-	private static final List<String> CLAUDE_FILES = List.of(".credentials.json", "settings.json",
-		"settings.local.json");
+	private static final List<String> CLAUDE_FILES = List.of(CLAUDE_LOGIN, "settings.json", "settings.local.json");
 	/**
 	 * The file that holds Claude Code's account state and per-project configuration: in the home directory, or in the
 	 * configuration directory when {@code CLAUDE_CONFIG_DIR} names it.
@@ -68,12 +71,13 @@ public final class SessionCommandLimits
 	 * Returns the login and configuration files of every harness that an environment names, which a session's
 	 * commands must not read, apart from the session's own files that a runner leaves readable, as
 	 * {@link SessionCommandLimits} describes: Claude Code's {@code .credentials.json}, {@code settings.json} and
-	 * {@code settings.local.json} in its configuration directory and its {@code .claude.json}, and Codex's
-	 * {@code auth.json} and {@code config.toml} in its home. The configuration directory is both the one that
-	 * {@code CLAUDE_CONFIG_DIR} names and {@code .claude} in the home directory, and the Codex home is both the one that
-	 * {@code CODEX_HOME} names and {@code .codex} in the home directory, so that a file stays denied whichever of them
-	 * a harness started from a command would use. The result names files whether or not they exist; a runner leaves
-	 * out those that its harness's sandbox cannot deny while they are missing.
+	 * {@code settings.local.json} in its configuration directory and its {@code .claude.json}, Claude Code's
+	 * {@code .credentials.json} in the directory that {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, whose login
+	 * store Claude Code then uses, and Codex's {@code auth.json} and {@code config.toml} in its home. The configuration
+	 * directory is both the one that {@code CLAUDE_CONFIG_DIR} names and {@code .claude} in the home directory, and the
+	 * Codex home is both the one that {@code CODEX_HOME} names and {@code .codex} in the home directory, so that a file
+	 * stays denied whichever of them a harness started from a command would use. The result names files whether or not
+	 * they exist; a runner leaves out those that its harness's sandbox cannot deny while they are missing.
 	 *
 	 * @param environment the environment of the user or of a session's harness, whose home variable on
 	 *                    {@code platform} names the home directory
@@ -94,6 +98,9 @@ public final class SessionCommandLimits
 			addAll(files, claudeDirectory, CLAUDE_FILES);
 			files.add(claudeDirectory.resolve(CLAUDE_STATE));
 		}
+		Path loginStore = directory(environment, "CLAUDE_SECURESTORAGE_CONFIG_DIR");
+		if (loginStore != null)
+			files.add(loginStore.resolve(CLAUDE_LOGIN));
 		Path codexHome = directory(environment, "CODEX_HOME");
 		if (codexHome != null)
 			addAll(files, codexHome, CODEX_FILES);

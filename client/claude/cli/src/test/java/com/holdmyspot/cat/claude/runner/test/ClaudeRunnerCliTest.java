@@ -788,10 +788,12 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch whose environment holds no Claude authentication variable is refused when the user's
-	 * login store holds no login, here neither {@code .credentials.json} in the user's Claude configuration directory
-	 * nor, on macOS, the Keychain's login item: the reason tells the user to log in to Claude Code with
-	 * {@code /login} and names the directory, and the launch creates no run and takes no capacity slot.
+	 * Verifies that a launch whose environment holds no Claude authentication variable is refused on Linux and
+	 * macOS when the user's login store holds no login, here neither {@code .credentials.json} in the user's Claude
+	 * configuration directory nor, on macOS, the Keychain's login item: the reason tells the user to log in to Claude
+	 * Code with {@code /login} and names the directory, and the launch creates no run and takes no capacity slot. On
+	 * Windows, where Claude Code may keep the login in the Windows Credential Manager, the runner cannot tell that no
+	 * login exists, and the launch goes on to take a capacity slot.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -812,14 +814,25 @@ public final class ClaudeRunnerCliTest
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
 				"USER", "alice");
 
-			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
-				ClaudeRunnerCli.serve(jvm, home, args, new StringReader(""), new StringWriter(), environment, _ ->
-				{
-					throw new AssertionError("The launch took a capacity slot");
-				}));
-
-			requireThat(refusal.getMessage(), "message").contains("/login").contains(configuration.toString());
-			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
+			if (Platform.current().isWindows())
+			{
+				IllegalStateException taken = expectThrows(IllegalStateException.class, () ->
+					ClaudeRunnerCli.serve(jvm, home, args, new StringReader(""), new StringWriter(), environment, _ ->
+					{
+						throw new IllegalStateException("capacity");
+					}));
+				requireThat(taken.getMessage(), "message").isEqualTo("capacity");
+			}
+			else
+			{
+				SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
+					ClaudeRunnerCli.serve(jvm, home, args, new StringReader(""), new StringWriter(), environment, _ ->
+					{
+						throw new AssertionError("The launch took a capacity slot");
+					}));
+				requireThat(refusal.getMessage(), "message").contains("/login").contains(configuration.toString());
+				requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
+			}
 		}
 	}
 
