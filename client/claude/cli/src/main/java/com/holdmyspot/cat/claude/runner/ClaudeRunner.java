@@ -1035,9 +1035,11 @@ public final class ClaudeRunner
 	 * @param hookResults        the hook context directory
 	 * @param readOnlyEvidence   executor evidence exposed through added directories
 	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
-	 *   copies; otherwise Claude keeps no session
+	 *   copies; otherwise Claude keeps no session unless it may request sessions
 	 * @param requestLauncher    the absolute request-session launcher path, or {@code null} when requests are disabled
-	 * @param sessionRequests    how many sessions the session may request; {@code 0} adds no instructions
+	 * @param sessionRequests    how many sessions the session may request; {@code 0} adds no instructions and, without
+	 *   {@code sessionTranscripts}, keeps no session, while any keeps the session, whose transcript the runner
+	 *   launcher that the session runs reads to find the session's sandbox policy, in the run's home without copying it
 	 * @return the complete harness command
 	 * @throws NullPointerException     if any required argument is null
 	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
@@ -1057,7 +1059,9 @@ public final class ClaudeRunner
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
 			"--output-format", "stream-json", "--permission-mode", "acceptEdits",
 			"--verbose", "--include-partial-messages"));
-		if (!sessionTranscripts)
+		// A runner launcher that the session's commands run finds the session's sandbox policy from its transcript, so a
+		// session that may request sessions keeps its transcript in the run's home even when the run copies none.
+		if (!sessionTranscripts && sessionRequests == 0)
 			command.add("--no-session-persistence");
 		for (Path plugin : plugins)
 		{

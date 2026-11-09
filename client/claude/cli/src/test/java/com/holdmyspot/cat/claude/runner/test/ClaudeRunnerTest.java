@@ -947,6 +947,24 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that a session that may request sessions keeps its transcript, which a runner launcher that the
+	 * session's commands run reads to find the session's sandbox policy, while a session that may request none still
+	 * keeps no session.
+	 */
+	@Test
+	public void persistsSessionThatMayRequestSessions()
+	{
+		Path launcher = Path.of("/plugin/bin/request-session");
+		List<String> mayRequest = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
+			List.of(), false, launcher, 2);
+		List<String> mayRequestNone = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(),
+			Path.of("hook-results"), List.of(), false, launcher, 0);
+
+		requireThat(mayRequest, "mayRequest").doesNotContain("--no-session-persistence");
+		requireThat(mayRequestNone, "mayRequestNone").contains("--no-session-persistence");
+	}
+
+	/**
 	 * Verifies that the session runs in the {@code acceptEdits} permission mode, in which the sandbox confines its
 	 * commands and its edits stay inside the project.
 	 */
