@@ -497,21 +497,23 @@ that install: the entry command writes the policy again, and it refuses a releas
 
 ## Let sessions run CAT's runners
 
-CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. A Codex
-session gets a copy of your Codex login. A Claude session never gets a copy of your Claude subscription login, because
-that login rotates its refresh token: a copy stops working as soon as your own session, or another copy, refreshes it,
-which can happen in the middle of a turn. It authenticates through `CLAUDE_CODE_OAUTH_TOKEN`, a long-lived token that
-you create once with `claude setup-token` and export in the environment that starts Claude Code, or through
-`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` when you set one of those. `claude-runner` passes that variable to the
-session and to the sessions that it requests, and copies no login file. When none of them is set, it refuses the run
-before it starts the session, with status 2, and names `claude setup-token` and the variable to export. Both plugins
-hold both launchers, so a session in either harness can run either harness. A session runs a launcher as one command, by
-its absolute path, with no pipe or redirection, and gives it its records with `--input <file>`. Every run names its
-model with `--model <name>` and its reasoning effort with `--effort <level>`; the launcher refuses a run without either
-before it starts a session. An agent that runs a launcher always passes both: the ones that you or its instructions
-name, or else ones that it chooses from the values that the harness lists, without asking you. The effort `none` runs
-the model without reasoning: `claude-runner` turns Claude Code's thinking off, and `codex-runner` asks Codex for no
-reasoning.
+CAT's `claude-runner` and `codex-runner` start an isolated Claude Code or Codex session with your login. A Codex session
+gets a copy of your Codex login. A Claude session uses your own Claude Code login, not a copy of it: its Claude Code
+keeps its own settings and reads and refreshes your login in your Claude configuration folder, the one that
+`CLAUDE_CONFIG_DIR` names or else `.claude` in your home folder, or on macOS in the Keychain. The sessions that a
+session requests use it too. A copy would stop working as soon as your own session, or another copy, refreshed the
+login, which can happen in the middle of a turn. The commands that a session runs cannot read the login file in your
+Claude configuration folder. When the environment that starts Claude Code sets `CLAUDE_CODE_OAUTH_TOKEN`,
+`ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, there or in the `env` of your Claude settings, `claude-runner` passes it
+to the session and to the sessions that it requests. When none of them is set and you have not logged in to Claude Code,
+`claude-runner` refuses the run before it starts the session, with status 2, and asks you to log in with `/login`. Both
+plugins hold both launchers, so a session in either harness can run either harness. A session runs a launcher as one
+command, by its absolute path, with no pipe or redirection, and gives it its records with `--input <file>`. Every run
+names its model with `--model <name>` and its reasoning effort with `--effort <level>`; the launcher refuses a run
+without either before it starts a session. An agent that runs a launcher always passes both: the ones that you or its
+instructions name, or else ones that it chooses from the values that the harness lists, without asking you. The effort
+`none` runs the model without reasoning: `claude-runner` turns Claude Code's thinking off, and `codex-runner` asks Codex
+for no reasoning.
 
 Instead of `--model` and `--effort`, a run started outside a runner session may name `--agent <name>` with
 `--install-cat`, in both launchers. It selects the CAT agent definition of that name in the launcher's CAT artifact, and
@@ -519,7 +521,7 @@ the session runs under the model and the reasoning effort that the definition na
 together with `--model` or `--effort`, and an agent definition that does not name both a model and an effort. A session
 that a runner started cannot pass `--agent`.
 
-Apart from that variable, the runners need no configuration. Outside a run, a session's launches go through CAT's request server,
+The runners need no configuration. Outside a run, a session's launches go through CAT's request server,
 `request-server` beside the runner launchers in the plugin's `bin` folder. It runs outside the session's sandbox,
 because a session that a harness sandboxes cannot start inside another sandbox. Your agent starts it once per session,
 in the background, by its absolute path and with no arguments, and it serves that session's launches until the session
