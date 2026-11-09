@@ -209,8 +209,8 @@ jobs:
             release/SHA256SUMS.txt release/cat.ps1
           # 10 archives, SHA256SUMS.txt, the manifest, its signature, cat.sh and cat.ps1
           test "$(find release -type f | wc -l)" -eq 15
-      # The notes start with the commands that install, update and uninstall this release, followed by the notes that
-      # GitHub generates, which end with the link to the full changelog
+      # The notes start with the agent pointer and this release's install commands, followed by the notes that GitHub
+      # generates, which end with the link to the full changelog
       - name: Write release notes
         run: |
           test -n "${CAT_KEY_FINGERPRINT}"

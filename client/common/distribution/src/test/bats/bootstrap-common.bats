@@ -365,7 +365,8 @@ v2.0" ''; do
 	expect_install_ran_for claude "${CLAUDE_CONFIG_DIR}"
 }
 
-# An agent that is asked to install or update CAT reads the release page, so the page's first lines tell it what to do
+# An agent that is asked to install or update CAT reads the release page, so the page's first paragraph points it to
+# the installation guide's steps for an agent instead of leaving it to run the page's commands
 @test "release notes start with the instructions for an agent that installs or updates CAT" {
 	repository="${BATS_TEST_DIRNAME}/../../../../../.."
 	render="$(grep -F 'release-notes.md >' "${repository}/.github/workflows/release.yml" | sed 's/^ *//')"
@@ -375,16 +376,28 @@ v2.0" ''; do
 	(cd "${repository}" && GITHUB_REF_NAME=v1.0 RUNNER_TEMP="${notes_directory}" CAT_KEY_FINGERPRINT=0123abcd \
 		sh -c "${render}")
 
-	# The page wraps its lines, so the checks read the text above the first heading as one line
-	agent_paragraph="$(sed -n '1,/^## /p' "${notes_directory}/release-notes.md" | tr '\n' ' ' | tr -s ' ')"
+	# The page wraps its lines, so the checks read the first paragraph as one line
+	agent_paragraph="$(sed -n '1,/^$/p' "${notes_directory}/release-notes.md" | tr '\n' ' ' | tr -s ' ')"
 	[[ "${agent_paragraph}" == "**If you are an AI agent asked to install or update CAT from this page:**"* ]]
 	[[ "${agent_paragraph}" == *"if CAT's \`update\` skill is installed, use it."* ]]
-	[[ "${agent_paragraph}" == *"do not download, verify, extract or run \`cat.sh\`, \`cat.ps1\`, \`SHA256SUMS.txt\`"* ]]
-	[[ "${agent_paragraph}" == *"Reply at once with the entry command below"* ]]
-	[[ "${agent_paragraph}" == *"prefixed with \`! \`"* ]]
-	[[ "${agent_paragraph}" == *"${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
-	[[ "${agent_paragraph}" == *"Add an assignment after the pipe, before \`sh\`, in only these cases:"* ]]
-	[[ "${agent_paragraph}" == *"\`HOME=<your session's HOME>\`, when your session's \`HOME\` is not the account's home folder"* ]]
-	[[ "${agent_paragraph}" == *"Write no other variable."* ]]
-	[[ "${agent_paragraph}" == *"check the installed plugin and its version in your session's harness home"* ]]
+	[[ "${agent_paragraph}" == *"(https://github.com/holdmyspot-com/cat/blob/v1.0/docs/installation.md#for-ai-agents)"* ]]
+	[[ "${agent_paragraph}" == *"do not download or run this release's files yourself"* ]]
+}
+
+# The release page sends an agent to the installation guide, so the guide's section must give the steps the agent needs
+@test "installation guide's For AI agents section gives an agent's steps" {
+	repository="${BATS_TEST_DIRNAME}/../../../../../.."
+
+	# The section's lines wrap, so the checks read it as one line
+	agent_section="$(sed -n '/^## For AI agents$/,/^## Supported platforms/p' "${repository}/docs/installation.md" \
+		| tr '\n' ' ' | tr -s ' ')"
+	[[ "${agent_section}" == *"If CAT's \`update\` skill is installed, use it."* ]]
+	[[ "${agent_section}" == *"do not download, verify, extract or run \`cat.sh\`, \`cat.ps1\`, \`SHA256SUMS.txt\`"* ]]
+	[[ "${agent_section}" == *"Reply at once with the entry command below"* ]]
+	[[ "${agent_section}" == *"prefixed with \`! \`"* ]]
+	[[ "${agent_section}" == *"${SINGLE_COMMAND_URL} | sh -s -- --harness claude"* ]]
+	[[ "${agent_section}" == *"Add an assignment after the pipe, before \`sh\`, in only these cases:"* ]]
+	[[ "${agent_section}" == *"\`HOME=<your session's HOME>\`, when your session's \`HOME\` is not the account's home folder"* ]]
+	[[ "${agent_section}" == *"Write no other variable."* ]]
+	[[ "${agent_section}" == *"check the installed plugin and its version in your session's harness home"* ]]
 }
