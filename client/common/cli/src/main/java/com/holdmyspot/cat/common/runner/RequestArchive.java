@@ -27,6 +27,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -52,7 +53,8 @@ import tools.jackson.databind.node.ArrayNode;
  * receiver has the user's permissions, so it opens only the one archive, copies it without following links, and
  * extracts only plain files, directories and the project's links, within {@link RequestLimits}. It creates the links
  * after every file and directory, and refuses an entry whose path passes through a link and a link whose target leaves
- * the project.
+ * the project. It extracts each read-only copy beside the project and links the copy's place in the project to it, so
+ * that the extracted project holds a link to a target outside it where the sender's project did.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
@@ -64,6 +66,11 @@ public final class RequestArchive
 	static final Set<String> HARNESSES = Set.of("claude", "codex");
 	static final String EXTENSION = ".tar";
 	static final String MANIFEST = "request.json";
+	/**
+	 * The directory beside the extracted project that holds the copies of the targets of the project's links outside
+	 * the sender's project.
+	 */
+	static final String LINK_TARGETS = "link-targets";
 	/**
 	 * The prefix of the temporary file that a sender writes beside a request before renaming it into place.
 	 */
@@ -560,14 +567,19 @@ public final class RequestArchive
 	/**
 	 * Extracts only ordinary files, directories and the project's symbolic links from a private archive copy, creating
 	 * the links after every file and directory. A file or directory of the project whose entry lacks the owner's write
-	 * permission, as the copy of a link's target does, is extracted read-only, as
-	 * {@link PortableFiles#setReadOnly(Path)} makes it.
+	 * permission, as the copy of a link's target does, goes with the rest of its copy into its own directory of
+	 * {@code link-targets} beside the project, read-only as {@link PortableFiles#setReadOnly(Path)} makes it, and the
+	 * project holds a symbolic link to it in its place. A runner that copies the extracted project therefore copies the
+	 * copy as it copies any target of a link outside the project: read-only, and checked for changes once its session
+	 * ends.
 	 *
 	 * @param source the private archive
 	 * @param target the private empty destination
 	 * @param limits the bounds that the archive must stay within
 	 * @throws IOException if an entry is malformed, unsafe or exceeds request limits, a link lies outside the project or
-	 *                     its target leaves the project or does not exist, or an entry's path passes through a link
+	 *                     its target leaves the project or does not exist, an entry's path passes through a link, an
+	 *                     entry lies in {@code link-targets}, or a copy of a link's target holds a writable entry, a
+	 *                     link or another copy, or comes after an entry inside it
 	 */
 	public static void unpack(Path source, Path target, RequestLimits limits) throws IOException
 	{
@@ -577,9 +589,12 @@ public final class RequestArchive
 		Budget budget = new Budget(limits);
 		Set<Path> seen = new HashSet<>();
 		Map<Path, Path> links = new LinkedHashMap<>();
+		// The path in the project of each copy of a link's target, and where the copy goes instead
+		Map<Path, Path> copies = new LinkedHashMap<>();
 		List<Path> readOnlyDirectories = new ArrayList<>();
 		Path directory = target.toAbsolutePath().normalize();
 		Path project = directory.resolve("project");
+		Path linkTargets = directory.resolve(LINK_TARGETS);
 		int ownerWrite = modeBits(Set.of(PosixFilePermission.OWNER_WRITE));
 		try (InputStream bytes = Files.newInputStream(source);
 			TarArchiveInputStream archive = new BoundedTarInput(bytes, limits))
@@ -589,6 +604,11 @@ public final class RequestArchive
 				Path path = resolveEntry(target, entry.getName());
 				if (!seen.add(path))
 					throw new IOException("Duplicate request archive entry: " + entry.getName());
+				if (path.startsWith(linkTargets))
+				{
+					throw new IOException("Request archive entry " + entry.getName() + " lies in " + LINK_TARGETS +
+						", which holds the copies of the targets of the project's links");
+				}
 				byte type = entry.getLinkFlag();
 				boolean plainType = type == '0' || type == 0 || type == '5' || type == TarConstants.LF_SYMLINK;
 				if (!plainType || entry.isSparse() || !entry.isCheckSumOK())
@@ -604,23 +624,24 @@ public final class RequestArchive
 				budget.add(entry.getSize(), maximum);
 				// Only a copy of a project link's target lacks the owner's write permission
 				boolean readOnly = path.startsWith(project) && !path.equals(project) &&
-					(entry.getMode() & ownerWrite) == 0;
+					type != TarConstants.LF_SYMLINK && (entry.getMode() & ownerWrite) == 0;
+				Path destination = place(copies, path, project, linkTargets, readOnly, type, entry);
 				if (type == '5')
 				{
 					if (entry.getSize() != 0)
 						throw new IOException("Request archive directory has content: " + entry.getName());
-					Files.createDirectories(path);
+					Files.createDirectories(destination);
 					if (readOnly)
-						readOnlyDirectories.add(path);
+						readOnlyDirectories.add(destination);
 					continue;
 				}
-				Files.createDirectories(path.getParent());
+				Files.createDirectories(destination.getParent());
 				if (type == TarConstants.LF_SYMLINK)
 				{
 					links.put(path, linkTarget(target, path, entry));
 					continue;
 				}
-				try (OutputStream output = Files.newOutputStream(path, StandardOpenOption.CREATE_NEW))
+				try (OutputStream output = Files.newOutputStream(destination, StandardOpenOption.CREATE_NEW))
 				{
 					copy(archive, output, entry.getSize());
 				}
@@ -628,9 +649,9 @@ public final class RequestArchive
 					PosixFilePermission.OWNER_WRITE);
 				if ((entry.getMode() & modeBits(Set.of(PosixFilePermission.OWNER_EXECUTE))) != 0)
 					mode.add(PosixFilePermission.OWNER_EXECUTE);
-				PortableFiles.setMode(path, mode);
+				PortableFiles.setMode(destination, mode);
 				if (readOnly)
-					PortableFiles.setReadOnly(path);
+					PortableFiles.setReadOnly(destination);
 			}
 		}
 		for (Path path : seen)
@@ -644,10 +665,87 @@ public final class RequestArchive
 				}
 			}
 		}
+		linkCopies(copies, directory);
 		ProjectTree.createLinks(project, links);
 		// A directory becomes read-only only once nothing more is added to it
 		for (Path readOnly : readOnlyDirectories)
 			PortableFiles.setReadOnly(readOnly);
+	}
+
+	/**
+	 * Returns where an extracted entry goes. A read-only entry of the project, which only a copy of a project link's
+	 * target holds, goes into a directory of {@link #LINK_TARGETS} beside the project with the rest of its copy, so that
+	 * the project holds a link to it, as the sender's project did, and a runner that copies the project makes a
+	 * read-only copy of it that the runner checks for changes. Every other entry goes to its own path.
+	 *
+	 * @param copies      the path in the project of each copy found so far, and where it goes instead; receives a new
+	 *                    copy
+	 * @param path        the entry's resolved path
+	 * @param project     the extracted project
+	 * @param linkTargets the directory that holds the copies
+	 * @param readOnly    {@code true} if the entry is a read-only file or directory of the project
+	 * @param type        the entry's type
+	 * @param entry       the entry
+	 * @return the path that the entry goes to
+	 * @throws IOException if a copy holds a writable entry or a symbolic link
+	 */
+	private static Path place(Map<Path, Path> copies, Path path, Path project, Path linkTargets, boolean readOnly,
+		byte type, TarArchiveEntry entry) throws IOException
+	{
+		for (Path ancestor = path.getParent(); ancestor != null && ancestor.startsWith(project) &&
+			!ancestor.equals(project); ancestor = ancestor.getParent())
+		{
+			Path copy = copies.get(ancestor);
+			if (copy == null)
+				continue;
+			if (type == TarConstants.LF_SYMLINK)
+			{
+				throw new IOException("Request archive entry " + entry.getName() + " is a symbolic link in a copy of a " +
+					"project link's target");
+			}
+			if (!readOnly)
+			{
+				throw new IOException("Request archive entry " + entry.getName() + " is writable but lies in a " +
+					"read-only copy of a project link's target");
+			}
+			return copy.resolve(ancestor.relativize(path));
+		}
+		if (!readOnly)
+			return path;
+		Path copy = linkTargets.resolve(String.valueOf(copies.size()));
+		copies.put(path, copy);
+		return copy;
+	}
+
+	/**
+	 * Links each path in the extracted project that a copy of a link's target stands for to the copy.
+	 *
+	 * @param copies    the path in the project of each copy, and where it went instead
+	 * @param directory the extraction directory
+	 * @throws IOException if a copy's path lies inside another copy or holds another entry, or a link cannot be
+	 *                     created
+	 */
+	private static void linkCopies(Map<Path, Path> copies, Path directory) throws IOException
+	{
+		for (Entry<Path, Path> copy : copies.entrySet())
+		{
+			Path path = copy.getKey();
+			for (Path ancestor = path.getParent(); !ancestor.equals(directory); ancestor = ancestor.getParent())
+			{
+				if (copies.containsKey(ancestor))
+				{
+					throw new IOException("Request archive entry " + directory.relativize(path) + " comes before the " +
+						"read-only copy " + directory.relativize(ancestor) + " that holds it");
+				}
+			}
+			if (Files.exists(path, LinkOption.NOFOLLOW_LINKS))
+			{
+				throw new IOException("Request archive entry " + directory.relativize(path) + " is a read-only copy " +
+					"of a project link's target, which another entry lies in");
+			}
+			Files.createDirectories(path.getParent());
+			Files.createSymbolicLink(path, path.getParent().relativize(copy.getValue()));
+		}
 	}
 
 	/**

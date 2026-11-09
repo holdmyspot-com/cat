@@ -28,6 +28,7 @@ import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -1096,9 +1097,106 @@ public final class HarnessRunManagerTest
 			requireThat(Files.readString(outside.resolve("a.md")), "treeTarget").isEqualTo("a");
 			requireThat(Files.exists(outside.resolve("added.md")), "addedToTarget").isFalse();
 
+			// The copy of a link inside the copied tree belongs to the tree's copy, and a change to it is found
+			requireThat(manager.changedLinkCopies(run), "unchanged").isEmpty();
+			Path inner = copy.resolve("tree/inner.md");
+			PortableFiles.clearReadOnly(inner);
+			Files.writeString(inner, "changed");
+			requireThat(manager.changedLinkCopies(run).orElseThrow(), "changed").
+				contains("tree/inner.md (content changed, made writable)").doesNotContain("notes.md");
+			if (PortableFiles.hasModes(copy))
+			{
+				// A mode change that leaves the copy read-only for its owner is a change too
+				Path copiedNotes = copy.resolve("notes.md");
+				String before = PosixFilePermissions.toString(Files.getPosixFilePermissions(copiedNotes));
+				Files.setPosixFilePermissions(copiedNotes, PosixFilePermissions.fromString("r-x------"));
+				requireThat(manager.changedLinkCopies(run).orElseThrow(), "modeChanged").
+					contains("notes.md (mode changed from " + before + " to r-x------)");
+				// A copy that its owner may no longer read is a change too, rather than a failure to compare
+				Path copiedFile = copy.resolve("tree/a.md");
+				Files.setPosixFilePermissions(copiedFile, PosixFilePermissions.fromString("---------"));
+				if (!Files.isReadable(copiedFile))
+				{
+					requireThat(manager.changedLinkCopies(run).orElseThrow(), "unreadable").
+						contains("tree/a.md (made unreadable, mode changed from ");
+				}
+			}
+
 			manager.fail(run, "test cleanup");
 			manager.deleteRun(run);
 			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the diagnostic of changed copies of link targets outside the project names the first changed paths
+	 * and counts the rest, so that a session that changes many files cannot make the run's diagnostic unbounded.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void countsChangedLinkCopiesBeyondThoseNamed() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Files.createDirectories(root.resolve("outside/tree"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.createSymbolicLink(project.resolve("tree"), Path.of("../outside/tree"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(project, run);
+			Path tree = run.directory().resolve("project/tree");
+			PortableFiles.clearReadOnly(tree);
+			for (int index = 10; index < 35; ++index)
+				Files.writeString(tree.resolve("added-" + index + ".md"), "added");
+
+			String diagnostic = manager.changedLinkCopies(run).orElseThrow();
+
+			// Where directories have modes, making the copied directory writable is a change too
+			int changes = 25;
+			if (PortableFiles.hasModes(tree))
+				++changes;
+			requireThat(diagnostic, "diagnostic").contains("tree/added-10.md (added)").
+				doesNotContain("tree/added-34.md").endsWith(", and " + (changes - 20) + " more. The run fails, " +
+					"because its result would rest on files that differ from the targets.");
+		}
+	}
+
+	/**
+	 * Verifies that a workspace file whose path lies in a read-only copy of a link's target outside the project is
+	 * refused, so that the run's check of the copies cannot take the workspace's file for a change by the session.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void refusesWorkspaceFileInLinkCopy() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Files.writeString(Files.createDirectories(root.resolve("outside/tree")).resolve("a.md"), "a");
+			Path project = Files.createDirectories(root.resolve("project"));
+			Files.createSymbolicLink(project.resolve("tree"), Path.of("../outside/tree"));
+			Files.writeString(Files.createDirectories(root.resolve("workspace/tree")).resolve("added.md"), "added");
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(project, run);
+			try
+			{
+				manager.copyWorkspace(root.resolve("workspace"), run);
+				throw new AssertionError("A workspace file went into a copy of a link's target");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "refusal").contains("read-only copy of the target of a symbolic link");
+			}
+			requireThat(Files.exists(run.directory().resolve("project/tree/added.md")), "added").isFalse();
+			requireThat(manager.changedLinkCopies(run), "changes").isEmpty();
 		}
 	}
 

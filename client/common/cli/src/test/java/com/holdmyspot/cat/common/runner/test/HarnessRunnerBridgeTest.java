@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.test;
 
 
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import java.io.IOException;
 import java.io.Reader;
@@ -37,6 +38,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -236,6 +238,271 @@ public final class HarnessRunnerBridgeTest
 			requireThat(HarnessRunReceipt.read(json, receipt).retainedProject(), "retainedProject").
 				isEqualTo(project);
 			requireThat(HarnessRunReceipt.read(json, receipt).rawResult(), "rawResult").isEqualTo(transcript);
+		}
+	}
+
+	/**
+	 * Supplies changes that a session makes to the read-only copies that stand in for its project's symbolic links to
+	 * targets outside the project, each with how the run's diagnostic names the changed path.
+	 *
+	 * @return the change and the named path with how it changed
+	 */
+	@DataProvider
+	public Object[][] linkCopyChanges()
+	{
+		return new Object[][]{
+			{"edit_after_making_writable", "notes.md (content changed, made writable)"},
+			{"make_writable", "notes.md (made writable)"},
+			{"delete_and_recreate", "tree/a.md (content changed, made writable)"},
+			{"replace_by_directory", "tree/a.md (replaced by a directory)"},
+			{"add_to_directory", "tree/added.md (added)"},
+			{"delete", "tree/a.md (removed)"}};
+	}
+
+	/**
+	 * Verifies that a run whose session changes a read-only copy that stands in for a project link to a target outside
+	 * the project fails: the bridge fails with a diagnostic that names the changed path and says that it is a copy of a
+	 * link target outside the project that the session changed, the run's manifest records the failure, and no receipt
+	 * is written.
+	 *
+	 * @param change   the session's change
+	 * @param expected the changed path and how the diagnostic names its change
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "linkCopyChanges")
+	public void failsRunWhoseSessionChangedLinkCopy(String change, String expected) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedRun fixture = new LinkedRun(cleanup);
+			Turn turn = Turn.replies("done").withCheckpoint(printed ->
+			{
+				if (printed == 0)
+					changeLinkCopy(fixture.project(), change);
+			});
+			try (ScriptedProcess process = new ScriptedProcess(List.of(turn), new ArrayList<>());
+				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+					"{\"type\":\"complete\"}\n"))
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run(), process,
+					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
+					Yielding.fileReplacer(), input, new StringWriter());
+				throw new AssertionError("The run whose session changed a copy completed");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "diagnostic").contains(expected).
+					contains("The session changed read-only copies of symbolic link targets outside the project");
+			}
+			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
+				contains("\"failed\"").contains(expected);
+			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a run that fails for another reason after its session changed a read-only copy that stands in for
+	 * a project link to a target outside the project names the changed copy as well as the other reason: here the
+	 * harness exits during the turn.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void namesChangedLinkCopyOfFailedRun() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedRun fixture = new LinkedRun(cleanup);
+			Turn turn = Turn.exits(143, "partial harness event").withCheckpoint(printed ->
+			{
+				if (printed == 0)
+					changeLinkCopy(fixture.project(), "edit_after_making_writable");
+			});
+			try (ScriptedProcess process = new ScriptedProcess(List.of(turn), new ArrayList<>());
+				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+					"{\"type\":\"complete\"}\n"))
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run(), process,
+					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
+					Yielding.fileReplacer(), input, new StringWriter());
+				throw new AssertionError("The run whose harness exited completed");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "diagnostic").contains("notes.md (content changed, made writable)").
+					contains("exit status 143");
+			}
+			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
+				contains("\"failed\"").contains("notes.md (content changed, made writable)");
+			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a run whose session leaves the read-only copies of its project's links to targets outside the
+	 * project unchanged completes and writes its receipt, although the session changed a file of the project that a
+	 * link to a target inside the project leads to, and a file of the project's own.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void completesRunThatLeftLinkCopiesUnchanged() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			LinkedRun fixture = new LinkedRun(cleanup);
+			Turn turn = Turn.replies("done").withCheckpoint(printed ->
+			{
+				if (printed == 0)
+				{
+					Files.writeString(fixture.project().resolve("docs/guide.md"), "edited through the link");
+					Files.writeString(fixture.project().resolve("own.md"), "edited");
+				}
+			});
+			try (ScriptedProcess process = new ScriptedProcess(List.of(turn), new ArrayList<>());
+				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+					"{\"type\":\"complete\"}\n"))
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run(), process,
+					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
+					Yielding.fileReplacer(), input, new StringWriter());
+			}
+			requireThat(Files.readString(fixture.project().resolve("shared/guide.md")), "guide").
+				isEqualTo("edited through the link");
+			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
+				contains("\"completed\"");
+			requireThat(Files.exists(fixture.receipt()), "receipt").isTrue();
+		}
+	}
+
+	/**
+	 * Makes one change that a session may make to the read-only copies of its project's links to targets outside the
+	 * project, first making writable what the change needs, as a session that undoes the protection would.
+	 *
+	 * @param project the run's project
+	 * @param change  the change, as {@link #linkCopyChanges()} names it
+	 * @throws IOException if the change fails
+	 */
+	private static void changeLinkCopy(Path project, String change) throws IOException
+	{
+		Path notes = project.resolve("notes.md");
+		Path tree = project.resolve("tree");
+		Path file = tree.resolve("a.md");
+		switch (change)
+		{
+			case "edit_after_making_writable" ->
+			{
+				PortableFiles.clearReadOnly(notes);
+				Files.writeString(notes, "changed");
+			}
+			case "make_writable" -> PortableFiles.clearReadOnly(notes);
+			case "add_to_directory" ->
+			{
+				PortableFiles.clearReadOnly(tree);
+				Files.writeString(tree.resolve("added.md"), "added");
+			}
+			case "delete_and_recreate", "replace_by_directory", "delete" ->
+			{
+				PortableFiles.clearReadOnly(tree);
+				PortableFiles.clearReadOnly(file);
+				Files.delete(file);
+				if (change.equals("delete_and_recreate"))
+					Files.writeString(file, "other");
+				else if (change.equals("replace_by_directory"))
+					Files.createDirectory(file);
+			}
+			default -> throw new AssertionError(change);
+		}
+	}
+
+	/**
+	 * A managed run whose project the runner copied from a project with symbolic links: {@code notes.md} and
+	 * {@code tree} lead to a file and a directory outside the project, so the run holds read-only copies of them, and
+	 * {@code docs/guide.md} leads to {@code shared/guide.md} inside it. Its options name a transcript and a receipt.
+	 *
+	 * @param manager the run's manager
+	 * @param run     the run
+	 * @param project the run's project
+	 * @param options the runner options
+	 * @param receipt the receipt that the options name
+	 */
+	private record LinkedRun(HarnessRunManager manager, HarnessRun run, Path project, HarnessRunnerOptions options,
+		Path receipt)
+	{
+		/**
+		 * Creates the run.
+		 *
+		 * @param cleanup deletes the run's files
+		 * @throws IOException if fixture I/O fails
+		 */
+		LinkedRun(TemporaryDirectories cleanup) throws IOException
+		{
+			this(cleanup.add(Files.createTempDirectory("cat-linked-run-")));
+		}
+
+		/**
+		 * Creates the run in a directory.
+		 *
+		 * @param root the directory
+		 * @throws IOException if fixture I/O fails
+		 */
+		private LinkedRun(Path root) throws IOException
+		{
+			this(new HarnessRunManager(new FileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer()), root);
+		}
+
+		/**
+		 * Creates the run with a manager.
+		 *
+		 * @param manager the run's manager
+		 * @param root    the directory
+		 * @throws IOException if fixture I/O fails
+		 */
+		private LinkedRun(HarnessRunManager manager, Path root) throws IOException
+		{
+			this(manager, root, manager.create("harness"));
+		}
+
+		/**
+		 * Creates the run's project.
+		 *
+		 * @param manager the run's manager
+		 * @param root    the directory
+		 * @param run     the run
+		 * @throws IOException if fixture I/O fails
+		 */
+		private LinkedRun(HarnessRunManager manager, Path root, HarnessRun run) throws IOException
+		{
+			this(manager, run, copy(manager, root, run), new HarnessRunnerOptions(root.resolve("artifact"),
+				root.resolve("runs"), root, "model-a", "effort-a", root.resolve("evidence/transcript.jsonl"), true,
+				root.resolve("evidence/receipt.json"), false, false, 1, List.of(), List.of(), null, List.of(), 0, null,
+				0, null, null, null, false, null, null, null), root.resolve("evidence/receipt.json"));
+		}
+
+		/**
+		 * Copies the source project into the run.
+		 *
+		 * @param manager the run's manager
+		 * @param root    the directory
+		 * @param run     the run
+		 * @return the run's project
+		 * @throws IOException if fixture I/O fails
+		 */
+		private static Path copy(HarnessRunManager manager, Path root, HarnessRun run) throws IOException
+		{
+			Path outside = Files.createDirectories(root.resolve("outside/tree"));
+			Files.writeString(root.resolve("outside/notes.md"), "notes");
+			Files.writeString(outside.resolve("a.md"), "a");
+			Path source = Files.createDirectories(root.resolve("source"));
+			Files.writeString(Files.createDirectory(source.resolve("shared")).resolve("guide.md"), "guide");
+			Files.createSymbolicLink(Files.createDirectory(source.resolve("docs")).resolve("guide.md"),
+				Path.of("../shared/guide.md"));
+			Files.writeString(source.resolve("own.md"), "own");
+			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../outside/notes.md"));
+			Files.createSymbolicLink(source.resolve("tree"), Path.of("../outside/tree"));
+			manager.copyProject(source, run);
+			return run.directory().resolve("project");
 		}
 	}
 

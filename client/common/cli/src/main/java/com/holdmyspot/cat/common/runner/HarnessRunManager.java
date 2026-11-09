@@ -35,10 +35,12 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
@@ -418,8 +420,8 @@ public final class HarnessRunManager
 	/**
 	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
 	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
-	 * same target; any other link becomes a read-only copy of the file or directory tree that it leads to. Each file and
-	 * directory below the project's own directory that is read-only stays read-only.
+	 * same target; any other link becomes a read-only copy of the file or directory tree that it leads to, which the run
+	 * records so that {@link #changedLinkCopies(HarnessRun)} can tell whether its session changed the copy.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
@@ -434,10 +436,10 @@ public final class HarnessRunManager
 	/**
 	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
 	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
-	 * same target; any other link becomes a read-only copy of the file or directory tree that it leads to, so that the
-	 * run can neither change the target nor change its copy. Each file and directory below the project's own directory
-	 * that is read-only stays read-only, as {@link PortableFiles#setReadOnly(Path)} makes it, which keeps the read-only
-	 * copies of a request's project read-only when the request's project is copied.
+	 * same target; any other link becomes a copy of the file or directory tree that it leads to, read-only as
+	 * {@link PortableFiles#setReadOnly(Path)} makes it, so that the run can neither change the target nor change its
+	 * copy. The run records each copy's paths, types, modes and file digests in its own directory, where its session may
+	 * not write, so that {@link #changedLinkCopies(HarnessRun)} can tell whether the session changed a copy anyway.
 	 *
 	 * @param source     the source project directory
 	 * @param run        the owned run
@@ -462,6 +464,8 @@ public final class HarnessRunManager
 		Path runs = root.toRealPath();
 		Map<Path, Path> links = new LinkedHashMap<>();
 		List<Path> readOnlyDirectories = new ArrayList<>();
+		Set<Path> copiedDirectories = new HashSet<>();
+		List<Path> copies = new ArrayList<>();
 		ProjectTree.copy(normalized, nullDevice, path -> path.equals(gitMetadata) || path.equals(runs),
 			new ProjectTree.Writer()
 			{
@@ -469,9 +473,12 @@ public final class HarnessRunManager
 				public void directory(Path relative, Path directory, boolean copy) throws IOException
 				{
 					Path copied = Files.createDirectories(destination.resolve(relative));
-					// The project's own directory stays writable, so that the run can add its Git baseline
-					if (!relative.toString().isEmpty() && (copy || PortableFiles.isReadOnly(directory)))
+					if (copy)
+					{
+						addCopy(relative);
+						copiedDirectories.add(relative);
 						readOnlyDirectories.add(copied);
+					}
 				}
 
 				@Override
@@ -479,8 +486,23 @@ public final class HarnessRunManager
 				{
 					Path copied = destination.resolve(relative);
 					Files.copy(file, copied, COPY_ATTRIBUTES);
-					if (copy || PortableFiles.isReadOnly(file))
+					if (copy)
+					{
+						addCopy(relative);
 						PortableFiles.setReadOnly(copied);
+					}
+				}
+
+				/**
+				 * Adds a file or directory of a copy of a link's target to the copies, if it is the copy's root.
+				 *
+				 * @param relative its path relative to the project
+				 */
+				private void addCopy(Path relative)
+				{
+					// A copy's entries follow its root, and the project's own directory is never a copy
+					if (!copiedDirectories.contains(relative.getParent()))
+						copies.add(relative);
 				}
 
 				@Override
@@ -493,20 +515,41 @@ public final class HarnessRunManager
 		// A directory becomes read-only only once nothing more is added to it
 		for (Path directory : readOnlyDirectories)
 			PortableFiles.setReadOnly(directory);
+		LinkCopies.write(destination, copies, run.directory().resolve(LinkCopies.FILE_NAME));
+	}
+
+	/**
+	 * Compares the read-only copies that {@link #copyProject(Path, HarnessRun, Path)} made of the targets of the
+	 * project's links outside it with the record that it kept of them. Once the run's session has ended, a change means
+	 * that the session changed a copy, and the run's result rests on files that differ from the targets. A run whose
+	 * project was never copied has no copies.
+	 *
+	 * @param run the owned run
+	 * @return a diagnostic that names each changed path, or empty if no copy changed
+	 * @throws NullPointerException if {@code run} is null
+	 * @throws IOException          if the record is malformed or a copy cannot be read
+	 */
+	public Optional<String> changedLinkCopies(HarnessRun run) throws IOException
+	{
+		requireThat(run, "run").isNotNull();
+		Path record = run.directory().resolve(LinkCopies.FILE_NAME);
+		if (Files.notExists(record, NOFOLLOW_LINKS))
+			return Optional.empty();
+		return LinkCopies.changes(run.directory().resolve("project"), record);
 	}
 
 	/**
 	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
-	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused. A
-	 * symbolic link is copied as a link with the same relative target and is never followed, so that a link of a draft
-	 * directory reaches the project file that it names. A workspace file that the sandbox has replaced with a
-	 * placeholder is left out.
+	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused, and
+	 * so is one whose path lies in a read-only copy of the target of a link outside the project. A symbolic link is
+	 * copied as a link with the same relative target and is never followed, so that a link of a draft directory reaches
+	 * the project file that it names. A workspace file that the sandbox has replaced with a placeholder is left out.
 	 *
 	 * @param source the directory that holds the workspace files at their paths relative to the project root
 	 * @param run the owned run
 	 * @throws IOException if the source is not a real directory, contains a symbolic-link directory, contains a link
-	 *   whose target is absolute or lies outside the project, a workspace file's path exists in the project already, or
-	 *   copying fails
+	 *   whose target is absolute or lies outside the project, a workspace file's path exists in the project already or
+	 *   lies in a read-only copy of a link's target, or copying fails
 	 */
 	public void copyWorkspace(Path source, HarnessRun run) throws IOException
 	{
@@ -525,7 +568,8 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException          if the source is not a real directory, contains a symbolic-link directory, contains
 	 *                              a link whose target is absolute or lies outside the project, a workspace file's path
-	 *                              exists in the project already, or copying fails
+	 *                              exists in the project already or lies in a read-only copy of a link's target, or
+	 *                              copying fails
 	 */
 	public void copyWorkspace(Path source, HarnessRun run, Path nullDevice) throws IOException
 	{
@@ -536,6 +580,11 @@ public final class HarnessRunManager
 		if (Files.isSymbolicLink(normalized) || !Files.isDirectory(normalized, NOFOLLOW_LINKS))
 			throw new IOException("Workspace source is not a real directory");
 		Path destination = run.directory().resolve("project");
+		Path record = run.directory().resolve(LinkCopies.FILE_NAME);
+		Set<String> copies = Set.of();
+		if (Files.exists(record, NOFOLLOW_LINKS))
+			copies = LinkCopies.roots(record);
+		Set<String> copyRoots = copies;
 		Files.walkFileTree(normalized, new SimpleFileVisitor<>()
 		{
 			@Override
@@ -544,6 +593,7 @@ public final class HarnessRunManager
 			{
 				if (Files.isSymbolicLink(directory))
 					throw new IOException("Workspace files contain a symbolic-link directory");
+				requireOutsideCopies(directory);
 				Path target = destination.resolve(normalized.relativize(directory));
 				if (Files.isSymbolicLink(target))
 					throw new IOException("The project holds a symbolic link where a workspace directory goes: " + target);
@@ -557,6 +607,7 @@ public final class HarnessRunManager
 			{
 				if (SandboxPlaceholders.isPlaceholder(file, attributes, nullDevice))
 					return CONTINUE;
+				requireOutsideCopies(file);
 				Path copy = destination.resolve(normalized.relativize(file));
 				if (Files.isSymbolicLink(file))
 				{
@@ -570,6 +621,24 @@ public final class HarnessRunManager
 				// Without REPLACE_EXISTING, a workspace file that collides with a project file is refused
 				Files.copy(file, copy, NOFOLLOW_LINKS);
 				return CONTINUE;
+			}
+
+			/**
+			 * Refuses a workspace file or directory that would go into a read-only copy of a link's target, which the
+			 * run checks after its session for changes.
+			 *
+			 * @param path the workspace file or directory
+			 * @throws IOException if a copy holds its path in the project
+			 */
+			private void requireOutsideCopies(Path path) throws IOException
+			{
+				Path relative = normalized.relativize(path);
+				Optional<String> root = LinkCopies.rootOf(copyRoots, relative);
+				if (root.isPresent())
+				{
+					throw new IOException("The workspace file " + relative + " goes into " + root.get() + ", a " +
+						"read-only copy of the target of a symbolic link outside the project");
+				}
 			}
 		});
 	}

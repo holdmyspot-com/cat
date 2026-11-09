@@ -308,7 +308,8 @@ public final class SessionRequestCliTest
 	 * Verifies that a request carries a project's symbolic link whose target lies inside the project as a link with the
 	 * same target, which the receiver extracts as a link that resolves inside the extracted project, and a link whose
 	 * target lies outside the project as a read-only copy of the target's file or directory tree, even when a link's
-	 * target is longer than a tar header holds. The run's copy of the extracted project keeps those copies read-only,
+	 * target is longer than a tar header holds. The receiver extracts each copy beside the project and links to it, so
+	 * that the run's copy of the extracted project holds read-only copies of them, which the run checks for changes;
 	 * the targets stay unchanged, and the run and the extracted request still delete.
 	 *
 	 * @throws IOException if fixture I/O fails
@@ -356,18 +357,32 @@ public final class SessionRequestCliTest
 			}
 			requireThat(Files.readString(copy.resolve("alias/guide.md")), "alias").isEqualTo("guide");
 			requireThat(Files.readString(copy.resolve("deep.md")), "deep").isEqualTo("deep");
-			for (String name : List.of("notes.md", "tree", "tree/a.md"))
-				requireThat(Files.isSymbolicLink(copy.resolve(name)), name).isFalse();
+			// The copies of the targets outside the project lie beside it, and the project links to them
+			Path linkTargets = inputs.resolve("link-targets").toRealPath();
+			for (String name : List.of("notes.md", "tree"))
+			{
+				requireThat(Files.isSymbolicLink(copy.resolve(name)), name).isTrue();
+				requireThat(copy.resolve(name).toRealPath().startsWith(linkTargets), name + "InLinkTargets").isTrue();
+			}
 			requireThat(Files.readString(copy.resolve("notes.md")), "notes").isEqualTo("notes");
 			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
 			requireReadOnlyCopies(copy);
 
-			// The runner copies the extracted project into the run, which keeps the copies read-only
+			// The runner copies the extracted project into the run, which holds read-only copies of the targets that it
+			// checks for changes
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(copy, run);
-			requireReadOnlyCopies(run.directory().resolve("project"));
+			Path runProject = run.directory().resolve("project");
+			for (String name : List.of("notes.md", "tree", "tree/a.md"))
+				requireThat(Files.isSymbolicLink(runProject.resolve(name)), name + "InRun").isFalse();
+			requireReadOnlyCopies(runProject);
+			requireThat(manager.changedLinkCopies(run), "unchanged").isEmpty();
+			PortableFiles.clearReadOnly(runProject.resolve("tree/a.md"));
+			Files.writeString(runProject.resolve("tree/a.md"), "changed");
+			requireThat(manager.changedLinkCopies(run).orElseThrow(), "changed").
+				contains("tree/a.md (content changed, made writable)");
 			requireThat(Files.readString(root.resolve("outside/notes.md")), "target").isEqualTo("notes");
 			requireThat(Files.readString(outside.resolve("a.md")), "treeTarget").isEqualTo("a");
 			manager.fail(run, "test cleanup");

@@ -464,7 +464,9 @@ public final class SessionRequestBrokerTest
 	{
 		return new Object[][]{{"outside"}, {"absolute"}, {"parent"}, {"drive"}, {"backslash"},
 			{"link_escape"}, {"link_absolute"}, {"link_beyond_project"}, {"link_back_out"}, {"link_broken"},
-			{"link_through"}, {"link_in_plugin"}, {"hardlink_entry"}, {"special"}, {"duplicate"}, {"directory_duplicate"},
+			{"link_through"}, {"link_in_plugin"}, {"copy_in_link_targets"}, {"copy_writable_entry"}, {"copy_link"},
+			{"copy_after_entry"}, {"copy_inside_copy"}, {"hardlink_entry"}, {"special"}, {"duplicate"},
+			{"directory_duplicate"},
 			{"too_many"}, {"large_entry"}, {"pax_chain"}, {"pax_size"}, {"long_chain"}, {"long_size"},
 			{"manifest_size"}, {"prompt_size"}, {"total_size"}, {"checksum"}, {"sparse"},
 			{"request_link"}, {"request_hardlink"}, {"oversized"},
@@ -475,7 +477,9 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that hostile inputs produce refusals and never reach the child starter. Among them are symbolic links
 	 * that the extracted project cannot hold: one whose target leaves the project, by its text or through another link,
-	 * or does not exist, one that an entry's path passes through, and one outside the project.
+	 * or does not exist, one that an entry's path passes through, and one outside the project. Among them too are
+	 * read-only copies of link targets that the extracted project cannot hold: an entry where the copies go, a writable
+	 * entry or a link in a copy, a copy that comes after an entry inside it, and a copy inside another.
 	 * <p>
 	 * The entry-count, cumulative-size and whole-archive-size cases cross the bounds that {@link #limits(String)}
 	 * gives the broker, which are small enough for a few small entries to cross; the other cases use the bounds of
@@ -519,6 +523,18 @@ public final class SessionRequestBrokerTest
 				requireThat(response.path("reason").asString(), "sizeRefusal").contains("bounds");
 			if (kind.startsWith("link_"))
 				requireThat(response.path("reason").asString(), "linkRefusal").contains("symbolic link");
+			if (kind.startsWith("copy_"))
+			{
+				String expected = switch (kind)
+				{
+					case "copy_in_link_targets" -> "lies in link-targets";
+					case "copy_writable_entry" -> "is writable but lies in a read-only copy";
+					case "copy_link" -> "is a symbolic link in a copy";
+					case "copy_after_entry" -> "which another entry lies in";
+					default -> "comes before the read-only copy";
+				};
+				requireThat(response.path("reason").asString(), "copyRefusal").contains(expected);
+			}
 			requireThat(Files.exists(fixture.responses.resolve(".temporary")), "temporaryResponse").isFalse();
 		}
 	}
@@ -1407,6 +1423,27 @@ public final class SessionRequestBrokerTest
 						entry(archive, "project/link/written", new byte[0]);
 					}
 					case "link_in_plugin" -> link(archive, "plugins/0/link", "../../project/marker");
+					case "copy_in_link_targets" -> entry(archive, "link-targets/0", new byte[0]);
+					case "copy_writable_entry" ->
+					{
+						readOnlyEntry(archive, "project/copy/", new byte[0]);
+						entry(archive, "project/copy/written", new byte[0]);
+					}
+					case "copy_link" ->
+					{
+						readOnlyEntry(archive, "project/copy/", new byte[0]);
+						link(archive, "project/copy/link", "../marker");
+					}
+					case "copy_after_entry" ->
+					{
+						entry(archive, "project/copy/written", new byte[0]);
+						readOnlyEntry(archive, "project/copy/", new byte[0]);
+					}
+					case "copy_inside_copy" ->
+					{
+						readOnlyEntry(archive, "project/copy/inner", new byte[0]);
+						readOnlyEntry(archive, "project/copy/", new byte[0]);
+					}
 					case "hardlink_entry", "special", "sparse" ->
 					{
 						byte type = '1';
@@ -1538,6 +1575,29 @@ public final class SessionRequestBrokerTest
 		private static void entry(TarArchiveOutputStream archive, String name, byte[] content) throws IOException
 		{
 			TarArchiveEntry entry = new TarArchiveEntry(name, true);
+			entry.setSize(content.length);
+			archive.putArchiveEntry(entry);
+			archive.write(content);
+			archive.closeArchiveEntry();
+		}
+
+		/**
+		 * Adds a file or directory that lacks every write permission to a test archive, as the copy of a project
+		 * link's target does.
+		 *
+		 * @param archive the fixture archive
+		 * @param name    the entry name, which ends with {@code /} for a directory
+		 * @param content the file's content
+		 * @throws IOException if writing fails
+		 */
+		private static void readOnlyEntry(TarArchiveOutputStream archive, String name, byte[] content)
+			throws IOException
+		{
+			TarArchiveEntry entry = new TarArchiveEntry(name, true);
+			if (name.endsWith("/"))
+				entry.setMode(040555);
+			else
+				entry.setMode(0100444);
 			entry.setSize(content.length);
 			archive.putArchiveEntry(entry);
 			archive.write(content);

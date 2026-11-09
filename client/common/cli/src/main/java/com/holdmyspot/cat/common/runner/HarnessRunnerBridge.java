@@ -103,7 +103,8 @@ public final class HarnessRunnerBridge
 	 *
 	 * @return the run that completed the protocol
 	 *
-	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails
+	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Writer output) throws IOException
@@ -122,7 +123,8 @@ public final class HarnessRunnerBridge
 	 * @param options the runner options, null when the caller does not serve the session as a runner
 	 * @param requestedStarter starts child runners, null only when no request broker starts
 	 * @return the completed parent run
-	 * @throws IOException if the bridge or a request broker fails
+	 * @throws IOException if the bridge or a request broker fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter) throws IOException
@@ -164,7 +166,8 @@ public final class HarnessRunnerBridge
 	 * @param requestedStarter starts child runners, null only when no request broker starts
 	 * @param conversation the conversation whose messages are the bridge's records, or null to read {@code input}
 	 * @return the completed parent run
-	 * @throws IOException if the bridge or a request broker fails
+	 * @throws IOException if the bridge or a request broker fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter,
@@ -178,6 +181,7 @@ public final class HarnessRunnerBridge
 		// Set once the client interrupts the active turn
 		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
 		AtomicBoolean transcriptRecorded = new AtomicBoolean();
+		boolean copiesChecked = false;
 		try
 		{
 			try (HarnessRunSession session = starter.start();
@@ -322,6 +326,12 @@ public final class HarnessRunnerBridge
 			}
 			if (manager != null)
 			{
+				// The session has ended, so the copies are as it left them; it may not end the run with a result that
+				// rests on changed copies
+				copiesChecked = true;
+				Optional<String> changes = manager.changedLinkCopies(run);
+				if (changes.isPresent())
+					throw new IOException(changes.get());
 				manager.markCompleted(run);
 				if (!keepRun)
 					manager.deleteRun(run);
@@ -332,10 +342,14 @@ public final class HarnessRunnerBridge
 		{
 			if (manager != null && run != null)
 			{
-				String diagnostic = e.getMessage();
+				IOException failure = e;
+				if (!copiesChecked)
+					failure = withChangedLinkCopies(manager, run, e);
+				String diagnostic = failure.getMessage();
 				if (diagnostic == null)
-					diagnostic = e.getClass().getSimpleName();
+					diagnostic = failure.getClass().getSimpleName();
 				manager.fail(run, diagnostic);
+				throw failure;
 			}
 			throw e;
 		}
@@ -343,6 +357,36 @@ public final class HarnessRunnerBridge
 		{
 			stopTurn(activeTurn);
 		}
+	}
+
+	/**
+	 * Adds to the failure of a run whose session has ended any change that the session made to the read-only copies of
+	 * the targets of the project's links outside it, so that the run's diagnostic names each changed path whatever else
+	 * failed.
+	 *
+	 * @param manager the lifecycle manager
+	 * @param run     the failed run
+	 * @param failure why the run failed
+	 * @return {@code failure}, or a failure that names the changed copies and is caused by {@code failure}
+	 */
+	private static IOException withChangedLinkCopies(HarnessRunManager manager, HarnessRun run, IOException failure)
+	{
+		Optional<String> changes;
+		try
+		{
+			changes = manager.changedLinkCopies(run);
+		}
+		catch (IOException e)
+		{
+			failure.addSuppressed(e);
+			return failure;
+		}
+		if (changes.isEmpty())
+			return failure;
+		String reason = failure.getMessage();
+		if (reason == null)
+			reason = failure.getClass().getSimpleName();
+		return new IOException(changes.get() + " The run also failed: " + reason, failure);
 	}
 
 	/**
@@ -470,7 +514,8 @@ public final class HarnessRunnerBridge
 	 *
 	 * @return the run that completed the protocol
 	 *
-	 * @throws IOException if the bridge protocol, harness, lifecycle, or transcript I/O fails
+	 * @throws IOException if the bridge protocol, harness, lifecycle, or transcript I/O fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
 		Path output) throws IOException
@@ -510,7 +555,8 @@ public final class HarnessRunnerBridge
 	 *
 	 * @return the run that completed the protocol
 	 *
-	 * @throws IOException if the bridge protocol, harness, lifecycle, transcript or receipt I/O fails
+	 * @throws IOException if the bridge protocol, harness, lifecycle, transcript or receipt I/O fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
 		JsonMapper json, FileReplacer replacer, Reader input, Writer output) throws IOException
@@ -534,7 +580,8 @@ public final class HarnessRunnerBridge
 	 * @param output the bridge output when no output path is requested
 	 * @param requestedStarter starts requested child runners
 	 * @return the completed run
-	 * @throws IOException if bridge execution or evidence publication fails
+	 * @throws IOException if bridge execution or evidence publication fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
 		JsonMapper json, FileReplacer replacer, Reader input, Writer output, RequestedSessionStarter requestedStarter)
@@ -566,7 +613,8 @@ public final class HarnessRunnerBridge
 	 * @param output           the bridge output when no output path is requested
 	 * @param requestedStarter starts requested child runners
 	 * @return the completed run
-	 * @throws IOException if bridge execution or evidence publication fails
+	 * @throws IOException if bridge execution or evidence publication fails,
+	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
 	private static HarnessRun serveRecords(HarnessRunStarter starter, HarnessRunManager manager,
 		HarnessRunnerOptions options, JsonMapper json, FileReplacer replacer, Reader input, Writer output,
