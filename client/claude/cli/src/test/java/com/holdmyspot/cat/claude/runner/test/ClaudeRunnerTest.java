@@ -26,6 +26,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -264,8 +265,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that each Claude authentication variable alone lets a run start, so that the runner copies no login
-	 * file, whichever of them the caller sets.
+	 * Verifies that each Claude authentication variable alone lets a run start, even though neither the user's Claude
+	 * configuration directory nor the macOS Keychain holds a login, and that the runner then asks the Keychain
+	 * nothing, because the session authenticates through the variable.
 	 *
 	 * @param variable the authentication variable
 	 * @throws IOException if the fixture cannot be built
@@ -273,39 +275,18 @@ public final class ClaudeRunnerTest
 	@Test(dataProvider = "authenticationVariables")
 	public void acceptsEachLoginVariable(String variable) throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-login-")).toRealPath();
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
 
-			ClaudeRunner.requireLogin(JsonMapper.builder().build(), Map.of("PATH", "",
-				Platform.current().homeVariable(), home.toString(), variable, "fake-token"));
-		}
-	}
+			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", Platform.MACOS_ARM64.homeVariable(), home.toString(),
+				variable, "fake-token"), Platform.MACOS_ARM64);
 
-	/**
-	 * Verifies that a run is refused, with the reason that names the command that creates a token and the variable
-	 * that holds it, when no authentication variable holds a value, even though the caller's Claude configuration
-	 * directory holds a login file.
-	 *
-	 * @param environment the caller's environment, without a usable authentication variable
-	 * @throws IOException if the fixture cannot be built
-	 */
-	@Test(dataProvider = "environmentsWithoutLogin")
-	public void refusesRunWithoutLoginVariable(Map<String, String> environment) throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-login-")).toRealPath();
-			Path configuration = Files.createDirectory(home.resolve(".claude"));
-			Files.writeString(configuration.resolve(".credentials.json"), "{}");
-			Map<String, String> caller = new HashMap<>(environment);
-			caller.put(Platform.current().homeVariable(), home.toString());
-
-			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
-				ClaudeRunner.requireLogin(JsonMapper.builder().build(), caller));
-
-			requireThat(refusal.getMessage(), "message").contains("claude setup-token").
-				contains("CLAUDE_CODE_OAUTH_TOKEN");
+			requireThat(keychain.commands(), "commands").isEmpty();
 		}
 	}
 
@@ -318,15 +299,188 @@ public final class ClaudeRunnerTest
 	@Test
 	public void acceptsLoginVariableFromSettings() throws IOException
 	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-login-")).toRealPath();
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
 			Files.writeString(Files.createDirectory(home.resolve(".claude")).resolve("settings.json"), """
 				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "fake-token"}}
 				""");
 
-			ClaudeRunner.requireLogin(JsonMapper.builder().build(), Map.of("PATH", "",
-				Platform.current().homeVariable(), home.toString()));
+			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", Platform.MACOS_ARM64.homeVariable(), home.toString()),
+				Platform.MACOS_ARM64);
+
+			requireThat(keychain.commands(), "commands").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a run is refused, with a reason that tells the user to log in to Claude Code with {@code /login}
+	 * and names the user's Claude configuration directory, when no authentication variable holds a value and the
+	 * user's login store holds no login: the configuration directory holds no {@code .credentials.json} and, on
+	 * macOS, the Keychain holds no login item. The directory is the one that {@code CLAUDE_CONFIG_DIR} names when it
+	 * is set, even though {@code .claude} in the home directory then holds a login file.
+	 *
+	 * @param platform    the platform whose login store the runner checks
+	 * @param configured  whether the caller's environment names the configuration directory in
+	 *                    {@code CLAUDE_CONFIG_DIR}
+	 * @param environment the rest of the caller's environment, without a usable authentication variable
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "environmentsWithoutLogin")
+	public void refusesRunWithoutLogin(Platform platform, boolean configured, Map<String, String> environment)
+		throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+			Path configuration = Files.createDirectory(home.resolve(".claude"));
+			Map<String, String> caller = new HashMap<>(environment);
+			caller.put(platform.homeVariable(), home.toString());
+			if (configured)
+			{
+				Files.writeString(configuration.resolve(".credentials.json"), "{}");
+				configuration = Files.createDirectory(home.resolve("claude-config"));
+				caller.put("CLAUDE_CONFIG_DIR", configuration.toString());
+			}
+			Path loginDirectory = configuration;
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
+				ClaudeRunner.requireLogin(jvm, caller, platform));
+
+			requireThat(refusal.getMessage(), "message").contains("/login").contains(loginDirectory.toString()).
+				doesNotContain("setup-token");
+		}
+	}
+
+	/**
+	 * Verifies that a run starts without an authentication variable when the user's Claude configuration directory
+	 * holds Claude Code's login file, {@code .credentials.json}, whether the directory is {@code .claude} in the
+	 * home directory or the one that {@code CLAUDE_CONFIG_DIR} names, because the session's Claude Code uses the
+	 * user's login there.
+	 *
+	 * @param platform   the platform whose login store the runner checks
+	 * @param configured whether the caller's environment names the configuration directory in
+	 *                   {@code CLAUDE_CONFIG_DIR}
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "loginDirectories")
+	public void acceptsUserLoginFile(Platform platform, boolean configured) throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+			Map<String, String> caller = new HashMap<>();
+			caller.put("PATH", "");
+			caller.put(platform.homeVariable(), home.toString());
+			Path configuration = home.resolve(".claude");
+			if (configured)
+			{
+				configuration = home.resolve("claude-config");
+				caller.put("CLAUDE_CONFIG_DIR", configuration.toString());
+			}
+			Files.writeString(Files.createDirectory(configuration).resolve(".credentials.json"), "{}");
+
+			ClaudeRunner.requireLogin(jvm, caller, platform);
+		}
+	}
+
+	/**
+	 * Verifies that on macOS a run starts without an authentication variable or login file when the Keychain holds
+	 * the user's Claude Code login item, and that the runner only asks whether the item exists, without {@code -w},
+	 * so that the Keychain reveals no secret: the item's account is the user's name, and its service is
+	 * {@code Claude Code-credentials}, followed, when {@code CLAUDE_CONFIG_DIR} names the configuration directory,
+	 * by {@code -} and the first eight hexadecimal digits of the SHA-256 hash of the variable's value in Unicode
+	 * normalization form C.
+	 *
+	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR}, or an empty string if it sets none
+	 * @param service    the Keychain service of the user's login item
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "keychainServices")
+	public void acceptsKeychainLogin(String configured, String service) throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+			Map<String, String> caller = new HashMap<>();
+			caller.put("PATH", "");
+			caller.put("HOME", home.toString());
+			caller.put("USER", "alice");
+			if (!configured.isEmpty())
+				caller.put("CLAUDE_CONFIG_DIR", configured);
+
+			ClaudeRunner.requireLogin(jvm, caller, Platform.MACOS_ARM64);
+
+			requireThat(keychain.commands(), "commands").isEqualTo(List.of(List.of("/usr/bin/security",
+				"find-generic-password", "-a", "alice", "-s", service)));
+		}
+	}
+
+	/**
+	 * Verifies that on macOS the runner looks up the Keychain item of a user whose name Claude Code does not use as
+	 * an account, because it holds a character other than an ASCII letter, a digit, {@code .}, {@code _} or
+	 * {@code -}, under the account {@code claude-code-user}, as Claude Code stores it.
+	 *
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test
+	public void looksUpKeychainLoginOfUnusualUserName() throws IOException
+	{
+		FakeKeychain keychain = new FakeKeychain(FakeKeychain.FOUND);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+
+			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", "HOME", home.toString(), "USER", "Alice Smith"),
+				Platform.MACOS_ARM64);
+
+			requireThat(keychain.commands(), "commands").isEqualTo(List.of(List.of("/usr/bin/security",
+				"find-generic-password", "-a", "claude-code-user", "-s", "Claude Code-credentials")));
+		}
+	}
+
+	/**
+	 * Verifies that on macOS a run starts when the Keychain answers neither that it holds the login item nor that it
+	 * holds none, as when the Keychain is locked: the runner refuses a run only when it knows that there is no login,
+	 * and the session's Claude Code then reports what keeps it from the login.
+	 *
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test
+	public void startsRunWhenKeychainCannotTell() throws IOException
+	{
+		// errSecInteractionNotAllowed, which security reports while the Keychain is locked
+		FakeKeychain keychain = new FakeKeychain(36);
+		try (TestJvmScope build = new TestJvmScope();
+			TestJvmScope jvm = keychain.scope(build.temporaryDirectory());
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-claude-login-")).
+				toRealPath();
+
+			ClaudeRunner.requireLogin(jvm, Map.of("PATH", "", "HOME", home.toString(), "USER", "alice"),
+				Platform.MACOS_ARM64);
+
+			requireThat(keychain.commands().size(), "commands").isEqualTo(1);
 		}
 	}
 
@@ -347,18 +501,164 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Returns caller environments that hold no usable authentication variable.
+	 * Returns platforms, whether the caller names its Claude configuration directory, and caller environments that
+	 * hold no usable authentication variable.
 	 *
-	 * @return the environments
+	 * @return the platforms, choices and environments
 	 */
 	@DataProvider
 	public static Object[][] environmentsWithoutLogin()
 	{
+		Map<String, String> blank = Map.of("PATH", "", "CLAUDE_CODE_OAUTH_TOKEN", "", "ANTHROPIC_API_KEY", " ");
 		return new Object[][]
 		{
-			{Map.of("PATH", "")},
-			{Map.of("PATH", "", "CLAUDE_CODE_OAUTH_TOKEN", "", "ANTHROPIC_API_KEY", " ")}
+			{Platform.LINUX_X64, false, Map.of("PATH", "")},
+			{Platform.LINUX_X64, false, blank},
+			{Platform.LINUX_X64, true, Map.of("PATH", "")},
+			{Platform.WINDOWS_X64, false, Map.of("PATH", "")},
+			{Platform.WINDOWS_X64, true, Map.of("PATH", "")},
+			{Platform.MACOS_ARM64, false, Map.of("PATH", "", "USER", "alice")},
+			{Platform.MACOS_ARM64, true, blank}
 		};
+	}
+
+	/**
+	 * Returns platforms and whether the caller names its Claude configuration directory.
+	 *
+	 * @return the platforms and choices
+	 */
+	@DataProvider
+	public static Object[][] loginDirectories()
+	{
+		return new Object[][]
+		{
+			{Platform.LINUX_X64, false},
+			{Platform.LINUX_X64, true},
+			{Platform.WINDOWS_X64, false},
+			{Platform.WINDOWS_X64, true},
+			{Platform.MACOS_ARM64, false},
+			{Platform.MACOS_ARM64, true}
+		};
+	}
+
+	/**
+	 * Returns values of {@code CLAUDE_CONFIG_DIR} and the Keychain service of the login item that Claude Code stores
+	 * for each, including the same directory name in Unicode normalization forms D and C.
+	 *
+	 * @return the values and services
+	 */
+	@DataProvider
+	public static Object[][] keychainServices()
+	{
+		return new Object[][]
+		{
+			{"", "Claude Code-credentials"},
+			{"/Users/alice/claude-config", "Claude Code-credentials-1ab0976d"},
+			{"/Users/alice/claude-café", "Claude Code-credentials-347c1370"},
+			{"/Users/alice/claude-café", "Claude Code-credentials-347c1370"}
+		};
+	}
+
+	/**
+	 * Verifies that the Claude process environment points the session's Claude Code at the user's login store,
+	 * through {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, while its configuration directory stays the run's own: the
+	 * store is the directory that the caller's {@code CLAUDE_CONFIG_DIR} names, as written there, or else
+	 * {@code .claude} in the caller's home directory. The session therefore uses and refreshes the user's own Claude
+	 * login, and its settings stay its own.
+	 *
+	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR} below the fixture's folder, or an empty
+	 *                   string if it sets none
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test(dataProvider = "userConfigurations")
+	public void sharesUserLoginWithSession(String configured) throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
+			Path userHome = Files.createDirectory(root.resolve("user"));
+			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put(Platform.current().homeVariable(), userHome.toString());
+			String loginDirectory = userHome.resolve(".claude").toString();
+			if (!configured.isEmpty())
+			{
+				loginDirectory = root + configured;
+				environment.put("CLAUDE_CONFIG_DIR", loginDirectory);
+			}
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+
+			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginDirectory").isEqualTo(loginDirectory);
+			requireThat(result.get("CLAUDE_CONFIG_DIR"), "configurationDirectory").
+				isEqualTo(runHome.resolve(".claude").toString());
+		}
+	}
+
+	/**
+	 * Returns values of {@code CLAUDE_CONFIG_DIR} below a folder, including one that ends in a name separator.
+	 *
+	 * @return the values
+	 */
+	@DataProvider
+	public static Object[][] userConfigurations()
+	{
+		return new Object[][]
+		{
+			{""},
+			{File.separator + "claude-config"},
+			{File.separator + "claude-config" + File.separator}
+		};
+	}
+
+	/**
+	 * Verifies that the commands of a session cannot read the user's Claude login file, in {@code .claude} in the
+	 * user's home directory or in the directory that {@code CLAUDE_CONFIG_DIR} names, although the session's Claude
+	 * Code uses the login there: the session's sandbox policy denies reading both files and lets the commands neither
+	 * write nor read again any directory that holds them.
+	 *
+	 * @throws IOException if the run or its settings cannot be created
+	 */
+	@Test
+	public void deniesUserLoginToSessionCommands() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-user-login-")).
+				toRealPath();
+			Path userHome = Files.createDirectory(root.resolve("user"));
+			Path defaultLogin = Files.writeString(Files.createDirectory(userHome.resolve(".claude")).
+				resolve(".credentials.json"), "{}");
+			Path configured = Files.createDirectory(root.resolve("claude-config"));
+			Path configuredLogin = Files.writeString(configured.resolve(".credentials.json"), "{}");
+			Map<String, String> environment = Map.of(Platform.current().homeVariable(), userHome.toString(),
+				"CLAUDE_CONFIG_DIR", configured.toString());
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("claude");
+			manager.snapshotProject(run);
+			Path project = Files.createDirectories(run.directory().resolve("project/.git")).getParent();
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(), environment);
+
+			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
+				run.directory().resolve("home/.claude/settings.json"), run.directory().resolve("claude"),
+				run.directory().resolve("home"), List.of(), run.directory(), deniedReads, "", null, project,
+				run.directory(), null, ExtraPermissions.NONE, "api.example");
+
+			requireThat(policy.readDenials(), "readDenials").contains(defaultLogin).contains(configuredLogin);
+			List<Path> grants = new ArrayList<>(policy.writeRoots());
+			grants.addAll(policy.readReallowances());
+			for (Path grant : grants)
+			{
+				requireThat(defaultLogin.startsWith(grant), "defaultLogin.startsWith(" + grant + ")").isFalse();
+				requireThat(configuredLogin.startsWith(grant), "configuredLogin.startsWith(" + grant + ")").isFalse();
+			}
+		}
 	}
 
 	/**

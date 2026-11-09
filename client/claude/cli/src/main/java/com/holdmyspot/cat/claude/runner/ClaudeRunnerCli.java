@@ -466,7 +466,7 @@ public final class ClaudeRunnerCli
 			ChildPolicy bound = policyBound(scope.json(), options);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
-			ClaudeRunner.requireLogin(scope.json(), environment);
+			ClaudeRunner.requireLogin(process, environment, Platform.current());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);

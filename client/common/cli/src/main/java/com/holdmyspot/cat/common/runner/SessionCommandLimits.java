@@ -17,10 +17,11 @@ import java.util.Set;
  * files are, for a Codex session, its login in the run's home, the copy of the user's login that its runner puts
  * there, which a harness that the session starts from a command reads, and its {@code config.toml}, which holds no
  * login and from which CAT's {@code read-part} command reads the session's tool output limit. A Claude session has no
- * login file: it authenticates through a variable. The user's own logins and the other harness's files in the run's
- * home stay unreadable. The commands of a Codex session receive none of the {@link #CREDENTIAL_VARIABLES}. The
- * commands of a Claude session receive Claude's connection credentials, which the session's parent has too, and a
- * harness that the session starts from a command authenticates through them.
+ * login file of its own: its Claude Code uses the user's own Claude login, which its commands cannot read. The user's
+ * own logins and the other harness's files in the run's home stay unreadable. The commands of a Codex session receive
+ * none of the {@link #CREDENTIAL_VARIABLES}. The commands of a Claude session receive Claude's connection credentials,
+ * which the session's parent has too, and a harness that the session starts from a command authenticates only
+ * through them.
  * <p>
  * The user's harness directories stay readable apart from those files, because the plugins installed in a session
  * link to files there. Each runner applies these limits through its harness's own sandbox settings and environment.
