@@ -4,6 +4,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tes
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
@@ -11,8 +12,18 @@ import com.holdmyspot.cat.common.installer.secrets.ProcessElevationSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -163,6 +174,101 @@ public final class ProcessElevationTest
 	}
 
 	/**
+	 * The check reports the user ID that a fake {@code id} program prints, although other threads start processes
+	 * while the program is written. A process that another thread starts inherits the file that this thread is writing
+	 * until the new process closes its inherited descriptors, and Linux refuses to run a file that a process holds
+	 * open for writing. A check whose program could not be run reports administrative rights, which is correct for a
+	 * program that fails, so the fixtures must hand the check a program that can run. The threads that write a
+	 * program and check it, and the threads that only start processes, run for a bounded time and each result must
+	 * be the printed unprivileged ID.
+	 *
+	 * @throws IOException          if a fixture cannot be created
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException   if a thread fails
+	 */
+	@Test
+	public void reportsIdWhileProcessesStart() throws IOException, InterruptedException,
+		ExecutionException
+	{
+		int writers = 4;
+		int starters = 4;
+		Duration duration = Duration.ofSeconds(2);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(testDirectory("process-elevation-busy-"));
+			Path stable = fakeId(Files.createDirectories(directory.resolve("stable")), "echo 1000",
+				"@echo 1000");
+			AtomicBoolean stop = new AtomicBoolean();
+			AtomicInteger wrong = new AtomicInteger();
+			AtomicInteger checks = new AtomicInteger();
+			try (ExecutorService threads = Executors.newFixedThreadPool(writers + starters))
+			{
+				try
+				{
+					List<Future<?>> done = new ArrayList<>();
+					for (int i = 0; i < starters; ++i)
+					{
+						done.add(threads.submit(() ->
+						{
+							while (!stop.get())
+								countWrong(stable, wrong, checks);
+							return null;
+						}));
+					}
+					long end = System.nanoTime() + duration.toNanos();
+					for (int i = 0; i < writers; ++i)
+					{
+						Path own = directory.resolve("writer" + i);
+						done.add(threads.submit(() ->
+						{
+							int count = 0;
+							while (System.nanoTime() < end)
+							{
+								count += 1;
+								Path id = fakeId(Files.createDirectories(own.resolve(Integer.toString(count))),
+									"echo 1000", "@echo 1000");
+								countWrong(id, wrong, checks);
+							}
+							return null;
+						}));
+					}
+					for (Future<?> writer : done.subList(starters, done.size()))
+						writer.get(1, TimeUnit.MINUTES);
+					stop.set(true);
+					for (Future<?> starter : done.subList(0, starters))
+						starter.get(1, TimeUnit.MINUTES);
+				}
+				catch (TimeoutException e)
+				{
+					throw new AssertionError("A thread did not end", e);
+				}
+				finally
+				{
+					stop.set(true);
+				}
+			}
+
+			requireThat(checks.get(), "checks").isGreaterThan(0);
+			requireThat(wrong.get(), "wrong").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Runs the check on a fake {@code id} program that prints an unprivileged user ID, and counts the result.
+	 *
+	 * @param id     the program
+	 * @param wrong  counts the checks that reported administrative rights
+	 * @param checks counts the checks
+	 */
+	private static void countWrong(Path id, AtomicInteger wrong, AtomicInteger checks)
+	{
+		boolean elevated = ProcessElevationSecrets.getProcessElevationAccess().runsAsRoot(id, Duration.ofSeconds(10));
+		checks.incrementAndGet();
+		if (elevated)
+			wrong.incrementAndGet();
+	}
+
+	/**
 	 * The check counts a program that prints more than it accepts as one that failed, so that output which hides the
 	 * user ID after a long stretch of blanks never counts as unprivileged. The fake {@code id} program prints
 	 * {@code 1000} after more blanks than the check accepts, which a check that read all of it would report as an
@@ -207,7 +313,42 @@ public final class ProcessElevationTest
 		Path id = Files.writeString(directory.resolve("id"), "#!/bin/sh\n[ $# = 1 ] && [ \"$1\" = -u ] || exit 2\n" +
 			posix + "\n");
 		requireThat(id.toFile().setExecutable(true), "executable").isTrue();
+		awaitRunnable(id);
 		return id;
+	}
+
+	/**
+	 * Waits until the operating system runs a program that a test has just written. A process that another thread
+	 * starts while this thread writes the program inherits the open file until it closes its inherited descriptors,
+	 * and Linux refuses to run the program until then. The check reports administrative rights for a program that
+	 * cannot be run, so a program that was handed over too early would make the check report a result that the
+	 * program's output does not justify. The program is run once without arguments, which the fake programs reject
+	 * at once. Once that run starts, no process holds the file open for writing, because none can inherit a
+	 * descriptor that this thread has closed.
+	 *
+	 * @param program the program that the test has written
+	 * @throws IOException if the program cannot be started, or does not end
+	 */
+	private static void awaitRunnable(Path program) throws IOException
+	{
+		ProcessBuilder builder = new ProcessBuilder(program.toString()).
+			redirectOutput(ProcessBuilder.Redirect.DISCARD).
+			redirectError(ProcessBuilder.Redirect.DISCARD);
+		// Yields between attempts instead of sleeping, and retries a refusal until the process that holds the file ends
+		try (Process process = new ExecutableFiles(Thread::yield, Clock.systemUTC()).run(builder))
+		{
+			process.getOutputStream().close();
+			if (!process.waitFor(1, TimeUnit.MINUTES))
+			{
+				process.destroyForcibly();
+				throw new IOException(program + " did not end");
+			}
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for " + program, e);
+		}
 	}
 
 	/**
@@ -302,6 +443,7 @@ public final class ProcessElevationTest
 		Path whoami = Files.writeString(directory.resolve("whoami"), "#!/bin/sh\n" +
 			"[ \"$*\" = '/groups /fo csv /nh' ] || exit 2\nexec cat '" + printed + "'\n");
 		requireThat(whoami.toFile().setExecutable(true), "executable").isTrue();
+		awaitRunnable(whoami);
 		return whoami;
 	}
 
