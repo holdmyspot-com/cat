@@ -398,10 +398,14 @@ marketplace folder and asks the harness to install it, installs CAT's files that
 start-up cache for the plugin's runtime, rewrites the permission entries to name the new version folder's installer, and
 deletes the version folders that are no longer kept. The running installer's code wrote those entries, and an older
 build may write entries that the new version no longer writes, so `install` then runs the new version folder's installer
-once, with the same arguments; that run finds its version active and rewrites every settings entry with the new
-version's code, and `install` reports its result with the update's. When that run fails, `install` reports `failed` and
-names the command that writes the new entries: the new version folder's installer with the same arguments. An installer
-from a build before this step cannot take it, so after an update from such a build, run that command once more.
+once, with the same arguments except that they always name the release it installed: after `install --harness codex`
+or `install --harness codex latest` that installed release 1.2, the run is `install --harness codex v1.2`, so a release
+published in between cannot make it update again. That run asks you nothing: a change that you declined during the
+update stays unmade and is not offered again. It finds its version active and rewrites every settings entry with the
+new version's code, and `install` reports its result with the update's. When that run fails, `install` reports `failed`
+and names the command that writes the new entries: the new version folder's installer with those arguments. An
+installer of 1.0+b9988e2d31183 or earlier cannot take this step, so after an update from such a build, run that command
+once more.
 
 When the requested release is the build that is already active, `install` reports `up_to_date` and installs no new
 version folder; it still installs CAT's files that the harness reads outside the plugin again, runs the data migrations
@@ -422,12 +426,14 @@ because a migration of a newer release has shaped the data and the older release
 release to install instead.
 
 Installs lock the selected harness, download and validate into staging, then install. The installer runs the data
-migration scripts that the release registers and, when it prepares the start-up cache, the plugin's Java runtime; it
-runs nothing else from the archive. Unsafe archive paths, escaping symlinks, unsupported entries, and mismatched
-contents are refused before anything is installed. A second operation waits up to ten minutes for the lock. Each result
-is a JSON object; diagnostics go to standard error and the log is `<data>/state/<h>/update.log`. An install that stops
-after it began to change the harness reports `failed`, or `not_writable` with the path; run the same command again,
-which repeats the steps that did not finish. The installer does not restore the previous version.
+migration scripts that the release registers, the plugin's Java runtime when it prepares the start-up cache, and, once
+an update has made another version active, that version's installer; it runs nothing else from the archive. Unsafe
+archive paths, escaping symlinks, unsupported entries, and mismatched contents are refused before anything is
+installed. A second operation waits up to ten minutes for the lock. Each result is a JSON object; diagnostics go to
+standard error and the log is `<data>/state/<h>/update.log`. An install that stops after it began to change the harness
+reports `failed`, or `not_writable` with the path. Run the command that its message names, such as the new version
+folder's installer after a failed run of it; when the message names none, run the same command again. Either repeats
+the steps that did not finish. The installer does not restore the previous version.
 
 Each install that adds a plugin prepares a start-up cache for the runtime that the plugin runs. Its result's `aot_cache`
 field says whether that succeeded, and `false` only means slower start-up.
@@ -445,7 +451,7 @@ app-server notices an install without restart remains unverified.
 | `3` | Release, signature, archive, policy, migration, consent or harness program refused before anything changed; inspect the message. |
 | `4` | Download failed; retry after restoring connectivity. |
 | `9` | Uninstall stopped at a step (`uninstall_incomplete`); run the same uninstall command again to continue. |
-| `10` | An unexpected error stopped the operation after it may have changed the installation (`failed`); run the same command again to continue. |
+| `10` | An error stopped the operation after it may have changed the installation (`failed`); run the command that the message names, or else the same command again, to continue. |
 | `75` | Lock wait expired; retry after the other operation finishes. |
 | `77` | A required path is not writable; run the operation yourself outside the agent's sandbox. |
 

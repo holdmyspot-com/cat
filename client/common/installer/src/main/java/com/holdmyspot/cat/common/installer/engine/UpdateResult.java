@@ -145,8 +145,8 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 		 */
 		UNINSTALL_INCOMPLETE(9),
 		/**
-		 * An error stopped an operation after it started to change the harness's installation; running the same
-		 * install again repairs it.
+		 * An error stopped an operation after it started to change the harness's installation; running the command
+		 * that the message names repairs it, or, when the message names none, running the same install again.
 		 */
 		FAILED(10),
 		/**
