@@ -1093,6 +1093,54 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a session whose run's caller granted no session requests, which finds how to request one in CAT's
+	 * rules, sees in its run's limits that the run allows none, and that a request that it makes with
+	 * {@code request-session} anyway exits with status 2, starts no session, and is answered with a reason that names
+	 * the options with which the run's caller allows sessions.
+	 *
+	 * @throws IOException if fixture, broker or request I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void requestSessionRefusedWithoutGrant() throws IOException
+	{
+		// Requirement: R-I9, R-I11
+		try (Fixture fixture = new Fixture(new String[0]))
+		{
+			AtomicInteger checks = new AtomicInteger();
+			StringWriter printed = new StringWriter();
+			int status;
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					throw new AssertionError("The refused request started a session");
+				}))
+			{
+				broker.start(_ -> () ->
+				{
+				});
+				requireThat(fixture.json.readTree(fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE).toFile()).
+					path("requests_allowed").asInt(-1), "requestsAllowed").isEqualTo(0);
+
+				status = SessionRequestCli.execute(new String[]{"--harness", "claude", "--project",
+					fixture.project.toString(), "--prompt", fixture.project.resolve("prompt").toString(), "--model",
+					"haiku", "--effort", "low"}, fixture.requests, Clock.systemUTC(), () ->
+				{
+					if (checks.incrementAndGet() > 1_000_000)
+						throw new IOException("The request was not answered");
+					broker.scan();
+					Thread.yield();
+				}, new PrintWriter(printed, true));
+			}
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			JsonNode response = fixture.json.readTree(Path.of(printed.toString().strip()).toFile());
+			requireThat(response.path("status").asString(), "responseStatus").isEqualTo("refused");
+			requireThat(response.path("reason").asString(), "reason").
+				isEqualTo(SessionRequestAccess.NO_REQUESTS_REASON).contains("--session-requests").
+				contains("--request-depth");
+		}
+	}
+
+	/**
 	 * Returns a requested runner that answers its turns with the runner's records: it replies to each turn except
 	 * {@code hold} and {@code second}, which run until they are interrupted, reports an interrupt and then the
 	 * interrupted turn's completion, and on {@code complete} writes its receipt and exits.

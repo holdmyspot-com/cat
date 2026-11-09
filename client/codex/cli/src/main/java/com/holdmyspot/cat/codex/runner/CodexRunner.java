@@ -32,7 +32,6 @@ import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
@@ -238,14 +237,10 @@ public final class CodexRunner
 					agentInstructions = agent.developerInstructions();
 					selectedEffort = agent.effort();
 				}
-				Path requestLauncher = null;
-				if (requestAccess != null)
-					requestLauncher = requestAccess.launcher();
 				try
 				{
 					process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(),
-						worktree, isolatedHome, agentInstructions, requestLauncher, sessionRequests), selectedEffort,
-						sandbox.profile());
+						worktree, isolatedHome, agentInstructions), selectedEffort, sandbox.profile());
 				}
 				catch (IOException e)
 				{
@@ -367,29 +362,6 @@ public final class CodexRunner
 	 */
 	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions)
 	{
-		return developerInstructions(root, project, home, agentInstructions, null, 0);
-	}
-
-	/**
-	 * Returns the developer instructions of a session as
-	 * {@link #developerInstructions(Path, Path, Path, String)} does, except that the instructions of a session that may
-	 * request sessions tell it how, between the note and the agent's contract.
-	 *
-	 * @param root              the run root, as the denied reads name it
-	 * @param project           the session's project, which is its working directory
-	 * @param home              the session's Codex home
-	 * @param agentInstructions the agent's contract, or an empty string for a session without an agent
-	 * @param requestLauncher   the absolute request-session launcher path, or {@code null} when requests are disabled
-	 * @param sessionRequests   how many sessions the session may request; {@code 0} adds no instructions
-	 * @return the developer instructions
-	 * @throws NullPointerException     if any required argument is null
-	 * @throws IllegalArgumentException if {@code sessionRequests} is negative, or requests are enabled and
-	 *   {@code requestLauncher} is relative
-	 */
-	public static String developerInstructions(Path root, Path project, Path home, String agentInstructions,
-		Path requestLauncher, int sessionRequests)
-	{
-		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(root, "root").isNotNull();
 		requireThat(project, "project").isNotNull();
 		requireThat(home, "home").isNotNull();
@@ -399,9 +371,6 @@ public final class CodexRunner
 			"full read and write access to both. Your project's files are not in your context; read one with a shell " +
 			"command whenever a task needs it.";
 		StringJoiner instructions = new StringJoiner("\n\n").add(note);
-		if (sessionRequests > 0)
-			instructions.add(SessionRequestInstructions.text(sessionRequests, requestLauncher,
-				Platform.current().isWindows()));
 		if (!agentInstructions.isEmpty())
 			instructions.add(agentInstructions);
 		return instructions.toString();

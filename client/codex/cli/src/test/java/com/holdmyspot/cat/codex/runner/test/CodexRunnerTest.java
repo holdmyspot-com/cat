@@ -20,7 +20,6 @@ import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.LocalMarketplace;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
-import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -850,24 +849,22 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that the developer instructions of a session that may request sessions tell it how, after the note on
-	 * denied reads and before the agent's contract, and that those of a session that may request none do not.
+	 * Verifies that the developer instructions of a session, which are the same whether or not it may request
+	 * sessions, hold the note on denied reads and the agent's contract and no instructions on requesting a session,
+	 * which the session reads in CAT's rules instead.
 	 */
 	@Test
-	public void developerNoteExplainsRequests()
+	public void developerNoteAddsNoRequestInstructions()
 	{
 		// Requirement: R-I9
 		Path root = Path.of("/runs");
 		Path project = Path.of("/runs/codex/run-1/project");
 		Path home = Path.of("/runs/codex/run-1/home");
-		Path launcher = Path.of("/artifact with spaces/bin/request-session").toAbsolutePath();
-		String note = CodexRunner.developerInstructions(root, project, home, "");
 
-		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan.", launcher, 2),
-			"withRequests").
-			isEqualTo(note + "\n\n" + SessionRequestInstructions.text(2, launcher, Platform.current().isWindows()) +
-				"\n\nReview the plan.").doesNotContain("$");
-		requireThat(CodexRunner.developerInstructions(root, project, home, "", null, 0), "withoutRequests").isEqualTo(note);
+		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan."), "instructions").
+			doesNotContain("request-session").doesNotContain("CAT_REQUEST_SESSION").
+			doesNotContain("--session-requests").
+			endsWith("\n\nReview the plan.");
 	}
 
 	/**

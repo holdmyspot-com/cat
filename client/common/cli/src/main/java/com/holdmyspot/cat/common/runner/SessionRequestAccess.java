@@ -35,7 +35,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param responses the run's responses directory, where the runner answers each request
  * @param requestedRuns the run root of the requested sessions' runs
  * @param launcher  the {@code request-session} launcher of the run's artifact
- * @param shell the shell used by the session's instructions
+ * @param shell the shell of the session's commands, in whose form the launcher prints the command that waits again
  */
 public record SessionRequestAccess(Path requests, Path responses, Path requestedRuns, Path launcher, Shell shell)
 {
@@ -177,7 +177,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @param responses the run's responses directory, where the runner answers each request
 	 * @param requestedRuns the run root of the requested sessions' runs
 	 * @param launcher  the {@code request-session} launcher of the run's artifact
-	 * @param shell the shell used by the session's instructions
+	 * @param shell the shell of the session's commands, in whose form the launcher prints the command that waits again
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public SessionRequestAccess
@@ -251,7 +251,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @param sessionRequests how many sessions the session may request, which is the number of requested-run roots
 	 *                        that this creates
 	 * @param platform        the platform that the session runs on, which decides the launcher's file name
-	 * @param shell           the shell used by the session's instructions
+	 * @param shell           the shell of the session's commands, in whose form the launcher prints the command that
+	 *                        waits again
 	 * @return the access, which is never empty
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
@@ -293,31 +294,18 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the runner launchers beside a request launcher. Inside a run, each one requests a session of its harness
-	 * as the request launcher does.
+	 * Returns the runner launchers beside the request launcher. Inside a run, each one requests a session of its
+	 * harness as the request launcher does.
 	 *
-	 * @param launcher the request launcher
 	 * @return the {@code claude-runner} and {@code codex-runner} launchers, in that order, as batch files when the
 	 *   request launcher is one
-	 * @throws NullPointerException if {@code launcher} is null
 	 */
-	public static List<Path> runners(Path launcher)
+	public List<Path> runners()
 	{
-		requireThat(launcher, "launcher").isNotNull();
 		String suffix = "";
 		if (launcher.getFileName().toString().endsWith(".cmd"))
 			suffix = ".cmd";
 		return List.of(launcher.resolveSibling("claude-runner" + suffix), launcher.resolveSibling("codex-runner" + suffix));
-	}
-
-	/**
-	 * Returns the runner launchers beside the request launcher.
-	 *
-	 * @return the {@code claude-runner} and {@code codex-runner} launchers, in that order
-	 */
-	public List<Path> runners()
-	{
-		return runners(launcher);
 	}
 
 	/**

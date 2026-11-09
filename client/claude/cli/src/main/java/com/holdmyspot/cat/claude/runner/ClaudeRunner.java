@@ -34,7 +34,6 @@ import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.UserRuleTree;
 import com.holdmyspot.cat.common.runner.HarnessEventListener;
@@ -156,7 +155,7 @@ public final class ClaudeRunner
 	 * @param sessionTranscripts whether Claude persists its session and the run copies the session's transcripts, its
 	 *   subagents' included, into the run's session transcripts directory when the session closes
 	 * @param sessionRequests how many sessions the session may request; with any, the run gets its requests and
-	 *   responses directories, and the session is told how to request one
+	 *   responses directories, and the session keeps its session
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
@@ -243,11 +242,8 @@ public final class ClaudeRunner
 				selectedEffort = agent.effort();
 				selectedAgent = agent.name();
 			}
-			Path requestLauncher = null;
-			if (requestAccess != null)
-				requestLauncher = requestAccess.launcher();
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
-				readOnlyEvidence, sessionTranscripts, requestLauncher, sessionRequests);
+				readOnlyEvidence, sessionTranscripts, sessionRequests);
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			Path projectDirectory = null;
@@ -1016,14 +1012,13 @@ public final class ClaudeRunner
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts)
 	{
-		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts,
-			null, 0);
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts, 0);
 	}
 
 	/**
 	 * Builds a Claude command as
 	 * {@link #command(String, String, String, String, List, Path, List, boolean)} does, except that a session that may
-	 * request sessions is told how in its appended system prompt.
+	 * request sessions keeps its session.
 	 *
 	 * @param executable         the Claude executable
 	 * @param model              the requested model
@@ -1036,18 +1031,16 @@ public final class ClaudeRunner
 	 * @param readOnlyEvidence   executor evidence exposed through added directories
 	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
 	 *   copies; otherwise Claude keeps no session unless it may request sessions
-	 * @param requestLauncher    the absolute request-session launcher path, or {@code null} when requests are disabled
-	 * @param sessionRequests    how many sessions the session may request; {@code 0} adds no instructions and, without
+	 * @param sessionRequests    how many sessions the session may request; {@code 0}, without
 	 *   {@code sessionTranscripts}, keeps no session, while any keeps the session, whose transcript the runner
 	 *   launcher that the session runs reads to find the session's sandbox policy, in the run's home without copying it
 	 * @return the complete harness command
 	 * @throws NullPointerException     if any required argument is null
 	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
-	 *   {@code sessionRequests} is negative, or requests are enabled and {@code requestLauncher} is relative
+	 *   or {@code sessionRequests} is negative
 	 */
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
-		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, Path requestLauncher,
-		int sessionRequests)
+		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests)
 	{
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
@@ -1098,11 +1091,6 @@ public final class ClaudeRunner
 		{
 			command.add("--agent");
 			command.add(agent);
-		}
-		if (sessionRequests > 0)
-		{
-			command.add("--append-system-prompt");
-			command.add(SessionRequestInstructions.text(sessionRequests, requestLauncher, false));
 		}
 		return command;
 	}

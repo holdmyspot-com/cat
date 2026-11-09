@@ -27,7 +27,6 @@ import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.SessionRequestInstructions;
 
 import java.io.File;
 import java.io.IOException;
@@ -954,11 +953,10 @@ public final class ClaudeRunnerTest
 	@Test
 	public void persistsSessionThatMayRequestSessions()
 	{
-		Path launcher = Path.of("/plugin/bin/request-session").toAbsolutePath();
 		List<String> mayRequest = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, launcher, 2);
+			List.of(), false, 2);
 		List<String> mayRequestNone = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(),
-			Path.of("hook-results"), List.of(), false, launcher, 0);
+			Path.of("hook-results"), List.of(), false, 0);
 
 		requireThat(mayRequest, "mayRequest").doesNotContain("--no-session-persistence");
 		requireThat(mayRequestNone, "mayRequestNone").contains("--no-session-persistence");
@@ -972,7 +970,7 @@ public final class ClaudeRunnerTest
 	public void selectsAcceptEditsPermissionMode()
 	{
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, null, 0);
+			List.of(), false, 0);
 
 		int option = command.indexOf("--permission-mode");
 		requireThat(option, "option").isGreaterThan(-1);
@@ -1004,24 +1002,19 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a session that may request sessions is told how through its appended system prompt, and that a
-	 * session that may request none is told nothing.
+	 * Verifies that a session that may request sessions gets the same system prompt as one that may request none: the
+	 * command adds no instructions on requesting a session, which the session reads in CAT's rules instead.
 	 */
 	@Test
-	public void explainsSessionRequests()
+	public void addsNoRequestInstructions()
 	{
 		// Requirement: R-I9
-		Path launcher = Path.of("/artifact with spaces/bin/request-session").toAbsolutePath();
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, launcher, 2);
-		List<String> without = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, null, 0);
+			List.of(), false, 2);
 
-		int option = command.indexOf("--append-system-prompt");
-		requireThat(option, "option").isNotNegative();
-		requireThat(command.get(option + 1), "systemPrompt").
-			isEqualTo(SessionRequestInstructions.text(2, launcher, false)).doesNotContain("$");
-		requireThat(without, "without").doesNotContain("--append-system-prompt");
+		requireThat(command, "command").doesNotContain("--append-system-prompt").
+			doesNotContain("--append-system-prompt-file").doesNotContain("--system-prompt").
+			doesNotContain("--system-prompt-file");
 	}
 
 	/**

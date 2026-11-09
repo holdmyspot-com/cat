@@ -314,8 +314,8 @@ public final class RunnerLaunchersTest
 	/**
 	 * Verifies that the bundled rule on running a harness has the agent decide whether it runs inside a run before any
 	 * step that applies only outside one, says that inside a run the agent neither selects an artifact nor verifies one,
-	 * and does not present the launcher that the session's instructions name as the only one that works there, since
-	 * the plugin's runner launchers forward a launch inside a run as well.
+	 * and does not present the runner launchers beside the run's {@code request-session} launcher as the only ones that
+	 * work there, since the plugin's runner launchers forward a launch inside a run as well.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -406,6 +406,33 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
+	 * Verifies that the bundled rule on running a harness tells a session inside a run, which no instructions of its
+	 * own tell, everything it needs to request a session: which command environment variable names the
+	 * {@code request-session} launcher, where its run states how many sessions it allows and has accepted and how deep
+	 * they may nest, what each launcher's exit status means, which inputs a request refuses, which response field names
+	 * the native transcripts, and that a refusal's reason names the options of the run's caller.
+	 *
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test
+	public void runnerRuleCoversRequestsInsideRun() throws IOException
+	{
+		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
+		requireThat(rules, "rules").size().isEqualTo(1);
+		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
+		requireThat(rule, "rule").
+			contains("`CAT_REQUEST_SESSION` holds the absolute path of the `request-session` launcher").
+			contains("`limits.json`").contains("`requests_allowed`").contains("`requests_used`").
+			contains("`depth_remaining`").
+			contains("`2` when the run refused the launch").
+			contains("`2` when the run refused the request, `3` when the wait ended first").
+			contains("A prompt file must not be a symbolic link").contains("`session_transcripts`").
+			contains("which names the options with which the run's caller allows").
+			doesNotContain("its instructions name").doesNotContain("session's instructions name").
+			doesNotContain("The runner tells it how");
+	}
+
+	/**
 	 * Verifies that the bundled rule on running a harness tells an agent how to hold a conversation with a new
 	 * session through any launcher: to keep the launcher running with {@code --conversation <folder>}, to append its
 	 * turn, interrupt and end messages to the folder's {@code to-child.jsonl}, to wait for a turn's {@code turn_end}
@@ -458,8 +485,8 @@ public final class RunnerLaunchersTest
 
 	/**
 	 * Verifies that the bundled workflow routing loads the rule on running a harness, so that an agent that runs a
-	 * runner launcher, or requests a session with the {@code request-session} launcher, reads it first, and that its
-	 * condition names those launchers rather than any new Claude Code or Codex session.
+	 * runner launcher, or requests a session from inside a run, reads it first, and that its condition names those
+	 * launchers rather than any new Claude Code or Codex session, and relies on no instructions that a runner adds.
 	 *
 	 * @throws IOException if the routing cannot be read
 	 */
@@ -471,8 +498,9 @@ public final class RunnerLaunchersTest
 		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
 		requireThat(text, "workflows.md").
 			contains("Before starting a session through CAT's `claude-runner` or `codex-runner` launcher").
-			contains("`request-session`").contains("lazy load `../harness-runners.md`").
-			doesNotContain("new Claude Code or Codex session");
+			contains("requesting a session from inside a run").contains("`request-session`").
+			contains("lazy load `../harness-runners.md`").
+			doesNotContain("new Claude Code or Codex session").doesNotContain("instructions name");
 	}
 
 	/**
