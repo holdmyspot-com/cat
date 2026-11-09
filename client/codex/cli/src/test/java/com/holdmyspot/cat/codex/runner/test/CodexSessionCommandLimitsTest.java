@@ -14,6 +14,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.dataformat.toml.TomlMapper;
 
@@ -104,9 +105,9 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	}
 
 	@Override
-	protected Path ownLogin(Fixture fixture)
+	protected Optional<Path> ownLogin(Fixture fixture)
 	{
 		// The runner copies the user's login into the run's home, which is the session's Codex home
-		return fixture.runHome().resolve("auth.json");
+		return Optional.of(fixture.runHome().resolve("auth.json"));
 	}
 }

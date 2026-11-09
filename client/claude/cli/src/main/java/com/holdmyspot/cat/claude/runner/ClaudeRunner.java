@@ -12,7 +12,6 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
-import com.holdmyspot.cat.common.runner.HarnessCredentials;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
@@ -81,10 +80,6 @@ public final class ClaudeRunner
 	 * The path of a Claude plugin's manifest, relative to the plugin directory.
 	 */
 	static final Path MANIFEST = Path.of(".claude-plugin/plugin.json");
-	/**
-	 * The name of the file in Claude's configuration directory that holds Claude's login.
-	 */
-	private static final String LOGIN = ".credentials.json";
 	private final Waiting waiting;
 
 	/**
@@ -199,10 +194,6 @@ public final class ClaudeRunner
 				Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
 			Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
 				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess);
-			if (requiresCredentialFiles(isolatedEnvironment))
-			{
-				HarnessCredentials.copyAllowedFiles(hostConfiguration, isolatedConfiguration, Set.of(LOGIN));
-			}
 			Path worktree = run.directory().resolve("project");
 			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
 				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
@@ -340,7 +331,7 @@ public final class ClaudeRunner
 		ClaudeProcessEnvironment.removeUnavailablePathEntries(isolatedEnvironment);
 		ClaudeConnectionSettings.copyProcessEnvironment(environment, isolatedEnvironment);
 		isolatedEnvironment.putAll(caches.environment());
-		ClaudeConnectionSettings.copy(scope, hostSettings, isolatedEnvironment);
+		ClaudeConnectionSettings.copy(scope.json(), hostSettings, isolatedEnvironment);
 		HarnessEnvironment.setHomeDirectory(isolatedEnvironment, processHome);
 		isolatedEnvironment.put("CLAUDE_CONFIG_DIR", processHome.resolve(".claude").toString());
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
@@ -356,10 +347,9 @@ public final class ClaudeRunner
 
 	/**
 	 * Returns what a Claude child session needs beyond its run folder, as a request server asks for it before it
-	 * starts the child: the shared dependency caches, which the child writes; the host of the model provider that the
-	 * child's Claude Code connects to, which its commands reach; and the caller's login file when the child's isolated
-	 * home copies it, which happens when the caller's environment holds no Claude authentication variable and the
-	 * file exists.
+	 * starts the child: the shared dependency caches, which the child writes, and the host of the model provider that
+	 * the child's Claude Code connects to, which its commands reach. It needs no login file, because the child
+	 * authenticates through a variable that {@link #requireLogin} requires and copies no file.
 	 *
 	 * @param scope       services shared for the runner process lifetime
 	 * @param environment the caller's environment
@@ -378,10 +368,6 @@ public final class ClaudeRunner
 		// The isolated home only gives the environment's home variables a value here; nothing is written to it
 		Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
 			hostConfiguration.resolve("settings.json"), hostConfiguration.toAbsolutePath(), null);
-		List<Path> logins = new ArrayList<>();
-		Path login = hostConfiguration.resolve(LOGIN).toAbsolutePath();
-		if (requiresCredentialFiles(isolatedEnvironment) && Files.isRegularFile(login))
-			logins.add(login);
 		String modelHost;
 		try
 		{
@@ -393,20 +379,19 @@ public final class ClaudeRunner
 			// unknown, as when a cache cannot be used
 			throw new IOException(e.getMessage(), e);
 		}
-		return new ChildNeedsReport(caches.directories(), Set.of(modelHost), logins);
+		return new ChildNeedsReport(caches.directories(), Set.of(modelHost), List.of());
 	}
 
 	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
 	 * file and directory under the run root except the session's project, home, Claude temporary directory and
 	 * evidence, and every harness's login and configuration files in the session's home and in the user's home, as
-	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except the session's own login: the
-	 * {@code .credentials.json} in the Claude configuration directory of the session's home, the copy of the user's
-	 * login that the runner puts there when the caller's environment holds no Claude authentication variable, which a
-	 * Claude process that the session starts from a command, such as the prompt optimizer's sessions, reads. The
-	 * session therefore cannot read the runner's records of its own run or of any other run, the workspace files of any
-	 * run, any login but that copy, such as the user's own Claude and Codex logins, or a configuration that would let a
-	 * harness started from a command reach the model provider. A denied directory that holds the
+	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no login file in the
+	 * session's home: a Claude process that the session starts from a command, such as the prompt optimizer's
+	 * sessions, authenticates through the variable that the session's commands receive. The session therefore cannot
+	 * read the runner's records of its own run or of any other run, the workspace files of any run, any login, such as
+	 * the user's own Claude and Codex logins, or a configuration that would let a harness started from a command reach
+	 * the model provider. A denied directory that holds the
 	 * session's project, home, Claude temporary directory or evidence, such as the project that holds the run root, is
 	 * replaced by every file and directory under it except those and the directories that lead to them.
 	 * <p>
@@ -480,11 +465,9 @@ public final class ClaudeRunner
 		List<Path> harnessFiles = new ArrayList<>(SessionCommandLimits.harnessFiles(environment, platform));
 		harnessFiles.addAll(SessionCommandLimits.harnessFiles(SessionCommandLimits.homeEnvironment(home, platform),
 			platform));
-		// A Claude process that a command starts, such as a prompt optimizer's session, reads the session's own login
-		Path ownLogin = home.resolve(".claude").resolve(LOGIN).toAbsolutePath().normalize();
 		for (Path file : harnessFiles)
 		{
-			if (!file.equals(ownLogin) && Files.exists(file, NOFOLLOW_LINKS))
+			if (Files.exists(file, NOFOLLOW_LINKS))
 				result.add(file);
 		}
 		result.add(home.resolve(".claude").resolve("settings.json"));
@@ -605,16 +588,39 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Indicates whether the isolated home needs a copied credential file.
+	 * Refuses a run whose caller holds no Claude authentication variable. A session of a run never authenticates
+	 * through a copy of the user's login file: a subscription login rotates its refresh token, so the copy stops
+	 * working once the user's own session, or another copy, refreshes it, which can happen in the middle of a turn.
+	 * The session authenticates through {@code CLAUDE_CODE_OAUTH_TOKEN}, {@code ANTHROPIC_API_KEY} or
+	 * {@code ANTHROPIC_AUTH_TOKEN}, from the caller's environment or else the caller's Claude settings file, as
+	 * {@link #processEnvironment} passes them to the session.
 	 *
-	 * @param environment the parent process environment
-	 * @return {@code true} if no usable Claude authentication variable is present
+	 * @param json        the JSON mapper that reads the caller's Claude settings file
+	 * @param environment the caller's environment
+	 * @throws NullPointerException    if any of the arguments are null
+	 * @throws SessionRefusedException if none of the variables is set to a non-blank value; the message names
+	 *                                 {@code claude setup-token} and {@code CLAUDE_CODE_OAUTH_TOKEN}
+	 * @throws IOException             if the caller's Claude settings file cannot be read
 	 */
-	public static boolean requiresCredentialFiles(Map<String, String> environment)
+	public static void requireLogin(JsonMapper json, Map<String, String> environment) throws IOException
 	{
+		requireThat(json, "json").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		return AUTHENTICATION_VARIABLES.stream().map(environment::get).noneMatch(value ->
+		Map<String, String> authentication = new HashMap<>();
+		ClaudeConnectionSettings.copyProcessEnvironment(environment, authentication);
+		ClaudeConnectionSettings.copy(json, claudeConfigDirectory(environment).resolve("settings.json"),
+			authentication);
+		boolean authenticated = AUTHENTICATION_VARIABLES.stream().map(authentication::get).anyMatch(value ->
 			value != null && !value.isBlank());
+		if (!authenticated)
+		{
+			throw new SessionRefusedException("CAT does not start the session: the environment that starts it holds " +
+				"no Claude login that a run can use, and a run never copies the login file of a Claude subscription, " +
+				"because that login's refresh token rotates and the copy stops working once another session " +
+				"refreshes it. Run `claude setup-token` once, export the token that it prints as " +
+				"CLAUDE_CODE_OAUTH_TOKEN in the environment that starts Claude Code, then start a new session. An " +
+				"API key in ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN also works");
+		}
 	}
 
 	/**

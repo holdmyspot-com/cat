@@ -20,6 +20,7 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -136,9 +137,10 @@ public abstract class SessionCommandLimitsContract
 	 * from a command, such as the prompt optimizer's sessions, reads it.
 	 *
 	 * @param fixture the user and run
-	 * @return the login file
+	 * @return the login file, or empty if the runner under test copies no login, so that the session's commands may
+	 *   read no login file
 	 */
-	protected abstract Path ownLogin(Fixture fixture);
+	protected abstract Optional<Path> ownLogin(Fixture fixture);
 
 	/**
 	 * Returns the harness credential variables that the runner under test lets the session's commands receive, because
@@ -228,7 +230,7 @@ public abstract class SessionCommandLimitsContract
 					expected.add(file.toRealPath());
 			}
 			expected.removeAll(realPaths(readableHarnessFiles(fixture)));
-			expected.removeAll(realPaths(List.of(ownLogin(fixture))));
+			expected.removeAll(realPaths(ownLogin(fixture).stream().toList()));
 
 			Set<Path> denied = realPaths(limits.deniedReads());
 			for (Path file : expected)
@@ -246,10 +248,10 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that the session's commands may read the session's own login in the run's home, which a harness that
-	 * they start reads, while every other login that a harness started from a command could find stays unreadable: the
-	 * user's logins of both harnesses, in the user's home and in the Codex home that the user names, and the other
-	 * harness's login in the run's home.
+	 * Verifies that the session's commands may read the session's own login in the run's home, if the runner copies one
+	 * for a harness that they start, while every other login that a harness started from a command could find stays
+	 * unreadable: the user's logins of both harnesses, in the user's home and in the Codex home that the user names,
+	 * and the other harness's login in the run's home. A runner that copies no login leaves every login unreadable.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -261,7 +263,7 @@ public abstract class SessionCommandLimitsContract
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
 			Platform platform = Platform.current();
-			Path ownLogin = ownLogin(fixture).toAbsolutePath().normalize();
+			Optional<Path> ownLogin = ownLogin(fixture).map(login -> login.toAbsolutePath().normalize());
 			Map<String, String> commandEnvironment = new HashMap<>(limits.commandEnvironment());
 			commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(fixture.runHome(), platform));
 			Set<Path> otherLogins = new LinkedHashSet<>();
@@ -273,7 +275,7 @@ public abstract class SessionCommandLimitsContract
 						otherLogins.add(file.toAbsolutePath().normalize());
 				}
 			}
-			otherLogins.remove(ownLogin);
+			ownLogin.ifPresent(otherLogins::remove);
 			// The fixture gives the user both harnesses' logins and the run's home both harnesses' logins
 			Path codexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME")).toAbsolutePath().normalize();
 			Path userHome = fixture.userHome().toAbsolutePath().normalize();
@@ -282,8 +284,11 @@ public abstract class SessionCommandLimitsContract
 				userHome.resolve(".codex/auth.json"), codexHome.resolve("auth.json")));
 			requireThat(otherLogins.stream().anyMatch(login -> login.startsWith(runHome)), "runHomeLogin").isTrue();
 
-			requireThat(ownLogin, "ownLogin").isRegularFile();
-			requireThat(readable(limits, ownLogin), "ownLoginReadable").isTrue();
+			if (ownLogin.isPresent())
+			{
+				requireThat(ownLogin.get(), "ownLogin").isRegularFile();
+				requireThat(readable(limits, ownLogin.get()), "ownLoginReadable").isTrue();
+			}
 			for (Path login : otherLogins)
 				requireThat(readable(limits, login), "readable").withContext(login, "login").isFalse();
 		}

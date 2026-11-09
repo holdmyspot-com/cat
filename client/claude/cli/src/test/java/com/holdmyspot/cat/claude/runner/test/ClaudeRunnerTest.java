@@ -36,6 +36,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import static org.testng.Assert.expectThrows;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -123,14 +124,13 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a Claude child needs the model host that the caller's settings name, the shared caches, and the
-	 * caller's login file, which its isolated home copies when the caller's environment holds no Claude
-	 * authentication variable.
+	 * Verifies that a Claude child needs the model host that the caller's settings name and the shared caches, and
+	 * no login file, even though the caller's Claude configuration directory holds one: the child copies none.
 	 *
 	 * @throws IOException if the fixture or the report cannot be built
 	 */
 	@Test
-	public void childNeedsModelHostCachesAndLogin() throws IOException
+	public void childNeedsModelHostAndCachesButNoLogin() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -140,20 +140,19 @@ public final class ClaudeRunnerTest
 			Files.writeString(configuration.resolve("settings.json"), """
 				{"env": {"ANTHROPIC_BASE_URL": "https://Gateway.Example:8443/v1"}}
 				""");
-			Path login = Files.writeString(configuration.resolve(".credentials.json"), "{}");
+			Files.writeString(configuration.resolve(".credentials.json"), "{}");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
 
 			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
 
 			requireThat(needs.hosts(), "hosts").isEqualTo(Set.of("gateway.example"));
 			requireThat(needs.writes(), "writes").isEqualTo(List.of(home.resolve(".npm"), home.resolve(".m2")));
-			requireThat(needs.logins(), "logins").isEqualTo(List.of(login));
+			requireThat(needs.logins(), "logins").isEmpty();
 		}
 	}
 
 	/**
-	 * Verifies that a Claude child whose caller's environment holds an authentication variable needs no login file,
-	 * since its isolated home copies none.
+	 * Verifies that a Claude child whose caller's environment holds an authentication variable needs no login file.
 	 *
 	 * @throws IOException if the fixture or the report cannot be built
 	 */
@@ -167,7 +166,7 @@ public final class ClaudeRunnerTest
 			Path configuration = Files.createDirectory(home.resolve(".claude"));
 			Files.writeString(configuration.resolve(".credentials.json"), "{}");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"ANTHROPIC_API_KEY", "credential");
+				"ANTHROPIC_API_KEY", "fake-api-key");
 
 			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
 
@@ -265,14 +264,125 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies an isolated home uses a credential file only when no usable environment authentication is available.
+	 * Verifies that each Claude authentication variable alone lets a run start, so that the runner copies no login
+	 * file, whichever of them the caller sets.
+	 *
+	 * @param variable the authentication variable
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "authenticationVariables")
+	public void acceptsEachLoginVariable(String variable) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-login-")).toRealPath();
+
+			ClaudeRunner.requireLogin(JsonMapper.builder().build(), Map.of("PATH", "",
+				Platform.current().homeVariable(), home.toString(), variable, "fake-token"));
+		}
+	}
+
+	/**
+	 * Verifies that a run is refused, with the reason that names the command that creates a token and the variable
+	 * that holds it, when no authentication variable holds a value, even though the caller's Claude configuration
+	 * directory holds a login file.
+	 *
+	 * @param environment the caller's environment, without a usable authentication variable
+	 * @throws IOException if the fixture cannot be built
+	 */
+	@Test(dataProvider = "environmentsWithoutLogin")
+	public void refusesRunWithoutLoginVariable(Map<String, String> environment) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-login-")).toRealPath();
+			Path configuration = Files.createDirectory(home.resolve(".claude"));
+			Files.writeString(configuration.resolve(".credentials.json"), "{}");
+			Map<String, String> caller = new HashMap<>(environment);
+			caller.put(Platform.current().homeVariable(), home.toString());
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
+				ClaudeRunner.requireLogin(JsonMapper.builder().build(), caller));
+
+			requireThat(refusal.getMessage(), "message").contains("claude setup-token").
+				contains("CLAUDE_CODE_OAUTH_TOKEN");
+		}
+	}
+
+	/**
+	 * Verifies that a variable that the caller's Claude settings file sets in its {@code env} lets a run start, as
+	 * the session receives it from there.
+	 *
+	 * @throws IOException if the fixture cannot be built
 	 */
 	@Test
-	public void copiesCredentialFileWhenNeeded()
+	public void acceptsLoginVariableFromSettings() throws IOException
 	{
-		requireThat(ClaudeRunner.requiresCredentialFiles(Map.of()), "withoutAuthentication").isTrue();
-		requireThat(ClaudeRunner.requiresCredentialFiles(Map.of("ANTHROPIC_API_KEY", "token")),
-			"withAuthentication").isFalse();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-login-")).toRealPath();
+			Files.writeString(Files.createDirectory(home.resolve(".claude")).resolve("settings.json"), """
+				{"env": {"CLAUDE_CODE_OAUTH_TOKEN": "fake-token"}}
+				""");
+
+			ClaudeRunner.requireLogin(JsonMapper.builder().build(), Map.of("PATH", "",
+				Platform.current().homeVariable(), home.toString()));
+		}
+	}
+
+	/**
+	 * Returns the variables that each authenticate a Claude session.
+	 *
+	 * @return the variable names
+	 */
+	@DataProvider
+	public static Object[][] authenticationVariables()
+	{
+		return new Object[][]
+		{
+			{"CLAUDE_CODE_OAUTH_TOKEN"},
+			{"ANTHROPIC_API_KEY"},
+			{"ANTHROPIC_AUTH_TOKEN"}
+		};
+	}
+
+	/**
+	 * Returns caller environments that hold no usable authentication variable.
+	 *
+	 * @return the environments
+	 */
+	@DataProvider
+	public static Object[][] environmentsWithoutLogin()
+	{
+		return new Object[][]
+		{
+			{Map.of("PATH", "")},
+			{Map.of("PATH", "", "CLAUDE_CODE_OAUTH_TOKEN", "", "ANTHROPIC_API_KEY", " ")}
+		};
+	}
+
+	/**
+	 * Verifies that the Claude process environment passes the OAuth token to the session, so that the session and
+	 * the sessions that its commands request authenticate through it.
+	 *
+	 * @throws IOException if the environment cannot be built
+	 */
+	@Test
+	public void passesOauthTokenToSession() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-oauth-token-"));
+			Map<String, String> environment = new HashMap<>();
+			environment.put("PATH", "");
+			environment.put("CLAUDE_CODE_OAUTH_TOKEN", "fake-token");
+
+			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
+				HarnessDependencyCaches.NONE, home.resolve("missing-settings.json"), home, null);
+
+			requireThat(result.get("CLAUDE_CODE_OAUTH_TOKEN"), "token").isEqualTo("fake-token");
+		}
 	}
 
 	/**
@@ -609,9 +719,8 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
 	 * manifest, lock and initial project, its own settings, and the other runs and workspaces under the run root,
-	 * besides the paths that the caller denies. The session can still read its project, the rest of its home, including
-	 * the login that the run copied from the host, which a Claude process that a command starts reads, its Claude
-	 * temporary directory and the evidence that it validates.
+	 * besides the paths that the caller denies, and any login file in its home. The session can still read its project,
+	 * the rest of its home, its Claude temporary directory and the evidence that it validates.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -644,7 +753,8 @@ public final class ClaudeRunnerTest
 				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
 				directory.resolve("initial-project"), other.directory(), evidence.directory().resolve("project"),
 				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
-				evidence.directory().resolve(".lock"), workspaces, directory.resolve("home/.claude/settings.json")));
+				evidence.directory().resolve(".lock"), workspaces, directory.resolve("home/.claude/settings.json"),
+				directory.resolve("home/.claude/.credentials.json")));
 		}
 	}
 

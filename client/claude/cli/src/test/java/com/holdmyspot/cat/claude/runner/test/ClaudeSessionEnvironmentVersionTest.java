@@ -76,8 +76,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("claude");
 			manager.snapshotProject(run);
-			Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
-				resolve(".credentials.json"), "{}");
+			Files.createDirectories(run.directory().resolve("home/.claude"));
 			Files.createDirectories(hostProject.resolve("runs/workspaces"));
 			Files.writeString(source, """
 				{

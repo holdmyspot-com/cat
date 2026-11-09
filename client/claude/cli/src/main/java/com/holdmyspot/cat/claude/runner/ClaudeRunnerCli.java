@@ -262,7 +262,8 @@ public final class ClaudeRunnerCli
 			}
 			case LaunchRoute.Served _ -> RequestServer.forward(HARNESS_ID, args, plugin.get(), scopes, input,
 				waiting.every(REQUEST_POLL), output, errors);
-			case LaunchRoute.Bounded _ -> serveInProcess(args, environment, waiting, input, output, errors);
+			case LaunchRoute.Bounded _ -> serveInProcess(args, plugin.get(), environment, waiting, input, output,
+				errors);
 			case LaunchRoute.InPlace _ ->
 			{
 				try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -277,7 +278,8 @@ public final class ClaudeRunnerCli
 						errors.println(e.getMessage());
 						yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 					}
-					yield serveInProcess(bounded.toArray(String[]::new), environment, waiting, input, output, errors);
+					yield serveInProcess(bounded.toArray(String[]::new), plugin.get(), environment, waiting, input, output,
+						errors);
 				}
 			}
 		};
@@ -329,6 +331,7 @@ public final class ClaudeRunnerCli
 	 * Serves the launch in this process.
 	 *
 	 * @param args        the command's options
+	 * @param plugin      the absolute folder of the plugin that holds the launcher, which the session installs as CAT
 	 * @param environment the launcher's environment, which the launch keeps without the harness markers, so that
 	 *                    neither the runner nor the new session takes itself for the session that ran the launcher
 	 * @param waiting     the process's waiting
@@ -338,10 +341,10 @@ public final class ClaudeRunnerCli
 	 * @return the exit status
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
 	 */
-	private static int serveInProcess(String[] args, Map<String, String> environment, Waiting waiting, Reader input,
-		OutputStream output, PrintWriter errors) throws IOException
+	private static int serveInProcess(String[] args, Path plugin, Map<String, String> environment, Waiting waiting,
+		Reader input, OutputStream output, PrintWriter errors) throws IOException
 	{
-		args = HarnessRunnerOptions.withArtifact(args, PluginDirectory.of(ClaudeRunnerCli.class));
+		args = HarnessRunnerOptions.withArtifact(args, plugin);
 		environment = MARKERS.without(environment);
 		Path home = Platform.current().homeDirectory(environment);
 		try (JvmScope process = new MainJvmScope(environment, waiting))
@@ -437,8 +440,9 @@ public final class ClaudeRunnerCli
 	 * @param capacityForMaximum creates the shared harness capacity for the {@code --max-concurrency} value that the
 	 *                           command selected
 	 * @throws NullPointerException    if any argument is null
-	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, or the session's sandbox would
-	 *                                 not confine it as its policy requires
+	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, the environment holds no Claude
+	 *                                 login that a run can use, as {@link ClaudeRunner#requireLogin} decides, or the
+	 *                                 session's sandbox would not confine it as its policy requires
 	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
@@ -462,6 +466,7 @@ public final class ClaudeRunnerCli
 			ChildPolicy bound = policyBound(scope.json(), options);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
+			ClaudeRunner.requireLogin(scope.json(), environment);
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);

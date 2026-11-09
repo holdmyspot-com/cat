@@ -136,7 +136,7 @@ public final class ClaudeConnectionSettingsTest
 				"ANTHROPIC_BASE_URL", "https://process.example",
 				"ANTHROPIC_AUTH_TOKEN", "process-token",
 				"CLAUDE_CONFIG_DIR", "/host/configuration"), environment);
-			ClaudeConnectionSettings.copy(scope, settings, environment);
+			ClaudeConnectionSettings.copy(scope.json(), settings, environment);
 
 			requireThat(environment.get("ANTHROPIC_BASE_URL"), "processEndpoint").
 				isEqualTo("https://process.example");
@@ -169,7 +169,7 @@ public final class ClaudeConnectionSettingsTest
 				""");
 			Map<String, String> environment = new HashMap<>(Map.of("ANTHROPIC_AUTH_TOKEN", "process-token"));
 
-			ClaudeConnectionSettings.copy(scope, settings, environment);
+			ClaudeConnectionSettings.copy(scope.json(), settings, environment);
 
 			requireThat(environment.get("ANTHROPIC_AUTH_TOKEN"), "processToken").isEqualTo("process-token");
 			requireThat(environment.get("ANTHROPIC_BASE_URL"), "configuredBaseUrl").isEqualTo("https://gateway.example");

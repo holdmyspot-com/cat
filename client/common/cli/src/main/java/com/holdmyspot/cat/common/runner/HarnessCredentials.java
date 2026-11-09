@@ -21,8 +21,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessCredentials
 {
 	/**
-	 * The login files that the runners copy into a run, relative to the run's directory: Codex's {@code auth.json} in
-	 * the run's home and Claude Code's {@code .credentials.json} in the home's {@code .claude} directory.
+	 * The login files that a run's home may hold, relative to the run's directory: Codex's {@code auth.json}, which
+	 * the Codex runner copies into the run's home, and Claude Code's {@code .credentials.json} in the home's
+	 * {@code .claude} directory, which the Claude runner never copies and removes if one is there.
 	 */
 	private static final List<Path> LOGIN_COPIES = List.of(Path.of("home", "auth.json"),
 		Path.of("home", ".claude", ".credentials.json"));

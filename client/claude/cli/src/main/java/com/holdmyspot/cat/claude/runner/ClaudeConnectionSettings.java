@@ -142,16 +142,16 @@ public final class ClaudeConnectionSettings
 	 * into an isolated process environment, except those that the environment already holds, so that a value from the
 	 * parent process wins over the settings file's.
 	 *
-	 * @param scope       services shared for the runner process lifetime
+	 * @param json        the JSON mapper that reads the settings file
 	 * @param source      the host settings file
 	 * @param environment the mutable isolated process environment
 	 * @throws IOException if the settings file cannot be read
 	 */
-	public static void copy(HarnessRunnerScope scope, Path source, Map<String, String> environment) throws IOException
+	public static void copy(JsonMapper json, Path source, Map<String, String> environment) throws IOException
 	{
 		if (!Files.isRegularFile(source))
 			return;
-		JsonNode configured = scope.json().readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
+		JsonNode configured = json.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
 			"Claude settings")).path("env");
 		if (!configured.isObject())
 			return;

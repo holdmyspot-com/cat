@@ -67,6 +67,10 @@ public final class ClaudeRunnerCliTest
 	 * The identifier of the Claude Code session that runs the launcher.
 	 */
 	private static final String SESSION_ID = "5d2c8e4a-7b1f-4c3d-9e6a-1f2b3c4d5e6f";
+	/**
+	 * The environment of a launch that holds a Claude login, which a run requires before it takes a capacity slot.
+	 */
+	private static final Map<String, String> LOGIN = Map.of("CLAUDE_CODE_OAUTH_TOKEN", "fake-token");
 
 	/**
 	 * Creates the test.
@@ -105,7 +109,7 @@ public final class ClaudeRunnerCliTest
 					"5", "--model", "sonnet", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
-					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
+					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), LOGIN,
 						_ -> capacity);
 					throw new AssertionError("The bridge did not give up waiting for capacity");
 				}
@@ -194,7 +198,7 @@ public final class ClaudeRunnerCliTest
 			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
-			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+			ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), LOGIN, _ ->
 			{
 				throw new IllegalStateException("Capacity requested");
 			});
@@ -781,6 +785,92 @@ public final class ClaudeRunnerCliTest
 			requireThat(LaunchRoute.decide("claude", "claude", ClaudeRunnerCli.MARKERS.running(environment),
 				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
 		}
+	}
+
+	/**
+	 * Verifies that a launch of a session in this process, which every session starts through, is refused with the
+	 * refusal status when the environment holds no Claude authentication variable, even though the user's Claude
+	 * configuration directory holds a login file: the reason names the command that creates a token and the variable
+	 * that holds it, and the launch creates no run and takes no capacity slot.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void refusesLaunchWithoutLoginVariable() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Files.writeString(Files.createDirectory(home.resolve(".claude")).resolve(".credentials.json"), "{}");
+			Path project = Files.createDirectory(home.resolve("project"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
+			StringWriter errors = new StringWriter();
+			ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+				home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low", PolicyBoundFile.OPTION,
+				policyBound(home).toString()}, environment, Yielding.waiting(), new StringReader(""), output,
+				new PrintWriter(errors, true), () -> home.resolve("plugin"), () ->
+				{
+					throw new AssertionError("No session's tool scope is opened");
+				});
+
+			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+			requireThat(errors.toString(), "errors").contains("claude setup-token").contains("CLAUDE_CODE_OAUTH_TOKEN");
+			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a launch of a session in this process that holds an authentication variable is not refused for
+	 * lack of a login, so that its run goes on to start, as far as a test without a CAT artifact goes.
+	 *
+	 * @param variable the authentication variable
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test(dataProvider = "authenticationVariables")
+	public void startsLaunchWithLoginVariable(String variable) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
+			Path project = Files.createDirectory(home.resolve("project"));
+			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
+				variable, "fake-token");
+			StringWriter errors = new StringWriter();
+
+			IOException failure = expectThrows(IOException.class, () ->
+				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+					home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
+					PolicyBoundFile.OPTION, policyBound(home).toString()}, environment, Yielding.waiting(),
+					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
+					() -> home.resolve("plugin"), () ->
+					{
+						throw new AssertionError("No session's tool scope is opened");
+					}));
+
+			// The session starts and fails only because the test runs no CAT artifact
+			requireThat(failure, "failure").isNotInstanceOf(SessionRefusedException.class);
+			requireThat(failure.getMessage(), "message").doesNotContain("setup-token");
+			requireThat(errors.toString(), "errors").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns the variables that each authenticate a Claude session.
+	 *
+	 * @return the variable names
+	 */
+	@DataProvider
+	public static Object[][] authenticationVariables()
+	{
+		return new Object[][]
+		{
+			{"CLAUDE_CODE_OAUTH_TOKEN"},
+			{"ANTHROPIC_API_KEY"},
+			{"ANTHROPIC_AUTH_TOKEN"}
+		};
 	}
 
 	/**

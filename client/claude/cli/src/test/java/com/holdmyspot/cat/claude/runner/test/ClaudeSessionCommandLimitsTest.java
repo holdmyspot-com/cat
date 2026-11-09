@@ -15,6 +15,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import tools.jackson.databind.JsonNode;
 
@@ -58,11 +59,10 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 	}
 
 	@Override
-	protected Path ownLogin(Fixture fixture)
+	protected Optional<Path> ownLogin(Fixture fixture)
 	{
-		// The runner copies the user's login into the configuration directory in the run's home, which
-		// CLAUDE_CONFIG_DIR names for the session
-		return fixture.runHome().resolve(".claude/.credentials.json");
+		// The session authenticates through a variable, so the runner copies no login file
+		return Optional.empty();
 	}
 
 	@Override
