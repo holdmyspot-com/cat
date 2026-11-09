@@ -62,7 +62,7 @@ jobs:
             '$(cygpath --windows "${shellcheck_directory}")'"
           cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
           "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.11.1
+          npm install --global bats@1.13.0
           bats --version
       - name: Verify
         run: client/mvnw -f client/pom.xml verify

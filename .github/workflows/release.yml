@@ -60,7 +60,7 @@ jobs:
             '$(cygpath --windows "${shellcheck_directory}")'"
           cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
           "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.11.1
+          npm install --global bats@1.13.0
           bats --version
       # The build embeds the public half of the release signing key, so that CAT can check the release's signed manifest
       - name: Derive release public key
