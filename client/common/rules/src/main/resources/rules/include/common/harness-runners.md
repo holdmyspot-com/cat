@@ -94,8 +94,8 @@ the limits, so pass only these options, which do not include `--agent`:
 
 To hold a conversation, pass `--conversation <folder>` in place of `--input`. Each plugin must contain no symbolic
 links. In the project, a symbolic link whose target lies inside the project stays a link, and the session gets a
-read-only copy of the file or folder that any other link points to; the launcher refuses a link whose target is missing
-or that you may not read. Inside a run, the launcher leaves out the files that the sandbox hides behind the null device,
+read-only copy of the file or folder that any other link points to, and the run fails if the session changes such a
+copy; a link whose target is missing or that you may not read is refused. Inside a run, the launcher leaves out the files that the sandbox hides behind the null device,
 so the requested session sees the project as the session does. It writes the
 session's transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the
 session completed, `75` when no capacity was free, and `1` otherwise, with the reason.
