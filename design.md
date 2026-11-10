@@ -2914,7 +2914,7 @@ refuses with status `2` and the reason when a check fails:
 For each request, the new session's sandbox is the intersection of that policy and the new session's needs (its run
 folder, the denied reads, the writes and hosts that its harness's runner reports, and any `--extra-permissions`), and
 the request never supplies it: the server refuses a request that carries a bound or any other option that only CAT's
-own starters pass, such as `--capacity-held`, `--child-needs` and the `--git-*` options, and passes the new session no
+own starters pass, such as `--capacity-held`, `--child-needs`, `--continue-after-failed-turn` and the `--git-*` options, and passes the new session no
 harness option that the request named. A need that the policy lacks is refused with the message and settings entries
 given above. The server starts the session inside its harness's own sandbox, as its own descendant, in a run of its
 own whose runner applies the request's `--session-requests` and `--request-depth` to that session's own requests, so
@@ -2951,7 +2951,13 @@ the child's reply and tool events of each turn, then a line `{"turn_end": <n>, "
 ends, where the status is `completed`, `interrupted` or `failed`, so the asking session waits for that line before it
 reads the reply. An interrupt ends only the turn in progress, with the status `interrupted`, in both harnesses, and the
 conversation continues; Claude Code reports an interrupted turn as failed, and the launcher reports it as interrupted and
-keeps the child. The last line the launcher writes, however the child ends, is `{"ended": "<response status>"}`, so an
+keeps the child. A turn that fails while the harness keeps running, such as one that a provider error or a usage
+limit rejects, ends only that turn, with the status `failed`: the `turn_failed` record before the `turn_end` line names
+the cause in the harness's own words, the conversation stays open, and the next `turn` message, sent at once or after
+the cause is gone, continues the same harness session (user request, 2026-11-10). A turn that fails because the harness
+itself ended ends the conversation, and `{"end": true}` after a failed last turn ends it with `{"ended": "failed"}`. A
+session that CAT serves for one of its own commands, such as the optimizer's, and a launch with prompts still fail at
+the request after a failed turn. The last line the launcher writes, however the child ends, is `{"ended": "<response status>"}`, so an
 asking session that waits for a `turn_end` that never comes sees the end instead. Appended files are the channel in both directions, because they work in both harnesses'
 sandboxes on every platform and need no reader to be present when a message is written; a background command in
 Claude Code has no standard input that the session can write to. The launcher sends each turn to the runner that serves its
