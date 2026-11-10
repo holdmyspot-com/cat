@@ -988,7 +988,8 @@ public final class HarnessRunManagerTest
 			}
 			catch (IOException e)
 			{
-				requireThat(e.getMessage(), "message").contains("symbolic link link").contains(nullDevice.toString());
+				requireThat(e.getMessage(), "message").contains("symbolic link link").
+					contains(nullDevice.toRealPath().toString());
 			}
 		}
 	}
