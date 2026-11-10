@@ -901,6 +901,7 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture())
 		{
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			AtomicReference<List<String>> runnerOptions = new AtomicReference<>();
 			Path folder = fixture.root.resolve("conversation");
 			// The asking session sends a malformed line with its first turn, its second turn and an interrupt once
 			// the first turn has ended, its third turn once the second has ended, and ends the conversation after
@@ -914,6 +915,7 @@ public final class SessionRequestBrokerTest
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, options, _) ->
 				{
+					runnerOptions.set(options);
 					FakeHarnessCli process = conversingRunner(fixture, fileLocks, options, child);
 					child.set(process);
 					return process;
@@ -931,6 +933,8 @@ public final class SessionRequestBrokerTest
 					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true));
 			}
 			requireThat(status, "status").isEqualTo(0);
+			// The requested session's runner keeps the conversation open after a turn fails
+			requireThat(runnerOptions.get(), "runnerOptions").contains("--continue-after-failed-turn");
 			requireThat(fromChild(fixture.json, folder), "fromChild").isEqualTo(List.of("refused oops",
 				"turn_completed reply 1", "{\"turn_end\":1,\"status\":\"completed\"}", "interrupted",
 				"turn_completed reply 2", "{\"turn_end\":2,\"status\":\"interrupted\"}", "turn_completed reply 3",

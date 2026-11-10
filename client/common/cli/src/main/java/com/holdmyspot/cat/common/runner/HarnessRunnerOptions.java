@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.HomeProject;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -56,12 +57,14 @@ import tools.jackson.databind.json.JsonMapper;
  *   format of {@link ExtraPermissions}, or {@code null} if the launch asks for none
  * @param turnCopy the directory that receives a copy of the run's project and initial project at the end of each turn
  *   that completes, before the turn's {@code turn_completed} record, or {@code null} if the launch asks for none
+ * @param continueAfterFailedTurn indicates whether the bridge keeps serving after a turn fails while the harness keeps
+ *   running, because the records are a conversation's; a conversation named by {@code conversation} always does
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
-	String gitName, String gitEmail, Path extraPermissions, Path turnCopy)
+	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -154,6 +157,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			if (option.equals("--capacity-held"))
 			{
 				options.capacityHeld = true;
+				index += 1;
+				continue;
+			}
+			if (option.equals(RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION))
+			{
+				options.continueAfterFailedTurn = true;
 				index += 1;
 				continue;
 			}
@@ -257,7 +266,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
-			options.turnCopy);
+			options.turnCopy, options.continueAfterFailedTurn);
 	}
 
 	/**
@@ -626,6 +635,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *   {@code null} if the launch asks for none
 	 * @param turnCopy the directory that receives a copy of the run's project and initial project at the end of each
 	 *   turn that completes, or {@code null} if the launch asks for none
+	 * @param continueAfterFailedTurn whether the bridge keeps serving after a turn fails while the harness keeps
+	 *   running, because the records are a conversation's
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
 	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions} and {@code turnCopy}
@@ -767,5 +778,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private String gitEmail;
 		private Path extraPermissions;
 		private Path turnCopy;
+		private boolean continueAfterFailedTurn;
 	}
 }

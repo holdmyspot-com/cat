@@ -146,9 +146,11 @@ public final class ScriptedProcess implements HarnessProcess
 	 * <p>
 	 * The turn gives each of its event lines to the listener, then ends by its kind: a reply completes the turn with
 	 * exit status 0 and the turn's messages, the last of which is its response; a harness that exits fails the turn
-	 * with the turn's exit status and a description on standard error, and stays ended; a rejected turn throws; and a
-	 * turn that blocks waits until the caller interrupts it, during the turn or after preparing it, and then completes
-	 * with no messages or throws, as the process's {@link InterruptedTurn} says.
+	 * with the turn's exit status and a description on standard error, and stays ended; a rejected turn throws; a turn
+	 * that fails and runs fails with the turn's exit status and its cause on standard error, and the harness stays
+	 * alive; and a turn that blocks
+	 * waits until the caller interrupts it, during the turn or after preparing it, and then completes with no messages
+	 * or throws, as the process's {@link InterruptedTurn} says.
 	 *
 	 * @param request  the non-blank user prompt
 	 * @param listener receives each harness event line
@@ -205,6 +207,8 @@ public final class ScriptedProcess implements HarnessProcess
 						"The harness ended before the turn's result", false);
 				}
 				case REJECTED -> throw new IOException("The harness rejected the turn");
+				case FAILS_AND_RUNS -> new HarnessProcessResult(turn.exitStatus(), output.toString(),
+					turn.messages().getFirst(), false);
 				case BLOCKS_UNTIL_INTERRUPTED ->
 				{
 					await(interrupt);

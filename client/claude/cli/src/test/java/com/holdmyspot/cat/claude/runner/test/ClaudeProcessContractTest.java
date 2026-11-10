@@ -280,7 +280,8 @@ public final class ClaudeProcessContractTest extends HarnessProcessContract
 					print(List.of(STATE_RUNNING, INIT));
 					cli.exit();
 				}
-				case REJECTED -> print(List.of(STATE_RUNNING, INIT, ERROR_REPLY, ERROR_RESULT, STATE_IDLE));
+				case REJECTED, FAILS_AND_RUNS ->
+					print(List.of(STATE_RUNNING, INIT, ERROR_REPLY, ERROR_RESULT, STATE_IDLE));
 				case BLOCKS_UNTIL_INTERRUPTED ->
 				{
 					int answer = 0;

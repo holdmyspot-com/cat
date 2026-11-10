@@ -164,7 +164,8 @@ public final class ScriptedHarness
 	 *
 	 * @param events     the harness event lines that the harness prints during the turn
 	 * @param kind       how the turn ends
-	 * @param messages   the assistant messages of a turn that replies, in order; the last is the turn's response
+	 * @param messages   the assistant messages of a turn that replies, in order; the last is the turn's response; the
+	 *                   cause of a turn that fails and runs
 	 * @param exitStatus the exit status of a harness that exits during the turn
 	 * @param checkpoint runs the test's code while the harness works on the turn
 	 */
@@ -187,6 +188,11 @@ public final class ScriptedHarness
 			 * The harness rejects the turn, so the turn fails without a result or an exit status.
 			 */
 			REJECTED,
+			/**
+			 * The harness ends the turn as failed, such as for a usage limit, and keeps running. The turn's one message
+			 * is the cause that the harness reports.
+			 */
+			FAILS_AND_RUNS,
 			/**
 			 * The turn does not end until it is interrupted. The interrupt then ends it the way the process's
 			 * {@link ScriptedProcess.InterruptedTurn} says: with a terminal result whose response is empty, or with a
@@ -284,6 +290,20 @@ public final class ScriptedHarness
 		public static Turn exits(int exitStatus, String... events)
 		{
 			return new Turn(List.of(events), Kind.EXITS, List.of(), exitStatus, _ ->
+			{
+			});
+		}
+
+		/**
+		 * Returns a turn that the harness ends as failed, with the cause that it reports, and then keeps running.
+		 *
+		 * @param cause  the cause that the harness reports
+		 * @param events the harness event lines that the harness prints
+		 * @return the turn
+		 */
+		public static Turn failsAndRuns(String cause, String... events)
+		{
+			return new Turn(List.of(events), Kind.FAILS_AND_RUNS, List.of(cause), 1, _ ->
 			{
 			});
 		}

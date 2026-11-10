@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.Closeable;
@@ -340,6 +341,8 @@ public final class SessionRequestBroker implements Closeable
 			"--receipt", directory.resolve("receipt.json").toString()));
 		if (request.turnCopy())
 			arguments.addAll(List.of("--turn-copy", directory.resolve(TURN_COPY).toString()));
+		if (request.conversation())
+			arguments.add(RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION);
 		for (Path denied : request.deniedReads())
 			arguments.addAll(List.of("--deny-read", denied.toString()));
 		request.workspace().ifPresent(workspace -> arguments.addAll(List.of("--workspace", workspace.toString())));

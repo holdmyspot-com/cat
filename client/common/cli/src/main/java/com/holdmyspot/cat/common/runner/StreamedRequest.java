@@ -40,6 +40,10 @@ final class StreamedRequest
 	 */
 	static final String STREAM = "stream";
 	/**
+	 * The value of {@link #INPUT_FIELD} for a streamed request whose records are a conversation's.
+	 */
+	static final String CONVERSATION = "conversation";
+	/**
 	 * The record types that a streamed request may send.
 	 */
 	private static final Set<String> TYPES = Set.of("turn", "interrupt", "complete");

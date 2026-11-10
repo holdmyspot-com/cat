@@ -41,7 +41,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * <p>
  * Every record of the child is appended to {@value #FROM_CHILD_FILE} as it arrives. When the child's turn {@code n}
  * ends, a line {@code {"turn_end": n, "status": "<status>"}} follows its last record, whose status is
- * {@code interrupted} when the turn was interrupted, {@code failed} when it failed and {@code completed} otherwise.
+ * {@code interrupted} when the turn was interrupted, {@code failed} when it failed and {@code completed} otherwise. The
+ * record before the line names why a failed turn failed. A failed turn does not end the conversation while the harness
+ * runs: the next turn that the asking session sends continues the same session.
  * The last line, however the child ends, is {@code {"ended": "<status>"}}, where the status is the request's: so an
  * asking session that waits for a {@code turn_end} that never comes sees the end instead.
  * <p>

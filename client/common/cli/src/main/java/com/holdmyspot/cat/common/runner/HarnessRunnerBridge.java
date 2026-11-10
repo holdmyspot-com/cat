@@ -19,6 +19,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.List;
 import java.util.stream.Stream;
 
@@ -46,9 +47,10 @@ public final class HarnessRunnerBridge
 	 * Starts one session and serves turn and completion messages until completion. Harness events are written once as
 	 * {@code harness_event} responses; the terminal response records the status, error, final assistant response
 	 * and every assistant message in order. A turn that fails ends with a {@code turn_failed} response that records
-	 * why, and the bridge then fails at its next request, unless the client interrupted the turn and the harness keeps
-	 * running, as Claude Code does when it fails the turn that it was asked to interrupt: an interrupt ends only the
-	 * turn in progress, so the bridge then keeps serving.
+	 * why, and the bridge then fails at its next request, unless the harness keeps running and either the client
+	 * interrupted the turn, as Claude Code fails the turn that it was asked to interrupt, or the records are a
+	 * conversation's: a failed turn then ends only that turn, so the bridge keeps serving and the next turn continues
+	 * the same session. A conversation whose last turn failed fails at {@code complete}.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
@@ -181,6 +183,11 @@ public final class HarnessRunnerBridge
 		// Set once the client interrupts the active turn
 		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
 		AtomicBoolean transcriptRecorded = new AtomicBoolean();
+		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
+		// send the next turn once the cause is gone, such as a usage limit that resets
+		boolean continueAfterFailedTurn = conversation != null || (options != null && options.continueAfterFailedTurn());
+		// Why the last turn failed, if the bridge kept serving after it failed
+		AtomicReference<IOException> failedTurn = new AtomicReference<>();
 		boolean copiesChecked = false;
 		try
 		{
@@ -204,6 +211,7 @@ public final class HarnessRunnerBridge
 							if (type.equals("turn"))
 							{
 								awaitActiveTurn(activeTurn);
+								failedTurn.set(null);
 								String prompt = requiredText(request, "prompt");
 								int currentTurn = turnNumber + 1;
 								CountDownLatch turnStarted = new CountDownLatch(1);
@@ -233,7 +241,7 @@ public final class HarnessRunnerBridge
 											if (manager != null)
 												manager.writeTurnOutput(session.run(), currentTurn, result);
 											if (!result.completed())
-												throw harnessTurnFailure(result);
+												throw harnessTurnFailure(result, session.processIsAlive());
 											// The requester reads the copy once it reads this turn's response
 											if (options != null && options.turnCopy() != null)
 												KeptRunCopy.copyProjects(session.run().directory(), options.turnCopy());
@@ -243,12 +251,24 @@ public final class HarnessRunnerBridge
 											if (broker != null)
 												broker.stopChildren();
 											reportTurnFailure(session, client, e);
-											// The interrupt ended only this turn, and the harness serves the next one
-											if (turnInterrupted.get() && session.processIsAlive())
+											if (session.processIsAlive())
 											{
-												if (manager != null)
-													manager.markIdle(session.run());
-												return null;
+												// The interrupt ended only this turn, and the harness serves the next one
+												if (turnInterrupted.get())
+												{
+													if (manager != null)
+														manager.markIdle(session.run());
+													return null;
+												}
+												// The turn failed, and the harness serves the next one. The conversation's end still reports
+												// the failure if no later turn replaces it.
+												if (continueAfterFailedTurn)
+												{
+													failedTurn.set(asIoException(e));
+													if (manager != null)
+														manager.markIdle(session.run());
+													return null;
+												}
 											}
 											throw e;
 										}
@@ -305,6 +325,9 @@ public final class HarnessRunnerBridge
 							else if (type.equals("complete"))
 							{
 								awaitActiveTurn(activeTurn);
+								IOException lastFailure = failedTurn.get();
+								if (lastFailure != null)
+									throw lastFailure;
 								client.write(event(session.scope(), "completed").put("run_id", session.run().id()));
 								completed = true;
 								break;
@@ -420,8 +443,8 @@ public final class HarnessRunnerBridge
 
 	/**
 	 * Tells the client that the active turn failed, so that it stops waiting for the turn's {@code turn_completed}
-	 * response. Unless the client interrupted the turn and the harness keeps running, the bridge reports the same
-	 * failure again when it receives its next request.
+	 * response. Unless the harness keeps running and the bridge keeps serving after the turn, the bridge reports the
+	 * same failure again when it receives its next request.
 	 *
 	 * @param session the live harness session
 	 * @param client  the bridge's output
@@ -442,6 +465,19 @@ public final class HarnessRunnerBridge
 		{
 			failure.addSuppressed(e);
 		}
+	}
+
+	/**
+	 * Returns a turn's failure as the {@code IOException} that the bridge reports.
+	 *
+	 * @param failure why the turn failed
+	 * @return {@code failure} if it is an {@code IOException}; otherwise a failure that it causes
+	 */
+	private static IOException asIoException(Exception failure)
+	{
+		if (failure instanceof IOException io)
+			return io;
+		return new IOException("Active harness turn failed", failure);
 	}
 
 	/**
@@ -691,12 +727,17 @@ public final class HarnessRunnerBridge
 	 * Converts a harness turn that ended without a terminal result into the bridge's caller-visible failure.
 	 *
 	 * @param result the completed harness turn result
+	 * @param harnessRuns indicates whether the harness process is still alive
 	 *
-	 * @return the failure that preserves the harness exit status and safe diagnostic
+	 * @return the failure that preserves the harness exit status and safe diagnostic, or, if the harness runs, its
+	 *   own description of the failure
 	 */
-	private static IOException harnessTurnFailure(HarnessProcessResult result)
+	private static IOException harnessTurnFailure(HarnessProcessResult result, boolean harnessRuns)
 	{
 		assert result != null;
+		// A harness that still runs names why it failed the turn, such as a usage limit, in its own words
+		if (harnessRuns && !result.standardError().isBlank())
+			return new IOException("The harness failed the turn and keeps running: " + result.standardError().strip());
 		String diagnostic = "Harness process ended before completing the requested turn (exit status " +
 			result.exitCode() + ")";
 		if (!result.standardError().isBlank())

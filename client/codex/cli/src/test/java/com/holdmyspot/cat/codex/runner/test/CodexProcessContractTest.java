@@ -244,6 +244,8 @@ public final class CodexProcessContractTest extends HarnessProcessContract
 				}
 				lines.add(turnCompleted("completed"));
 			}
+			else if (turn.kind() == Turn.Kind.FAILS_AND_RUNS)
+				lines.add(turnCompleted("failed"));
 			print(lines);
 			if (turn.kind() == Turn.Kind.EXITS)
 				cli.exit();

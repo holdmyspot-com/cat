@@ -13,6 +13,11 @@ public final class RunnerArguments
 	 */
 	public static final String CAPACITY_HELD_OPTION = "--capacity-held";
 	/**
+	 * The runner option with which CAT starts the runner of a requested conversation, so that a turn that fails while
+	 * the harness keeps running does not end the session.
+	 */
+	public static final String CONTINUE_AFTER_FAILED_TURN_OPTION = "--continue-after-failed-turn";
+	/**
 	 * The runner option that names the Git author of the copied project.
 	 */
 	public static final String GIT_NAME_OPTION = "--git-name";

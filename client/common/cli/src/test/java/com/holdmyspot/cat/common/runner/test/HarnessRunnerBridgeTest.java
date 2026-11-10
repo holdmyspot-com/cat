@@ -226,7 +226,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null);
+				null, null, null, false);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -268,7 +268,7 @@ public final class HarnessRunnerBridgeTest
 			Path turnCopy = root.resolve("turn-copy");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1, List.of(), List.of(), null, List.of(), 0, null, 0, null,
-				null, null, false, null, null, null, turnCopy);
+				null, null, false, null, null, null, turnCopy, false);
 			List<String> copied = new ArrayList<>();
 			try (Writer output = new Writer()
 			{
@@ -566,7 +566,7 @@ public final class HarnessRunnerBridgeTest
 			this(manager, run, copy(manager, root, run), new HarnessRunnerOptions(root.resolve("artifact"),
 				root.resolve("runs"), root, "model-a", "effort-a", root.resolve("evidence/transcript.jsonl"), true,
 				root.resolve("evidence/receipt.json"), false, false, 1, List.of(), List.of(), null, List.of(), 0, null,
-				0, null, null, null, false, null, null, null, null), root.resolve("evidence/receipt.json"));
+				0, null, null, null, false, null, null, null, null, false), root.resolve("evidence/receipt.json"));
 		}
 
 		/**
@@ -641,7 +641,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, input, null, null, false, null,
-				null, null, null);
+				null, null, null, false);
 			StringWriter output = new StringWriter();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -704,6 +704,190 @@ public final class HarnessRunnerBridgeTest
 				"{\"turn_end\":1,\"status\":\"interrupted\"}", "turn_completed",
 				"{\"turn_end\":2,\"status\":\"completed\"}", "completed", "{\"ended\":\"completed\"}"));
 			requireThat(output.toString(), "output").contains("\"assistant_response\":\"two\"");
+		}
+	}
+
+	/**
+	 * Returns the turns that a harness fails while it keeps running, and the cause that each reports.
+	 *
+	 * @return pairs of a failing turn and the cause that the turn's failure names
+	 */
+	@DataProvider(name = "failedTurns")
+	public Object[][] failedTurns()
+	{
+		return new Object[][]
+			{
+				// Codex reports the failed turn in a result that did not complete, and Claude Code throws
+				{Turn.failsAndRuns("You've hit your weekly limit"), "You've hit your weekly limit"},
+				{Turn.rejected(), "The harness rejected the turn"}
+			};
+	}
+
+	/**
+	 * Verifies that a conversation stays open after a turn fails while the harness keeps running, as when a usage limit
+	 * rejects the turn: the turn ends with the status {@code failed} after a record that names the cause, the next turn
+	 * that the asking session sends reaches the same harness session, and the conversation then ends as completed.
+	 *
+	 * @param failing the turn that the harness fails
+	 * @param cause   the cause that the failure names
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(dataProvider = "failedTurns", timeOut = 10_000)
+	public void continuesConversationAfterFailedTurn(Turn failing, String cause) throws IOException
+	{
+		List<String> received = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(failing, Turn.replies("two")), received);
+			StringReader standardInput = new StringReader(""))
+		{
+			Path folder = askingFolder(cleanup,
+				"{\"turn\": \"first\"}\n{\"turn\": \"second\"}\n{\"end\": true}\n");
+
+			serveConversation(cleanup, folder, process, standardInput);
+
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			JsonMapper json = JsonMapper.builder().build();
+			List<String> fromChild = new ArrayList<>();
+			for (String line : Files.readAllLines(folder.resolve("from-child.jsonl")))
+			{
+				JsonNode record = json.readTree(line);
+				String type = record.path("type").asString("");
+				if (type.isEmpty())
+					fromChild.add(line);
+				else if (type.equals("turn_failed"))
+				{
+					requireThat(record.path("error").asString(), "error").contains(cause);
+					fromChild.add(type);
+				}
+				else if (List.of("turn_completed", "completed").contains(type))
+					fromChild.add(type);
+			}
+			requireThat(fromChild, "fromChild").isEqualTo(List.of("turn_failed",
+				"{\"turn_end\":1,\"status\":\"failed\"}", "turn_completed", "{\"turn_end\":2,\"status\":\"completed\"}",
+				"completed", "{\"ended\":\"completed\"}"));
+		}
+	}
+
+	/**
+	 * Verifies that ending a conversation whose last turn failed ends it as failed, with the failure of that turn, as
+	 * it did before a conversation could continue after a failed turn.
+	 *
+	 * @throws IOException if the conversation's files cannot be read
+	 */
+	@Test(timeOut = 10_000)
+	public void endsConversationWhoseLastTurnFailed() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.failsAndRuns("usage limit")),
+				new CopyOnWriteArrayList<>());
+			StringReader standardInput = new StringReader(""))
+		{
+			Path folder = askingFolder(cleanup, "{\"turn\": \"first\"}\n{\"end\": true}\n");
+			try
+			{
+				serveConversation(cleanup, folder, process, standardInput);
+				throw new AssertionError("The conversation ended as completed");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("usage limit");
+			}
+
+			List<String> lines = Files.readAllLines(folder.resolve("from-child.jsonl"));
+			requireThat(lines.get(lines.size() - 2), "turnEnd").isEqualTo("{\"turn_end\":1,\"status\":\"failed\"}");
+			requireThat(lines.getLast(), "last").isEqualTo("{\"ended\":\"failed\"}");
+		}
+	}
+
+	/**
+	 * Verifies that a conversation ends when the harness itself ends during a failed turn, so that no later turn
+	 * reaches a harness that is gone.
+	 *
+	 * @throws IOException if the conversation's files cannot be read
+	 */
+	@Test(timeOut = 10_000)
+	public void endsWhenHarnessEndsInFailedTurn() throws IOException
+	{
+		List<String> received = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(143), Turn.replies("two")), received);
+			StringReader standardInput = new StringReader(""))
+		{
+			Path folder = askingFolder(cleanup,
+				"{\"turn\": \"first\"}\n{\"turn\": \"second\"}\n{\"end\": true}\n");
+			try
+			{
+				serveConversation(cleanup, folder, process, standardInput);
+				throw new AssertionError("The conversation ended as completed");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("exit status 143");
+			}
+
+			requireThat(received, "received").isEqualTo(List.of("first"));
+			List<String> lines = Files.readAllLines(folder.resolve("from-child.jsonl"));
+			requireThat(lines.getLast(), "last").isEqualTo("{\"ended\":\"failed\"}");
+		}
+	}
+
+	/**
+	 * Verifies that a bridge that serves the records of a requested conversation, which its runner marks with
+	 * {@code --continue-after-failed-turn}, keeps serving after a turn fails while the harness keeps running, and that
+	 * a bridge without the option still fails at the request that follows the failed turn.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void continuesRequestedConversation() throws IOException
+	{
+		String records = "{\"type\":\"turn\",\"prompt\":\"first\"}\n{\"type\":\"turn\",\"prompt\":\"second\"}\n" +
+			"{\"type\":\"complete\"}\n";
+		for (boolean continues : List.of(true, false))
+		{
+			List<String> received = new CopyOnWriteArrayList<>();
+			try (TemporaryDirectories cleanup = new TemporaryDirectories();
+				ScriptedProcess process = new ScriptedProcess(List.of(Turn.failsAndRuns("usage limit"),
+					Turn.replies("two")), received);
+				StringReader input = new StringReader(records))
+			{
+				Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+				HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+					Yielding.fileReplacer());
+				HarnessRun run = manager.create("harness");
+				Files.createDirectories(run.directory().resolve("project"));
+				List<String> arguments = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
+					"--run-root", root.toString(), "--keep-run", "--model", "model-a", "--effort", "effort-a"));
+				if (continues)
+					arguments.add("--continue-after-failed-turn");
+				HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",
+					HarnessTemporaryRoot.of(root));
+				StringWriter output = new StringWriter();
+
+				if (continues)
+				{
+					HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+						manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
+
+					requireThat(received, "received").isEqualTo(List.of("first", "second"));
+					requireThat(output.toString(), "output").contains("\"type\":\"turn_failed\"").
+						contains("\"assistant_response\":\"two\"").contains("\"type\":\"completed\"");
+				}
+				else
+				{
+					try
+					{
+						HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+							manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
+						throw new AssertionError("The bridge served the turn after the failed turn");
+					}
+					catch (IOException e)
+					{
+						requireThat(e.getMessage(), "message").contains("usage limit");
+					}
+					requireThat(received, "received").isEqualTo(List.of("first"));
+				}
+			}
 		}
 	}
 
@@ -785,7 +969,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, true, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null);
+				null, null, null, false);
 			JsonMapper json = JsonMapper.builder().build();
 			// The harness writes the session's transcript in its home as it works on the session
 			Files.createDirectories(nativeFile.getParent());
@@ -836,7 +1020,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null);
+				null, null, null, false);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -1367,6 +1551,46 @@ public final class HarnessRunnerBridgeTest
 	{
 		clock.advance(Duration.ofSeconds(seconds));
 		ticker.tick();
+	}
+
+	/**
+	 * Creates the folder of a conversation, whose messages the asking session wrote before the bridge starts.
+	 *
+	 * @param cleanup  removes the folder
+	 * @param messages the lines that the asking session appended to {@code to-child.jsonl}
+	 * @return the conversation's folder
+	 * @throws IOException if the folder cannot be created
+	 */
+	private static Path askingFolder(TemporaryDirectories cleanup, String messages) throws IOException
+	{
+		Path folder = Files.createDirectory(cleanup.add(Files.createTempDirectory("cat-asking-")).
+			resolve("conversation"));
+		Files.writeString(folder.resolve("to-child.jsonl"), messages);
+		return folder;
+	}
+
+	/**
+	 * Serves a conversation in place, as a runner launcher that no harness runs does.
+	 *
+	 * @param cleanup       removes the run that the bridge creates
+	 * @param folder        the conversation's folder
+	 * @param process       the harness
+	 * @param standardInput the bridge's standard input, which a conversation does not read
+	 * @throws IOException if the bridge fails
+	 */
+	private static void serveConversation(TemporaryDirectories cleanup, Path folder, ScriptedProcess process,
+		StringReader standardInput) throws IOException
+	{
+		Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+		HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+			Yielding.fileReplacer());
+		HarnessRun run = manager.create("harness");
+		Files.createDirectories(run.directory().resolve("project"));
+		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
+			root.resolve("artifact").toString(), "--run-root", root.toString(), "--keep-run", "--model", "model-a",
+			"--effort", "effort-a", "--conversation", folder.toString()}, "harness", HarnessTemporaryRoot.of(root));
+		HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
 	}
 
 	/**

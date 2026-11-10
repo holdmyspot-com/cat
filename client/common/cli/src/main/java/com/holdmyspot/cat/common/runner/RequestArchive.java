@@ -1059,10 +1059,12 @@ public final class RequestArchive
 		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_RUN_INPUTS);
 		List<Path> promptFiles = namedEntries(value, inputs, "prompts", Kind.FILE, MAXIMUM_RUN_INPUTS);
 		boolean streamed = value.has(StreamedRequest.INPUT_FIELD);
-		if (streamed && !value.path(StreamedRequest.INPUT_FIELD).stringValue("").equals(StreamedRequest.STREAM))
+		String input = value.path(StreamedRequest.INPUT_FIELD).stringValue("");
+		boolean conversation = input.equals(StreamedRequest.CONVERSATION);
+		if (streamed && !input.equals(StreamedRequest.STREAM) && !conversation)
 		{
-			throw new IOException("Request accepts only \"" + StreamedRequest.STREAM + "\" as its " +
-				StreamedRequest.INPUT_FIELD);
+			throw new IOException("Request accepts only \"" + StreamedRequest.STREAM + "\" or \"" +
+				StreamedRequest.CONVERSATION + "\" as its " + StreamedRequest.INPUT_FIELD);
 		}
 		if (streamed && !promptFiles.isEmpty())
 			throw new IOException("A request whose records follow it carries no prompts: prompts");
@@ -1084,7 +1086,7 @@ public final class RequestArchive
 		if (toolOutputTokenLimit.isPresent() && toolOutputTokenLimit.get() <= 0)
 			throw new IOException("tool_output_token_limit must be positive");
 		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
-			flag(value, "install_cat"), extraPermissions(value), streamed, workspace, evidence,
+			flag(value, "install_cat"), extraPermissions(value), streamed, conversation, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), toolOutputTokenLimit,
 			flag(value, "keep_run"), flag(value, "turn_copy"), agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
@@ -1406,6 +1408,8 @@ public final class RequestArchive
 	 * @param extraPermissions   the writes and hosts that the requested session needs beyond its harness's
 	 * @param streamed           indicates whether the request's records follow it, as {@link StreamedRequest}
 	 *                           publishes them, instead of its prompts
+	 * @param conversation       indicates whether the streamed records are a conversation's, whose session stays open
+	 *                           after a turn fails
 	 * @param workspace          the extracted workspace files, or empty if the request names none
 	 * @param readOnlyEvidence   the extracted evidence files and directories that the session may read but not change
 	 * @param deniedReads        the further paths that the session may not read
@@ -1425,8 +1429,8 @@ public final class RequestArchive
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
-		boolean streamed, Optional<Path> workspace, List<Path> readOnlyEvidence, List<Path> deniedReads,
-		Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, boolean keepRun,
+		boolean streamed, boolean conversation, Optional<Path> workspace, List<Path> readOnlyEvidence,
+		List<Path> deniedReads, Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, boolean keepRun,
 		boolean turnCopy, Optional<String> agent, int sessionRequests, int requestDepth,
 		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency)
 	{

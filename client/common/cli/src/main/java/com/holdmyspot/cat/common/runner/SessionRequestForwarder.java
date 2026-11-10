@@ -605,7 +605,7 @@ public final class SessionRequestForwarder
 			String status = "failed";
 			try
 			{
-				request.put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM);
+				request.put(StreamedRequest.INPUT_FIELD, StreamedRequest.CONVERSATION);
 				RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
 					List.of(), nullDevice, limits);
 				Pause sending = () ->

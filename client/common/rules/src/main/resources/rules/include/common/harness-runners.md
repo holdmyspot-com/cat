@@ -189,8 +189,8 @@ running. Launch once it prints that it serves this session's launches; it serves
 exits with status `2` instead, report its reason to the user and do not launch, unless the reason says that another
 request server already serves this session.
 
-Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name` or `--git-email`: only CAT itself passes
-them, and the launcher refuses them. The launcher exits with `0` when the session completed, `75` when no capacity was
+Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email` or
+`--continue-after-failed-turn`: only CAT itself passes them, and the launcher refuses them. The launcher exits with `0` when the session completed, `75` when no capacity was
 free, `2` when CAT refused to start the session, and `1` otherwise, and prints the reason for any status other than
 `0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
 other reason to the user. When it asks the user to start a new session or to change a setting, as it does when this
@@ -214,6 +214,8 @@ Append one JSON object per line to `<folder>/to-child.jsonl` for each message:
 
 The session's records go to `<folder>/from-child.jsonl` as they arrive. When turn `<n>` ends, the line
 `{"turn_end": <n>, "status": "<status>"}` follows its records, with the status `completed`, `interrupted` or `failed`.
+A `failed` turn does not end the conversation: the `turn_failed` record before that line names the cause, such as a
+usage limit, and the next `turn` message, sent now or once the cause is gone, continues the same session.
 Before you read a turn's reply, search that file with your shell's search command until its `turn_end` line is there;
 then read the reply as "Replies" describes, from the same file. A line of yours that is not one of these messages is
 refused there with a `refused` line and changes nothing. The last line in that file, however the session ends, is

@@ -202,6 +202,37 @@ public abstract class HarnessProcessContract
 	}
 
 	/**
+	 * Verifies that a turn that the harness ends as failed leaves the process alive, whether the adapter reports the
+	 * failure by throwing or by a result that did not complete: the process's next turn completes with its reply.
+	 *
+	 * @throws IOException if the next turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void servesTurnAfterFailedTurn() throws IOException
+	{
+		Harness harness = start(List.of(Turn.failsAndRuns("usage limit"), Turn.replies("two")), null);
+		try (HarnessProcess process = harness.process())
+		{
+			try
+			{
+				HarnessProcessResult failed = process.sendTurn("first");
+				requireThat(failed.completed(), "completed").isFalse();
+				requireThat(failed.standardError(), "standardError").isNotBlank();
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").isNotBlank();
+			}
+			requireThat(process.isAlive(), "isAlive").isTrue();
+
+			HarnessProcessResult result = process.sendTurn("second");
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("two");
+		}
+	}
+
+	/**
 	 * Verifies that interrupting a turn in progress ends it: it completes without a reply where the harness completes
 	 * an interrupted turn, and fails otherwise.
 	 *

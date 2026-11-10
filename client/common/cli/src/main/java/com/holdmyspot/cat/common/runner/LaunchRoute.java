@@ -35,7 +35,8 @@ public sealed interface LaunchRoute
 	 * them: each one would let the session choose what bounds the new session.
 	 */
 	List<String> INTERNAL_OPTIONS = List.of(PolicyBoundFile.OPTION, RunnerArguments.CAPACITY_HELD_OPTION,
-		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION);
+		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION,
+		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION);
 
 	/**
 	 * Returns the reason for refusing a launch that a harness session runs and that names an option that only CAT's
