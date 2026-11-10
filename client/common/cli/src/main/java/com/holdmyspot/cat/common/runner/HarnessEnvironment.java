@@ -32,6 +32,19 @@ public final class HarnessEnvironment
 	 */
 	public static final String RUN_VALUE = "1";
 	/**
+	 * The variable in which a CAT runner states the class of the user's login to the sessions that it starts: the
+	 * lower-case name of a host login class, {@code subscription}, {@code api_key} or {@code unknown}.
+	 */
+	public static final String HOST_LOGIN_VARIABLE = "CAT_HOST_LOGIN";
+	/**
+	 * Every variable that a CAT runner may set in the environment of a session that it starts, and that the session's
+	 * hooks therefore inherit. A runner adds a variable to a session's environment only through this set's members,
+	 * and a hook accepts them all.
+	 */
+	public static final Set<String> RUNNER_VARIABLES = Set.of(RUN_VARIABLE, HOST_LOGIN_VARIABLE,
+		SessionRequestAccess.REQUESTS_VARIABLE, SessionRequestAccess.LAUNCHER_VARIABLE,
+		SessionRequestAccess.SHELL_VARIABLE);
+	/**
 	 * The names of the variables that name the proxy for a child's network connections, in upper and lower case.
 	 */
 	private static final List<String> PROXY_VARIABLES = List.of("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",

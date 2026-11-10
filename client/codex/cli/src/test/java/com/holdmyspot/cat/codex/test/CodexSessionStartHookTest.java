@@ -12,6 +12,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -155,6 +157,39 @@ public final class CodexSessionStartHookTest
 			requireThat(conflicting.error(), "conflictingError").contains("CAT_INSTALL_DIR conflicts with Codex PLUGIN_ROOT");
 			assertStopped(unsupported, "unsupported");
 			requireThat(unsupported.error(), "unsupportedError").contains("CAT_PROJECT_DIR conflicts with Codex PLUGIN_ROOT");
+		}
+	}
+
+	/**
+	 * Verifies a session that a CAT runner started loads CAT's rules with no conflict message: the {@code CAT_}
+	 * variables that the Codex runner sets in the session's environment, and every other variable that a CAT runner
+	 * sets in a session, including the class of the user's login, are accepted by the hook.
+	 */
+	@Test
+	public void loadsRulesInRunnerStartedSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			writeReadingGuidance(plugin);
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path run = cleanup.add(Files.createTempDirectory("cat-run-"));
+			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"), "rule");
+			Map<String, String> environment = new HashMap<>();
+			CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, run, run, run,
+				Platform.LINUX_X64).forEach((name, value) ->
+			{
+				if (name.startsWith("CAT_"))
+					environment.put(name, value);
+			});
+			for (String name : HarnessEnvironment.RUNNER_VARIABLES)
+				environment.putIfAbsent(name, "subscription");
+			environment.put("PLUGIN_ROOT", plugin.toString());
+
+			HookResult result = invoke(event(project), environment, project);
+
+			requireThat(sessionRules(result), "rules").contains("rule");
+			requireThat(result.error(), "error").isEmpty();
 		}
 	}
 

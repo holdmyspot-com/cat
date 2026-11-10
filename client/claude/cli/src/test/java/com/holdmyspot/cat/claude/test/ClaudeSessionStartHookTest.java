@@ -13,7 +13,12 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
+import com.holdmyspot.cat.claude.runner.ClaudeRunner;
+import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -221,6 +226,42 @@ public final class ClaudeSessionStartHookTest
 			SessionRequestAccess access = new SessionRequestAccess(run.resolve("requests"), run.resolve("responses"),
 				run.resolve("requested-runs"), run.resolve("request-session"), SessionRequestAccess.Shell.POSIX);
 			Map<String, String> environment = new HashMap<>(access.environment());
+			environment.put("CLAUDE_PLUGIN_ROOT", plugin.toString());
+
+			HookResult result = invoke(cwdInput(project), environment, project);
+
+			requireThat(completeContext(result), "context").contains("rule");
+			requireThat(result.error(), "error").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies a session that a CAT runner started loads CAT's rules with no conflict message: every {@code CAT_}
+	 * variable that the runner sets in the session's environment, including the class of the user's login, is
+	 * accepted by the hook, and no other variable of the environment is needed.
+	 */
+	@Test
+	public void loadsRulesInRunnerStartedSession() throws IOException
+	{
+		try (HarnessRunnerScope runner = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			Path run = cleanup.add(Files.createTempDirectory("cat-run-"));
+			write(plugin, "rules/common/rule.md", "rule");
+			SessionRequestAccess access = new SessionRequestAccess(run.resolve("requests"), run.resolve("responses"),
+				run.resolve("requested-runs"), run.resolve("request-session"), SessionRequestAccess.Shell.POSIX);
+			Map<String, String> sessionEnvironment = ClaudeRunner.processEnvironment(runner, Map.of("PATH", ""),
+				HarnessDependencyCaches.NONE, run.resolve("missing-settings.json"), run, access);
+			Map<String, String> environment = new HashMap<>();
+			sessionEnvironment.forEach((name, value) ->
+			{
+				if (name.startsWith("CAT_"))
+					environment.put(name, value);
+			});
+			requireThat(environment.keySet(), "runnerVariables").contains(HarnessEnvironment.HOST_LOGIN_VARIABLE);
+			requireThat(environment.keySet(), "runnerVariables").containsAll(HarnessEnvironment.RUNNER_VARIABLES);
 			environment.put("CLAUDE_PLUGIN_ROOT", plugin.toString());
 
 			HookResult result = invoke(cwdInput(project), environment, project);

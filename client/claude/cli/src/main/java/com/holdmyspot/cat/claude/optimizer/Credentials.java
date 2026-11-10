@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.adapter.CredentialFile;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -29,7 +30,7 @@ public final class Credentials
 	 * commands cannot read the user's login file, so the runner, which can, classifies the login for them. The
 	 * variable carries only the class.
 	 */
-	public static final String HOST_LOGIN_VARIABLE = "CAT_HOST_LOGIN";
+	public static final String HOST_LOGIN_VARIABLE = HarnessEnvironment.HOST_LOGIN_VARIABLE;
 	/**
 	 * Environment variables that select an API key. They take precedence over the credential files.
 	 */
