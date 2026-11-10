@@ -75,8 +75,8 @@ and `codex-e-run.md`, which already point at this build. Receipts are in `/home/
 |---|---|
 | Claude E2 r5, E5 r5, E3 r5 | PASS (previous build) |
 | Claude E4 r6 | PASS: all four cases certification-unavailable before any trial, guard pilot first; response-contingent now passes |
-| Claude E6 r2 | Refusal PASS, no campaign PASS; cross-harness campaign refusal NOT RUN (unreachable through runner copies); `?? .gitignore` comes from the session-start hook, not the refusal |
-| Codex E6 r2 | Same as Claude E6 r2 |
+| Claude E6 r2 | PASS under the narrowed E6 (user ruling, 2026-11-10): refusal and no campaign; the cross-harness refusal is covered by unit tests; `?? .gitignore` comes from the session-start hook |
+| Codex E6 r2 | PASS, same as Claude E6 r2 |
 | Claude E7 r2 | Link report lists the outside link PASS; external file unchanged PASS; authority warning NOT OBSERVED (author edited AGENTS.md only); campaign ended on the 400 `--session-requests` limit (needed ≥972) |
 | Codex E5 r2 | Infrastructure FAIL: an 81-minute guard pilot inside one blocking `start`, then a Codex "No available accounts" outage; a failed turn ends the conversation |
 | Codex E1 r2 | NOT RUN: launched from the wrong directory (see above) |
@@ -93,8 +93,8 @@ and `codex-e-run.md`, which already point at this build. Receipts are in `/home/
    at least 1500.
 3. **Codex resilience.** A failed host turn ends the conversation (exit 1), although the design promises continuation
    only after an interrupt. `start` holds the whole guard pilot in one blocking call, so one outage loses the pilot.
-4. **Session-start `.gitignore` in a fresh copy.** Decide whether E6's "no state change" is measured from after
-   session start. It probably should be, since the hook writes `.gitignore` before any command.
+4. **Session-start `.gitignore` in a fresh copy.** Settled (user, 2026-11-10): E6's "no state change" is measured
+   from after session start.
 5. **E4 fixture.** `.cat/tests/AGENTS/prompt.json` has only a `codex` key, so a Claude session must add a `claude` key
    first. The README says the Claude configuration is under `.cat/tests/CLAUDE/`.
 6. **Claude E3 UX items (from r5):**
@@ -125,12 +125,9 @@ Gloss every label when asking.
    may run, change or deliver a campaign (design "Only the owning session runs, changes or delivers a campaign", D17).
    After a Claude `/clear` the campaign continues only once the earlier session is resumed. Settled (user, 2026-11-10):
    campaigns are not transferable between sessions or harnesses, because trials certify the starting harness and a
-   crashed or cleared session can be resumed; D17 stays. Still open: how E6's cross-harness refusal is checked. The
-   options are:
-   - the user runs it by hand in two top-level sessions;
-   - the unit tests `OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange` and `RegistryTest.refusesOtherHarness` are
-     enough;
-   - a runner mode with a shared project.
+   crashed or cleared session can be resumed; D17 stays. E6 is narrowed to the live same-harness refusal, and the unit
+   tests cover the cross-harness refusal (user ruling, 2026-11-10). Under that definition Claude E6 r2 and Codex E6 r2
+   passed.
 
 ### Next steps
 
@@ -4241,7 +4238,11 @@ selection and download it describes are unchanged.
 	- **E5:** a trial uses a host tool, and one uses child subagents with child worktrees. One trial writes a file that
 		its judge decides on; that trial and a text-output trial, each with its judge session, are saved as recordings
 		that a unit test judges from.
-	- **E6:** a cross-harness invocation is refused without any state change.
+	- **E6:** a second session of the same harness is refused on a live run, without any state change and without the
+		agent working around the refusal; "no state change" is measured from after session start, because the
+		session-start hook writes `.gitignore` before any command. The unit tests
+		`OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange` and `RegistryTest.refusesOtherHarness` cover the
+		cross-harness refusal (user ruling, 2026-11-10).
 	- **E7:** a project with in-project and external links shows the link report; a prompt author's needed edit to an
 		external file raises an authority warning that offers no way to edit it, and delivery leaves every external file
 		unchanged.
