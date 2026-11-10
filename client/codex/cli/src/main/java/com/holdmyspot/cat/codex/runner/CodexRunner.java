@@ -520,15 +520,22 @@ public final class CodexRunner
 	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
 	 * and directory under the run root except the session's project, home and evidence, the directory where Codex logs
-	 * the session's events, and every harness's login and configuration files in the session's home and in the user's
-	 * home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's
-	 * own Codex home: its {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads
-	 * the session's tool output limit, and its {@code auth.json}, the copy of the user's login that the runner puts
-	 * there, which a Codex process that the session starts from a command, such as the prompt optimizer's sessions,
-	 * reads. The session therefore cannot read the runner's records of its own run or of any other run, the workspace
-	 * files of any run, any login but that copy, such as the user's own Codex and Claude logins, or the user's
-	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does
-	 * not exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
+	 * the session's events unless the session may request sessions, and every harness's login and configuration files
+	 * in the session's home and in the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names
+	 * them, except two files in the session's own Codex home: its {@code config.toml}, which holds no login and from
+	 * which CAT's {@code read-part} command reads the session's tool output limit, and its {@code auth.json}, the copy
+	 * of the user's login that the runner puts there, which a Codex process that the session starts from a command,
+	 * such as the prompt optimizer's sessions, reads. The session therefore cannot read the runner's records of its
+	 * own run or of any other run, the workspace files of any run, any login but that copy, such as the user's own
+	 * Codex and Claude logins, or the user's configuration. The method creates the session log directory, because the
+	 * sandbox skips a denied path that does not exist yet; for the same reason, it leaves out a login or configuration
+	 * file that does not exist.
+	 * <p>
+	 * A session that may request sessions is not denied the session log directory, because the commands that it
+	 * runs include the prompt optimizer's {@code run}, which reads the session's rollout there to learn that the
+	 * user interrupted the session's turn. A session that may request none runs no such command, so it stays denied
+	 * the record of its own events. Another Codex home holds each other session's log, so the run root's denial
+	 * keeps those hidden.
 	 * <p>
 	 * The result names the run root and each directory that the caller denies rather than each path under them, which
 	 * also denies the runs that start after the session. It omits a path inside another directory that it names, except
@@ -612,8 +619,12 @@ public final class CodexRunner
 		// outer directory hides it anyway
 		Set<Path> named = Set.copyOf(result);
 		result.removeIf(path -> named.stream().anyMatch(other -> !other.equals(path) && path.startsWith(other)));
-		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner
-		result.add(Files.createDirectories(home.resolve("sessions")));
+		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner. A
+		// session that may request sessions runs the prompt optimizer's commands, whose run command reads the
+		// session's rollout here to learn that the user interrupted the session's turn
+		Path sessionLogs = Files.createDirectories(home.resolve("sessions"));
+		if (requestAccess == null || !requestAccess.allowsRequests())
+			result.add(sessionLogs);
 		// The Codex process reads the logins and configuration itself; the sandbox confines only the commands that the
 		// session runs
 		Map<String, String> commandEnvironment = new HashMap<>(SessionCommandLimits.homeEnvironment(home, platform));

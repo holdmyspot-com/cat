@@ -243,6 +243,17 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
+	 * Indicates whether the session may request a session, which is whether the run holds the run root of a first
+	 * requested session.
+	 *
+	 * @return {@code true} if the session may request at least one session
+	 */
+	public boolean allowsRequests()
+	{
+		return Files.isDirectory(requestedRunRoot(1));
+	}
+
+	/**
 	 * Returns the access of a run's session, creating the run's requests, responses and requested-runs directories. A
 	 * runner calls this before it decides what the session may read, so that its sandbox covers all three directories.
 	 *

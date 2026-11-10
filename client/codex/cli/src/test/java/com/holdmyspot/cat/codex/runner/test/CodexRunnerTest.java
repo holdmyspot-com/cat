@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.LocalMarketplace;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -824,6 +825,66 @@ public final class CodexRunnerTest
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
 				directory.resolve("home/sessions")));
 			requireThat(Files.isDirectory(directory.resolve("home/sessions")), "sessionLogsExist").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that the commands of a session that may request sessions are not denied the directory where Codex logs
+	 * the session's events, so that the prompt optimizer's {@code run} command, which its host session runs and which
+	 * reads the session's rollout there to learn that the user interrupted the session's turn, finds the rollout
+	 * instead of failing with an access denial. The session is denied only the run root and the caller's paths.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void readableRolloutWhenRequestsAllowed() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 1,
+				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
+
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+				Platform.LINUX_X64, Map.of(), requestAccess);
+
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root));
+		}
+	}
+
+	/**
+	 * Verifies that a session that may request no session stays denied the directory where Codex logs its events,
+	 * because the session under test must not read the record of its own run, and no command of it starts a session
+	 * that would need to read the log.
+	 *
+	 * @throws IOException if the run cannot be created
+	 */
+	@Test
+	public void deniedRolloutWhenNoRequestsAllowed() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
+
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+				Platform.LINUX_X64, Map.of(), requestAccess);
+
+			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
+				run.directory().resolve("home/sessions")));
 		}
 	}
 
