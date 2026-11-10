@@ -649,7 +649,7 @@ public final class OptimizerCore implements Core
 		if (campaign.plugins().isEmpty())
 		{
 			campaign = withTrialPlugins(root, store, campaign, fork,
-				configuredPlugins(root, relativeTarget(root, campaign)));
+				configuredPlugins(root, relativeTarget(campaign)));
 		}
 		Optional<DerivedProposal> stored;
 		try
@@ -1115,7 +1115,7 @@ public final class OptimizerCore implements Core
 		}
 
 		FileInventory inventory = fork.inventory();
-		Path target = relativeTarget(root, campaign);
+		Path target = relativeTarget(campaign);
 		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
 		Set<Path> fromProject = loadsFromProject(root, bases(copied, workspace), promptFiles);
 		List<TrialPlugin> mapped = new ArrayList<>();
@@ -2331,7 +2331,7 @@ public final class OptimizerCore implements Core
 			return Optional.empty();
 		}
 		Set<Path> sources = new LinkedHashSet<>();
-		sources.add(relativeTarget(root, campaign));
+		sources.add(relativeTarget(campaign));
 		for (Path path : derivedPaths(root, loaded))
 		{
 			if (!path.isAbsolute())
@@ -2465,15 +2465,15 @@ public final class OptimizerCore implements Core
 		PluginCheck plugin) throws IOException, InterruptedException
 	{
 		// Control trials cannot run without dependents that they cannot remove
-		if (!controlRefusals(root, campaign, fork, derived, plugin).isEmpty())
+		if (!controlRefusals(campaign, fork, derived, plugin).isEmpty())
 			return Map.of();
 		FileInventory inventory = fork.inventory();
 		PilotFile file = pilotFile(campaign);
-		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(root, campaign),
+		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(campaign),
 			derived.contract().projectRemovals(), scope.json());
 		GuardPilot pilot = new GuardPilot(sessions(campaign), fork.workspace(), judgePrompt(campaign), schema,
 			scope.json(), campaign.ceiling());
-		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(root, campaign), root);
+		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(campaign), root);
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
 			trialSelection(root, campaign, derived, plugin), file.read(), scope.random());
 		file.write(pilots);
@@ -2549,7 +2549,7 @@ public final class OptimizerCore implements Core
 		Authority authority = authority(root, campaign, inventory);
 		LinkReport links = LinkReport.of(inventory, authority);
 		CertificationStatus incumbent = null;
-		CertificationHistory history = history(root, relativeTarget(root, campaign));
+		CertificationHistory history = history(root, relativeTarget(campaign));
 		if (!history.records().isEmpty())
 		{
 			// Compare each harness's latest record with the fork's files and the campaign's known conditions
@@ -2563,8 +2563,8 @@ public final class OptimizerCore implements Core
 			if (!file.isAbsolute() && selection.selects(file))
 				trialFiles.add(PortablePaths.text(file));
 		}
-		return Proposal.of(derived, campaign, links, relativeTarget(root, campaign), scope.sessions().hostLogin(),
-			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(root, campaign, fork, derived, plugin),
+		return Proposal.of(derived, campaign, links, relativeTarget(campaign), scope.sessions().hostLogin(),
+			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(campaign, fork, derived, plugin),
 			trialFiles, new HookReportFile(campaignDirectory(campaign.header().id()), scope.json(),
 			scope.fileReplacer()).read());
 	}
@@ -2573,7 +2573,6 @@ public final class OptimizerCore implements Core
 	 * Checks that control trials can remove the dependents of the target that a proposal lists: from the fork's files,
 	 * and from the base of each trial plugin that the project builds.
 	 *
-	 * @param root the project root
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
@@ -2581,13 +2580,13 @@ public final class OptimizerCore implements Core
 	 * @return the reasons that block confirmation; empty if control trials can remove every dependent
 	 * @throws IOException if a file of the fork or of the plugin's base cannot be read
 	 */
-	private List<String> controlRefusals(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
+	private List<String> controlRefusals(Campaign campaign, ForkView fork, DerivedProposal derived,
 		PluginCheck plugin) throws IOException
 	{
 		Contract contract = derived.contract();
 		if (contract.dependents().isEmpty())
 			return List.of();
-		Path target = relativeTarget(root, campaign);
+		Path target = relativeTarget(campaign);
 		List<String> problems = new ArrayList<>(ControlSource.problems(fork.workspace(), fork.inventory(), target,
 			contract.projectRemovals(), scope.json()));
 		Set<String> projectBuilt = new HashSet<>();
@@ -2778,7 +2777,7 @@ public final class OptimizerCore implements Core
 		if (delivery == null || delivery.label() != Outcome.CERTIFIED)
 			return null;
 		MeasurementIdentity measured = campaign.attempt(delivery.attempt()).identity();
-		for (CertificationRecord record : history(root, relativeTarget(root, campaign)).records())
+		for (CertificationRecord record : history(root, relativeTarget(campaign)).records())
 		{
 			if (record.certificationIndex() != delivery.attempt() || !record.identity().equals(measured))
 				continue;
@@ -2952,7 +2951,7 @@ public final class OptimizerCore implements Core
 	private Set<Path> promptSources(Path root, Campaign campaign, List<DerivedSource> derived)
 	{
 		Set<Path> sources = new LinkedHashSet<>();
-		sources.add(relativeTarget(root, campaign));
+		sources.add(relativeTarget(campaign));
 		for (Path path : derivedPaths(root, derived))
 		{
 			if (!path.isAbsolute())
@@ -2962,17 +2961,17 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns a campaign's target relative to the project.
+	 * Returns a campaign's target relative to the project that recorded it. A session that works in a copy of that
+	 * project, at another path, still gets a path inside the project.
 	 *
-	 * @param root the project root
 	 * @param campaign the campaign
 	 * @return the relative path
 	 */
-	private static Path relativeTarget(Path root, Campaign campaign)
+	private static Path relativeTarget(Campaign campaign)
 	{
 		Path target = campaign.header().target();
 		if (target.isAbsolute())
-			return root.relativize(target);
+			return campaign.header().root().relativize(target);
 		return target;
 	}
 

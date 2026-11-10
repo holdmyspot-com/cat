@@ -385,6 +385,35 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a session working in a copy of the project that a campaign started in, at another path, may report
+	 * the campaign by its identifier: the campaign's recorded target names the original project, and the report takes
+	 * the target's place in the campaign's own project, not in the copy's path.
+	 */
+	@Test
+	public void statusWorksInCopyOfCampaignsProject() throws Exception
+	{
+		// Requirement: R-L1
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path copy = scope.add(Files.createTempDirectory("optimizer-copy")).toRealPath();
+			copyProject(repository.root(), copy);
+			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE,
+				OTHER_SESSION, copy))
+			{
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
+				CommandResult result = new OptimizerCore(command).status(id);
+				requireThat(result.status().campaignId(), "campaignId").isEqualTo(id);
+				requireThat(String.join("\n", result.notices()), "notices").
+					contains(TestOptimizerCommandScope.SESSION_ID);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that every command that runs, changes or delivers a campaign, and {@code start} for its target, refuses
 	 * a session other than the one that started it, names that session and the command that resumes it, and changes
 	 * nothing.
