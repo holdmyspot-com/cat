@@ -458,8 +458,9 @@ final class Session implements SessionHandle
 	{
 		interruptSent = true;
 		graceDeadline = now.plus(GRACE);
+		// A request served through a run's runner refuses an interrupt record that holds anything but its type
 		if (turn > 0)
-			feed.send("{\"type\":\"interrupt\",\"after\":\"turn_started\"}");
+			feed.send("{\"type\":\"interrupt\"}");
 	}
 
 	/**

@@ -86,7 +86,19 @@ final class TestSessions extends RunnerSessions
 	 */
 	TestSessions(Settings settings, Bridge bridge)
 	{
-		super(HARNESS, settings, bridge);
+		this(HARNESS, settings, bridge);
+	}
+
+	/**
+	 * Creates a port for a harness that a run's runner serves, such as {@code claude}.
+	 *
+	 * @param harness  the harness's identifier
+	 * @param settings how the runner is configured
+	 * @param bridge   runs the runner's bridge
+	 */
+	TestSessions(String harness, Settings settings, Bridge bridge)
+	{
+		super(harness, settings, bridge);
 	}
 
 	@Override

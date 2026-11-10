@@ -800,8 +800,9 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that CAT sends the interrupt request with the bridge's {@code turn_started} control point and classifies
-	 * the supplied terminal completion as Interrupted. This observes CAT's outgoing request, not native harness timing.
+	 * Verifies that CAT sends the interrupt request as a record that holds only its type, which is all that a request
+	 * served through a run's runner may send, and classifies the supplied terminal completion as Interrupted. This
+	 * observes CAT's outgoing request, not native harness timing.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -809,7 +810,7 @@ public final class RunnerSessionsTest
 	 * @throws TimeoutException if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void sendsInterruptAfterTurnStart()
+	public void sendsInterruptRecordHoldingOnlyItsType()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
@@ -854,7 +855,7 @@ public final class RunnerSessionsTest
 				handle.interrupt();
 
 				requireThat(await(handle), "result").isInstanceOf(SessionResult.Interrupted.class);
-				requireThat(requests, "requests").contains("{\"type\":\"interrupt\",\"after\":\"turn_started\"}");
+				requireThat(requests, "requests").contains("{\"type\":\"interrupt\"}");
 			}
 		}
 	}

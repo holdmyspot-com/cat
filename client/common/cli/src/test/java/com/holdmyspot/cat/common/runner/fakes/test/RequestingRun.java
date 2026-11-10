@@ -21,6 +21,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import tools.jackson.databind.JsonNode;
@@ -31,12 +33,18 @@ import tools.jackson.databind.node.ObjectNode;
  * A run whose session requests sessions, served by the run's real {@link SessionRequestBroker}, which discovers
  * requests on the production heartbeat ticker's thread. Each requested session is a {@link FakeHarnessCli} that plays
  * a harness runner's bridge: it reports its start, answers each turn with the reply {@code reply <n>}, and completes
- * with a retained-evidence receipt. Its run holds {@code project/result.txt} and a login in its home.
+ * with a retained-evidence receipt. A turn whose prompt is {@value #HOLD} gets no reply until an {@code interrupt}
+ * record arrives, which the session answers with an {@code interrupted} record and the turn's completion, as a Claude
+ * runner does. Its run holds {@code project/result.txt} and a login in its home.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class RequestingRun implements AutoCloseable
 {
+	/**
+	 * The prompt of a turn that the requested session answers only once it is interrupted.
+	 */
+	public static final String HOLD = "hold";
 	/**
 	 * How often the broker discovers requests.
 	 */
@@ -46,6 +54,8 @@ public final class RequestingRun implements AutoCloseable
 	private final HarnessRun run;
 	private final SessionRequestBroker broker;
 	private final List<List<String>> launches = new CopyOnWriteArrayList<>();
+	private final List<String> received = new CopyOnWriteArrayList<>();
+	private final CountDownLatch holding = new CountDownLatch(1);
 
 	/**
 	 * Creates the run and starts its broker.
@@ -101,6 +111,28 @@ public final class RequestingRun implements AutoCloseable
 	}
 
 	/**
+	 * Returns the records that the requested sessions received, in order.
+	 *
+	 * @return the records
+	 */
+	public List<String> received()
+	{
+		return List.copyOf(received);
+	}
+
+	/**
+	 * Waits until a requested session holds a turn that awaits an interrupt.
+	 *
+	 * @param timeout how long to wait
+	 * @return {@code true} if a session holds such a turn
+	 * @throws InterruptedException if the wait is interrupted
+	 */
+	public boolean awaitHeldTurn(Duration timeout) throws InterruptedException
+	{
+		return holding.await(timeout.toMillis(), TimeUnit.MILLISECONDS);
+	}
+
+	/**
 	 * Starts a requested session.
 	 *
 	 * @param harness   the requested harness
@@ -124,12 +156,28 @@ public final class RequestingRun implements AutoCloseable
 		{
 			try
 			{
+				received.add(line);
 				JsonNode record = json.readTree(line);
 				switch (record.path("type").asString())
 				{
 					case "turn" ->
 					{
+						if (record.path("prompt").asString().equals(HOLD))
+						{
+							holding.countDown();
+							return;
+						}
 						String reply = "reply " + turns.incrementAndGet();
+						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
+							put("run_id", child.id()).put("exit_code", 0).put("error", "").put("assistant_response", reply);
+						completed.putArray("assistant_messages").add(reply);
+						append(output, completed.toString());
+					}
+					case "interrupt" ->
+					{
+						append(output, json.createObjectNode().put("type", "interrupted").put("run_id", child.id()).
+							toString());
+						String reply = "[Request interrupted by user]";
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
 							put("run_id", child.id()).put("exit_code", 0).put("error", "").put("assistant_response", reply);
 						completed.putArray("assistant_messages").add(reply);
