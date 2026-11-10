@@ -155,8 +155,14 @@ from a launcher field.
 	outcome, claim and limitations, and any `delivery_result`. The user reviews delivered changes with Git; never commit
 	them.
 
-To stop a campaign that the user asks to stop, run `cancel <campaign>`. To show a campaign's state without advancing
-it, run `status <campaign>` or `status <target>`. For a target that has no resumable campaign, `status <target>`
+To stop a campaign that the user asks to stop, run `cancel <campaign>`. When the user asks to accept or apply the
+campaign's improved prompt without waiting for certification, that request is the user's choice of
+`accept_without_certification`: unless the latest result's `choices` already lists it, run `cancel <campaign>`, which
+lists it, then run `choose <campaign> accept_without_certification`, and show the delivered result as step 6 says. Only
+the launcher's delivery writes a candidate into the target: never write one into it yourself, from the campaign's
+files or in any other way, and when `choices` lists no `accept_without_certification`, show the `summary` and tell the
+user that CAT offers no acceptance now. To show a campaign's state without advancing it, run `status <campaign>` or
+`status <target>`. For a target that has no resumable campaign, `status <target>`
 reports the target's delivered certification, if any, instead; show its `summary`.
 
 When the session that drove a campaign is gone, including after a context reset, crash or killed session, run

@@ -1753,6 +1753,33 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * Verifies that a running campaign whose working candidate is not the incumbent offers no acceptance, and that
+	 * stopping it offers resuming and accepting the candidate without certification, which delivers the candidate
+	 * labelled {@code not certified}. A host agent that the user asks to accept an improved prompt while the campaign
+	 * runs therefore stops the campaign first.
+	 */
+	@Test
+	public void stoppingARunningCampaignOffersAcceptance()
+	{
+		// Requirement: R-F3
+		Campaign running = confirmed().working(1).development("safety", 47, 0).build();
+		StatusReport before = StatusReport.of(running, ReportEvidence.NONE);
+		requireThat(before.status().label(), "runningStatus").isEqualTo("running");
+		requireThat(before.choices(), "runningChoices").isEmpty();
+
+		Campaign stopped = Transitions.apply(running, new CampaignEvent.Cancel());
+		StatusReport after = StatusReport.of(stopped, ReportEvidence.NONE);
+		requireThat(after.status().label(), "stoppedStatus").isEqualTo("interrupted");
+		requireThat(after.choices().stream().map(ChoiceItem::choice).toList(), "stoppedChoices").
+			containsExactly(List.of(Choice.RESUME, Choice.ACCEPT_WITHOUT_CERTIFICATION));
+
+		Campaign accepted = Transitions.apply(stopped, CampaignEvent.Choose.of(Choice.ACCEPT_WITHOUT_CERTIFICATION));
+		requireThat(accepted.outcome(), "outcome").isEqualTo(Outcome.NOT_CERTIFIED);
+		requireThat(accepted.delivery(), "delivery").isEqualTo(new DeliveryRequest(running.development().working(), 0,
+			Outcome.NOT_CERTIFIED));
+	}
+
+	/**
 	 * Verifies the status domain: one accepted value, and the excluded absence of a value.
 	 */
 	@Test
