@@ -366,7 +366,7 @@ v2.0" ''; do
 }
 
 # An agent that is asked to install or update CAT reads the release page, so the page's first paragraph points it to
-# the installation guide's steps for an agent instead of leaving it to run the page's commands
+# the instructions for an agent instead of leaving it to run the page's commands
 @test "release notes start with the instructions for an agent that installs or updates CAT" {
 	repository="${BATS_TEST_DIRNAME}/../../../../../.."
 	render="$(grep -F 'release-notes.md >' "${repository}/.github/workflows/release.yml" | sed 's/^ *//')"
@@ -379,7 +379,7 @@ v2.0" ''; do
 	agent_paragraph="$(sed -n 1p "${notes_directory}/release-notes.md")"
 	[[ "${agent_paragraph}" == "**If you are an AI agent asked to install or update CAT from this page:**"* ]]
 	[[ "${agent_paragraph}" == *"if CAT's \`update\` skill is installed, use it."* ]]
-	[[ "${agent_paragraph}" == *"(https://github.com/holdmyspot-com/cat/blob/v1.0/docs/installation.md#for-ai-agents)"* ]]
+	[[ "${agent_paragraph}" == *"(https://github.com/holdmyspot-com/cat/blob/v1.0/docs/agent-installation.md)"* ]]
 	[[ "${agent_paragraph}" == *"do not download or run this release's files yourself"* ]]
 }
 
@@ -406,13 +406,12 @@ v2.0" ''; do
 	[ -z "${wrapped}" ]
 }
 
-# The release page sends an agent to the installation guide, so the guide's section must give the steps the agent needs
-@test "installation guide's For AI agents section gives an agent's steps" {
+# The release page sends an agent to the agent installation instructions, which must give the steps it needs
+@test "agent installation instructions give an agent's steps" {
 	repository="${BATS_TEST_DIRNAME}/../../../../../.."
 
-	# The section's lines wrap and its bullet continues on an indented line, so the checks read it as one line
-	agent_section="$(sed -n '/^## For AI agents$/,/^## Supported platforms/p' "${repository}/docs/installation.md" \
-		| tr '\n\t' '  ' | tr -s ' ')"
+	# The file's lines wrap and its bullet continues on an indented line, so the checks read it as one line
+	agent_section="$(tr '\n\t' '  ' < "${repository}/docs/agent-installation.md" | tr -s ' ')"
 	[[ "${agent_section}" == *"If CAT's \`update\` skill is installed, use it."* ]]
 	[[ "${agent_section}" == *"do not download or run this release's files"* ]]
 	[[ "${agent_section}" == *"after \`! \`"* ]]

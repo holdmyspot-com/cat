@@ -5,8 +5,8 @@
 > may change without notice.
 
 **If you are an AI agent asked to install or update CAT from this page:** if CAT's `update` skill is installed, use
-it. Otherwise follow [For AI agents](docs/installation.md#for-ai-agents) in the installation guide, and do not download
-or run CAT's release files yourself.
+it. Otherwise follow the [instructions for AI agents](docs/agent-installation.md), and do not download or run CAT's
+release files yourself.
 
 A coding agent can follow a rule in one file and miss it in the next. It can complete only part of a refactor, or apply
 a project convention in one area and overlook it somewhere else.
@@ -53,44 +53,24 @@ a team, see Pricing (docs/PRICING.md) for commercial plans and features.
 
 ### 1. Install CAT
 
-Run one command yourself in a terminal, or at a Claude Code prompt prefixed with `! `. These commands are for a person
-typing in their own terminal; an agent follows the paragraph at the top of this page instead. Choose the command for your
-harness, and run the other one too if you use both harnesses:
+Run the command for each harness you use, in your own terminal or at a Claude Code prompt after `! `. An agent follows
+the paragraph at the top of this page instead.
 
 ```bash
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness claude
 curl -fsSL https://github.com/holdmyspot-com/cat/releases/download/v1.0/cat.sh | sh -s -- --harness codex
 ```
 
-The command downloads CAT's plugin for that harness and installs it. The plugin carries its own installer and Java
-runtime, so nothing else is downloaded. The command also adds the permission entries that let your agent install and
-check CAT afterwards. Each harness gets its own installation, and each may run a different CAT release. There is nothing
-to copy into your settings. Windows commands and how to choose where CAT installs, including a custom harness home, are
-in [Install CAT](docs/installation.md#choosing-where-cat-installs). The permission boundary is in the
-[security model](docs/security-model.md). CAT's runners and prompt optimization are not available on native Windows; use
-WSL2.
+Windows commands, checking the install, updating, uninstalling, a custom harness home, and the permission entries that
+the installer adds are in the [getting-started guide](docs/installation.md).
 
 ### 2. Start or resume a session
 
 Start or resume a session. CAT then injects its default rules and your project's applicable rules.
 
-### Install another release, check CAT and uninstall
-
-Afterwards, ask your agent. CAT's `update` skill installs the latest release that your installer policy approves, or the
-release you name, through the installed plugin's installer. Each CAT version has its own folder in the harness, and the
-installation keeps the active version's folder and the one it replaced. Naming an older release goes back to it, unless
-CAT's data structures changed since that release. The installer verifies signed release metadata and the release archive
-before it installs. Restart the harness after an install. See
-[installing releases](docs/installation.md#install-another-release-or-check-cat).
-
-CAT's `uninstall` skill asks whether to also delete CAT's plugin data, then removes that harness's CAT installation: the
-plugin with all its version folders, and the permission entries. It keeps the plugin data unless you ask to delete it,
-and never deletes your own files or rules. The other harness's installation is not touched. Installing CAT again after
-that uses the one command above. See [uninstall](docs/installation.md#uninstall).
-
 ## Learn More
 
-- [Install, supported platforms, and uninstall](docs/installation.md)
+- [Get started: install, check, update, and uninstall CAT](docs/installation.md)
 - [Security model: what the installer trusts and how runners isolate sessions](docs/security-model.md)
 - [Add project rules and separate common from harness-specific guidance](docs/project-rules.md)
 - [CAT's bundled default rules](docs/default-rules.md)
