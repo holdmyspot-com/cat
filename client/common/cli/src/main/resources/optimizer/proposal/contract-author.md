@@ -200,7 +200,16 @@ the `evidence`: the file and the text that show it.
 - `unsupported_output`: a material requirement needs image, audio or video output.
 - `ineligible_trial_effect`: a required trial path writes persistent state outside the trial's project copy, or
 	needs an external service without read-only credentials or disposable fixtures.
-- `unsupported_test_interaction`: a material obligation needs a follow-up turn chosen from the agent's reply.
+- `unsupported_test_interaction`: a material obligation applies after a turn of the user that answers something the
+	agent said, and what the agent must do depends on that answer. Examples are the user's answer to the agent's own
+	clarifying question, the user's choice among options that the agent offered, and the user's approval of a plan that
+	the agent proposed. Trials play every turn from the test case before the agent replies, so no prewritten turn is
+	right for every compliant reply that the agent can give first. Decide from the obligation's `trigger`, not from
+	whether you can write a turn that fits: a turn that names the reading or option that you expect the agent to raise,
+	or test cases that limit the agent's possible questions so that one answer fits, still test the obligation only for
+	the replies that you anticipated. Report the condition for every requirement whose `trigger` is such an answer; an
+	entry in `uncovered_interactions` does not replace it. A later turn that every compliant earlier reply can precede
+	unchanged, such as a new request or an instruction to change the agent's last output, is not this condition.
 
 ### Conflicts
 

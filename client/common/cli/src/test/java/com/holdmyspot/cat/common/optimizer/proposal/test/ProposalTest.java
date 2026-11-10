@@ -1799,6 +1799,37 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that a requirement whose trigger is the user's answer to the agent's own question is shown as an
+	 * unsupported test interaction, and that confirming records that outcome so that no certification trial runs.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void agentAnswerBlocksCertification() throws InvalidProposalException
+	{
+		String evidence = "CLAUDE.md asks the agent to restate the clarification that the user gives after the agent " +
+			"asks a clarifying question, and that answer depends on the question.";
+		String output = fixture("derivation.json").
+			replace("\"condition\": \"unsupported_output\"", "\"condition\": \"unsupported_test_interaction\"").
+			replace("CLAUDE.md asks for a diagram image with every summary.", evidence);
+		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
+		Proposal proposal = Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema);
+		requireThat(proposal.render(), "render").contains("- " + Outcome.UNSUPPORTED_TEST_INTERACTION.label() +
+			" (requirements r1): " + evidence);
+
+		List<CampaignEvent> events = proposal.confirmation(CertificationScope.LATEST_VERSIONS, 7);
+
+		requireThat(events.getLast(), "last").
+			isEqualTo(new CampaignEvent.ReportUnavailable(Outcome.UNSUPPORTED_TEST_INTERACTION));
+		Campaign campaign = new Builder().build();
+		for (CampaignEvent event : events)
+			campaign = Transitions.apply(campaign, event);
+		requireThat(campaign.lineage().unavailable(), "unavailable").
+			isEqualTo(Set.of(Outcome.UNSUPPORTED_TEST_INTERACTION));
+	}
+
+	/**
 	 * Returns the evidence of an inventory whose families rank in inventory order.
 	 *
 	 * @param inventory the inventory

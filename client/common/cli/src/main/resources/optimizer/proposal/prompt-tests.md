@@ -39,8 +39,10 @@ behavior says that the obligated action does not occur, and whose `absent_trigge
 catches a prompt that makes the agent take the action everywhere. CAT refuses a proposal in which a requirement with a
 trigger has no such test.
 
-A turn sequence is fixed before the trial starts. When a material obligation needs a follow-up turn chosen from the
-agent's reply, list it in `uncovered_interactions` and report an `unsupported_test_interaction` scope condition.
+A turn sequence is fixed before the trial starts, so no turn can answer what the agent asked or chose. When a material
+obligation needs such a turn, as the `unsupported_test_interaction` scope condition describes, list it in
+`uncovered_interactions` and report that scope condition. Do not write a prewritten turn as a stand-in for the user's
+answer.
 
 ### The scenario file
 
