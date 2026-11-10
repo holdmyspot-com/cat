@@ -123,8 +123,10 @@ Gloss every label when asking.
    different harnesses should be able to collaborate on one campaign. If so, should `.cat/sessions/<session_id>` be
    redesigned to allow that, while by default no session steps into another's workspace? Today only the owning session
    may run, change or deliver a campaign (design "Only the owning session runs, changes or delivers a campaign", D17).
-   After a Claude `/clear` the campaign continues only once the earlier session is resumed. Answer the question first,
-   then settle how E6's cross-harness refusal is checked. The earlier options were:
+   After a Claude `/clear` the campaign continues only once the earlier session is resumed. Settled (user, 2026-11-10):
+   campaigns are not transferable between sessions or harnesses, because trials certify the starting harness and a
+   crashed or cleared session can be resumed; D17 stays. Still open: how E6's cross-harness refusal is checked. The
+   options are:
    - the user runs it by hand in two top-level sessions;
    - the unit tests `OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange` and `RegistryTest.refusesOtherHarness` are
      enough;
