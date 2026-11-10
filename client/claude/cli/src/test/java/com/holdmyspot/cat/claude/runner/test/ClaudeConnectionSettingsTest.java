@@ -1080,7 +1080,7 @@ public final class ClaudeConnectionSettingsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-run-")).toRealPath();
 			Path requesterRun = Files.createDirectories(root.resolve("run"));
-			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/1"));
+			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/0/1"));
 			Path requesterHome = Files.createDirectories(requesterRun.resolve("home"));
 			Path requests = Files.createDirectories(requesterRun.resolve("requests"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
@@ -1102,6 +1102,37 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
+	 * Verifies that the runner refuses a session whose read denials total more paths than Claude Code can sandbox its
+	 * commands with, rather than start a session in which every command waits for an approval that no one can give,
+	 * and writes no settings for it.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void refusesDenialsTooManyToSandbox() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-many-denials-")).toRealPath();
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path destination = root.resolve("isolated/settings.json");
+			Path denied = root.resolve("x".repeat(180));
+			List<Path> deniedReads = new ArrayList<>();
+			for (int i = 0; i < 6_000; ++i)
+				deniedReads.add(denied.resolve(String.valueOf(i)));
+
+			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
+				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+					run.resolve("claude"), run.resolve("home"), List.of(), run, deniedReads, "", null, null, run, null,
+					ExtraPermissions.NONE, "api.example"));
+
+			requireThat(refusal.getMessage(), "message").contains("read denials");
+			requireThat(Files.exists(destination), "written").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a session whose run folder lies outside its policy bound's write roots is still refused when a
 	 * dependency cache that it needs is not among them, and the refusal names the cache.
 	 *
@@ -1115,7 +1146,7 @@ public final class ClaudeConnectionSettingsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-cache-")).toRealPath();
 			Path requesterRun = Files.createDirectories(root.resolve("run"));
-			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/1"));
+			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/0/1"));
 			Path requesterHome = Files.createDirectories(requesterRun.resolve("home"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			Path destination = root.resolve("isolated/settings.json");

@@ -85,6 +85,10 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public static final String LIMITS_FILE = "limits.json";
 	/**
+	 * How many run roots of requested sessions share a directory of the requested-runs directory.
+	 */
+	public static final int GROUP_SIZE = 100;
+	/**
 	 * The most bytes of a {@link #LIMITS_FILE} that a reader reads.
 	 */
 	private static final int MAXIMUM_LIMITS_BYTES = 4096;
@@ -238,8 +242,24 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public Path requestedRunRoot(int ordinal)
 	{
+		return requestedRunRoot(requestedRuns, ordinal);
+	}
+
+	/**
+	 * Returns the run root of one requested session of a run, which lies in the directory of the {@link #GROUP_SIZE}
+	 * run roots that include it, named by how many whole groups precede that one.
+	 *
+	 * @param requestedRuns the run's requested-runs directory
+	 * @param ordinal       the session's place among the sessions that the run's session requested, from 1
+	 * @return the run root
+	 * @throws NullPointerException     if {@code requestedRuns} is null
+	 * @throws IllegalArgumentException if {@code ordinal} is not positive
+	 */
+	public static Path requestedRunRoot(Path requestedRuns, int ordinal)
+	{
+		requireThat(requestedRuns, "requestedRuns").isNotNull();
 		requireThat(ordinal, "ordinal").isPositive();
-		return requestedRuns.resolve(String.valueOf(ordinal));
+		return requestedRuns.resolve(String.valueOf(ordinal / GROUP_SIZE)).resolve(String.valueOf(ordinal));
 	}
 
 	/**
@@ -281,7 +301,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 		Path responses = Files.createDirectories(responsesDirectory(run));
 		Path requestedRuns = Files.createDirectories(requestedRunsDirectory(run));
 		for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
-			Files.createDirectories(requestedRuns.resolve(String.valueOf(ordinal)));
+			Files.createDirectories(requestedRunRoot(requestedRuns, ordinal));
 		return Optional.of(new SessionRequestAccess(requests, responses, requestedRuns, launcher(artifact, platform),
 			shell));
 	}

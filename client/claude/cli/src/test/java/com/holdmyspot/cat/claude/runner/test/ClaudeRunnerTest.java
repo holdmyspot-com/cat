@@ -1572,6 +1572,65 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that a requested session of a run that may request hundreds of sessions is denied the runs of all the
+	 * others and the requester's own files with a number of denied paths that is a small fraction of the number of
+	 * sessions, so that its settings stay within what Claude Code can sandbox its commands with, and that the
+	 * session's own project stays readable.
+	 *
+	 * @throws IOException if the runs cannot be created
+	 */
+	@Test
+	public void deniesSiblingsWithFewPaths() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-many-requests-")).
+				toRealPath();
+			Path artifact = root.resolve("artifact");
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			int sessionRequests = 500;
+			int ordinal = 358;
+			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun first = firstManager.create("claude");
+			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, sessionRequests,
+				Platform.current(), SessionRequestAccess.Shell.POSIX).orElseThrow();
+			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(),
+				firstAccess.requestedRunRoot(ordinal), Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun nested = nestedManager.create("claude");
+			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path nestedProject = Files.createDirectories(nested.directory().resolve("project/.git")).getParent();
+			Files.createDirectories(nested.directory().resolve("claude"));
+			Files.createDirectories(nested.directory().resolve("home"));
+			Path settings = nested.directory().resolve("home/.claude/settings.json");
+
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(nestedManager, nested, List.of(),
+				List.of(first.directory()), Map.of(), nestedAccess);
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), settings,
+				nested.directory().resolve("claude"), nested.directory().resolve("home"), List.of(cache),
+				nested.directory(), deniedReads, "", nestedAccess, nestedProject, nested.directory(), null,
+				ExtraPermissions.NONE, "api.example");
+
+			JsonNode written = scope.json().readTree(Files.readString(settings));
+			requireThat(written.path("sandbox").path("filesystem").path("denyRead").size(), "denyRead.size()").
+				isLessThan(250);
+			requireThat(written.path("permissions").path("deny").size(), "deny.size()").isLessThan(250);
+			for (int other = 1; other <= sessionRequests; ++other)
+			{
+				if (other == ordinal)
+					continue;
+				Path slot = firstAccess.requestedRunRoot(other);
+				requireThat(deniedReads.stream().anyMatch(slot::startsWith), "slotDenied").withContext(other, "ordinal").
+					isTrue();
+			}
+			requireThat(deniedReads.stream().anyMatch(nestedProject::startsWith), "ownProjectDenied").isFalse();
+		}
+	}
+
+	/**
 	 * The event that Claude Code writes, as its only output, when its sandbox is required but cannot start, on stock
 	 * Ubuntu 24.04.
 	 */

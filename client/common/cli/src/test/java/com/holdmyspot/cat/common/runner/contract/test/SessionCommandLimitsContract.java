@@ -353,8 +353,8 @@ public abstract class SessionCommandLimitsContract
 			Path requestedRuns = fixture.run().directory().resolve("requested-runs");
 			requireThat(requestedRuns, "requestedRuns").isDirectory();
 			requireThat(readable(limits, requestedRuns), "requestedRunsReadable").isFalse();
-			requireThat(requestedRuns.resolve("1"), "firstRequestedRunRoot").isDirectory();
-			requireThat(requestedRuns.resolve("2"), "secondRequestedRunRoot").isDirectory();
+			requireThat(requestedRuns.resolve("0/1"), "firstRequestedRunRoot").isDirectory();
+			requireThat(requestedRuns.resolve("0/2"), "secondRequestedRunRoot").isDirectory();
 		}
 	}
 
@@ -374,19 +374,19 @@ public abstract class SessionCommandLimitsContract
 			Fixture parent = fixture(cleanup);
 			limits(parent, 2);
 			Path requested = parent.run().directory().resolve("requested-runs");
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, requested.resolve("1"), Clock.systemUTC(),
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, requested.resolve("0/1"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun childRun = manager.create("harness");
 			manager.snapshotProject(childRun);
 			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
 				parent.run(), parent.artifact(), List.of(parent.manager().root()));
-			write(requested.resolve("2/future/home/login"));
+			write(requested.resolve("0/2/future/home/login"));
 
 			Limits childLimits = limits(child, 0);
 
 			requireThat(readable(childLimits, childRun.directory().resolve("project")), "ownProject").isTrue();
 			requireThat(readable(childLimits, parent.runHome()), "parentHome").isFalse();
-			requireThat(readable(childLimits, requested.resolve("2/future/home/login")), "siblingLogin").isFalse();
+			requireThat(readable(childLimits, requested.resolve("0/2/future/home/login")), "siblingLogin").isFalse();
 		}
 	}
 

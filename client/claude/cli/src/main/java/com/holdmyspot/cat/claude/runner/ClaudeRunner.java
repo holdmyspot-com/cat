@@ -1156,9 +1156,10 @@ public final class ClaudeRunner
 	 * {@code errors} give the reason, and exits. When it runs the session without its sandbox, it writes a
 	 * {@code Sandbox disabled:} notice to its standard error, or, if the sandbox is turned off, asks to approve a
 	 * command that writes outside the session's working directories, which a {@code system} event of subtype
-	 * {@code permission_denied} reports; a sandboxed command is never asked about. Either of the latter means that the
-	 * requirement stopped working, so the watch stops the process tree at once. Either way, the session's next turn
-	 * is refused with Claude Code's reason.
+	 * {@code permission_denied} reports; a sandboxed command is not asked about, because the runner refuses settings
+	 * whose denied paths are too many for the sandbox to apply, which make Claude Code ask about every command. Either
+	 * of the latter means that the requirement stopped working, so the watch stops the process tree at once. Either
+	 * way, the session's next turn is refused with Claude Code's reason.
 	 * <p>
 	 * The process that {@link #process()} returns is the watched process, which the session reads its output and
 	 * standard error from, and the harness process that {@link #guard(HarnessProcess)} returns refuses the session's

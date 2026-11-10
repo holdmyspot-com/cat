@@ -1013,7 +1013,7 @@ public final class SessionRequestBroker implements Closeable
 		@Override
 		public Path runRoot(String id, int ordinal)
 		{
-			return SessionRequestAccess.requestedRunsDirectory(run).resolve(String.valueOf(ordinal));
+			return SessionRequestAccess.requestedRunRoot(SessionRequestAccess.requestedRunsDirectory(run), ordinal);
 		}
 
 		/**

@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -45,6 +46,13 @@ import tools.jackson.databind.json.JsonMapper;
 public final class ClaudeConnectionSettings
 {
 	private static final int MAXIMUM_SETTINGS_BYTES = 1_048_576;
+	/**
+	 * The most that the paths of the isolated settings' read denials and permission rules may total. Claude Code puts
+	 * every denied path on the command line that starts a sandboxed command; once the denials total about 2 MB, which
+	 * is the most that a Linux command line holds, it cannot sandbox commands, ignores the rule that allows them and
+	 * asks the user to approve each one, which no one can answer in a nested session.
+	 */
+	private static final int MAXIMUM_DENIED_PATH_BYTES = 1_500_000;
 	/**
 	 * The variable that names the base URL of the model provider that Claude Code connects to.
 	 */
@@ -373,6 +381,7 @@ public final class ClaudeConnectionSettings
 		grants.add(SANDBOXED_COMMAND_GRANT);
 		denyReadRules(settings, policy.readDenials(), policy.writeRoots());
 		excludeInstructionsAbove(settings, isolationRoot);
+		requireApplicableDenials(settings);
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
@@ -381,6 +390,33 @@ public final class ClaudeConnectionSettings
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
 		return policy;
+	}
+
+	/**
+	 * Refuses settings whose denied paths are too many for Claude Code to sandbox the session's commands.
+	 *
+	 * @param settings the isolated settings
+	 * @throws SessionRefusedException if the paths of the read denials and permission rules total more than
+	 *                                 {@link #MAXIMUM_DENIED_PATH_BYTES}
+	 */
+	private static void requireApplicableDenials(ObjectNode settings) throws SessionRefusedException
+	{
+		long bytes = 0;
+		List<JsonNode> lists = new ArrayList<>();
+		lists.add(settings.path("sandbox").path("filesystem").path("denyRead"));
+		for (String list : PERMISSION_RESTRICTIONS)
+			lists.add(settings.path("permissions").path(list));
+		for (JsonNode entries : lists)
+		{
+			for (JsonNode entry : entries)
+				bytes += entry.asString().getBytes(StandardCharsets.UTF_8).length;
+		}
+		if (bytes > MAXIMUM_DENIED_PATH_BYTES)
+		{
+			throw new SessionRefusedException("The session's read denials total " + bytes + " bytes of paths, more " +
+				"than the " + MAXIMUM_DENIED_PATH_BYTES + " that Claude Code can sandbox its commands with, so CAT " +
+				"does not start a session whose commands would all wait for approval");
+		}
 	}
 
 	/**
