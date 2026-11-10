@@ -18,7 +18,138 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Concurrent, cheap tests:** Every work item preserves `design.md` [§10](design.md#10-testability-contract). A change
 	that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
 
-## Current handoff: shared JVM and trusted plugin lifecycle
+## Current handoff (2026-11-10): end-to-end reruns on release 1.0+b0821deabed06
+
+The user asked for this handoff so that another agent can continue. The goal is still "implement design.md and plan.md".
+It is complete only when all of the following hold:
+- every final gate in [§9](#9-final-gates) is recorded as passed (gates 2, 4, 5, 7 and 8 are open; gate 8 runs last);
+- the failure-reporting runs are reported for both harnesses;
+- E1–E8 and G1–G10 are recorded as passed;
+- the WI-142 live checks have run in both harnesses on the installed build.
+
+This section supersedes the release facts of the earlier handoff below. That handoff's remaining items still apply
+where this section does not replace them.
+
+### Release and installation
+
+- Branch `v1.0` and tag `v1.0` are at `0821deabe`. Build was green on all five platforms and the Release workflow
+  passed (2026-11-10).
+- Installed in both harnesses as `1.0+b0821deabed06`:
+  - Claude: `/home/gili/cat/home/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0821deabed06/`.
+  - Codex: `/home/gili/cat/home/.codex/plugins/cache/cat/cat/1.0+b0821deabed06/`.
+- Defect: the first Codex update from `1.0+bdc23a3465523` failed with status 10. The second stage refused to replace the
+  version folder that the running installer belongs to. Running the new version's own `bin/installer install --harness
+  codex v1.0` then reported `up_to_date`. Every Codex update from an earlier build would hit this.
+- Each session runs its own request server, started bare in the background:
+  `/home/gili/cat/home/.claude/plugins/cat-marketplace/plugins/cat/1.0+b0821deabed06/bin/request-server`.
+  - A launcher finds the server through the session folder that it derives from its current directory. Start launchers
+    from `/home/gili/cat/worktrees/v1.0`.
+  - Codex E1 r2 failed with "No request server serves this session" because it was launched from somewhere else.
+
+### Fixes in this release (since `dc23a3465`)
+
+- **Hooks:** they accept every runner variable.
+- **Codex rollout:** a runner session that may request sessions can read its own Codex rollout.
+- **Response-contingent obligations:** the contract author reports an obligation that the user's answer triggers as
+  `unsupported_test_interaction`. Screened on luna/low: 15/15 such sessions flagged and 0/6 easy sessions.
+- **Refused commands:** a refused command writes nothing, `.gitignore` included.
+- **Requested sessions:**
+  - they keep the requester's file modes;
+  - CAT's interrupt record holds only its type;
+  - the requested runs lie in groups of 100;
+  - the runner refuses a session whose denied paths exceed 1,500,000 bytes, which was the cause of "blocked waiting
+    for approval";
+  - the project is copied back at each completed turn, which fixes the false "cat-output.json missing" correction.
+- **Outside links (option A, user ruling 2026-11-10):** the runner keeps an outside link, retargeted to a read-only
+  copy in `link-targets/<n>`. The session environment version is now 20.
+- **Proposal file:** `start`/`revise`/`status` write the proposal to `proposal.md` and return `proposal_file`.
+  first-use.md has the agent read the file whole and show it in a message of its own before the question.
+- **Docs:** the installation guide was rewritten for developers, with a separate `docs/agent-installation.md`.
+
+### E-run results on `1.0+b0821deabed06`
+
+The briefs are `/home/gili/cat/worktrees/v1.0/.cat/sessions/86af8fc6-4067-4c6e-9f71-53e1bf4164ed/temp/briefs/claude-e-run.md`
+and `codex-e-run.md`, which already point at this build. Receipts are in `/home/gili/cat/worktrees/<E>-<harness>-<suffix>/receipts/receipt.md`.
+
+| Run | Result |
+|---|---|
+| Claude E2 r5, E5 r5, E3 r5 | PASS (previous build) |
+| Claude E4 r6 | PASS: all four cases certification-unavailable before any trial, guard pilot first; response-contingent now passes |
+| Claude E6 r2 | Refusal PASS, no campaign PASS; cross-harness campaign refusal NOT RUN (unreachable through runner copies); `?? .gitignore` comes from the session-start hook, not the refusal |
+| Codex E6 r2 | Same as Claude E6 r2 |
+| Claude E7 r2 | Link report lists the outside link PASS; external file unchanged PASS; authority warning NOT OBSERVED (author edited AGENTS.md only); campaign ended on the 400 `--session-requests` limit (needed ≥972) |
+| Codex E5 r2 | Infrastructure FAIL: an 81-minute guard pilot inside one blocking `start`, then a Codex "No available accounts" outage; a failed turn ends the conversation |
+| Codex E1 r2 | NOT RUN: launched from the wrong directory (see above) |
+| Claude E1 r8; Codex E2 r2, E3 r2, E4 r2, E7 r2 | Running when this was written; their subagents report to the handing-off session, so rerun any whose receipt is missing |
+| E8 | Not run; runs alone in each harness after the others |
+
+### Open defects found by the reruns
+
+1. **E7 trials never see the outside link's content.** Trial agents got "File does not exist" on `docs/reply-rules.md`,
+   and the status says "Staging replaced symbolic links with copies of their targets, so trials did not see the links".
+   Evidence: `/home/gili/cat/worktrees/E7-claude-r2/receipts/recordings/`. Check how staged trial sources materialize a
+   link into `link-targets`.
+2. **E7 and long campaigns need a larger session-request limit.** Raise the brief's `--session-requests` from 400 to
+   at least 1500.
+3. **Codex resilience.** A failed host turn ends the conversation (exit 1), although the design promises continuation
+   only after an interrupt. `start` holds the whole guard pilot in one blocking call, so one outage loses the pilot.
+4. **Session-start `.gitignore` in a fresh copy.** Decide whether E6's "no state change" is measured from after
+   session start. It probably should be, since the hook writes `.gitignore` before any command.
+5. **E4 fixture.** `.cat/tests/AGENTS/prompt.json` has only a `codex` key, so a Claude session must add a `claude` key
+   first. The README says the Claude configuration is under `.cat/tests/CLAUDE/`.
+6. **Claude E3 UX items (from r5):**
+   - a `run` result showed `status: running` together with `outcome: infrastructure failure`;
+   - the measurement-change choices have no descriptions;
+   - an uncertified claim says "held-out";
+   - `prompt_content_changed: false` appears after a delivery;
+   - "stop for now" leaves the campaign idle without cancelling it.
+7. **Image-output `confirm` (E4):** it failed twice on `bwrap: Can't get type of source /home/gili/.m2/.claude`, which
+   looks like a transient mount placeholder of the sandbox.
+
+### Decisions waiting for the user
+
+Gloss every label when asking.
+
+1. **Showing the proposal on gpt-6.1-sol at medium.** The current two-message text passes 2/5 on sol and 8/10 on
+   luna/low. Variant s6 puts the file's text and the question in one message with nothing before the text; it passes
+   4/5 on sol and 7/10 on luna/low. The variants and their counts are in `/home/gili/cat/worktrees/pif-screen/`
+   (`variants/skill6.py`). The options:
+   - accept the single message (which changes the design sentence in §8);
+   - keep two messages;
+   - try another mechanism.
+
+   The user asked for a second republish after this fix.
+2. **E6's cross-harness check and cross-session collaboration.** The user asked whether sessions of the same or
+   different harnesses should be able to collaborate on one campaign. If so, should `.cat/sessions/<session_id>` be
+   redesigned to allow that, while by default no session steps into another's workspace? Today only the owning session
+   may run, change or deliver a campaign (design "Only the owning session runs, changes or delivers a campaign", D17).
+   After a Claude `/clear` the campaign continues only once the earlier session is resumed. Answer the question first,
+   then settle how E6's cross-harness refusal is checked. The earlier options were:
+   - the user runs it by hand in two top-level sessions;
+   - the unit tests `OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange` and `RegistryTest.refusesOtherHarness` are
+     enough;
+   - a runner mode with a shared project.
+
+### Next steps
+
+1. Collect the running reruns' receipts.
+2. Fix defects 1 and 2 above, and 3 if feasible, each in its own worktree through a subagent, with a full build.
+3. After decision 1, merge the proposal text, push, wait for Build green on all five platforms, and republish. Follow
+   the republish steps in the memory and earlier sections. Each republish needs the user's fresh approval; the second
+   republish is already requested.
+4. Install the new release bare in both harnesses, restart the request server, and rerun the E-runs that did not pass:
+   Claude E7; Codex E1, E5, E7 and any that failed. Then run E8 alone in each harness.
+5. The rest of the remaining work:
+   - recording-based contract tests from the E2/E5 recordings;
+   - the failure-reporting runs;
+   - the WI-142 Codex checks. The user starts a top-level Codex session with "Follow the task in
+     /home/gili/cat/worktrees/v1.0/.cat/sessions/86af8fc6-4067-4c6e-9f71-53e1bf4164ed/temp/codex-wi142-task.md and
+     report what it asks for.";
+   - WI-71, last;
+   - gates 2/4/5/7/8;
+   - cleanup of the finished worktrees, after asking the user.
+
+## Earlier handoff (2026-11-06): shared JVM and trusted plugin lifecycle
 
 The user has asked this agent to update this file with all pending work and stop so another agent can take over.
 Do not continue implementation or publication in this handoff session. The broader optimizer goal remains incomplete.
