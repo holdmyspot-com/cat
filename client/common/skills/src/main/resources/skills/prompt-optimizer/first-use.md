@@ -35,9 +35,10 @@ is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid i
 and stop, unless step 1 says how to continue.
 
 To show the user a launcher field means to put its text in your reply verbatim, however long it is. A summary, an
-excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows. Add
-no statistic, estimate or verdict of your own about the campaign; every such claim the user sees must come from a
-launcher field.
+excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows. Any
+other guidance on how long a reply is or how it is written, such as writing one paragraph of one or two sentences,
+does not shorten or replace a launcher field that this skill tells you to show. Add no statistic, estimate or verdict
+of your own about the campaign; every such claim the user sees must come from a launcher field.
 
 1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
 	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
@@ -91,12 +92,21 @@ launcher field.
 		path for `<file>`. Naming the file after `--` commits only it, so anything else the user staged stays staged and
 		uncommitted. Tell the user that you committed the file, naming the commit's hash, then run `start` again with
 		the same arguments. If `git` refuses the commit, show its output and stop.
-2. **Confirm the contract.** While the result holds a `proposal`, show the user the `proposal` text in full; it holds
-	the contract, the warnings and each certification scope choice. When the result also holds a `message`, show the
-	`message` after the proposal. If the result holds a `message` but no `proposal`, show the `message`.
-	- If the proposal lists conflicts, confirmation is refused until each is resolved. For each conflict, ask the user to
-		choose one of its resolutions, naming the recommended one and its reason, or to describe another. Do not offer
-		confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and repeat this step with its result.
+2. **Confirm the contract.** While the result holds a `proposal`, read all of it, including every part of an output
+	that arrives in parts, and show it before anything else. Your first message after the result holds the `proposal`
+	text exactly as `start` printed it, from its first line to its last, section by section, and nothing else. Write
+	that message before you read another file or rule or run another command, and then ask the question that this
+	step asks in a message of its own. The proposal holds the contract, the warnings and each certification scope
+	choice, and the user confirms only what your messages show. Its length, tens of thousands of characters, is
+	expected, and no guidance to keep a message short, to report an interruption briefly or to write a one-paragraph
+	update shortens the proposal or comes before it. Asking the question is this skill's own procedure, not an
+	escalation of a choice and not an interruption of the skill, even when the proposal lists conflicts or says that
+	certification is unavailable. When the result also holds a `message`, show the `message` after the proposal. If
+	the result holds a `message` but no `proposal`, show the `message`.
+	- If the proposal lists conflicts, confirmation is refused until each is resolved. After the proposal, for each
+		conflict, ask the user to choose one of its resolutions, naming the recommended one and its reason, or to
+		describe another. Do not offer confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and
+		repeat this step with its result.
 	- If the proposal names unranked models, confirmation is refused until the user ranks their families. Ask the user
 		where each family ranks, run `revise <campaign> <feedback>` with the user's words and repeat this step with its
 		result.
