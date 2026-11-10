@@ -317,6 +317,12 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	@Override
+	protected SessionDirectory resolveSessionDirectory(Path projectRoot) throws IOException
+	{
+		return SessionDirectory.resolve(projectRoot, sessionId, json());
+	}
+
+	@Override
 	protected SessionDirectory openSessionDirectory(Path projectRoot) throws IOException
 	{
 		return git.open(projectRoot, sessionId, SessionHarnesses.HARNESS_A,

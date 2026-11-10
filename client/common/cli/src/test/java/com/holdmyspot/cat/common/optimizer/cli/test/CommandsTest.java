@@ -1070,8 +1070,8 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that an I/O failure, here a file where the project's CAT session directories belong, is printed as JSON
-	 * with a nonzero exit code.
+	 * Verifies that an I/O failure, here a file where the directory that holds the project's CAT session directories
+	 * belongs, is printed as JSON with a nonzero exit code.
 	 */
 	@Test
 	public void printsFailure() throws IOException
@@ -1080,9 +1080,10 @@ public final class CommandsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Project project = Project.create(cleanup);
-			Path blocked = Files.writeString(project.root.resolve(".cat"), "");
+			Files.createDirectory(project.root.resolve(".cat"));
+			Path blocked = Files.writeString(project.root.resolve(".cat/sessions"), "");
 			StringBuilder output = new StringBuilder();
-			int exit = project.run(List.of("run", "c1"), output);
+			int exit = project.run(List.of("status", "CLAUDE.md"), output);
 			requireThat(exit, "exit").isEqualTo(1);
 			JsonNode json = JSON.readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("error");

@@ -83,6 +83,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	private Path projectRoot;
 	private SessionDirectory sessionDirectory;
+	private boolean sessionDirectoryCreated;
 	private boolean ignoreNoticeTaken;
 	private CampaignStore store;
 
@@ -293,7 +294,28 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	}
 
 	/**
-	 * Returns the CAT session directory of the host session that runs this command, creating it on first use.
+	 * Returns the CAT session directory of the host session that runs this command, without creating anything on disk
+	 * unless {@link #createdSessionDirectory()} already did. A command reads and validates through this value, so that
+	 * a command that is refused changes nothing in the project.
+	 *
+	 * @return the directory, which may not exist
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
+	 *   project, or the environment names no host session
+	 * @throws IOException if the working directory cannot be resolved or the environment's session ID is invalid
+	 */
+	final SessionDirectory sessionDirectory() throws CommandRefusedException, IOException
+	{
+		ensureOpen();
+		if (sessionDirectory == null)
+			sessionDirectory = resolveSessionDirectory(projectRoot());
+		return sessionDirectory;
+	}
+
+	/**
+	 * Returns the CAT session directory of the host session that runs this command, creating it, its marker and the
+	 * project's {@code .gitignore} entry on the first call. A command calls this only after it has validated everything
+	 * that can refuse it.
 	 *
 	 * @return the directory
 	 * @throws IllegalStateException if this scope is closed
@@ -301,36 +323,47 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *   project, or the environment names no host session
 	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
 	 */
-	final SessionDirectory sessionDirectory() throws CommandRefusedException, IOException
+	final SessionDirectory createdSessionDirectory() throws CommandRefusedException, IOException
 	{
 		ensureOpen();
-		if (sessionDirectory == null)
+		if (!sessionDirectoryCreated)
+		{
 			sessionDirectory = openSessionDirectory(projectRoot());
+			sessionDirectoryCreated = true;
+		}
 		return sessionDirectory;
 	}
 
 	/**
-	 * Returns, once per scope, the notice that opening the host session's CAT session directory created it and added
-	 * CAT's session directories to the project's {@code .gitignore}, or could not, in the form for the agent that reads
-	 * the command's output.
+	 * Returns, once per scope, the notice that creating the host session's CAT session directory added CAT's session
+	 * directories to the project's {@code .gitignore}, or could not, in the form for the agent that reads the
+	 * command's output. This method creates nothing.
 	 *
-	 * @return the notice; empty if there is none or an earlier call returned it
-	 * @throws IllegalStateException if this scope is closed
-	 * @throws CommandRefusedException if the working directory is not inside a Git repository whose root may be a CAT
-	 *   project, or the environment names no host session
-	 * @throws IOException if the working directory cannot be resolved or the directory cannot be created
+	 * @return the notice; empty if the command has not created the directory, creating it left the file as it was, or
+	 *   an earlier call returned the notice
 	 */
-	final Optional<String> takeIgnoreNotice() throws CommandRefusedException, IOException
+	final Optional<String> takeIgnoreNotice()
 	{
-		Optional<String> notice = sessionDirectory().ignoreNotice().map(SessionIgnore.IgnoreNotice::forAgent);
-		if (ignoreNoticeTaken)
+		ensureOpen();
+		if (!sessionDirectoryCreated || ignoreNoticeTaken)
 			return Optional.empty();
 		ignoreNoticeTaken = true;
-		return notice;
+		return sessionDirectory.ignoreNotice().map(SessionIgnore.IgnoreNotice::forAgent);
 	}
 
 	/**
-	 * Opens the CAT session directory of the host session that runs this command.
+	 * Resolves the CAT session directory of the host session that runs this command without creating anything.
+	 *
+	 * @param projectRoot the project root
+	 * @return the directory, which may not exist
+	 * @throws CommandRefusedException if the environment names no host session
+	 * @throws IOException if the environment's session ID is invalid
+	 */
+	protected abstract SessionDirectory resolveSessionDirectory(Path projectRoot)
+		throws CommandRefusedException, IOException;
+
+	/**
+	 * Opens the CAT session directory of the host session that runs this command, creating it.
 	 *
 	 * @param projectRoot the project root
 	 * @return the directory

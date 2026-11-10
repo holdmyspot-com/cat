@@ -496,7 +496,6 @@ public final class OptimizerCore implements Core
 	private <E extends Exception> CommandResult withCleanup(Body<E> body) throws CommandRefusedException, IOException, E
 	{
 		List<String> notices = new ArrayList<>(cleanup().resume());
-		scope.takeIgnoreNotice().ifPresent(notices::add);
 		CommandResult result;
 		try
 		{
@@ -504,6 +503,7 @@ public final class OptimizerCore implements Core
 		}
 		catch (RegressionScenarios.CheckoutRepairException e)
 		{
+			scope.takeIgnoreNotice().ifPresent(notice -> notices.add(0, notice));
 			String message = e.getMessage();
 			if (!notices.isEmpty())
 				message += "\n" + String.join("\n", notices);
@@ -511,10 +511,12 @@ public final class OptimizerCore implements Core
 		}
 		catch (CommandRefusedException e)
 		{
+			scope.takeIgnoreNotice().ifPresent(notice -> notices.add(0, notice));
 			if (notices.isEmpty())
 				throw e;
 			throw new CommandRefusedException(e.getMessage() + "\n" + String.join("\n", notices), e);
 		}
+		scope.takeIgnoreNotice().ifPresent(notice -> notices.add(0, notice));
 		return result.withNotices(notices);
 	}
 
@@ -700,6 +702,8 @@ public final class OptimizerCore implements Core
 		// leaves nothing behind
 		List<PromptConfiguration.ConfiguredPlugin> configured = configuredPlugins(root, relative);
 		requireReachableReferences(root);
+		// Nothing can refuse the command after this point, so creating the CAT session directory is the first change
+		scope.createdSessionDirectory();
 		ForkView fork;
 		try
 		{

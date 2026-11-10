@@ -130,6 +130,40 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	}
 
 	/**
+	 * Returns the ID of the host session that the harness's session variable names.
+	 *
+	 * @return the ID, without surrounding whitespace
+	 * @throws CommandRefusedException if the session variable is not set
+	 */
+	private String hostSessionId() throws CommandRefusedException
+	{
+		String sessionId = environment.get(sessionHarness.sessionVariable());
+		if (sessionId == null || sessionId.isBlank())
+		{
+			throw new CommandRefusedException("A campaign belongs to the " + harness.commandName() + " session that " +
+				"runs it, but " + sessionHarness.sessionVariable() + " is not set. Run this command from a tool shell " +
+				"of a " + harness.commandName() + " session.");
+		}
+		return sessionId.strip();
+	}
+
+	/**
+	 * Resolves the CAT session directory of the host session that the harness's session variable names, without
+	 * creating it.
+	 *
+	 * @param projectRoot the project root
+	 * @return the directory, which may not exist
+	 * @throws CommandRefusedException if the session variable is not set
+	 * @throws IOException if the session variable does not hold a session ID
+	 */
+	@Override
+	protected final SessionDirectory resolveSessionDirectory(Path projectRoot)
+		throws CommandRefusedException, IOException
+	{
+		return SessionDirectory.resolve(projectRoot, hostSessionId(), json());
+	}
+
+	/**
 	 * Opens the CAT session directory of the host session that the harness's session variable names.
 	 *
 	 * @param projectRoot the project root
@@ -141,14 +175,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	protected final SessionDirectory openSessionDirectory(Path projectRoot)
 		throws CommandRefusedException, IOException
 	{
-		String sessionId = environment.get(sessionHarness.sessionVariable());
-		if (sessionId == null || sessionId.isBlank())
-		{
-			throw new CommandRefusedException("A campaign belongs to the " + harness.commandName() + " session that " +
-				"runs it, but " + sessionHarness.sessionVariable() + " is not set. Run this command from a tool shell " +
-				"of a " + harness.commandName() + " session.");
-		}
-		return SessionDirectory.open(projectRoot, sessionId.strip(), sessionHarness, configurationDirectory,
+		return SessionDirectory.open(projectRoot, hostSessionId(), sessionHarness, configurationDirectory,
 			clock().instant(), json());
 	}
 

@@ -168,6 +168,29 @@ public final class SessionDirectory
 	}
 
 	/**
+	 * Returns a session's CAT session directory without creating anything: no directory, no marker and no entry in
+	 * the project's {@code .gitignore}. The value names the paths that {@link #open open} would create, so a command
+	 * that is refused leaves the project as it found it. Its {@link #ignoreNotice()} is empty.
+	 *
+	 * @param projectRoot the session's project
+	 * @param sessionId the harness's session ID, a UUID in canonical form
+	 * @param json the JSON mapper that reads markers
+	 * @return the CAT session directory, which may not exist
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if {@code sessionId} is not a UUID in canonical form
+	 */
+	public static SessionDirectory resolve(Path projectRoot, String sessionId, JsonMapper json) throws IOException
+	{
+		requireThat(projectRoot, "projectRoot").isNotNull();
+		requireThat(sessionId, "sessionId").isNotNull();
+		requireThat(json, "json").isNotNull();
+		if (!isSessionId(sessionId))
+			throw new IOException("The session ID is not a UUID in canonical form: " + sessionId);
+		return new SessionDirectory(projectRoot.toAbsolutePath().normalize(), root(projectRoot).resolve(sessionId),
+			sessionId, json, Optional.empty());
+	}
+
+	/**
 	 * Returns the directory that holds the CAT session directories of a project.
 	 *
 	 * @param projectRoot the project
@@ -355,6 +378,8 @@ public final class SessionDirectory
 	private List<Path> sessionDirectories() throws IOException
 	{
 		List<Path> sessions = new ArrayList<>();
+		if (Files.notExists(directory.getParent()))
+			return sessions;
 		try (DirectoryStream<Path> entries = Files.newDirectoryStream(directory.getParent()))
 		{
 			for (Path entry : entries)
