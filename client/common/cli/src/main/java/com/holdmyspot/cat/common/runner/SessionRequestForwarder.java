@@ -247,9 +247,12 @@ public final class SessionRequestForwarder
 	 * and copies the session's kept run, which the run's runner names in its response, into the launch's
 	 * {@code --run-root} as {@code <run root>/<harness>/<run id>}. The command creates that run's {@code artifacts}
 	 * directory once the session reports its start, so that what the command writes into the run while it runs has a
-	 * place. A run that allows no further session refuses the session before it publishes anything. The run's runner
-	 * installs its own CAT for {@code --install-cat}, so a launch that names another CAT as {@code --artifact} sends
-	 * that CAT as a plugin, as a launch that goes to a request server does.
+	 * place. Before the command reads the record that reports the end of a completed turn, that run holds the
+	 * session's {@code project} and {@code initial-project} as the turn left them, so that the command can read what
+	 * the session has written so far, as it does in a session that it runs directly. A run that allows no further
+	 * session refuses the session before it publishes anything. The run's runner installs its own CAT for
+	 * {@code --install-cat}, so a launch that names another CAT as {@code --artifact} sends that CAT as a plugin, as a
+	 * launch that goes to a request server does.
 	 *
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session
@@ -321,14 +324,18 @@ public final class SessionRequestForwarder
 		if (refusal.isPresent())
 			throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, refusal.get()));
 		String id = UUID.randomUUID().toString();
-		ObjectNode request = launch.request().put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM);
+		ObjectNode request = launch.request().put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM).
+			put("turn_copy", true);
 		if (request.path("install_cat").asBoolean(false) && launch.artifact() != null &&
 			!isSame(launch.artifact(), ownArtifact))
 		{
 			request.withArray("plugins").insert(0, launch.artifact().toString());
 		}
 		JsonNode response;
-		try (TurnFeed records = new TurnFeed(input);
+		Path responses = responses(requests, id);
+		try (RecordCopy copy = new RecordCopy(json, output, launch.runRoot().resolve(harness),
+			     responses.resolve(SessionRequestBroker.TURN_COPY));
+		     TurnFeed records = new TurnFeed(input);
 		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
 		{
 			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
@@ -339,8 +346,9 @@ public final class SessionRequestForwarder
 					sender.send(next.get());
 				pause.pause();
 			};
-			response = await(json, responses(requests, id), sending,
-				new RecordCopy(json, output, launch.runRoot().resolve(harness)));
+			response = await(json, responses, sending, copy);
+			// The run's copy replaces the copies of the turns, which the copy of the run would otherwise collide with
+			copy.deleteTurnCopies();
 		}
 		String status = response.path("status").asString("");
 		String reason = response.path("reason").asString("");
@@ -726,7 +734,8 @@ public final class SessionRequestForwarder
 	/**
 	 * Copies the requested session's records, one per line, to a served command's output, creating the
 	 * {@code artifacts} directory of the session's run below the command's run root once the session reports its
-	 * start.
+	 * start, and replacing the run's project and initial project there with the session's, which the runner copied,
+	 * before the command reads each record that reports the end of a completed turn.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
@@ -745,22 +754,49 @@ public final class SessionRequestForwarder
 		 */
 		private final Path runs;
 		/**
+		 * The runner's copy of the session's project and initial project as of the end of its last completed turn.
+		 */
+		private final Path turnCopy;
+		/**
 		 * The bytes of a record whose line terminator has not arrived.
 		 */
 		private final ByteArrayOutputStream partial = new ByteArrayOutputStream();
+		/**
+		 * The identifier of the session's run, or an empty string until the session reports its start.
+		 */
+		private String runId = "";
+		/**
+		 * Indicates whether the run holds a copy of a turn's project.
+		 */
+		private boolean turnCopied;
 
 		/**
 		 * Creates a copy.
 		 *
-		 * @param json   the record mapper
-		 * @param output receives the records
-		 * @param runs   the folder of the command's runs of the session's harness
+		 * @param json     the record mapper
+		 * @param output   receives the records
+		 * @param runs     the folder of the command's runs of the session's harness
+		 * @param turnCopy the runner's copy of the session's project and initial project as of the end of its last
+		 *                 completed turn, which exists once a turn has completed
 		 */
-		RecordCopy(JsonMapper json, Writer output, Path runs)
+		RecordCopy(JsonMapper json, Writer output, Path runs, Path turnCopy)
 		{
 			this.json = json;
 			this.output = output;
 			this.runs = runs;
+			this.turnCopy = turnCopy;
+		}
+
+		/**
+		 * Removes the project and initial project that the copies of the turns left in the session's run.
+		 *
+		 * @throws IOException if they cannot be removed
+		 */
+		void deleteTurnCopies() throws IOException
+		{
+			if (turnCopied)
+				KeptRunCopy.deleteProjects(runs.resolve(runId));
+			turnCopied = false;
 		}
 
 		/**
@@ -784,14 +820,23 @@ public final class SessionRequestForwarder
 			}
 			String line = partial.toString(StandardCharsets.UTF_8);
 			partial.reset();
-			if (line.contains("\"started\""))
+			if (line.contains("\"started\"") || line.contains("\"turn_completed\""))
 			{
 				try
 				{
 					JsonNode record = json.readTree(line);
-					String runId = record.path("run_id").asString("");
-					if (record.path("type").asString("").equals("started") && isRunId(runId))
+					String type = record.path("type").asString("");
+					String id = record.path("run_id").asString("");
+					if (type.equals("started") && isRunId(id))
+					{
+						runId = id;
 						Files.createDirectories(runs.resolve(runId).resolve("artifacts"));
+					}
+					else if (type.equals("turn_completed") && !runId.isEmpty() && Files.isDirectory(turnCopy))
+					{
+						KeptRunCopy.copyProjects(turnCopy, runs.resolve(runId));
+						turnCopied = true;
+					}
 				}
 				catch (JacksonException _)
 				{

@@ -225,7 +225,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null);
+				null, null, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -238,6 +238,89 @@ public final class HarnessRunnerBridgeTest
 			requireThat(HarnessRunReceipt.read(json, receipt).retainedProject(), "retainedProject").
 				isEqualTo(project);
 			requireThat(HarnessRunReceipt.read(json, receipt).rawResult(), "rawResult").isEqualTo(transcript);
+		}
+	}
+
+	/**
+	 * Verifies that a bridge whose options name a turn copy replaces the copy of the run's project and initial project
+	 * at the end of each completed turn, before it writes the turn's {@code turn_completed} response.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void copiesProjectAtEndOfEachCompletedTurn() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one", "harness event"),
+				Turn.replies("two", "harness event")), new ArrayList<>());
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Path project = Files.createDirectories(run.directory().resolve("project"));
+			Files.writeString(project.resolve("first.txt"), "first");
+			manager.snapshotProject(run);
+			Path turnCopy = root.resolve("turn-copy");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", null, true, null, false, false, 1, List.of(), List.of(), null, List.of(), 0, null, 0, null,
+				null, null, false, null, null, null, turnCopy);
+			List<String> copied = new ArrayList<>();
+			try (Writer output = new Writer()
+			{
+				private final StringBuilder line = new StringBuilder();
+
+				@Override
+				public void write(char[] characters, int offset, int length) throws IOException
+				{
+					for (int index = offset; index < offset + length; ++index)
+					{
+						if (characters[index] != '\n')
+						{
+							line.append(characters[index]);
+							continue;
+						}
+						if (line.indexOf("\"turn_completed\"") >= 0)
+							turnEnded();
+						line.setLength(0);
+					}
+				}
+
+				/**
+				 * Records what the copy holds when a turn's completion is written, and then changes the run's project
+				 * as its next turn would.
+				 *
+				 * @throws IOException if the copy cannot be read or the project cannot be changed
+				 */
+				private void turnEnded() throws IOException
+				{
+					copied.add(Files.exists(turnCopy.resolve("project/first.txt")) + " " +
+						Files.exists(turnCopy.resolve("project/second.txt")) + " " +
+						Files.exists(turnCopy.resolve("initial-project/first.txt")) + " " +
+						Files.exists(turnCopy.resolve("initial-project/second.txt")));
+					Files.deleteIfExists(project.resolve("first.txt"));
+					Files.writeString(project.resolve("second.txt"), "second");
+				}
+
+				@Override
+				public void flush()
+				{
+				}
+
+				@Override
+				public void close()
+				{
+				}
+			})
+			{
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+					manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
+			}
+
+			requireThat(copied, "copied").isEqualTo(List.of("true false true false", "false true true false"));
 		}
 	}
 
@@ -477,7 +560,7 @@ public final class HarnessRunnerBridgeTest
 			this(manager, run, copy(manager, root, run), new HarnessRunnerOptions(root.resolve("artifact"),
 				root.resolve("runs"), root, "model-a", "effort-a", root.resolve("evidence/transcript.jsonl"), true,
 				root.resolve("evidence/receipt.json"), false, false, 1, List.of(), List.of(), null, List.of(), 0, null,
-				0, null, null, null, false, null, null, null), root.resolve("evidence/receipt.json"));
+				0, null, null, null, false, null, null, null, null), root.resolve("evidence/receipt.json"));
 		}
 
 		/**
@@ -532,7 +615,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, input, null, null, false, null,
-				null, null);
+				null, null, null);
 			StringWriter output = new StringWriter();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -676,7 +759,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, true, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null);
+				null, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 			// The harness writes the session's transcript in its home as it works on the session
 			Files.createDirectories(nativeFile.getParent());
@@ -727,7 +810,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null);
+				null, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,

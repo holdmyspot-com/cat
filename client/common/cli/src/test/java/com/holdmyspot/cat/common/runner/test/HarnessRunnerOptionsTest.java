@@ -711,6 +711,21 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
+	 * Verifies that a launch that names a directory for turn copies passes its path to the runner, and that a launch
+	 * without the option asks for none.
+	 */
+	@Test
+	public void parsesTurnCopyDirectory()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--turn-copy", absolute("responses/r1/turn-copy")),
+			"harness", SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
+
+		requireThat(result.turnCopy(), "turnCopy").isEqualTo(path("responses/r1/turn-copy"));
+		requireThat(without.turnCopy(), "withoutTurnCopy").isNull();
+	}
+
+	/**
 	 * Verifies that a launch that installs CAT and names, as its first plugin, a plugin whose manifest names it
 	 * {@code cat} installs that plugin as CAT, a candidate CAT under trial, and the other plugins beside it; and that
 	 * otherwise the artifact is CAT and every plugin is a trial plugin.

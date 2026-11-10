@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.KeptRunCopy;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.secrets.MainHarnessRunnerScopeSecrets;
@@ -35,7 +36,9 @@ import tools.jackson.databind.node.ObjectNode;
  * a harness runner's bridge: it reports its start, answers each turn with the reply {@code reply <n>}, and completes
  * with a retained-evidence receipt. A turn whose prompt is {@value #HOLD} gets no reply until an {@code interrupt}
  * record arrives, which the session answers with an {@code interrupted} record and the turn's completion, as a Claude
- * runner does. Its run holds {@code project/result.txt} and a login in its home.
+ * runner does. A turn whose prompt is {@value #WRITE_OUTPUT} writes {@value #OUTPUT_FILE} to the session's project.
+ * A session that the broker asks for turn copies copies its project and initial project, as the bridge does, before
+ * it reports a turn's completion. Its run holds {@code project/result.txt} and a login in its home.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -45,6 +48,19 @@ public final class RequestingRun implements AutoCloseable
 	 * The prompt of a turn that the requested session answers only once it is interrupted.
 	 */
 	public static final String HOLD = "hold";
+	/**
+	 * The prompt of a turn in which the requested session writes {@value #OUTPUT_FILE} to its project before it
+	 * replies.
+	 */
+	public static final String WRITE_OUTPUT = "write output";
+	/**
+	 * The file that the requested session writes in a turn whose prompt is {@value #WRITE_OUTPUT}.
+	 */
+	public static final String OUTPUT_FILE = "cat-output.json";
+	/**
+	 * The option with which the broker asks a requested session to copy its project at the end of each turn.
+	 */
+	private static final String TURN_COPY_OPTION = "--turn-copy";
 	/**
 	 * How often the broker discovers requests.
 	 */
@@ -167,6 +183,10 @@ public final class RequestingRun implements AutoCloseable
 							holding.countDown();
 							return;
 						}
+						if (record.path("prompt").asString().equals(WRITE_OUTPUT))
+							Files.writeString(child.directory().resolve("project").resolve(OUTPUT_FILE), "{\"written\":true}");
+						if (arguments.contains(TURN_COPY_OPTION))
+							KeptRunCopy.copyProjects(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
 						String reply = "reply " + turns.incrementAndGet();
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
 							put("run_id", child.id()).put("exit_code", 0).put("error", "").put("assistant_response", reply);

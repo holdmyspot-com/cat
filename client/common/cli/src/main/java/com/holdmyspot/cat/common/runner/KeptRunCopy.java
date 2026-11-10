@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.FileSystemException;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +34,14 @@ public final class KeptRunCopy
 	 * The directory of a kept run that holds the copy of the project that the child worked in.
 	 */
 	private static final String RUN_PROJECT = "project";
+	/**
+	 * The directory of a kept run that holds the copy of the project as it was before the child's first turn.
+	 */
+	private static final String RUN_INITIAL_PROJECT = "initial-project";
+	/**
+	 * The directories of a run that {@link #copyProjects(Path, Path)} copies.
+	 */
+	private static final Set<String> PROJECTS = Set.of(RUN_PROJECT, RUN_INITIAL_PROJECT);
 
 	/**
 	 * How the copy of a kept run ended.
@@ -72,7 +82,54 @@ public final class KeptRunCopy
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
-		RunCopier copier = new RunCopier(source, target);
+		return copy(source, target, _ -> true);
+	}
+
+	/**
+	 * Replaces the project and the initial project of a run with those of another run, which the requester reads
+	 * while the other run's session is still working. The copy leaves out what {@link #copy(Path, Path)} leaves out.
+	 * A run that holds neither leaves the target without them.
+	 *
+	 * @param source the run whose project and initial project are copied
+	 * @param target the run that receives them, which need not exist
+	 * @throws NullPointerException if {@code source} or {@code target} are null
+	 * @throws IOException          if the target's earlier copy cannot be removed, or a file cannot be copied
+	 */
+	public static void copyProjects(Path source, Path target) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(target, "target").isNotNull();
+		deleteProjects(target);
+		Optional<String> incomplete = copy(source, target, PROJECTS::contains).incomplete();
+		if (incomplete.isPresent())
+			throw new IOException(incomplete.get());
+	}
+
+	/**
+	 * Removes the project and the initial project of a run's copy, so that a copy of the whole run can follow.
+	 *
+	 * @param run the run's copy
+	 * @throws NullPointerException if {@code run} is null
+	 * @throws IOException          if a file cannot be removed
+	 */
+	public static void deleteProjects(Path run) throws IOException
+	{
+		requireThat(run, "run").isNotNull();
+		for (String name : PROJECTS)
+			TemporaryDirectories.deleteRecursively(run.resolve(name));
+	}
+
+	/**
+	 * Copies the directories of a kept run that a filter accepts.
+	 *
+	 * @param source   the kept run
+	 * @param target   the copy, which need not exist
+	 * @param included accepts the name of each directory directly below the run that the copy includes
+	 * @return how the copy ended
+	 */
+	private static Result copy(Path source, Path target, Predicate<String> included)
+	{
+		RunCopier copier = new RunCopier(source, target, included);
 		try
 		{
 			Files.walkFileTree(source, copier);
@@ -145,6 +202,10 @@ public final class KeptRunCopy
 		 */
 		private final Path target;
 		/**
+		 * Accepts the name of each directory directly below the run that the copy includes.
+		 */
+		private final Predicate<String> included;
+		/**
 		 * The paths, relative to the run, that the copier's sandbox refused to let the copy write.
 		 */
 		private final List<String> skipped = new ArrayList<>();
@@ -158,12 +219,25 @@ public final class KeptRunCopy
 		 *
 		 * @param source the kept run that is copied
 		 * @param target the copy of the kept run
+		 * @param included accepts the name of each directory directly below the run that the copy includes
 		 */
-		RunCopier(Path source, Path target)
+		RunCopier(Path source, Path target, Predicate<String> included)
 		{
 			this.source = source;
 			this.target = target;
+			this.included = included;
 			this.attempted = target;
+		}
+
+		/**
+		 * Indicates whether the copy includes a path of the kept run.
+		 *
+		 * @param relative the path, relative to the run
+		 * @return {@code true} for the run itself and for every path whose first name the filter accepts
+		 */
+		private boolean includes(Path relative)
+		{
+			return relative.toString().isEmpty() || included.test(relative.getName(0).toString());
 		}
 
 		/**
@@ -197,7 +271,7 @@ public final class KeptRunCopy
 		public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 		{
 			Path relative = source.relativize(directory);
-			if (relative.equals(Path.of(RUN_HOME)) || UNCHANGED.contains(relative))
+			if (relative.equals(Path.of(RUN_HOME)) || UNCHANGED.contains(relative) || !includes(relative))
 				return FileVisitResult.SKIP_SUBTREE;
 			attempted = copyOf(directory);
 			try
@@ -216,7 +290,8 @@ public final class KeptRunCopy
 		@Override
 		public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) throws IOException
 		{
-			if (attributes.isRegularFile() && !UNCHANGED.contains(source.relativize(file)))
+			if (attributes.isRegularFile() && !UNCHANGED.contains(source.relativize(file)) &&
+				includes(source.relativize(file)))
 			{
 				attempted = copyOf(file);
 				try

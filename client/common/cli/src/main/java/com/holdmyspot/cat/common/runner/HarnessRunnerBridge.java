@@ -234,6 +234,9 @@ public final class HarnessRunnerBridge
 												manager.writeTurnOutput(session.run(), currentTurn, result);
 											if (!result.completed())
 												throw harnessTurnFailure(result);
+											// The requester reads the copy once it reads this turn's response
+											if (options != null && options.turnCopy() != null)
+												KeptRunCopy.copyProjects(session.run().directory(), options.turnCopy());
 										}
 										catch (IOException | RuntimeException e)
 										{

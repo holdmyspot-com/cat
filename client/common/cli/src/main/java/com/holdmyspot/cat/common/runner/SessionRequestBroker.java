@@ -53,6 +53,13 @@ public final class SessionRequestBroker implements Closeable
 	 * The name, in a response directory and in its response, of the copy of a kept run that the requester reads.
 	 */
 	static final String RUN_COPY = "run";
+	/**
+	 * The directory of a response directory that holds the copy of a requested session's project and initial project
+	 * as of the end of its last completed turn, for a request that asks for turn copies. The requester may still be
+	 * reading it when the session ends, so it stays with the response, like {@link #RUN_COPY}, until the response
+	 * directory is removed.
+	 */
+	static final String TURN_COPY = "turn-copy";
 	private final Site site;
 	private final RequestedSessionStarter starter;
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -331,6 +338,8 @@ public final class SessionRequestBroker implements Closeable
 		List<String> arguments = new ArrayList<>(List.of("--project", request.project().toString(), "--run-root",
 			runRoot.toString(), "--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
 			"--receipt", directory.resolve("receipt.json").toString()));
+		if (request.turnCopy())
+			arguments.addAll(List.of("--turn-copy", directory.resolve(TURN_COPY).toString()));
 		for (Path denied : request.deniedReads())
 			arguments.addAll(List.of("--deny-read", denied.toString()));
 		request.workspace().ifPresent(workspace -> arguments.addAll(List.of("--workspace", workspace.toString())));

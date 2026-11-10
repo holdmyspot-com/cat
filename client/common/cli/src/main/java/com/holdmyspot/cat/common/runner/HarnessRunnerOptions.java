@@ -54,12 +54,14 @@ import tools.jackson.databind.json.JsonMapper;
  * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
  * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, in the
  *   format of {@link ExtraPermissions}, or {@code null} if the launch asks for none
+ * @param turnCopy the directory that receives a copy of the run's project and initial project at the end of each turn
+ *   that completes, before the turn's {@code turn_completed} record, or {@code null} if the launch asks for none
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
-	String gitName, String gitEmail, Path extraPermissions)
+	String gitName, String gitEmail, Path extraPermissions, Path turnCopy)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -81,7 +83,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
-		ExtraPermissions.OPTION, Conversation.OPTION);
+		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy");
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -232,6 +234,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.extraPermissions = Path.of(value);
 			else if (option.equals(Conversation.OPTION))
 				options.conversation = Path.of(value).toAbsolutePath();
+			else if (option.equals("--turn-copy"))
+				options.turnCopy = Path.of(value).toAbsolutePath();
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -252,7 +256,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
-			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions);
+			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
+			options.turnCopy);
 	}
 
 	/**
@@ -619,9 +624,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
 	 * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, or
 	 *   {@code null} if the launch asks for none
+	 * @param turnCopy the directory that receives a copy of the run's project and initial project at the end of each
+	 *   turn that completes, or {@code null} if the launch asks for none
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
-	 *   {@code gitName}, {@code gitEmail} and {@code extraPermissions}
+	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions} and {@code turnCopy}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
@@ -759,5 +766,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private String gitName;
 		private String gitEmail;
 		private Path extraPermissions;
+		private Path turnCopy;
 	}
 }
