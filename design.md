@@ -2766,7 +2766,10 @@ what the child needs, optional).
 It takes its own slot of its harness's shared
 capacity and honours its hold, but waits at most 10 minutes for a slot, because the requesting session keeps its own
 slot while it waits; a request that times out fails with the reason `capacity`. Ending the run or interrupting its turn
-stops the requested sessions that still run. A launcher streams a requested conversation as `turn` records that
+stops the requested sessions that still run. Before each completed turn's record, a session that the optimizer
+requests through its run's runner leaves its `project` and `initial-project` in the response directory's `turn-copy`,
+and the optimizer copies them into its run root before it reads that record, so a follow-up checks the files that the
+session has written so far, as it does in a direct session. A launcher streams a requested conversation as `turn` records that
 hold only a prompt, and `interrupt` and `complete` records that hold only their type. Requested runs lie in groups of
 100 under the requesting run, so that a session's sandbox denies its sibling runs with about twice the square root of
 their number in paths. The receipt lists each requested session, its run and its evidence. The runner
