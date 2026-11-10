@@ -693,7 +693,8 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies the output schema: the status object plus harness, summary, proposal, deliveryResult and message.
+	 * Verifies the output schema: the status object plus harness, summary, proposal_file, deliveryResult and message,
+	 * with the proposal's path and none of its text.
 	 */
 	@Test
 	public void printsStatusObjectWithExtensions() throws IOException
@@ -702,15 +703,18 @@ public final class CommandsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			StatusReport status = status();
-			String text = Project.create(cleanup).render(ZoneOffset.UTC,
-				new CommandResult(status, Harness.CODEX, "the proposal", null, "a notice"));
+			Project project = Project.create(cleanup);
+			Path proposalFile = project.root.resolve("campaign").resolve("proposal.md");
+			String text = project.render(ZoneOffset.UTC,
+				new CommandResult(status, Harness.CODEX, proposalFile, null, "a notice"));
 			JsonNode json = JSON.readTree(text);
 			requireThat(json.get("status").asString(), "status").isEqualTo(status.status().label());
 			requireThat(json.get("campaign").asString(), "campaign").isEqualTo(status.campaignId());
 			requireThat(json.has("choices"), "hasChoices").isTrue();
 			requireThat(json.get("harness").asString(), "harness").isEqualTo("codex");
 			requireThat(json.get("summary").asString(), "summary").isEqualTo(status.summary(ZoneOffset.UTC));
-			requireThat(json.get("proposal").asString(), "proposal").isEqualTo("the proposal");
+			requireThat(json.get("proposal_file").asString(), "proposalFile").isEqualTo(proposalFile.toString());
+			requireThat(json.has("proposal"), "hasProposalText").isFalse();
 			requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
 			requireThat(json.get("message").asString(), "message").isEqualTo("a notice");
 			requireThat(text.lines().count(), "lines").isEqualTo(1L);
@@ -809,7 +813,7 @@ public final class CommandsTest
 	/**
 	 * Verifies that the status of a target that only a certification history describes is one object with the
 	 * latest record of each harness, with its index, scope and applicability, the earlier records, and a summary that
-	 * names them, and no campaign, harness, proposal or delivery.
+	 * names them, and no campaign, harness, proposal file or delivery.
 	 */
 	@Test
 	public void printsCertificationRecord() throws IOException
@@ -866,7 +870,7 @@ public final class CommandsTest
 
 			Earlier certifications:
 			  Attempt 1 in provider-1: certified, scope latest_versions""");
-		requireThat(json.get("proposal").isNull(), "proposalIsNull").isTrue();
+		requireThat(json.get("proposal_file").isNull(), "proposalFileIsNull").isTrue();
 		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").isNull(), "messageIsNull").isTrue();
 	}

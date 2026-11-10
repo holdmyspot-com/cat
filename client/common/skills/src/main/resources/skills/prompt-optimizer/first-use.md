@@ -34,11 +34,12 @@ Run the launcher that this skill's `SKILL.md` names. Each command prints one JSO
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
 and stop, unless step 1 says how to continue.
 
-To show the user a launcher field means to put its text in your reply verbatim, however long it is. A summary, an
-excerpt, a saved file or a link does not show it: the user confirms and chooses only from what your reply shows. Any
-other guidance on how long a reply is or how it is written, such as writing one paragraph of one or two sentences,
-does not shorten or replace a launcher field that this skill tells you to show. Add no statistic, estimate or verdict
-of your own about the campaign; every such claim the user sees must come from a launcher field.
+To show the user a launcher field, or the file that a field names, means to put its text in your reply verbatim,
+however long it is. A summary, an excerpt, a copy, a path or a link does not show it: the user confirms and chooses
+only from what your reply shows. Any other guidance on how long a reply is or how it is written, such as writing one
+paragraph of one or two sentences, does not shorten or replace a launcher field or a file that this skill tells you to
+show. Add no statistic, estimate or verdict of your own about the campaign; every such claim the user sees must come
+from a launcher field.
 
 1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
 	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
@@ -92,17 +93,19 @@ of your own about the campaign; every such claim the user sees must come from a 
 		path for `<file>`. Naming the file after `--` commits only it, so anything else the user staged stays staged and
 		uncommitted. Tell the user that you committed the file, naming the commit's hash, then run `start` again with
 		the same arguments. If `git` refuses the commit, show its output and stop.
-2. **Confirm the contract.** While the result holds a `proposal`, read all of it, including every part of an output
-	that arrives in parts, and show it before anything else. Your first message after the result holds the `proposal`
-	text exactly as `start` printed it, from its first line to its last, section by section, and nothing else. Write
-	that message before you read another file or rule or run another command, and then ask the question that this
-	step asks in a message of its own. The proposal holds the contract, the warnings and each certification scope
-	choice, and the user confirms only what your messages show. Its length, tens of thousands of characters, is
-	expected, and no guidance to keep a message short, to report an interruption briefly or to write a one-paragraph
-	update shortens the proposal or comes before it. Asking the question is this skill's own procedure, not an
-	escalation of a choice and not an interruption of the skill, even when the proposal lists conflicts or says that
-	certification is unavailable. When the result also holds a `message`, show the `message` after the proposal. If
-	the result holds a `message` but no `proposal`, show the `message`.
+2. **Confirm the contract.** While the result's `proposal_file` names a file, that file holds the proposal. Each
+	result that names a proposal file replaces that file's text, so read the file again for every such result, even when
+	its path is the one that an earlier result named. Read all of the file, including every part that arrives
+	separately, before anything else. Then your first message holds the file's text exactly as the file has it, from its
+	first line to its last, section by section, and nothing else: no introduction, summary, comment or question. Read no
+	other file or rule and run no other command between reading the proposal file and that message. After that message,
+	ask the question that this step asks, in a message of its own. The proposal holds the contract, the warnings and
+	each certification scope choice, and the user confirms only what your messages show. Its length, tens of thousands
+	of characters, is expected, and no guidance to keep a message short, to report an interruption briefly or to write a
+	one-paragraph update shortens the proposal or comes before it. Asking the question is this skill's own procedure,
+	not an escalation of a choice and not an interruption of the skill, even when the proposal lists conflicts or says
+	that certification is unavailable. When the result also holds a `message`, show the `message` after the proposal. If
+	the result holds a `message` but no `proposal_file`, show the `message`.
 	- If the proposal lists conflicts, confirmation is refused until each is resolved. After the proposal, for each
 		conflict, ask the user to choose one of its resolutions, naming the recommended one and its reason, or to
 		describe another. Do not offer confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and
@@ -132,7 +135,7 @@ of your own about the campaign; every such claim the user sees must come from a 
 		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
 	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
 3. **Run.** While `status` is `running`, run `run <campaign>` again. After each run, show the user its `summary`.
-4. **Decide.** When `status` is `awaiting_user` and no `proposal` is present, show the `summary` and each choice's
+4. **Decide.** When `status` is `awaiting_user` and `proposal_file` is null, show the `summary` and each choice's
 	`label`, then ask the user to choose. Never choose on the user's behalf.
 	- Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
 		`attempt`. For `more_evidence`, ask the user for a review point above the entry's `review_point_above` and add
@@ -145,7 +148,7 @@ of your own about the campaign; every such claim the user sees must come from a 
 		true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
 		<campaign> <feedback>`.
 	- When the chosen entry is `retry` on a guard pilot pause (the summary says a guard pilot trial ran without an
-		outcome), the result of `choose` holds the proposal: continue with step 2.
+		outcome), the result of `choose` names a proposal file: continue with step 2.
 	- Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its

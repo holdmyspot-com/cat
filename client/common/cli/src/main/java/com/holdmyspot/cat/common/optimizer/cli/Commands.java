@@ -673,10 +673,10 @@ public final class Commands
 			root.put("harness", result.harness().commandName());
 		}
 		root.put("summary", result.summary(zone));
-		if (result.proposal() == null)
-			root.putNull("proposal");
+		if (result.proposalFile() == null)
+			root.putNull("proposal_file");
 		else
-			root.put("proposal", result.proposal());
+			root.put("proposal_file", result.proposalFile().toAbsolutePath().toString());
 		if (result.delivery() == null)
 			root.putNull("delivery_result");
 		else

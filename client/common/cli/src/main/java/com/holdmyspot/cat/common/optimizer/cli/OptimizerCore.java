@@ -665,7 +665,7 @@ public final class OptimizerCore implements Core
 				"derived a new one. The stored proposal's problems: " + String.join("; ", e.problems());
 			if (derived.message() != null)
 				message += "\n" + derived.message();
-			return new CommandResult(derived.status(), derived.harness(), derived.proposal(), derived.delivery(),
+			return new CommandResult(derived.status(), derived.harness(), derived.proposalFile(), derived.delivery(),
 				message);
 		}
 		if (stored.isPresent())
@@ -731,7 +731,7 @@ public final class OptimizerCore implements Core
 		String message = fork.ignoreNotice().get();
 		if (result.message() != null)
 			message += "\n" + result.message();
-		return new CommandResult(result.status(), result.harness(), result.proposal(), result.delivery(), message);
+		return new CommandResult(result.status(), result.harness(), result.proposalFile(), result.delivery(), message);
 	}
 
 	/**
@@ -2736,10 +2736,11 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
-	 * @param proposal the rendered proposal, or {@code null}
+	 * @param proposal the rendered proposal, which the result names the file of, or {@code null}
 	 * @param message a notice, or {@code null}
 	 * @return the result
-	 * @throws IOException if the fork or the shared capacity hold cannot be read
+	 * @throws IOException if the fork or the shared capacity hold cannot be read, or the proposal's file cannot be
+	 *   written
 	 */
 	private CommandResult report(Path root, Campaign campaign, String proposal, String message) throws IOException
 	{
@@ -2754,7 +2755,10 @@ public final class OptimizerCore implements Core
 		Instant sharedHoldUntil = scope.sessions().sharedHoldUntil(scope.clock().instant()).orElse(null);
 		ReportEvidence evidence = new ReportEvidence(List.of(), links, false, null).
 			withSharedHoldUntil(sharedHoldUntil).withCertifiedEnvironment(deliveredEnvironment(root, campaign));
-		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposal, null,
+		Path proposalFile = null;
+		if (proposal != null)
+			proposalFile = new ProposalTextFile(directory, scope.fileReplacer()).write(proposal);
+		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposalFile, null,
 			message);
 	}
 

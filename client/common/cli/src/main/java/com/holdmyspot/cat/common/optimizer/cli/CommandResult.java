@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.optimizer.execution.DeliveryReport;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 
+import java.nio.file.Path;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,14 +22,15 @@ import java.util.List;
  * @param certification the certification history of a target that has no campaign, or {@code null} if the result
  *   reports a campaign
  * @param harness the harness that started the campaign, or {@code null} if the result reports a certification record
- * @param proposal the rendered proposal that the user must review, or {@code null} if the command presents none
+ * @param proposalFile the file that holds the rendered proposal that the user must review, or {@code null} if the
+ *   command presents none
  * @param delivery the delivery that the command attempted, or {@code null} if it attempted none
  * @param message a notice for the user that the status does not carry, or {@code null} if there is none
  * @param notices the lines that follow the status's summary, such as the removal of a campaign's files or a warning
  *   that a removal failed
  */
 public record CommandResult(StatusReport status, CertificationStatus certification, Harness harness,
-	String proposal, DeliveryReport delivery, String message, List<String> notices)
+	Path proposalFile, DeliveryReport delivery, String message, List<String> notices)
 {
 	/**
 	 * Creates a result.
@@ -39,15 +41,16 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	 *   reports a campaign
 	 * @param harness the harness that started the campaign, or {@code null} if the result reports a certification
 	 *   record
-	 * @param proposal the rendered proposal that the user must review, or {@code null} if the command presents none
+	 * @param proposalFile the file that holds the rendered proposal that the user must review, or {@code null} if the
+ *   command presents none
 	 * @param delivery the delivery that the command attempted, or {@code null} if it attempted none
 	 * @param message a notice for the user that the status does not carry, or {@code null} if there is none
 	 * @param notices the lines that follow the status's summary
 	 * @throws NullPointerException if {@code notices} is null or contains null, or if {@code status} is present and
 	 *   {@code harness} is null
 	 * @throws IllegalArgumentException if {@code status} and {@code certification} are both present or both null; if a
-	 *   certification record comes with a harness, a proposal or a delivery; or if {@code proposal},
-	 *   {@code message} or a notice is blank
+	 *   certification record comes with a harness, a proposal file or a delivery; or if {@code message} or a notice is
+	 *   blank
 	 */
 	public CommandResult
 	{
@@ -61,11 +64,9 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 		else
 		{
 			requireThat(harness, "harness").isNull();
-			requireThat(proposal, "proposal").isNull();
+			requireThat(proposalFile, "proposalFile").isNull();
 			requireThat(delivery, "delivery").isNull();
 		}
-		if (proposal != null)
-			requireThat(proposal, "proposal").isNotBlank();
 		if (message != null)
 			requireThat(message, "message").isNotBlank();
 		requireThat(notices, "notices").isNotNull();
@@ -79,16 +80,17 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	 *
 	 * @param status the campaign's status after the command
 	 * @param harness the harness that started the campaign
-	 * @param proposal the rendered proposal that the user must review, or {@code null} if the command presents none
+	 * @param proposalFile the file that holds the rendered proposal that the user must review, or {@code null} if the
+ *   command presents none
 	 * @param delivery the delivery that the command attempted, or {@code null} if it attempted none
 	 * @param message a notice for the user that the status does not carry, or {@code null} if there is none
 	 * @throws NullPointerException if {@code status} or {@code harness} are null
-	 * @throws IllegalArgumentException if {@code proposal} or {@code message} are blank
+	 * @throws IllegalArgumentException if {@code message} is blank
 	 */
-	public CommandResult(StatusReport status, Harness harness, String proposal, DeliveryReport delivery,
+	public CommandResult(StatusReport status, Harness harness, Path proposalFile, DeliveryReport delivery,
 		String message)
 	{
-		this(requireStatus(status), null, harness, proposal, delivery, message, List.of());
+		this(requireStatus(status), null, harness, proposalFile, delivery, message, List.of());
 	}
 
 	/**
@@ -147,7 +149,7 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 		List<String> combined = new ArrayList<>(notices);
 		combined.addAll(added);
 		String combinedMessage = message;
-		if (proposal != null)
+		if (proposalFile != null)
 		{
 			String lines = String.join("\n", added);
 			if (combinedMessage == null)
@@ -155,7 +157,7 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 			else
 				combinedMessage += "\n" + lines;
 		}
-		return new CommandResult(status, certification, harness, proposal, delivery, combinedMessage, combined);
+		return new CommandResult(status, certification, harness, proposalFile, delivery, combinedMessage, combined);
 	}
 
 	/**

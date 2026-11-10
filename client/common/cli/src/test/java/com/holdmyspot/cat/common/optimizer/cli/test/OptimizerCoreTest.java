@@ -1498,9 +1498,9 @@ public final class OptimizerCoreTest
 				requireThat(trial.part(), "part").isEqualTo(Part.DEVELOPMENT);
 				requireThat(Files.readString(trial.source().resolve("CLAUDE.md")), "controlPrompt").isEmpty();
 			}
-			requireThat(result.proposal(), "proposal").isNotNull().contains("\n## Guard pilot\n").
+			requireThat(proposalText(result), "proposal").isNotNull().contains("\n## Guard pilot\n").
 				contains("- `asks_before_deleting` (guard): 20 of 20 passed (100%)");
-			requireThat(result.proposal().split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
+			requireThat(proposalText(result).split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
 				isEqualTo(4);
 			requireThat(result.status().tokens().roles().keySet(), "tokens").doesNotContain(SessionRole.TRIAL).
 				doesNotContain(SessionRole.JUDGE);
@@ -2333,7 +2333,7 @@ public final class OptimizerCoreTest
 			requireThat(result.status().campaignId(), "campaignId").isEqualTo(id);
 			requireThat(result.status().lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 			requireThat(result.message(), "message").contains(id).contains("cancelled").contains("resume");
-			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.proposalFile(), "proposalFile").isNull();
 			requireThat(result.status().choices().stream().map(ChoiceItem::choice).toList(), "choices").
 				contains(Choice.RESUME);
 			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
@@ -2669,6 +2669,69 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Reads the proposal that a command's result names.
+	 *
+	 * @param result the result
+	 * @return the text of the result's proposal file, or {@code null} if the result presents no proposal
+	 * @throws IOException if the file cannot be read
+	 */
+	private static String proposalText(CommandResult result) throws IOException
+	{
+		if (result.proposalFile() == null)
+			return null;
+		return Files.readString(result.proposalFile(), StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Reads the proposal that a command's JSON names.
+	 *
+	 * @param output the command's output
+	 * @return the text of the file that {@code proposal_file} names, or {@code null} if the output names none
+	 * @throws IOException if the file cannot be read
+	 */
+	private static String proposalText(ObjectNode output) throws IOException
+	{
+		if (output.get("proposal_file").isNull())
+			return null;
+		return Files.readString(Path.of(output.get("proposal_file").asString()), StandardCharsets.UTF_8);
+	}
+
+	/**
+	 * Verifies that {@code start} writes the proposal that the user reviews to a file of the campaign and that its
+	 * output names the file's path without carrying the proposal's text, so that the output stays short however long
+	 * the proposal is, and that {@code revise} replaces the file's text under the same path.
+	 */
+	@Test
+	public void proposalReachesTheUserThroughItsFile() throws Exception
+	{
+		// Requirement: R-I2
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> derivation(output ->
+			{
+				ArrayNode limitations = (ArrayNode) output.get("limitations");
+				limitations.add("Revision number " + count + " limit.");
+			}));
+
+			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
+
+			String id = started.get("campaign").asString();
+			Path file = repository.directory(id).resolve("proposal.md");
+			requireThat(started.get("proposal_file").asString(), "proposalFile").isEqualTo(file.toString());
+			requireThat(started.has("proposal"), "hasProposalText").isFalse();
+			requireThat(started.toString(), "output").doesNotContain("## Requirements").
+				doesNotContain("## Guard pilot");
+			requireThat(proposalText(started), "proposalText").contains("## Requirements").
+				contains("\n## Guard pilot\n").contains("Revision number 0 limit.");
+
+			ObjectNode revised = output(repository, List.of("revise", id, "cover the formal tone"));
+
+			requireThat(revised.get("proposal_file").asString(), "revisedProposalFile").isEqualTo(file.toString());
+			requireThat(proposalText(revised), "revisedText").contains("Revision number 1 limit.");
+		}
+	}
+
+	/**
 	 * Verifies that the start command reports the {@code .gitignore} notice supplied by the fork boundary, and that
 	 * confirmation and resumption do not repeat the notice. Real Git's creation decision is covered by fork tests.
 	 */
@@ -2685,7 +2748,7 @@ public final class OptimizerCoreTest
 			ObjectNode started = output(repository, List.of("start", "CLAUDE.md"));
 			requireThat(started.get("message").asString(), "message").startsWith(IGNORE_NOTICE).
 				doesNotContain("info/exclude");
-			requireThat(started.get("proposal").isNull(), "missingProposal").isFalse();
+			requireThat(started.get("proposal_file").isNull(), "missingProposal").isFalse();
 			String id = started.get("campaign").asString();
 			requireThat(output(repository, List.of("confirm", id, "latest_versions")).get("message").isNull(),
 				"confirmNotice").isTrue();
@@ -2818,7 +2881,7 @@ public final class OptimizerCoreTest
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 			requireThat(repository.sessions().requests().getFirst().profile(), "contractAuthorProfile").
 				isEqualTo(FakeProfileInventory.ROLE);
-			requireThat(result.proposal(), "proposal").
+			requireThat(proposalText(result), "proposal").
 				contains("Trial profile inventory (" + FakeProfileInventory.INVENTORY.source() + ")").
 				contains("agents/safety.agent binds bound-model/low (outside the inventory, used as written)").
 				contains("test safety (1 cell, named by the test): bound-model/low").
@@ -2834,6 +2897,22 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Examines the result of {@code start}.
+	 */
+	@FunctionalInterface
+	private interface StartObserver
+	{
+		/**
+		 * Examines the result of {@code start}.
+		 *
+		 * @param repository the test project and core
+		 * @param result the result of {@code start}
+		 * @throws Exception if the examination fails
+		 */
+		void observe(Repository repository, CommandResult result) throws Exception;
+	}
+
+	/**
 	 * Starts a campaign whose requirement's source is an agent file that binds a profile.
 	 *
 	 * @param rejected the model that the harness rejects
@@ -2842,7 +2921,7 @@ public final class OptimizerCoreTest
 	 * @throws Exception if the campaign cannot be started
 	 */
 	private static void startWithBoundAgent(String rejected, TrialProfile bound,
-		java.util.function.BiConsumer<Repository, CommandResult> observe) throws Exception
+		StartObserver observe) throws Exception
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
@@ -2855,7 +2934,7 @@ public final class OptimizerCoreTest
 			Files.createDirectory(repository.root().resolve("agents"));
 			Files.writeString(repository.root().resolve("agents/safety.agent"), FakeProfileInventory.content(bound));
 
-			observe.accept(repository, repository.core().start(Path.of("CLAUDE.md")));
+			observe.observe(repository, repository.core().start(Path.of("CLAUDE.md")));
 		}
 	}
 
@@ -2871,7 +2950,7 @@ public final class OptimizerCoreTest
 		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("gpt-5.6-luna", "low"), (repository, result) ->
 		{
 			requireThat(repository.sessions().requests(), "requests").isEmpty();
-			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.proposalFile(), "proposalFile").isNull();
 			requireThat(result.message(), "message").contains("agents/safety.agent").contains("gpt-5.6-luna").
 				contains("Change the binding").contains("`start` again");
 		});
@@ -2888,7 +2967,7 @@ public final class OptimizerCoreTest
 		{
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
 				isEqualTo(1);
-			requireThat(result.proposal(), "proposal").isNotNull().contains("agents/safety.agent binds gpt-6-luna/low");
+			requireThat(proposalText(result), "proposal").isNotNull().contains("agents/safety.agent binds gpt-6-luna/low");
 		});
 	}
 
@@ -2904,7 +2983,7 @@ public final class OptimizerCoreTest
 		{
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
 				isEqualTo(1);
-			requireThat(result.proposal(), "proposal").isNotNull();
+			requireThat(proposalText(result), "proposal").isNotNull();
 		});
 	}
 
@@ -2919,7 +2998,7 @@ public final class OptimizerCoreTest
 		// Requirement: R-C10
 		startWithBoundAgent("gpt-5.6-luna", new TrialProfile("", "low"), (repository, result) ->
 		{
-			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.proposalFile(), "proposalFile").isNull();
 			requireThat(result.message(), "message").contains("'safety'").contains("model open");
 		});
 	}
@@ -3020,13 +3099,13 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
 			ObjectNode first = output(repository, List.of("choose", id, "resolution_2"));
-			requireThat(first.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(first.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(first.get("choices").get(0).get("label").asString(), "nextResolution").
 				isEqualTo("Exempt greetings.");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isFalse();
 			requireThat(repository.load(id).pending(), "remainingConflict").isNotNull();
 			ObjectNode last = output(repository, List.of("choose", id, "resolution_1"));
-			requireThat(last.get("proposal").asString(), "proposal").contains("## Requirements");
+			requireThat(proposalText(last), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.load(id).pending(), "pending").isNull();
 			SessionRequest request = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast();
@@ -3062,7 +3141,7 @@ public final class OptimizerCoreTest
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			pauseConflicts(repository, id);
 			CommandResult revised = repository.core().revise(id, "Exempt detailed safety explanations.");
-			requireThat(revised.proposal(), "proposal").contains("## Requirements");
+			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 			requireThat(repository.load(id).pending(), "pending").isNull();
 			requireThat(repository.load(id).revisionRequested(), "revisionRequested").isTrue();
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
@@ -3149,7 +3228,7 @@ public final class OptimizerCoreTest
 				contains("- `asks_before_deleting` (guard): 20 of 20 passed (100%)");
 			// A revision that changes no prompt test reuses every pilot
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trials").isEqualTo(pilotTrials);
-			requireThat(revised.proposal(), "proposal").contains("Revision number 1 limit.");
+			requireThat(proposalText(revised), "proposal").contains("Revision number 1 limit.");
 			requireThat(Files.readString(repository.directory(id).resolve("held_out/proposal.json")), "stored").
 				contains("Revision number 1 limit.");
 		}
@@ -3188,14 +3267,14 @@ public final class OptimizerCoreTest
 			String id = started.status().campaignId();
 			Path stored = repository.directory(id).resolve("held_out/proposal.json");
 			long saltBefore = JSON.readTree(Files.readString(stored)).get("salt").asLong();
-			Map<String, Part> before = partsShown(started.proposal());
+			Map<String, Part> before = partsShown(proposalText(started));
 			requireThat(before.values(), "partsBefore").contains(Part.DEVELOPMENT).contains(Part.HELD_OUT);
 
 			CommandResult revised = repository.core().revise(id, "cover more tones");
 
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
 				isEqualTo(2);
-			Map<String, Part> after = partsShown(revised.proposal());
+			Map<String, Part> after = partsShown(proposalText(revised));
 			requireThat(after.size(), "casesAfter").isGreaterThan(before.size());
 			requireThat(after.get("a playful summary shortened for an expert reader"), "newCase").isNotNull();
 			for (Map.Entry<String, Part> testCase : before.entrySet())
@@ -3472,7 +3551,7 @@ public final class OptimizerCoreTest
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(result.proposal(), "proposal").isNotNull().
+			requireThat(proposalText(result), "proposal").isNotNull().
 				contains("Every trial receives these files from the incumbent, besides its prompt test's workspace " +
 					"files:\n\n").
 				contains("\n- `CLAUDE.md`\n").
@@ -3504,7 +3583,7 @@ public final class OptimizerCoreTest
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(result.proposal(), "proposal").isNull();
+			requireThat(result.proposalFile(), "proposalFile").isNull();
 			requireThat(result.message(), "message").isNotNull().
 				contains("the SessionStart hook `cat docs/conventions.md` of `.claude/settings.json`").
 				contains("exits with status 1").
@@ -3533,7 +3612,7 @@ public final class OptimizerCoreTest
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(result.proposal(), "proposal").isNotNull().
+			requireThat(proposalText(result), "proposal").isNotNull().
 				contains(plugin + "|").
 				contains("/trial/project").
 				contains("/session/project");
@@ -3825,7 +3904,7 @@ public final class OptimizerCoreTest
 
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(started.proposal(), "proposal").contains("tools@market SessionStart `./start.sh`");
+			requireThat(proposalText(started), "proposal").contains("tools@market SessionStart `./start.sh`");
 		}
 	}
 
@@ -4030,10 +4109,10 @@ public final class OptimizerCoreTest
 				findFirst().orElseThrow();
 			requireThat(Path.of(absolute).isAbsolute(), "isAbsolute").isTrue();
 			requireThat(Path.of(absolute).endsWith(rule), "endsWith").isTrue();
-			requireThat(started.proposal(), "started").contains(shown).doesNotContain(absolute);
+			requireThat(proposalText(started), "started").contains(shown).doesNotContain(absolute);
 
 			repository.sessions().setPluginSources(List.of());
-			String resumed = repository.core().start(Path.of("CLAUDE.md")).proposal();
+			String resumed = proposalText(repository.core().start(Path.of("CLAUDE.md")));
 			requireThat(resumed, "resumed").contains(shown).doesNotContain(absolute);
 		}
 	}
@@ -4065,7 +4144,7 @@ public final class OptimizerCoreTest
 			Files.createDirectories(root.resolve(rule).getParent());
 			Files.writeString(root.resolve(rule), "Answer in a formal tone.\n");
 
-			String proposal = repository.core().start(Path.of("CLAUDE.md")).proposal();
+			String proposal = proposalText(repository.core().start(Path.of("CLAUDE.md")));
 
 			requireThat(proposal, "proposal").contains("## Trial plugins").
 				doesNotContain("no trial plugin that the project builds holds a copy of them");
@@ -4091,11 +4170,11 @@ public final class OptimizerCoreTest
 			{
 			}));
 			String listed = "- CLAUDE.md: The harness reads the project instruction file in the project root at startup.";
-			requireThat(repository.core().start(Path.of("CLAUDE.md")).proposal(), "started").contains(listed);
+			requireThat(proposalText(repository.core().start(Path.of("CLAUDE.md"))), "started").contains(listed);
 			repository.sessions().addDerivedSources(List.of(new DerivedSource("extra.local.md",
 				"The harness loads the file by convention.")));
 
-			String resumed = repository.core().start(Path.of("CLAUDE.md")).proposal();
+			String resumed = proposalText(repository.core().start(Path.of("CLAUDE.md")));
 			requireThat(resumed, "resumed").contains(listed).doesNotContain("extra.local.md: The harness loads");
 		}
 	}
@@ -4158,7 +4237,7 @@ public final class OptimizerCoreTest
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "contractAuthors").
 				isEqualTo(2);
 			requireThat(resumed.message(), "message").contains("no longer validates").contains("$.judge");
-			requireThat(resumed.proposal(), "proposal").isNotNull();
+			requireThat(proposalText(resumed), "proposal").isNotNull();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 		}
 	}
@@ -4248,7 +4327,7 @@ public final class OptimizerCoreTest
 			requireThat(rerun.size(), "rerun").isEqualTo(GuardPilot.TRIALS);
 			requireThat(rerun.stream().allMatch(trial -> trial.turns().getFirst().startsWith("Delete the ")),
 				"onlySafety").isTrue();
-			requireThat(revised.proposal(), "proposal").contains("\n## Guard pilot\n");
+			requireThat(proposalText(revised), "proposal").contains("\n## Guard pilot\n");
 		}
 	}
 
@@ -4307,7 +4386,7 @@ public final class OptimizerCoreTest
 
 			String id = started.get("campaign").asString();
 			requireThat(started.get("status").asString(), "status").isEqualTo("awaiting_user");
-			requireThat(started.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(started.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(choiceIds(started), "choices").isEqualTo(List.of("retry", "stop"));
 			requireThat(started.get("message").asString(), "message").contains("its guard pilot paused").
 				contains("`choose " + id + " retry`").contains("`choose " + id + " stop`");
@@ -4326,7 +4405,7 @@ public final class OptimizerCoreTest
 			ObjectNode again = output(repository, List.of("start", "CLAUDE.md"));
 
 			requireThat(again.get("status").asString(), "againStatus").isEqualTo("awaiting_user");
-			requireThat(again.get("proposal").isNull(), "againProposal").isTrue();
+			requireThat(again.get("proposal_file").isNull(), "againProposal").isTrue();
 			requireThat(choiceIds(again), "againChoices").isEqualTo(List.of("retry", "stop"));
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "againTrialSessions").isEqualTo(8);
 		}
@@ -4351,8 +4430,8 @@ public final class OptimizerCoreTest
 			ObjectNode started = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1"));
 
 			String id = started.get("campaign").asString();
-			requireThat(started.get("proposal").isNull(), "proposal").isFalse();
-			requireThat(started.get("proposal").asString(), "proposalText").
+			requireThat(started.get("proposal_file").isNull(), "proposal").isFalse();
+			requireThat(proposalText(started), "proposalText").
 				contains("The pilot stopped before it finished: The trial session was interrupted").
 				contains("The proposal cannot be confirmed until the pilot finishes");
 			requireThat(started.get("message").asString(), "message").contains("cannot be confirmed").
@@ -4373,9 +4452,9 @@ public final class OptimizerCoreTest
 			repository.trialEnd().set(_ -> null);
 			ObjectNode resumed = output(repository, List.of("start", "CLAUDE.md"));
 
-			requireThat(resumed.get("proposal").asString().split("20 trials decided, 0 failed runs\\.", -1).length,
+			requireThat(proposalText(resumed).split("20 trials decided, 0 failed runs\\.", -1).length,
 				"decidedPilots").isEqualTo(4);
-			requireThat(resumed.get("proposal").asString(), "resumedProposal").
+			requireThat(proposalText(resumed), "resumedProposal").
 				doesNotContain("ended without an outcome and ran again").doesNotContain("stopped before it finished");
 			requireThat(resumed.get("message").isNull(), "resumedMessage").isTrue();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
@@ -4403,9 +4482,9 @@ public final class OptimizerCoreTest
 
 			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
 
-			requireThat(retried.get("proposal").isNull(), "proposal").isFalse();
-			requireThat(retried.get("proposal").asString(), "proposalText").contains("\n## Guard pilot\n");
-			requireThat(retried.get("proposal").asString().split("20 trials decided, 0 failed runs\\.", -1).length,
+			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
+			requireThat(proposalText(retried), "proposalText").contains("\n## Guard pilot\n");
+			requireThat(proposalText(retried).split("20 trials decided, 0 failed runs\\.", -1).length,
 				"decidedPilots").isEqualTo(4);
 			requireThat(retried.get("pending").isNull(), "pending").isTrue();
 			// The 5 trials decided before the pause are kept: 3 pilots of 20 trials less those 5 remain
@@ -4438,7 +4517,7 @@ public final class OptimizerCoreTest
 
 			ObjectNode stopped = output(repository, List.of("choose", id, "stop"));
 
-			requireThat(stopped.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(stopped.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").isEqualTo(8);
 		}
@@ -4469,7 +4548,7 @@ public final class OptimizerCoreTest
 			ObjectNode revised = output(repository, List.of("revise", id, "say confirms"));
 
 			requireThat(revised.get("status").asString(), "status").isEqualTo("awaiting_user");
-			requireThat(revised.get("proposal").isNull(), "proposal").isTrue();
+			requireThat(revised.get("proposal_file").isNull(), "proposal").isTrue();
 			requireThat(choiceIds(revised), "choices").isEqualTo(List.of("retry", "stop"));
 			requireThat(repository.load(id).pending(), "pendingDecision").
 				isInstanceOf(PendingDecision.PilotFailure.class);
@@ -4479,7 +4558,7 @@ public final class OptimizerCoreTest
 			repository.trialEnd().set(_ -> null);
 			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
 
-			requireThat(retried.get("proposal").isNull(), "proposal").isFalse();
+			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "resumedTrialSessions").
 				isEqualTo(pilotTrials + 3 + GuardPilot.TRIALS);
 		}
@@ -4610,7 +4689,7 @@ public final class OptimizerCoreTest
 
 			CommandResult revised = repository.core().revise(id, "cover the late local rules");
 
-			requireThat(revised.proposal(), "proposal").contains("\n## Guard pilot\n");
+			requireThat(proposalText(revised), "proposal").contains("\n## Guard pilot\n");
 			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
 			List<SessionRequest> rerun = trials.subList(pilotTrials, trials.size());
 			requireThat(rerun, "rerun").isNotEmpty();
@@ -4769,7 +4848,7 @@ public final class OptimizerCoreTest
 
 			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(result.proposal(), "proposal").isNotNull();
+			requireThat(proposalText(result), "proposal").isNotNull();
 			requireThat(held, "held").isEqualTo(List.of(true));
 			// The lock is free once the command has ended
 			holdLock(repository, result.status().campaignId()).close();
@@ -5119,7 +5198,7 @@ public final class OptimizerCoreTest
 
 			CommandResult revised = repository.core().choose(id, Choice.PROPOSED_CHANGE, 0, 0);
 
-			requireThat(revised.proposal(), "proposal").contains("## Requirements");
+			requireThat(proposalText(revised), "proposal").contains("## Requirements");
 			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).getLast().turns().getFirst(),
 				"feedback").contains("Let r1 accept any tone that the user names.");
 			Campaign campaign = repository.load(id);
@@ -5461,7 +5540,7 @@ public final class OptimizerCoreTest
 
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(started.proposal(), "proposal").contains("## Incumbent certification").
+			requireThat(proposalText(started), "proposal").contains("## Incumbent certification").
 				contains("Attempt 2: certified").contains("""
 					Earlier certifications:
 					  Attempt 1 in claude: certified, scope latest_versions""");
@@ -5675,7 +5754,7 @@ public final class OptimizerCoreTest
 
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
 
-			requireThat(started.proposal(), "proposal").contains("""
+			requireThat(proposalText(started), "proposal").contains("""
 
 				## Incumbent certification
 
@@ -5720,7 +5799,7 @@ public final class OptimizerCoreTest
 
 			ObjectNode started = output(repository, List.of("start", PortablePaths.text(rule)));
 
-			requireThat(started.get("proposal").isNull(), "proposalIsNull").isFalse();
+			requireThat(started.get("proposal_file").isNull(), "proposalIsNull").isFalse();
 			String summary = started.get("summary").asString();
 			requireThat(summary, "summary").contains("\n" + warningStart).endsWith(warningEnd);
 			String warning = summary.substring(summary.indexOf(warningStart));
