@@ -428,11 +428,11 @@ public final class ClaudeRunner
 
 	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
-	 * file and directory under the run root except the session's project, home, Claude temporary directory and
-	 * evidence, and every harness's login and configuration files in the session's home and in the user's home, as
-	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no login file in the
-	 * session's home: the session's Claude Code uses the user's own Claude login, whose login file the
-	 * session's commands cannot read; on macOS the login is a Keychain item instead, which Claude Code's
+	 * file and directory under the run root except the session's project, link-targets directory, home, Claude
+	 * temporary directory and evidence, and every harness's login and configuration files in the session's home and
+	 * in the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no
+	 * login file in the session's home: the session's Claude Code uses the user's own Claude login, whose login file
+	 * the session's commands cannot read; on macOS the login is a Keychain item instead, which Claude Code's
 	 * sandbox lets commands reach through the `security` program, as in the user's own session, and a
 	 * session that a command requests through CAT's runner uses it too. A Claude process that a command
 	 * starts directly has a login only through a variable that the commands receive. The session
@@ -440,8 +440,10 @@ public final class ClaudeRunner
 	 * files of any run, any login file, such as the user's own Claude and Codex logins, or a
 	 * configuration that would let a harness started from a command reach the model
 	 * provider. A denied directory that holds the session's project, home, Claude temporary
-	 * directory or evidence, such as the project that holds the run root, is replaced by every file and directory
-	 * under it except those and the directories that lead to them.
+	 * directory, link-targets directory or evidence, such as the project that holds the run root, is replaced by every
+	 * file and directory under it except those and the directories that lead to them. The link-targets directory holds
+	 * the read-only copies that the project's links to targets outside it lead to, so the session reads it; the
+	 * session's settings do not let it write it.
 	 * <p>
 	 * A login or configuration file that does not exist when the session starts is left out, because Claude's sandbox
 	 * creates an empty file at a missing denied path, which would change the user's harness configuration; the
@@ -489,6 +491,7 @@ public final class ClaudeRunner
 		Path home = run.directory().resolve("home");
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
 		accessible.add(run.directory().resolve("project"));
+		accessible.add(HarnessRunManager.linkTargets(run.directory()));
 		accessible.add(home);
 		accessible.add(run.directory().resolve("claude"));
 		if (requestAccess != null)

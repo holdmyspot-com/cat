@@ -32,6 +32,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -712,6 +713,81 @@ public final class CodexRunnerTest
 				requireThat(denied.path(path.toRealPath().toString()).stringValue(""), "access(" + path + ")").
 					isEqualTo("deny");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that on Linux a session whose project links to a file outside it reads the run's link-targets directory,
+	 * which holds the read-only copy that the link leads to, without writing it: the permission profile grants it as
+	 * read-only and never as writable, and the bubblewrap around the app-server mounts it back read-only, never
+	 * writable, inside the run root that it hides.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void readsLinkTargetsWithoutWritingThem() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path base = cleanup.add(Files.createTempDirectory(temporary, "cat-link-source-")).toRealPath();
+			Files.writeString(base.resolve("notes.md"), "notes");
+			Path source = Files.createDirectories(base.resolve("project"));
+			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../notes.md"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("codex");
+			manager.copyProject(source, run);
+			manager.snapshotProject(run);
+			manager.create("codex");
+			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
+			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
+			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
+			Path configuration = run.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
+				run.directory().resolve("project"));
+			Path linkTargets = HarnessRunManager.linkTargets(run.directory()).toRealPath();
+
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
+				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, CodexRunner.appServerCommand("codex", false));
+
+			List<String> command = sandbox.command();
+			requireThat(command.get(0), "bubblewrap").isEqualTo(bwrap.toAbsolutePath().normalize().toString());
+			int mount = command.indexOf(linkTargets.toString());
+			requireThat(mount, "mount").isGreaterThan(0);
+			requireThat(command.subList(mount - 1, mount + 2), "readOnlyMount").
+				isEqualTo(List.of("--ro-bind", linkTargets.toString(), linkTargets.toString()));
+			requireThat(command.subList(mount + 2, command.size()).contains(linkTargets.toString()), "otherMount").
+				isFalse();
+			JsonNode permissions = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions");
+			Set<Path> reads = new HashSet<>();
+			Set<Path> writes = new HashSet<>();
+			// A profile has the entries of the profiles that it extends
+			for (String profile = sandbox.profile(); permissions.has(profile);
+				profile = permissions.path(profile).path("extends").stringValue(""))
+			{
+				JsonNode filesystem = permissions.path(profile).path("filesystem");
+				for (String path : filesystem.propertyNames())
+				{
+					if (path.startsWith(":") || Files.notExists(Path.of(path)))
+						continue;
+					Path real = Path.of(path).toRealPath();
+					switch (filesystem.get(path).stringValue())
+					{
+						case "read" -> reads.add(real);
+						case "write" -> writes.add(real);
+						default ->
+						{
+						}
+					}
+				}
+			}
+			requireThat(reads, "reads").contains(linkTargets);
+			for (Path write : writes)
+				requireThat(linkTargets.startsWith(write) || write.startsWith(linkTargets), "writes").isFalse();
 		}
 	}
 

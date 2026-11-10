@@ -3,16 +3,25 @@ package com.holdmyspot.cat.common.optimizer.workspace.test;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport.Entry;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport.Status;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -103,6 +112,43 @@ public final class LinkReportTest
 		requireThat(entry.isInsideProject(), "isInsideProject").isFalse();
 		requireThat(entry.status(), "status").isEqualTo(Status.RESOLVED);
 		requireThat(entry.editLimit(), "editLimit").isEqualTo(Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY));
+	}
+
+	/**
+	 * Verifies that the report over the project that a run holds lists a link to a file outside the project, as the
+	 * original project's does: the run keeps the link, retargeted to a read-only copy of the file beside the project,
+	 * so the report names the link, the copy as its target outside the project, and the read-only limit.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void reportsOutsideLinkOfRunProject() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-link-report-")).toRealPath();
+			Files.writeString(root.resolve("rules.md"), "rules");
+			Path source = Files.createDirectories(root.resolve("source/docs"));
+			Files.createSymbolicLink(source.resolve("rules.md"), Path.of("../../rules.md"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(source.getParent(), run);
+			Path project = run.directory().toRealPath().resolve("project");
+			Path copy = project.resolve("docs/rules.md").toRealPath();
+			requireThat(copy.getParent(), "copyFolder").isEqualTo(HarnessRunManager.linkTargets(run.directory()).
+				toRealPath());
+
+			FileInventory inventory = InventoryScanner.scan(project, Set.of(copy));
+			LinkReport report = LinkReport.of(inventory,
+				new Authority(Set.of(Path.of("prompts")), Set.of(), inventory));
+
+			requireThat(report.entries(), "entries").isEqualTo(List.of(new Entry(Path.of("docs/rules.md"),
+				Optional.of(copy), Status.RESOLVED, Optional.of(Limit.EXTERNAL_TARGET_READ_ONLY))));
+			requireThat(report.entries().getFirst().isInsideProject(), "isInsideProject").isFalse();
+			requireThat(report.blocking(), "blocking").isEmpty();
+		}
 	}
 
 	/**

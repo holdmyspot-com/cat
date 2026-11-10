@@ -314,6 +314,36 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
+	 * Verifies that the session's commands may read the run's {@code link-targets} directory and the copy that the
+	 * session's project links to there, and may not write them: no path that the sandbox lets the commands write lies
+	 * in the directory or holds it.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void commandsReadButDoNotWriteLinkTargets() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = fixture(cleanup);
+			Limits limits = limits(fixture, 0);
+			Path linkTargets = HarnessRunManager.linkTargets(fixture.run().directory());
+			requireThat(linkTargets, "linkTargets").isDirectory();
+			Path link = fixture.run().directory().resolve("project/notes.md");
+			requireThat(Files.isSymbolicLink(link), "linkIsLink").isTrue();
+			requireThat(link.toRealPath().startsWith(linkTargets.toRealPath()), "linkLeadsToLinkTargets").isTrue();
+			requireThat(readable(limits, linkTargets), "readable").withContext(limits, "limits").isTrue();
+			requireThat(readable(limits, link), "linkReadable").withContext(limits, "limits").isTrue();
+			Path real = linkTargets.toRealPath();
+			for (Path writable : realPaths(limits.writable()))
+			{
+				requireThat(writable.startsWith(real) || real.startsWith(writable), "writable").
+					withContext(writable, "path").withContext(real, "linkTargets").isFalse();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a session that may request sessions can write the run's requests directory, and read but not write
 	 * its responses directory, that its commands are told where requests go and which launcher makes one, and that they
 	 * cannot read the directory that holds the runs of the sessions it requests.
@@ -490,6 +520,11 @@ public abstract class SessionCommandLimitsContract
 				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
+			// The session's project links to a file outside it, so the run holds a read-only copy of that file
+			Path source = Files.createDirectories(root.resolve("source"));
+			Files.writeString(root.resolve("notes.md"), "notes");
+			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../notes.md"));
+			manager.copyProject(source, run);
 			manager.snapshotProject(run);
 			Path runHome = run.directory().resolve("home");
 			// The logins and configuration that a runner may have put in the run's home for its harness

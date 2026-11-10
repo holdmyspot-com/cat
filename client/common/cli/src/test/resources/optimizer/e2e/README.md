@@ -15,10 +15,12 @@ instructions.
 	certify the candidate and deliver a Git diff.
 - `easy/`: one rule that a model already follows; used for interruption and resumption, host tools and child subagents,
 	and shared capacity across concurrent CAT processes, where a run needs cheap, passing trials.
-- `link/`: `docs/handbook.md` is an in-project symbolic link to `shared/handbook.md`. The run copies `external/` outside
-	the project and links `docs/reply-rules.md` to it, so the deficient rule lives in a read-only external file. The
-	scenario checks the link report, that the edit the rule needs raises an authority warning that offers no way to edit
-	the external file, and that delivery leaves every external file unchanged.
+- `link/`: `docs/handbook.md` is an in-project symbolic link to `shared/handbook.md`. The run
+	copies `external/` outside the project, into the run's `link-targets` directory beside the project copy, and the
+	project copy keeps `docs/reply-rules.md` as a link to that copy, so the deficient rule lives in a read-only external
+	file and CAT in the run still sees an outside link. The scenario checks the link report, that the edit the rule
+	needs raises an authority warning that offers no way to edit the external file, and that delivery leaves every
+	external file unchanged.
 - `unsupported/`: one prompt system per unsupported case, each expected to end in its
 	`certification unavailable` outcome or refusal: `remote-instruction` (a remote response supplies governing
 	instructions), `image-output` (a material requirement produces an image), `response-contingent` (an obligation needs

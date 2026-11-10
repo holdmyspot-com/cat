@@ -294,6 +294,10 @@ public final class ClaudeConnectionSettings
 	 * {@code Read} rules in {@code permissions.deny}, since the sandbox does not confine the file tools), the paths
 	 * inside those that are readable nonetheless, and the network hosts. They require the sandbox, forbid every
 	 * command outside it and exclude no command from it.
+	 * <p>
+	 * The file tools may read, and no setting lets them or the commands write, the run folder's {@code link-targets}
+	 * directory and its descendants, which hold the read-only copies that the project's links to targets outside it
+	 * lead to.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -371,6 +375,9 @@ public final class ClaudeConnectionSettings
 		ArrayNode grants = permissions(settings).putArray("allow");
 		for (String grant : PERMISSION_GRANTS)
 			grants.add(grant);
+		// The project's links to targets outside it lead to the copies in the run's link-targets directory, which the
+		// file tools read through the links; no rule or sandbox path lets the session write there
+		grants.add("Read(/" + rulePath(HarnessRunManager.linkTargets(runFolder)) + "/**)");
 		if (requestAccess != null)
 		{
 			grants.add("Bash(" + requestAccess.launcher() + ":*)");

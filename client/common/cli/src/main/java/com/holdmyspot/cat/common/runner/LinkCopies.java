@@ -19,7 +19,6 @@ import java.security.NoSuchAlgorithmException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
-import java.util.HashSet;
 import java.util.HexFormat;
 import java.util.Iterator;
 import java.util.List;
@@ -33,15 +32,16 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The record of the read-only copies that stand in, in a run's project, for the project's symbolic links whose targets
- * lie outside the project, and the check that tells, once the run's session has ended, whether the session changed
- * one of them. The run keeps the record in its own directory, which the session's sandbox does not let it write.
+ * The record of the read-only copies that the symbolic links of a run's project whose targets lie outside the project
+ * lead to, and the check that tells, once the run's session has ended, whether the session changed one of them. Each
+ * copy lies in a folder of the run's {@code link-targets} directory, beside the project. The run keeps the record in
+ * its own directory, which the session's sandbox does not let it write.
  * <p>
  * The record is a JSON Lines file. Its first line is {@code {"format_version": 1}}. Each further line describes one
- * file or directory of a copy: its {@code path} relative to the project, with {@code /} between names; its
+ * file or directory of a copy: its {@code path} relative to the run's directory, with {@code /} between names; its
  * {@code type}, {@code file} or {@code directory}; its {@code mode}, the POSIX permissions such as {@code r--r--r--}
  * where the file system records them and otherwise {@code read_only} or {@code writable}; whether it is a
- * {@code copy_root}, the file or directory that stands for a link; and, for a file, the {@code sha256} digest of its
+ * {@code copy_root}, the file or directory that a link leads to; and, for a file, the {@code sha256} digest of its
  * content in lower-case hexadecimal. The lines of each copy follow its root, in the order of a walk that visits each
  * directory before its entries and the entries of a directory in the order of their names.
  * <p>
@@ -70,16 +70,16 @@ final class LinkCopies
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
-	 * Records the copies in a run's project, as they are before its session starts.
+	 * Records the copies of a run, as they are before its session starts.
 	 *
-	 * @param project the run's project
-	 * @param roots   the path of each copy relative to {@code project}, none inside another
-	 * @param record  the record to write
+	 * @param run    the run's directory
+	 * @param roots  the path of each copy relative to {@code run}, none inside another
+	 * @param record the record to write
 	 * @throws IOException if a copy cannot be read or the record cannot be written
 	 */
-	static void write(Path project, List<Path> roots, Path record) throws IOException
+	static void write(Path run, List<Path> roots, Path record) throws IOException
 	{
-		assert project != null;
+		assert run != null;
 		assert roots != null;
 		assert record != null;
 		try (BufferedWriter lines = Files.newBufferedWriter(record, UTF_8))
@@ -88,7 +88,7 @@ final class LinkCopies
 			lines.newLine();
 			for (Path root : roots)
 			{
-				Walk walk = new Walk(project, name(root));
+				Walk walk = new Walk(run, name(root));
 				boolean first = true;
 				for (Present entry = walk.next(); entry != null; entry = walk.next())
 				{
@@ -107,17 +107,17 @@ final class LinkCopies
 	}
 
 	/**
-	 * Compares the copies in a run's project with their record: a copy changed if a file or directory of it was added,
-	 * removed, replaced by one of another type, given other content, or given another mode.
+	 * Compares the copies of a run with their record: a copy changed if a file or directory of it was added, removed,
+	 * replaced by one of another type, given other content, or given another mode.
 	 *
-	 * @param project the run's project
-	 * @param record  the record
+	 * @param run    the run's directory
+	 * @param record the record
 	 * @return a diagnostic that names each changed path, or empty if no copy changed
 	 * @throws IOException if the record is malformed or a copy cannot be read
 	 */
-	static Optional<String> changes(Path project, Path record) throws IOException
+	static Optional<String> changes(Path run, Path record) throws IOException
 	{
-		assert project != null;
+		assert run != null;
 		assert record != null;
 		Changes changes = new Changes();
 		// The record holds one line per file of the copies, so it is read one line at a time; each line is bounded by
@@ -130,7 +130,7 @@ final class LinkCopies
 			{
 				if (!recorded.root())
 					throw records.malformed("the first entry of a copy is not its root");
-				Walk walk = new Walk(project, recorded.path());
+				Walk walk = new Walk(run, recorded.path());
 				Present present = walk.next();
 				boolean first = true;
 				while (present != null || recorded != null && (first || !recorded.root()))
@@ -172,50 +172,6 @@ final class LinkCopies
 			}
 		}
 		return changes.diagnostic();
-	}
-
-	/**
-	 * Returns the roots of the copies that a record describes.
-	 *
-	 * @param record the record
-	 * @return the path of each copy relative to the project, with {@code /} between names; one for each symbolic link
-	 *   of the project whose target lies outside it
-	 * @throws IOException if the record is malformed or cannot be read
-	 */
-	static Set<String> roots(Path record) throws IOException
-	{
-		assert record != null;
-		Set<String> roots = new HashSet<>();
-		try (BufferedReader lines = Files.newBufferedReader(record, UTF_8))
-		{
-			Records records = new Records(lines);
-			for (Recorded recorded = records.next(); recorded != null; recorded = records.next())
-			{
-				if (recorded.root())
-					roots.add(recorded.path());
-			}
-		}
-		return roots;
-	}
-
-	/**
-	 * Returns the root of the copy that holds a path.
-	 *
-	 * @param roots    the roots of the copies, as {@link #roots(Path)} returns them
-	 * @param relative a path relative to the project
-	 * @return the root of the copy that is or holds {@code relative}, or empty if no copy holds it
-	 */
-	static Optional<String> rootOf(Set<String> roots, Path relative)
-	{
-		assert roots != null;
-		assert relative != null;
-		for (Path path = relative; path != null && !path.toString().isEmpty(); path = path.getParent())
-		{
-			String name = name(path);
-			if (roots.contains(name))
-				return Optional.of(name);
-		}
-		return Optional.empty();
 	}
 
 	/**
@@ -270,7 +226,7 @@ final class LinkCopies
 	 * Orders two paths as a walk visits them: name by name, so that a directory comes before its entries and the
 	 * entries of a directory come in the order of their names.
 	 *
-	 * @param first  a path relative to the project, with {@code /} between names
+	 * @param first  a path relative to the run's directory, with {@code /} between names
 	 * @param second another such path
 	 * @return a negative number if a walk visits {@code first} first, zero if they are the same, and a positive
 	 *   number otherwise
@@ -289,7 +245,7 @@ final class LinkCopies
 	}
 
 	/**
-	 * Returns the name of a path relative to the project, with {@code /} between names.
+	 * Returns the name of a path relative to the run's directory, with {@code /} between names.
 	 *
 	 * @param relative the path
 	 * @return its name
@@ -374,7 +330,7 @@ final class LinkCopies
 	/**
 	 * A file or directory of a copy as the record describes it.
 	 *
-	 * @param path     the path relative to the project, with {@code /} between names
+	 * @param path     the path relative to the run's directory, with {@code /} between names
 	 * @param type     the type, a file or a directory
 	 * @param mode     its mode
 	 * @param root     whether it is the root of its copy
@@ -506,9 +462,9 @@ final class LinkCopies
 	}
 
 	/**
-	 * A file or directory of a copy as the run's project holds it now.
+	 * A file or directory of a copy as the run holds it now.
 	 *
-	 * @param path the path relative to the project, with {@code /} between names
+	 * @param path the path relative to the run's directory, with {@code /} between names
 	 * @param file the file or directory
 	 * @param type its type
 	 */
@@ -544,13 +500,13 @@ final class LinkCopies
 	}
 
 	/**
-	 * Visits one copy in a run's project: its root, then each directory before its entries and the entries of a
+	 * Visits one copy in a run: its root, then each directory before its entries and the entries of a
 	 * directory in the order of their names, without following symbolic links. A copy whose root, or a directory above
 	 * it, is missing or is no longer a directory has nothing to visit.
 	 */
 	private static final class Walk
 	{
-		private final Path project;
+		private final Path run;
 		private final Deque<Iterator<Path>> levels = new ArrayDeque<>();
 		/**
 		 * The directory that the walk visited last, whose entries it visits next, or {@code null}.
@@ -560,13 +516,13 @@ final class LinkCopies
 		/**
 		 * Creates a walk.
 		 *
-		 * @param project the run's project
-		 * @param root    the copy's path relative to the project, with {@code /} between names
+		 * @param run  the run's directory
+		 * @param root the copy's path relative to the run's directory, with {@code /} between names
 		 */
-		private Walk(Path project, String root)
+		private Walk(Path run, String root)
 		{
-			this.project = project;
-			Path path = project;
+			this.run = run;
+			Path path = run;
 			String[] names = root.split("/");
 			for (int index = 0; index < names.length; ++index)
 			{
@@ -628,7 +584,7 @@ final class LinkCopies
 				else
 					type = Type.OTHER;
 				entered = enter;
-				return new Present(name(project.relativize(file)), file, type);
+				return new Present(name(run.relativize(file)), file, type);
 			}
 			entered = null;
 			return null;
@@ -654,7 +610,7 @@ final class LinkCopies
 		/**
 		 * Adds one changed path.
 		 *
-		 * @param path   the path relative to the project, with {@code /} between names
+		 * @param path   the path relative to the run's directory, with {@code /} between names
 		 * @param change how it changed
 		 */
 		private void add(String path, String change)
@@ -677,7 +633,7 @@ final class LinkCopies
 			if (count > MAXIMUM_NAMED_CHANGES)
 				rest = ", and " + (count - MAXIMUM_NAMED_CHANGES) + " more";
 			return Optional.of("The session changed read-only copies of symbolic link targets outside the project, " +
-				"which stand in for the project's links: " + named + rest + ". The run fails, because its result " +
+				"which the project's links lead to: " + named + rest + ". The run fails, because its result " +
 				"would rest on files that differ from the targets.");
 		}
 	}

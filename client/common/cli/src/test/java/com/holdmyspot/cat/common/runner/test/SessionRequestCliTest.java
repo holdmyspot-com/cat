@@ -372,21 +372,28 @@ public final class SessionRequestCliTest
 			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
 			requireReadOnlyCopies(copy);
 
-			// The runner copies the extracted project into the run, which holds read-only copies of the targets that it
-			// checks for changes
+			// The runner copies the extracted project into the run, whose project links to read-only copies of the
+			// targets beside it, which the runner checks for changes
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(copy, run);
 			Path runProject = run.directory().resolve("project");
-			for (String name : List.of("notes.md", "tree", "tree/a.md"))
-				requireThat(Files.isSymbolicLink(runProject.resolve(name)), name + "InRun").isFalse();
+			Path runLinkTargets = HarnessRunManager.linkTargets(run.directory()).toRealPath();
+			for (String name : List.of("notes.md", "tree"))
+			{
+				requireThat(Files.isSymbolicLink(runProject.resolve(name)), name + "InRun").isTrue();
+				requireThat(runProject.resolve(name).toRealPath().startsWith(runLinkTargets), name + "InRunLinkTargets").
+					isTrue();
+			}
 			requireReadOnlyCopies(runProject);
 			requireThat(manager.changedLinkCopies(run), "unchanged").isEmpty();
-			PortableFiles.clearReadOnly(runProject.resolve("tree/a.md"));
-			Files.writeString(runProject.resolve("tree/a.md"), "changed");
+			Path changedCopy = runProject.resolve("tree/a.md").toRealPath();
+			PortableFiles.clearReadOnly(changedCopy);
+			Files.writeString(changedCopy, "changed");
 			requireThat(manager.changedLinkCopies(run).orElseThrow(), "changed").
-				contains("tree/a.md (content changed, made writable)");
+				contains("link-targets/" + runLinkTargets.relativize(changedCopy).toString().replace('\\', '/') +
+					" (content changed, made writable)");
 			requireThat(Files.readString(root.resolve("outside/notes.md")), "target").isEqualTo("notes");
 			requireThat(Files.readString(outside.resolve("a.md")), "treeTarget").isEqualTo("a");
 			manager.fail(run, "test cleanup");

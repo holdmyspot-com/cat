@@ -52,7 +52,7 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 			fixture.run().directory().resolve("project"),
 			HarnessDependencyCaches.NONE, temporaryDirectory, 0, requestAccess,
 			Platform.current());
-		List<Path> readOnly = CodexRunner.sessionReadOnly(List.of(), requestAccess);
+		List<Path> readOnly = CodexRunner.sessionReadOnly(fixture.run(), List.of(), requestAccess);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
 			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.run(), readOnly, fixture.deniedReads(),
 				Platform.current(), fixture.userEnvironment(), requestAccess));

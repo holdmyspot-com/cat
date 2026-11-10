@@ -4,6 +4,7 @@ package com.holdmyspot.cat.codex.runner.test;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
@@ -80,6 +81,12 @@ public final class CodexSessionEnvironmentVersionTest
 					Clock.systemUTC(),
 					Yielding.fileReplacer());
 				HarnessRun run = manager.create("codex");
+				// The session's project links to a file outside it, so the run holds a read-only copy of that file, which
+				// the session's profile lets it read
+				Files.writeString(root.resolve("outside.md"), "Outside.", UTF_8);
+				Path linkedProject = Files.createDirectories(root.resolve("linked-project"));
+				Files.createSymbolicLink(linkedProject.resolve("outside.md"), Path.of("../outside.md"));
+				manager.copyProject(linkedProject, run);
 				manager.snapshotProject(run);
 				Files.writeString(run.directory().resolve("home/auth.json"), "{}");
 				Files.createDirectories(hostProject.resolve("runs/workspaces"));
@@ -118,8 +125,13 @@ public final class CodexSessionEnvironmentVersionTest
 					Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
 				CodexConnectionConfiguration.copy(source, destination, run.directory().resolve("project"), caches,
 					temporaryDirectory, 0, requestAccess, Platform.LINUX_X64);
+				// Bubblewrap hides the denied directory that holds the read-only paths, so the profile does not list what is
+				// under it
+				Path bin = Files.createDirectories(root.resolve("bin"));
+				Path bubblewrap = Files.writeString(bin.resolve("bwrap"), "");
+				requireThat(bubblewrap.toFile().setExecutable(true), "setExecutable").isTrue();
 				String profile = CodexRunner.addSessionProfile(destination, manager, run, List.of(evidence),
-					List.of(deniedFile, hostProject), Platform.LINUX_X64, Map.of(), requestAccess);
+					List.of(deniedFile, hostProject), Platform.LINUX_X64, Map.of("PATH", bin.toString()), requestAccess);
 				CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
 				// The instructions name paths in plain text, which each platform separates in its own way

@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.Reader;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.UncheckedIOException;
 import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -328,18 +329,19 @@ public final class HarnessRunnerBridgeTest
 	 * Supplies changes that a session makes to the read-only copies that stand in for its project's symbolic links to
 	 * targets outside the project, each with how the run's diagnostic names the changed path.
 	 *
-	 * @return the change and the named path with how it changed
+	 * @return the change and the named path with how it changed, where {@code <notes>} stands for the folder of the
+	 *   copy that {@code notes.md} leads to and {@code <tree>} for the folder of the one that {@code tree} leads to
 	 */
 	@DataProvider
 	public Object[][] linkCopyChanges()
 	{
 		return new Object[][]{
-			{"edit_after_making_writable", "notes.md (content changed, made writable)"},
-			{"make_writable", "notes.md (made writable)"},
-			{"delete_and_recreate", "tree/a.md (content changed, made writable)"},
-			{"replace_by_directory", "tree/a.md (replaced by a directory)"},
-			{"add_to_directory", "tree/added.md (added)"},
-			{"delete", "tree/a.md (removed)"}};
+			{"edit_after_making_writable", "<notes> (content changed, made writable)"},
+			{"make_writable", "<notes> (made writable)"},
+			{"delete_and_recreate", "<tree>/a.md (content changed, made writable)"},
+			{"replace_by_directory", "<tree>/a.md (replaced by a directory)"},
+			{"add_to_directory", "<tree>/added.md (added)"},
+			{"delete", "<tree>/a.md (removed)"}};
 	}
 
 	/**
@@ -349,7 +351,7 @@ public final class HarnessRunnerBridgeTest
 	 * is written.
 	 *
 	 * @param change   the session's change
-	 * @param expected the changed path and how the diagnostic names its change
+	 * @param expected the changed path and how the diagnostic names its change, as {@link #linkCopyChanges()} gives it
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test(dataProvider = "linkCopyChanges")
@@ -358,6 +360,8 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedRun fixture = new LinkedRun(cleanup);
+			String named = expected.replace("<notes>", fixture.copyName("notes.md")).
+				replace("<tree>", fixture.copyName("tree"));
 			Turn turn = Turn.replies("done").withCheckpoint(printed ->
 			{
 				if (printed == 0)
@@ -374,11 +378,11 @@ public final class HarnessRunnerBridgeTest
 			}
 			catch (IOException e)
 			{
-				requireThat(e.getMessage(), "diagnostic").contains(expected).
+				requireThat(e.getMessage(), "diagnostic").contains(named).
 					contains("The session changed read-only copies of symbolic link targets outside the project");
 			}
 			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
-				contains("\"failed\"").contains(expected);
+				contains("\"failed\"").contains(named);
 			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
 		}
 	}
@@ -396,6 +400,7 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedRun fixture = new LinkedRun(cleanup);
+			String changed = fixture.copyName("notes.md") + " (content changed, made writable)";
 			Turn turn = Turn.exits(143, "partial harness event").withCheckpoint(printed ->
 			{
 				if (printed == 0)
@@ -412,11 +417,10 @@ public final class HarnessRunnerBridgeTest
 			}
 			catch (IOException e)
 			{
-				requireThat(e.getMessage(), "diagnostic").contains("notes.md (content changed, made writable)").
-					contains("exit status 143");
+				requireThat(e.getMessage(), "diagnostic").contains(changed).contains("exit status 143");
 			}
 			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
-				contains("\"failed\"").contains("notes.md (content changed, made writable)");
+				contains("\"failed\"").contains(changed);
 			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
 		}
 	}
@@ -468,8 +472,9 @@ public final class HarnessRunnerBridgeTest
 	 */
 	private static void changeLinkCopy(Path project, String change) throws IOException
 	{
-		Path notes = project.resolve("notes.md");
-		Path tree = project.resolve("tree");
+		// The project's links lead to the copies, which the session changes where they are
+		Path notes = project.resolve("notes.md").toRealPath();
+		Path tree = project.resolve("tree").toRealPath();
 		Path file = tree.resolve("a.md");
 		switch (change)
 		{
@@ -500,8 +505,9 @@ public final class HarnessRunnerBridgeTest
 
 	/**
 	 * A managed run whose project the runner copied from a project with symbolic links: {@code notes.md} and
-	 * {@code tree} lead to a file and a directory outside the project, so the run holds read-only copies of them, and
-	 * {@code docs/guide.md} leads to {@code shared/guide.md} inside it. Its options name a transcript and a receipt.
+	 * {@code tree} lead to a file and a directory outside the project, so the project's links lead to read-only copies
+	 * of them beside it, and {@code docs/guide.md} leads to {@code shared/guide.md} inside it. Its options name a
+	 * transcript and a receipt.
 	 *
 	 * @param manager the run's manager
 	 * @param run     the run
@@ -561,6 +567,26 @@ public final class HarnessRunnerBridgeTest
 				root.resolve("runs"), root, "model-a", "effort-a", root.resolve("evidence/transcript.jsonl"), true,
 				root.resolve("evidence/receipt.json"), false, false, 1, List.of(), List.of(), null, List.of(), 0, null,
 				0, null, null, null, false, null, null, null, null), root.resolve("evidence/receipt.json"));
+		}
+
+		/**
+		 * Returns the name that the run's record gives the copy that a link of the run's project leads to.
+		 *
+		 * @param link the link's path relative to the project
+		 * @return the copy's path relative to the run's directory, with {@code /} between names
+		 * @throws UncheckedIOException if the link cannot be resolved
+		 */
+		String copyName(String link)
+		{
+			try
+			{
+				Path relative = run.directory().toRealPath().relativize(project.resolve(link).toRealPath());
+				return relative.toString().replace(relative.getFileSystem().getSeparator(), "/");
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
 		}
 
 		/**

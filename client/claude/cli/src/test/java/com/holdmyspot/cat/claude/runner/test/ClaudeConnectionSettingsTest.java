@@ -6,6 +6,7 @@ import static org.testng.Assert.expectThrows;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -52,17 +53,17 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null);
 			JsonNode allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
-			requireThat(allow.size(), "grantCount").isEqualTo(7);
-			requireThat(allow.path(2).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
-			requireThat(allow.path(3).asString(), "claudeRunnerGrant").isEqualTo("Bash(" +
+			requireThat(allow.size(), "grantCount").isEqualTo(8);
+			requireThat(allow.path(3).asString(), "launcherGrant").isEqualTo("Bash(" + launcher + ":*)");
+			requireThat(allow.path(4).asString(), "claudeRunnerGrant").isEqualTo("Bash(" +
 				launcher.resolveSibling("claude-runner") + ":*)");
-			requireThat(allow.path(4).asString(), "codexRunnerGrant").isEqualTo("Bash(" +
+			requireThat(allow.path(5).asString(), "codexRunnerGrant").isEqualTo("Bash(" +
 				launcher.resolveSibling("codex-runner") + ":*)");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			allow = scope.json().readTree(Files.readString(destination)).path("permissions").path("allow");
-			requireThat(allow.size(), "defaultGrantCount").isEqualTo(3);
+			requireThat(allow.size(), "defaultGrantCount").isEqualTo(4);
 			requireThat(allow.path(0).asString(), "skillGrant").isEqualTo("Skill");
 			requireThat(allow.path(1).asString(), "editGrant").isEqualTo("Edit(./**)");
 		}
@@ -96,7 +97,9 @@ public final class ClaudeConnectionSettingsTest
 			List<String> grants = new ArrayList<>();
 			for (JsonNode grant : settings.path("permissions").path("allow"))
 				grants.add(grant.asString());
-			requireThat(grants, "grants").isEqualTo(List.of("Skill", "Edit(./**)", "Bash(" + launcher + ":*)",
+			requireThat(grants, "grants").isEqualTo(List.of("Skill", "Edit(./**)",
+				"Read(/" + ClaudeConnectionSettings.rulePath(HarnessRunManager.linkTargets(root)) + "/**)",
+				"Bash(" + launcher + ":*)",
 				"Bash(" + launcher.resolveSibling("claude-runner") + ":*)",
 				"Bash(" + launcher.resolveSibling("codex-runner") + ":*)",
 				"Read(/" + ClaudeConnectionSettings.rulePath(responses) + "/**)", "Bash"));
@@ -113,6 +116,45 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			requireThat(Files.readString(destination), "defaultSettings").isEqualTo(defaultSettings);
+		}
+	}
+
+	/**
+	 * Grants reads of the run's {@code link-targets} directory, which the project's links to targets outside it lead
+	 * to, and grants no write of it: no sandbox write path or edit rule lets the session write there.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void permitsOnlyLinkTargetReads() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-link-target-permissions-")).toRealPath();
+			Path destination = root.resolve("isolated/settings.json");
+			Path linkTargets = HarnessRunManager.linkTargets(root);
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
+			JsonNode settings = scope.json().readTree(Files.readString(destination));
+
+			List<String> grants = new ArrayList<>();
+			for (JsonNode grant : settings.path("permissions").path("allow"))
+				grants.add(grant.asString());
+			requireThat(grants, "grants").contains("Read(/" + ClaudeConnectionSettings.rulePath(linkTargets) + "/**)");
+			for (String grant : grants)
+			{
+				if (grant.startsWith("Edit(") || grant.startsWith("Write("))
+					requireThat(grant, "writeGrant").doesNotContain("link-targets");
+			}
+			for (JsonNode path : settings.path("sandbox").path("filesystem").path("allowWrite"))
+			{
+				Path writable = Path.of(path.asString());
+				requireThat(linkTargets.startsWith(writable) || writable.startsWith(linkTargets), "writable").
+					withContext(writable, "path").isFalse();
+			}
+			for (JsonNode path : settings.path("sandbox").path("filesystem").path("denyRead"))
+				requireThat(linkTargets.startsWith(Path.of(path.asString())), "denied").isFalse();
 		}
 	}
 
@@ -242,8 +284,9 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
 				isEqualTo(List.of("Read(//secrets/**)"));
 			requireThat(strings(result.path("permissions").path("ask")), "ask").isEqualTo(List.of("Bash(rm *)"));
-			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)", "Bash"));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").isEqualTo(List.of("Skill", "Edit(./**)",
+				"Read(/" + ClaudeConnectionSettings.rulePath(HarnessRunManager.linkTargets(claudeTemporaryDirectory)) +
+				"/**)", "Bash"));
 			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
 			requireThat(result.path("env").path("DISABLE_AUTOUPDATER").asString(), "autoUpdater").isEqualTo("1");
@@ -314,8 +357,8 @@ public final class ClaudeConnectionSettingsTest
 				root.resolve("home"), List.of(), root, List.of());
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
-			requireThat(strings(result.path("permissions").path("allow")), "allow").
-				isEqualTo(List.of("Skill", "Edit(./**)", "Bash"));
+			requireThat(strings(result.path("permissions").path("allow")), "allow").isEqualTo(List.of("Skill", "Edit(./**)",
+				"Read(/" + ClaudeConnectionSettings.rulePath(HarnessRunManager.linkTargets(root)) + "/**)", "Bash"));
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
 				isEqualTo(List.of("Bash(git push:*)"));
 			requireThat(result.path("sandbox").path("enabled").asBoolean(), "sandboxEnabled").isTrue();

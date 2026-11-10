@@ -425,8 +425,8 @@ public final class CodexRunner
 		if (requestAccess != null)
 			writable.add(requestAccess.requests());
 		List<String> command = withHiddenDirectories(appServer, bubblewrap.get(),
-			hiddenDirectories(manager, sessionReadOnly(readOnlyEvidence, requestAccess), deniedReads, platform,
-				environment), writable, sessionReadOnly(readOnlyEvidence, requestAccess));
+			hiddenDirectories(manager, sessionReadOnly(run, readOnlyEvidence, requestAccess), deniedReads, platform,
+				environment), writable, sessionReadOnly(run, readOnlyEvidence, requestAccess));
 		return new SessionSandbox(profile, command);
 	}
 
@@ -471,9 +471,9 @@ public final class CodexRunner
 
 	/**
 	 * Adds to a session's configuration the permission profile that its thread runs under: the session may read but
-	 * not change {@code readOnlyEvidence}, as {@link #sessionReadOnly(List, SessionRequestAccess)} extends it, and may
-	 * not read the paths that {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Platform, Map,
-	 * SessionRequestAccess)} returns.
+	 * not change {@code readOnlyEvidence}, as {@link #sessionReadOnly(HarnessRun, List, SessionRequestAccess)} extends
+	 * it, and may not read the paths that {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List,
+	 * Platform, Map, SessionRequestAccess)} returns.
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
 	 * @param manager          the run manager
@@ -493,25 +493,32 @@ public final class CodexRunner
 		SessionRequestAccess requestAccess) throws IOException
 	{
 		requireThat(configuration, "configuration").isNotNull();
-		List<Path> sessionReadOnly = sessionReadOnly(readOnlyEvidence, requestAccess);
+		List<Path> sessionReadOnly = sessionReadOnly(run, readOnlyEvidence, requestAccess);
 		return CodexConnectionConfiguration.addSessionProfile(configuration, sessionReadOnly,
 			sessionDeniedReads(manager, run, sessionReadOnly, deniedReads, platform, environment, requestAccess));
 	}
 
 	/**
 	 * Returns the completed files and directories that a session may read but not change: the caller's read-only
-	 * evidence, and the run's responses directory when the session may request sessions, so that a link that the
-	 * session plants there cannot redirect the runner's answers.
+	 * evidence, the run's link-targets directory if the run has one, which holds the copies that the project's links to
+	 * targets outside it lead to, and the run's responses directory when the session may request sessions, so that a
+	 * link that the session plants there cannot redirect the runner's answers.
 	 *
+	 * @param run              the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
 	 * @return the files and directories
-	 * @throws NullPointerException if {@code readOnlyEvidence} is null
+	 * @throws NullPointerException if {@code run} or {@code readOnlyEvidence} are null
 	 */
-	public static List<Path> sessionReadOnly(List<Path> readOnlyEvidence, SessionRequestAccess requestAccess)
+	public static List<Path> sessionReadOnly(HarnessRun run, List<Path> readOnlyEvidence,
+		SessionRequestAccess requestAccess)
 	{
+		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		List<Path> result = new ArrayList<>(readOnlyEvidence);
+		Path linkTargets = HarnessRunManager.linkTargets(run.directory());
+		if (Files.isDirectory(linkTargets))
+			result.add(linkTargets);
 		if (requestAccess != null)
 			result.add(requestAccess.responses());
 		return List.copyOf(result);
@@ -519,17 +526,17 @@ public final class CodexRunner
 
 	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
-	 * and directory under the run root except the session's project, home and evidence, the directory where Codex logs
-	 * the session's events unless the session may request sessions, and every harness's login and configuration files
-	 * in the session's home and in the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names
-	 * them, except two files in the session's own Codex home: its {@code config.toml}, which holds no login and from
-	 * which CAT's {@code read-part} command reads the session's tool output limit, and its {@code auth.json}, the copy
-	 * of the user's login that the runner puts there, which a Codex process that the session starts from a command,
-	 * such as the prompt optimizer's sessions, reads. The session therefore cannot read the runner's records of its
-	 * own run or of any other run, the workspace files of any run, any login but that copy, such as the user's own
-	 * Codex and Claude logins, or the user's configuration. The method creates the session log directory, because the
-	 * sandbox skips a denied path that does not exist yet; for the same reason, it leaves out a login or configuration
-	 * file that does not exist.
+	 * and directory under the run root except the session's project, home, link-targets directory and evidence, the
+	 * directory where Codex logs the session's events unless the session may request sessions, and every harness's
+	 * login and configuration files in the session's home and in the user's home, as
+	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's own Codex
+	 * home: its {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the
+	 * session's tool output limit, and its {@code auth.json}, the copy of the user's login that the runner puts there,
+	 * which a Codex process that the session starts from a command, such as the prompt optimizer's sessions, reads.
+	 * The session therefore cannot read the runner's records of its own run or of any other run, the workspace files
+	 * of any run, any login but that copy, such as the user's own Codex and Claude logins, or the user's
+	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does
+	 * not exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
 	 * <p>
 	 * A session that may request sessions is not denied the session log directory, because the commands that it
 	 * runs include the prompt optimizer's {@code run}, which reads the session's rollout there to learn that the
@@ -547,7 +554,8 @@ public final class CodexRunner
 	 * session is instead denied each other file and directory under a denied directory that holds any of
 	 * {@code readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as
 	 * {@link #sessionSandbox(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess,
-	 * List)} describes, so this listing covers only the run's own responses directory, which lies inside the run root.
+	 * List)} describes, so this listing covers only the run's own link-targets and responses directories, which lie
+	 * inside the run root.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -570,8 +578,8 @@ public final class CodexRunner
 	 * Returns the files and directories that a session of a run must not read, as
 	 * {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Platform, Map)} does, except that a Linux
 	 * session that is denied each path under a directory by its own path also keeps the run's requests directory when
-	 * it may request sessions. The responses directory is among {@code readOnlyEvidence}, as
-	 * {@link #sessionReadOnly(List, SessionRequestAccess)} returns it.
+	 * it may request sessions. The run's link-targets directory and its responses directory are among
+	 * {@code readOnlyEvidence}, as {@link #sessionReadOnly(HarnessRun, List, SessionRequestAccess)} returns them.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run

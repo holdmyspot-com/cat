@@ -997,7 +997,8 @@ public final class HarnessRunManagerTest
 	/**
 	 * Verifies that a symbolic link whose target resolves inside the project, through a chain of links too, is copied
 	 * as a link with the same relative target that resolves inside the copy, and that a link whose target leaves the
-	 * project before it comes back is copied as a file, since its copy would resolve outside the copy.
+	 * project before it comes back is kept as a link to a read-only copy beside the project, since a link with its
+	 * target would resolve outside the copy.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1030,22 +1031,24 @@ public final class HarnessRunManagerTest
 				requireThat(link.toRealPath().startsWith(copy), name + "ResolvesInsideCopy").isTrue();
 			}
 			requireThat(Files.readString(copy.resolve("chain")), "chain").isEqualTo("guide");
-			requireThat(copy.resolve("back"), "back").isRegularFile();
-			requireThat(Files.isSymbolicLink(copy.resolve("back")), "backIsLink").isFalse();
+			requireThat(Files.isSymbolicLink(copy.resolve("back")), "backIsLink").isTrue();
+			requireThat(copy.resolve("back").toRealPath().startsWith(HarnessRunManager.linkTargets(run.directory()).
+				toRealPath()), "backLeadsToLinkTargets").isTrue();
 			requireThat(Files.readString(copy.resolve("back")), "back").isEqualTo("guide");
 		}
 	}
 
 	/**
-	 * Verifies that a symbolic link whose target lies outside the project is copied as a read-only copy of the target's
-	 * file or directory tree, links inside that tree included: a write to a copied file fails, adding a file to a
-	 * copied directory fails where the file system records POSIX permissions, the target stays unchanged, and the run
-	 * still deletes.
+	 * Verifies that a symbolic link whose target lies outside the project stays a link in the project copy, with a
+	 * relative target that leads to a read-only copy of the target's file or directory tree, links inside that tree
+	 * included, in a folder of its own in the run's link-targets directory beside the project: a write to a copied file
+	 * fails, adding a file to a copied directory fails where the file system records POSIX permissions, the target stays
+	 * unchanged, a change to a copy is found, and the run still deletes.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void projectCopyCopiesTargetsOutsideProject() throws IOException
+	public void projectCopyLinksOutsideTargetsToCopies() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1057,7 +1060,8 @@ public final class HarnessRunManagerTest
 			Files.createSymbolicLink(outside.resolve("inner.md"), Path.of("../notes.md"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve("notes.md"), Path.of("../outside/notes.md"));
-			Files.createSymbolicLink(project.resolve("tree"), outside.toAbsolutePath());
+			Files.createSymbolicLink(Files.createDirectories(project.resolve("docs")).resolve("tree"),
+				outside.toAbsolutePath());
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -1065,17 +1069,28 @@ public final class HarnessRunManagerTest
 			manager.copyProject(project, run);
 
 			Path copy = run.directory().resolve("project");
-			for (String name : List.of("notes.md", "tree", "tree/a.md", "tree/inner.md"))
-				requireThat(Files.isSymbolicLink(copy.resolve(name)), name).isFalse();
-			requireThat(copy.resolve("tree"), "tree").isDirectory();
-			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
-			requireThat(Files.readString(copy.resolve("tree/inner.md")), "inner").isEqualTo("notes");
-			for (String name : List.of("notes.md", "tree/a.md", "tree/inner.md"))
+			Path linkTargets = HarnessRunManager.linkTargets(run.directory());
+			Path notesLink = copy.resolve("notes.md");
+			Path treeLink = copy.resolve("docs/tree");
+			for (Path link : List.of(notesLink, treeLink))
+			{
+				requireThat(Files.isSymbolicLink(link), link + "IsLink").isTrue();
+				requireThat(Files.readSymbolicLink(link).isAbsolute(), link + "TargetIsAbsolute").isFalse();
+				// Each copy lies in a folder of its own, a child of link-targets, that the link leads to
+				requireThat(link.toRealPath().getParent(), link + "Folder").isEqualTo(linkTargets.toRealPath());
+			}
+			requireThat(notesLink.toRealPath(), "notesFolder").isNotEqualTo(treeLink.toRealPath());
+			requireThat(Files.readString(notesLink), "notes").isEqualTo("notes");
+			requireThat(treeLink, "tree").isDirectory();
+			requireThat(Files.readString(treeLink.resolve("a.md")), "a").isEqualTo("a");
+			requireThat(Files.isSymbolicLink(treeLink.resolve("inner.md")), "innerIsLink").isFalse();
+			requireThat(Files.readString(treeLink.resolve("inner.md")), "inner").isEqualTo("notes");
+			for (Path file : List.of(notesLink, treeLink.resolve("a.md"), treeLink.resolve("inner.md")))
 			{
 				try
 				{
-					Files.writeString(copy.resolve(name), "changed");
-					throw new AssertionError("A write to the copy of " + name + " succeeded");
+					Files.writeString(file, "changed");
+					throw new AssertionError("A write to the copy of " + file + " succeeded");
 				}
 				catch (AccessDeniedException _)
 				{
@@ -1086,7 +1101,7 @@ public final class HarnessRunManagerTest
 			{
 				try
 				{
-					Files.writeString(copy.resolve("tree/added.md"), "added");
+					Files.writeString(treeLink.resolve("added.md"), "added");
 					throw new AssertionError("Adding a file to the copied directory succeeded");
 				}
 				catch (AccessDeniedException _)
@@ -1100,26 +1115,28 @@ public final class HarnessRunManagerTest
 
 			// The copy of a link inside the copied tree belongs to the tree's copy, and a change to it is found
 			requireThat(manager.changedLinkCopies(run), "unchanged").isEmpty();
-			Path inner = copy.resolve("tree/inner.md");
+			String treeCopy = copyName(run, treeLink);
+			String notesCopy = copyName(run, notesLink);
+			Path inner = treeLink.resolve("inner.md").toRealPath();
 			PortableFiles.clearReadOnly(inner);
 			Files.writeString(inner, "changed");
 			requireThat(manager.changedLinkCopies(run).orElseThrow(), "changed").
-				contains("tree/inner.md (content changed, made writable)").doesNotContain("notes.md");
+				contains(treeCopy + "/inner.md (content changed, made writable)").doesNotContain(notesCopy + " (");
 			if (PortableFiles.hasModes(copy))
 			{
 				// A mode change that leaves the copy read-only for its owner is a change too
-				Path copiedNotes = copy.resolve("notes.md");
+				Path copiedNotes = notesLink.toRealPath();
 				String before = PosixFilePermissions.toString(Files.getPosixFilePermissions(copiedNotes));
 				Files.setPosixFilePermissions(copiedNotes, PosixFilePermissions.fromString("r-x------"));
 				requireThat(manager.changedLinkCopies(run).orElseThrow(), "modeChanged").
-					contains("notes.md (mode changed from " + before + " to r-x------)");
+					contains(notesCopy + " (mode changed from " + before + " to r-x------)");
 				// A copy that its owner may no longer read is a change too, rather than a failure to compare
-				Path copiedFile = copy.resolve("tree/a.md");
+				Path copiedFile = treeLink.resolve("a.md").toRealPath();
 				Files.setPosixFilePermissions(copiedFile, PosixFilePermissions.fromString("---------"));
 				if (!Files.isReadable(copiedFile))
 				{
 					requireThat(manager.changedLinkCopies(run).orElseThrow(), "unreadable").
-						contains("tree/a.md (made unreadable, mode changed from ");
+						contains(treeCopy + "/a.md (made unreadable, mode changed from ");
 				}
 			}
 
@@ -1127,6 +1144,20 @@ public final class HarnessRunManagerTest
 			manager.deleteRun(run);
 			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
 		}
+	}
+
+	/**
+	 * Returns the name that the run's record gives the copy that a link of its project leads to.
+	 *
+	 * @param run  the run
+	 * @param link the project's link
+	 * @return the copy's path relative to the run's directory, with {@code /} between names
+	 * @throws IOException if the link cannot be resolved
+	 */
+	private static String copyName(HarnessRun run, Path link) throws IOException
+	{
+		Path relative = run.directory().toRealPath().relativize(link.toRealPath());
+		return relative.toString().replace(relative.getFileSystem().getSeparator(), "/");
 	}
 
 	/**
@@ -1149,7 +1180,7 @@ public final class HarnessRunManagerTest
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.copyProject(project, run);
-			Path tree = run.directory().resolve("project/tree");
+			Path tree = run.directory().resolve("project/tree").toRealPath();
 			PortableFiles.clearReadOnly(tree);
 			for (int index = 10; index < 35; ++index)
 				Files.writeString(tree.resolve("added-" + index + ".md"), "added");
@@ -1160,8 +1191,9 @@ public final class HarnessRunManagerTest
 			int changes = 25;
 			if (PortableFiles.hasModes(tree))
 				++changes;
-			requireThat(diagnostic, "diagnostic").contains("tree/added-10.md (added)").
-				doesNotContain("tree/added-34.md").endsWith(", and " + (changes - 20) + " more. The run fails, " +
+			String copyName = copyName(run, run.directory().resolve("project/tree"));
+			requireThat(diagnostic, "diagnostic").contains(copyName + "/added-10.md (added)").
+				doesNotContain(copyName + "/added-34.md").endsWith(", and " + (changes - 20) + " more. The run fails, " +
 					"because its result would rest on files that differ from the targets.");
 		}
 	}
