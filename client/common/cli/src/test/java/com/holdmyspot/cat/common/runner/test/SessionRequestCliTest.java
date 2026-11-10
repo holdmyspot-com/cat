@@ -17,7 +17,10 @@ import java.io.StringWriter;
 import java.io.InputStream;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.net.StandardProtocolFamily;
 import java.net.UnixDomainSocketAddress;
 import java.nio.channels.FileChannel;
@@ -36,6 +39,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -428,6 +432,70 @@ public final class SessionRequestCliTest
 			}
 		}
 		Files.writeString(project.resolve("shared/guide.md"), "edited");
+	}
+
+	/**
+	 * Verifies that a request carries the mode of each of the project's own files, so that the requested session's
+	 * project and run hold each file with the mode that it has in the requesting session's project: a read-only file
+	 * stays a read-only file of the project rather than becoming a copy of a link's target, and an editable file keeps
+	 * the permissions of its group and of others.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void carriesFileModes() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "modes-")).toRealPath();
+			Path requests = Files.createDirectory(root.resolve("requests"));
+			Path project = Files.createDirectory(root.resolve("project"));
+			Map<String, String> modes = Map.of(
+				"shared.md", "rw-r--r--",
+				"private.md", "rw-------",
+				"read-only.md", "r--------",
+				"docs/read-only-shared.md", "r--r--r--",
+				"run.sh", "rwxr-x---");
+			Files.createDirectory(project.resolve("docs"));
+			for (Map.Entry<String, String> file : modes.entrySet())
+			{
+				Path path = Files.writeString(project.resolve(file.getKey()), file.getKey());
+				PortableFiles.setMode(path, PosixFilePermissions.fromString(file.getValue()));
+			}
+			Path prompt = Files.writeString(root.resolve("prompt"), "prompt bytes");
+			ManualClock time = new ManualClock(Instant.EPOCH);
+			SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
+					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests,
+				root.resolve("absent-null-device"), RequestLimits.IN_RUN, time,
+				() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
+			Path inputs = Files.createDirectory(root.resolve("inputs"));
+			try (Stream<Path> files = Files.list(requests))
+			{
+				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_RUN);
+			}
+			Path copy = inputs.resolve("project");
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.copyProject(copy, run);
+			Path runProject = run.directory().resolve("project");
+			for (String name : modes.keySet())
+			{
+				Set<PosixFilePermission> expected = PortableFiles.mode(project.resolve(name));
+				for (Path received : List.of(copy.resolve(name), runProject.resolve(name)))
+				{
+					requireThat(Files.isRegularFile(received, LinkOption.NOFOLLOW_LINKS), received + "IsFile").isTrue();
+					requireThat(PortableFiles.mode(received), received + "Mode").isEqualTo(expected);
+					requireThat(Files.readString(received), received + "Content").isEqualTo(name);
+				}
+			}
+			requireThat(Files.exists(inputs.resolve("link-targets")), "linkTargets").isFalse();
+			requireThat(manager.changedLinkCopies(run), "changedLinkCopies").isEmpty();
+			manager.fail(run, "test cleanup");
+			manager.deleteRun(run);
+			TemporaryDirectories.deleteRecursively(inputs);
+		}
 	}
 
 	/**

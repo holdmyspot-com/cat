@@ -1630,8 +1630,8 @@ public final class SessionRequestBrokerTest
 		}
 
 		/**
-		 * Adds a file or directory that lacks every write permission to a test archive, as the copy of a project
-		 * link's target does.
+		 * Adds a file or directory that lacks every write permission and carries the sticky bit to a test archive, as
+		 * the entries of a copy of a project link's target do.
 		 *
 		 * @param archive the fixture archive
 		 * @param name    the entry name, which ends with {@code /} for a directory
@@ -1643,9 +1643,9 @@ public final class SessionRequestBrokerTest
 		{
 			TarArchiveEntry entry = new TarArchiveEntry(name, true);
 			if (name.endsWith("/"))
-				entry.setMode(040555);
+				entry.setMode(041555);
 			else
-				entry.setMode(0100444);
+				entry.setMode(0101444);
 			entry.setSize(content.length);
 			archive.putArchiveEntry(entry);
 			archive.write(content);

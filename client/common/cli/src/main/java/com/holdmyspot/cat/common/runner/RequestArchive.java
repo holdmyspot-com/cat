@@ -54,7 +54,8 @@ import tools.jackson.databind.node.ArrayNode;
  * extracts only plain files, directories and the project's links, within {@link RequestLimits}. It creates the links
  * after every file and directory, and refuses an entry whose path passes through a link and a link whose target leaves
  * the project. It extracts each read-only copy beside the project and links the copy's place in the project to it, so
- * that the extracted project holds a link to a target outside it where the sender's project did.
+ * that the extracted project holds a link to a target outside it where the sender's project did. Each of the
+ * project's own files keeps its mode.
  * <p>
  * <b>Thread Safety:</b> This class is stateless and thread-safe.
  */
@@ -128,6 +129,16 @@ public final class RequestArchive
 	 * The mode of a directory in a copy of a project link's target, which the receiver extracts read-only.
 	 */
 	private static final Set<PosixFilePermission> READ_ONLY_DIRECTORY_MODE = READ_ONLY_PROGRAM_MODE;
+	/**
+	 * The tar mode bit that marks each entry of a copy of a project link's target. It is the sticky bit, which no
+	 * receiver applies, so that a read-only file of the project itself travels with its own mode and stays a file of
+	 * the project.
+	 */
+	private static final int COPY_BIT = 01000;
+	/**
+	 * The tar mode bits that grant a write permission.
+	 */
+	private static final int WRITE_BITS = 0222;
 
 	/**
 	 * Publishes a request made inside a run with archive-relative manifest paths, packing prompt texts after the
@@ -332,8 +343,9 @@ public final class RequestArchive
 	 * Packs the project directory and its descendants, leaving out the null-device placeholders of files that the
 	 * session may not read and the request server's own entries. A symbolic link whose target stays inside the project
 	 * travels as a link with the same target; any other link travels as a copy of the file or directory tree that it
-	 * leads to, which counts against the same limits as the project's own files. The entries of that copy lack every
-	 * write permission, whatever the target's own mode, so that the receiver extracts them read-only.
+	 * leads to, which counts against the same limits as the project's own files. The entries of that copy carry
+	 * {@link #COPY_BIT} and lack every write permission, whatever the target's own mode, so that the receiver extracts
+	 * them read-only beside the project; each of the project's own files carries its mode.
 	 *
 	 * @param archive    the destination archive
 	 * @param source     the readable project directory
@@ -359,7 +371,7 @@ public final class RequestArchive
 				budget.add(0, maximum);
 				TarArchiveEntry entry = new TarArchiveEntry(entryName(relative) + "/");
 				if (copy)
-					entry.setMode(modeBits(READ_ONLY_DIRECTORY_MODE));
+					entry.setMode(modeBits(READ_ONLY_DIRECTORY_MODE) | COPY_BIT);
 				else
 					entry.setMode(modeBits(DIRECTORY_MODE));
 				archive.putArchiveEntry(entry);
@@ -369,7 +381,12 @@ public final class RequestArchive
 			@Override
 			public void file(Path relative, Path file, boolean copy) throws IOException
 			{
-				packFile(archive, file, entryName(relative), maximum, budget, copy);
+				FileKind kind;
+				if (copy)
+					kind = FileKind.COPY;
+				else
+					kind = FileKind.PROJECT;
+				packFile(archive, file, entryName(relative), maximum, budget, kind);
 			}
 
 			@Override
@@ -459,7 +476,7 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Packs exactly one bounded regular file, preserving its executable permission.
+	 * Packs exactly one bounded regular file that is not part of the project, preserving its executable permission.
 	 *
 	 * @param archive the destination
 	 * @param source  the input file
@@ -471,22 +488,22 @@ public final class RequestArchive
 	private static void packFile(TarArchiveOutputStream archive, Path source, String name, long maximum,
 		Budget budget) throws IOException
 	{
-		packFile(archive, source, name, maximum, budget, false);
+		packFile(archive, source, name, maximum, budget, FileKind.INPUT);
 	}
 
 	/**
-	 * Packs exactly one bounded regular file, preserving its executable permission.
+	 * Packs exactly one bounded regular file with the mode that its kind travels with.
 	 *
-	 * @param archive  the destination
-	 * @param source   the input file
-	 * @param name     its archive name
-	 * @param maximum  the content bound
-	 * @param budget   cumulative limits
-	 * @param readOnly {@code true} if the receiver extracts the file read-only
+	 * @param archive the destination
+	 * @param source  the input file
+	 * @param name    its archive name
+	 * @param maximum the content bound
+	 * @param budget  cumulative limits
+	 * @param kind    the kind of the file
 	 * @throws IOException if the file is unsafe, changes size or cannot be read
 	 */
 	private static void packFile(TarArchiveOutputStream archive, Path source, String name, long maximum,
-		Budget budget, boolean readOnly) throws IOException
+		Budget budget, FileKind kind) throws IOException
 	{
 		checkAncestors(source);
 		BasicFileAttributes attributes = Files.readAttributes(source, BasicFileAttributes.class,
@@ -496,17 +513,25 @@ public final class RequestArchive
 		budget.add(attributes.size(), maximum);
 		TarArchiveEntry entry = new TarArchiveEntry(name);
 		entry.setSize(attributes.size());
-		boolean program = PortableFiles.mode(source).contains(PosixFilePermission.OWNER_EXECUTE);
-		Set<PosixFilePermission> mode;
-		if (readOnly && program)
-			mode = READ_ONLY_PROGRAM_MODE;
-		else if (readOnly)
-			mode = READ_ONLY_FILE_MODE;
-		else if (program)
-			mode = PROGRAM_MODE;
-		else
-			mode = FILE_MODE;
-		entry.setMode(modeBits(mode));
+		Set<PosixFilePermission> permissions = PortableFiles.mode(source);
+		boolean program = permissions.contains(PosixFilePermission.OWNER_EXECUTE);
+		int mode = switch (kind)
+		{
+			case INPUT ->
+			{
+				if (program)
+					yield modeBits(PROGRAM_MODE);
+				yield modeBits(FILE_MODE);
+			}
+			case PROJECT -> modeBits(permissions);
+			case COPY ->
+			{
+				if (program)
+					yield modeBits(READ_ONLY_PROGRAM_MODE) | COPY_BIT;
+				yield modeBits(READ_ONLY_FILE_MODE) | COPY_BIT;
+			}
+		};
+		entry.setMode(mode);
 		archive.putArchiveEntry(entry);
 		try (InputStream input = Files.newInputStream(source, LinkOption.NOFOLLOW_LINKS))
 		{
@@ -566,12 +591,12 @@ public final class RequestArchive
 
 	/**
 	 * Extracts only ordinary files, directories and the project's symbolic links from a private archive copy, creating
-	 * the links after every file and directory. A file or directory of the project whose entry lacks the owner's write
-	 * permission, as the copy of a link's target does, goes with the rest of its copy into its own directory of
+	 * the links after every file and directory. A file or directory of the project whose entry carries
+	 * {@link #COPY_BIT}, as the copy of a link's target does, goes with the rest of its copy into its own directory of
 	 * {@code link-targets} beside the project, read-only as {@link PortableFiles#setReadOnly(Path)} makes it, and the
 	 * project holds a symbolic link to it in its place. A runner that copies the extracted project therefore copies the
 	 * copy as it copies any target of a link outside the project: read-only, and checked for changes once its session
-	 * ends.
+	 * ends. Every other file of the project gets the mode of its entry, and its owner may read it.
 	 *
 	 * @param source the private archive
 	 * @param target the private empty destination
@@ -595,7 +620,6 @@ public final class RequestArchive
 		Path directory = target.toAbsolutePath().normalize();
 		Path project = directory.resolve("project");
 		Path linkTargets = directory.resolve(LINK_TARGETS);
-		int ownerWrite = modeBits(Set.of(PosixFilePermission.OWNER_WRITE));
 		try (InputStream bytes = Files.newInputStream(source);
 			TarArchiveInputStream archive = new BoundedTarInput(bytes, limits))
 		{
@@ -622,16 +646,16 @@ public final class RequestArchive
 				else if (entry.getName().startsWith("prompts/"))
 					maximum = MAXIMUM_PROMPT_BYTES;
 				budget.add(entry.getSize(), maximum);
-				// Only a copy of a project link's target lacks the owner's write permission
-				boolean readOnly = path.startsWith(project) && !path.equals(project) &&
-					type != TarConstants.LF_SYMLINK && (entry.getMode() & ownerWrite) == 0;
-				Path destination = place(copies, path, project, linkTargets, readOnly, type, entry);
+				// Only the entries of a copy of a project link's target carry the copy bit
+				boolean inProject = path.startsWith(project) && !path.equals(project);
+				boolean copy = inProject && type != TarConstants.LF_SYMLINK && (entry.getMode() & COPY_BIT) != 0;
+				Path destination = place(copies, path, project, linkTargets, copy, type, entry);
 				if (type == '5')
 				{
 					if (entry.getSize() != 0)
 						throw new IOException("Request archive directory has content: " + entry.getName());
 					Files.createDirectories(destination);
-					if (readOnly)
+					if (copy)
 						readOnlyDirectories.add(destination);
 					continue;
 				}
@@ -645,12 +669,22 @@ public final class RequestArchive
 				{
 					copy(archive, output, entry.getSize());
 				}
-				Set<PosixFilePermission> mode = EnumSet.of(PosixFilePermission.OWNER_READ,
-					PosixFilePermission.OWNER_WRITE);
-				if ((entry.getMode() & modeBits(Set.of(PosixFilePermission.OWNER_EXECUTE))) != 0)
-					mode.add(PosixFilePermission.OWNER_EXECUTE);
+				Set<PosixFilePermission> mode;
+				if (inProject && !copy)
+				{
+					// A file of the project itself keeps the mode that it has in the sender's project, which the sender
+					// could read
+					mode = permissions(entry.getMode());
+					mode.add(PosixFilePermission.OWNER_READ);
+				}
+				else
+				{
+					mode = EnumSet.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE);
+					if ((entry.getMode() & modeBits(Set.of(PosixFilePermission.OWNER_EXECUTE))) != 0)
+						mode.add(PosixFilePermission.OWNER_EXECUTE);
+				}
 				PortableFiles.setMode(destination, mode);
-				if (readOnly)
+				if (copy)
 					PortableFiles.setReadOnly(destination);
 			}
 		}
@@ -673,30 +707,31 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Returns where an extracted entry goes. A read-only entry of the project, which only a copy of a project link's
-	 * target holds, goes into a directory of {@link #LINK_TARGETS} beside the project with the rest of its copy, so that
-	 * the project holds a link to it, as the sender's project did, and a runner that copies the project makes a
-	 * read-only copy of it that the runner checks for changes. Every other entry goes to its own path.
+	 * Returns where an extracted entry goes. An entry of a copy of a project link's target goes into a directory of
+	 * {@link #LINK_TARGETS} beside the project with the rest of its copy, so that the project holds a link to it, as the
+	 * sender's project did, and a runner that copies the project makes a read-only copy of it that the runner checks for
+	 * changes. Every other entry goes to its own path.
 	 *
 	 * @param copies      the path in the project of each copy found so far, and where it goes instead; receives a new
 	 *                    copy
 	 * @param path        the entry's resolved path
 	 * @param project     the extracted project
 	 * @param linkTargets the directory that holds the copies
-	 * @param readOnly    {@code true} if the entry is a read-only file or directory of the project
+	 * @param copy        {@code true} if the entry is a file or directory of a copy of a project link's target
 	 * @param type        the entry's type
 	 * @param entry       the entry
 	 * @return the path that the entry goes to
 	 * @throws IOException if a copy holds a writable entry or a symbolic link
 	 */
-	private static Path place(Map<Path, Path> copies, Path path, Path project, Path linkTargets, boolean readOnly,
+	private static Path place(Map<Path, Path> copies, Path path, Path project, Path linkTargets, boolean copy,
 		byte type, TarArchiveEntry entry) throws IOException
 	{
+		boolean readOnly = copy && (entry.getMode() & WRITE_BITS) == 0;
 		for (Path ancestor = path.getParent(); ancestor != null && ancestor.startsWith(project) &&
 			!ancestor.equals(project); ancestor = ancestor.getParent())
 		{
-			Path copy = copies.get(ancestor);
-			if (copy == null)
+			Path holder = copies.get(ancestor);
+			if (holder == null)
 				continue;
 			if (type == TarConstants.LF_SYMLINK)
 			{
@@ -708,13 +743,18 @@ public final class RequestArchive
 				throw new IOException("Request archive entry " + entry.getName() + " is writable but lies in a " +
 					"read-only copy of a project link's target");
 			}
-			return copy.resolve(ancestor.relativize(path));
+			return holder.resolve(ancestor.relativize(path));
 		}
-		if (!readOnly)
+		if (!copy)
 			return path;
-		Path copy = linkTargets.resolve(String.valueOf(copies.size()));
-		copies.put(path, copy);
-		return copy;
+		if (!readOnly)
+		{
+			throw new IOException("Request archive entry " + entry.getName() + " is a writable copy of a project " +
+				"link's target");
+		}
+		Path destination = linkTargets.resolve(String.valueOf(copies.size()));
+		copies.put(path, destination);
+		return destination;
 	}
 
 	/**
@@ -797,6 +837,23 @@ public final class RequestArchive
 	}
 
 	/**
+	 * Converts the permission bits of a tar mode at the tar API boundary.
+	 *
+	 * @param bits the tar mode bits
+	 * @return the POSIX permissions that they grant
+	 */
+	private static Set<PosixFilePermission> permissions(int bits)
+	{
+		Set<PosixFilePermission> permissions = EnumSet.noneOf(PosixFilePermission.class);
+		for (PosixFilePermission permission : PosixFilePermission.values())
+		{
+			if ((bits & (0400 >> permission.ordinal())) != 0)
+				permissions.add(permission);
+		}
+		return permissions;
+	}
+
+	/**
 	 * Resolves an archive name without accepting platform-specific or parent path syntax.
 	 *
 	 * @param target the extraction directory
@@ -840,6 +897,25 @@ public final class RequestArchive
 			output.write(buffer, 0, read);
 			remaining -= read;
 		}
+	}
+
+	/**
+	 * The kinds of regular file that a request carries, which differ in the mode that they travel with.
+	 */
+	private enum FileKind
+	{
+		/**
+		 * A prompt, plugin, workspace or evidence file, which travels with only its executable permission.
+		 */
+		INPUT,
+		/**
+		 * A file of the project itself, which travels with its mode.
+		 */
+		PROJECT,
+		/**
+		 * A file of a copy of a project link's target, which travels read-only with {@link RequestArchive#COPY_BIT}.
+		 */
+		COPY
 	}
 
 	/**
