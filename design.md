@@ -2693,6 +2693,9 @@ and grants edits inside the project by rule, so neither depends on Claude Code's
 or its `acceptEdits` mode. The runner does not set Claude Code's `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`: in that mode
 Claude Code also forbids writing the project's `.git/worktrees`, overriding the runner's grant, so the prompt optimizer
 could not create its worktree in a session. The user's deny and ask rules still apply first.
+Claude Code applies its sandbox only while the paths it denies fit on one command line; past that it asks for approval
+of every command that is not read-only. The runner therefore refuses a session whose denied and asked paths total more
+than 1,500,000 bytes, rather than start one whose commands would wait for an approval no one can give.
 
 A nested harness receives the parent's proxy variables (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and `NO_PROXY`, in
 upper and lower case). When every proxy that the parent names is on a loopback address, as the proxy of Claude Code's
@@ -2761,7 +2764,10 @@ what the child needs, optional).
 It takes its own slot of its harness's shared
 capacity and honours its hold, but waits at most 10 minutes for a slot, because the requesting session keeps its own
 slot while it waits; a request that times out fails with the reason `capacity`. Ending the run or interrupting its turn
-stops the requested sessions that still run. The receipt lists each requested session, its run and its evidence. The runner
+stops the requested sessions that still run. A launcher streams a requested conversation as `turn` records that
+hold only a prompt, and `interrupt` and `complete` records that hold only their type. Requested runs lie in groups of
+100 under the requesting run, so that a session's sandbox denies its sibling runs with about twice the square root of
+their number in paths. The receipt lists each requested session, its run and its evidence. The runner
 adds nothing to a session's instructions: a session learns how to request one from CAT's lazy-loaded harness-runners
 rule, the launcher's path from `CAT_REQUEST_SESSION` and the run's limits from `limits.json`, and a request the run
 does not allow is refused with status 2 (D138).
