@@ -2565,7 +2565,12 @@ a listed write or host is refused as any requested session is.
 It reads the prompt test configuration from the target's test directory (below) and refuses a target without one, naming
 the file to write ([§4.4](#44-trial-staging)).
 Each prints one JSON status object to standard output, holding the status, campaign identity, a summary for the user
-and any choices. The skill never interprets statistics itself. The launcher also provides the contract tools,
+and any choices. A command that presents a proposal also holds `proposal_file`, the absolute path of `proposal.md` in
+the campaign's directory, which holds the proposal's text; each presentation replaces that file, and the field is null
+when the command presents no proposal. The status object never carries the proposal's text, because a proposal of tens
+of kilobytes inside a command's output was cut off by one harness and summarized by agents; the skill reads the file
+whole, shows its text exactly in a message of its own and then asks its question. The skill never interprets
+statistics itself. The launcher also provides the contract tools,
 `contract check` and `contract workspace`, for contract author sessions ([§6.1](#61-derivation-and-confirmation)); the
 skill does not use them.
 
