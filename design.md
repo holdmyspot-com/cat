@@ -1281,7 +1281,9 @@ for diagnosis, reports and reconciliation of the in-flight tail. CAT never rebui
 
 When CAT first creates a project's session directories in a Git work tree that does not ignore `.cat/sessions/`, it
 appends a comment naming the plugin and `/.cat/sessions/` to the `.gitignore` of the project's root directory, leaves
-the change for the user to commit and tells the user (user rulings, 2026-11-01). `start` checks the same before
+the change for the user to commit and tells the user (user rulings, 2026-11-01). A command creates the session
+directory only after every check that can refuse it, so a refused command changes no project file, `.gitignore`
+included. `start` checks the same before
 creating anything, and its clean-base check accepts a base whose only change is those lines, so campaign files never
 make the base worktree dirty.
 
