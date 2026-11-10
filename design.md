@@ -1360,7 +1360,12 @@ any other link, it places a read-only copy of the file or directory tree that th
 run's `link-targets` directory, beside the project, and keeps the project's link, retargeted relatively to that copy, so
 the session and CAT still see an outside link while the user's file stays out of reach. It refuses a link whose target is
 missing or unreadable, records each copy and fails the run when its session changed one (`HarnessRunManager.copyProject`,
-`HarnessRunManager.changedLinkCopies`; user rulings, 2026-11-09, 2026-11-10: keep the link, read-only target). CAT still materializes **staged sources**,
+`HarnessRunManager.changedLinkCopies`; user rulings, 2026-11-09, 2026-11-10: keep the link, read-only target).
+The run's `link-targets` directory exists only when the copied project has such a link, and each copy lies in a folder
+`link-targets/<n>`. Both harnesses let the session read `link-targets` and never write there: Claude Code through a
+`Read` rule with no write grant, Codex through a read grant in its permission profile and a read-only bind mount. The
+record names each copied file by its path from the run directory, and the runner refuses a workspace file whose project
+path is, or lies below, a link into `link-targets`. CAT still materializes **staged sources**,
 directories in which every link is already replaced by a copy of its target, which the runner copies for each trial,
 so a trial's project holds no copy of a link target outside it.
 
