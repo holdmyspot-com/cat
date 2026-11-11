@@ -13,7 +13,7 @@ depends-on:
 	reader must make, so an internal choice does not become a contract that later implementations must preserve.
 - Let the reader of each kind of documentation site, such as a type, callable, parameter, value, comment, or document
 	section, find there the content listed for that kind of site, and find each other fact at the site whose reader uses
-	it.
+	it, unless a language-specific rule sets another convention that still gives the reader that information.
 
 ## Contract Boundary
 
@@ -21,8 +21,10 @@ Before drafting, identify the explicit product, legal, API, or workflow contract
 the current implementation works, determine whether the contract makes that fact part of the reader-visible interface.
 A task mentioning an implementation detail does not make that detail part of the interface.
 
-Omit an implementation detail when readers do not need it to understand or use the explicit contract. Do not introduce
-that detail merely to state that it is not guaranteed, is not promised, or may change. Silence leaves the implementation
+Omit an implementation detail, such as a fallback order, a data source, a delegation, or an algorithm, when readers do
+not need it to understand or use the explicit contract. A reader needs one to choose an input, predict an output or
+failure, understand a security, lifecycle, or concurrency guarantee, or recover from a failure. Do not introduce that
+detail merely to state that it is not guaranteed, is not promised, or may change. Silence leaves the implementation
 choice unspecified without making it part of the interface. State a negative boundary when it defines an observable
 rejection or failure, a reader's right or obligation, a compatibility boundary, or a security or lifecycle guarantee
 needed to use the interface correctly.
@@ -56,8 +58,8 @@ The goal of each kind of site:
 	the inputs it accepts, the results it returns, and the failures it reports.
 - A parameter: its effect on the result. A return value: each result and when it occurs. An error or exception: the
 	condition that causes it.
-- A field, property, record component, constant, or variable: what one value represents, with its unit and the scope it
-	covers, what decides it, and what the code does with it, wherever its name, type, and value leave these unclear.
+- A variable declared outside a function body, such as a field, property, record component, or constant: the content
+	that Declared Values lists. Lazy load `./documentation/declared-values.md` when documenting one.
 - A source comment: why the code beside it does something that the code does not make obvious.
 - A document section: the decision, right, obligation, or action that its reader needs it to support.
 

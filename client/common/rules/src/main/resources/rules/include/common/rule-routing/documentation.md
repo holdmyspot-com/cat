@@ -14,6 +14,9 @@ changing the signature of one, or when writing or editing the documentation of a
 constructor, script, command, or configuration entry, including API documentation and command help text, lazy load
 `../../documentation/interface-contracts.md`.
 
+When writing or editing the documentation of a field, property, record component, constant, or other variable that is
+declared outside a function body, lazy load `../../documentation/declared-values.md`.
+
 When writing or editing a source comment, including a comment in a prompt or rule file, lazy load
 `../../documentation/source-comments.md`.
 

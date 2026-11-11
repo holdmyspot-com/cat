@@ -3,7 +3,8 @@
 ## Design Goals
 
 - Choose and verify implementation approaches that meet the governing contract and remain maintainable over the long
-	term.
+	term, escalating a choice to the requester or the delegating agent only when its classification shows a product-policy
+	gap.
 - Preserve the requester's chosen constraints when translating a request into a tool or workflow invocation.
 - Act on a factual claim that a request depends on only after checking it, and tell the requester each condition under
 	which the claim fails, so that the result does not silently rest on a false premise.

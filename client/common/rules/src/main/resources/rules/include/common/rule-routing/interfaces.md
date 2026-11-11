@@ -20,8 +20,8 @@ offsets, positions, or times, or changing such parameters, lazy load `../range-p
 
 When selecting a Java platform or available project API, lazy load `../../java/standard-apis.md`.
 
-Before designing or changing a component, API, collaborator, integration boundary, construction path, or test-support
-boundary, lazy load `../../class-design.md`.
+Before designing, changing, or reviewing a component, API, collaborator, integration boundary, construction path, or
+test-support boundary, lazy load `../../class-design.md`.
 
 When defining or changing a method's parameters, adding a call that passes a method the same value as its other calls,
 reviewing or auditing a class, or noticing that every call made on an instance passes a method parameter equal values,

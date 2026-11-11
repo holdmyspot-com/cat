@@ -15,7 +15,9 @@ depends-on:
 - Place a helper by the responsibility its full contract serves, reusing a suitable existing operation before
 	introducing a helper or a new owner.
 - Make components replaceable and testable only where a supported variation or external integration needs a boundary,
-	without exposing unsafe convenience paths, test-only production responsibilities, or trivial indirection.
+	without exposing operations that callers do not need or unsafe convenience paths, test-only production
+	responsibilities, or trivial indirection such as a pass-through wrapper or a builder that only shortens an argument
+	list.
 - Keep public contracts faithful to their domain constraints so callers cannot supply values the domain excludes.
 
 ## Guidance

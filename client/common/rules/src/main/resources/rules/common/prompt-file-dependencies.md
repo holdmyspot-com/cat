@@ -9,8 +9,8 @@ paths:
 - Ensure a prompt file receives each definition it relies on before the file uses that definition.
 - Keep dependency metadata out of default reader context while making its authoring contract available with a rule
 	source file.
-- Keep lazy routing direct and authoritative: one observable trigger reaches one target rule rather than a duplicate
-	index or a routing-only intermediate.
+- Keep lazy routing direct: an index routes only to the target rule whose trigger matched and leaves that rule's
+	prerequisites to the rule itself, and two eagerly available indexes do not compete for one target.
 - Keep the text that a direct rule shares across platforms in one file, so that an edit to it reaches the rule on every
 	platform, while each platform still receives only its own commands.
 - Let shared rules reference values supplied by the current harness, with those values defined before a lazy rule
@@ -49,14 +49,9 @@ absent.
 
 When a lazy-loaded rule needs another lazy-loaded rule, the target rule itself must state when to lazy load that
 prerequisite before applying its guidance. A routing index must route only to the target rule whose observable trigger
-matched; it must not preload the target rule's prerequisites. Route directly to the authoritative rule, not to a file
-whose only independent guidance is another lazy-load instruction. Do not give two eagerly available indexes competing
-routes to the same target or requirement unless their triggers select distinct reader decisions. This keeps the
-dependency available when the target is reached directly or through another route.
-
-Lazy load a rule once when its trigger first applies in a conversation, then reuse that loaded guidance for later
-matching work. Read it again only after the conversation context resets or when the rule might have changed since it was
-loaded.
+matched; it must not preload the target rule's prerequisites. Do not give two eagerly available indexes competing routes
+to the same target or requirement unless their triggers select distinct reader decisions. This keeps the dependency
+available when the target is reached directly or through another route.
 
 Use `<!-- cat:include path -->` in a direct rule only to assemble source-only Markdown beneath the same rule root. The
 loader expands that body before injection and rejects a body with frontmatter. A separately routable rule is a

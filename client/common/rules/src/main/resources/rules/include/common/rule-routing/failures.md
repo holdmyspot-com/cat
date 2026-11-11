@@ -3,7 +3,8 @@
 ## Design Goals
 
 - Route each decision about handling, analyzing, preventing, suppressing, or working around a failure or limitation to
-	its focused rule before the reader acts on that failure.
+	its focused rule before the reader acts on that failure, and tell a reader that does not load a rule what to do
+	instead.
 
 ## Guidance
 

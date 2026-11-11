@@ -10,6 +10,8 @@ depends-on:
 - Make Bash functions and Bats tests understandable to their intended readers without inspecting their implementation.
 - Keep Bash behavior shared by several entry scripts in one documented library while each entry retains only its own
 	adaptation at the execution boundary.
+- Keep Bash scripts maintained as source code: formatted as the project's `.editorconfig` specifies and tested at their
+	observable boundaries.
 
 ## Bash Function Documentation
 

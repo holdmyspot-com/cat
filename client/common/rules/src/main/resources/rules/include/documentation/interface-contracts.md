@@ -15,6 +15,8 @@ depends-on:
 	without reading the implementation, and find the exact condition of each result it must act on, whichever value
 	that is.
 - Let a caller find the failures that its own invalid input causes before the failures that valid input can still meet.
+- Document existing code by describing it, without adding an executable declaration merely to have a documentation
+	target.
 
 ## Guidance
 
@@ -59,10 +61,8 @@ When an input, selected option, or operation determines a fixed value, threshold
 or timing that changes an observable result, failure, or state, state it exactly and explain its relationship to the
 affected behavior. Do not replace an exact caller-visible condition with a generic label.
 
-Describe a callable's meaningful input-to-output behavior, not incidental implementation mechanics. Omit fallback order,
-data sources, delegation, algorithms, and other replaceable details unless a reader needs them to choose an input,
-predict an output or failure, understand a security, lifecycle, or concurrency guarantee, or recover from a failure.
-Keep mechanism-specific rationale in implementation comments when maintainers need it but callers do not.
+Describe a callable's meaningful input-to-output behavior, not incidental implementation mechanics. Keep
+mechanism-specific rationale in implementation comments when maintainers need it but callers do not.
 
 Distinguish inputs that share a representation by their semantic roles, such as source and destination, input and
 output, or accumulator and lookup. For mutable input, state what its contents represent, required incoming state,

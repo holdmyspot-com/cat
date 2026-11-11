@@ -16,5 +16,5 @@ paths:
 
 ## Guidance
 
-When writing or changing Bash source code, including a function, a Bats test, or a Bats file, or documenting Bash
-functions, Bats tests, or Bash source code, lazy load `../include/bash/documentation.md`.
+When writing, changing, or reviewing Bash source code, including a function, a Bats test, or a Bats file, or documenting
+Bash functions, Bats tests, or Bash source code, lazy load `../include/bash/documentation.md`.
