@@ -3,7 +3,7 @@
 ## Design Goals
 
 - Keep workflow execution directed at the user-authorized terminal outcome when new tasks, repairs, or discoveries arise
-	during the work.
+	during the work, scheduling an unrelated user instruction instead of letting it replace that outcome.
 - Prevent intermediate success or a partial scope from being reported or treated as completion without evidence for the
 	terminal outcome across the complete user-authorized scope, including every required terminal gate.
 - Require every terminal gate to be closed only by evidence that directly establishes its own claim, distinguishing an
@@ -30,7 +30,8 @@ terminal outcome, record availability as that gate's claim.
 
 When new work arises, such as a user instruction or a discovered prerequisite, failure, repair, workaround, or
 implementation detail, classify it before acting. It supports the current terminal goal unless the user explicitly
-replaces or expands the requested terminal outcome; being necessary to proceed does not make work a goal change. Record
+replaces or expands the requested terminal outcome; being necessary to proceed does not make work a goal change. A user
+instruction that does not relate to the current goal is scheduled as the User Request Scheduling rule directs. Record
 its own completion evidence separately. After it completes, re-evaluate the unchanged terminal conditions and continue
 from the next unmet condition. Do not report completion, return control as complete, or discard required follow-up work
 on intermediate evidence. A passing intermediate check is not by itself a reason to extend intermediate work; to choose
