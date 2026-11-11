@@ -32,6 +32,9 @@ load it before suppressing any other diagnostic, or before disabling, excluding,
 Before starting another run of an operation that failed and that is expensive to run in full, such as a hosted build,
 a long local build, or a long probe, lazy load `../diagnostic-runs.md`.
 
+When a run of changed code shows a failure, a timeout or an intermittent result, before you say or act on whether the
+change caused it, lazy load `../run-comparisons/failure-baseline.md`.
+
 When assessing an apparently absent condition, a helper's apparent limitation, or a proposed workaround, lazy load
 `../limitations-and-workarounds.md`.
 

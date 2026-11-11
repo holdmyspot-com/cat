@@ -23,6 +23,9 @@ Before changing testable production behavior, lazy load `../tdd.md`.
 
 When designing, changing, or reviewing tests, lazy load `../testing.md`.
 
+Before starting or dispatching a build, test suite or workflow run that takes many minutes or draws on capacity that
+others share, such as the runners of a hosted workflow, lazy load `../expensive-verification-runs.md`.
+
 When a test's outcome varies between runs of unchanged code and inputs, or a test that should reproduce a problem
 triggers it on only some runs, lazy load `../flaky-tests.md` before changing, rerunning, or removing that test.
 
