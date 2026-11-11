@@ -14,6 +14,10 @@
 - Name every part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or
 	repair what it instructs, with the target instruction that it serves, so that control trials remove it together with
 	the target's text and the user can confirm each one. A part that also serves another purpose stays out of the list.
+- Declare in `referenced_files` each file that the target prompt file refers to in its text, that no loader of the prompt
+	system loads and that a requirement depends on, so that every trial receives it with the incumbent's content and the
+	user confirms the warning that its authority lies outside the campaign. Declare no file that the campaign may edit,
+	that a loader already loads or that is the target, and leave the list empty when the target refers to no such file.
 - Write each prompt test to prove its requirements' outcomes with the least work that can still fail them, and without
 	telling the agent the expected outcome or that it is being tested.
 - Report every condition that makes certification unavailable, with the requirements it affects and its evidence, so

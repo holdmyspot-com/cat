@@ -37,8 +37,9 @@ When a prerequisite has no verified provider in a context, resolve it before acc
 5. For an external dependency that no mechanism of the prompt can establish, state the dependency and stop; do not
 	describe an unavailable internal alternative as though the reader could select it.
 
-Recheck the chosen resolution in each affected context. Do not leave the reader to discover or improvise a missing
-prerequisite. A user-supplied request input may remain an explicit input; it does not need a setup mechanism. An
+Recheck the chosen resolution in each affected context. Do not describe a workflow, artifact, capability, handoff or
+recovery path that no mechanism creates: it gives the reader no action to perform. Do not leave the reader to discover
+or improvise a missing prerequisite. A user-supplied request input may remain an explicit input; it does not need a setup mechanism. An
 instruction that already establishes its prerequisites or explicitly handles their absence needs no additional remedy.
 
 Before removing or narrowing a providing mechanism, find the prompts whose requirements depend on it and repeat this
