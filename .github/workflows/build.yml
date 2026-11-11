@@ -93,6 +93,10 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
           client/common/distribution/src/test/bats/installer-launcher-windows.bats
+      # The installer's sources rewrite runs here, where the shell and sed are macOS's, as well as on Linux.
+      - name: Verify the Linux test-tool installer's mirror rewrite
+        if: runner.os != 'Windows'
+        run: bats client/common/distribution/src/test/bats/install-linux-test-tools.bats
       # The POSIX launcher templates; the Windows plugins' batch launchers are tested by the Maven build
       - name: Verify the jlink launcher template
         if: runner.os != 'Windows'

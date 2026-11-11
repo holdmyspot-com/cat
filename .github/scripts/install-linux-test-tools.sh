@@ -53,9 +53,9 @@ rewrite_source_file()
 	local -a privileged=()
 
 	[[ -w "${target}" ]] || privileged=(sudo)
-	rewritten="$(mktemp)"
+	rewritten="$(mktemp "${TMPDIR:-/tmp}/rewritten.XXXXXX")"
 	sed -E "s#https?://[A-Za-z0-9.-]*ubuntu\.com/ubuntu(-ports)?/?#${mirror}/#g" "${original}" > "${rewritten}"
-	"${privileged[@]}" cp -- "${rewritten}" "${target}"
+	${privileged[@]+"${privileged[@]}"} cp -- "${rewritten}" "${target}"
 	rm -f -- "${rewritten}"
 }
 
@@ -66,7 +66,7 @@ install_packages()
 	local -a privileged=()
 
 	[[ "${EUID}" -eq 0 ]] || privileged=(sudo)
-	"${privileged[@]}" apt-get update && "${privileged[@]}" apt-get install --yes "${PACKAGES[@]}"
+	${privileged[@]+"${privileged[@]}"} apt-get update && ${privileged[@]+"${privileged[@]}"} apt-get install --yes "${PACKAGES[@]}"
 }
 
 # Installs the packages from the configured sources, then from each mirror in turn if that fails.
@@ -87,7 +87,7 @@ main()
 	echo "Installing from the configured Ubuntu sources failed; falling back to a mirror." >&2
 
 	# Every mirror is rewritten from these copies of the original files, not from the previous mirror's rewrite.
-	backup_directory="$(mktemp -d)"
+	backup_directory="$(mktemp -d "${TMPDIR:-/tmp}/apt-sources.XXXXXX")"
 	while IFS= read -r file; do
 		cp -- "${file}" "${backup_directory}/${#files[@]}"
 		files+=("${file}")
