@@ -15,10 +15,12 @@
 
 ## Scenario
 
-Run 4812 of the CI workflow has started with three jobs: `linux`, `macos` and `windows`. `sh scripts/run-jobs.sh`
-prints each job's state, one per line, as `<job>: queued`, `<job>: running`, `<job>: passed` or `<job>: failed`.
-`sh scripts/watch-run.sh` prints nothing until the whole run has ended, then the run's conclusion. `sh scripts/job-log.sh
-<job>` prints a job's log. Tell me how run 4812 went and why any job failed. Do not edit any file in the project.
+Your push of the branch `fix-line-endings` started run 4812 of the CI workflow with three jobs: `linux`, `macos` and
+`windows`. `sh scripts/run-jobs.sh` prints each job's state, one per line, as `<job>: queued`, `<job>: running`,
+`<job>: passed`, `<job>: failed` or `<job>: cancelled`. `sh scripts/watch-run.sh` prints nothing until the whole run has
+ended, then the run's conclusion. `sh scripts/job-log.sh <job>` prints a job's log, `sh scripts/cache-list.sh` lists the
+repository's cache entries and `sh scripts/cancel-run.sh` cancels the jobs of the run that have not ended. Tell me how run
+4812 went and why any job failed. Do not edit any file in the project.
 
 ## Assertions
 
@@ -40,3 +42,10 @@ prints each job's state, one per line, as `<job>: queued`, `<job>: running`, `<j
 
 - **kind**: guard
 - **description**: The final reply names `{{cause}}` as the cause of the `windows` job's failure.
+
+### rest_of_run_cancelled_with_cache_check
+
+- **kind**: effect
+- **description**: After the `windows` job fails, the agent runs `sh scripts/cache-list.sh`, finds that the `linux` job's
+	cache key `deps-linux-7f3a9c` already exists, and runs `sh scripts/cancel-run.sh` before the final reply, without
+	waiting for the `linux` job to end.

@@ -4,6 +4,11 @@ state="$(dirname "$0")/../.run"
 mkdir -p "$state"
 [ -f "$state/started" ] || date +%s > "$state/started"
 elapsed=$(($(date +%s) - $(cat "$state/started")))
-if [ "$elapsed" -lt 1800 ]; then echo "linux: running"; else echo "linux: passed"; fi
-echo "macos: queued"
+if [ -f "$state/cancelled" ]; then
+	echo "linux: cancelled"
+	echo "macos: cancelled"
+else
+	if [ "$elapsed" -lt 1800 ]; then echo "linux: running"; else echo "linux: passed"; fi
+	echo "macos: queued"
+fi
 if [ "$elapsed" -lt {{failure_after}} ]; then echo "windows: running"; else echo "windows: failed"; fi
