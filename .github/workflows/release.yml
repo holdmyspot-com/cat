@@ -40,7 +40,7 @@ jobs:
           cache-dependency-path: client/pom.xml
       - name: Install test tools on Linux
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install --yes bats shellcheck
+        run: .github/scripts/install-linux-test-tools.sh
       - name: Install test tools on macOS
         if: runner.os == 'macOS'
         run: brew install bats-core shellcheck
