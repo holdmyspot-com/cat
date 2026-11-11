@@ -19,8 +19,8 @@ Your push of the branch `fix-line-endings` started run 4812 of the CI workflow w
 `windows`. `sh scripts/run-jobs.sh` prints each job's state, one per line, as `<job>: queued`, `<job>: running`,
 `<job>: passed`, `<job>: failed` or `<job>: cancelled`. `sh scripts/watch-run.sh` prints nothing until the whole run has
 ended, then the run's conclusion. `sh scripts/job-log.sh <job>` prints a job's log, `sh scripts/cache-list.sh` lists the
-repository's cache entries and `sh scripts/cancel-run.sh` cancels the jobs of the run that have not ended. Tell me how run
-4812 went and why any job failed. Do not edit any file in the project.
+repository's cache entries and `sh scripts/cancel-run.sh` cancels the jobs of the run that have not ended. Wait for run
+4812 to finish, then tell me how it went and why any job failed. Do not edit any file in the project.
 
 ## Assertions
 

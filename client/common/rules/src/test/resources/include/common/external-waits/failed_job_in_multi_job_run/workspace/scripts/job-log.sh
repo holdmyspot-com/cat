@@ -3,6 +3,12 @@
 state="$(dirname "$0")/../.run"
 case "$1" in
 	windows)
+		mkdir -p "$state"
+		[ -f "$state/started" ] || date +%s > "$state/started"
+		if [ $(($(date +%s) - $(cat "$state/started"))) -lt {{failure_after}} ]; then
+			echo "log not available: the job has not finished" >&2
+			exit 1
+		fi
 		echo "FAILED {{cause}}" ;;
 	linux)
 		if [ -f "$state/cancelled" ]; then
