@@ -501,6 +501,38 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that is about to install, update or uninstall CAT or a plugin can reach the packaged rule for
+	 * that decision: the workflow area index routes to the install-running-work rule, whose guidance has the agent
+	 * check for running work that uses the installed copy, wait for it or confirm that it uses its own copied runtime,
+	 * and tell the user what an install they requested waits for.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void installRunningWorkRuleIsRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/workflows.md"))), "workflowIndex").
+				contains("Before installing, updating or uninstalling CAT or any plugin, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/install-running-work.md`.");
+
+			String rule = oneLine(Files.readString(include.resolve("install-running-work.md")));
+			requireThat(rule, "installRunningWork").startsWith("# Installing While Work Is Running ").
+				contains("probe, screen or runner sessions").
+				contains("wait for it to finish before you install").
+				contains("uses its own copied runtime").
+				contains("tell the user what it waits for");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to apply a change meant to improve the performance of a program or build can
 	 * reach the packaged rule for that decision: the rule routing that every agent of either harness receives at
 	 * startup routes to the performance-change rule, whose guidance tells the reader to measure the change before and

@@ -28,6 +28,8 @@ When creating, using, or handing off temporary files or directories, lazy load `
 Before you start or request a new agent session yourself, for example to test a plugin or a fresh installation in a
 separate session, including from inside a CAT run, lazy load `../harness-runners.md`.
 
+Before installing, updating or uninstalling CAT or any plugin, lazy load `../install-running-work.md`.
+
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
 exiting or a subagent returning, lazy load `../external-waits.md` before you check that state or continue other work.
 
