@@ -28,12 +28,14 @@ import com.holdmyspot.cat.common.optimizer.contract.ValuesFile;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
+import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.report.RemainingWork;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.optimizer.workspace.ReferencedFiles;
 
 import java.io.File;
 import java.math.BigDecimal;
@@ -88,6 +90,7 @@ public final class Markdown
 	private final List<String> controlRefusals;
 	private final List<String> trialFiles;
 	private final HookReport hooks;
+	private final ReferencedFiles referencedFiles;
 	private final String goal;
 	private final StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
 
@@ -110,12 +113,14 @@ public final class Markdown
 	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param trialFiles the files that every trial receives from the incumbent, relative to the project
 	 * @param hooks what running the hooks that run before the model acts showed
+	 * @param referencedFiles the files that the contract declares the target refers to
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	Markdown(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
 		HostLogin login, int ceiling, Map<CertificationScope, Campaign> previews, List<String> caps,
 		CertificationStatus incumbent, Map<String, PilotResult> pilots, Map<String, DeliveredTest> delivered,
-		PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles, HookReport hooks, String goal)
+		PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles, HookReport hooks,
+		ReferencedFiles referencedFiles, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -132,6 +137,7 @@ public final class Markdown
 		this.controlRefusals = controlRefusals;
 		this.trialFiles = trialFiles;
 		this.hooks = hooks;
+		this.referencedFiles = referencedFiles;
 		this.goal = goal;
 	}
 
@@ -161,6 +167,7 @@ public final class Markdown
 		incumbent();
 		requirements();
 		loading();
+		referencedFiles();
 		tests();
 		trialProfiles();
 		judge();
@@ -873,6 +880,34 @@ public final class Markdown
 	{
 		heading("Guard pilot");
 		text.append(PilotReport.render(contract, pilots, !controlRefusals.isEmpty()));
+	}
+
+	/**
+	 * Lists the files that the contract declares the target refers to, each with the warning that the campaign does
+	 * not optimize it, which the user accepts by confirming the proposal. Writes nothing if the contract declares no
+	 * file.
+	 */
+	private void referencedFiles()
+	{
+		if (referencedFiles.entries().isEmpty())
+			return;
+		heading("Referenced files");
+		text.append("The target prompt file refers to these files in its text, and no loader loads them. Every trial " +
+			"receives each with the content that the incumbent has, and no candidate changes it. The authority over " +
+			"each file lies outside what the campaign optimizes, so the campaign cannot repair a requirement whose " +
+			"fix needs a change to it. Confirming the proposal accepts this.\n\n");
+		for (ReferencedFiles.Entry entry : referencedFiles.entries())
+		{
+			text.append("- `").append(PortablePaths.text(entry.file())).append('`');
+			if (!entry.target().equals(entry.file()))
+				text.append(" -> `").append(PortablePaths.text(entry.target())).append('`');
+			text.append(": ");
+			if (Authority.isExternal(entry.target()))
+				text.append("outside the project; ");
+			else
+				text.append("inside the project; ");
+			text.append(EnumNames.lowerCase(entry.limit()).replace('_', ' ')).append('\n');
+		}
 	}
 
 	/**

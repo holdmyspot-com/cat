@@ -1015,6 +1015,51 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that the declared files survive parsing and writing, change the contract's identity, and are omitted
+	 * from a contract that declares none.
+	 *
+	 * @throws InvalidProposalException if the proposal is rejected
+	 */
+	@Test
+	public void referencedFilesRoundTrip() throws InvalidProposalException
+	{
+		Contract contract = schema().parse(changed(new String[]{"referenced_files"}, json.readTree("""
+			["docs/reply-rules.md", "docs/style/tone.md"]
+			""")));
+		Contract without = schema().parse(ContractFixtures.resource("valid-proposal.json"));
+
+		requireThat(contract.referencedFiles(), "referencedFiles").
+			isEqualTo(List.of(Path.of("docs/reply-rules.md"), Path.of("docs/style/tone.md")));
+		requireThat(schema().parse(schema().toJson(contract)), "reread").isEqualTo(contract);
+		requireThat(json.readTree(schema().toJson(without)).has("referenced_files"), "withoutDeclared").isFalse();
+		requireThat(ContractIdentity.of(schema(), contract), "identity").
+			isNotEqualTo(ContractIdentity.of(schema(), without));
+	}
+
+	/**
+	 * Verifies that a declared file that is absolute, leaves the project, is not normalized, is blank or is listed
+	 * twice is rejected.
+	 */
+	@Test
+	public void rejectsInvalidReferencedFiles()
+	{
+		Map<String, String> problemByFiles = Map.of(
+			"[\"/etc/hosts\"]", "A referenced file must be a normalized path relative to the project",
+			"[\"../outside.md\"]", "A referenced file must be a normalized path relative to the project",
+			"[\"docs/../../outside.md\"]", "A referenced file must be a normalized path relative to the project",
+			"[\"docs/./rules.md\"]", "A referenced file must be a normalized path relative to the project",
+			"[\"rules.md\", \"rules.md\"]", "is listed twice",
+			"[\" \"]", "referenced_files");
+		for (Map.Entry<String, String> entry : problemByFiles.entrySet())
+		{
+			InvalidProposalException e = rejection(changed(new String[]{"referenced_files"},
+				json.readTree(entry.getKey())));
+
+			requireThat(String.join(" | ", e.problems()), "problems").contains(entry.getValue());
+		}
+	}
+
+	/**
 	 * Verifies that a proposal file that holds only the requirements, each prompt test's directory with the fields that
 	 * belong to the contract, and the contract's other fields satisfies the proposal file's schema.
 	 */

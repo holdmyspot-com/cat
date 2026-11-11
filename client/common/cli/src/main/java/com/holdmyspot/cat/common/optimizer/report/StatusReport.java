@@ -136,10 +136,13 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		CertifiedEnvironment.MACHINE_LIMITATION,
 		"Conditions that CAT cannot observe may differ, and trials cannot be replayed deterministically.");
 	/**
-	 * The limitation that applies when staging replaced symbolic links.
+	 * The limitation that applies when the prompt system has symbolic links.
 	 */
-	private static final String SYMBOLIC_LINK_LIMITATION = "Staging replaced symbolic links with copies of their " +
-		"targets, so trials did not see the links.";
+	private static final String SYMBOLIC_LINK_LIMITATION = "Trials hold a regular copy of each symbolic link's " +
+		"target instead of the link, and hold only the files that the prompt system loads and the files that the " +
+		"contract declares the target refers to. A file that a prompt names in its text without a loader loading " +
+		"it is absent from trials, and an agent that tries to read it fails. To give trials such a file, run " +
+		"revise with feedback that names it, so that the contract declares it as a referenced file.";
 
 	/**
 	 * The concurrency state that limits how many trials run at once.

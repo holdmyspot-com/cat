@@ -12,11 +12,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
+import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
@@ -37,6 +40,7 @@ import com.holdmyspot.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
@@ -463,6 +467,45 @@ public final class StagedSourceTest
 				isEqualTo("reply rules");
 			requireThat(Files.readString(staged.resolve("kit/guide.md"), UTF_8), "directoryLink").isEqualTo("guide");
 			requireThat(tree.inventory().entries().get(rules), "recordedFile").isEqualTo(file("reply rules"));
+		}
+	}
+
+	/**
+	 * Verifies that a trial's source holds a file that the contract declares its target refers to, reached through a
+	 * link that leaves the project, with the content that the fork recorded, and holds no file that the target mentions
+	 * without the contract declaring it.
+	 *
+	 * @throws IOException if the fixture cannot be created or staged
+	 */
+	@Test
+	public void stagesDeclaredReferencedFilesOnly() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
+			Path base = Files.createDirectories(root.resolve("project"));
+			writeFile(base.resolve("prompt.md"), "Follow docs/reply-rules.md and docs/tone.md.", READ_WRITE);
+			Path rules = writeFile(root.resolve("outside/reply-rules.md"), "reply rules", READ_WRITE);
+			Path tone = writeFile(root.resolve("outside/tone.md"), "tone", READ_WRITE);
+			Set<Path> participants = new HashSet<>(createLinks(base,
+				Map.of("docs/reply-rules.md", rules, "docs/tone.md", tone)));
+			participants.add(Path.of("prompt.md"));
+			ForkTree tree = ForkTree.record(base, root.resolve("campaign"), participants);
+			StagedSources sources = new StagedSources(tree, root.resolve("campaign/staged"));
+			Contract contract = ContractFixtures.withReferencedFiles(ContractFixtures.contract(),
+				List.of(Path.of("docs/reply-rules.md")));
+			SourceSelection selection = TrialSelection.base(Harness.CLAUDE, Set.of(Path.of("prompt.md")), Set.of(),
+				contract, List.of());
+
+			Path staged = sources.stage(Overlay.of(tree.inventory()), Set.of(), selection);
+
+			Path declared = staged.resolve("docs/reply-rules.md");
+			requireThat(Files.isSymbolicLink(declared), "declaredIsLink").isFalse();
+			requireThat(Files.readString(declared, UTF_8), "declared").isEqualTo("reply rules");
+			requireThat(Files.exists(staged.resolve("docs/tone.md"), LinkOption.NOFOLLOW_LINKS),
+				"undeclaredStaged").isFalse();
+			requireThat(Files.readString(staged.resolve("prompt.md"), UTF_8), "prompt").
+				isEqualTo("Follow docs/reply-rules.md and docs/tone.md.");
 		}
 	}
 

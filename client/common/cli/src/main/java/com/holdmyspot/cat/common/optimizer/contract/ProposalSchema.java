@@ -83,6 +83,10 @@ public final class ProposalSchema
 	 * The property that holds the dependents of the target prompt file.
 	 */
 	private static final String DEPENDENTS = "dependents";
+	/**
+	 * The property that holds the project files that the target prompt file refers to in its text.
+	 */
+	public static final String REFERENCED_FILES = "referenced_files";
 	private final JsonMapper json;
 	private final String schemaText;
 	private final SchemaValidator validator;
@@ -357,6 +361,7 @@ public final class ProposalSchema
 		root.put("minimum_pass_rate", contract.minimumPassRate());
 		root.put(SALT, contract.salt());
 		writeDependents(contract, root);
+		writeReferencedFiles(contract, root);
 		return json.writeValueAsString(root);
 	}
 
@@ -368,8 +373,9 @@ public final class ProposalSchema
 	 * @param test a prompt test of {@code contract}
 	 * @return the JSON text: an object whose {@code test} holds the prompt test as the proposal schema writes it,
 	 *   whose {@code requirements} holds, in contract order, each requirement that the test checks, whose
-	 *   {@code judge} holds the judge, and whose {@code dependents}, present only when the contract lists dependents,
-	 *   holds them
+	 *   {@code judge} holds the judge, whose {@code dependents}, present only when the contract lists dependents,
+	 *   holds them, and whose {@code referenced_files}, present only when the contract lists referenced files, holds
+	 *   them
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public String toJson(Contract contract, PromptTest test)
@@ -386,7 +392,24 @@ public final class ProposalSchema
 		}
 		write(contract.judge(), root.putObject("judge"));
 		writeDependents(contract, root);
+		writeReferencedFiles(contract, root);
 		return json.writeValueAsString(root);
+	}
+
+	/**
+	 * Writes the project files that the target prompt file refers to in its text, if the contract lists any.
+	 *
+	 * @param contract the contract
+	 * @param root the object that receives the {@value #REFERENCED_FILES} property
+	 */
+	private static void writeReferencedFiles(Contract contract, ObjectNode root)
+	{
+		// A contract without referenced files keeps the identity that it had before the property existed
+		if (contract.referencedFiles().isEmpty())
+			return;
+		ArrayNode files = root.putArray(REFERENCED_FILES);
+		for (Path file : contract.referencedFiles())
+			files.add(PortablePaths.text(file));
 	}
 
 	/**
@@ -692,6 +715,15 @@ public final class ProposalSchema
 				dependents = list(dependentsNode, "$." + DEPENDENTS, (node, location) ->
 					attempt(location, () -> dependent(node)));
 			}
+			List<Path> referencedFiles = List.of();
+			JsonNode referencedNode = root.get(REFERENCED_FILES);
+			if (referencedNode != null && !referencedNode.isNull())
+			{
+				List<Path> parsed = attempt("$." + REFERENCED_FILES,
+					() -> strings(referencedNode).stream().map(Path::of).toList());
+				if (parsed != null)
+					referencedFiles = parsed;
+			}
 			if (problems.size() > problemsBefore)
 				return null;
 			TrialProfiles profiles;
@@ -707,9 +739,10 @@ public final class ProposalSchema
 			else
 				contractSalt = salt;
 			List<Dependent> contractDependents = dependents;
+			List<Path> contractReferencedFiles = referencedFiles;
 			return attempt("$", () -> new Contract(requirements, tests, profiles, judge,
 				strings(root.get("limitations")), root.get("minimum_pass_rate").decimalValue(), contractSalt,
-				contractDependents));
+				contractDependents, contractReferencedFiles));
 		}
 
 		/**

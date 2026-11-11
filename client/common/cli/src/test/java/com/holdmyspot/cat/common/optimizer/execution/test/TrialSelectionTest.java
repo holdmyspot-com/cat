@@ -87,4 +87,23 @@ public final class TrialSelectionTest
 		for (String left : List.of("docs/other.md", "src/Main.java", "module/AGENTS.md", ".codex/config.toml"))
 			requireThat(selection.selects(Path.of(left)), left).isFalse();
 	}
+
+	/**
+	 * Verifies that the base selection holds each file that the contract declares its target refers to, whether or not
+	 * a loader loads it, and leaves out a project file that the target mentions without declaring it.
+	 */
+	@Test
+	public void baseHoldsDeclaredReferencedFilesOnly()
+	{
+		Contract contract = ContractFixtures.withReferencedFiles(ContractFixtures.contract(),
+			List.of(Path.of("docs/reply-rules.md"), Path.of("docs/style/tone.md")));
+
+		SourceSelection selection = TrialSelection.base(Harness.CLAUDE, Set.of(Path.of("docs/prompt.md")),
+			Set.of(Path.of(".claude/settings.json")), contract, List.of());
+
+		requireThat(selection.selects(Path.of("docs/reply-rules.md")), "declaredLink").isTrue();
+		requireThat(selection.selects(Path.of("docs/style/tone.md")), "declaredNested").isTrue();
+		requireThat(selection.selects(Path.of("docs/other-rules.md")), "undeclared").isFalse();
+		requireThat(selection.selects(Path.of("docs/style/other.md")), "undeclaredNested").isFalse();
+	}
 }

@@ -137,4 +137,58 @@ public final class ContractCheckTest
 			"- `safety` (`.cat/tests/CLAUDE/safety`): 8" + newline);
 		requireThat(report.exitCode(), "exitCode").isEqualTo(0);
 	}
+
+	/**
+	 * Verifies that {@code contract check} accepts a declared file that is a symbolic link to a file outside the
+	 * project, and refuses a declared file that is missing, is the target prompt file, is a directory, lies below a
+	 * symbolic link to a directory, or lies in Git metadata, naming each in the proposal's JSON path.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void checksReferencedFiles() throws IOException
+	{
+		Path outside = directories.add(Files.createTempDirectory("contract-check-outside-"));
+		Path rules = Files.writeString(outside.resolve("reply-rules.md"), "reply rules", UTF_8);
+		Path valid = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal -> proposal.putArray("referenced_files").
+				add("docs/reply-rules.md").add("docs/kit/guide.md")), referencingProject(outside, rules));
+		Path invalid = ContractToolSessions.write(json, contractAuthor, PROFILES,
+			ContractToolSessions.derivation(json, proposal -> proposal.putArray("referenced_files").
+				add("docs/missing.md").add("CLAUDE.md").add("docs/kit").add("docs/linked/reply-rules.md").
+				add(".git/config")), referencingProject(outside, rules));
+
+		Report accepted = ContractToolSessions.check(json, valid);
+		Report refused = ContractToolSessions.check(json, invalid);
+
+		requireThat(accepted.output(), "accepted").contains("found no problem");
+		requireThat(accepted.exitCode(), "acceptedExitCode").isEqualTo(0);
+		requireThat(refused.exitCode(), "refusedExitCode").isEqualTo(1);
+		requireThat(refused.output(), "refused").contains("found 5 problem(s)").
+			contains("$.referenced_files[0]: `docs/missing.md` is not a file of the project").
+			contains("$.referenced_files[1]: `CLAUDE.md` is the target prompt file").
+			contains("$.referenced_files[2]: `docs/kit` is not a file of the project").
+			contains("$.referenced_files[3]: `docs/linked/reply-rules.md` lies below a symbolic link").
+			contains("$.referenced_files[4]: `.git/config` lies in Git metadata");
+	}
+
+	/**
+	 * Creates a session's project whose prompt refers to a link to a file outside the project, to a file in a
+	 * directory and to a link to a directory.
+	 *
+	 * @param outside the directory outside the project that holds {@code rules}
+	 * @param rules   the file that {@code docs/reply-rules.md} links to
+	 * @return the project
+	 * @throws IOException if a file cannot be created
+	 */
+	private Path referencingProject(Path outside, Path rules) throws IOException
+	{
+		Path project = directories.add(Files.createTempDirectory("contract-check-"));
+		Files.createDirectories(project.resolve("docs/kit"));
+		Files.createSymbolicLink(project.resolve("docs/reply-rules.md"), rules);
+		Files.createSymbolicLink(project.resolve("docs/linked"), outside);
+		Files.writeString(project.resolve("CLAUDE.md"), "prompt", UTF_8);
+		Files.writeString(project.resolve("docs/kit/guide.md"), "guide", UTF_8);
+		return project;
+	}
 }

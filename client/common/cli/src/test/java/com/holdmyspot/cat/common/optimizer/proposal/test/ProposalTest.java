@@ -69,6 +69,7 @@ import com.holdmyspot.cat.common.optimizer.proposal.ScopeCondition;
 import com.holdmyspot.cat.common.optimizer.report.RemainingWork;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibrationException;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.optimizer.workspace.ReferencedFiles;
 import com.holdmyspot.cat.common.secrets.PromptTemplateSecrets;
 
 import java.io.BufferedReader;
@@ -1237,6 +1238,112 @@ public final class ProposalTest
 		requireThat(proposal.isConfirmable(CertificationScope.LATEST_VERSIONS), "isConfirmable").isTrue();
 		requireThat(proposal(noLinks(), HostLogin.API_KEY).contract().limitations(), "noLinks").
 			doesNotContain(LinkReport.STAGING_CONSEQUENCE);
+	}
+
+	/**
+	 * Verifies that the proposal lists each file that the contract declares the target refers to, with a warning that
+	 * its authority lies outside what the campaign optimizes, that the confirmed contract carries the declaration, and
+	 * that a proposal that declares none has no such section.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void warnsAboutReferencedFilesAuthority() throws InvalidProposalException
+	{
+		FileInventory inventory = referencedInventory();
+		Authority authority = new Authority(Set.of(Path.of("prompts")), Set.of(), inventory);
+		DerivedProposal derived = declaring(Path.of("docs/reply-rules.md"), Path.of("docs/local.md"));
+
+		Proposal declared = referencingProposal(derived, ReferencedFiles.of(derived.contract().referencedFiles(),
+			inventory, authority));
+
+		requireThat(declared.render(), "render").
+			contains("## Referenced files").
+			contains("The authority over each file lies outside what the campaign optimizes").
+			contains("Confirming the proposal accepts this.").
+			contains("- `docs/reply-rules.md` -> `" + Path.of("/shared/reply-rules.md").toAbsolutePath() +
+				"`: outside the project; external target read only").
+			contains("- `docs/local.md`: inside the project; outside prompt sources");
+		requireThat(declared.contract().referencedFiles(), "referencedFiles").
+			isEqualTo(List.of(Path.of("docs/reply-rules.md"), Path.of("docs/local.md")));
+		requireThat(declared.isConfirmable(CertificationScope.LATEST_VERSIONS), "confirmable").isTrue();
+		requireThat(proposal(noLinks(), HostLogin.API_KEY).render(), "withoutDeclaration").
+			doesNotContain("Referenced files");
+	}
+
+	/**
+	 * Verifies that a declared file that the campaign optimizes, one that the project no longer holds and one whose
+	 * links form a cycle each block confirmation, naming the file and how to correct the declaration.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void blocksOnUnusableReferencedFiles() throws InvalidProposalException
+	{
+		FileInventory inventory = referencedInventory();
+		Authority authority = new Authority(Set.of(Path.of("prompts")), Set.of(), inventory);
+		DerivedProposal derived = declaring(Path.of("prompts/main.md"), Path.of("docs/gone.md"), Path.of("loop-a.md"));
+
+		Proposal refused = referencingProposal(derived, ReferencedFiles.of(derived.contract().referencedFiles(),
+			inventory, authority));
+
+		requireThat(refused.isConfirmable(CertificationScope.LATEST_VERSIONS), "confirmable").isFalse();
+		requireThat(refused.confirmationRefusal(CertificationScope.LATEST_VERSIONS), "refusal").
+			contains("The referenced file `prompts/main.md` is a prompt source that the campaign optimizes").
+			contains("The project no longer holds the referenced file `docs/gone.md`.").
+			contains("The symbolic links of the referenced file `loop-a.md` form a cycle.").
+			contains("Run revise with feedback that corrects the referenced files.");
+	}
+
+	/**
+	 * Returns the derived proposal of the valid contract author output whose contract declares files that the target
+	 * refers to.
+	 *
+	 * @param files the declared files
+	 * @return the derived proposal
+	 * @throws InvalidProposalException if the fixture is invalid
+	 */
+	private DerivedProposal declaring(Path... files) throws InvalidProposalException
+	{
+		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
+			SALT);
+		return new DerivedProposal(ContractFixtures.withReferencedFiles(derived.contract(), List.of(files)),
+			derived.derivedSources(), derived.scopeConditions(), derived.conflicts(), derived.observedSources(),
+			derived.derivation(), derived.draft(), derived.changes());
+	}
+
+	/**
+	 * Returns an inventory with an optimized prompt file, a link to a read-only external file, a regular file outside
+	 * the prompt sources and a link cycle.
+	 *
+	 * @return the inventory
+	 */
+	private static FileInventory referencedInventory()
+	{
+		FileEntry.RegularFile file = new FileEntry.RegularFile(Sha256.of("text".getBytes(UTF_8)),
+			PosixFilePermissions.fromString("rw-r--r--"));
+		Path external = Path.of("/shared/reply-rules.md").toAbsolutePath();
+		return new FileInventory(Path.of("/project").toAbsolutePath(), Map.of(
+			Path.of("prompts/main.md"), file,
+			Path.of("docs/local.md"), file,
+			Path.of("docs/reply-rules.md"), new FileEntry.SymbolicLink(external),
+			external, file,
+			Path.of("loop-a.md"), new FileEntry.SymbolicLink(Path.of("loop-b.md")),
+			Path.of("loop-b.md"), new FileEntry.SymbolicLink(Path.of("loop-a.md"))));
+	}
+
+	/**
+	 * Returns the proposal of a derived proposal with a report of its declared files.
+	 *
+	 * @param derived         the derived proposal
+	 * @param referencedFiles the report of the declared files
+	 * @return the proposal
+	 */
+	private Proposal referencingProposal(DerivedProposal derived, ReferencedFiles referencedFiles)
+	{
+		return Proposal.of(derived, new Builder().build(), noLinks(), CONTROL_FILE, HostLogin.API_KEY,
+			new FixedCalibrator(FixedCalibrator.STANDARD_CAP), schema, null, Map.of(), PluginCheck.NONE, List.of(),
+			List.of(), HookReport.NONE, referencedFiles);
 	}
 
 	/**

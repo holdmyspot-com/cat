@@ -108,6 +108,7 @@ import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.optimizer.workspace.ControlSource;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.optimizer.workspace.ReferencedFiles;
 import com.holdmyspot.cat.common.optimizer.workspace.PluginBuild;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
 
@@ -1916,16 +1917,18 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns the derived prompt sources of a proposal that exist.
+	 * Returns the derived prompt sources and the referenced files of a proposal that exist.
 	 *
 	 * @param root the project root
 	 * @param derived the contract author's proposal
-	 * @return the sources, named as the fork names participants
+	 * @return the sources and files, named as the fork names participants
 	 */
 	private static Set<Path> participants(Path root, DerivedProposal derived)
 	{
 		Set<Path> existing = new LinkedHashSet<>();
-		for (Path source : derivedPaths(root, derived))
+		Set<Path> candidates = new LinkedHashSet<>(derivedPaths(root, derived));
+		candidates.addAll(derived.contract().referencedFiles());
+		for (Path source : candidates)
 		{
 			if (Files.exists(root.resolve(source), LinkOption.NOFOLLOW_LINKS))
 				existing.add(source);
@@ -2566,7 +2569,8 @@ public final class OptimizerCore implements Core
 		return Proposal.of(derived, campaign, links, relativeTarget(campaign), scope.sessions().hostLogin(),
 			scope.calibrator(), schema, incumbent, pilots, plugin, controlRefusals(campaign, fork, derived, plugin),
 			trialFiles, new HookReportFile(campaignDirectory(campaign.header().id()), scope.json(),
-			scope.fileReplacer()).read());
+			scope.fileReplacer()).read(), ReferencedFiles.of(derived.contract().referencedFiles(), inventory,
+			authority));
 	}
 
 	/**

@@ -25,6 +25,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -238,6 +239,20 @@ public final class ContractFixtures
 	{
 		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt(), dependents);
+	}
+
+	/**
+	 * Returns a contract that declares files that its target refers to.
+	 *
+	 * @param contract the contract to copy
+	 * @param referencedFiles the files that the target refers to, relative to the project
+	 * @return the contract with the declared files
+	 */
+	public static Contract withReferencedFiles(Contract contract, List<Path> referencedFiles)
+	{
+		return new Contract(contract.requirements(), contract.tests(), contract.profiles(), contract.judge(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
+			referencedFiles);
 	}
 
 	/**

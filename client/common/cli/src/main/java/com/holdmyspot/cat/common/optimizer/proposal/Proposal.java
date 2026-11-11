@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.CapCalibrationException;
 import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.optimizer.workspace.ReferencedFiles;
 
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -92,6 +93,7 @@ public final class Proposal
 	private final List<String> controlRefusals;
 	private final List<String> trialFiles;
 	private final HookReport hooks;
+	private final ReferencedFiles referencedFiles;
 	private final String goal;
 
 	/**
@@ -114,13 +116,14 @@ public final class Proposal
 	 * @param controlRefusals the reasons why the control source cannot be built, which block confirmation
 	 * @param trialFiles the files that every trial receives from the incumbent, relative to the project
 	 * @param hooks what running the hooks that run before the model acts showed
+	 * @param referencedFiles the files that the contract declares the target refers to
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 */
 	private Proposal(DerivedProposal derived, Contract contract, LinkReport links, Path controlFile,
 		HostLogin login, ProposalSchema schema, int ceiling, Map<CertificationScope, Campaign> previews,
 		List<String> caps, CertificationStatus incumbent, Map<String, PilotResult> pilots,
 		Map<String, DeliveredTest> delivered, PluginCheck plugin, List<String> controlRefusals,
-		List<String> trialFiles, HookReport hooks, String goal)
+		List<String> trialFiles, HookReport hooks, ReferencedFiles referencedFiles, String goal)
 	{
 		this.derived = derived;
 		this.contract = contract;
@@ -138,6 +141,7 @@ public final class Proposal
 		this.controlRefusals = List.copyOf(controlRefusals);
 		this.trialFiles = List.copyOf(trialFiles);
 		this.hooks = hooks;
+		this.referencedFiles = referencedFiles;
 		this.goal = goal;
 	}
 
@@ -334,6 +338,44 @@ public final class Proposal
 		Map<String, PilotResult> pilots, PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles,
 		HookReport hooks)
 	{
+		return of(derived, campaign, links, controlFile, login, calibrator, schema, incumbent, pilots, plugin,
+			controlRefusals, trialFiles, hooks, ReferencedFiles.NONE);
+	}
+
+	/**
+	 * Completes a contract author's proposal for presentation, showing the target's delivered certification, the
+	 * guard pilot of each prompt test, the trial plugins, why the control source cannot be built, the files that
+	 * every trial receives, the hooks whose output differs in a trial's workspace and the files that the contract
+	 * declares the target refers to.
+	 *
+	 * @param derived the contract author's proposal
+	 * @param campaign the campaign that the proposal is for, which has no confirmed contract or has a revision
+	 *   requested
+	 * @param links the symbolic links of the prompt system
+	 * @param controlFile the target prompt file, which the control source empties, relative to the project directory
+	 * @param login how the host's harness account is billed
+	 * @param calibrator calibrates the caps of the first certification attempts
+	 * @param schema the proposal schema, which identifies the contract
+	 * @param incumbent the target's delivered certification and whether it applies to what CAT knows when it
+	 *   proposes, or null if the target has none
+	 * @param pilots the guard pilot of each prompt test that has one, by prompt test
+	 * @param plugin the check of the campaign's trial plugins
+	 * @param controlRefusals the reasons why the control source cannot remove the contract's dependents, which block
+	 *   confirmation; empty if it can
+	 * @param trialFiles the files that every trial receives from the incumbent besides its prompt test's workspace
+	 *   files, relative to the project, in the order to list them
+	 * @param hooks what running the hooks that run before the model acts showed
+	 * @param referencedFiles the files that the contract declares the target refers to
+	 * @return the proposal
+	 * @throws NullPointerException if any argument other than {@code incumbent} is null
+	 * @throws IllegalStateException if the campaign cannot accept a confirmation
+	 */
+	public static Proposal of(DerivedProposal derived, Campaign campaign, LinkReport links, Path controlFile,
+		HostLogin login, CapCalibrator calibrator, ProposalSchema schema, CertificationStatus incumbent,
+		Map<String, PilotResult> pilots, PluginCheck plugin, List<String> controlRefusals, List<String> trialFiles,
+		HookReport hooks, ReferencedFiles referencedFiles)
+	{
+		requireThat(referencedFiles, "referencedFiles").isNotNull();
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(controlRefusals, "controlRefusals").isNotNull();
 		requireThat(trialFiles, "trialFiles").isNotNull();
@@ -357,7 +399,7 @@ public final class Proposal
 			limitations.add(pluginHooksLimit(plugin.unapprovedHooks()));
 		Contract contract = new Contract(proposed.requirements(), proposed.tests(), proposed.profiles(),
 			proposed.judge(), limitations, proposed.minimumPassRate(), proposed.salt(),
-			proposed.dependents());
+			proposed.dependents(), proposed.referencedFiles());
 		Map<CertificationScope, Campaign> previews = new LinkedHashMap<>();
 		if (contract.profiles().unranked().isEmpty())
 		{
@@ -391,7 +433,8 @@ public final class Proposal
 		for (DeliveredTest test : DeliveredTest.of(contract, AddedTestCases.NONE, target))
 			delivered.put(test.id(), test);
 		return new Proposal(derived, contract, links, controlFile, login, schema, campaign.ceiling(), previews,
-			caps, incumbent, pilots, delivered, plugin, controlRefusals, trialFiles, hooks, campaign.header().goal());
+			caps, incumbent, pilots, delivered, plugin, controlRefusals, trialFiles, hooks, referencedFiles,
+			campaign.header().goal());
 	}
 
 	/**
@@ -452,9 +495,9 @@ public final class Proposal
 
 	/**
 	 * Returns the reason confirmation with a certification scope is refused, listing blocking links, conflicting
-	 * requirements, dependents that the control source cannot remove, tests with too few distinct expected outcomes
-	 * in a part, a guard pilot that stopped before it finished, unranked models and a described scope without
-	 * described cells, in that order.
+	 * requirements, dependents that the control source cannot remove, referenced files that a candidate may edit,
+	 * tests with too few distinct expected outcomes in a part, a guard pilot that stopped before it finished,
+	 * unranked models and a described scope without described cells, in that order.
 	 *
 	 * @param scope the certification scope that the user chose
 	 * @return the refusal message, or an empty string if confirmation is allowed
@@ -468,6 +511,7 @@ public final class Proposal
 		if (!links.isEmpty())
 			reasons.add(links);
 		reasons.addAll(controlRefusals);
+		reasons.addAll(referencedFiles.refusals());
 		reasons.addAll(splitRefusals());
 		for (Map.Entry<String, PilotResult> entry : pilots.entrySet())
 		{
@@ -567,7 +611,7 @@ public final class Proposal
 	public String render()
 	{
 		return new Markdown(derived, contract, links, controlFile, login, ceiling, previews, caps, incumbent, pilots,
-			delivered, plugin, controlRefusals, trialFiles, hooks, goal).render();
+			delivered, plugin, controlRefusals, trialFiles, hooks, referencedFiles, goal).render();
 	}
 
 	/**

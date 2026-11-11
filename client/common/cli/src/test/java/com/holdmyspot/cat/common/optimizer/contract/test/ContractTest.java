@@ -102,6 +102,36 @@ public final class ContractTest
 	}
 
 	/**
+	 * Verifies that a contract refuses a declared file that is absolute, leaves the project, is not normalized or is
+	 * listed twice, so that a declared file always names a path inside the project.
+	 */
+	@Test
+	public void contractRefusesInvalidReferencedFiles()
+	{
+		Contract valid = ContractFixtures.contract();
+		List<List<Path>> invalid = List.of(List.of(Path.of("/etc/hosts").toAbsolutePath()),
+			List.of(Path.of("../outside.md")), List.of(Path.of("docs/../../outside.md")),
+			List.of(Path.of("docs/./rules.md")),
+			List.of(Path.of("rules.md"), Path.of("rules.md")));
+		for (List<Path> files : invalid)
+		{
+			boolean rejected = false;
+			try
+			{
+				ContractFixtures.withReferencedFiles(valid, files);
+			}
+			catch (IllegalArgumentException _)
+			{
+				rejected = true;
+			}
+			requireThat(rejected, "rejected").isTrue();
+		}
+		requireThat(ContractFixtures.withReferencedFiles(valid, List.of(Path.of("docs/rules.md"))).referencedFiles(),
+			"referencedFiles").isEqualTo(List.of(Path.of("docs/rules.md")));
+		requireThat(valid.referencedFiles(), "withoutDeclaration").isEmpty();
+	}
+
+	/**
 	 * Verifies that a contract keeps the values it was built with when the caller later changes its lists, and
 	 * that it offers no way to change them.
 	 */

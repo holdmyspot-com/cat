@@ -61,7 +61,8 @@ The user's goal for the target, in the user's own words, or `none` if the user s
 	Start from this list instead of working out the loading rules or reading a plugin's rule loader, and read a listed
 	file when its content matters to the proposal. A path outside the project is a file of a trial plugin.
 - Add the files that a listed file references as instructions, including files reached through symbolic links and
-	readable files outside the project.
+	readable files outside the project. Trials hold only the listed files, so a file that the target names in its text
+	reaches trials only when you declare it in `referenced_files`, as "Files that the target refers to" below says.
 - Requirements come only from the user's goal or the target prompt file, as "Requirements" below says. Every other
 	file is context: read one when an obligation of the target depends on it, such as a rule that says what the commit
 	message that the target requires must state, or when it changes how an agent follows the target.
@@ -189,6 +190,26 @@ registration are dependents.
 	- `text`, `event` and `command`: the values that `removes` uses, and `null` for the others.
 	- `serves`: the target instruction that the dependent serves, and why nothing else uses it.
 - Leave the list empty when the target has no dependent. The user confirms or corrects the list with the proposal.
+
+### Files that the target refers to
+
+`referenced_files` lists the files that the target prompt file refers to in its text and that no loader of the prompt
+system loads, such as a style guide that the target tells the agent to follow, `docs/reply-rules.md`. CAT does not read
+the target's text for such references, so a file that you leave out is absent from every trial and the agent cannot
+follow the part of the target that depends on it. CAT copies each listed file into every trial, candidate and control
+alike, with the content that the incumbent has, at the path that you give. No candidate changes a listed file: the
+campaign optimizes only the target prompt file and the files it may edit.
+
+- Give each path relative to the project root, as the target spells it. The path may be a symbolic link, including one
+	whose target lies outside the project; CAT copies the file that the link reaches. Give a path of the project's
+	files, never an absolute path or one with `..`.
+- List a file only when the target's requirements depend on it. Never list the target, a file that the campaign
+	optimizes or a file that a loader above already loads: `contract check` refuses the target, and CAT blocks the
+	proposal's confirmation for a file that the campaign may edit.
+- A file must exist, be a regular file after its links resolve, and not lie below a symbolic link to a directory. The
+	proposal shows each listed file with a warning that its authority lies outside what the campaign optimizes; the user
+	confirms that warning with the proposal.
+- Leave the list empty when the target refers to no such file.
 
 ### Scope conditions
 

@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ValuesFile.DraftTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.UnifiedDiff;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
@@ -101,6 +102,7 @@ public final class ProposalCheck
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	private final JudgeTemplate judge;
+	private final Path target;
 	private final Path scenarioDirectory;
 	private final boolean reportsExitStatus;
 	/**
@@ -176,6 +178,7 @@ public final class ProposalCheck
 		this.json = json;
 		this.schema = schema;
 		this.judge = judge;
+		this.target = target;
 		this.scenarioDirectory = PromptTestLocations.scenarioDirectory(target);
 		this.reportsExitStatus = reportsExitStatus;
 		Map<Path, RecordedTest> byDirectory = new LinkedHashMap<>();
@@ -351,6 +354,7 @@ public final class ProposalCheck
 						restriction, described, requirements, tests), salt, new SplittableRandom(salt),
 				assembled.committed(), assembled.workspaceFiles());
 			problems.addAll(unreportedExitStatuses(contract));
+			problems.addAll(referencedFileProblems(contract, project));
 			findings.checkRequirements(scopeNode, Findings.SCOPE_CONDITIONS, contract);
 			findings.checkRequirements(conflictsNode, Findings.CONFLICTS, contract);
 		}
@@ -413,6 +417,89 @@ public final class ProposalCheck
 			}
 		}
 		return problems;
+	}
+
+	/**
+	 * Returns a problem for each referenced file that trials cannot receive as a file that no candidate changes: one
+	 * that is not a regular file of the project, that lies in Git metadata or CAT's session directories, that is the
+	 * target prompt file, or that a symbolic link directory leads to, which could lead out of the project. The file
+	 * itself may be a symbolic link.
+	 *
+	 * @param contract the proposed contract
+	 * @param project the directory that the referenced files are relative to
+	 * @return the problems, empty if every referenced file qualifies
+	 */
+	private List<String> referencedFileProblems(Contract contract, Path project)
+	{
+		List<String> problems = new ArrayList<>();
+		List<Path> files = contract.referencedFiles();
+		for (int i = 0; i < files.size(); ++i)
+		{
+			Path file = files.get(i);
+			String at = "$." + ProposalSchema.REFERENCED_FILES + "[" + i + "]: `" + PortablePaths.text(file) + "` ";
+			Path absolute = project.resolve(file);
+			if (InventoryScanner.isOmitted(file))
+			{
+				problems.add(at + "lies in Git metadata or CAT's session files, which no trial receives");
+				continue;
+			}
+			if (hasLinkedDirectory(project, file))
+			{
+				problems.add(at + "lies below a symbolic link to a directory. Give the path of a file that a " +
+					"regular directory of the project holds; the file itself may be a symbolic link");
+				continue;
+			}
+			if (!Files.isRegularFile(absolute))
+			{
+				problems.add(at + "is not a file of the project, or is a symbolic link to something other than an " +
+					"existing file. Give each referenced file as a path relative to the project root");
+				continue;
+			}
+			if (isTarget(project, absolute))
+			{
+				problems.add(at + "is the target prompt file, which the campaign optimizes. Leave it out of " +
+					ProposalSchema.REFERENCED_FILES);
+			}
+		}
+		return problems;
+	}
+
+	/**
+	 * Indicates whether a directory that holds a file, below the project, is a symbolic link.
+	 *
+	 * @param project the project directory
+	 * @param file the file, relative to the project
+	 * @return {@code true} if a proper ancestor of {@code file} below the project is a symbolic link
+	 */
+	private static boolean hasLinkedDirectory(Path project, Path file)
+	{
+		for (Path directory = file.getParent(); directory != null; directory = directory.getParent())
+		{
+			if (Files.isSymbolicLink(project.resolve(directory)))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Indicates whether a file is the target prompt file, whether it names the target or a symbolic link that
+	 * resolves to it.
+	 *
+	 * @param project the project directory
+	 * @param file the existing file
+	 * @return {@code true} if {@code file} and the target are the same file
+	 */
+	private boolean isTarget(Path project, Path file)
+	{
+		try
+		{
+			return Files.isSameFile(file, project.resolve(target));
+		}
+		catch (IOException _)
+		{
+			// The target cannot be compared, so it is not known to be the file
+			return false;
+		}
 	}
 
 	/**

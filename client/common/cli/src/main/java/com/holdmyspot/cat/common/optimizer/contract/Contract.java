@@ -27,10 +27,13 @@ import java.util.Set;
  *   into the development part and the held-out part
  * @param dependents the parts of the prompt system that exist only to serve the target prompt file, which control
  *   trials remove
+ * @param referencedFiles the project files that the target prompt file refers to in its text without a loader
+ *   loading them, each relative to the project: every trial receives them with the content that the incumbent has, and
+ *   no candidate changes them
  */
 public record Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles,
 	JudgeProfile judge, List<String> limitations, BigDecimal minimumPassRate, long salt,
-	List<Dependent> dependents)
+	List<Dependent> dependents, List<Path> referencedFiles)
 {
 	/**
 	 * The minimum pass rate when the contract author proposes none.
@@ -71,6 +74,29 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	}
 
 	/**
+	 * Creates a contract whose target prompt file refers to no file that a loader does not load.
+	 *
+	 * @param requirements every requirement and its source
+	 * @param tests every prompt test, in the order used to break otherwise equal allocation choices
+	 * @param profiles the trial profiles and the cells, which are the statistical units
+	 * @param judge the judge's model, effort and instructions, fixed when the user confirms the contract
+	 * @param limitations the material interactions and conditions that the contract does not cover
+	 * @param minimumPassRate the minimum pass rate {@code p_min}: a cell certifies only when its pass probability is
+	 *   proven to exceed it
+	 * @param salt the random value, frozen at confirmation, under which each test's outcome-changing combinations are
+	 *   split into the development part and the held-out part
+	 * @param dependents the parts of the prompt system that exist only to serve the target prompt file, which control
+	 *   trials remove
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects the values
+	 */
+	public Contract(List<Requirement> requirements, List<PromptTest> tests, TrialProfiles profiles, JudgeProfile judge,
+		List<String> limitations, BigDecimal minimumPassRate, long salt, List<Dependent> dependents)
+	{
+		this(requirements, tests, profiles, judge, limitations, minimumPassRate, salt, dependents, List.of());
+	}
+
+	/**
 	 * Creates a contract.
 	 *
 	 * @param requirements every requirement and its source
@@ -84,9 +110,12 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 *   split into the development part and the held-out part
 	 * @param dependents the parts of the prompt system that exist only to serve the target prompt file, which control
 	 *   trials remove
+	 * @param referencedFiles the project files that the target prompt file refers to in its text without a loader
+	 *   loading them, each relative to the project
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code requirements} or {@code tests} are empty, two dependents name one
-	 *   removal, a dependent removes a whole file that another dependent edits, two requirements or two tests share an
+	 *   removal, a dependent removes a whole file that another dependent edits, a referenced file has an absolute,
+	 *   empty, non-normalized or outside path or appears twice, two requirements or two tests share an
 	 *   identifier, a test names a requirement that the contract does not list, no test names a requirement that the
 	 *   contract lists, {@code minimumPassRate} is outside
 	 *   [{@link #LOWEST_MINIMUM_PASS_RATE}, {@link #HIGHEST_MINIMUM_PASS_RATE}] or has more than
@@ -102,6 +131,7 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		requireThat(judge, "judge").isNotNull();
 		requireThat(limitations, "limitations").isNotNull();
 		requireThat(dependents, "dependents").isNotNull();
+		requireThat(referencedFiles, "referencedFiles").isNotNull();
 		requireThat(minimumPassRate, "minimumPassRate").
 			isBetween(LOWEST_MINIMUM_PASS_RATE, true, HIGHEST_MINIMUM_PASS_RATE, true);
 		requireThat(minimumPassRate.stripTrailingZeros().scale(), "minimumPassRate.stripTrailingZeros().scale()").
@@ -113,6 +143,8 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 			requireThat(limitation, "limitation").isNotBlank();
 		dependents = List.copyOf(dependents);
 		requireDependents(dependents);
+		referencedFiles = List.copyOf(referencedFiles);
+		requireReferencedFiles(referencedFiles);
 
 		Map<String, Requirement> requirementById = new HashMap<>();
 		for (Requirement requirement : requirements)
@@ -213,7 +245,30 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	public Contract withScope(CertificationScope scope)
 	{
 		return new Contract(requirements, tests, profiles.withScope(scope), judge, limitations,
-			minimumPassRate, salt, dependents);
+			minimumPassRate, salt, dependents, referencedFiles);
+	}
+
+	/**
+	 * Requires referenced files that name distinct project files.
+	 *
+	 * @param referencedFiles the referenced files
+	 * @throws IllegalArgumentException if a file is absolute, empty, not normalized or leaves the project, or if two
+	 *   entries name one file
+	 */
+	private static void requireReferencedFiles(List<Path> referencedFiles)
+	{
+		Set<Path> seen = new HashSet<>();
+		for (Path file : referencedFiles)
+		{
+			String text = file.toString();
+			if (file.isAbsolute() || text.isEmpty() || !file.normalize().equals(file) || file.startsWith(".."))
+			{
+				throw new IllegalArgumentException("A referenced file must be a normalized path relative to the " +
+					"project that stays inside it: " + file);
+			}
+			if (!seen.add(file))
+				throw new IllegalArgumentException("The referenced file " + file + " is listed twice");
+		}
 	}
 
 	/**

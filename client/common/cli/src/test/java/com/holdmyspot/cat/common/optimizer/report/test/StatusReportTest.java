@@ -130,6 +130,25 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * A campaign whose prompt system has symbolic links says that trials hold regular copies, that a file named only in
+	 * prompt text is absent, and how to give trials such a file.
+	 */
+	@Test
+	public void explainsSymbolicLinkLimitation()
+	{
+		StatusReport report = StatusReport.of(new Builder().confirmed().build(),
+			new ReportEvidence(List.of(), true, false, null));
+		StatusReport without = StatusReport.of(new Builder().confirmed().build(), ReportEvidence.NONE);
+
+		String limitations = String.join("\n", report.limitations());
+
+		requireThat(limitations, "limitations").contains("regular copy of each symbolic link's target").
+			contains("A file that a prompt names in its text without a loader loading it is absent from trials").
+			contains("declares it as a referenced file");
+		requireThat(String.join("\n", without.limitations()), "withoutLinks").doesNotContain("symbolic link");
+	}
+
+	/**
 	 * The text and JSON concurrency reports show the configured campaign ceiling.
 	 */
 	// Requirement: R-E4
