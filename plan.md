@@ -30,6 +30,37 @@ It is complete only when all of the following hold:
 This section supersedes the release facts of the earlier handoff below. That handoff's remaining items still apply
 where this section does not replace them.
 
+### Update (2026-11-11)
+
+- **Local `v1.0` is at `9d827d644`, not pushed.** The release is still `0821deabe`. A full `clean verify` at
+  `9d827d644` passed (2:17). Since `0821deabe`:
+  - remote-verification rules `expensive-verification-runs.md` and `run-comparisons/failure-baseline.md`
+    (`baa2ce3ef`, `133331dea`);
+  - write-clearly "Show the Text You Refer To", with a 4,000-character window (`cf465eb7b`);
+  - prompt-maintenance checks: Design Goals and guidance match both ways, triggers come from the goals, a conflict
+    between two rules is resolved if trivial and otherwise goes to the user as one list, and coverage is mutually
+    exclusive (`bae5c6abd`). The checks run only when a change alters the text an agent receives or when it receives
+    it; a path-only rename needs only a reference check (`2a96c0817`);
+  - the proposal's Trial plugins section groups production-only files by directory (`858cbdabd`, `9be193adb`);
+  - E7 option A (user ruling, 2026-11-10): a contract's `referenced_files` reach every trial unchanged, and the
+    proposal warns that their authority lies outside the campaign (`2a14ac607`, design `64a58c79f`, D139);
+  - an audit of every prompt file CAT ships against those checks (`830590649`..`9d827d644`). User rulings,
+    2026-11-11: the questions rule owns the referent clarification and the "any questions?" paragraph, moved word for
+    word from User Request Scheduling; the goals rule hands an unrelated user instruction to scheduling; the
+    check-assumptions route also loads for unestablished artifact targets and for claims about causes or an actor's
+    own state; and the implementer agent `optimize.md` applies `gap-classification.md` instead of its own list,
+    keeping "delivery to the user's worktree". The user allowed these moves before the optimizer is ready.
+- **E-run results since the table below:** Codex E2 and E4 PASS. Codex E3 acceptance FAIL, fixed by `e8fdc6b94`, needs
+  a rerun. Codex E7 did not reach the authority warning; option A addresses it, and E7 reruns in both harnesses. Claude
+  E1 needs an uninterrupted rerun with `--session-requests 4000`. Defect 3 below is fixed by `dd5288a79`.
+- **Open:** a rule-level route that loads the prompt-optimizer skill for questions about a campaign; first-use.md step
+  6 does not mention `resume` after a cancel; decision 1 below is being rescreened in
+  `/home/gili/cat/worktrees/pif-screen2/` (pf1 and s6 on the grouped proposal, sol and luna at low, 10 runs per cell).
+- **Next:** apply the rescreen's wording to first-use.md step 2, build, push, wait for Build green on all five
+  platforms, do the second republish (already requested), install bare in both harnesses, restart the request server,
+  then run Claude E1; E7 in both harnesses; Codex E1, E5 and E3 acceptance; E8 alone per harness; the
+  failure-reporting runs; the WI-142 Codex checks; WI-71; gates 2/4/5/7/8.
+
 ### Release and installation
 
 - Branch `v1.0` and tag `v1.0` are at `0821deabe`. Build was green on all five platforms and the Release workflow
