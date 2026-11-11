@@ -2563,7 +2563,7 @@ public final class OptimizerCore implements Core
 		List<String> trialFiles = new ArrayList<>();
 		for (Path file : inventory.entries().keySet())
 		{
-			if (!file.isAbsolute() && selection.selects(file))
+			if (!PortablePaths.isRooted(file) && selection.selects(file))
 				trialFiles.add(PortablePaths.text(file));
 		}
 		return Proposal.of(derived, campaign, links, relativeTarget(campaign), scope.sessions().hostLogin(),

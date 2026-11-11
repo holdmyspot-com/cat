@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -129,7 +130,7 @@ public final class TrialSelection
 		Set<Path> roots = new HashSet<>(promptSources);
 		for (Path path : loaderConfiguration)
 		{
-			if (!path.isAbsolute())
+			if (!PortablePaths.isRooted(path))
 				roots.add(path);
 		}
 		roots.add(ProjectRuleLoader.rulesDirectory(Path.of("")));

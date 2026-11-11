@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.ApproachOrder;
@@ -1735,7 +1736,7 @@ public final class Driver implements AutoCloseable
 		for (DerivedSource source : loaded.trials())
 		{
 			Path path = Path.of(source.path());
-			if (!path.isAbsolute() && !selection.selects(path))
+			if (!PortablePaths.isRooted(path) && !selection.selects(path))
 				unreceived.add(source.path() + " is not among the files that trials receive.");
 		}
 		for (UnreachableReference reference : loaded.unreachable())

@@ -66,6 +66,20 @@ public final class TrialSelectionTest
 	}
 
 	/**
+	 * Verifies that a loader configuration path that starts at a root without a drive is external, so the base selection
+	 * accepts it rather than refusing it as a rooted project-relative source.
+	 *
+	 * @param text the path text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class)
+	public void rootedLoaderConfigurationIsExternal(String text)
+	{
+		SourceSelection selection = TrialSelection.base(Harness.CODEX, Set.of(Path.of("docs/prompt.md")),
+			Set.of(Path.of(text)), List.of());
+		requireThat(selection.selects(Path.of(text)), text).isFalse();
+	}
+
+	/**
 	 * Verifies that before a contract exists, the base selection holds the prompt sources, the harness's project files,
 	 * the in-project loader configuration, the project rules and the files that plugin mappings cover.
 	 */
