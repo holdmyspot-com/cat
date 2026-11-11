@@ -456,6 +456,43 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that writes or changes a build or job step that downloads from one upstream server, or sees a
+	 * job fail because such a server was unreachable, can reach the packaged rule for that decision: the testing and
+	 * build area index routes to the upstream-fallbacks rule, whose guidance adds a fallback that is tried only when
+	 * the primary fails, accepts only an equivalent source whose content the same checks verify, does not leave the
+	 * agent only waiting for the provider to recover, and counts the fallback as verified only after a run in the
+	 * step's real environment with the primary forced to fail.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void upstreamFallbackRuleIsRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
+				"testingIndex").
+				contains("because the server could not be reached, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/upstream-fallbacks.md` instead").
+				contains("from one upstream server, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/upstream-fallbacks.md`.");
+
+			String fallbacks = oneLine(Files.readString(include.resolve("upstream-fallbacks.md")));
+			requireThat(fallbacks, "fallbacks").startsWith("# Upstream Download Fallbacks ").
+				contains("The fallback runs only when the primary fails").
+				contains("Never disable or relax a check to make a fallback work").
+				contains("instead of only waiting for the provider to recover").
+				contains("only after it has run once in the real environment where the step runs");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to apply a change meant to improve the performance of a program or build can
 	 * reach the packaged rule for that decision: the rule routing that every agent of either harness receives at
 	 * startup routes to the performance-change rule, whose guidance tells the reader to measure the change before and
