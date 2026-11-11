@@ -14,8 +14,11 @@ not load it for a production incident, or for an infrastructure failure, which t
 runner assigned or the runner lost, a service or network outage, a quota or rate-limit refusal, or the platform
 cancelling the job or timing it out before the project's commands ran. A flaky test or a timeout inside the project's
 own steps is a project failure. When the cause is unclear, rerun the job once without loading it, and lazy load it if
-the same failure occurs again. When a job's download from an upstream server failed because the server could not be
-reached, lazy load `../upstream-fallbacks.md` instead.
+the same failure occurs again.
+
+After you read the log of a job that failed on another machine, and before you choose a fix, lazy load
+`../upstream-fallbacks.md` when the log shows a download from an upstream server that failed because the server could
+not be reached, whether or not you loaded `../ci-debugging.md`.
 
 When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
 `../remote-runner-testing.md` before dispatching the run.

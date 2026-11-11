@@ -458,10 +458,10 @@ public final class BundledRuleAudienceTest
 	/**
 	 * Verifies an agent that writes or changes a build or job step that downloads from one upstream server, or sees a
 	 * job fail because such a server was unreachable, can reach the packaged rule for that decision: the testing and
-	 * build area index routes to the upstream-fallbacks rule, whose guidance adds a fallback that is tried only when
-	 * the primary fails, accepts only an equivalent source whose content the same checks verify, does not leave the
-	 * agent only waiting for the provider to recover, and counts the fallback as verified only after a run in the
-	 * step's real environment with the primary forced to fail.
+	 * build area index and the CI debugging rule route to the upstream-fallbacks rule, whose guidance adds a fallback
+	 * that is tried only when the primary fails, accepts only an equivalent source whose content the same checks
+	 * verify, does not leave the agent only waiting for the provider to recover, and counts the fallback as verified
+	 * only after a run in the step's real environment with the primary forced to fail.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -478,10 +478,16 @@ public final class BundledRuleAudienceTest
 
 			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
 				"testingIndex").
-				contains("because the server could not be reached, lazy load " +
-					"`${CAT_PLUGIN_ROOT}/rules/include/common/upstream-fallbacks.md` instead").
+				contains("After you read the log of a job that failed on another machine, and before you choose a fix, " +
+					"lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/upstream-fallbacks.md` when the log shows a " +
+					"download from an upstream server that failed because the server could not be reached").
 				contains("from one upstream server, lazy load " +
 					"`${CAT_PLUGIN_ROOT}/rules/include/common/upstream-fallbacks.md`.");
+
+			requireThat(oneLine(Files.readString(include.resolve("ci-debugging.md"))), "ciDebugging").
+				contains("When that log shows a download from an upstream server that failed because the server could " +
+					"not be reached, lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/upstream-fallbacks.md` before " +
+					"you choose a fix.");
 
 			String fallbacks = oneLine(Files.readString(include.resolve("upstream-fallbacks.md")));
 			requireThat(fallbacks, "fallbacks").startsWith("# Upstream Download Fallbacks ").

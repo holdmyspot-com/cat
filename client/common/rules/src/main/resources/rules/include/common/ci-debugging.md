@@ -26,7 +26,9 @@
 
 When fixing a failure of the project's build, tests or scripts on another machine, identify the failed step's executed
 command, determining inputs, consumed artifact, harness configuration, and platform before choosing where to
-investigate. Read the retained log, receipt, and artifacts first, and preserve them.
+investigate. Read the retained log, receipt, and artifacts first, and preserve them. When that log shows a download
+from an upstream server that failed because the server could not be reached, lazy load `upstream-fallbacks.md` before
+you choose a fix.
 
 Reproduce the failure locally first. If a supported local invocation can exercise that same relevant boundary from
 retained or reproducible inputs, run it locally before dispatching a replacement hosted run. Use its result to narrow
