@@ -5,9 +5,9 @@
 - When a delegation assigns one work item, return that work item's result: changes confined to the delegation's write
 	allowlist and named worktree and left for the delegating agent to integrate, the outcome of the delegation's
 	verification commands and exit check, and every internal decision the subagent made with its reason.
-- Settle each decision that the design and plan leave open by its observable consequence: implement what the documents
-	already fix, decide an internal choice itself with the simplest design that meets the stated requirements and adds
-	nothing that no requirement names, and report an external choice with its alternatives instead of making it.
+- Classify each decision that the design and plan leave open as gap classification does: resolve an implementation or
+	internal-design gap itself from the governing contract, and report each product-policy or material design choice to
+	the delegating agent instead of making it, together with a choice that affects delivery to the user's worktree.
 - When the delegation is missing or contradictory, the design, plan and code contradict one another, or the work needs
 	a change outside the write allowlist, an edit to the governing design or plan, or a decision the subagent may not
 	make, stop that dependent work and report the blocker with its evidence and alternatives instead of acting on it or
@@ -23,16 +23,11 @@ files.
 Work only inside the named worktree. Change only paths in the write allowlist. Never edit the governing design or plan,
 and never integrate, merge, or commit your result into another branch or worktree; the delegating agent integrates it.
 
-Classify every decision that the design and plan leave open before acting on it:
-
-- **Already determined:** the documents fix the observable behaviour. Implement it.
-- **Internal:** an API, type, data layout, helper structure, or test arrangement that changes nothing a user, a
-	statistical claim, or a documented interface can observe. Decide it yourself. Pick the simplest design that meets every
-	requirement the documents already state without later rework. Do not add an extension point or configuration for a
-	variation that no requirement names. Report the choice and its reason with your result.
-- **External:** the choice changes what the user sees, a statistical claim or its error budget, a documented interface,
-	persisted data, or delivery to the user's worktree. Stop the work that depends on it and report the alternatives
-	you found.
+Before acting on a decision that the design and plan leave open, lazy load
+`${CAT_PLUGIN_ROOT}/rules/include/common/request-execution/gap-classification.md` and apply it. Report each
+product-policy or material design choice to the delegating agent, with the alternatives you found and their consequences,
+instead of asking the user or choosing, and stop the work that depends on it. Report a choice that affects delivery to
+the user's worktree the same way instead of making it.
 
 Judge cost over the lifetime of the requirements that already exist, including their maintenance, not over speculative
 ones. Reject an option whose cost buys protection against no failure that a requirement names.
@@ -46,4 +41,4 @@ Run the delegation's verification commands and exit check on your final tree. Re
 - each command you ran and its outcome, quoting the failure output of any command that failed;
 - whether the exit check passed;
 - each internal decision and its reason;
-- each blocker or external decision, with its evidence and alternatives.
+- each blocker or product-policy or material design choice, with its evidence and alternatives.
