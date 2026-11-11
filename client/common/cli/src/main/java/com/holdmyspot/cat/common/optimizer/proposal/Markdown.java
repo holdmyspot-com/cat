@@ -60,6 +60,12 @@ public final class Markdown
 {
 	private static final MathContext PERCENT_DIGITS = new MathContext(3);
 	/**
+	 * The largest number of files that a group of the files that load only in production may hold and still have the
+	 * proposal name each file.
+	 */
+	private static final int MAX_LISTED_FILES = 3;
+
+	/**
 	 * The initial capacity of the text, which fits a proposal with a few tests without growing.
 	 */
 	private static final int INITIAL_CAPACITY = 16 * 1024;
@@ -802,8 +808,7 @@ public final class Markdown
 		if (!plugin.productionOnly().isEmpty())
 		{
 			text.append("\nThese files load in the user's sessions of the harness but not in trials:\n\n");
-			for (String path : plugin.productionOnly())
-				text.append("- `").append(path).append("`\n");
+			productionOnlyGroups();
 		}
 		if (!plugin.homeOnly().isEmpty())
 		{
@@ -814,6 +819,50 @@ public final class Markdown
 				text.append("- ").append(Character.toUpperCase(entry.charAt(0))).append(entry.substring(1)).
 					append('\n');
 			}
+		}
+	}
+
+	/**
+	 * Shows the files that load in the user's sessions but not in trials, one line per directory. The directories are
+	 * the deepest directory that holds every file, and each of its subdirectories that holds files. A group of at
+	 * most {@code MAX_LISTED_FILES} files lists its files; a larger group shows its directory and its file count.
+	 */
+	private void productionOnlyGroups()
+	{
+		List<Path> files = new ArrayList<>();
+		for (String name : plugin.productionOnly())
+			files.add(Path.of(name));
+		Path common = files.get(0).getParent();
+		for (Path file : files)
+		{
+			while (common != null && !file.startsWith(common))
+				common = common.getParent();
+		}
+		Map<Path, List<Path>> groups = new LinkedHashMap<>();
+		for (Path file : files)
+		{
+			Path directory = file.getParent();
+			if (common != null && directory != null && !directory.equals(common))
+				directory = common.resolve(directory.getName(common.getNameCount()));
+			groups.computeIfAbsent(directory, _ -> new ArrayList<>()).add(file);
+		}
+		for (Map.Entry<Path, List<Path>> group : groups.entrySet())
+		{
+			List<Path> members = group.getValue();
+			if (members.size() <= MAX_LISTED_FILES)
+			{
+				for (Path file : members)
+					text.append("- `").append(PortablePaths.text(file)).append("`\n");
+				continue;
+			}
+			boolean isDirect = members.stream().allMatch(file -> file.getParent().equals(group.getKey()));
+			String relation;
+			if (isDirect)
+				relation = " files in `";
+			else
+				relation = " files under `";
+			text.append("- ").append(members.size()).append(relation).append(PortablePaths.text(group.getKey())).
+				append("`\n");
 		}
 	}
 

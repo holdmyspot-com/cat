@@ -1679,6 +1679,42 @@ public final class ProposalTest
 	}
 
 	/**
+	 * Verifies that the files that load only in production appear as one line per directory with a file count, and
+	 * that a small group names its files.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void groupsProductionOnlyFilesByDirectory() throws InvalidProposalException
+	{
+		String root = "/home/user/plugins/cat/rules";
+		List<String> files = new ArrayList<>();
+		for (int i = 0; i < 119; ++i)
+			files.add(root + "/include/common/rule-" + i + ".md");
+		for (int i = 0; i < 12; ++i)
+			files.add(root + "/codex/rule-" + i + ".md");
+		files.add(root + "/index.md");
+		files.add(root + "/other.md");
+		PluginCheck check = new PluginCheck(List.of(), List.of(), List.of(), files, List.of(), List.of(), Map.of());
+
+		String text = pluginProposal(check).render();
+
+		int start = text.indexOf("but not in trials:\n\n");
+		requireThat(start, "start").isGreaterThan(-1);
+		String section = text.substring(start);
+		int end = section.indexOf("\n\n", "but not in trials:\n\n".length());
+		if (end > -1)
+			section = section.substring(0, end);
+		requireThat(section, "section").
+			contains("- 12 files in `" + root + "/codex`").
+			contains("- 119 files under `" + root + "/include`").
+			contains("- `" + root + "/index.md`").
+			contains("- `" + root + "/other.md`").
+			doesNotContain("rule-0.md");
+		requireThat(section.length(), "section.length()").isLessThan(1_000);
+	}
+
+	/**
 	 * Returns the proposal of the valid contract author output with what running the hooks showed.
 	 *
 	 * @param hooks what running the hooks that run before the model acts showed
