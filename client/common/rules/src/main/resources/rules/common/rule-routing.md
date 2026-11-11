@@ -135,9 +135,11 @@ produces, lazy load `../include/common/rule-routing/workflows.md`.
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, or creating or revising
 a Git commit message, lazy load `../include/common/rule-routing/git.md`.
 
-When creating, regenerating, revising, reviewing, auditing, adding, moving, splitting, merging, or reorganizing a
-prompt, rule, skill, command, workflow, or another artifact with declared goals or contracts, or when a project-owned
-callable tool must enforce a workflow requirement, lazy load `../include/common/rule-routing/prompts.md`.
+When adding, updating, moving, splitting, merging, renaming, removing, regenerating, reviewing, or auditing a prompt
+file (a rule, route index, skill, agent definition, command, workflow definition, or other prompt text that CAT ships),
+when creating, regenerating, revising, reviewing, or auditing another artifact with declared goals or contracts, or when
+a project-owned callable tool must enforce a workflow requirement, lazy load
+`../include/common/rule-routing/prompts.md`.
 
 Before writing a time or date in a response, report, or other text for the user, or in a file, command, data format,
 log, identifier, or commit message, including a timestamp that a tool, log, API, or command returned, lazy load

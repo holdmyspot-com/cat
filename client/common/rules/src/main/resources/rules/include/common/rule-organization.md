@@ -1,3 +1,7 @@
+---
+depends-on:
+  - ./contract-design.md
+---
 # Rule Organization
 
 ## Design Goals
@@ -7,17 +11,19 @@
 - Keep each rule or prompt requirement in its governing prompt file and make every route actionable from an observable
 	condition.
 - Keep rule and prompt changes focused, nonduplicative, and verifiable across their complete applicable corpus.
+- Load each prompt file in every situation where its Design Goals would help the agent about to act, and in no other.
+- Keep the coverage of prompt files mutually exclusive, so at most one prompt file governs any given decision, and
+	have the user settle a conflict whose resolution changes what a reader decides.
+- Apply these checks whenever any prompt file is added or updated, whatever its kind or the size of the edit.
 
 ## Guidance
 
-Before adding a rule, prompt, skill, command, or workflow, or amending an existing one, inventory the candidate
-governing prompt files. Compare the proposed guidance's observable trigger, reader decision, Design Goal, and required
-evidence with each candidate; different names or examples do not make the guidance distinct. Amend an existing prompt
-file only when it protects the same reader decision. Otherwise create a focused companion and add a narrow route from
-the rule or index that detects its observable trigger. Do not turn a routing index into a policy rule, or broaden a
-focused policy merely because its readers also encounter the new concern. Verify that every resulting artifact has one
-coherent long-lived responsibility, and that a new artifact has its own title, Design Goal, trigger, acceptance evidence,
-and no duplicate route or contract.
+Before adding a rule, prompt, skill, command, or workflow, or amending an existing one, select its governing prompt
+file by the comparison that the contract-design rule requires. When no existing prompt file governs the decision, create
+a focused companion and add a narrow route from the rule or index that detects its observable trigger. Do not turn a
+routing index into a policy rule, or broaden a focused policy merely because its readers also encounter the new concern.
+Verify that every resulting artifact has one coherent long-lived responsibility, and that a new artifact has its own
+title, Design Goal, trigger, acceptance evidence, and no duplicate route or contract.
 
 When a failure suggests a rule or prompt amendment, identify the reader action that would have prevented the failure
 before using a downstream report, estimate, log, test result, or warning to choose its governing prompt file. Compare
@@ -88,13 +94,49 @@ constraints whose correct application depends on the project's architecture, art
 that merely restates baseline language, standard-tool, or general engineering knowledge; correct that violation in the
 implementation or review instead.
 
+Run every check in this rule, and the goal-to-guidance check in the contract-design rule, whenever any prompt file is
+added or updated: a rule, route index, skill, agent definition, command, workflow definition, or other prompt text that
+CAT ships. A small edit is not exempt. Do not finish the change while a check has an unrepaired defect or an unanswered
+conflict question.
+
+Derive each prompt file's triggers backward from its Design Goals. For each goal, list the observable situations in which
+an agent about to act could benefit from guidance that achieves it: the request, the artifact it reads or edits, the
+operation it is about to run, or the state present before that action. Compare that list with every trigger of the
+file: its own applicability statement, such as `paths` frontmatter or a stated condition, and each route that loads it
+from an index, an always-loaded rule, a skill, or another prompt file. A trigger that fires where no goal applies, or a
+listed situation that no trigger covers, is a defect. Repair it by changing the trigger; change a goal only when the
+list shows that the goal misstates the outcome the file exists to achieve. Derive the list again whenever a goal changes.
+
+Make the coverage of prompt files mutually exclusive. Inventory the other prompt files whose triggers can fire in a
+situation where a trigger of the added or changed file fires, and compare the decision each file governs there. Files
+that govern different decisions may share a situation, provided each file's trigger or Design Goals say which decision
+it governs. Files that govern the same decision duplicate each other when they require the same action and conflict
+when they require different actions.
+
+Resolve a conflict yourself only when it is trivial: the files differ only in wording, one repeats the other, or one
+states a specific case of the other's action, and exactly one resolution preserves every required action and Design
+Goal of both. Keep the authoritative statement and replace the other with a route or delete it. Treat every other
+conflict as not trivial, in particular one where the files require different actions for the same decision or where
+resolving it would remove or weaken an obligation of either file. Edit neither file for it. Ask the user which
+resolution to apply, as the questions-for-the-user rule describes: name the files and the decision, the conflicting
+actions, and each resolution option with its consequences and your recommendation. Continue only work that does not
+depend on the answer.
+
+After the resolution, adjust the triggers so that, for any situation, at most one prompt file governs a given decision.
+State in each file's trigger the condition that puts the decision on its side of the boundary, and exclude the other
+file's side, for example by artifact, operation, or state. Verify the boundary with one situation on each side and one
+situation where the former triggers both fired.
+
 After adding or changing a rule or prompt, review the resulting applicable corpus before handoff:
 
 - Every local lazy-load target and referenced rule file exists.
 - Every external-file reference names only the file and its purpose; its mutable values remain in the authoritative file.
 - Routing is unambiguous: no duplicate top-level rule, contradictory instruction, or overlapping path rule changes the
 	intended guidance unexpectedly.
+- Every trigger of each added or changed prompt file matches its Design Goals, and no other prompt file governs the same
+	decision.
 - Rule examples comply with the rules they demonstrate.
 - Removed or renamed rules have no stale references.
 
-Resolve conflicts by keeping one authoritative rule and routing to focused companions rather than duplicating guidance.
+Resolve a trivial conflict by keeping one authoritative rule and routing to focused companions rather than duplicating
+guidance; resolve any other conflict as described above.
