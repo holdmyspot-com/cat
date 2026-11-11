@@ -12,7 +12,8 @@
 	predetermining a branch that only the reported example selected.
 - Ensure an artifact's Design Goals form one coherent contract: identify and repair duplicate, overlapping,
 	contradictory, and prerequisite-dependent goals before relying on them to derive guidance or verification.
-- Ensure that, whenever any prompt file is added or updated, every Design Goal is achieved by its guidance and every
+- Ensure that, whenever a prompt file is added or updated so that the text an agent receives or when it receives it
+	changes, every Design Goal is achieved by its guidance and every
 	normative guidance statement serves a Design Goal, repairing a mismatch by changing the goal or the guidance.
 - Place each new or changed normative prompt requirement in the authoritative prompt file for its reader decision and
 	trigger, creating a focused companion only when no existing prompt file governs that decision.
@@ -133,13 +134,13 @@ name, update a goal when its wording no longer describes that outcome, and remov
 outcome is obsolete or outside the rule's responsibility. Do not add a goal for an example, implementation detail, or
 one-time repair. Then map the revised guidance to the retained, added, or updated goals before finalizing it.
 
-On every addition or update of a prompt file, however small the edit, check its Design Goals and guidance against each
-other in both directions before accepting the change. For each goal, find the guidance statements that achieve its
-observable outcome; for each normative statement, find the goal it serves. When no guidance achieves a goal, add the
-missing guidance, or remove the goal when its outcome is not one the file should achieve. When a statement serves no
-goal, add or update a goal when its outcome is one the file should achieve, or remove the statement. Repair every
-mismatch by changing the goal or the guidance; do not accept it with a note or defer it. A file that is not substantive
-has no goals to check and must contain no independent guidance.
+On every addition or update of a prompt file that changes the text an agent receives or when it receives it, however
+small the edit, check its Design Goals and guidance against each other in both directions before accepting the change.
+For each goal, find the guidance statements that achieve its observable outcome; for each normative statement, find the
+goal it serves. When no guidance achieves a goal, add the missing guidance, or remove the goal when its outcome is not
+one the file should achieve. When a statement serves no goal, add or update a goal when its outcome is one the file
+should achieve, or remove the statement. Repair every mismatch by changing the goal or the guidance; do not accept it
+with a note or defer it. A file that is not substantive has no goals to check and must contain no independent guidance.
 
 Before deriving or revising guidance from Design Goals, audit the goals as one contract. Compare every pair and classify
 the relationship as distinct, overlapping, duplicate, contradictory, or prerequisite-dependent. For an overlap, state

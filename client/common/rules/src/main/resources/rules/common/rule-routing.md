@@ -136,10 +136,12 @@ When locating or selecting a Git commit, file history, or change to amend, backp
 a Git commit message, lazy load `../include/common/rule-routing/git.md`.
 
 When adding, updating, moving, splitting, merging, renaming, removing, regenerating, reviewing, or auditing a prompt
-file (a rule, route index, skill, agent definition, command, workflow definition, or other prompt text that CAT ships),
-when creating, regenerating, revising, reviewing, or auditing another artifact with declared goals or contracts, or when
-a project-owned callable tool must enforce a workflow requirement, lazy load
-`../include/common/rule-routing/prompts.md`.
+file (a rule, route index, skill, agent definition, command, workflow definition, or other prompt text that CAT ships)
+in a way that changes the text any agent receives or when it receives it, when creating, regenerating, revising,
+reviewing, or auditing another artifact with declared goals or contracts, or when a project-owned callable tool must
+enforce a workflow requirement, lazy load `../include/common/rule-routing/prompts.md`. A rename or move of a prompt file
+whose only effect is its new path, with every reference updated so that the same text loads under the same conditions,
+does not load it; verify only that no reference names the old path.
 
 Before writing a time or date in a response, report, or other text for the user, or in a file, command, data format,
 log, identifier, or commit message, including a timestamp that a tool, log, API, or command returned, lazy load

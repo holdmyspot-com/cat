@@ -14,7 +14,8 @@ depends-on:
 - Load each prompt file in every situation where its Design Goals would help the agent about to act, and in no other.
 - Keep the coverage of prompt files mutually exclusive, so at most one prompt file governs any given decision, and
 	have the user settle a conflict whose resolution changes what a reader decides.
-- Apply these checks whenever any prompt file is added or updated, whatever its kind or the size of the edit.
+- Apply these checks whenever a prompt file is added or updated so that the text an agent receives or when it receives
+	it changes, whatever its kind or the size of the edit, and not when only its path changes.
 
 ## Guidance
 
@@ -96,8 +97,12 @@ implementation or review instead.
 
 Run every check in this rule, and the goal-to-guidance check in the contract-design rule, whenever any prompt file is
 added or updated: a rule, route index, skill, agent definition, command, workflow definition, or other prompt text that
-CAT ships. A small edit is not exempt. Do not finish the change while a check has an unrepaired defect or an unanswered
-conflict question.
+CAT ships. A small edit is not exempt. The checks apply when the change alters a file's content beyond updating
+references to a new path, which files load, or the condition under which one loads, for example a rename or move that
+resolves or breaks a reference, or places a file in or out of an always-loaded or path-scoped location. They do not
+apply to a rename or move whose only effect is the new path, with every reference updated so that the same text loads
+under the same conditions; that change needs only verification that no reference names the old path. Do not finish the
+change while a check has an unrepaired defect or an unanswered conflict question.
 
 Derive each prompt file's triggers backward from its Design Goals. For each goal, list the observable situations in which
 an agent about to act could benefit from guidance that achieves it: the request, the artifact it reads or edits, the
