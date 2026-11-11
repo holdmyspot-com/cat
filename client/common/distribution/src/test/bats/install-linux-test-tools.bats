@@ -64,3 +64,12 @@ SOURCES
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "${directory}/ubuntu.sources" ]
 }
+
+@test "a deb822 mirror-list URI is replaced by the mirror and the list's canonical hosts are no longer used" {
+	printf '%s\n' 'Types: deb' 'URIs: mirror+file:/etc/apt/apt-mirrors.txt' 'Suites: resolute' 'Components: main' \
+		'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' > "${SOURCES_FILE}"
+	rewrite_source_file "${SOURCES_FILE}" "${SOURCES_FILE}" https://mirrors.edge.kernel.org/ubuntu
+	grep -qx 'URIs: https://mirrors.edge.kernel.org/ubuntu/' "${SOURCES_FILE}"
+	run ! grep -q 'mirror+file' "${SOURCES_FILE}"
+	grep -qx 'Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg' "${SOURCES_FILE}"
+}

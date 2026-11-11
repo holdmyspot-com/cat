@@ -41,7 +41,8 @@ apt_source_files()
 }
 
 # Writes a copy of an apt source file in which every canonical Ubuntu archive URI (archive, security, regional, Azure
-# and ports hosts under ubuntu.com) points at a mirror.
+# and ports hosts under ubuntu.com) and every mirror-list URI (mirror+file:<path>, which the runner images use and
+# whose list holds canonical hosts) points at a mirror.
 # Arguments: the original file, the file to replace with the rewritten copy, the mirror base URL.
 # Side effects: Replaces the target file's contents, with sudo when the target is not writable.
 rewrite_source_file()
@@ -54,19 +55,26 @@ rewrite_source_file()
 
 	[[ -w "${target}" ]] || privileged=(sudo)
 	rewritten="$(mktemp "${TMPDIR:-/tmp}/rewritten.XXXXXX")"
-	sed -E "s#https?://[A-Za-z0-9.-]*ubuntu\.com/ubuntu(-ports)?/?#${mirror}/#g" "${original}" > "${rewritten}"
+	sed -E -e "s#https?://[A-Za-z0-9.-]*ubuntu\.com/ubuntu(-ports)?/?#${mirror}/#g" \
+		-e "s#mirror\+file:[^[:space:]]+#${mirror}/#g" "${original}" > "${rewritten}"
 	${privileged[@]+"${privileged[@]}"} cp -- "${rewritten}" "${target}"
 	rm -f -- "${rewritten}"
 }
 
-# Runs the apt update and install.
+# Runs the apt update and install. An index that cannot be fetched fails the update, so the caller can fall back at
+# once instead of after the install fails.
+# Arguments: the number of times apt retries a failed download. Unreachable hosts are retried in vain, so the first
+#   attempt passes 0.
 # Output: apt's output. Returns apt's failure status.
 install_packages()
 {
+	local retries="$1"
 	local -a privileged=()
+	local -a options=(-o "Acquire::Retries=${retries}")
 
 	[[ "${EUID}" -eq 0 ]] || privileged=(sudo)
-	${privileged[@]+"${privileged[@]}"} apt-get update && ${privileged[@]+"${privileged[@]}"} apt-get install --yes "${PACKAGES[@]}"
+	${privileged[@]+"${privileged[@]}"} apt-get update -o APT::Update::Error-Mode=any "${options[@]}" &&
+		${privileged[@]+"${privileged[@]}"} apt-get install --yes "${options[@]}" "${PACKAGES[@]}"
 }
 
 # Installs the packages from the configured sources, then from each mirror in turn if that fails.
@@ -81,7 +89,7 @@ main()
 	local index
 	local -a files=()
 
-	if install_packages; then
+	if install_packages 0; then
 		return 0
 	fi
 	echo "Installing from the configured Ubuntu sources failed; falling back to a mirror." >&2
@@ -98,7 +106,7 @@ main()
 		for index in "${!files[@]}"; do
 			rewrite_source_file "${backup_directory}/${index}" "${files[index]}" "${mirror}"
 		done
-		if install_packages; then
+		if install_packages 3; then
 			rm -rf -- "${backup_directory}"
 			return 0
 		fi
