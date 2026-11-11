@@ -381,7 +381,9 @@ public final class BundledRuleAudienceTest
 	 * failure that a run of changed code shows, can reach the packaged rules for those decisions: the testing and build
 	 * area index routes to the expensive-verification-runs rule, the failure area index routes to the failure-baseline
 	 * rule, and the expensive-verification-runs rule itself states how to order a run that spans targets of differing
-	 * speed or capacity, without the build-workflow rule repeating that ordering.
+	 * speed or capacity, without the build-workflow rule repeating that ordering, and how to fill the provider's
+	 * concurrency limit with independent runs: freely when the runner time costs nothing, and only with the user's
+	 * permission when it costs money.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -403,6 +405,9 @@ public final class BundledRuleAudienceTest
 			String expensiveRuns = oneLine(Files.readString(include.resolve("expensive-verification-runs.md")));
 			requireThat(expensiveRuns, "expensiveRuns").startsWith("# Expensive Verification Runs ").
 				contains("start that target first or in parallel").
+				contains("up to the provider's concurrency limit").
+				contains("Fill the limit without asking when the extra runner time is free").
+				contains("treat them as costing money and ask").
 				doesNotContain("build-workflow.md");
 			String buildWorkflow = oneLine(Files.readString(include.resolve("build-workflow.md")));
 			requireThat(buildWorkflow, "buildWorkflow").doesNotContain("start that target first or in parallel");

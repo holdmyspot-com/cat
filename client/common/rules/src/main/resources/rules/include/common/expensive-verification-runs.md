@@ -10,6 +10,9 @@
 - Spend a slow or scarce target's run only when it is likely to answer for the revision that ships: after the other
 	targets pass while the workflow is being changed or repaired, and without waiting for them once the round is
 	expected to pass.
+- While runs are in progress on shared or hosted runners, independent work that needs a runner starts at once, up to the
+	provider's concurrency limit, instead of waiting behind one run, when the extra runner time is free. Extra runs that
+	would cost money wait for the user's permission, and no run is started only to fill the limit.
 - A run that a newer run supersedes stops consuming time and resources once nothing needs its result, when the agent
 	started it, while a run that someone else started is left to its owner.
 - A run in which a job has failed keeps using shared capacity only while the rest of the run produces something that
@@ -19,8 +22,9 @@
 ## Guidance
 
 This rule applies before you start, dispatch or request a run of a build, test suite, workflow or probe that takes
-many minutes or draws on capacity that others share, such as the runners of a hosted workflow, and when a job of such a
-run that you started has failed while other jobs of it are queued or running. It does not apply to a run that finishes
+many minutes or draws on capacity that others share, such as the runners of a hosted workflow, when a job of such a
+run that you started has failed while other jobs of it are queued or running, and when you have other work that needs a
+runner while such a run is in progress. It does not apply to a run that finishes
 in seconds on your own machine.
 
 Name the revision that the run verifies. When a change that you have decided to make, or that is in progress, will
@@ -78,3 +82,20 @@ failed job already shows that this revision will be replaced. When none of the r
 through the hosting service, without waiting for the other jobs to end, and record that you cancelled it and why. A run
 that someone else started is theirs to cancel, as above. When you keep the run, record what it is kept for, and cancel
 it once that result exists or the next run supersedes it.
+
+When a run is in progress and other work of the task also needs a runner, such as a fix for a second failure on another
+branch, an unrelated verification, or a reproduction on a hosted worker, start every such piece that does not depend on
+another run's result, up to the provider's concurrency limit, instead of serializing them behind that run. Do independent
+local work in the meantime. Work that needs another run's result waits for it, such as a verification of a revision that
+a fix in progress will replace. This section never makes a run necessary: each run you start still passes the tests
+above, including that no running or finished run already answers its question on the same revision.
+
+Find the concurrency limit in the provider's documentation or in the account's or plan's settings. When it is not
+stated, infer it from how many of the runs that you started run at once while the rest queue. Start no more runs than
+fill it, so that they do not queue ahead of the runs of others.
+
+Fill the limit without asking when the extra runner time is free: included minutes, free runners for public
+repositories, or self-hosted runners at no extra cost. When running them concurrently would use time that costs money,
+such as billed minutes or paid larger runners, ask the user for permission before you start those runs, stating what
+would run and the expected cost. When you cannot tell whether the runs are billed, treat them as costing money and ask.
+While the question is open, continue the independent work that needs no paid run.
