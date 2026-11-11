@@ -17,6 +17,10 @@
 	before the operation's result or deadline.
 - When any of several state changes would let the agent continue, the agent acts on the first one to occur without
 	waiting for the others.
+- When a waited operation has parts that run at once and the failure of any part changes what the agent does, such as
+	the jobs of a hosted workflow run, the wait ends on the first part to fail as well as when the whole operation
+	finishes, so that the agent starts diagnosing while the other parts run instead of learning of the failure when
+	the slowest part ends.
 
 ## Guidance
 
@@ -33,8 +37,9 @@ wait operation, wait on that operation. Otherwise, such as for a hosted build, a
 	75 while it has not finished. Exit with 75 only when the command read the operation's state and that state says it
 	has not finished. When the lookup itself fails, such as a missing log, a wrong URL, or a refused request, exit with
 	another status, such as 2, so that the failure is not reported as "not finished". When a documented command already
-	blocks until the operation finishes and exits with its result, such as `gh run watch <run> --exit-status`, give it as
-	`--watch '<command>'` instead. The commands run in your shell, in the current folder.
+	blocks until the operation finishes and exits with its result, and you would act only on that final result, such as
+	`gh run watch <run> --exit-status` for a run with one job, give it as `--watch '<command>'` instead. The commands run
+	in your shell, in the current folder.
 - Give it `--deadline <duration>`, such as `--deadline 40m`: the operation's own time limit, such as a workflow job's
 	`timeout-minutes`, plus a margin. When the operation declares no limit, base the deadline on its observed or
 	documented duration and state that basis. A check repeats every 30 seconds unless you give another
@@ -81,3 +86,17 @@ one finishes and stops the others. When the changes include a process or subagen
 harness reports each one's exit to you or its wait operation accepts several of them, wait on all of them together
 and block until the first one ends. Act on the result. If you still need one of the other changes, start a new wait
 for those that remain.
+
+When the operation has several parts that run at once and the failure of one would change what you do, such as the
+jobs of a hosted workflow run, wait for the first failed part as well as for the whole operation. A command that
+returns only when the whole operation ends, such as `gh run watch <run> --exit-status`, does not do this: it reports a
+failed job when the last job ends, and a job that waits for runner capacity can hold it for much longer than the
+failed job ran. Give `--check` a command that reads each part's state from the operation's per-part status interface,
+such as the jobs of a run through the hosting service's jobs interface, and prints each part's state. It exits with 1
+as soon as any part has concluded with failure, naming that part, or when the whole operation has ended without every
+part succeeding; with 0 when every part has succeeded; and with 75 otherwise. Test it once before starting the wait,
+as above. Give `--deadline` the whole operation's time limit plus the time that its queued parts can wait for capacity.
+
+When the wait ends because a part failed, start diagnosing and fixing it at once, while the other parts run; do not
+wait for them to end first. When you let the rest of the operation continue and still need its result, start a new wait
+for it whose check ignores the parts that have already been reported.

@@ -412,6 +412,50 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that waits for a hosted workflow run with several jobs, or sees one of its jobs fail while
+	 * others still run, can reach the packaged rules for those decisions: the workflow area index routes to the
+	 * external-waits rule, whose guidance ends the wait on the first failed job and directs the agent to fix it at once;
+	 * the testing and build area index routes the failed-job situation to the expensive-verification-runs rule, whose
+	 * guidance decides whether the rest of the run continues, including how to check for an existing cache entry; and
+	 * neither rule states the other's decision.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void hostedRunMonitoringRulesAreRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/workflows.md"))), "workflowIndex").
+				contains("lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/external-waits.md`");
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
+				"testingIndex").
+				contains("has failed while other jobs of it are queued or running, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/expensive-verification-runs.md`");
+
+			String externalWaits = oneLine(Files.readString(include.resolve("external-waits.md")));
+			requireThat(externalWaits, "externalWaits").
+				contains("wait for the first failed part as well as for the whole operation").
+				contains("per-part status interface").
+				contains("start diagnosing and fixing it at once, while the other parts run").
+				doesNotContain("cancel the run now");
+
+			String expensiveRuns = oneLine(Files.readString(include.resolve("expensive-verification-runs.md")));
+			requireThat(expensiveRuns, "expensiveRuns").
+				contains("whether the rest of the run has value").
+				contains("list the repository's cache entries for it").
+				contains("cancel the run now through the hosting service").
+				doesNotContain("per-part status interface");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to apply a change meant to improve the performance of a program or build can
 	 * reach the packaged rule for that decision: the rule routing that every agent of either harness receives at
 	 * startup routes to the performance-change rule, whose guidance tells the reader to measure the change before and

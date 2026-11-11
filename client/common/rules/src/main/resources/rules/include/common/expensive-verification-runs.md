@@ -12,12 +12,16 @@
 	expected to pass.
 - A run that a newer run supersedes stops consuming time and resources once nothing needs its result, when the agent
 	started it, while a run that someone else started is left to its owner.
+- A run in which a job has failed keeps using shared capacity only while the rest of the run produces something that
+	the agent needs, such as a cache that does not yet exist, and is cancelled at once otherwise, when the agent started
+	it.
 
 ## Guidance
 
 This rule applies before you start, dispatch or request a run of a build, test suite, workflow or probe that takes
-many minutes or draws on capacity that others share, such as the runners of a hosted workflow. It does not apply to a
-run that finishes in seconds on your own machine.
+many minutes or draws on capacity that others share, such as the runners of a hosted workflow, and when a job of such a
+run that you started has failed while other jobs of it are queued or running. It does not apply to a run that finishes
+in seconds on your own machine.
 
 Name the revision that the run verifies. When a change that you have decided to make, or that is in progress, will
 replace that revision, such as a rebase or merge onto a new base, a dependency or upstream update, or a fix you are
@@ -52,3 +56,22 @@ others ask it instead of dispatching their own.
 When a newer run supersedes one that you started, such as a rerun after a fix, cancel the earlier run once nothing needs
 its result, neither the current diagnosis nor other work. Cancel only a superseded run that you started. A run that
 someone else started is theirs to cancel, even when it looks superseded: tell its owner.
+
+When a job of a run that you started has failed and the run has other jobs that are queued or running, decide as soon
+as you know which job failed whether the rest of the run has value, because a run that is cancelled sooner frees shared
+capacity sooner. The fix will replace the revision, so the rest of the run answers for a revision that goes away; keep
+it running only when it produces something that you need:
+
+- A cache that a running or queued job will save, whose key does not yet exist. Take the key from the job's cache step
+	and list the repository's cache entries for it, in the scope that the next run restores from, such as the branch
+	that you push or the default branch. When an entry with that key already exists, the cache is not needed. When the
+	key depends on content that your fix changes, such as a hash of a dependency file, the next run uses a different key,
+	and this run's cache is not needed either.
+- Results of other jobs that would reveal failures that the next run would otherwise need a further round to show, such
+	as the same step on another platform that you have not reproduced. A job that runs steps that your fix cannot
+	affect, or whose results you already have from an earlier run on the same revision, reveals nothing new.
+- A worker that an open interactive session of yours still uses.
+
+When none of these applies, cancel the run now through the hosting service, without waiting for the other jobs to end,
+and record that you cancelled it and why. A run that someone else started is theirs to cancel, as above. When you keep
+the run, record what it is kept for, and cancel it once that result exists or the next run supersedes it.
