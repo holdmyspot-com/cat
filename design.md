@@ -1542,7 +1542,8 @@ mapped path. A prompt file may map into more than one plugin, and each receives 
 differs from the base's is a warning, because the build may transform the file; trials load the source's content.
 Mappings copy files unchanged, so a prompt file that the build generates or compiles cannot be a target. CAT refuses a
 campaign whose target would not load in trials, such as a rule that only an unlisted plugin loads, and the proposal
-lists every other prompt file that loads in production but not in trials.
+shows every other prompt file that loads in production but not in trials, grouped by the directory that holds it: a
+group of three or fewer lists its files, and a larger group shows its directory and its file count.
 
 Each trial installs every trial plugin into the trial's harness home under its own name: a project-built plugin from the
 plugin copy of its candidate's base source, any other from its base copy. The trial's project copy keeps the project's
