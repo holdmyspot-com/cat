@@ -1,0 +1,21 @@
+name: CI
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: linux-x64
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install system packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxml2-utils jq
+      - name: Test
+        run: |
+          xmllint --noout config/settings.xml
+          jq empty config/settings.json
+          python3 -m pytest -q

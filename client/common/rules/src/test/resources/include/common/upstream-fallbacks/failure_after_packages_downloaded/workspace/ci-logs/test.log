@@ -1,0 +1,17 @@
+2026-11-11T14:02:07Z ##[group]Run actions/checkout@v4
+2026-11-11T14:02:09Z Syncing repository: acme/dates
+2026-11-11T14:02:10Z ##[endgroup]
+2026-11-11T14:02:10Z ##[group]Install system packages
+2026-11-11T14:02:10Z sudo apt-get update
+2026-11-11T14:02:12Z Get:1 http://{{package_host}}/debian stable InRelease [151 kB]
+2026-11-11T14:02:13Z Fetched 1,264 kB in 1s (1,180 kB/s)
+2026-11-11T14:02:14Z Reading package lists...
+2026-11-11T14:02:14Z sudo apt-get install -y libxml2-utils jq
+2026-11-11T14:02:19Z Setting up jq (1.6-2.1) ...
+2026-11-11T14:02:20Z ##[endgroup]
+2026-11-11T14:02:20Z ##[group]Test
+2026-11-11T14:02:20Z python3 -m pytest -q
+2026-11-11T14:02:22Z FAILED tests/test_dates.py::test_parse_leap_day - AssertionError: assert None == datetime.date(2000, 2, 29)
+2026-11-11T14:02:22Z 1 failed, 18 passed in 1.12s
+2026-11-11T14:02:22Z ##[error]Process completed with exit code 1.
+2026-11-11T14:02:22Z ##[endgroup]

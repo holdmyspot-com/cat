@@ -1,0 +1,14 @@
+2026-11-11T14:02:07Z ##[group]Run actions/checkout@v4
+2026-11-11T14:02:09Z Syncing repository: acme/dates
+2026-11-11T14:02:10Z ##[endgroup]
+2026-11-11T14:02:10Z ##[group]Install system packages
+2026-11-11T14:02:10Z sudo apt-get update
+2026-11-11T14:02:12Z Err:1 http://{{package_host}}/debian stable InRelease
+2026-11-11T14:02:12Z   Temporary failure resolving '{{package_host}}'
+2026-11-11T14:02:12Z Err:2 http://{{package_host}}/debian-security stable-security InRelease
+2026-11-11T14:02:12Z   Temporary failure resolving '{{package_host}}'
+2026-11-11T14:02:13Z Reading package lists...
+2026-11-11T14:02:13Z E: Failed to fetch http://{{package_host}}/debian/dists/stable/InRelease  Temporary failure resolving '{{package_host}}'
+2026-11-11T14:02:13Z E: Some index files failed to download. They have been ignored, or old ones used instead.
+2026-11-11T14:02:13Z ##[error]Process completed with exit code 100.
+2026-11-11T14:02:13Z ##[endgroup]
