@@ -26,6 +26,7 @@ import java.util.PriorityQueue;
 import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
@@ -584,8 +585,20 @@ public final class WaitUntilTest
 	 */
 	private static final class FakeProcess extends Process
 	{
+		/**
+		 * The longest that a delayed reader waits for the process to be destroyed.
+		 */
+		private static final Duration READER_WAIT = Duration.ofSeconds(10);
 		private final byte[] output;
+		/**
+		 * {@code true} if the process wrote its output but nothing can read it until the process is destroyed.
+		 */
+		private final boolean outputUnread;
 		private final CompletableFuture<Process> exit = new CompletableFuture<>();
+		/**
+		 * Released when the process is destroyed.
+		 */
+		private final CountDownLatch destroyedLatch = new CountDownLatch(1);
 		private volatile int status;
 		volatile boolean destroyed;
 		volatile boolean closed;
@@ -595,11 +608,13 @@ public final class WaitUntilTest
 		 *
 		 * @param output the process's output
 		 * @param status the exit status
+		 * @param outputUnread {@code true} if the output can be read only once the process is destroyed
 		 */
-		private FakeProcess(String output, int status)
+		private FakeProcess(String output, int status, boolean outputUnread)
 		{
 			this.output = output.getBytes(UTF_8);
 			this.status = status;
+			this.outputUnread = outputUnread;
 		}
 
 		/**
@@ -611,7 +626,7 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess exits(int status, String output)
 		{
-			FakeProcess process = new FakeProcess(output, status);
+			FakeProcess process = new FakeProcess(output, status, false);
 			process.exit.complete(process);
 			return process;
 		}
@@ -627,7 +642,7 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess exitsAfter(ManualTimer timer, Duration delay, int status, String output)
 		{
-			FakeProcess process = new FakeProcess(output, status);
+			FakeProcess process = new FakeProcess(output, status, false);
 			timer.schedule(delay, () -> process.exit.complete(process));
 			return process;
 		}
@@ -640,7 +655,20 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess running(String output)
 		{
-			return new FakeProcess(output, 143);
+			return new FakeProcess(output, 143, false);
+		}
+
+		/**
+		 * Returns a process that runs until it is destroyed and has already written its output into its pipe, which
+		 * the wait's reader has not taken in. This models a reader that the operating system schedules late, as the
+		 * wait would see under load: the reader takes in the pipe's content only after the process is destroyed.
+		 *
+		 * @param output the process's output
+		 * @return the process
+		 */
+		static FakeProcess runningWithUnreadOutput(String output)
+		{
+			return new FakeProcess(output, 143, true);
 		}
 
 		@Override
@@ -652,7 +680,44 @@ public final class WaitUntilTest
 		@Override
 		public InputStream getInputStream()
 		{
-			return new ByteArrayInputStream(output);
+			InputStream pipe = new ByteArrayInputStream(output);
+			if (outputUnread)
+				return new InputStream()
+				{
+					@Override
+					public int read() throws IOException
+					{
+						awaitDestroyed();
+						return pipe.read();
+					}
+
+					@Override
+					public int read(byte[] buffer, int offset, int length) throws IOException
+					{
+						awaitDestroyed();
+						return pipe.read(buffer, offset, length);
+					}
+				};
+			return pipe;
+		}
+
+		/**
+		 * Blocks until the process is destroyed.
+		 *
+		 * @throws IOException if the process is not destroyed within {@link #READER_WAIT}
+		 */
+		private void awaitDestroyed() throws IOException
+		{
+			try
+			{
+				if (!destroyedLatch.await(READER_WAIT.toMillis(), TimeUnit.MILLISECONDS))
+					throw new IOException("The process was not destroyed within " + READER_WAIT);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for the process to be destroyed", e);
+			}
 		}
 
 		@Override
@@ -682,6 +747,7 @@ public final class WaitUntilTest
 			destroyed = true;
 			status = 143;
 			exit.complete(this);
+			destroyedLatch.countDown();
 		}
 
 		@Override

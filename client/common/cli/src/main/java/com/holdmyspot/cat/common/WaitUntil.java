@@ -48,7 +48,8 @@ import java.util.regex.Pattern;
  * <p>
  * As soon as one operation finishes, the wait prints {@code succeeded: <command>} or {@code failed: <command>}
  * followed by the command's last output, stops every other command, and exits with 0 or 1 respectively. When the
- * deadline passes first, it prints each command with its last output, stops them, and exits with 124. When a command
+ * deadline passes first, it stops the commands, prints each command with its last output, including output that a
+ * watched command wrote but that the wait had not yet read, and exits with 124. When a command
  * cannot start, or a check exits with any other status three times in a row, it prints that command and its last
  * output, stops the others, and exits with 3. A usage error exits with 2. Running the same wait again after any of
  * these is safe: each check looks the operation's state up anew, and a watch of a finished operation ends at once.
@@ -438,16 +439,21 @@ public final class WaitUntil
 	 *
 	 * @param deadline the deadline
 	 * @return the exit status of a deadline that passed
+	 * @throws InterruptedException if the thread is interrupted while the output of a stopped command is read
 	 */
-	private int deadlinePassed(Duration deadline)
+	private int deadlinePassed(Duration deadline) throws InterruptedException
 	{
+		// A running command keeps its output open, so a run's reader ends only once the command stops. Stopping the
+		// commands first lets the report include the output that a command wrote before the deadline but that its reader
+		// had not yet taken in, instead of depending on how soon the reader thread ran.
+		terminate();
 		output.println("deadline passed after " + deadline + " before any operation finished");
 		for (Command command : commands)
 		{
 			output.println("pending: " + command.text);
 			Run run = command.run;
 			if (command.watch && run != null)
-				printOutput(run.output());
+				printOutput(run.drainOutput());
 			else
 				printOutput(command.lastOutput);
 		}
@@ -593,14 +599,7 @@ public final class WaitUntil
 		 */
 		int finish() throws InterruptedException
 		{
-			try
-			{
-				reader.get(OUTPUT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
-			}
-			catch (ExecutionException | TimeoutException _)
-			{
-				// Keep the output read so far
-			}
+			awaitReader();
 			int status = process.exitValue();
 			try
 			{
@@ -614,12 +613,42 @@ public final class WaitUntil
 		}
 
 		/**
+		 * Waits briefly for the reader to take in the rest of the output of a process that exited or was stopped.
+		 *
+		 * @throws InterruptedException if the thread is interrupted while the output is read
+		 */
+		private void awaitReader() throws InterruptedException
+		{
+			try
+			{
+				reader.get(OUTPUT_GRACE.toMillis(), TimeUnit.MILLISECONDS);
+			}
+			catch (ExecutionException | TimeoutException _)
+			{
+				// Keep the output read so far
+			}
+		}
+
+		/**
 		 * Returns the output read so far.
 		 *
 		 * @return the end of the run's output
 		 */
 		String output()
 		{
+			return tail.text();
+		}
+
+		/**
+		 * Returns the output of a process that was stopped, after waiting briefly for the reader to take in the output
+		 * that the process wrote before it stopped.
+		 *
+		 * @return the end of the run's output
+		 * @throws InterruptedException if the thread is interrupted while the output is read
+		 */
+		String drainOutput() throws InterruptedException
+		{
+			awaitReader();
 			return tail.text();
 		}
 
