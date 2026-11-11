@@ -380,8 +380,8 @@ public final class BundledRuleAudienceTest
 	 * Verifies an agent that is about to dispatch an expensive or shared-capacity verification run, or to act on a
 	 * failure that a run of changed code shows, can reach the packaged rules for those decisions: the testing and build
 	 * area index routes to the expensive-verification-runs rule, the failure area index routes to the failure-baseline
-	 * rule, and the expensive-verification-runs rule routes a run that spans targets of differing speed or capacity to
-	 * the build-workflow rule that orders those targets, which that rule states without the ordering being repeated.
+	 * rule, and the expensive-verification-runs rule itself states how to order a run that spans targets of differing
+	 * speed or capacity, without the build-workflow rule repeating that ordering.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -402,10 +402,10 @@ public final class BundledRuleAudienceTest
 				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/run-comparisons/failure-baseline.md`");
 			String expensiveRuns = oneLine(Files.readString(include.resolve("expensive-verification-runs.md")));
 			requireThat(expensiveRuns, "expensiveRuns").startsWith("# Expensive Verification Runs ").
-				contains("lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/build-workflow.md`").
-				doesNotContain("start that target first");
+				contains("start that target first or in parallel").
+				doesNotContain("build-workflow.md");
 			String buildWorkflow = oneLine(Files.readString(include.resolve("build-workflow.md")));
-			requireThat(buildWorkflow, "buildWorkflow").contains("start that target first or in parallel");
+			requireThat(buildWorkflow, "buildWorkflow").doesNotContain("start that target first or in parallel");
 			requireThat(Files.exists(include.resolve("run-comparisons/failure-baseline.md")),
 				"failureBaselineExists").isTrue();
 		}
