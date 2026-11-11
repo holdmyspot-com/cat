@@ -461,7 +461,8 @@ public final class BundledRuleAudienceTest
 	 * build area index and the CI debugging rule route to the upstream-fallbacks rule, whose guidance adds a fallback
 	 * that is tried only when the primary fails, accepts only an equivalent source whose content the same checks
 	 * verify, does not leave the agent only waiting for the provider to recover, and counts the fallback as verified
-	 * only after a run in the step's real environment with the primary forced to fail.
+	 * only after a run in the step's real environment with the primary forced to fail, which the agent's final reply
+	 * names as outstanding.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -494,7 +495,8 @@ public final class BundledRuleAudienceTest
 				contains("The fallback runs only when the primary fails").
 				contains("Never disable or relax a check to make a fallback work").
 				contains("instead of only waiting for the provider to recover").
-				contains("only after it has run once in the real environment where the step runs");
+				contains("only after it has run once in the real environment where the step runs").
+				contains("your final reply to the user says that the fallback is unverified and names that run");
 		}
 	}
 

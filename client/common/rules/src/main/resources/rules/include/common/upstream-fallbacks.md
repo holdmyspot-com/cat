@@ -22,16 +22,21 @@ upstream server, and when a job failed because such a server could not be reache
 refused or timed-out connection, or an error response during the provider's outage. It does not apply to a step that
 already falls back to a verified equivalent source, or to a failure with another cause.
 
-Give each such step a fallback to an equivalent source: a mirror that serves the same packages and that the same
-signature keys verify, such as one that the distribution publishes, or a release download pinned to a version with a
-checksum that the step compares. Keep the step's download and add the fallback to it; dropping or replacing the
-dependency is a different change. The fallback runs only when the primary fails, so that a healthy primary behaves as
-before. Add the fallback in the same change even when you cannot run the step's environment yourself.
+Keep the step's download and add a fallback to it; do not drop or replace the dependency, even when the job's tools
+could be supplied another way. The fallback is an equivalent source: a mirror or archive that serves the same packages
+and that the same signature keys verify, such as the official archive that the distribution itself publishes, or a
+release download pinned to a version with a checksum that the step compares. The project need not name that source: take
+the distribution and release from the job's log and workflow, not from your local machine. The fallback runs only when
+the primary fails, so that a healthy primary behaves as before. Add the fallback in the same change even when you cannot
+run the step's environment yourself; do not leave the step unchanged because the fallback is unverified, since a later
+run verifies it, as described below.
 
-A source is equivalent only when its content passes the integrity checks that the primary's content passes. Never
-disable or relax a check to make a fallback work, such as turning off signature verification, trusting unsigned
-packages or skipping a checksum. When a candidate's content cannot be verified, it is not a fallback: choose another or
-report that none exists.
+A source is equivalent only when its content passes the integrity checks that the primary's content passes, and the step
+applies those checks itself when it runs: the signing keys that the environment already trusts verify the distribution's
+official archive, and the step's own comparison verifies a pinned download, so you need not fetch the candidate to
+confirm it. Never disable or relax a check to make a fallback work, such as turning off signature verification, trusting
+unsigned packages or skipping a checksum. When a candidate's content cannot pass those checks, it is not a fallback:
+choose another or report that none exists.
 
 When an outage of such a server broke a run, add the fallback to the failing step instead of only waiting for the
 provider to recover or rerunning until it does. Waiting for recovery may continue as a parallel track; it does not
@@ -39,9 +44,10 @@ replace the fallback.
 
 A fallback counts as verified only after it has run once in the real environment where the step runs, such as the same
 runner image or hosted worker, with the primary forced to fail, or during a real outage of the primary. Stubs and a
-local machine do not count: they do not model that environment's own source configuration. Until that run, say that the
-fallback is unverified and name that run; the next ordinary run does not verify it. Force the primary to fail on that
-machine only, without affecting anything else: make its host names unresolvable or point them at an unreachable address,
-such as through the hosts file, or point the step at an invalid primary through its configuration. Make this a one-off
-verification run, not a permanent step of every build, so that routine builds do not depend on the fallback source. A
-disposable worker needs nothing restored.
+local machine do not count: they do not model that environment's own source configuration, and the next ordinary run
+does not verify it. Until that run, your final reply to the user says that the fallback is unverified and names that
+run, whether or not the user asked about verification. Force the primary to fail on that machine only, without affecting
+anything else: make its host names unresolvable or point them at an unreachable address, such as through the hosts file,
+or point the step at an invalid primary through its configuration. Make this a one-off verification run, not a permanent
+step of every build, so that routine builds do not depend on the fallback source. A disposable worker needs nothing
+restored.
