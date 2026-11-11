@@ -146,8 +146,8 @@ public final class BundledRuleAudienceTest
 	@Test
 	public void questionGuidanceReachesAskingAgents() throws IOException, URISyntaxException
 	{
-		String questionGuidance = "Before asking the user a question, identify the unresolved product decision or " +
-			"material architecture/design decision that requires their input.";
+		String questionGuidance = "and apply its product-policy and material architecture/design classification; that " +
+			"rule decides which decisions the user must settle.";
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
