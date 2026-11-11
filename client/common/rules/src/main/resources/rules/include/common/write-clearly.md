@@ -12,6 +12,8 @@
 - Distinguish advisory guidance from an enforcement boundary when reporting how a change addresses a failure.
 - Let a reader of text that states a behavior they would not predict see which assumption fails and why, through a
 	concrete case, and tell what was observed from causes that remain unknown.
+- Let the reader see any text a message refers to, because it is restated or was shown shortly before, instead of
+	relying on text that is out of view.
 - Let each reader find, where they meet the text, the answer to the question they bring there, without facts that serve
 	another reader or place.
 
@@ -82,7 +84,8 @@ understand it, act correctly, verify a material claim, or avoid a material misun
 repeated conclusions, redundant summaries, optional examples, and alternatives the reader does not need to choose
 among. Use a list only when it makes parallel items easier to scan.
 
-Concision does not permit omitting a condition, uncertainty, consequence, recovery action, or causal explanation that
+Concision does not permit leaving out text that the message refers to when that text is not visible to the reader, as
+the section on showing referred text defines. It also does not permit omitting a condition, uncertainty, consequence, recovery action, or causal explanation that
 changes the reader's decision. Before finalizing, remove repetition and optional elaboration, then confirm that the
 remaining response is readable and complete for the requested outcome. Do not remove a sentence merely because it is
 explanatory or does not itself prescribe an action.
@@ -91,6 +94,22 @@ When discussing different scenarios, consider a compact visual before writing th
 repeated distinctions, a timeline for changing states, or a tree for branching choices when it makes a material
 relationship easier to understand. Prefer a short sentence when the contrast is already clear without a visual; do not
 repeat the same explanation in both forms.
+
+## Show the Text You Refer To
+
+When a message to the user refers to text, such as an option, proposal, wording, quotation, file content, or an
+earlier answer, the reader must be able to see that text without searching. Treat the text as visible only when your
+own messages to the user displayed it within the last 4,000 characters (about one page) before the reference. Text
+that your tools returned, a file you read, and anything the user was not shown are not visible, whatever their
+distance. Restate other text in the message beside the reference. When the whole is long, restate the excerpt that the
+reader needs for the decision or claim and say where the rest is. A label or short name for the text, such as "adopt
+s6" or "the second wording", does not restate it: give the text itself, or the concrete action and consequence it
+stands for, beside the label.
+
+This requirement outranks the shortest-complete-response preference above for the referred text only: restate it once,
+at the point of reference, and omit any other repetition. Do not restate text that sits within the last 4,000
+characters, or a reference that only names an artifact the reader does not need to read, such as a path for the
+reader to open later.
 
 ## Explain Decisions From Observable Facts
 
