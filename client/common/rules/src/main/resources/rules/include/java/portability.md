@@ -32,7 +32,8 @@ that macOS `env` lacks, hung on macOS; sending the interrupt as a request on the
 signal from both the product and the test.
 
 A passing run on one operating system does not establish portability. When new functionality relies on behavior that
-can differ between operating systems, test it on each target system through the project's CI platform matrix or
-interactively on a remote runner, using a remote-runner-session skill when available. Decide locally from those
+can differ between operating systems, test it on each target system through the project's CI platform matrix or,
+when a project workflow runs it, interactively on that workflow's remote runner, using the `cat:remote-runner-session`
+skill when available. Decide locally from those
 results whether to keep, revise, or remove the feature. When this session cannot reach CI or remote runners, do not
 claim that the change is portable. Report each target system as unverified so that a session with access can verify it.

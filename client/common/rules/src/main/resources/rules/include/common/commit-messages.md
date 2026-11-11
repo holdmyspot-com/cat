@@ -1,3 +1,7 @@
+---
+depends-on:
+  - ./write-clearly.md
+---
 # Commit Messages
 
 ## Design Goals

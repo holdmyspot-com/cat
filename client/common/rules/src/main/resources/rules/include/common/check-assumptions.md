@@ -171,16 +171,13 @@ authority at the later point of use, then follow the proposed conclusion or proc
 an unstated fact, recover an unpreserved decision, obtain an unmentioned artifact, or perform an unsupported action,
 reopen the premise trace. Do not use a successful current-session execution as evidence that this replay will work.
 
-Write prompts as executable guidance for their actual environment. Do not describe a workflow, artifact, capability,
-handoff, exception, or recovery path that the known workflow does not create or make available: it gives the reader no
-action to perform. Retain a conditional path only when the prompt names the condition under which it can exist and tells
-the reader how to verify or obtain it. For an external dependency, state the dependency and stop; do not describe an
-unavailable internal alternative as though the reader could select it.
+When writing or changing a prompt instruction that requires an outcome, lazy load `prompt-prerequisites.md`; it governs
+the instruction's prerequisites.
 
-Before requiring work that the current actor does not synchronously start and observe, identify the mechanism that
-starts it and returns its result. Name the trigger or event source, the executor that remains active while the actor is
-busy or absent, the delivery path that returns control or a result to the required consumer, its lifetime, and evidence
-that the required action occurs. A prompt, rule, or stated intention does not schedule itself, wake a busy agent, run a
+Before a plan or workflow requires work that the current actor does not synchronously start and observe, identify the
+mechanism that starts it and returns its result. Name the trigger or event source, the executor that remains active
+while the actor is busy or absent, the delivery path that returns control or a result to the required consumer, its
+lifetime, and evidence that the required action occurs. A prompt, rule, or stated intention does not schedule itself, wake a busy agent, run a
 background action, or deliver a callback. If the mechanism is absent, either provide and verify an authorized scheduler,
 monitor, callback, worker, handoff, or bounded control-return mechanism, make the behavior conditional on an existing
 mechanism, or state the external dependency. Apply this to progress reports, retries, polling, cleanup, notifications,

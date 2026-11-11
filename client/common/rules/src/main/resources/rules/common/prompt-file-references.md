@@ -3,6 +3,7 @@ paths:
   - "**/skills/**/*.md"
   - "**/agents/**/*.md"
   - "**/rules/**/*.md"
+  - "**/main/resources/optimizer/**/*.md"
 ---
 # Prompt File References
 

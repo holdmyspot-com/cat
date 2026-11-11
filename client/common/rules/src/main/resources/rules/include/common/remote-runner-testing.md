@@ -30,22 +30,11 @@ or let the workflow start them only after a readiness signal that you send throu
 are connected. A session that the workflow opens only after a step fails does not meet this rule, because the changed
 commands have already run unobserved.
 
-If the project's workflow integration cannot keep the worker or give you that access, report the missing piece and
-repair the integration before the remote test. Do not fall back to running the changed commands unattended.
-
-Keep the session open while the changed commands run and while you diagnose and retry a failure. When a changed command
-fails on the worker, lazy load `build-workflow.md` before you choose where to resume, and apply it on the same worker
-and in the same workspace: keep its valid outputs and the original failure's evidence. Do not end the session to start
-a replacement worker. If only your client's connection drops while the worker is still available, reconnect to the same
-worker and verify its retained state before you continue.
+When a changed command fails on the worker, lazy load `build-workflow.md` before you choose where to resume, and apply
+it on the same worker and in the same workspace: keep its valid outputs and the original failure's evidence. The
+skill's "Diagnose and retry" and "Shut down and verify" sections direct keeping the session open, reconnecting, ending
+the session, observing cleanup, and reporting an expired or idle-ended session.
 
 Record the live connection, the commands you ran, their results, and the state that the worker retained. Report the
 original failure and a later successful retry as separate results. Starting a session, publishing its connection
 details, or printing a login banner does not show that a command ran.
-
-As soon as the changed commands, any retries and the task's required clean verification no longer need the worker,
-exit the remote shell deliberately, wait for your client process to end, and observe the provider's terminal job and
-cleanup result. If you cancelled the job's remaining steps after the shell exited because nobody needed their results,
-report a deliberate shutdown whose cleanup was not observed, not a passing or failing job. If the session expires
-before anyone connects, or ends because it was left idle, report that outcome with the original logs instead of a
-passing test.

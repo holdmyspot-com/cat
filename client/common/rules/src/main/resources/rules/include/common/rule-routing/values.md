@@ -7,9 +7,9 @@
 
 ## Guidance
 
-Before defining or changing a method, field, variable, or other code that represents, accepts, returns, validates,
-converts, or calculates money—including a price, charge, balance, fee, payment, tax, or discount—first lazy load
-`../money.md`.
+Before defining, changing, reviewing, or auditing a method, field, variable, or other code that represents, accepts,
+returns, validates, converts, or calculates money—including a price, charge, balance, fee, payment, tax, or
+discount—first lazy load `../money.md`.
 
 Before choosing the numeric representation of a calculation, or of a numeric parameter or result, that is not money,
 lazy load `../numeric-precision.md`.
@@ -20,7 +20,8 @@ value or contents of an existing one, lazy load `../../documentation/declared-va
 When declaring an object's field, or writing or editing a constructor that assigns one, lazy load
 `../field-initialization.md`.
 
-When a repeated value represents one shared concept, lazy load `../constants.md`.
+When a repeated value represents one shared concept, or when writing a literal that is a directory segment, persisted
+filename prefix, configuration key, or generated artifact name, lazy load `../constants.md`.
 
 When writing or changing code that stores a file path in a file, database, or other durable record, lazy load
 `../persisted-paths.md`.

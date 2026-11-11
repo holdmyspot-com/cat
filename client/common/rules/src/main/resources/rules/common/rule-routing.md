@@ -93,8 +93,8 @@ Before recommending, designing, implementing, or reviewing a change to code, con
 plan, lazy load `../include/common/backward-design.md`, then `../include/common/design-quality.md`. A local rename,
 formatting edit, or other mechanical change that preserves the existing design does not need them.
 
-When writing, changing, reviewing, or auditing source code or configuration, including a command-line option, launch or
-build setting, manifest entry, or module declaration, or accessing environment-dependent state, lazy load
+When writing, changing, reviewing, or auditing source code or configuration, including a command-line option, launch,
+build, container or sandbox setting, manifest entry, or module declaration, or accessing environment-dependent state, lazy load
 `../include/common/rule-routing/code.md`.
 
 Before designing, implementing, defining, changing, reviewing, auditing, removing, replacing, renaming, or ending
@@ -105,10 +105,11 @@ calls, or noticing that calls pass a method equal values; when writing or changi
 operation that can create an externally durable effect; or when selecting a platform or available project API, lazy
 load `../include/common/rule-routing/interfaces.md`.
 
-Before defining or changing code that handles money or choosing a numeric representation; when declaring a variable
+Before defining, changing, reviewing or auditing code that handles money, or choosing a numeric representation; when declaring a variable
 outside a function body or an object's field, changing such a variable's value or contents, or writing or editing a
-constructor that assigns a field; when a repeated value represents one shared concept; or when writing or changing code
-that stores a file path in a durable record, lazy load `../include/common/rule-routing/values.md`.
+constructor that assigns a field; when a repeated value represents one shared concept, or when writing a literal that is
+a directory segment, persisted filename prefix, configuration key, or generated artifact name; or when writing or
+changing code that stores a file path in a durable record, lazy load `../include/common/rule-routing/values.md`.
 
 When declaring a type, function, method, or constructor, creating a script, command, or configuration entry, or
 changing the signature of one; when writing or editing a document, release notes, a changelog, the documentation of
@@ -118,7 +119,8 @@ across existing code or documentation, lazy load `../include/common/rule-routing
 Before changing testable production behavior or selecting or reporting a command as evidence that a project's build
 passes, and when creating, designing, changing, reviewing, or debugging tests, a build script, pipeline, or multi-step
 build, or a CI or hosted workflow; when the project's build, tests or scripts fail on a machine other than the local
-one, whatever the task is called, including a release step; when running a build or test suite, selecting,
+one, whatever the task is called, including a release step; when running a build or test suite, starting, dispatching
+or requesting a workflow run or probe that takes many minutes or draws on capacity that others share, selecting,
 configuring, or reusing a build or workflow cache, or running such a workflow on a remote runner; or when introducing or
 repairing an expensive many-unit workflow, lazy load `../include/common/rule-routing/testing-and-builds.md`.
 
@@ -130,16 +132,19 @@ Before applying a change, or adding functionality, that is meant to improve the 
 lazy load `../include/common/performance-changes.md`.
 
 When a failure, a compiler, linter, or static-analysis warning or finding, a scope violation, a misapplied instruction,
-an apparently absent condition or apparent limitation, an incorrect or unavailable workflow dependency, a validator or
+an apparently absent condition or apparent limitation, a restriction, refusal or failed precondition that stops an
+attempted path, an incorrect or unavailable workflow dependency, a validator or
 other workflow gate rejecting generated output, or a required gate that is skipped or substituted arises or is
-reported; when an external defect makes you consider a workaround; when adding, catching, translating, reporting,
+reported; when an external defect makes you consider a workaround or an upstream fix for a defect that a `WORKAROUND:` marker
+names is adopted; when adding, catching, translating, reporting,
 analyzing, preventing, suppressing, or working around one, or disabling, excluding, or relaxing a check; or before
 invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
 `../include/common/rule-routing/failures.md`.
 
 Before creating, reviewing, or revising an implementation plan for AI agents, delegating work, starting or
 requesting a new agent session yourself, for example to test a plugin or a fresh installation in a separate session,
-including from inside a CAT run, or sending information to another agent, and when designing, updating, or
+including from inside a CAT run, or sending information to another agent, when you receive the path of an artifact that
+another agent wrote and that is too large to read in one tool output, and when designing, updating, or
 executing a workflow that delegates work, exchanges information between agents, or hands off, retries, or resumes
 progress; when executing a multi-step plan or goal; when dispatching independent work units to run concurrently; when
 applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
@@ -149,7 +154,6 @@ needs a state change that something else produces, lazy load `../include/common/
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, or creating or revising
 a Git commit message, lazy load `../include/common/rule-routing/git.md`.
 
-When adding, updating, moving, splitting, merging, renaming, removing, regenerating, reviewing, or auditing a prompt
 When adding, updating, moving, splitting, merging, renaming, removing, regenerating, reviewing, or auditing a prompt
 file (a rule, route index, skill, agent definition, command, workflow definition, or other prompt text that CAT ships)
 in a way that changes the text any agent receives or when it receives it, when writing or changing a prompt instruction
@@ -163,7 +167,8 @@ Before writing a time or date in a response, report, or other text for the user,
 log, identifier, or commit message, including a timestamp that a tool, log, API, or command returned, lazy load
 `../include/common/user-timezone.md`.
 
-When starting, waiting for, or resuming an external command, harness, or tool session, lazy load
+When starting, waiting for, or resuming an external command that can outlast one tool result, a harness, or a tool
+session, or when defining or changing a resumable workflow's controller or its status or recovery operation, lazy load
 `../include/common/execution-lifecycle.md`.
 
 When writing a shell command that may need approval or a sandbox exception, lazy load

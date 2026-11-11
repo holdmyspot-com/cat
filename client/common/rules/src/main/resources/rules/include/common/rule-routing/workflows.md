@@ -19,7 +19,8 @@ multi-step plan whose next work unit you choose.
 Before delegating work to a subagent, or when designing, updating, or executing a prompt-driven workflow that delegates
 work, lazy load `../delegation.md`.
 
-Before sending a task, result, correction request, or other information to another agent, or when designing a workflow
+Before sending a task, result, correction request, or other information to another agent, when you receive the path of
+an artifact that another agent wrote and that is too large to read in one tool output, or when designing a workflow
 whose agents exchange information, lazy load `../agent-handoffs.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load `../temporary-resources.md`.
@@ -30,5 +31,5 @@ separate session, including from inside a CAT run, lazy load `../harness-runners
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
 exiting or a subagent returning, lazy load `../external-waits.md` before you check that state or continue other work.
 
-When defining or changing a workflow with progress handoff, retry, or resumption, or before dispatching independent
-work units to run concurrently, lazy load `../monotonic-progress.md`.
+When defining, changing, executing, retrying, or resuming a workflow with progress handoff, retry, or resumption, or
+before dispatching independent work units to run concurrently, lazy load `../monotonic-progress.md`.

@@ -22,6 +22,11 @@ configuration, environment values, and prior steps. In each context, name the me
 prerequisite before the instruction needs it. Inspect the provider's actual contract or behavior, whether it is another
 prompt instruction, a hook, launcher or runner setup, a tool contract, or a documented harness default. The instruction
 itself may establish a prerequisite. Do not infer provision from a mechanism's name or the author's own environment.
+A required outcome that the reader does not start and observe synchronously, such as a retry, notification, cleanup or
+background job, has the prerequisite of a mechanism that starts it and returns its result: name its trigger or event
+source, the executor that remains active while the reader is busy or absent, the delivery path to the consumer, its
+lifetime, and evidence that the action occurs. A prompt or stated intention does not schedule itself, wake a busy agent
+or deliver a callback.
 
 When a prerequisite has no verified provider in a context, resolve it before accepting the instruction:
 
@@ -29,6 +34,8 @@ When a prerequisite has no verified provider in a context, resolve it before acc
 2. Make the instruction establish it first.
 3. Condition the instruction on it and state how the reader checks it and what to do when it is absent.
 4. Remove or narrow the requirement.
+5. For an external dependency that no mechanism of the prompt can establish, state the dependency and stop; do not
+	describe an unavailable internal alternative as though the reader could select it.
 
 Recheck the chosen resolution in each affected context. Do not leave the reader to discover or improvise a missing
 prerequisite. A user-supplied request input may remain an explicit input; it does not need a setup mechanism. An

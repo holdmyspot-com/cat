@@ -54,10 +54,9 @@ task condition that requires the target and use an imperative instruction such a
 observable trigger directly to its final focused rule; retain an intermediate index only when it supplies an
 independently applicable decision contract. State another file as a prerequisite only when the reader can reach the
 route without already loading that file through the same index; otherwise, name only the additional file. `paths`
-frontmatter may supply the trigger only when the path pattern alone identifies that condition. Keep the trigger separate
-from the required outcome: state the outcome in the required action, outcome, or Design Goals instead. Keep material
-together when it has the same trigger, decision contract, and verification; do not create a companion merely to
-separate mechanical variants or short related details.
+frontmatter may supply the trigger only when the path pattern alone identifies that condition. Follow Prompt File
+References for the wording of a route. Keep material together when it has the same trigger, decision contract, and
+verification; do not create a companion merely to separate mechanical variants or short related details.
 
 When a focused companion has one governing parent rule or prompt, express that relationship in its path: place it in a
 directory named after the parent filename without `.md`, and name the companion for its distinct decision. For example,

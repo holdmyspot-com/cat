@@ -21,17 +21,20 @@ When running a CI or hosted workflow on a remote runner to test changed commands
 
 Before changing testable production behavior, lazy load `../tdd.md`.
 
-When designing, changing, or reviewing tests, lazy load `../testing.md`.
+When designing, changing, running to verify a change, or reviewing tests, lazy load `../testing.md`.
 
-Before starting or dispatching a build, test suite or workflow run that takes many minutes or draws on capacity that
-others share, such as the runners of a hosted workflow, lazy load `../expensive-verification-runs.md`.
+Before starting, dispatching or requesting a build, test suite, workflow run or probe that takes many minutes or draws
+on capacity that others share, such as the runners of a hosted workflow, lazy load
+`../expensive-verification-runs.md`.
 
-When a test's outcome varies between runs of unchanged code and inputs, or a test that should reproduce a problem
-triggers it on only some runs, lazy load `../flaky-tests.md` before changing, rerunning, or removing that test.
+When a test's outcome varies between runs of unchanged code and inputs, a test that should reproduce a problem
+triggers it on only some runs, or before adding a randomized or property-based test, lazy load `../flaky-tests.md` before changing, rerunning, or removing that test.
 
 When a test creates or shares a fixture, lazy load `../temporary-resources.md`.
 
-When running a build or selecting, configuring, or reusing a build or workflow cache, lazy load `../build-caching.md`.
+When running a build, when a revision's tests are about to run again (a rerun, a filtered subset, a repeated stress run
+or a run on another machine), or when selecting, configuring, or reusing a build or workflow cache, lazy load
+`../build-caching.md`.
 
 When creating, updating, or debugging a build script, pipeline, or multi-step build, or introducing or repairing an
 expensive many-unit workflow, lazy load `../build-workflow.md`.

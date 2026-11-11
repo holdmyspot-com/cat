@@ -28,7 +28,8 @@ A design must:
 - Preserve codebase coherence: use established terminology, abstractions, module boundaries, and conventions unless a
 	deliberate replacement improves them consistently.
 - Reuse suitable existing project and JDK facilities before introducing new abstractions, dependencies, or
-	reimplementations.
+	reimplementations. When the need is a named standardized format or another externally defined capability, lazy load
+	`./prefer-reuse.md` to select among the project, the platform, and permitted external dependencies.
 - Add an extension boundary only when a supported variation needs independently replaceable behavior; otherwise keep
 	the behavior direct. Do not introduce a configurable abstraction merely for a hypothetical future variation.
 - Do not require a caller or user to investigate, select, derive, or perform routine work that the system can safely

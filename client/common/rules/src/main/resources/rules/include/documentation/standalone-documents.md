@@ -37,6 +37,4 @@ implementation details unless they change a reader's decision, action, right, ob
 documented claim. An intentional historical record may state a past product contract when that history itself is the
 reader's subject; do not turn it into a record of how the document was produced.
 
-Write a checkout location relative to the project root. Write a user-owned location with `~`, not an author-specific
-absolute home directory. Runtime code resolves the same user-owned location from `HOME`. Preserve an absolute path only
-when an intentional historical record needs the exact captured value as evidence.
+When a document names a checkout location or a user-owned location, lazy load `../common/environment.md`.

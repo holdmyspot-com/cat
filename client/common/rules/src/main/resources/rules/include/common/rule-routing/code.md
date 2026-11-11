@@ -34,8 +34,9 @@ When creating, moving, or renaming a top-level implementation or test type, lazy
 When accessing environment-dependent state, or writing an absolute path inside a user's home directory into code,
 configuration, or tests, lazy load `../environment.md`.
 
-When adding or widening a command-line option, launch or build setting, manifest entry, or module declaration that
-grants code a permission or access, or that adds modules to a runtime or image, lazy load `../minimal-grants.md`.
+When adding or widening a command-line option, launch, build, container or sandbox setting, manifest entry, or module
+declaration that grants code a permission or access, or that adds modules to a runtime or image, lazy load
+`../minimal-grants.md`.
 
 When writing or changing code, including a test, that looks up or invokes a type, function, method, field, or module by
 a name at runtime or overrides access control to reach a non-public member, or that needs non-public behavior of

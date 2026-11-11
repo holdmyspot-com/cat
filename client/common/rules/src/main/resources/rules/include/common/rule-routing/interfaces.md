@@ -28,8 +28,9 @@ reviewing or auditing a class, or noticing that every call made on an instance p
 lazy load `../../class-design/constructor-parameters.md`.
 
 Before designing or implementing a feature that promises a reliable, complete, automatic, general, or deterministic
-result, or a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
-benefit, or other future outcome, lazy load `../design-feasibility.md`.
+result, a workflow that chooses, stops, or changes strategy based on a predicted cost, duration, probability,
+benefit, or other future outcome, or a feature that relies on another program's or service's records, events or
+receipts to prove a fact, lazy load `../design-feasibility.md`.
 
 When removing, replacing, renaming, or ending compatibility for a supported contract, lazy load
 `../contract-retirement.md`.

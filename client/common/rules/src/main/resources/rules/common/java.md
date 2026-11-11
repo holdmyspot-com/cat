@@ -4,6 +4,7 @@ paths:
   - "**/*.java"
   - "pom.xml"
   - "**/pom.xml"
+  - "**/.mvn/**"
 ---
 # Java Rule Routing
 
@@ -56,7 +57,7 @@ When writing or reviewing Java control flow that classifies a value against name
 
 When handling Java exceptions or writing Java code that throws one, lazy load `../include/java/exceptions.md`.
 
-When defining Java POSIX permission values, lazy load `../include/java/constants.md`.
+When defining Java POSIX permission values or converting them to integer mode bits, lazy load `../include/java/constants.md`.
 
 When writing or changing Java code that performs a general-purpose operation, such as a null check or a collection,
 path, string, time, numeric, or concurrency operation, lazy load `../include/java/standard-apis.md`.

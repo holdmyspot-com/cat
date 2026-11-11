@@ -7,7 +7,7 @@
 
 ## Guidance
 
-Before asking the user a question, identify the unresolved product decision or material architecture/design decision
-that requires their input. Ask only when the request, prior decisions, governing contract, and available evidence do
-not settle it. Explain the concrete alternatives, their consequences, and your recommendation. A question about missing
-information qualifies only when that information is needed to settle such a decision.
+Before asking the user a question, lazy load `request-execution/gap-classification.md` and apply its product-policy
+and material architecture/design classification; that rule decides which decisions the user must settle. Present the
+concrete alternatives, their consequences, and your recommendation. A question about missing information qualifies only
+when that information is needed to settle such a decision.

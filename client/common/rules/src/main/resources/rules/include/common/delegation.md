@@ -150,9 +150,9 @@ the authoritative plan and its acceptance evidence before a fresh execution atte
 delivery, absent launch invocation, or missing terminal receipt is a parent delivery failure: repair or resend the
 handoff and obtain a new receipt. Handle a completed execution failure at the boundary its evidence identifies as
 responsible. Do not present a parent delivery failure as executor, plan, or external-prerequisite evidence, and do not
-use it to justify a goal-level blocked state. A repeated external-prerequisite claim requires receipts that identify the
-same prerequisite, unavailable state, and restoring actor or action; different handoff or execution failures begin
-distinct recovery paths.
+use it to justify a goal-level blocked state. When a delegated operation's failure is reported as blocked, lazy load
+`./intermediate-vs-terminal-goals/blocked-status.md` for the evidence that a repeated failure and an external
+prerequisite require.
 
 Before every delegation-related tool call, select the operation from the requested action. Establish its state from
 the current tool contract and, when waiting, that operation's successful creation receipt. Classify the selected

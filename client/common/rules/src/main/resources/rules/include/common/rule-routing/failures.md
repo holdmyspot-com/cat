@@ -10,8 +10,9 @@
 
 When adding, catching, translating, or reporting a failure, lazy load `../error-handling.md`.
 
-Before classifying a failure or other behavior as an external or upstream defect, and when considering a workaround for
-an external defect, lazy load `../external-workarounds.md`.
+Before classifying a failure or other behavior as an external or upstream defect, when considering a workaround for an
+external defect, and when adopting an upstream fix for a defect that a `WORKAROUND:` marker names, lazy load
+`../external-workarounds.md`.
 
 When analyzing a reported or newly observed unexpected failure, discovering that an earlier action violated the
 user-authorized scope, diagnosing why an agent ignored or misapplied an instruction, or designing a prevention, and
@@ -36,8 +37,8 @@ a long local build, or a long probe, lazy load `../diagnostic-runs.md`.
 When a run of changed code shows a failure, a timeout or an intermittent result, before you say or act on whether the
 change caused it, lazy load `../run-comparisons/failure-baseline.md`.
 
-When assessing an apparently absent condition, a helper's apparent limitation, or a proposed workaround, lazy load
-`../limitations-and-workarounds.md`.
+When assessing an apparently absent condition, a helper's apparent limitation, or a proposed workaround, or when a
+restriction, refusal or failed precondition stops an attempted path, lazy load `../limitations-and-workarounds.md`.
 
 When executing a maintained instruction, prompt, skill, rule, or workflow exposes an incorrect or unavailable
 dependency, when a validator, capture, review, or other workflow gate rejects generated output, or when a required

@@ -10,7 +10,9 @@
 
 When the Java platform or an available project API already provides behavior whose contract satisfies the need, use it
 instead of recreating that behavior. Reimplement it only when the required contract, failure semantics, performance, or
-dependency boundary materially differs; state the difference in the surrounding design or code.
+dependency boundary materially differs; state the difference in the surrounding design or code. When the behavior is a
+named standardized format or another externally defined capability, lazy load `../common/prefer-reuse.md` before
+choosing among the platform, the project, and external dependencies.
 
 For example, use `Objects.requireNonNull(value, name + " may not be null")` instead of manually testing `value` and
 throwing the same `NullPointerException`. The same principle applies to collection, path, string, time, numeric, and
