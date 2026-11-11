@@ -414,10 +414,11 @@ public final class BundledRuleAudienceTest
 	/**
 	 * Verifies an agent that waits for a hosted workflow run with several jobs, or sees one of its jobs fail while
 	 * others still run, can reach the packaged rules for those decisions: the workflow area index routes to the
-	 * external-waits rule, whose guidance ends the wait on the first failed job and directs the agent to fix it at once;
-	 * the testing and build area index routes the failed-job situation to the expensive-verification-runs rule, whose
-	 * guidance decides whether the rest of the run continues, including how to check for an existing cache entry; and
-	 * neither rule states the other's decision.
+	 * external-waits rule, whose guidance ends the wait on the first failed job, sends the agent to the
+	 * expensive-verification-runs rule before any new wait, and directs it to fix the failure at once; the testing and
+	 * build area index routes the failed-job situation to the expensive-verification-runs rule, whose guidance decides
+	 * whether the rest of the run continues, including how to check for an existing cache entry; and neither rule states
+	 * the other's decision.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -443,7 +444,11 @@ public final class BundledRuleAudienceTest
 			requireThat(externalWaits, "externalWaits").
 				contains("wait for the first failed part as well as for the whole operation").
 				contains("per-part status interface").
-				contains("start diagnosing and fixing it at once, while the other parts run").
+				contains("before you start any new wait, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/expensive-verification-runs.md`").
+				contains("Start a new wait only for the parts that the decision keeps").
+				contains("start diagnosing and fixing the failure at once").
+				contains("Do not wait on it, through `--watch` or by running it yourself").
 				doesNotContain("cancel the run now");
 
 			String expensiveRuns = oneLine(Files.readString(include.resolve("expensive-verification-runs.md")));
@@ -451,6 +456,7 @@ public final class BundledRuleAudienceTest
 				contains("whether the rest of the run has value").
 				contains("list the repository's cache entries for it").
 				contains("cancel the run now through the hosting service").
+				contains("Neither a request to wait for the run to finish").
 				doesNotContain("per-part status interface");
 		}
 	}

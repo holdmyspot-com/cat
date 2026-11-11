@@ -69,9 +69,12 @@ it running only when it produces something that you need:
 	and this run's cache is not needed either.
 - Results of other jobs that would reveal failures that the next run would otherwise need a further round to show, such
 	as the same step on another platform that you have not reproduced. A job that runs steps that your fix cannot
-	affect, or whose results you already have from an earlier run on the same revision, reveals nothing new.
+	affect, whose results you already have from an earlier run on the same revision, or that is still queued for
+	capacity and may not start for a long time, reveals nothing new.
 - A worker that an open interactive session of yours still uses.
 
-When none of these applies, cancel the run now through the hosting service, without waiting for the other jobs to end,
-and record that you cancelled it and why. A run that someone else started is theirs to cancel, as above. When you keep
-the run, record what it is kept for, and cancel it once that result exists or the next run supersedes it.
+Neither a request to wait for the run to finish nor the wish to report every job's result is a reason to keep it: the
+failed job already shows that this revision will be replaced. When none of the reasons above applies, cancel the run now
+through the hosting service, without waiting for the other jobs to end, and record that you cancelled it and why. A run
+that someone else started is theirs to cancel, as above. When you keep the run, record what it is kept for, and cancel
+it once that result exists or the next run supersedes it.
