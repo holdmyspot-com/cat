@@ -7,6 +7,11 @@
 	revision never stands as the claim for its replacement.
 - A run is not started when a running or finished run already answers its question on the same revision, and agents
 	working at once know which runs exist.
+- Spend a slow or scarce target's run only when it is likely to answer for the revision that ships: after the other
+	targets pass while the workflow is being changed or repaired, and without waiting for them once the round is
+	expected to pass.
+- A run that a newer run supersedes stops consuming time and resources once nothing needs its result, when the agent
+	started it, while a run that someone else started is left to its owner.
 
 ## Guidance
 
@@ -23,6 +28,19 @@ and neither does a task that requires a run of the revision as it stands. Do not
 already superseded. A result on an earlier revision does not support the claim for the replacement: verify the
 replacement itself.
 
+When the build or workflow must pass on several targets, such as platforms, runners or jobs, and one target is much
+slower or has scarcer capacity than the others, choose when to start it from whether a failure on another target is
+likely:
+
+- While you introduce, change or repair the workflow, or iterate on a fix, a failure elsewhere is likely and would
+	replace the revision, so a slow or scarce run started earlier would answer for a revision that no longer exists. Start
+	that target last, after the other targets pass on the same revision.
+- Once the workflow is stable and the round is expected to pass, such as the acceptance run on the revision that ships,
+	start that target first or in parallel with the others: it is probably the critical path, and starting it last only
+	lengthens the wait.
+
+The ordering decides when to start each target. It never removes a target that the acceptance gate requires.
+
 Before you dispatch onto shared capacity, look at what is queued and running there, including runs that other agents or
 people started, and at the record that the agents on this task share, such as the plan or task record. Start the run
 only when no running or finished run already answers the same question on the same revision; when one does, wait for it
@@ -31,9 +49,6 @@ its revision, its question and its identity, where the other agents read it. Whe
 shared record states which runs exist, the agent that coordinates the work decides which runs are dispatched, and the
 others ask it instead of dispatching their own.
 
-When one run must pass on several targets, such as platforms, runners or jobs, and one target is much slower or has
-scarcer capacity than the others, lazy load `build-workflow.md` before you choose when to start each target: whether a
-failure elsewhere is likely decides if the slow target starts last or first.
-
-Cancel only a superseded run that you started. A run that someone else started is theirs to cancel, even when it looks
-superseded: tell its owner.
+When a newer run supersedes one that you started, such as a rerun after a fix, cancel the earlier run once nothing needs
+its result, neither the current diagnosis nor other work. Cancel only a superseded run that you started. A run that
+someone else started is theirs to cancel, even when it looks superseded: tell its owner.

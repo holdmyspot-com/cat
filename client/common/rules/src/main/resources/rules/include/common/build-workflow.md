@@ -6,9 +6,6 @@
 	scopes before progressively reaching the complete scope.
 - Preserve valid successful-step outputs while repairing a build workflow until it passes end to end incrementally.
 - Follow incremental success with verification of the same revision from a clean start before claiming the build passes.
-- Spend a slow or scarce target's run only when it is likely to answer for the revision that ships: after the other
-	targets pass while the workflow is being changed or repaired, and without waiting for them once the round is
-	expected to pass.
 
 ## Guidance
 
@@ -31,16 +28,3 @@ clean full acceptance. A small stage may prove workflow behavior without produci
 run's configuration. Do not restart from a clean state on each attempt. First get the workflow to pass end to end
 incrementally, reusing valid outputs. Then, before verifying that same revision from a clean start, lazy load
 `build-verification.md`.
-
-When the build or workflow must pass on several targets, such as platforms, runners or jobs, and one target is much
-slower or has scarcer capacity than the others, choose when to start it from whether a failure on another target is
-likely:
-
-- While you introduce, change or repair the workflow, or iterate on a fix, a failure elsewhere is likely and would
-	replace the revision, so a slow or scarce run started earlier would answer for a revision that no longer exists. Start
-	that target last, after the other targets pass on the same revision.
-- Once the workflow is stable and the round is expected to pass, such as the acceptance run on the revision that ships,
-	start that target first or in parallel with the others: it is probably the critical path, and starting it last only
-	lengthens the wait.
-
-The ordering decides when to start each target. It never removes a target that the acceptance gate requires.

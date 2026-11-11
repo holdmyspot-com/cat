@@ -10,6 +10,8 @@
 	invariant rather than an example-specific inventory of inputs or mechanisms.
 - Ensure a Design Goal governing a choice among alternatives names the evidence-based selection outcome without
 	predetermining a branch that only the reported example selected.
+- Ensure a later workflow transition that changes durable state on the strength of an earlier verification is rejected
+	when an input that verification depended on has changed, until a current verification exists.
 - Ensure an artifact's Design Goals form one coherent contract: identify and repair duplicate, overlapping,
 	contradictory, and prerequisite-dependent goals before relying on them to derive guidance or verification.
 - Ensure that, whenever a prompt file is added or updated so that the text an agent receives or when it receives it

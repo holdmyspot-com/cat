@@ -3,11 +3,19 @@
 ## Design Goals
 
 - Keep designs focused, extensible at real variation points, and verifiable against observable outcomes.
+- Keep a design coherent with the codebase it joins: it reuses established conventions and suitable existing
+	facilities, gives each behavior one responsible component, and keeps shared values, data flow, and observable
+	behavior defined once and explicit.
+- Spare callers and users routine work that the system can determine, asking only for what it cannot safely supply.
+- Deliver the outcome the user requested without silently strengthening or weakening it: a stronger promise is adopted
+	only with the user's authority, after comparing the cost of the approaches that satisfy the requested outcome.
 <!-- In a feature-plan review, contract derivation needed source bytes that inspection had not retained. Another call
      handoff needed a claim before its producer supplied one. Defining each producer result and readiness point in one
      place exposes both timing gaps; the obligation inventory still covers requirements outside the traced use-cases. -->
 - Let multi-component designs establish one authoritative contract for each required handoff and demonstrate compatible
 	use-cases without treating selected use-cases as exhaustive contract coverage.
+- Let a design review find missing outcomes, contradictions, and routing conflicts, and let a recurring finding that
+	exposes a missing, ambiguous, or conflicting standard update the canonical rule.
 
 ## Guidance
 

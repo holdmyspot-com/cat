@@ -5,9 +5,8 @@
 - When an operation that is expensive to run in full has failed, each further run made to find the cause can tell
 	apart explanations that are still open, and runs only the scope that the suspected mechanism needs, so that every run
 	produces new evidence at the smallest cost that can produce it.
-- A diagnostic run ends once it has produced the evidence it was started for, and a run that a newer run replaces
-	stops consuming time and resources once nothing needs its result when the agent started it, while an acceptance run
-	still runs to completion and a run that someone else started is left to its owner.
+- A diagnostic run ends once it has produced the evidence it was started for, while an acceptance run still runs to
+	completion.
 
 ## Guidance
 
@@ -32,7 +31,3 @@ example, when a stall shows within ten minutes of a step's start, limit the run 
 and a margin, not to the full run's two hours. Stop the run as soon as that evidence exists, together with any watchdog
 or wait that you started for it, even when the run could continue. An acceptance run is different: its evidence is its
 complete result, so let it run to completion.
-
-When you start a run that replaces an earlier one, such as a rerun after a fix, cancel the earlier run if you started
-it, once nothing needs its result, neither the current diagnosis nor other work. Leave a run that someone else started
-to its owner.

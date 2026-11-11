@@ -2,7 +2,8 @@
 
 ## Design Goals
 
-- Centralize repeated constants behind meaningful names and one authoritative definition.
+- Centralize repeated constants behind meaningful names and one authoritative definition at the narrowest layer that
+	owns their meaning.
 - Keep maintained resource-layout and protocol identifiers authoritative even before more than one consumer uses them.
 - Keep constants in a readable, semantically meaningful form until an interface requires a different
 	representation.
