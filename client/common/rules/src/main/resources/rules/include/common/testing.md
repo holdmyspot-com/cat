@@ -24,7 +24,8 @@ When a test replaces a collaborator, external program, or process with a fake, s
 load `testing/test-doubles.md` before writing or accepting its assertions.
 
 Test observable behavior with controlled inputs rather than machine-specific configuration or implementation details.
-Each test owns its fixtures and mutable state. Do not test third-party software or APIs: external programs,
+Each test owns its fixtures and mutable state. Tests may run in parallel, so a test accesses only test-local state or
+state that is safe for concurrent use and does not share a mutable fixture. Do not test third-party software or APIs: external programs,
 libraries, the JDK and other platform APIs, and network services. Trust them to work as documented. Test the
 application's own code: how it builds inputs for them, interprets their output, and handles their failures. Set that
 trust aside only when evidence shows the third-party behavior differs from what the application relies on, such as a
@@ -94,12 +95,6 @@ existing production entry point obtain the real value and delegate to the new op
 operation with an isolated value they own, such as a temporary directory for the current directory. This preserves
 production behavior while making parallel tests deterministic and self-contained.
 
-Apply the temporary-resource ownership convention to every fixture a test creates. A test must clean up its fixture even
-when setup, an assertion, or the behavior under test fails. When the fixture is consumed by a CAT runner, evaluator,
-nested harness, or other CAT workflow, allocate its fresh root as a new child directory of CAT_TEMP rather than the
-system temporary directory. A pure in-process unit-test fixture may use the test framework's temporary directory; the
-fixture's consumer, rather than the test class that creates it, determines which location applies.
-
 Do not rerun an unchanged test command merely for reassurance. Run the narrowest relevant test after a meaningful
 change, then the complete verification suite before handoff.
 
@@ -114,9 +109,6 @@ resource, the local representation, the operation that changes its lifecycle, th
 and the asserted outcome. For a parent process consuming a forked child process's standard-error output through a pipe,
 close the local output endpoint that represents the child, then wait for the parent-side reader and assert it completes;
 do not close the input endpoint as a substitute for the child's close.
-
-Name modeled actors at the narrowest level that changes the behavior. Do not call a simulated parent or child process
-by a product or framework name when the test's contract depends only on ordinary process and stream semantics.
 
 Derive each test from the observable claim it makes. A test must run the part of the system it says it tests: its name,
 documented claim, controlled input, exercised boundary, and assertion must all describe the same observable outcome. Any

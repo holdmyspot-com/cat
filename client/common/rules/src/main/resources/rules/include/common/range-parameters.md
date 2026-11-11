@@ -6,6 +6,9 @@
 	documentation to learn which bounds it includes: the API's bounds follow the language's conventional range form.
 - Keep a different convention that an external contract fixes at the boundary that it governs, so the rest of the
 	code uses one range form.
+- Leave an existing operation's range convention unchanged, and report the inconsistency, unless the task already
+	changes that operation's signature or the user asks for the change, so that aligning a range never breaks a caller
+	as a side effect.
 
 ## Guidance
 

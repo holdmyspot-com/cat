@@ -11,6 +11,9 @@ require the user's product-policy choice.
 - Escalate only unresolved product-policy or material architecture/design choices, to the user or to the agent that
 	delegated the work; resolve required implementation and internal-design gaps from the governing contract and acceptance evidence without
 	transferring routine design work to the requester.
+- While an escalated choice is unresolved, pause only the work whose behavior depends on it and continue independent
+	authorized work; keep an improvement that the governing contract does not require outside the authorized scope
+	without letting it block required work.
 
 ## Guidance
 

@@ -3,11 +3,9 @@
 ## Design Goals
 
 - Preserve a focused behavioral test's contract from its demonstrated failure before production implementation through
-	the implementation and relevant verification that make it pass.
+	the implementation that makes it pass.
 - Make the decision to use TDD explicit before the first production-behavior edit, rather than relying on the task's
 	label or the agent's implicit classification.
-
-## Guidance
 
 ## Applicability
 
@@ -38,6 +36,5 @@ Start with the minimum observable behavior, then add the next meaningful boundar
 Generalize the test suite only from the invariant shared by those cases; do not add speculative cases unrelated to the
 behavioral contract.
 
-Before handoff, run the narrowest relevant verification and then the complete project verification. If a test cannot be
-written first because the behavior exists only at an external boundary, explain the constraint and add the smallest
-reliable boundary test after implementing the behavior.
+If a test cannot be written first because the behavior exists only at an external boundary, explain the constraint and
+add the smallest reliable boundary test after implementing the behavior.

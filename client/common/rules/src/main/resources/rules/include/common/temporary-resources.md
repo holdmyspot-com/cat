@@ -4,7 +4,6 @@
 
 - Ensure temporary files and directories have one bounded owner and are removed when their final owner is done.
 - Keep CAT-controlled temporary workflow state isolated under CAT_TEMP instead of a shared system temporary location.
-- Keep every test method self-contained and safe to run alongside other test methods.
 
 ## Guidance
 
@@ -24,9 +23,6 @@ not CAT workflow state may use the test framework's isolated temporary directory
 up. Classify by the resource's consumer, not by the source file that creates it: a unit-test fixture may use the test
 framework's directory, while a test that starts a CAT runner, evaluator, nested harness, or other CAT workflow must give
 that workflow a fresh CAT_TEMP child.
-
-Each test must create, use, and clean up its own fixtures within that test. Tests may run in parallel, so they may
-access only test-local state or state that is safe for concurrent use; they must not share mutable fixtures.
 
 Do not rely on process exit, operating-system cleanup, a successful run, or an unspecified later operation to remove
 temporary state. A temporary resource may outlive its creator only through an explicit handoff that identifies the next

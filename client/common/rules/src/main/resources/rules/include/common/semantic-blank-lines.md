@@ -2,7 +2,10 @@
 
 ## Design Goals
 
-- Let readers scan source and configuration and identify meaningful stages or groups.
+- Let readers scan source and configuration and identify meaningful stages or groups, including the stages of a
+	multi-step calculation.
+- Keep a delimited declaration or list free of a separator after its final element unless the target language grammar
+	requires one.
 
 ## Guidance
 

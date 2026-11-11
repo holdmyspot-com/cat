@@ -19,8 +19,8 @@ When translating or wrapping a failure, retain its cause and caller-relevant con
 misleading, duplicate, or unsafe. Do not replace a specific cause with a less actionable generic exception.
 
 Outside test code, handle an exception inside the catch block that receives it when that block can recover, translate,
-or report the failure. Do not store it in a nullable variable merely to handle it after the catch block. Test exception
-expectations are owned by the Java Testing convention. Retain a failure for later handling only when later control flow
+or report the failure. Do not store it in a nullable variable merely to handle it after the catch block. This rule does
+not govern how a test expects an exception. Retain a failure for later handling only when later control flow
 must aggregate it, compare it with another result, complete cleanup, return it, or make a decision that cannot be made
 in the catch block; make that need clear from the retained value's scope and name.
 

@@ -3,7 +3,8 @@
 ## Design Goals
 
 - Ensure a Java declaration uses `Optional` only as a method's return type, so that parameters and fields hold the
-	underlying value or `null`, and no caller wraps an argument in `Optional`.
+	underlying value or `null`, no caller wraps an argument in `Optional`, and a returned `Optional` is unwrapped
+	promptly instead of being kept.
 
 ## Guidance
 

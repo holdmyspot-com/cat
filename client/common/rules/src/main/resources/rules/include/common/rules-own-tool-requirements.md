@@ -5,6 +5,9 @@
 - Ensure project-owned CLI tools, validators, generators, and APIs implement the rule-governed workflow contract,
 	validation boundary, and failure behavior; treat an advisory or unsupported rule requirement as a rule-owned tool
 	defect to repair rather than a reason to weaken the rule.
+- A tool that publishes, renders, forwards, or selects an agent or child-process response publishes exactly the
+	response that passed validation at its selection boundary, so an interrupted supervisor, relay, or later renderer
+	cannot substitute an unvalidated one.
 
 ## Guidance
 

@@ -2,7 +2,8 @@
 
 ## Design Goals
 
-- Let the user read every time and date that an agent presents to them without converting it from UTC or another zone.
+- Let the user read every time and date that an agent presents to them in their own timezone, or in a zone they
+	explicitly ask for, without converting it from UTC or another zone.
 - Use the session timezone stated in context without requiring an environment command; determine it from the
 	environment only when context does not state it.
 - Keep every time that an agent writes for a file, tool, or shared record in one unambiguous zone, so a later reader or

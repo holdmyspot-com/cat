@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Keep a collaborating family of implementation-only top-level types discoverable through one focused package, without
-	leaking their enclosing component's name into every local type.
+- Keep a collaborating family of implementation-only top-level types, and the tests that prove them, discoverable
+	through one focused package, without leaking their enclosing component's name into every local type.
 
 ## Guidance
 
