@@ -2,8 +2,10 @@
 
 ## Design Goals
 
-- Preserve exact, repeatable monetary amounts and rates through every calculation.
-- Make currency, scale, and rounding decisions explicit wherever a monetary result becomes observable.
+- Preserve exact, repeatable monetary amounts and rates through every calculation, shown by tests that assert exact
+	expected values at the input, rounding, and range boundaries.
+- Make currency, scale, and rounding decisions explicit wherever a monetary result becomes observable, and combine
+	amounts of different currencies only through a documented conversion.
 - Select a suitable built-in facility or established dependency before custom monetary arithmetic, using the option
 	whose required operations preserve the contract with the smallest necessary configuration and proof burden.
 - Report a newly added money-library dependency to the user.

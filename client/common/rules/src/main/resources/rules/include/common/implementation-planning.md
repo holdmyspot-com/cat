@@ -16,9 +16,13 @@
 
 ## Guidance
 
-Use this rule when creating, reviewing, or revising an implementation plan for execution by AI agents. Complete these
-entry reads in order before inspecting the project or making planning decisions; skip a read only when its full text
-is already available:
+Use this rule when creating, reviewing, or revising an implementation plan for execution by AI agents. Also use its
+"Select the Work and Its Order" and "Revise From Evidence" sections while executing a multi-step plan or goal, before
+choosing the next work unit and before starting or extending an investigation, probe, diagnostic, or supporting
+artifact that no step of the plan names.
+
+When creating, reviewing, or revising a plan, complete these entry reads in order before inspecting the project or
+making planning decisions; skip a read only when its full text is already available:
 
 1. If the plan includes work that changes observable behavior, read TDD first:
 

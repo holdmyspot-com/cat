@@ -2,8 +2,8 @@
 
 ## Design Goals
 
-- Keep a locally creatable prerequisite and its unrun local acceptance gate from being mistaken for an unavailable
-	external prerequisite.
+- Keep a locally creatable prerequisite, unfinished or high-volume authorized work, and an unrun local acceptance gate
+	from being mistaken for an unavailable external prerequisite.
 <!-- A delegate's local `BLOCKED` label was previously treated as authority to stop the parent goal even when the
      parent could repair the handoff, clarify the plan, or take another in-scope recovery action. -->
 - Keep a recoverable child response from changing an active goal's status merely because its response uses a
@@ -26,9 +26,9 @@ required external prerequisite, with evidence.
 Before changing a goal to blocked, identify its next unmet terminal gate and classify each prerequisite at its owning
 boundary. A request, policy, receipt, manifest, fixture, schedule, process tree, or other artifact that a named local
 owner can create is local work, even when a later gate will sign it or send it to an external service. Keep the goal
-active and perform its next local implementation or focused acceptance gate while any such work remains. A prior
-`blocked` label, a delegate response, an unrun test, or uncertainty about a later live execution is not evidence that a
-prerequisite is unavailable.
+active and perform its next local implementation or focused acceptance gate while any such work remains. Incomplete
+implementation, an unreviewed batch, the amount of remaining work, a prior `blocked` label, a delegate response, a
+failed or unrun test, or uncertainty about a later live execution is not evidence that a prerequisite is unavailable.
 
 Treat `BLOCKED`, `blocked`, and `BLOCKED_*` in a delegate, executor, validator, or tool response as that response's
 local outcome, not as authority to change the active goal's status. Classify the response at its owning workflow

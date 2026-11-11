@@ -17,6 +17,11 @@
 	sessions the run still allows it, and report a refused request with the reason that names its caller's options.
 - Let a session send each turn of a new session after it reads the reply to the previous one, interrupt a turn, and end
 	the new session, through any of these launchers.
+- Give a new session only the capabilities its task names, such as a plugin under test, a CAT installation, extra writes
+	and hosts, transcript retention, and the sessions it may start, and report each refused launch, including one on
+	native Windows, with its reason instead of changing sandbox settings or starting the session another way.
+- Let the new session commit, branch, and merge in its copied project, within its writable workspace, under the user's
+	Git identity.
 
 ## Guidance
 
@@ -216,9 +221,10 @@ The session's records go to `<folder>/from-child.jsonl` as they arrive. When tur
 `{"turn_end": <n>, "status": "<status>"}` follows its records, with the status `completed`, `interrupted` or `failed`.
 A `failed` turn does not end the conversation: the `turn_failed` record before that line names the cause, such as a
 usage limit, and the next `turn` message, sent now or once the cause is gone, continues the same session.
-Before you read a turn's reply, search that file with your shell's search command until its `turn_end` line is there;
-then read the reply as "Replies" describes, from the same file. A line of yours that is not one of these messages is
-refused there with a `refused` line and changes nothing. The last line in that file, however the session ends, is
+Before you read a turn's reply, lazy load `./external-waits.md` and wait for that file to contain its `turn_end` line
+or the `ended` line below, using a search of that file with your shell's search command as the wait's check; then read
+the reply as "Replies" describes, from the same file. A line of yours that is not one of these messages is refused there
+with a `refused` line and changes nothing. The last line in that file, however the session ends, is
 `{"ended": "<status>"}`, with the status of the request; once it is there, no `turn_end` line that you wait for will
 come. The launcher then exits as it does without `--conversation`.
 

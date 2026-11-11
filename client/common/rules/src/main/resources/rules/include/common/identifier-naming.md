@@ -106,8 +106,8 @@ standard-error output to an unspecified output stream. For example, distinguish 
 standard-error output from a method that observes an unrelated output close. A direct operation on a resource with no
 distinct represented role does not need an invented actor name.
 
-Use a product or framework name in an identifier only when that product's behavior distinguishes the identifier's
-contract. Otherwise name the applicable generic role, such as a parent process or child process.
+Apply the Clear Writing rule on product, framework, and implementation names to identifiers: include such a name only
+when that product's behavior is part of the identifier's contract.
 
 Do not use a search for particular name fragments as evidence that the audit is complete. An identifier can have an
 inaccurate name without containing an expected fragment. Review every in-scope type, function, method, and variable

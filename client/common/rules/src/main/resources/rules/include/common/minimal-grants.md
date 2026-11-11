@@ -2,8 +2,9 @@
 
 ## Design Goals
 
-- When an agent adds or widens a command-line option, a launch or build setting that passes one, a manifest entry, or a
-	module declaration that grants code a permission or access, or that adds modules to a runtime or image, the result
+- When an agent adds or widens a command-line option, a launch, build, container, or sandbox setting that passes one, a
+	manifest entry, or a module declaration that grants code a permission or access, or that adds modules to a runtime
+	or image, the result
 	names only the code units that need the grant and only the resources they use, found from that code, so no other
 	code gains the access and no unused module is added.
 - A catch-all target, such as `ALL-UNNAMED` or `*`, appears in such a grant only when the platform offers no narrower

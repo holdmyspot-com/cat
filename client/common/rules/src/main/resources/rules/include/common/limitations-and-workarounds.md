@@ -5,8 +5,6 @@
 - Evaluate the owning workflow before treating an absent condition or helper interface as an outcome boundary, then
 	select the smallest evidence-supported feasible path without assuming unavailable authority and with reversal or
 	removal where applicable.
-- Distinguish an external blocker from unfinished, difficult, or high-volume authorized work, so a workflow does not
-	stop while its next supported action remains available.
 <!-- A nested CLI rejected a protected parent socket directory, and the explanation treated access to that resource
      as necessary without establishing why independent execution needed it. -->
 - Preserve applicable boundaries when an attempted path is refused; distinguish a necessary authorized prerequisite
@@ -38,14 +36,9 @@ from the required observable outcome and classify the condition using available 
 
 For the first classification, include providing the condition as a candidate path; do not treat its absence as a reason
 to exclude it. For the second and third classifications, identify the concrete blocking evidence and its effect on the
-acceptance conditions. Do not label a condition impossible merely because the required artifact, configuration,
-capability, integration, or prerequisite is not yet present.
-
-An external blocker is a required authority, decision, system change, or unavailable input that the current actor cannot
-obtain through its remaining authorized actions. Before reporting one, name the missing condition, the action that would
-obtain it, and evidence that the action is unavailable. Do not call incomplete implementation, unreviewed batches, a
-failed or unrun check, uncertainty, or the amount of remaining work a blocker; continue from the next recorded,
-tool-supported action.
+acceptance conditions. Before reporting the work blocked, lazy load
+`./intermediate-vs-terminal-goals/blocked-status.md`. Do not label a condition impossible merely because the required
+artifact, configuration, capability, integration, or prerequisite is not yet present.
 
 Do not treat the argument shape, output, or apparent narrowness of one helper, launcher, API, or CLI as the boundary of
 the capability the user requested. First identify the workflow, skill, service, or other component responsible for the

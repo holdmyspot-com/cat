@@ -9,8 +9,9 @@
 	defect cannot silently return.
 - Derive prevention controls from the failure predicate, verify them against the reported failure and meaningful
 	variants, and retain only the smallest control that provides the required coverage.
-- Distinguish an unavailable prerequisite from a failure or unknown result while acquiring a known prerequisite, so a
-	fallback cannot silently replace a required capability.
+- When diagnosing an output that chose a fallback after identifying a required prerequisite, distinguish an
+	unavailable prerequisite from a failed or unknown acquisition result, so a fallback cannot silently replace a
+	required capability.
 - Converge recurring or high-impact failure decisions through independently challengeable, evidence-backed acceptance
 	conditions.
 - Prevent a retry from concealing an incomplete or unexpectedly ended workflow, by requiring its cause and any
@@ -30,6 +31,13 @@
      with the evidence-based decision that selects its conclusion. -->
 - Make a prevention for an uncertain consequential judgment an explicit evidence-gated decision procedure, rather than
 	only a prohibition or desired conclusion, so it governs new cases that share the same faulty inference.
+- Diagnose an agent's failure to follow a rule from the instructions it actually received and the artifact it actually
+	executed, and repair the first faulty delivery, routing, or derived-artifact boundary while keeping the governing
+	constraint in force, so noncompliance is never inferred from the response alone or fixed by weakening the
+	constraint.
+- Classify an artifact that preserves existing content but omits coverage that a declared goal or contract requires as
+	a derivation-coverage failure, and correct the creation or revision procedure to derive coverage from each declared
+	outcome.
 - Make progress in an iterative workflow monotonic: retain resolved acceptance conditions across rounds, so a later
 	candidate cannot appear to improve while reintroducing a failure that an earlier candidate had removed.
 - Keep an active failure investigation under its evidence-gathering owner until terminal evidence selects its outcome,

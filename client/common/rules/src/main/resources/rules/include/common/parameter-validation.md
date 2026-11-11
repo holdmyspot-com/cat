@@ -4,6 +4,8 @@
 
 - Ensure every operation and type-construction boundary rejects parameter values that violate its required constraints
 	before it can create an invalid object or cause a caller-visible side effect.
+- Do not repeat a validation that an earlier or later boundary already guarantees before any caller-visible side
+	effect, unless it enforces a distinct constraint or preserves a required failure contract.
 
 ## Guidance
 

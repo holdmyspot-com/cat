@@ -7,6 +7,9 @@
 - Avoid repetitive unchanged-state updates while keeping the work that the agent performs visible and promptly
 	reporting a meaningful state change, and send no regular report while the agent waits for a state change that
 	something else produces.
+- Answer a user's question about how much of a plan or scope is complete from an inventory at one stated granularity,
+	reporting terminal acceptance and verified child work separately, and report no overall percentage that a complete,
+	non-overlapping inventory does not support.
 
 ## Guidance
 
