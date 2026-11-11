@@ -377,6 +377,41 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that is about to dispatch an expensive or shared-capacity verification run, or to act on a
+	 * failure that a run of changed code shows, can reach the packaged rules for those decisions: the testing and build
+	 * area index routes to the expensive-verification-runs rule, the failure area index routes to the failure-baseline
+	 * rule, and the expensive-verification-runs rule routes a run that spans targets of differing speed or capacity to
+	 * the build-workflow rule that orders those targets, which that rule states without the ordering being repeated.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void verificationRunRulesAreRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(Files.readString(include.resolve("rule-routing/testing-and-builds.md")), "testingIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/expensive-verification-runs.md`");
+			requireThat(Files.readString(include.resolve("rule-routing/failures.md")), "failureIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/run-comparisons/failure-baseline.md`");
+			String expensiveRuns = oneLine(Files.readString(include.resolve("expensive-verification-runs.md")));
+			requireThat(expensiveRuns, "expensiveRuns").startsWith("# Expensive Verification Runs ").
+				contains("lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/build-workflow.md`").
+				doesNotContain("start that target first");
+			String buildWorkflow = oneLine(Files.readString(include.resolve("build-workflow.md")));
+			requireThat(buildWorkflow, "buildWorkflow").contains("start that target first or in parallel");
+			requireThat(Files.exists(include.resolve("run-comparisons/failure-baseline.md")),
+				"failureBaselineExists").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to apply a change meant to improve the performance of a program or build can
 	 * reach the packaged rule for that decision: the rule routing that every agent of either harness receives at
 	 * startup routes to the performance-change rule, whose guidance tells the reader to measure the change before and

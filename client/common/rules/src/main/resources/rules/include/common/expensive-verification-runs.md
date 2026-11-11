@@ -31,5 +31,9 @@ its revision, its question and its identity, where the other agents read it. Whe
 shared record states which runs exist, the agent that coordinates the work decides which runs are dispatched, and the
 others ask it instead of dispatching their own.
 
+When one run must pass on several targets, such as platforms, runners or jobs, and one target is much slower or has
+scarcer capacity than the others, lazy load `build-workflow.md` before you choose when to start each target: whether a
+failure elsewhere is likely decides if the slow target starts last or first.
+
 Cancel only a superseded run that you started. A run that someone else started is theirs to cancel, even when it looks
 superseded: tell its owner.
