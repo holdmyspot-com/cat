@@ -252,8 +252,8 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 	 * Requires referenced files that name distinct project files.
 	 *
 	 * @param referencedFiles the referenced files
-	 * @throws IllegalArgumentException if a file is absolute, empty, not normalized or leaves the project, or if two
-	 *   entries name one file
+	 * @throws IllegalArgumentException if a file starts at a root, is empty, is not normalized or leaves the project,
+	 *   or if two entries name one file
 	 */
 	private static void requireReferencedFiles(List<Path> referencedFiles)
 	{
@@ -261,7 +261,9 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		for (Path file : referencedFiles)
 		{
 			String text = file.toString();
-			if (file.isAbsolute() || text.isEmpty() || !file.normalize().equals(file) || file.startsWith(".."))
+			// A path with a root names a file outside the project even when it is not absolute: on Windows,
+			// "/etc/hosts" has a root but no drive, so isAbsolute() is false
+			if (file.getRoot() != null || text.isEmpty() || !file.normalize().equals(file) || file.startsWith(".."))
 			{
 				throw new IllegalArgumentException("A referenced file must be a normalized path relative to the " +
 					"project that stays inside it: " + file);

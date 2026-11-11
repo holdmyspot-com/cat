@@ -1561,10 +1561,12 @@ public final class ProposalTest
 	@Test
 	public void listsTrialPlugins() throws InvalidProposalException
 	{
+		// The proposal shows a file that loads only in production as the platform writes its absolute path
+		Path agents = Path.of("/home/user/.codex/AGENTS.md").toAbsolutePath();
 		PluginCheck check = new PluginCheck(List.of(builtPlugin(), installedPlugin()),
 			List.of(Path.of("docs/extra.md")), List.of(new PluginMapping.Difference("cat",
 				Path.of("source/rules/read-file.md"), Path.of("rules/codex/read-file.md"))),
-			List.of("/home/user/.codex/AGENTS.md"), List.of("the SessionStart hook `~/start.sh` of " +
+			List.of(agents.toString()), List.of("the SessionStart hook `~/start.sh` of " +
 				"`/home/user/.codex/hooks.json`", "the plugin `extra@market`"), List.of(), Map.of());
 
 		String text = pluginProposal(check).render();
@@ -1577,7 +1579,7 @@ public final class ProposalTest
 			contains("Warning: the content of these mapped files differs from the base's").
 			contains("- `source/rules/read-file.md` → `cat` `rules/codex/read-file.md`\n").
 			contains("never reaches trials:\n\n- `docs/extra.md`\n").
-			contains("but not in trials:\n\n- `/home/user/.codex/AGENTS.md`\n").
+			contains("but not in trials:\n\n- `" + agents + "`\n").
 			contains("\nThese hooks, plugins and MCP servers of the user's harness configuration run in the user's " +
 				"sessions but not in trials:\n\n- The SessionStart hook `~/start.sh` of `/home/user/.codex/hooks.json`\n" +
 				"- The plugin `extra@market`\n");
@@ -1794,14 +1796,15 @@ public final class ProposalTest
 	@Test
 	public void groupsProductionOnlyFilesByDirectory() throws InvalidProposalException
 	{
-		String root = "/home/user/plugins/cat/rules";
+		// The proposal shows a file that loads only in production as the platform writes its absolute path
+		Path root = Path.of("/home/user/plugins/cat/rules").toAbsolutePath();
 		List<String> files = new ArrayList<>();
 		for (int i = 0; i < 119; ++i)
-			files.add(root + "/include/common/rule-" + i + ".md");
+			files.add(root.resolve("include/common/rule-" + i + ".md").toString());
 		for (int i = 0; i < 12; ++i)
-			files.add(root + "/codex/rule-" + i + ".md");
-		files.add(root + "/index.md");
-		files.add(root + "/other.md");
+			files.add(root.resolve("codex/rule-" + i + ".md").toString());
+		files.add(root.resolve("index.md").toString());
+		files.add(root.resolve("other.md").toString());
 		PluginCheck check = new PluginCheck(List.of(), List.of(), List.of(), files, List.of(), List.of(), Map.of());
 
 		String text = pluginProposal(check).render();
@@ -1813,10 +1816,10 @@ public final class ProposalTest
 		if (end > -1)
 			section = section.substring(0, end);
 		requireThat(section, "section").
-			contains("- 12 files in `" + root + "/codex`").
-			contains("- 119 files under `" + root + "/include`").
-			contains("- `" + root + "/index.md`").
-			contains("- `" + root + "/other.md`").
+			contains("- 12 files in `" + root.resolve("codex") + "`").
+			contains("- 119 files under `" + root.resolve("include") + "`").
+			contains("- `" + root.resolve("index.md") + "`").
+			contains("- `" + root.resolve("other.md") + "`").
 			doesNotContain("rule-0.md");
 		requireThat(section.length(), "section.length()").isLessThan(1_000);
 	}
