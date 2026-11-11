@@ -179,4 +179,6 @@ running a search across a directory tree, or a command that prints files or reco
 established, such as generated, minified, or dependency data; when claiming that a tool, skill, subagent, command, test,
 or investigation has run or is unavailable outside the reader-facing status-update route above; and before drafting an
 answer to a user question whose relevant research, authoritative source, or supported probe remains inconclusive, lazy
-load `../include/common/check-assumptions.md`.
+load `../include/common/check-assumptions.md`. Lazy load it also before directly operating on a named artifact whose
+exact target the task, a route or an inventory does not establish, and before accepting a stated cause or an actor's
+claim about its own limits, actions or status.
