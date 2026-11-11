@@ -5,6 +5,7 @@
 - Produce the smallest evidence-backed implementation plan that can achieve the declared outcome.
 - Make every plan step state its observable result and the evidence that verifies it, or identify the missing information
 	that prevents a reliable plan.
+- Leave the project unchanged: edit no files, even where the session's inherited permissions allow edits.
 
 ## Guidance
 

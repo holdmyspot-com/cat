@@ -1,5 +1,17 @@
 # Reading Command Output
 
+## Design Goals
+
+- Let an agent see every line of a command's output that its task needs, because Codex removes lines from the middle of
+	a long tool result, so that a rule it must follow or the answer it needs is never silently lost.
+- Make an agent read every part of guidance that it must follow, and of a document or command output that the user asked
+	it to read in full, and read other output only while its parts serve the task, stopping for a narrower command only
+	when the parts already read show that the rest will not serve it.
+- Keep each part that the agent receives whole: each command runs through run-part alone in its tool call, without
+	piping its output and without `max_output_tokens`, so that Codex shows the part without removing lines.
+
+## Guidance
+
 `${CAT_PLUGIN_ROOT}` stands for the CAT plugin's root directory, `<!-- cat:plugin-root -->`.
 The shell does not define it, so wherever this guide uses `${CAT_PLUGIN_ROOT}`, write that path in its place.
 

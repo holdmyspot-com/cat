@@ -2,12 +2,16 @@
 
 ## Design Goals
 
-- Keep each review within the declared change and the files needed to assess it.
-- Give the reader either a clean approval or evidence, consequence, and correction for every material concern.
+- Keep each review read-only and within the declared change and the files needed to assess it.
+- Keep each reported concern within the reviewer's own domain: a concern whose primary consequence belongs to another
+	specialist is not recast as this reviewer's, except where the reviewer's own instructions name an exception.
+- Give the reader either a clean approval or, for every material concern, evidence, consequence, and correction, with
+	the file and line that establish the evidence, in a form the reader can check mechanically.
 
 ## Guidance
 
-Inspect without editing. Do not reframe a concern whose primary consequence belongs to another specialist.
+Inspect without editing. Do not reframe a concern whose primary consequence belongs to another specialist, except in a
+case that your own instructions name.
 
 Review only the current project and the files needed to assess its declared change. Start with the declared change and
 its directly named or necessary supporting project files. Do not search parent directories, a host home, caches, other

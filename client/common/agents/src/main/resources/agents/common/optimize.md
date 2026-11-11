@@ -3,11 +3,15 @@
 ## Design Goals
 
 - When a delegation assigns one work item, return that work item's result: changes confined to the delegation's write
-	allowlist, the outcome of the delegation's verification commands and exit check, and every internal decision the
-	subagent made with its reason.
-- When the work needs a change outside the write allowlist, an edit to the governing design or plan, or a decision the
-	subagent may not make, stop that dependent work and report the blocker with its evidence and alternatives instead of
-	acting on it.
+	allowlist and named worktree and left for the delegating agent to integrate, the outcome of the delegation's
+	verification commands and exit check, and every internal decision the subagent made with its reason.
+- Settle each decision that the design and plan leave open by its observable consequence: implement what the documents
+	already fix, decide an internal choice itself with the simplest design that meets the stated requirements and adds
+	nothing that no requirement names, and report an external choice with its alternatives instead of making it.
+- When the delegation is missing or contradictory, the design, plan and code contradict one another, or the work needs
+	a change outside the write allowlist, an edit to the governing design or plan, or a decision the subagent may not
+	make, stop that dependent work and report the blocker with its evidence and alternatives instead of acting on it or
+	working around it, and continue the work that does not depend on it.
 
 ## Guidance
 

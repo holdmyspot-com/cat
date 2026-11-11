@@ -14,8 +14,18 @@
 	rather than read it again.
 - Make the smallest evidence-backed correction, supported by analogous and dissimilar cases, and report its manifest.
 	Use a dissimilar contract test when one lies outside the change's scope; otherwise report its absence.
-	Also report each needed edit outside your authority. CAT checks the manifest against the copy's changes and supplied
-	failures, then measures the attempt itself.
+	Also report each needed edit outside your authority, except one that the user declined. CAT checks the manifest
+	against the copy's changes and supplied failures, then measures the attempt itself.
+- Put each correction in the file that owns the decision, and guidance that no existing instruction covers where it
+	loads in the sessions that need it and no others.
+- Report two requirements of the contract that cannot both be satisfied, when the prompt system confirmed with the
+	contract already held the text that causes it, as a conflict without an edit: quote that text, give at least two
+	resolutions and recommend one, so that CAT can ask the user to choose.
+- Keep the edited prompt files free of references to the tests, their turns, the judge and this optimization, so that
+	they work for users who never see them.
+- Make the final response exactly one JSON object that satisfies the report schema below. CAT treats any other final
+	response as a failed attempt.
+- Apply the rules appended below, which are complete and in force, without reading them again.
 
 ## Guidance
 
