@@ -6,12 +6,12 @@
 - Preserve a recoverable backup through verification, then remove temporary recovery state after a successful rewrite
 	while retaining the intended final tree, Git identity, and quality gates.
 - Leave ownership and placement unchanged unless the user explicitly includes a change in a selected group.
+- Leave the comments and documentation of the changed files describing the final behavior of the rewritten history.
 
 ## Procedure
 
 1. Use this skill when the user identifies commits or groups to combine. If the grouping is unclear, ask for it. Do not
-	infer topic organization; use Commit Git History One Topic at a Time only when the user explicitly requests
-	responsibility-first history.
+	infer topic organization.
 2. Record the subject branch, authorized range, selected source commits and destination groups, identity policy, and
 	quality gates. Capture the branch tip, pre-rewrite references, and tree ID, then create a recoverable backup. The
 	authorized range is a scope contract: use the exact range the user named. For the full branch, use its root and
@@ -53,7 +53,7 @@
 	from the subject branch.
 5. Verify changed comments and documentation still describe the final behavior, including every automatically reconciled
 	file.
-6. Run the applicable shared quality and identity checks. After every verification check succeeds, delete the temporary
-	backup created for this rewrite and verify that its ref no longer exists. Keep that backup only while verification is
-	failed or incomplete, or when the user explicitly asks to retain it. Report the rewritten groups and terminal
-	verification result.
+6. Run the quality gates and identity checks recorded in step 2. After every verification check succeeds, delete the
+	temporary backup created for this rewrite and verify that its ref no longer exists. Keep that backup only while
+	verification is failed or incomplete, or when the user explicitly asks to retain it. Report the rewritten groups and
+	terminal verification result.

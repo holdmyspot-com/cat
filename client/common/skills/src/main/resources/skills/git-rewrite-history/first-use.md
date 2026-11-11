@@ -2,7 +2,8 @@
 
 ## Design Goals
 
-- Perform a user-approved repository-history rewrite with `git-filter-repo`.
+- Perform a user-approved rewrite of paths, content or identities across a recorded set of refs with `git-filter-repo`,
+	and leave any remote update to the user's separate approval.
 - Preserve a recoverable backup, the repository's remote configuration, and verify the intended result.
 
 ## Procedure

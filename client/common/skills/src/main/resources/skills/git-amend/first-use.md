@@ -2,8 +2,10 @@
 
 ## Design Goals
 
-- Update the requested contents or message of the tip commit.
-- Preserve a recoverable, verified repository state.
+- Update the requested contents or message of the tip commit, and nothing else, and report the new commit and the
+	remaining changes.
+- Keep the repository recoverable to its pre-amend state until the result is verified, and rewrite a commit that
+	another author created or that a remote already holds only with the user's explicit authorization.
 
 ## Procedure
 

@@ -7,7 +7,11 @@
 - Let the user tell from the overview that its use cases are separate behaviors, each started by its own actor action,
 	and not consecutive steps of one flow.
 - Account for every changed hunk: show it in a use-case step or with a test, or list it as non-executable or as code
-	that no presented use case runs, so the user can see which changes the walkthrough did not cover.
+	that no presented use case runs, so the user can see which changes the walkthrough did not cover; when the change
+	has no executable code, present it file by file instead.
+- Present a call, an implementation or a defect as fact only when the code or its tests show it: mark an unconfirmed
+	call edge, show each candidate implementation with the missing evidence, and add a concern only for a specific
+	defect or risk, so the user can tell what the review established.
 - Present one use case per turn and present the next one only after the user approves the current one or asks to move
 	on, leaving the change under review unedited unless the user asks for an edit.
 - Let the user understand each step without opening other files: say what its code does in this use case and, for
@@ -29,7 +33,8 @@ Record the base and head commit IDs and use them for every later diff, so that c
 change what it covers. List the changed files with `git diff --name-status` and their hunks with
 `git diff --unified=0` between those commits, or against the working tree for uncommitted work.
 
-When the changed files include `.java` files, read `java.md` in this skill's directory before step 3.
+When the changed files include `.java` files or a `META-INF/services` file, read `java.md` in this skill's directory
+before step 3.
 
 Create a temporary directory under `${CAT_TEMP}` and write a ledger there: one row per changed hunk, with its file, its
 changed line range, and its status (initially unreviewed). Update the ledger whenever a hunk is shown or classified,

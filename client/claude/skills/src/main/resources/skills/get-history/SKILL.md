@@ -6,8 +6,7 @@ allowed-tools: [Bash]
 Resolve the installed `get-history` at `bin/get-history` in CAT's installed plugin directory, two levels above
 this skill's directory. Pass the session ID whose history you need as its first argument. Without `--agent`, the
 launcher selects that session's main transcript. With `--agent <agent-id>`, it selects that subagent's transcript within
-the requested session. If the launcher does not exist, report that exact path before applying the shared source-checkout
-fallback. Do not derive or select a transcript path in Bash.
+the requested session.
 
 For example:
 

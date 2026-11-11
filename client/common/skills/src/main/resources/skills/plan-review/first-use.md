@@ -5,11 +5,13 @@
 - Reduce the remaining AI implementation work only through user-confirmed changes to product behavior, while preserving
 	every guarantee the user keeps.
 - Ask only about product choices whose alternatives materially change the design or remaining AI implementation cost.
-	Review the most costly qualifying choice first, then reconsider the order and qualifying children after each answer.
+	Review the most costly qualifying choice first, then reconsider the order and qualifying children after each answer,
+	ranking by evidence-supported relative cost without inventing a numerical forecast.
 - Give each scope choice one clearly labelled recommendation with a reason tied to the user's goals, the remaining AI
 	work it could avoid, and its main trade-off.
 - Leave one current product contract and executable implementation plan whose outcomes, dependencies, and acceptance
-	checks match the confirmed scope.
+	checks match the confirmed scope, and report the confirmed scope, the deferred or removed behavior and the changed
+	plan without claiming implementation completion.
 - After each confirmed choice, ask the next independent scope question without waiting for document edits, while one
 	bounded writer updates the product contract and plan; verify those edits before implementation relies on them.
 

@@ -2,10 +2,12 @@
 
 ## Design Goals
 
-- Replay the current branch onto an explicit base while preserving its intended commits.
+- Replay the current branch onto an explicit base while preserving its intended commits, and rewrite commits that may
+	be shared or pushed only with the user's explicit approval.
 - Preserve a backup, explicit conflict recovery, and verified resulting history.
 - Preserve applicable behavior introduced on the new base when a replayed branch renamed, replaced, or otherwise changed
-	the files that should carry that behavior.
+	the files that should carry that behavior, with each port reversible on its own and any port that materially changes
+	behavior beyond the requested rebase made only with approval or delegated repository policy.
 
 ## Procedure
 

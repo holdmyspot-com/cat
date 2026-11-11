@@ -7,9 +7,12 @@
 	not choose to keep.
 - Keep CAT's plugin data unless the user asks to delete it, so that a later installation can migrate it, and ask the
 	user before removing anything.
-- Leave every file that CAT does not own, including the user's rules in `.cat/rules`, untouched.
+- Leave every file that CAT does not own, including the user's rules in `.cat/rules`, untouched, by removing CAT only
+	through the installer's one uninstall command.
 - Leave a change that the agent's sandbox blocks to the user, instead of working around the sandbox.
 - Give the user the exact command that a blocked change needs, so that they can run it without asking for it.
+- Tell the user what the removal did: whether CAT's plugin data was kept or deleted, which registration entries remain
+	for them to remove, and what installing CAT again requires.
 
 ## Guidance
 

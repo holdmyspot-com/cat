@@ -12,6 +12,10 @@
 - Give the user the exact command that a blocked change needs, so that they can apply it without asking for it.
 - Give the user an entry command that installs into this session's harness home, and rely on its effect only once
 	the session has confirmed it there.
+- Change the harness's settings, as the installer asks, only after the user answers yes to that change, by running the
+	installer's own consent command as printed.
+- Tell the user what the installer did using only what it reported: which release is active or replaced, when it takes
+	effect, and what the user must do next.
 
 ## Guidance
 

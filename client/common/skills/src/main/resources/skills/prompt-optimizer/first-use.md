@@ -4,8 +4,13 @@
 
 - Let the user certify a prompt file through a campaign that the `prompt-optimizer` launcher owns,
 	while the user keeps every decision: the contract, each pause and the final outcome.
-- Relay the launcher's results without adding statistics, estimates or verdicts of the agent's own, so that every
-	claim the user sees is one that the launcher made.
+- Relay the launcher's results in full, without adding statistics, estimates or verdicts of the agent's own, so that
+	every claim the user sees is one that the launcher made and the user confirms and chooses only from text that the
+	reply shows.
+- Start a campaign only where each trial can run in a sandbox of its own, and otherwise show the launcher's reason and
+	stop.
+- Let a campaign continue after the session that drove it ends, without discarding it or starting another for the same
+	target unless the user chooses.
 
 ## Supported environments
 

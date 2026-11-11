@@ -5,7 +5,7 @@
 - Let a code-flow review of a Java change find the entry points that start each use case and resolve every call that
 	Java dispatches indirectly to the code that actually runs.
 - Classify changed Java code that does not appear in a call as executable or non-executable by whether it changes
-	runtime behavior.
+	runtime behavior, and identify the changed tests so the review can attach each to a use case.
 
 ## Guidance
 
@@ -45,4 +45,4 @@ Look for these entry points when tracing callers upward:
 - Treat an annotation that runtime code reads, such as a request-mapping or JSON-mapping annotation, as executable, and
 	show it at the step whose behavior it changes.
 - A `module-info.java` change alters which packages and services are visible. Show it at the step that depends on it.
-- Test methods live under `src/test/java`; attach each to the use case whose entry point or steps it calls.
+- Changed methods under `src/test/java` are the tests that the review attaches to use cases.
