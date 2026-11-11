@@ -51,4 +51,24 @@ public final class PortablePathsTest
 
 		requireThat(PortablePaths.text(path), "text").isEqualTo(path.toString());
 	}
+
+	/**
+	 * Verifies that every rooted text is rooted.
+	 *
+	 * @param text the path's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class)
+	public void recognizesRootedPath(String text)
+	{
+		requireThat(PortablePaths.isRooted(Path.of(text)), "isRooted").isTrue();
+	}
+
+	/**
+	 * Verifies that a relative path is not rooted.
+	 */
+	@Test
+	public void relativePathIsNotRooted()
+	{
+		requireThat(PortablePaths.isRooted(Path.of("rules/common/safety.md")), "isRooted").isFalse();
+	}
 }

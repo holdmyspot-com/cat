@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.RegressionScenarios;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -419,5 +420,57 @@ public final class DraftDirectoryTest
 		}
 		files.sort(null);
 		return files;
+	}
+
+	/**
+	 * Verifies that copying a prompt test refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedDirectoryToCopy(String text) throws IOException
+	{
+		DraftDirectory.copyTest(Path.of("source"), Path.of(text), Path.of("draft"));
+	}
+
+	/**
+	 * Verifies that revising a prompt test refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedDirectoryToRevise(String text) throws IOException
+	{
+		DraftDirectory.revise(Path.of("stored"), Path.of(text), Path.of("revision"));
+	}
+
+	/**
+	 * Verifies that listing the shared files of a prompt test refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 * @throws IOException if a file cannot be read
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedDirectoryForSharedFiles(String text) throws IOException
+	{
+		DraftDirectory.sharedFiles(Path.of("stored"), Path.of(text));
+	}
+
+	/**
+	 * Verifies that listing the changes outside a prompt test refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 * @throws IOException if a file cannot be read
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedDirectoryForChangesOutside(String text) throws IOException
+	{
+		DraftDirectory.changedOutside(Path.of("revision"), Path.of(text), Map.of());
 	}
 }

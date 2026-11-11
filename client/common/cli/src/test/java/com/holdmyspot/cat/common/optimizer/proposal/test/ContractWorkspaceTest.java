@@ -11,10 +11,13 @@ import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
 import com.holdmyspot.cat.common.optimizer.proposal.test.ContractToolSessions.Report;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.OptionalLong;
 import java.util.TreeMap;
@@ -203,6 +206,35 @@ public final class ContractWorkspaceTest
 
 		for (Report report : new Report[]{existing, drafted, escaping, noTest, noTestCase})
 			requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		requireThat(files(project), "after").isEqualTo(before);
+		requireThat(Files.exists(output), "outputExists").isFalse();
+	}
+
+	/**
+	 * Verifies that {@code contract workspace} refuses a test directory that starts at a root, including one that names
+	 * the draft directory's prompt test through its root alone, and writes nothing.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void refusesRootedTestDirectory() throws IOException
+	{
+		Path contextFile = project(_ ->
+		{
+		});
+		Path project = contextFile.getParent();
+		Map<String, String> before = files(project);
+		Path output = project.resolve("sized");
+		List<String> texts = new ArrayList<>(RootedPaths.texts());
+		texts.add(RootedPaths.withoutDrive(project.resolve(DraftDirectory.NAME).resolve(SAFETY).toAbsolutePath()));
+
+		for (String text : texts)
+		{
+			Report report = ContractToolSessions.workspace(json, contextFile, Path.of(text), 1, output);
+
+			requireThat(report.output(), text).contains("names no prompt test in the draft directory");
+			requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		}
 		requireThat(files(project), "after").isEqualTo(before);
 		requireThat(Files.exists(output), "outputExists").isFalse();
 	}

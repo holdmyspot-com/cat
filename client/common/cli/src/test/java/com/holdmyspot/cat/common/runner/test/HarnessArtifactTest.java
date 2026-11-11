@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.test.RootedPaths;
 import org.testng.annotations.Test;
 
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
@@ -332,5 +333,42 @@ public final class HarnessArtifactTest
 		RuntimeBinding.write(artifact, FakeRelease.runtime(cleanup.add(Files.createTempDirectory("cat-runtime-")),
 			platform));
 		return artifact;
+	}
+
+	/**
+	 * Verifies that a manifest path that starts at a root is rejected, including one that names the artifact's own
+	 * manifest through its root alone.
+	 *
+	 * @param text the manifest path's text
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*must be relative.*")
+	public void rejectsRootedManifestPath(String text) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+
+			HarnessArtifact.validate(artifact, Path.of(text), VERSION, Platform.LINUX_X64);
+		}
+	}
+
+	/**
+	 * Verifies that a manifest path that names the artifact's own manifest through its root alone, without a drive, is
+	 * rejected.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*must be relative.*")
+	public void rejectsManifestPathThroughRoot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = createArtifact(cleanup, false);
+			Path rooted = Path.of(RootedPaths.withoutDrive(artifact.toAbsolutePath().resolve(MANIFEST)));
+
+			HarnessArtifact.validate(artifact, rooted, VERSION, Platform.LINUX_X64);
+		}
 	}
 }

@@ -7,16 +7,21 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
+import com.holdmyspot.cat.common.optimizer.proposal.ContractContext;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
+import com.holdmyspot.cat.common.optimizer.proposal.ProposalCheck.RecordedTest;
 import com.holdmyspot.cat.common.optimizer.proposal.test.ContractToolSessions.Report;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.StringJoiner;
 
@@ -109,6 +114,39 @@ public final class ContractCheckTest
 	}
 
 	/**
+	 * Verifies that {@code contract check} refuses a prompt test's directory that starts at a root, including one that
+	 * names the draft directory's prompt test through its root alone.
+	 *
+	 * @throws IOException if a file cannot be read or written
+	 */
+	@Test
+	public void refusesRootedTestDirectory() throws IOException
+	{
+		List<String> texts = new ArrayList<>(RootedPaths.texts());
+		texts.add(null);
+		for (String text : texts)
+		{
+			Path project = directories.add(Files.createTempDirectory("contract-check-"));
+			String directory = text;
+			if (directory == null)
+			{
+				directory = RootedPaths.withoutDrive(project.resolve(DraftDirectory.NAME).
+					resolve(".cat/tests/CLAUDE/formatting").toAbsolutePath());
+			}
+			String rooted = directory;
+			Path contextFile = ContractToolSessions.write(json, contractAuthor, PROFILES,
+				ContractToolSessions.derivation(json, proposal ->
+					((ObjectNode) proposal.get("tests").get(0)).put("directory", rooted)), project);
+
+			Report report = ContractToolSessions.check(json, contextFile);
+
+			requireThat(report.output(), "output").contains("$.tests[0].directory: `" + rooted +
+				"` is not a directory relative to the draft directory");
+			requireThat(report.exitCode(), "exitCode").isEqualTo(1);
+		}
+	}
+
+	/**
 	 * Verifies that {@code contract check} accepts a valid proposal and reports each prompt test's number of distinct
 	 * expected outcomes, counting outcomes that differ only in case and whitespace once, without saying how they would
 	 * be split between the parts.
@@ -190,5 +228,31 @@ public final class ContractCheckTest
 		Files.writeString(project.resolve("CLAUDE.md"), "prompt", UTF_8);
 		Files.writeString(project.resolve("docs/kit/guide.md"), "guide", UTF_8);
 		return project;
+	}
+
+	/**
+	 * Verifies that a session context refuses a target that starts at a root.
+	 *
+	 * @param text the target's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedContextTarget(String text)
+	{
+		new ContractContext(ContractContext.NAME, DraftDirectory.NAME, Path.of(text), true,
+			ContractFixtures.PROFILE, PROFILES,
+			Map.of(ContractFixtures.PROFILE, 40_000L), List.of(), Optional.empty());
+	}
+
+	/**
+	 * Verifies that a recorded prompt test refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedRecordedDirectory(String text)
+	{
+		new RecordedTest(".cat/tests/CLAUDE/formatting/scenario.md", Path.of(text), List.of());
 	}
 }

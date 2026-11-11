@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.runner.RunnerRuntimeManifest;
 import com.holdmyspot.cat.common.runner.RuntimeBinding;
+import com.holdmyspot.cat.common.test.RootedPaths;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -290,5 +291,28 @@ public final class RunnerRuntimeManifestTest
 		Files.createDirectories(result.getParent());
 		Files.writeString(result, contents);
 		return result;
+	}
+
+	/**
+	 * Rejects a manifest entry whose path starts at a root.
+	 *
+	 * @param text the entry path's text
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*Unsafe runner runtime manifest path.*")
+	public void rejectsRootedManifestEntry(String text) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("runner-runtime-manifest"));
+			Path artifact = packagedArtifact(root.resolve("artifact"), "runtime v1\n");
+			RunnerRuntimeManifest.write(artifact);
+			RuntimeBinding.write(artifact, runtime(root.resolve("runtime"), "runtime one\n"));
+			Path manifest = artifact.resolve(RunnerRuntimeManifest.PATH);
+			Files.writeString(manifest, Files.readString(manifest) + "file\t" + "0".repeat(64) + "\t" + text + "\n");
+
+			RunnerRuntimeManifest.fingerprint(artifact);
+		}
 	}
 }

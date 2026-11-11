@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import org.testng.annotations.Test;
 
@@ -685,5 +686,19 @@ public final class TestWorkspacesTest
 					startsWith(".cat/tests/guidance/case/workspace/missing.md: ");
 			}
 		}
+	}
+
+	/**
+	 * Verifies that the linked targets of a prompt test directory that starts at a root are refused.
+	 *
+	 * @param text the directory's text
+	 * @throws IOException if the arguments cannot be created
+	 * @throws ScenarioFormatException if a workspace file is refused
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedLinkedTargetsDirectory(String text) throws IOException, ScenarioFormatException
+	{
+		PromptTestFiles.linkedTargets(Path.of("project"), Path.of("tree"), Path.of(text));
 	}
 }

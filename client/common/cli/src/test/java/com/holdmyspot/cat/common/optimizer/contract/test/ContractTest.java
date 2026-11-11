@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
+import com.holdmyspot.cat.common.test.RootedPaths;
 import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -673,5 +674,69 @@ public final class ContractTest
 
 		requireThat(test.scenario().expectedBehavior(), "expectedBehavior").
 			isEqualTo(Optional.of(new ExpectedBehavior(test.expectedBehaviour(), test.timeLimit())));
+	}
+
+	/**
+	 * Verifies that a dependent refuses a file that starts at a root.
+	 *
+	 * @param text the file's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*normalized relative path.*")
+	public void refusesRootedDependentPath(String text)
+	{
+		new Dependent(Path.of(text), new Dependent.WholeFile(), "Repairs the output.");
+	}
+
+	/**
+	 * Verifies that a trial plugin's build output refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*output must be a normalized relative path.*")
+	public void refusesRootedBuildOutput(String text)
+	{
+		new TrialPlugin.Build(List.of("build"), Path.of(text));
+	}
+
+	/**
+	 * Verifies that a trial plugin's mapping refuses a source that starts at a root.
+	 *
+	 * @param text the source's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*source must be a normalized relative path.*")
+	public void refusesRootedMappingSource(String text)
+	{
+		new TrialPlugin.Mapping(Path.of(text), Path.of("tools"));
+	}
+
+	/**
+	 * Verifies that a trial plugin's mapping refuses a target that starts at a root.
+	 *
+	 * @param text the target's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*target must be a normalized relative path.*")
+	public void refusesRootedMappingTarget(String text)
+	{
+		new TrialPlugin.Mapping(Path.of("tools"), Path.of(text));
+	}
+
+	/**
+	 * Verifies that a drafted prompt test refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedDraftDirectory(String text)
+	{
+		new PromptTest.Draft(Path.of(text), "# Scenario");
 	}
 }

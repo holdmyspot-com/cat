@@ -26,6 +26,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -371,5 +372,33 @@ public final class CertificationRecordTest
 	private static Sha256 hash(String text)
 	{
 		return Sha256.of(text.getBytes(UTF_8));
+	}
+
+	/**
+	 * Verifies that a record refuses a target that starts at a root.
+	 *
+	 * @param text the target's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedTarget(String text)
+	{
+		new CertificationRecord(Path.of(text), 1, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
+			Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
+	}
+
+	/**
+	 * Verifies that a record refuses a prompt file that starts at a root.
+	 *
+	 * @param text the prompt file's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedPromptFile(String text)
+	{
+		new CertificationRecord(Path.of("CLAUDE.md"), 1, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
+			Map.of(Path.of(text), hash("prompt v1")), Builder.OBSERVED);
 	}
 }

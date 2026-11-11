@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.TrialSelection;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -105,5 +106,17 @@ public final class TrialSelectionTest
 		requireThat(selection.selects(Path.of("docs/style/tone.md")), "declaredNested").isTrue();
 		requireThat(selection.selects(Path.of("docs/other-rules.md")), "undeclared").isFalse();
 		requireThat(selection.selects(Path.of("docs/style/other.md")), "undeclaredNested").isFalse();
+	}
+
+	/**
+	 * Verifies that a source selection refuses a root that starts at a root.
+	 *
+	 * @param text the root's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedSelectionRoot(String text)
+	{
+		new SourceSelection(Set.of(Path.of(text)), Set.of(), List.of());
 	}
 }

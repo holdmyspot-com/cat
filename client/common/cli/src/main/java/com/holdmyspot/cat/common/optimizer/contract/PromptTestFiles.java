@@ -281,7 +281,7 @@ public record PromptTestFiles(Path root, Path directory, Scenario scenario,
 	{
 		requireThat(project, "project").isNotNull();
 		requireThat(tree, "tree").isNotNull();
-		requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(directory), "isRooted(directory)").isFalse();
 		Path normalized = directory.normalize();
 		Optional<Path> root = PromptTestLocations.rootOf(normalized);
 		if (root.isEmpty())

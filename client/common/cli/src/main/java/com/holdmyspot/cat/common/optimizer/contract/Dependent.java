@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortablePaths;
+
 import java.nio.file.Path;
 
 /**
@@ -62,7 +64,7 @@ public record Dependent(Location location, String plugin, Path path, Removal rem
 		}
 		requireThat(path, "path").isNotNull();
 		String text = path.toString();
-		if (path.isAbsolute() || text.isEmpty() || !path.normalize().equals(path) || path.startsWith(".."))
+		if (PortablePaths.isRooted(path) || text.isEmpty() || !path.normalize().equals(path) || path.startsWith(".."))
 		{
 			throw new IllegalArgumentException("path must be a normalized relative path that stays below its root: " +
 				path);

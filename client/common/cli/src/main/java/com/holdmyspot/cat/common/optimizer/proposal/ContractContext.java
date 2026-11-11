@@ -88,7 +88,7 @@ public record ContractContext(String proposalFile, String draft, Path target, bo
 	{
 		requireThat(proposalFile, "proposalFile").isNotBlank();
 		requireThat(draft, "draft").isNotBlank();
-		requireThat(target.isAbsolute(), "target.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(target), "isRooted(target)").isFalse();
 		requireThat(role, "role").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
 		toolOutputBytes = Map.copyOf(toolOutputBytes);

@@ -1197,4 +1197,43 @@ public final class ProjectRuleLoaderTest
 		Files.createDirectories(file.getParent());
 		Files.writeString(file, content);
 	}
+
+	/**
+	 * Verifies that a rule dependency that starts at a root is refused.
+	 *
+	 * @param text the dependency's text
+	 * @throws IOException if the rules cannot be written
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*dependency must be relative.*")
+	public void rejectsRootedDependency(String text) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
+			write(plugin, "rules/common/dependent.md", "---\ndepends-on: [\"" + text.replace("\\", "\\\\") +
+				"\"]\n---\nDependent guidance\n");
+
+			new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
+		}
+	}
+
+	/**
+	 * Verifies that an installed rule requested by a path that starts at a root is refused.
+	 *
+	 * @param text the rule's text
+	 * @throws IOException if the rule cannot be read
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedInstalledRule(String text) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
+
+			new ProjectRuleLoader(scope.yaml()).loadRule(plugin, Path.of(text));
+		}
+	}
 }

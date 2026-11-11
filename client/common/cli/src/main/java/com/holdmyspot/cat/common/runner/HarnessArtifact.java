@@ -7,6 +7,7 @@ import java.nio.file.Path;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
@@ -129,7 +130,7 @@ public final class HarnessArtifact
 		requireThat(root, "root").isNotNull();
 		requireThat(manifestPath, "manifestPath").isNotNull();
 		requireThat(platform, "platform").isNotNull();
-		if (manifestPath.isAbsolute() || manifestPath.normalize().startsWith(".."))
+		if (PortablePaths.isRooted(manifestPath) || manifestPath.normalize().startsWith(".."))
 		{
 			throw new IOException(
 				"Artifact manifest path must be relative to the artifact directory and must not escape it: " +

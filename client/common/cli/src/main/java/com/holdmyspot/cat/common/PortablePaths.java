@@ -33,6 +33,23 @@ public final class PortablePaths
 	}
 
 	/**
+	 * Indicates whether a path starts at a root, which makes it name a file on one machine rather than a file relative
+	 * to a project.
+	 * <p>
+	 * Check this, not {@link Path#isAbsolute()}, to refuse a path that must be relative. On Windows,
+	 * {@code Path.of("/etc/hosts")} has a root but no drive, so {@code isAbsolute()} is {@code false} and the path
+	 * would pass as relative.
+	 *
+	 * @param path a path
+	 * @return {@code true} if the path has a root
+	 * @throws NullPointerException if {@code path} is null
+	 */
+	public static boolean isRooted(Path path)
+	{
+		return path.getRoot() != null;
+	}
+
+	/**
 	 * Prevents construction of this static utility.
 	 */
 	private PortablePaths()

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
@@ -253,7 +254,7 @@ public final class DraftDirectory
 	public static void copyTest(Path source, Path testDirectory, Path draft) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
-		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(testDirectory), "isRooted(testDirectory)").isFalse();
 		requireThat(draft, "draft").isNotNull();
 		copyTree(source.resolve(testDirectory), draft.resolve(testDirectory));
 		for (Path shared : linkedTargets(source, testDirectory))
@@ -276,7 +277,7 @@ public final class DraftDirectory
 	public static Path revise(Path stored, Path testDirectory, Path revision) throws IOException
 	{
 		requireThat(stored, "stored").isNotNull();
-		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(testDirectory), "isRooted(testDirectory)").isFalse();
 		requireThat(revision, "revision").isNotNull();
 		Path revised = unused(stored.getParent());
 		copyTree(revision.resolve(testDirectory), revised.resolve(testDirectory));
@@ -299,7 +300,7 @@ public final class DraftDirectory
 	public static Map<Path, Sha256> sharedFiles(Path stored, Path testDirectory) throws IOException
 	{
 		requireThat(stored, "stored").isNotNull();
-		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(testDirectory), "isRooted(testDirectory)").isFalse();
 		Map<Path, Sha256> files = new TreeMap<>();
 		for (Path shared : linkedTargets(stored, testDirectory))
 		{
@@ -331,7 +332,7 @@ public final class DraftDirectory
 		throws IOException
 	{
 		requireThat(revision, "revision").isNotNull();
-		requireThat(testDirectory.isAbsolute(), "testDirectory.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(testDirectory), "isRooted(testDirectory)").isFalse();
 		requireThat(received, "received").isNotNull();
 		Set<Path> paths = new TreeSet<>(regularFiles(revision));
 		paths.addAll(received.keySet());

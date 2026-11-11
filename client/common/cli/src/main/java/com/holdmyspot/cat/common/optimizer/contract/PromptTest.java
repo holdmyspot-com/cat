@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.contract;
 
 import com.holdmyspot.cat.common.Identifier;
+import com.holdmyspot.cat.common.PortablePaths;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -85,7 +86,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		public Draft
 		{
 			requireThat(directory, "directory").isNotNull();
-			requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
+			requireThat(PortablePaths.isRooted(directory), "isRooted(directory)").isFalse();
 			requireThat(directory.toString(), "directory").isNotEmpty();
 			requireThat(directory.normalize(), "directory.normalize()").isEqualTo(directory, "directory");
 			requireThat(directory.startsWith(".."), "directory.startsWith(\"..\")").isFalse();

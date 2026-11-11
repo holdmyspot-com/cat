@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -246,7 +247,7 @@ public final class RuleReferences
 		{
 			return Optional.empty();
 		}
-		if (path.isAbsolute())
+		if (PortablePaths.isRooted(path))
 			return Optional.empty();
 		return Optional.of(file.getParent().resolve(path).normalize());
 	}

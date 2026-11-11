@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -63,7 +64,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	public CertificationRecord
 	{
 		requireThat(target, "target").isNotNull();
-		requireThat(target.isAbsolute(), "target.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(target), "isRooted(target)").isFalse();
 		requireThat(target.toString(), "target").isNotEmpty();
 		requireThat(certificationIndex, "certificationIndex").isPositive();
 		requireThat(scope, "scope").isNotNull();
@@ -73,7 +74,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		requireThat(identity, "identity").isNotNull();
 		for (Path file : promptFiles.keySet())
 		{
-			requireThat(file.isAbsolute(), "promptFiles.isAbsolute(file)").withContext(file, "file").isFalse();
+			requireThat(PortablePaths.isRooted(file), "promptFiles.isRooted(file)").withContext(file, "file").isFalse();
 			requireThat(file.toString(), "promptFiles").isNotEmpty();
 		}
 		cells = List.copyOf(cells);

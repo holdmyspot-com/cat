@@ -44,7 +44,7 @@ public record SourceSelection(Set<Path> roots, Set<String> names, List<String> p
 		Set<Path> normalized = new TreeSet<>();
 		for (Path root : roots)
 		{
-			requireThat(root.isAbsolute(), "root.isAbsolute()").withContext(root, "root").isFalse();
+			requireThat(PortablePaths.isRooted(root), "isRooted(root)").withContext(root, "root").isFalse();
 			normalized.add(root.normalize());
 		}
 		for (String name : names)

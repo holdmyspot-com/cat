@@ -132,7 +132,7 @@ public final class ProposalCheck
 		public RecordedTest
 		{
 			requireThat(citation, "citation").isNotBlank();
-			requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
+			requireThat(PortablePaths.isRooted(directory), "isRooted(directory)").isFalse();
 			committed = List.copyOf(committed);
 		}
 	}
@@ -1054,7 +1054,7 @@ public final class ProposalCheck
 		private Path directory(String text, String at)
 		{
 			Path directory = Path.of(text);
-			if (text.contains("\\") || directory.isAbsolute() || !directory.normalize().equals(directory) ||
+			if (text.contains("\\") || PortablePaths.isRooted(directory) || !directory.normalize().equals(directory) ||
 				directory.startsWith("..") || text.endsWith("/"))
 			{
 				problems.add(at + ": `" + text + "` is not a directory relative to the draft directory, with / " +

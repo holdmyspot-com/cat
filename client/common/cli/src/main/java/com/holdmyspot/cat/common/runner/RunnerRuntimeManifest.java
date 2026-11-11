@@ -154,7 +154,7 @@ public final class RunnerRuntimeManifest
 			throw new IOException("Malformed runner runtime manifest entry at " + manifest + ":" + lineNumber);
 		}
 		Path path = Path.of(fields[2]);
-		if (path.isAbsolute() || path.normalize().startsWith("..") || !isRuntimePath(path))
+		if (PortablePaths.isRooted(path) || path.normalize().startsWith("..") || !isRuntimePath(path))
 			throw new IOException("Unsafe runner runtime manifest path at " + manifest + ":" + lineNumber);
 		return new Entry(fields[0], fields[1], PortablePaths.text(path));
 	}

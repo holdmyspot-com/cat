@@ -153,7 +153,7 @@ public final class ContractTools
 		Session session = open(contextFile);
 		Path directory = testDirectory.normalize();
 		Path test = session.draft().resolve(directory).normalize();
-		if (testDirectory.isAbsolute() || !test.startsWith(session.draft()) ||
+		if (PortablePaths.isRooted(testDirectory) || !test.startsWith(session.draft()) ||
 			!Files.isRegularFile(test.resolve(PromptTestFiles.SCENARIO), LinkOption.NOFOLLOW_LINKS))
 		{
 			out.println("`" + testDirectory + "` names no prompt test in the draft directory `" +

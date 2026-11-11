@@ -292,7 +292,7 @@ public record RelativeRuleReference(Path rule, int line, String reference, Strin
 		{
 			return null;
 		}
-		if (path.isAbsolute())
+		if (PortablePaths.isRooted(path))
 			return null;
 		Path resolved = directory.resolve(path).normalize();
 		if (!Files.isRegularFile(resolved, NOFOLLOW_LINKS))

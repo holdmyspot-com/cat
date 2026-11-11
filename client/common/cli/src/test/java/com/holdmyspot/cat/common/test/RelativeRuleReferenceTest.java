@@ -86,6 +86,26 @@ public final class RelativeRuleReferenceTest
 	}
 
 	/**
+	 * Verifies that a reference that names an existing file through its root alone, without a drive, is not a relative
+	 * reference.
+	 *
+	 * @throws IOException if the rules cannot be written
+	 */
+	@Test
+	public void ignoresReferenceThroughRootWithoutDrive() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-")).toAbsolutePath().normalize();
+			write(project, ".cat/rules/include/build.md", "Build guidance");
+			String rooted = RootedPaths.withoutDrive(project.resolve(".cat/rules/include/build.md"));
+			write(project, ".cat/rules/include/team.md", "# Team\n\nBefore building, load `" + rooted + "`.\n");
+
+			requireThat(RelativeRuleReference.find(null, project), "references").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that the warning states how many references there are and why they matter, gives a request that the user
 	 * can paste to their agent naming the file that lists them, tells the user how to fix them, and says that it repeats.
 	 */

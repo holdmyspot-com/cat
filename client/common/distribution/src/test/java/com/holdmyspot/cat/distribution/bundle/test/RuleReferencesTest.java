@@ -125,6 +125,25 @@ public final class RuleReferencesTest
 	}
 
 	/**
+	 * Verifies the build does not take a path that starts at a root, such as {@code /etc/goals.md}, for a reference
+	 * that is relative to the file's directory, even when its file name is that of a packaged rule.
+	 *
+	 * @throws IOException if the artifact cannot be written
+	 */
+	@Test
+	public void ignoresRootedPathNamedLikeRule() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-rule-references-"));
+			write(artifact, "rules/common/goals.md", "Goals\n");
+			write(artifact, "rules/include/common/planning.md", "# Planning\nLazy load `/etc/goals.md`.\n");
+
+			RuleReferences.requireResolvable(artifact);
+		}
+	}
+
+	/**
 	 * Verifies the build accepts a packaged artifact whose Markdown names each packaged rule through the plugin
 	 * directory.
 	 */

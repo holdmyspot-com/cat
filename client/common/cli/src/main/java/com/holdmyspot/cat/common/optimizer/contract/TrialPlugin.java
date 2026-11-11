@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PluginInfo;
+import com.holdmyspot.cat.common.PortablePaths;
 
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -121,7 +122,8 @@ public record TrialPlugin(String name, String baseDigest, BaseSource source, Lis
 	{
 		requireThat(path, name).isNotNull();
 		boolean empty = path.toString().isEmpty();
-		if (path.isAbsolute() || (empty && !emptyAllowed) || !path.normalize().equals(path) || path.startsWith(".."))
+		if (PortablePaths.isRooted(path) || (empty && !emptyAllowed) || !path.normalize().equals(path) ||
+			path.startsWith(".."))
 		{
 			throw new IllegalArgumentException(name + " must be a normalized relative path that stays below its " +
 				"root: " + path);

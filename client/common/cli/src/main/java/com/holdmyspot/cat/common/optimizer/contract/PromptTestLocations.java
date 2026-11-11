@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.PortablePaths;
+
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -61,7 +63,7 @@ public final class PromptTestLocations
 		 */
 		public Location
 		{
-			requireThat(directory.isAbsolute(), "directory.isAbsolute()").isFalse();
+			requireThat(PortablePaths.isRooted(directory), "isRooted(directory)").isFalse();
 		}
 	}
 
@@ -79,7 +81,7 @@ public final class PromptTestLocations
 	 */
 	public static Path scenarioDirectory(Path target)
 	{
-		requireThat(target.isAbsolute(), "target.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(target), "isRooted(target)").isFalse();
 		Path normalized = target.normalize();
 		if (normalized.startsWith(RULES) && normalized.getNameCount() > RULES.getNameCount())
 			return TESTS.resolve(withoutSuffix(RULES.relativize(normalized)));
@@ -125,7 +127,7 @@ public final class PromptTestLocations
 	 */
 	public static Optional<Path> rootOf(Path normalized)
 	{
-		requireThat(normalized.isAbsolute(), "normalized.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(normalized), "isRooted(normalized)").isFalse();
 		if (normalized.startsWith(TESTS))
 			return Optional.of(TESTS);
 		int count = normalized.getNameCount();

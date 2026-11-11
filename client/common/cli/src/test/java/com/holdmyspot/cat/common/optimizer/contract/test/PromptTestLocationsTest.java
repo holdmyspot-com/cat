@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations.Location;
+import com.holdmyspot.cat.common.test.RootedPaths;
 
 import org.testng.annotations.Test;
 
@@ -153,5 +154,41 @@ public final class PromptTestLocationsTest
 					tests.resolve("codex/read-file/certifications.json")));
 			}
 		}
+	}
+
+	/**
+	 * Verifies that a location refuses a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedLocation(String text)
+	{
+		new Location(Path.of(text), true);
+	}
+
+	/**
+	 * Verifies that a scenario directory is not derived for a target that starts at a root.
+	 *
+	 * @param text the target's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedScenarioTarget(String text)
+	{
+		PromptTestLocations.scenarioDirectory(Path.of(text));
+	}
+
+	/**
+	 * Verifies that no test root is derived for a directory that starts at a root.
+	 *
+	 * @param text the directory's text
+	 */
+	@Test(dataProvider = "rootedTexts", dataProviderClass = RootedPaths.class,
+		expectedExceptions = IllegalArgumentException.class)
+	public void refusesRootedTestRootDirectory(String text)
+	{
+		PromptTestLocations.rootOf(Path.of(text));
 	}
 }

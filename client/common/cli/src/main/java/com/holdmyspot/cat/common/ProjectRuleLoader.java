@@ -246,7 +246,7 @@ public final class ProjectRuleLoader
 	{
 		requireThat(pluginRoot, "pluginRoot").isNotNull();
 		requireThat(rule, "rule").isNotNull();
-		requireThat(rule.isAbsolute(), "rule.isAbsolute()").isFalse();
+		requireThat(PortablePaths.isRooted(rule), "isRooted(rule)").isFalse();
 		Path absoluteRoot = pluginRoot.toAbsolutePath().normalize();
 		Path ruleRoot = absoluteRoot.resolve("rules");
 		Path file = ruleRoot.resolve(rule).normalize();
@@ -1147,7 +1147,7 @@ public final class ProjectRuleLoader
 	private static String resolveDependency(Rule rule, String dependency) throws IOException
 	{
 		Path declaredPath = Path.of(dependency);
-		if (declaredPath.isAbsolute())
+		if (PortablePaths.isRooted(declaredPath))
 			throw new IOException("Rule dependency must be relative: " + rule.displayPath() + " depends on " + dependency);
 		Path resolvedPath = Path.of(rule.path()).getParent().resolve(declaredPath).normalize();
 		String resolved = resolvedPath.toString().replace(resolvedPath.getFileSystem().getSeparator(), "/");
@@ -1349,7 +1349,7 @@ public final class ProjectRuleLoader
 			{
 				continue;
 			}
-			if (declared.isAbsolute())
+			if (PortablePaths.isRooted(declared))
 				continue;
 			Path resolved = file.getParent().resolve(declared).normalize();
 			if (!resolved.startsWith(ruleRoot) || !Files.isRegularFile(resolved, NOFOLLOW_LINKS))
