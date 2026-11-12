@@ -2057,7 +2057,9 @@ counted from the command's start, with the driver's admission rule, grace period
 unfinished at the slice's end returns `running` with a summary of how many of its trials are decided and the command to
 repeat, `start`, which continues the stored proposal's pilot. Cancelled pilot trials are not infrastructure attempts
 and rerun as the same logical trials. The skill repeats `start` while it returns `running`, showing the progress after
-each slice, as it does for `run`. No call holds a whole pilot, so a host's tool timeout never ends one. A trial whose
+each slice, as it does for `run`. The pilot of a test revision
+that `run` makes shares `run`'s slice: unfinished, it returns `running`, and the next `run` continues it from the
+stored revised contract, without a contract author session, before any further round. No call holds a whole pilot, so a host's tool timeout never ends one. A trial whose
 built-in tool cannot be decided is not an infrastructure attempt: the proposal causes it, and the pilot shows it as a
 failed run (D136).
 
