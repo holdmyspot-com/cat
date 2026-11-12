@@ -194,10 +194,10 @@ running. Launch once it prints that it serves this session's launches; it serves
 exits with status `2` instead, report its reason to the user and do not launch, unless the reason says that another
 request server already serves this session.
 
-Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email` or
-`--continue-after-failed-turn`: only CAT itself passes them, and the launcher refuses them. The launcher exits with `0` when the session completed, `75` when no capacity was
-free, `2` when CAT refused to start the session, and `1` otherwise, and prints the reason for any status other than
-`0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
+Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email`,
+`--continue-after-failed-turn` or `--run-id`: only CAT itself passes them, and the launcher refuses them. The launcher
+exits with `0` when the session completed, `75` when no capacity was free, `2` when CAT refused to start the session,
+and `1` otherwise, and prints the reason for any status other than `0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
 other reason to the user. When it asks the user to start a new session or to change a setting, as it does when this
 session started before CAT was installed or updated, ask the user to do so and run the task in a new session. Do not
 start the run any other way, and do not change sandbox settings yourself.
