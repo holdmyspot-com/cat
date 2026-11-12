@@ -62,7 +62,13 @@ where this section does not replace them.
 - **Defect 5, decision waiting for the user:** both Claude campaigns first targeted `AGENTS.md`, whose `prompt.json`
   has only a `codex` key. CAT refused without naming `CLAUDE.md`, the file configured for Claude, so each session
   spent turns finding it. The proposed fix names that file in the refusal; it needs only a build.
-- **Next, after the pause is lifted:** restart the request server; resume the four campaigns; rerun Codex E5 with
+- **New order (user ruling, 2026-11-11).** The four campaigns above are abandoned: their launchers ended with the
+  session, and their evidence would come from a build older than the final one. Finish the known changes first: a
+  built-in tool may decide `expected_outcome` and stalled development pauses for the user (design `83d517b52`..
+  `f80ffb189`, in worktrees `expected-outcome-tool` and `stall-pause`), the cheaper development judge if the user
+  approves its design, defect 3 and the E3 wording. Then release once and install it, run the cheap E runs (E2, E3,
+  E4, E6) first, and run the expensive ones (E1, E5, E7, E8) once each on that build.
+- **Superseded next steps:** restart the request server; resume the four campaigns; rerun Codex E5 with
   retries on "No available accounts"; E8 alone per harness; the failure-reporting runs; the WI-142 Codex checks; the
   native loader check and the held-out denial recheck; WI-71; gates 2/4/5/7/8.
 
