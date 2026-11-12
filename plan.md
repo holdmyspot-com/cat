@@ -30,6 +30,18 @@ It is complete only when all of the following hold:
 This section supersedes the release facts of the earlier handoff below. That handoff's remaining items still apply
 where this section does not replace them.
 
+### Update (2026-11-12): known changes merged, release pending
+
+- Merged onto v1.0 and pushed at `aee7caff8` (full build 5,546 tests, 0 failures; Build green on all 5 platforms):
+	the built-in tool for `expected_outcome`, the stall pause, the pilot checkpoint (defect 3), the development judge,
+	reusable session slots (WI-143, D140) and the guard pilot in slices (WI-144, D141).
+- **Next:** publish the v1.0 release from `aee7caff8` once the user decides whether the untracked `ci-watch-scenario/`
+	stays out, install it in both harnesses and restart the request server. Then stop: the user paused all prompt
+	optimization (2026-11-12, usage rate), so no E runs, failure-reporting runs, WI-142 live checks or gates until the
+	user lifts it.
+- Open for the user: a prompt test whose time limit exceeds the slice budget can never be admitted in a slice, in the
+	driver or the pilot; no cap exists today.
+
 ### Update (2026-11-11, evening): release `520d3dab3`, prompt optimization paused
 
 - **Paused by the user (2026-11-11): prompt optimization, because of this week's usage limit.** Do not resume a
