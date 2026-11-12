@@ -4815,10 +4815,19 @@ public final class OptimizerCoreTest
 	 */
 	private static int decidedTrials(ObjectNode output)
 	{
-		Matcher matcher = Pattern.compile("has decided (\\d+) of (\\d+) trials").matcher(output.get("summary").
-			asString());
-		requireThat(matcher.find(), "reportsProgress").withContext(output.get("summary").asString(), "summary").
-			isTrue();
+		return decidedTrials(output.get("summary").asString());
+	}
+
+	/**
+	 * Returns how many guard pilot trials a notice reports as decided.
+	 *
+	 * @param notice the text of the notice
+	 * @return the number of decided trials
+	 */
+	private static int decidedTrials(String notice)
+	{
+		Matcher matcher = Pattern.compile("has decided (\\d+) of (\\d+) trials").matcher(notice);
+		requireThat(matcher.find(), "reportsProgress").withContext(notice, "notice").isTrue();
 		return Integer.parseInt(matcher.group(1));
 	}
 
@@ -5379,7 +5388,27 @@ public final class OptimizerCoreTest
 	private static void requestTestRevision(Repository repository, String id)
 		throws IOException, CommandRefusedException
 	{
+		requestTestRevision(repository, id, true);
+	}
+
+	/**
+	 * Records the prompt author's request for a test revision of the prompt test {@code formatting}, as a development
+	 * round records it when the prompt author classifies a failure kind as a test defect.
+	 *
+	 * @param repository the owned campaign repository
+	 * @param id the campaign identifier
+	 * @param keepPending {@code true} to keep the campaign's pending decisions, {@code false} to clear them, as in a
+	 *   campaign that no decision waits on
+	 * @throws IOException if the store fails
+	 * @throws CommandRefusedException if the owned project cannot be opened
+	 */
+	private static void requestTestRevision(Repository repository, String id, boolean keepPending)
+		throws IOException, CommandRefusedException
+	{
 		Campaign c = repository.load(id);
+		List<PendingDecision> pending = List.of();
+		if (keepPending)
+			pending = c.pendingDecisions();
 		PromptAuthorKind kind = new PromptAuthorKind("tone_named_in_turn", List.of("f1"), FailureKind.TEST_DEFECT,
 			List.of(), "The first turn names the tone that the assertion expects.");
 		TestRevisions requested = c.testRevisions().request(new TestRevisionRequest("formatting",
@@ -5388,8 +5417,8 @@ public final class OptimizerCoreTest
 			store(repository.scope()).replaceSnapshot(new Campaign(c.header(),
 			c.ceiling(), c.lineages(), c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(),
 			c.development(), c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.windows(),
-			c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(), c.optimization(),
-			c.answeredWarnings(), requested, c.plugins()));
+			c.throttle(), pending, c.revisionRequested(), c.outcome(), c.delivery(),
+			c.optimization(), c.answeredWarnings(), requested, c.plugins()));
 	}
 
 	/**
@@ -5444,6 +5473,76 @@ public final class OptimizerCoreTest
 			String draft = JSON.readTree(Files.readString(heldOut.resolve("proposal.json"))).get("draft").asString();
 			requireThat(Files.readString(heldOut.resolve(draft).resolve(".cat/tests/CLAUDE/formatting/scenario.md")),
 				"stored").contains("Summarize the meeting notes");
+		}
+	}
+
+	/**
+	 * Verifies that {@code run} runs the guard pilot of a test revision's corrected contract within its slice: when
+	 * the slice ends before the pilot does, {@code run} reports {@code running} with how many of the pilot's trials
+	 * are decided and starts no round, the stored pilot keeps the decided trials, and each next {@code run} continues
+	 * the pilot until the revised contract starts its lineage.
+	 */
+	@Test
+	public void runContinuesRevisedPilotAcrossSlices() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count ->
+			{
+				if (count == 0)
+				{
+					return derivation(_ ->
+					{
+					});
+				}
+				return revisedFormatting(_ ->
+				{
+				});
+			});
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id, false);
+			repository.sessions().sessionDuration(Duration.ofSeconds(20));
+			int trialsBefore = repository.sessions().requests(SessionRole.TRIAL).size();
+
+			ObjectNode slice = output(repository, List.of("run", id));
+
+			requireThat(slice.get("status").asString(), "status").withContext(slice.toString(), "output").
+				isEqualTo("running");
+			requireThat(slice.get("message").asString(), "message").contains("The guard pilot has decided").
+				contains(" of " + 3 * GuardPilot.TRIALS + " trials").contains("`run` again");
+			Campaign unfinished = repository.load(id);
+			requireThat(unfinished.awaitsTestRevision(), "awaitsTestRevision").isTrue();
+			requireThat(unfinished.lineages().size(), "lineages").isEqualTo(1);
+			requireThat(Files.readString(repository.directory(id).resolve("held_out/pilot.json")), "storedPilot").
+				contains("The slice ended before every trial did");
+			// Only the revised test's pilot ran, and no development round started
+			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
+			requireThat(trials.subList(trialsBefore, trials.size()).stream().
+				allMatch(trial -> trial.turns().getFirst().startsWith("Summarize the meeting notes")), "onlyRevised").
+				isTrue();
+
+			int slices = 1;
+			int decided = decidedTrials(slice.get("message").asString());
+			while (repository.load(id).awaitsTestRevision())
+			{
+				requireThat(slices, "slices").isLessThan(30);
+				slice = output(repository, List.of("run", id));
+				++slices;
+				if (repository.load(id).awaitsTestRevision())
+				{
+					int now = decidedTrials(slice.get("message").asString());
+					requireThat(now, "decided").isGreaterThan(decided);
+					decided = now;
+				}
+			}
+
+			requireThat(slices, "slices").isGreaterThan(1);
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
+			requireThat(campaign.testRevisions().revisions().size(), "revisions").isEqualTo(1);
+			String pilot = Files.readString(repository.directory(id).resolve("held_out/pilot.json"));
+			requireThat(pilot, "finishedPilot").doesNotContain("The slice ended before every trial did");
 		}
 	}
 

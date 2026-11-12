@@ -146,8 +146,9 @@ from a launcher field.
 		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
 	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
 3. **Run.** While the `status` of the result of `confirm` or `run` is `running`, run `run <campaign>` again. After each
-	run, show the user its `summary`. (A `running` result of `start`, `revise` or `choose <campaign> retry` is step 2's
-	guard pilot, which `start` continues.)
+	run, show the user its `summary`, and its `message` when it has one: while a test revision's guard pilot is
+	unfinished, the `message` says how many of its trials are decided. (A `running` result of `start`, `revise` or
+	`choose <campaign> retry` is step 2's guard pilot, which `start` continues.)
 4. **Decide.** When `status` is `awaiting_user` and `proposal_file` is null, show the `summary` and each choice's
 	`label`, then ask the user to choose. Never choose on the user's behalf.
 	- Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an

@@ -1396,6 +1396,7 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
+		Instant sliceStart = scope.clock().instant();
 		refuseUnlaunchable();
 		return withCleanup(notices ->
 		{
@@ -1413,12 +1414,12 @@ public final class OptimizerCore implements Core
 				loaded = require(scope.store(), campaign, true);
 				if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
 				{
-					Optional<String> unfinished = reviseTests(root, loaded, lock);
+					Optional<String> unfinished = reviseTests(root, loaded, lock, sliceStart);
 					loaded = require(scope.store(), campaign, true);
 					if (unfinished.isPresent())
 						return report(root, loaded, null, unfinished.get());
 				}
-				result = SliceRunner.run(context(root, loaded), campaign, List.of(), lock.lend());
+				result = SliceRunner.run(context(root, loaded), campaign, List.of(), lock.lend(), sliceStart);
 			}
 			// The cleanup takes the lock itself, so the command releases it first
 			DeliveryResult delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result).orElse(null);
@@ -1436,14 +1437,16 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param campaign the campaign, which awaits a test revision and no contract revision
 	 * @param lock the campaign's write lock, which the caller holds
+	 * @param sliceStart when the command started, which bounds the guard pilot of the revised contract
 	 * @return a notice for the user if a session failed or its result is invalid, so that the remaining requests stay
-	 *   pending until {@code run} retries them; otherwise empty
+	 *   pending until {@code run} retries them, or if the slice ended before the revised contract's guard pilot did,
+	 *   so that the next {@code run} continues it; otherwise empty
 	 * @throws CommandRefusedException if the campaign does not accept a test revision, or the fork does not hold the
 	 *   revised contract's files
 	 * @throws IOException if the store, the workspace, the stored proposal or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private Optional<String> reviseTests(Path root, Campaign campaign, CampaignLock lock)
+	private Optional<String> reviseTests(Path root, Campaign campaign, CampaignLock lock, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String id = campaign.header().id();
@@ -1515,7 +1518,13 @@ public final class OptimizerCore implements Core
 		campaign = require(scope.store(), id, true);
 		List<CampaignEvent> events = new ArrayList<>();
 		if (!revisions.isEmpty())
-			events.addAll(revisedContract(root, campaign, fork, current, stored, revisions));
+		{
+			RevisedContract revised = revisedContract(root, campaign, fork, current, stored, revisions, sliceStart);
+			// A blocked revision is examined again with the next run, which also continues the pilot
+			if (revised.unfinished() != null)
+				return Optional.of(revised.unfinished());
+			events.addAll(revised.events());
+		}
 		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
 		events.addAll(blocked);
 		if (!events.isEmpty())
@@ -1535,26 +1544,32 @@ public final class OptimizerCore implements Core
 	 * @param revised the confirmed proposal with the corrected tests
 	 * @param stored the confirmed proposal as it was stored
 	 * @param revisions the changes, one per corrected test
-	 * @return the events
+	 * @param sliceStart when the command started, which bounds the pilot
+	 * @return the events that start the lineage, or a notice that the slice ended before the pilot did
 	 * @throws CommandRefusedException if the fork does not hold the revised contract's files, or something else blocks
 	 *   confirming it
 	 * @throws IOException if the proposal, the pilot or the workspace cannot be read or written
 	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
-	private List<CampaignEvent> revisedContract(Path root, Campaign campaign, ForkView fork,
-		DerivedProposal revised, ProposalFile.Stored stored, List<TestRevision> revisions)
+	private RevisedContract revisedContract(Path root, Campaign campaign, ForkView fork,
+		DerivedProposal revised, ProposalFile.Stored stored, List<TestRevision> revisions, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Set<Path> participants = participants(root, revised);
 		if (!unheld(fork, participants).isEmpty())
 			fork = fork.extend(root, participants);
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
-		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin, null);
+		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin,
+			new PilotSlice(scope.clock(), scope.sliceSettings(), scope.interrupts(), sliceStart));
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
 		// The revised contract is not confirmed on a pilot that did not finish. The user chooses to retry or to stop,
 		// and the test revisions run again with the next run.
 		if (pause.isPresent())
-			return List.of(new CampaignEvent.PilotFailed(pause.get()));
+			return new RevisedContract(List.of(new CampaignEvent.PilotFailed(pause.get())), null);
+		// The slice ended with trials to run, so the host agent repeats `run`, which continues the pilot before any
+		// round
+		if (GuardPilot.endedBySlice(pilots))
+			return new RevisedContract(List.of(), pilotProgress(pilots, "Run `run` again"));
 		// The proposal previews its confirmation, which needs the campaign that awaits the revised contract
 		CampaignEvent.ReviseTests revise = new CampaignEvent.ReviseTests(revisions);
 		Proposal proposal = proposal(root, Transitions.apply(campaign, revise), fork, revised, pilots, plugin);
@@ -1570,7 +1585,19 @@ public final class OptimizerCore implements Core
 		events.add(revise);
 		events.addAll(moveOnto(campaign, fork));
 		events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
-		return events;
+		return new RevisedContract(events, null);
+	}
+
+	/**
+	 * The outcome of the guard pilot that a test revision's corrected contract runs.
+	 *
+	 * @param events the events that start the revised contract's lineage, or that pause the campaign; empty if the
+	 *   pilot is unfinished
+	 * @param unfinished a notice that says how far the pilot is and how to continue it, or {@code null} if the pilot
+	 *   ended
+	 */
+	private record RevisedContract(List<CampaignEvent> events, String unfinished)
+	{
 	}
 
 	/**
@@ -2530,13 +2557,25 @@ public final class OptimizerCore implements Core
 	private CommandResult pilotContinues(Path root, Campaign campaign, Map<String, PilotResult> pilots)
 		throws IOException
 	{
+		String progress = pilotProgress(pilots, "Run `start` again with the target prompt file") +
+			" The proposal is shown once the pilot ends.";
+		return report(root, campaign, null, null, true).withNotices(List.of(progress));
+	}
+
+	/**
+	 * Returns how far a guard pilot that a slice left unfinished is, and the command that continues it.
+	 *
+	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @param again the instruction to run the command that continues the pilot, without the final period
+	 * @return the notice
+	 */
+	private static String pilotProgress(Map<String, PilotResult> pilots, String again)
+	{
 		int decided = 0;
 		for (PilotResult pilot : pilots.values())
 			decided += pilot.trials().size();
-		String progress = "The guard pilot has decided " + decided + " of " + pilots.size() * GuardPilot.TRIALS +
-			" trials. Run `start` again with the target prompt file to continue it, which keeps the trials it decided. " +
-			"The proposal is shown once the pilot ends.";
-		return report(root, campaign, null, null, true).withNotices(List.of(progress));
+		return "The guard pilot has decided " + decided + " of " + pilots.size() * GuardPilot.TRIALS + " trials. " +
+			again + " to continue it, which keeps the trials it decided.";
 	}
 
 	/**

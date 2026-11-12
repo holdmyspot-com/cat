@@ -3506,6 +3506,32 @@ public final class DriverTest
 	}
 
 	/**
+	 * A slice that began before the driver opened, as when the command that opens it first ran work of its own, counts
+	 * that work against its budget: once the budget and the grace period have passed since the slice began, the
+	 * driver's first step stops the slice without admitting a trial.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void sliceThatBeganEarlierEndsEarlier() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("slice-began-earlier")),
+				developing().window(1).build());
+			DriverContext context = harness.context();
+			Instant began = harness.clock().instant().minus(context.settings().budget()).
+				minus(context.settings().grace());
+			CampaignLock lock = CampaignLock.tryAcquire(context.fileLocks(), context.lockFile()).orElseThrow();
+			try (Driver driver = Driver.open(context, DriverHarness.CAMPAIGN, lock, began))
+			{
+				requireThat(driver.step(), "step").isInstanceOf(Step.Stopped.class);
+				requireThat(harness.runningTrials(), "runningTrials").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * A provider refusal that follows a 30-minute hold stops the slice with a message that names the harness, and
 	 * the refused trial waits in the queue without counting as an infrastructure failure.
 	 *

@@ -73,6 +73,32 @@ public final class SliceRunner
 	public static SliceResult run(DriverContext context, String campaignId, List<CampaignEvent> commands,
 		CampaignLock lock) throws IOException, InterruptedException
 	{
+		return run(context, campaignId, commands, lock, null);
+	}
+
+	/**
+	 * Applies the user's commands to a campaign under a write lock that the caller has taken, then advances it until
+	 * the slice stops. The slice began when the caller's command did, so the work that the command did before it
+	 * called this method counts against the slice's budget.
+	 * <p>
+	 * Takes ownership of the lock, releasing it when the slice ends.
+	 *
+	 * @param context the driver's context
+	 * @param campaignId the campaign's identifier
+	 * @param commands the user's commands, applied in order before the first step
+	 * @param lock the campaign's write lock
+	 * @param sliceStart when the slice began, or {@code null} if it begins now
+	 * @return the slice's result
+	 * @throws NullPointerException if any of the arguments other than {@code sliceStart} are null
+	 * @throws IllegalArgumentException if {@code campaignId} is blank, the store holds no campaign with the identifier,
+	 *   or a command is not a user's command or names something that the campaign does not offer
+	 * @throws IllegalStateException if the campaign's state does not permit a command
+	 * @throws IOException if the store, the workspace or a session cannot be read or written
+	 * @throws InterruptedException if the thread is interrupted while waiting
+	 */
+	public static SliceResult run(DriverContext context, String campaignId, List<CampaignEvent> commands,
+		CampaignLock lock, Instant sliceStart) throws IOException, InterruptedException
+	{
 		requireThat(lock, "lock").isNotNull();
 		try
 		{
@@ -87,7 +113,7 @@ public final class SliceRunner
 				throw e;
 			}
 		}
-		try (Driver driver = Driver.open(context, campaignId, lock))
+		try (Driver driver = Driver.open(context, campaignId, lock, sliceStart))
 		{
 			for (CampaignEvent command : commands)
 				driver.apply(command);

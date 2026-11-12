@@ -252,12 +252,36 @@ public final class Driver implements AutoCloseable
 	 */
 	public static Driver open(DriverContext context, String campaignId, CampaignLock lock) throws IOException
 	{
+		return open(context, campaignId, lock, null);
+	}
+
+	/**
+	 * Reconciles a campaign under a write lock that the caller has taken, in a slice that began earlier than the
+	 * driver: the caller's command spent part of the slice's budget before it opened the driver.
+	 * <p>
+	 * Takes ownership of the lock, releasing it if the driver cannot be created.
+	 *
+	 * @param context the driver's context
+	 * @param campaignId the campaign's identifier
+	 * @param lock the campaign's write lock
+	 * @param sliceStart when the slice began, or {@code null} if it begins now
+	 * @return the driver
+	 * @throws IllegalArgumentException if the store holds no campaign with that identifier
+	 * @throws IOException if the store, the worktree or the run records cannot be read or written, or the harness's
+	 *   credential file exists but cannot be read
+	 */
+	public static Driver open(DriverContext context, String campaignId, CampaignLock lock, Instant sliceStart)
+		throws IOException
+	{
 		try
 		{
 			Instant now = context.clock().instant();
 			HostLogin login = context.sessions().hostLogin();
 			Campaign campaign = Reconciler.reconcile(context, load(context, campaignId), now);
-			return new Driver(context, lock, campaign, now, login);
+			Instant began = now;
+			if (sliceStart != null)
+				began = sliceStart;
+			return new Driver(context, lock, campaign, began, login);
 		}
 		catch (IOException | RuntimeException e)
 		{
