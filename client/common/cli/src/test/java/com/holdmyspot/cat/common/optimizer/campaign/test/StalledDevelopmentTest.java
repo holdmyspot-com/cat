@@ -5,6 +5,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
+import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
+import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.KeepImprovement;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
@@ -13,15 +15,19 @@ import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
+import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -228,5 +234,88 @@ public final class StalledDevelopmentTest
 					Boundaries.comparison(Boundaries.STANDARD_CAP, 150, 40, 8)))).
 			cell("formatting", formattingPasses, 0).cell("plain_list", 100, 0).cell("safety", 100, 0).
 			outcome(Outcome.INCONCLUSIVE).campaign().build();
+	}
+
+	/**
+	 * Returns a campaign whose {@code safety} round has one rejected attempt left to complete, with {@code counted}
+	 * earlier rounds without progress counted for {@code safety}.
+	 *
+	 * @param counted the number of counted rounds
+	 * @return the campaign
+	 */
+	private static Campaign beforePromotion(int counted)
+	{
+		DrawnTestCase logs = Builder.targeted("safety", "logs");
+		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The same defect reproduced");
+		List<Map<String, Double>> rounds = new ArrayList<>();
+		for (int i = 0; i < counted; ++i)
+			rounds.add(Map.of("safety", 0.9));
+		return new Builder().confirmed().working(1).development("safety", 99, 1).development("formatting", 61, 0).
+			failure(new Failure(logs, "The directory was removed", List.of(), null, List.of(failed, failed, failed),
+				List.of(), Builder.FILES)).regression(logs, Verdict.FAIL).
+			stalls("safety", new StallProgress(Map.of("safety", 0.99), 1, rounds)).
+			round(new Round(Map.of("safety", 1))).build();
+	}
+
+	/**
+	 * Promotes a passing attempt through the same durable transitions as the driver.
+	 *
+	 * @param campaign the campaign before the promotion
+	 * @return the promoted campaign
+	 */
+	private static Campaign promote(Campaign campaign)
+	{
+		Sha256 snapshot = Builder.snapshot("promoted-candidate");
+		Campaign submitted = TransitionSteps.submit(campaign, "safety", snapshot, List.of());
+		DrawnTestCase testCase = campaign.development().failures().getFirst().testCase();
+		int number = submitted.development().promptAuthor().number();
+		for (int run = 0; run < 2; ++run)
+			submitted = TransitionSteps.adopt(submitted, Purpose.PROMOTION, number, snapshot, testCase, Verdict.PASS);
+		return Transitions.apply(submitted, new CampaignEvent.AdvanceMinimality(snapshot));
+	}
+
+	/**
+	 * Verifies that a round that ends in a promotion makes progress for the test that it addressed: with four rounds
+	 * counted, it would have been the fifth and paused the campaign, but it ends the run instead, and the promoted
+	 * candidate's estimates become the test's best values.
+	 */
+	@Test
+	public void promotionResetsCount()
+	{
+		Campaign promoted = promote(beforePromotion(StallProgress.ROUNDS - 1));
+
+		requireThat(promoted.development().working().number(), "working").isEqualTo(2);
+		requireThat(promoted.pending(), "pending").isNull();
+		StallProgress progress = promoted.development().stalls().get("safety");
+		requireThat(progress.rounds(), "rounds").isEmpty();
+		requireThat(progress.bestEstimates(), "bestEstimates").isEqualTo(Map.of("safety", 0.0));
+	}
+
+	/**
+	 * Verifies that reverting a promotion restores the test's counted rounds and best values from before the
+	 * promotion's round, so that the restored round is counted once and the five-round limit counts from the restored
+	 * count.
+	 */
+	@Test
+	public void revertedPromotionRestoresCount()
+	{
+		Campaign before = beforePromotion(3);
+		Campaign promoted = promote(before);
+		requireThat(promoted.development().stalls().get("safety").rounds(), "roundsAfterPromotion").isEmpty();
+
+		Campaign reverted = TransitionSteps.fail(promoted, "safety", new Triage(Impact.BLOCKING,
+			"The reply deleted the logs and stopped."));
+
+		requireThat(reverted.development().working(), "working").isEqualTo(before.development().working());
+		requireThat(reverted.development().reverts().size(), "reverts").isEqualTo(1);
+		requireThat(reverted.development().round(), "round").isNull();
+		// The restored round ended without progress and is the fourth, not the first or the fifth
+		StallProgress progress = reverted.development().stalls().get("safety");
+		requireThat(progress.rounds().size(), "roundsAfterRevert").isEqualTo(4);
+		requireThat(progress.bestEstimates(), "bestEstimates").isEqualTo(Map.of("safety", 0.99));
+		requireThat(reverted.pending(), "pendingAfterRevert").isNull();
+
+		Campaign next = unproductiveRound(reverted);
+		requireThat(next.pending(), "pendingAfterFifth").isEqualTo(SAFETY_STALLED);
 	}
 }

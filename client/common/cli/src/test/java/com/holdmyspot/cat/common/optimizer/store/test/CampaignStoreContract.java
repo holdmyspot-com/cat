@@ -44,6 +44,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
+import com.holdmyspot.cat.common.optimizer.campaign.Predecessor;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
@@ -248,6 +249,35 @@ public abstract class CampaignStoreContract
 				isEqualTo(StallProgress.ROUNDS);
 			fixture.store().replaceSnapshot(ended);
 			requireThat(fixture.reopen().load(before.header().id()).orElseThrow(), "reloadedPause").isEqualTo(ended);
+		}
+	}
+
+	/**
+	 * The rounds without progress that a promotion's predecessor retains, which a revert restores, survive a reload.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void predecessorStallsSurviveReload() throws IOException
+	{
+		StallProgress retained = new StallProgress(Map.of("safety", 0.95), 1,
+			List.of(Map.of("safety", 0.9), Map.of("safety", 0.85)));
+		Campaign base = new Builder().confirmed().working(1).development("safety", 100, 1).
+			development("formatting", 100, 0).stalls("safety", retained).build();
+		Predecessor predecessor = new Predecessor(base.development(), new Round(Map.of("safety", 1)), "safety",
+			List.of());
+		Campaign promoted = new Builder().confirmed().working(2).development("safety", 0, 0).
+			development("formatting", 0, 0).
+			stalls("safety", new StallProgress(Map.of("safety", 0.0), 0, List.of())).predecessor(predecessor).build();
+		try (StoreFixture fixture = open())
+		{
+			fixture.store().replaceSnapshot(promoted);
+
+			Campaign loaded = fixture.reopen().load(promoted.header().id()).orElseThrow();
+
+			requireThat(loaded, "loaded").isEqualTo(promoted);
+			requireThat(loaded.development().predecessor().development().stalls(), "retained").
+				isEqualTo(Map.of("safety", retained));
 		}
 	}
 

@@ -67,6 +67,33 @@ final class StalledDevelopment
 	}
 
 	/**
+	 * Treats a round that ended in a promotion as progress for each prompt test that it addressed: the promotion rule
+	 * already requires the promoted candidate to beat the working one, so those tests start counting rounds again from
+	 * zero, with the promoted candidate's development estimates as their best values. The other tests that have
+	 * counted rounds keep their count, measured against the promoted candidate from now on.
+	 *
+	 * @param draft the state after the promotion, whose working candidate has no development outcomes
+	 * @param round the promoting round
+	 */
+	static void roundPromoted(Draft draft, Round round)
+	{
+		Set<String> addressed = addressedTests(draft, round);
+		for (String test : new ArrayList<>(draft.stalls.keySet()))
+		{
+			Observation now = observe(draft, test);
+			StallProgress after = now.asBest();
+			if (!addressed.contains(test))
+				after = new StallProgress(now.estimates(), now.metCells(), draft.stalls.get(test).rounds());
+			draft.stalls.put(test, after);
+		}
+		for (String test : addressed)
+		{
+			if (!draft.stalls.containsKey(test))
+				draft.stalls.put(test, observe(draft, test).asBest());
+		}
+	}
+
+	/**
 	 * Answers a stalled-development decision with the choice to continue: the stalled tests start counting rounds
 	 * again from zero, and the decision is resolved.
 	 *

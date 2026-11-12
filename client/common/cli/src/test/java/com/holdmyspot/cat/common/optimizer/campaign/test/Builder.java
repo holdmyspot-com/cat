@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Predecessor;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
@@ -121,6 +122,7 @@ public final class Builder
 	private PromptAuthorAttempt promptAuthor;
 	private final Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 	private final Map<String, StallProgress> stalls = new LinkedHashMap<>();
+	private Predecessor predecessor;
 	private int baselineIndex = 1;
 	private MeasurementIdentity baselineIdentity;
 	private final Map<String, CellCounts> baseline = new LinkedHashMap<>();
@@ -466,6 +468,18 @@ public final class Builder
 	public Builder round(Round value)
 	{
 		this.round = value;
+		return this;
+	}
+
+	/**
+	 * Sets the working candidate's predecessor, which a revert restores.
+	 *
+	 * @param value the predecessor
+	 * @return this builder
+	 */
+	public Builder predecessor(Predecessor value)
+	{
+		this.predecessor = value;
 		return this;
 	}
 
@@ -875,7 +889,7 @@ public final class Builder
 			incumbentBaseline = new IncumbentBaseline(baselineIndex, measuredIdentity, baseline);
 		}
 		Development state = new Development(working, series, development, failures, diagnosis, round, promptAuthor,
-			reviewPoints, TestCaseOutcomes.fromFailures(failures), null, List.of(), stalls);
+			reviewPoints, TestCaseOutcomes.fromFailures(failures), predecessor, List.of(), stalls);
 		List<CertificationAttempt> built = new ArrayList<>();
 		for (AttemptBuilder attempt : attempts)
 			built.add(attempt.toAttempt());

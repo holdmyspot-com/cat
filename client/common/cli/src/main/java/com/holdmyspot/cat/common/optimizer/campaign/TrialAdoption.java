@@ -525,9 +525,12 @@ public final class TrialAdoption
 			return false;
 
 		draft.reverts.add(new Revert(draft.working, cell, upperBound, predecessorLowerBound,
-			snapshotDevelopment(draft)));
+			snapshotDevelopment(draft, Map.of())));
 		Development restored = predecessor.development();
 		draft.startDevelopment(restored.working());
+		// The withdrawn candidate's rounds are undone with it, so the predecessor's round is counted once
+		draft.stalls.clear();
+		draft.stalls.putAll(restored.stalls());
 		draft.developmentCounts = new LinkedHashMap<>(restored.counts());
 		draft.developmentFailures = new ArrayList<>(restored.failures());
 		draft.testCaseOutcomes = restored.testCaseOutcomes();
@@ -567,12 +570,13 @@ public final class TrialAdoption
 	 * Captures a candidate's retained evidence without pending work, another predecessor or the shared revert history.
 	 *
 	 * @param draft the current candidate state
+	 * @param stalls the stalled-development progress to retain
 	 * @return the retained development evidence
 	 */
-	private static Development snapshotDevelopment(Draft draft)
+	private static Development snapshotDevelopment(Draft draft, Map<String, StallProgress> stalls)
 	{
 		return new Development(draft.working, draft.series, draft.developmentCounts, draft.developmentFailures,
-			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of(), Map.of());
+			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of(), stalls);
 	}
 
 	/**
@@ -1009,7 +1013,8 @@ public final class TrialAdoption
 
 	/**
 	 * Makes a prompt author attempt the working candidate, which ends the round that produced it. The new working
-	 * candidate has no development outcomes, and the round counts toward stalled development.
+	 * candidate has no development outcomes, and the round makes progress for each prompt test that it addressed. The
+	 * predecessor keeps the stalled-development progress from before the round, which a revert restores.
 	 *
 	 * @param draft the state
 	 * @param promptAuthor the prompt author attempt
@@ -1017,8 +1022,8 @@ public final class TrialAdoption
 	static void promote(Draft draft, PromptAuthorAttempt promptAuthor)
 	{
 		Round completed = draft.round;
-		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft), draft.round, promptAuthor.cell(),
-			draft.regressionSet);
+		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft, draft.stalls), draft.round,
+			promptAuthor.cell(), draft.regressionSet);
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
 			RegressionTestCase regression = draft.regressionSet.get(i);
@@ -1033,7 +1038,7 @@ public final class TrialAdoption
 			if (!run.role().measuresWorking() && run.verdict() != null)
 				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
 		}
-		StalledDevelopment.roundCompleted(draft, completed);
+		StalledDevelopment.roundPromoted(draft, completed);
 	}
 
 	/**
