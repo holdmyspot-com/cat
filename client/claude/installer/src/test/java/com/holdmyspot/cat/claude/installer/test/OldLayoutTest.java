@@ -7,6 +7,7 @@ import com.holdmyspot.cat.claude.installer.Integration;
 import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.FolderRetention;
 import com.holdmyspot.cat.common.installer.engine.InstallCompletion;
@@ -24,6 +25,12 @@ import org.testng.annotations.Test;
  */
 public final class OldLayoutTest
 {
+	/**
+	 * Waits for nothing.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 	/**
 	 * The version that the harness runs after the install.
 	 */
@@ -112,10 +119,8 @@ public final class OldLayoutTest
 	 */
 	private static FolderRetention complete(ClaudeInstallation installation, Path running) throws IOException
 	{
-		return new InstallCompletion(new Integration(Platform.current()), installation).completeLocked(ACTIVE,
-			Optional.of(REPLACED), running, Clock.systemUTC(), _ -> () ->
-			{
-			});
+		return new InstallCompletion(new Integration(Platform.current()), installation, NO_WAIT).completeLocked(
+			ACTIVE, Optional.of(REPLACED), running, Clock.systemUTC(), NO_WAIT);
 	}
 
 	/**

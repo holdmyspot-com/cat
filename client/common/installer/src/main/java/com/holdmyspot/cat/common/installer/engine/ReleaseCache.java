@@ -5,6 +5,7 @@ import static java.nio.file.StandardCopyOption.ATOMIC_MOVE;
 import static java.nio.file.StandardCopyOption.REPLACE_EXISTING;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installer.trust.ManifestVerifier;
 import com.holdmyspot.cat.common.installer.trust.ReleaseApproval;
 import com.holdmyspot.cat.common.installer.trust.ReleaseAsset;
@@ -40,14 +41,17 @@ final class ReleaseCache
 	private static final String SIGNATURE = "cat-release-manifest.json.sig";
 	private final Path data;
 	private final Path root;
+	private final Waiting waiting;
 
 	/**
 	 * Creates the cache of an installation.
 	 *
-	 * @param data the installation's absolute, normalized data directory
+	 * @param data    the installation's absolute, normalized data directory
+	 * @param waiting creates the pauses between the retries of a deletion
 	 */
-	ReleaseCache(Path data)
+	ReleaseCache(Path data, Waiting waiting)
 	{
+		this.waiting = waiting;
 		this.data = data;
 		this.root = data.resolve(DIRECTORY);
 	}
@@ -154,7 +158,7 @@ final class ReleaseCache
 			}
 		}
 		for (Path other : others)
-			LinkSafeDeletion.delete(other, data);
+			LinkSafeDeletion.delete(other, data, waiting);
 	}
 
 	/**
@@ -165,7 +169,7 @@ final class ReleaseCache
 	 */
 	void discard(String version) throws IOException
 	{
-		LinkSafeDeletion.delete(directory(version), data);
+		LinkSafeDeletion.delete(directory(version), data, waiting);
 	}
 
 	/**

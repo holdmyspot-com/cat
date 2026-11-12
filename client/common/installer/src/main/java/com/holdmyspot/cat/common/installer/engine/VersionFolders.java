@@ -4,12 +4,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
@@ -47,6 +49,7 @@ final class VersionFolders
 	private final HarnessIntegration integration;
 	private final HarnessInstallation installation;
 	private final InstallerState state;
+	private final Waiting waiting;
 
 	/**
 	 * Creates the version folders of a harness installation.
@@ -54,10 +57,14 @@ final class VersionFolders
 	 * @param integration  the harness's integration, which tells which version folder the harness runs
 	 * @param installation the harness installation, whose home bounds every deletion
 	 * @param state        the installer's state of the harness, which holds the record of the versions
+	 * @param waiting      creates the pauses between the retries of a deletion
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	VersionFolders(HarnessIntegration integration, HarnessInstallation installation, InstallerState state)
+	VersionFolders(HarnessIntegration integration, HarnessInstallation installation, InstallerState state,
+		Waiting waiting)
 	{
+		requireThat(waiting, "waiting").isNotNull();
+		this.waiting = waiting;
 		requireThat(integration, "integration").isNotNull();
 		requireThat(installation, "installation").isNotNull();
 		requireThat(state, "state").isNotNull();
@@ -251,7 +258,7 @@ final class VersionFolders
 	{
 		try
 		{
-			LinkSafeDeletion.delete(folder, installation.home());
+			LinkSafeDeletion.delete(folder, installation.home(), waiting);
 		}
 		catch (IOException e)
 		{
@@ -269,7 +276,9 @@ final class VersionFolders
 	private static String describe(IOException failure)
 	{
 		if (failure instanceof AccessDeniedException denied)
-			return "access to " + denied.getFile() + " was denied";
+			return "access to " + denied.getFile() + " was denied; a running CAT session may be using it";
+		if (failure instanceof DirectoryNotEmptyException)
+			return failure.getMessage() + " still holds files that are in use, perhaps by a running CAT session";
 		if (failure instanceof FileSystemException system && system.getReason() != null)
 			return system.getFile() + ": " + system.getReason();
 		return failure.getMessage();

@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
@@ -28,6 +29,12 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class HookTrustTest
 {
+	/**
+	 * Waits for nothing, so that a deletion that fails is not retried at length.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 	/**
 	 * Reads and writes the hooks files of the fixtures.
 	 */
@@ -389,7 +396,7 @@ public final class HookTrustTest
 			Files.writeString(configuration, "model = \"gpt\"\n\n" + other + "\n" + trusted(SUBAGENT_START,
 				staleByHand));
 			HarnessIntegration provider = provider();
-			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
+			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer(), NO_WAIT);
 			HarnessInstallation installation = provider.installation(home);
 			Path earlier = plugin(home, VERSION, CAT_HOOKS);
 			install.installEntries(home, earlier, installation, List.of(), locks, locks.resolveSibling("sessions"),

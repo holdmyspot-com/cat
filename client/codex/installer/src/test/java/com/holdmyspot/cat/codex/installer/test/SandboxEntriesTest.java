@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
@@ -30,6 +31,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class SandboxEntriesTest
 {
+	/**
+	 * Waits for nothing, so that a deletion that fails is not retried at length.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 	/**
 	 * The key under which the integration records the writable root that it added.
 	 */
@@ -551,7 +558,7 @@ public final class SandboxEntriesTest
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, original);
 			HarnessIntegration provider = provider();
-			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
+			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer(), NO_WAIT);
 			Path launcher = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer");
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
@@ -596,7 +603,7 @@ public final class SandboxEntriesTest
 			HarnessInstallation installation = provider.installation(home);
 			PermissionRecord.add(InstallerState.of(installation.dataDirectory(), "codex").permissions(), Map.of(
 				"config.toml#permissions.cat.filesystem" + READ_SUFFIX, List.of(state.toString())));
-			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
+			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer(), NO_WAIT);
 			Path launcher = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab/bin/installer");
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");

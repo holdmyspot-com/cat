@@ -142,7 +142,7 @@ public final class UpdateEngine
 		this.data = dataDirectory.toAbsolutePath().normalize();
 		this.windows = Arrays.stream(Platform.values()).
 			anyMatch(candidate -> candidate.id().equals(platform) && candidate.isWindows());
-		this.cache = new ReleaseCache(data);
+		this.cache = new ReleaseCache(data, waiting);
 		this.policy = policy;
 		this.source = source;
 		this.activation = activation;
@@ -505,7 +505,7 @@ public final class UpdateEngine
 			if (!consented && consentRequest.get().required())
 				return result(Result.REFUSED, active.version(), null, consentRequest.get().question(), List.of());
 		}
-		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer());
+		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer(), waiting);
 		PluginInstall.InstalledEntries entries;
 		try
 		{
@@ -518,7 +518,7 @@ public final class UpdateEngine
 		{
 			return stopped(plugin, active, e, versionFolder);
 		}
-		FolderRetention retention = new InstallCompletion(integration, installation, data, state).complete(plugin,
+		FolderRetention retention = new InstallCompletion(integration, installation, data, state, waiting).complete(plugin,
 			active.plugin(), request.image());
 		return result(Result.UP_TO_DATE, active.version(), null, retention.append(entries.withNotices(
 			"CAT is up to date.")), List.of()).withExitDeletions(retention.exitDeletions());
@@ -538,7 +538,8 @@ public final class UpdateEngine
 		if (failure instanceof AccessDeniedException denied)
 		{
 			return result(Result.NOT_WRITABLE, active.version(), null, "Installing CAT " + plugin + " stopped because " +
-				denied.getFile() + " is not writable; run the same install command again after fixing its permissions.",
+				denied.getFile() + " is not writable or is in use, perhaps by a running CAT session; run the same install " +
+				"command again after closing the session or fixing its permissions.",
 				List.of(Path.of(denied.getFile())));
 		}
 		return result(Result.FAILED, active.version(), null, "Installing CAT " + plugin + " stopped: " +
@@ -593,7 +594,7 @@ public final class UpdateEngine
 			if (!consented && consentRequest.get().required())
 				return result(Result.REFUSED, active.version(), null, consentRequest.get().question(), List.of());
 		}
-		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer());
+		PluginInstall steps = new PluginInstall(integration, session.cli(), session.replacer(), waiting);
 		boolean startupCache;
 		PluginInstall.InstalledEntries entries;
 		try
@@ -609,7 +610,7 @@ public final class UpdateEngine
 		{
 			return stopped(plugin, active, e, versionFolder);
 		}
-		FolderRetention retention = new InstallCompletion(integration, installation, data, state).complete(plugin,
+		FolderRetention retention = new InstallCompletion(integration, installation, data, state, waiting).complete(plugin,
 			active.plugin(), request.image());
 		if (active.version() == null)
 		{

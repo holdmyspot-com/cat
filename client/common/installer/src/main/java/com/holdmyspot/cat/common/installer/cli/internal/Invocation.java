@@ -968,7 +968,7 @@ public final class Invocation
 		try
 		{
 			outcome = new Install(plugin, platform, replacer, cliFactory, ProcessElevation::isElevated,
-				new ProcessMigrationRunner(), entryCommand).
+				new ProcessMigrationRunner(), entryCommand, waiting).
 				install(harness, arguments.home(), environment, userHome, activation, integration, others, consent);
 		}
 		catch (TrustException e)
@@ -981,8 +981,8 @@ public final class Invocation
 		HarnessInstallation installation = integration.installation(outcome.policy().harnesses().get(harness));
 		resolvedData = installation.dataDirectory();
 		resolvedHarness = harness;
-		FolderRetention retention = new InstallCompletion(integration, installation).completeLocked(outcome.version(),
-			outcome.before(), image, clock, waiting);
+		FolderRetention retention = new InstallCompletion(integration, installation, waiting).
+			completeLocked(outcome.version(), outcome.before(), image, clock, waiting);
 		UpdateResult result = new UpdateResult(Result.INSTALLED, harness, Optional.of(outcome.version().release()),
 			Optional.empty(), retention.append(outcome.entries().withNotices("CAT is installed for " + harness + ".")),
 			List.of(outcome.versionFolder(), installation.policy()), true,

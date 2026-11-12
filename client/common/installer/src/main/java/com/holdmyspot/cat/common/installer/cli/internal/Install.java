@@ -6,6 +6,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.CapacityLocks;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
@@ -75,6 +76,7 @@ public final class Install
 	private final BooleanSupplier elevation;
 	private final MigrationRunner migrations;
 	private final EntryCommand entryCommand;
+	private final Waiting waiting;
 
 	/**
 	 * Creates the install of the extracted plugin archive.
@@ -87,11 +89,14 @@ public final class Install
 	 *                   with those rights
 	 * @param migrations runs the data migration scripts of the archive's release
 	 * @param entryCommand writes the CAT entry command that a refusal tells the user to run
+	 * @param waiting    creates the pauses between the retries of a deletion
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public Install(Path image, Platform platform, FileReplacer replacer, HarnessCliFactory cliFactory,
-		BooleanSupplier elevation, MigrationRunner migrations, EntryCommand entryCommand)
+		BooleanSupplier elevation, MigrationRunner migrations, EntryCommand entryCommand, Waiting waiting)
 	{
+		requireThat(waiting, "waiting").isNotNull();
+		this.waiting = waiting;
 		requireThat(image, "image").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
@@ -195,7 +200,7 @@ public final class Install
 				throw refusal(consentRequest.get().question());
 		}
 
-		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer);
+		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer, waiting);
 		Path versionFolder = steps.deliver(home, plugin, version);
 		activation.installCompanions(home, versionFolder);
 		migration.apply(versionFolder, migrationFile.getParent(), migrations, platform.isWindows());

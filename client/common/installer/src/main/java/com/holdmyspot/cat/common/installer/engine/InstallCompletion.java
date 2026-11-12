@@ -33,12 +33,13 @@ public final class InstallCompletion
 	 *
 	 * @param integration  the harness's integration, which tells which version folder the harness runs
 	 * @param installation the harness installation
+	 * @param waiting      creates the pauses between the retries of a deletion
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public InstallCompletion(HarnessIntegration integration, HarnessInstallation installation)
+	public InstallCompletion(HarnessIntegration integration, HarnessInstallation installation, Waiting waiting)
 	{
 		this(integration, installation, installation.dataDirectory(),
-			InstallerState.of(installation.dataDirectory(), integration.harness()));
+			InstallerState.of(installation.dataDirectory(), integration.harness()), waiting);
 	}
 
 	/**
@@ -48,13 +49,14 @@ public final class InstallCompletion
 	 * @param installation the harness installation, whose home bounds every deletion
 	 * @param data         the installation's installer data directory
 	 * @param state        the installer's state of the harness
+	 * @param waiting      creates the pauses between the retries of a deletion
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	InstallCompletion(HarnessIntegration integration, HarnessInstallation installation, Path data,
-		InstallerState state)
+		InstallerState state, Waiting waiting)
 	{
 		requireThat(data, "data").isNotNull();
-		this.folders = new VersionFolders(integration, installation, state);
+		this.folders = new VersionFolders(integration, installation, state, waiting);
 		this.data = data;
 		this.state = state;
 	}

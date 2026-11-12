@@ -656,7 +656,10 @@ public final class InstallCommandTest
 				{
 					started.add(recorded);
 					return RecordingIntegration.cli();
-				}, () -> false, migrations, new EntryCommand(Platform.current(), environment, null));
+				}, () -> false, migrations, new EntryCommand(Platform.current(), environment, null),
+				interval -> () ->
+				{
+				});
 			return install.install("harness-a", requestedHome, environment, user, provider,
 				integration, others, _ -> false);
 		}

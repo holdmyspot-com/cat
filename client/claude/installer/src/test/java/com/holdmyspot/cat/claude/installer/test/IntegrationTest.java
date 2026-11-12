@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ShellQuoting;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -43,6 +44,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class IntegrationTest
 {
+	/**
+	 * Waits for nothing, so that a deletion that fails is not retried at length.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 	/**
 	 * The answer that Claude Code 2.1.318 printed, with exit status 1, to {@code plugin uninstall cat@cat} when CAT
 	 * was not installed.
@@ -924,7 +931,7 @@ public final class IntegrationTest
 			Path userEntry = userHome.resolve("shared");
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
 				json(userEntry.toString()) + "]}}}");
-			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
+			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer(), NO_WAIT);
 			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks,
 				userHome.resolve("account/.cat/sessions"), List.of(), false);
 			requireThat(Files.readString(home.resolve("settings.json")), "granted").contains(json(wrongLocks.toString()));
@@ -963,7 +970,7 @@ public final class IntegrationTest
 				json(userEntry.toString()) + "," + json(launcherState.toString()) + "]}}}");
 			PermissionRecord.add(InstallerState.of(claude.dataDirectory(), "claude").permissions(),
 				Map.of(SETTINGS_KEY_DENY_WRITE, List.of(launcherState.toString())));
-			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
+			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer(), NO_WAIT);
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
 				List.of(codex), userHome.resolve(".cat/locks"), launcherState, List.of(), false);
@@ -1004,7 +1011,7 @@ public final class IntegrationTest
 			PermissionRecord.add(InstallerState.of(claude.dataDirectory(), "claude").permissions(),
 				Map.of(SETTINGS_KEY_EXCLUDED, runners, SETTINGS_KEY_ALLOW, allowedRunners));
 			PluginInstall install = new PluginInstall(new Integration(Platform.LINUX_X64), ClaudeProgram.cli(home),
-				replacer());
+				replacer(), NO_WAIT);
 
 			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, claude, List.of(codex),
 				userHome.resolve(".cat/locks"), userHome.resolve(".cat/sessions"), List.of(), false);

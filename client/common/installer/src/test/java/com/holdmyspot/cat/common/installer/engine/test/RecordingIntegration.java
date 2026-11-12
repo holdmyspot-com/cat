@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.installer.engine.test;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
@@ -46,6 +47,12 @@ import java.util.Set;
  */
 public final class RecordingIntegration implements HarnessIntegration
 {
+	/**
+	 * Waits for nothing, as the harness program does not retry its deletions.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 	/**
 	 * The harness.
 	 */
@@ -558,13 +565,13 @@ public final class RecordingIntegration implements HarnessIntegration
 			throw new IOException("The marketplace folder holds no plugin: " + source);
 		Path target = layout.versionFolder(version);
 		Files.createDirectories(target.getParent());
-		LinkSafeDeletion.delete(target, target.getParent());
+		LinkSafeDeletion.delete(target, target.getParent(), NO_WAIT);
 		if (deletesReplaced)
 		{
 			try (DirectoryStream<Path> folders = Files.newDirectoryStream(target.getParent()))
 			{
 				for (Path folder : folders)
-					LinkSafeDeletion.delete(folder, target.getParent());
+					LinkSafeDeletion.delete(folder, target.getParent(), NO_WAIT);
 			}
 		}
 		TreeCopy.copy(source, target);
@@ -588,7 +595,7 @@ public final class RecordingIntegration implements HarnessIntegration
 		record("unregister", home);
 		keptData.add(keepData);
 		if (!keepData && deletesData)
-			LinkSafeDeletion.delete(layout(harness, home).dataDirectory(), home);
+			LinkSafeDeletion.delete(layout(harness, home).dataDirectory(), home, NO_WAIT);
 	}
 
 	@Override

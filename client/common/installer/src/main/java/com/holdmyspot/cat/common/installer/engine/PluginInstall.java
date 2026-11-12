@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
@@ -30,6 +31,7 @@ public final class PluginInstall
 	private final HarnessIntegration integration;
 	private final HarnessCli cli;
 	private final FileReplacer replacer;
+	private final Waiting waiting;
 
 	/**
 	 * Creates the steps of one harness.
@@ -37,10 +39,13 @@ public final class PluginInstall
 	 * @param integration the harness's integration
 	 * @param cli         runs the harness program
 	 * @param replacer    atomically replaces the harness configuration files that the integration writes
+	 * @param waiting     creates the pauses between the retries of a deletion
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public PluginInstall(HarnessIntegration integration, HarnessCli cli, FileReplacer replacer)
+	public PluginInstall(HarnessIntegration integration, HarnessCli cli, FileReplacer replacer, Waiting waiting)
 	{
+		requireThat(waiting, "waiting").isNotNull();
+		this.waiting = waiting;
 		requireThat(integration, "integration").isNotNull();
 		requireThat(cli, "cli").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
@@ -116,17 +121,17 @@ public final class PluginInstall
 	 * @param home          the harness home
 	 * @throws IOException if the folder cannot be written, or the tree is the marketplace folder itself
 	 */
-	private static void writeMarketplace(Path plugin, Path marketplace, Path versionFolder, Path home)
+	private void writeMarketplace(Path plugin, Path marketplace, Path versionFolder, Path home)
 		throws IOException
 	{
 		if (marketplace.equals(plugin.toRealPath()))
 			throw new IOException("The installer must not install CAT from " + plugin + ", which it replaces.");
 		Path parent = Files.createDirectories(marketplace.getParent());
 		Path staged = parent.resolve("." + marketplace.getFileName() + "-staged");
-		LinkSafeDeletion.delete(staged, home);
+		LinkSafeDeletion.delete(staged, home, waiting);
 		TreeCopy.copy(plugin, staged);
 		RuntimeBinding.write(staged, versionFolder.resolve(PluginDirectory.RUNTIME));
-		LinkSafeDeletion.delete(marketplace, home);
+		LinkSafeDeletion.delete(marketplace, home, waiting);
 		Files.move(staged, marketplace);
 	}
 
@@ -179,7 +184,7 @@ public final class PluginInstall
 			PermissionRecord.remove(record, obsolete);
 		}
 		Path stateParent = LinkSafeDeletion.resolveRoot(formerLauncherState.getParent());
-		LinkSafeDeletion.delete(stateParent.resolve(formerLauncherState.getFileName()), stateParent);
+		LinkSafeDeletion.delete(stateParent.resolve(formerLauncherState.getFileName()), stateParent, waiting);
 		merge(added, integration.installPermissions(home, installer, replacer));
 		for (HarnessInstallation other : others)
 			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));

@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
@@ -32,6 +33,12 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class SandboxModeProfileTest
 {
+	/**
+	 * Waits for nothing, so that a deletion that fails is not retried at length.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 	/**
 	 * Quotes a path as a TOML basic string, which JSON's string form also is.
 	 */
@@ -412,7 +419,7 @@ public final class SandboxModeProfileTest
 	{
 		HarnessIntegration provider = provider();
 		provider.validateConfiguration(home);
-		PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
+		PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer(), NO_WAIT);
 		HarnessInstallation installation = provider.installation(home);
 		return install.installEntries(home, installer(home), installation, List.of(other()), locks(home),
 			launcherState(home), startupFiles(home), consented);

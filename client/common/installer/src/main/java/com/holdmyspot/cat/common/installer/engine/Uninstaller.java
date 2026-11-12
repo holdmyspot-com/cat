@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
+import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -173,12 +174,13 @@ public final class Uninstaller
 		catch (AccessDeniedException e)
 		{
 			return failure(Result.NOT_WRITABLE, "Uninstall stopped at the " + step + " step because " + e.getFile() +
-				" is not writable; run uninstall again after fixing its permissions.", List.of(Path.of(e.getFile())));
+				" is not writable or is in use, perhaps by a running CAT session; run uninstall again after closing the " +
+				"session or fixing its permissions.", List.of(Path.of(e.getFile())));
 		}
 		catch (IOException | IllegalArgumentException e)
 		{
 			return failure(Result.UNINSTALL_INCOMPLETE, "Uninstall stopped at the " + step + " step: " +
-				e.getMessage() + "; run the same uninstall command again to continue.", List.of(journal));
+				inUse(e) + "; run the same uninstall command again to continue.", List.of(journal));
 		}
 		catch (InterruptedException _)
 		{
@@ -191,12 +193,12 @@ public final class Uninstaller
 			Path directory = activation.dataDirectory(home);
 			try
 			{
-				LinkSafeDeletion.delete(directory, home);
+				LinkSafeDeletion.delete(directory, home, waiting);
 			}
 			catch (IOException | IllegalArgumentException e)
 			{
 				return failure(Result.UNINSTALL_INCOMPLETE, "CAT was removed from this harness, but its plugin data " +
-					directory + " could not be deleted completely: " + e.getMessage() + "; delete it yourself or run " +
+					directory + " could not be deleted completely: " + inUse(e) + "; delete it yourself or run " +
 					"the same uninstall command again.", List.of(directory));
 			}
 		}
@@ -285,6 +287,19 @@ public final class Uninstaller
 	}
 
 	/**
+	 * Describes a failure, adding that a running CAT session may be using the folder when the folder still holds files.
+	 *
+	 * @param failure the failure
+	 * @return the description
+	 */
+	private static String inUse(Exception failure)
+	{
+		if (failure instanceof DirectoryNotEmptyException)
+			return failure.getMessage() + " still holds files that are in use, perhaps by a running CAT session";
+		return failure.getMessage();
+	}
+
+	/**
 	 * Deletes the plugin files, leaving each folder that holds the running installer's version folder for deletion
 	 * once the installer no longer needs its own files.
 	 *
@@ -302,7 +317,7 @@ public final class Uninstaller
 					exitDeletions.add(path);
 			}
 			else
-				LinkSafeDeletion.delete(path, home);
+				LinkSafeDeletion.delete(path, home, waiting);
 		}
 	}
 
