@@ -3,10 +3,13 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
-import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
@@ -23,10 +26,12 @@ import java.io.PrintStream;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.ZoneId;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.StringJoiner;
 import java.util.regex.Pattern;
 
@@ -689,46 +694,78 @@ public final class Commands
 	}
 
 	/**
-	 * Renders the certification history of a target that has no campaign: the latest record of each harness with its
-	 * applicability, and the earlier records.
+	 * Renders the certification history of a target that has no campaign: the latest entry of each harness with its
+	 * applicability, and the earlier entries. The {@code status} is the label that every latest entry shares, or
+	 * {@code certification history} if their labels differ.
 	 *
-	 * @param certification the latest record of each harness with its applicability, and the earlier records
+	 * @param certification the latest entry of each harness with its applicability, and the earlier entries
 	 * @return the JSON object, without the fields that every result has
 	 */
 	private ObjectNode certification(CertificationStatus certification)
 	{
 		ObjectNode root = json.createObjectNode();
-		root.put("status", Outcome.CERTIFIED.label());
+		Set<DeliveryLabel> labels = EnumSet.noneOf(DeliveryLabel.class);
+		for (CertificationStatus.Latest entry : certification.latest())
+			labels.add(entry.entry().label());
+		if (labels.size() == 1)
+			root.put("status", labels.iterator().next().label());
+		else
+			root.put("status", "certification history");
 		root.putNull("campaign");
 		root.put("target", certification.target().toString());
 		ArrayNode latest = root.putArray("latest");
 		for (CertificationStatus.Latest entry : certification.latest())
 		{
-			ObjectNode node = recordNode(latest.addObject(), entry.record());
+			ObjectNode node = entryNode(latest.addObject(), entry.entry());
 			DeliveryJson.applicability(node.putObject("applicability"), entry.applicability());
+			if (entry.superseded().isPresent())
+			{
+				CertificationStatus.Superseded superseded = entry.superseded().get();
+				ObjectNode certificationNode = entryNode(node.putObject("superseded_certification"),
+					superseded.record());
+				certificationNode.put("applicability", "historical");
+				ArrayNode changed = certificationNode.putArray("changed_sources");
+				for (Path path : superseded.changedSources())
+					changed.add(PortablePaths.text(path));
+			}
 		}
 		ArrayNode earlier = root.putArray("earlier");
-		for (CertificationRecord record : certification.earlier())
-			recordNode(earlier.addObject(), record);
+		for (HistoryEntry entry : certification.earlier())
+			entryNode(earlier.addObject(), entry);
 		return root;
 	}
 
 	/**
-	 * Describes a certification record.
+	 * Describes an entry of the certification history.
 	 *
-	 * @param node the object to describe the record in
-	 * @param record the record
+	 * @param node the object to describe the entry in
+	 * @param entry the entry
 	 * @return {@code node}
 	 */
-	private static ObjectNode recordNode(ObjectNode node, CertificationRecord record)
+	private static ObjectNode entryNode(ObjectNode node, HistoryEntry entry)
 	{
-		Optional<String> harness = record.harness();
+		Optional<String> harness = entry.harness();
 		if (harness.isPresent())
 			node.put("harness", harness.get());
 		else
 			node.putNull("harness");
-		node.put("attempt", record.certificationIndex());
-		node.put("scope", record.scope().id());
+		node.put("label", entry.label().label());
+		switch (entry)
+		{
+			case CertificationRecord record ->
+			{
+				node.put("attempt", record.certificationIndex());
+				node.put("scope", record.scope().id());
+			}
+			case DeliveryEntry delivery ->
+			{
+				node.put("attempt", delivery.attempt());
+				ArrayNode provenBetter = node.putArray("proven_better");
+				for (String cell : delivery.provenBetter())
+					provenBetter.add(cell);
+				node.put("incumbent", delivery.incumbent().hex());
+			}
+		}
 		return node;
 	}
 

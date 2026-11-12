@@ -8,6 +8,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -404,6 +406,90 @@ public final class CertificationHistoryTest
 			requireThat(failure, "failure").isNotNull();
 			requireThat(failure.getMessage(), "message").contains(file.toString()).contains("is not valid JSON");
 		}
+	}
+
+	/**
+	 * A history file that an earlier version of CAT wrote, whose records carry no label, still loads: each record
+	 * reads back as a certification record, and the history's entries are those records.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test
+	public void readsHistoryWithoutLabels() throws IOException
+	{
+		CertificationRecord first = record(1, "claude");
+		CertificationRecord second = record(2, "codex");
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		ObjectNode root = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(first).
+			appended(second)));
+		for (JsonNode element : root.get("records"))
+			((ObjectNode) element).remove("label");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");
+			Files.write(file, JSON.writeValueAsBytes(root));
+
+			CertificationHistory read = codec.read(file);
+			requireThat(read.entries(), "entries").isEqualTo(List.of(first, second));
+			requireThat(read.records(), "records").isEqualTo(List.of(first, second));
+		}
+	}
+
+	/**
+	 * Each label of a delivery that was not certified round-trips with its claim, incumbent hash, prompt files and
+	 * conditions, after an earlier certification. The delivery entry is the harness's latest entry, the certification
+	 * stays the harness's latest certification, and only the certification is among the history's records.
+	 *
+	 * @throws IOException if the file cannot be written or read
+	 */
+	@Test
+	public void deliveryEntriesRoundTrip() throws IOException
+	{
+		CertificationRecord certified = record(1, "claude");
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		for (DeliveryLabel label : List.of(DeliveryLabel.IMPROVED_NOT_CERTIFIED, DeliveryLabel.NOT_CERTIFIED,
+			DeliveryLabel.INCUMBENT_KEPT))
+		{
+			DeliveryEntry entry = deliveryEntry(label, "claude");
+			CertificationHistory history = CertificationHistory.EMPTY.appended(certified).appended(entry);
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");
+				Files.write(file, codec.write(history));
+				JsonNode written = JSON.readTree(Files.readAllBytes(file)).get("records");
+				requireThat(written.get(0).get("label").asString(), "certifiedLabel").isEqualTo("certified");
+				requireThat(written.get(1).get("label").asString(), "label").withContext(label, "deliveryLabel").
+					isEqualTo(label.label());
+
+				CertificationHistory read = codec.read(file);
+				requireThat(read, "read").withContext(label, "deliveryLabel").isEqualTo(history);
+				requireThat(read.latest(), "latest").isEqualTo(List.of(entry));
+				requireThat(read.latestCertification(Optional.of("claude")), "latestCertification").
+					isEqualTo(Optional.of(certified));
+				requireThat(read.records(), "records").isEqualTo(List.of(certified));
+			}
+		}
+	}
+
+	/**
+	 * Returns the entry of a delivery of {@code CLAUDE.md} that was not certified, measured by a harness.
+	 *
+	 * @param label the delivery's label
+	 * @param harness the model provider that the entry names
+	 * @return the entry
+	 */
+	private static DeliveryEntry deliveryEntry(DeliveryLabel label, String harness)
+	{
+		int attempt = 0;
+		List<String> provenBetter = List.of();
+		if (label == DeliveryLabel.IMPROVED_NOT_CERTIFIED)
+		{
+			attempt = 2;
+			provenBetter = List.of("formatting");
+		}
+		return new DeliveryEntry(TARGET, label, attempt, provenBetter, Sha256.of("incumbent".getBytes(UTF_8)),
+			Map.of(TARGET, Sha256.of("prompt delivered".getBytes(UTF_8))), new MeasurementIdentity(
+			Map.of(MeasurementCondition.PROVIDER, harness, MeasurementCondition.MODEL, "model-a")));
 	}
 
 	/**

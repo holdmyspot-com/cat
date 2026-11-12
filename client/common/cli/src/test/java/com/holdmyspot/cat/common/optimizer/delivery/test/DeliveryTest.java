@@ -14,6 +14,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
@@ -50,6 +52,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
@@ -77,6 +80,7 @@ import java.util.function.Consumer;
 
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -414,7 +418,7 @@ public final class DeliveryTest
 
 			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
-					fixture.promptSources(), null, List.of());
+					fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.applicability(), "applicability").
@@ -448,7 +452,7 @@ public final class DeliveryTest
 			{
 				fixture.delivery(store, candidate, writes::add).
 					deliver(CAMPAIGN, request(candidate, Outcome.NOT_CERTIFIED), candidate, candidate,
-						fixture.promptSources(), null, List.of());
+						fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
 				throw new AssertionError("A candidate that changes an external file was delivered");
 			}
 			catch (IllegalArgumentException e)
@@ -485,7 +489,7 @@ public final class DeliveryTest
 
 			DeliveryResult result = delivery.deliver(CAMPAIGN,
 				new DeliveryRequest(new Candidate(1, kept.identity()), 1, Outcome.IMPROVED_NOT_CERTIFIED),
-				kept, working, fixture.promptSources(), null, List.of());
+				kept, working, fixture.promptSources(), entry(DeliveryLabel.IMPROVED_NOT_CERTIFIED), List.of());
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(workspace.scanWorktree(), "worktree").isEqualTo(kept.snapshot());
@@ -578,7 +582,7 @@ public final class DeliveryTest
 			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN,
 					new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED),
-					candidate, candidate, fixture.promptSources(), null, List.of());
+					candidate, candidate, fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
 
 			requireThat(requireDelivered(result).label().label(), "label").isEqualTo("not certified");
 		}
@@ -602,7 +606,7 @@ public final class DeliveryTest
 
 			fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, request(candidate, Outcome.BELOW_MINIMUM), candidate, candidate,
-					fixture.promptSources(), null, List.of());
+					fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
 		}
 	}
 
@@ -828,8 +832,9 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * Only a certified delivery carries a certification record: a certified request without one, or another label
-	 * with one, is rejected before anything changes.
+	 * Only a certified delivery carries a certification record, and every other delivery carries the entry of its own
+	 * label: a certified request with a delivery entry, an uncertified request with a record, and a kept incumbent
+	 * with another label's entry are rejected before anything changes.
 	 *
 	 * @throws IOException if the fixture or delivery fails
 	 */
@@ -846,12 +851,22 @@ public final class DeliveryTest
 			try
 			{
 				delivery.deliver(CAMPAIGN, request(candidate, Outcome.CERTIFIED), candidate, candidate,
-					fixture.promptSources(), null, List.of());
+					fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
 				throw new AssertionError("A certified delivery without a record was accepted");
 			}
 			catch (IllegalArgumentException e)
 			{
-				requireThat(e.getMessage(), "message").contains("record");
+				requireThat(e.getMessage(), "message").contains("history entry");
+			}
+			try
+			{
+				delivery.deliver(CAMPAIGN, null, Overlay.of(fixture.fork()), candidate, fixture.promptSources(),
+					entry(DeliveryLabel.NOT_CERTIFIED), List.of());
+				throw new AssertionError("A kept incumbent with a \"not certified\" entry was accepted");
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(e.getMessage(), "message").contains("incumbent kept");
 			}
 			try
 			{
@@ -861,7 +876,7 @@ public final class DeliveryTest
 			}
 			catch (IllegalArgumentException e)
 			{
-				requireThat(e.getMessage(), "message").contains("record");
+				requireThat(e.getMessage(), "message").contains("history entry");
 			}
 			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 		}
@@ -1159,9 +1174,9 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * When the user keeps the incumbent, delivery writes the prompt tests alone: the result carries no label, no
-	 * prompt source or certification record changes, and the files that the rejected candidate changed keep their
-	 * forked content.
+	 * When the user keeps the incumbent, delivery writes the prompt tests alone, with the history's
+	 * {@code incumbent kept} entry: the result carries no label, no prompt source changes, and the files that the
+	 * rejected candidate changed keep their forked content.
 	 *
 	 * @throws IOException             if the fixture or delivery fails
 	 * @throws ScenarioFormatException if a written file cannot be read back
@@ -1178,7 +1193,7 @@ public final class DeliveryTest
 
 			DeliveryResult result = fixture.delivery(fixture.store(), candidate, NO_HOOK).
 				deliver(CAMPAIGN, null, Overlay.of(fixture.fork()), candidate, fixture.promptSources(),
-					null, List.of(created));
+					entry(DeliveryLabel.INCUMBENT_KEPT), List.of(created));
 
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.label(), "label").isNull();
@@ -1188,7 +1203,66 @@ public final class DeliveryTest
 			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 			requireThat(fixture.resolve(Path.of("rules/old.md")), "old.md").isRegularFile();
 			requireThat(Files.notExists(fixture.resolve(Path.of("rules/new.md"))), "newIsAbsent").isTrue();
-			requireThat(Files.notExists(fixture.resolve(RECORD_FILE)), "recordIsAbsent").isTrue();
+			requireThat(history(fixture).entries(), "entries").isEqualTo(List.of(entry(DeliveryLabel.INCUMBENT_KEPT)));
+		}
+	}
+
+	/**
+	 * Returns each delivery that is not certified.
+	 *
+	 * @return the label of each delivery
+	 */
+	@DataProvider
+	public static Object[][] uncertifiedDeliveries()
+	{
+		return new Object[][]
+			{
+				{DeliveryLabel.IMPROVED_NOT_CERTIFIED},
+				{DeliveryLabel.NOT_CERTIFIED},
+				{DeliveryLabel.INCUMBENT_KEPT}
+			};
+	}
+
+	/**
+	 * An improvement kept without certification, an explicitly accepted uncertified candidate and a kept incumbent
+	 * each append their labelled entry after an earlier certification of the same target: the history holds the
+	 * earlier record unchanged, followed by the entry, which reads back with its label, and the history file is in
+	 * the delivered diff.
+	 *
+	 * @param label the label of the delivery
+	 * @throws IOException if the fixture or delivery fails
+	 */
+	@Test(dataProvider = "uncertifiedDeliveries")
+	public void uncertifiedDeliveryAppendsLabelledEntry(DeliveryLabel label) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			byte[] earlier = new CertificationHistoryJson(JSON).write(CertificationHistory.EMPTY.appended(record(3)));
+			Fixture fixture = Fixture.create(template, cleanup).recordFile(RECORD_FILE, earlier);
+			Overlay candidate = fixture.candidate();
+			DeliveryRequest request = null;
+			Overlay selected = Overlay.of(fixture.fork());
+			if (label == DeliveryLabel.IMPROVED_NOT_CERTIFIED)
+			{
+				request = request(candidate, Outcome.IMPROVED_NOT_CERTIFIED);
+				selected = candidate;
+			}
+			else if (label == DeliveryLabel.NOT_CERTIFIED)
+			{
+				request = new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED);
+				selected = candidate;
+			}
+
+			Delivered delivered = requireDelivered(fixture.delivery(fixture.store(), candidate, NO_HOOK).
+				deliver(CAMPAIGN, request, selected, candidate, fixture.promptSources(), entry(label), List.of()));
+
+			CertificationHistory history = history(fixture);
+			requireThat(history.entries(), "entries").isEqualTo(List.of(record(3), entry(label)));
+			requireThat(history.entries().getLast().label(), "label").isEqualTo(label);
+			requireThat(history.records(), "records").isEqualTo(List.of(record(3)));
+			requireThat(delivered.changes().getLast().target(), "lastTarget").isEqualTo(RECORD_FILE);
+			requireThat(patchedPaths(delivered), "patchedPaths").contains(RECORD_FILE);
+			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 		}
 	}
 
@@ -1324,7 +1398,7 @@ public final class DeliveryTest
 			try
 			{
 				delivery.deliver(CAMPAIGN, request(candidate, Outcome.IMPROVED_NOT_CERTIFIED), candidate, candidate,
-					fixture.promptSources(), null, tests);
+					fixture.promptSources(), entry(DeliveryLabel.IMPROVED_NOT_CERTIFIED), tests);
 				throw new AssertionError("An uncertified delivery with prompt tests was accepted");
 			}
 			catch (IllegalArgumentException e)
@@ -1334,7 +1408,7 @@ public final class DeliveryTest
 			try
 			{
 				delivery.deliver(CAMPAIGN, null, candidate, candidate, fixture.promptSources(),
-					null, tests);
+					entry(DeliveryLabel.INCUMBENT_KEPT), tests);
 				throw new AssertionError("A kept incumbent that changes files was accepted");
 			}
 			catch (IllegalArgumentException e)
@@ -1400,6 +1474,26 @@ public final class DeliveryTest
 	private static DeliveryRequest request(Overlay candidate, Outcome label)
 	{
 		return new DeliveryRequest(new Candidate(2, candidate.identity()), 1, label);
+	}
+
+	/**
+	 * Returns the history entry of a delivery of the target {@code rules/main.md} that is not certified.
+	 *
+	 * @param label the delivery's label
+	 * @return the entry
+	 */
+	private static DeliveryEntry entry(DeliveryLabel label)
+	{
+		int attempt = 0;
+		List<String> provenBetter = List.of();
+		if (label == DeliveryLabel.IMPROVED_NOT_CERTIFIED)
+		{
+			attempt = 1;
+			provenBetter = List.of("formatting");
+		}
+		return new DeliveryEntry(Path.of("rules/main.md"), label, attempt, provenBetter,
+			Sha256.of("main v1\n".getBytes(UTF_8)), Map.of(Path.of("rules/main.md"), content("main v2\n").hash()),
+			new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "claude"), Map.of()));
 	}
 
 	/**

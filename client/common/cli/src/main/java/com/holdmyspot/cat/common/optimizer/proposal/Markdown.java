@@ -185,13 +185,14 @@ public final class Markdown
 	}
 
 	/**
-	 * Shows the target's delivered certification and whether it applies to what CAT knows now, if the target has one.
+	 * Shows the latest entry of each harness in the target's certification history and whether it applies to what CAT
+	 * knows now, if the target has a history.
 	 */
 	private void incumbent()
 	{
 		if (incumbent == null)
 			return;
-		heading("Incumbent certification");
+		heading("Incumbent certification history");
 		text.append(incumbent.summary()).append('\n');
 	}
 

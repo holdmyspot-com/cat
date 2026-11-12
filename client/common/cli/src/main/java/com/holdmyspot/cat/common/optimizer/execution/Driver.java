@@ -18,6 +18,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
@@ -31,6 +32,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
@@ -2401,8 +2403,8 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Indicates whether delivery was attempted. Delivers the candidate that a finished campaign selected, or the prompt
-	 * tests of an incumbent that the user kept, once per slice. A certified delivery and a kept incumbent write the
-	 * confirmed prompt tests.
+	 * tests of an incumbent that the user kept, once per slice. Every delivery appends its labelled entry to the
+	 * target's certification history. A certified delivery and a kept incumbent write the confirmed prompt tests.
 	 *
 	 * @return {@code true} if a delivery was attempted
 	 * @throws IOException if the store, the overlays or a file cannot be read or written
@@ -2427,6 +2429,7 @@ public final class Driver implements AutoCloseable
 				promptSources.add(path);
 		}
 		CertificationRecord record = null;
+		HistoryEntry entry;
 		List<DeliveredTest> tests = List.of();
 		if (incumbentKept || request.label() == Outcome.CERTIFIED)
 		{
@@ -2437,9 +2440,12 @@ public final class Driver implements AutoCloseable
 		{
 			record = CertificationRecord.of(campaign, campaign.attempt(request.attempt()), selected.snapshot(),
 				context.promptSources());
+			entry = record;
 		}
+		else
+			entry = DeliveryEntry.of(campaign, request, selected.snapshot(), context.promptSources());
 		DeliveryResult result = context.deliverer().deliver(campaignId, request, selected, working,
-			promptSources, record, tests);
+			promptSources, entry, tests);
 		Applicability applicability = null;
 		if (result instanceof DeliveryResult.Delivered delivered && incumbentKept)
 			applicability = delivered.applicability();

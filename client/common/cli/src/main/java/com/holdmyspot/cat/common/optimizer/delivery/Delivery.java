@@ -7,7 +7,8 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
-import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
@@ -81,10 +82,11 @@ import tools.jackson.databind.json.JsonMapper;
  *   <li>It checks that the optimization worktree holds only content that CAT recorded, and materializes the selected
  *   candidate there if it is not the working candidate.</li>
  *   <li>It plans the delivery against a fresh scan of the base worktree and the read-only external participants that
- *   the fork recorded, and stops before writing anything if the plan has conflicts. A certified delivery's plan also
- *   appends its certification record to the target's certification history, after the candidate's changes. A
- *   certified delivery, and keeping the incumbent, also write each confirmed prompt test's regression scenario and
- *   values file, after the candidate's changes and before the record.</li>
+ *   the fork recorded, and stops before writing anything if the plan has conflicts. Every delivery's plan also
+ *   appends its labelled entry to the target's certification history, after the candidate's changes: a certified
+ *   delivery its certification record, any other delivery a delivery entry. A certified delivery, and keeping the
+ *   incumbent, also write each confirmed prompt test's regression scenario and values file, after the candidate's
+ *   changes and before the entry.</li>
  *   <li>It writes the delivery journal, then applies each change after checking its target's live state, recording
  *   each applied change in the journal. A restarted delivery resumes from the journal and applies each change at most
  *   once.</li>
@@ -171,24 +173,25 @@ public final class Delivery
 	 * @param promptSources the participating prompt sources: paths relative to the base worktree, or absolute paths of
 	 *   read-only external participants; a change outside the candidate at or below one of them makes the result
 	 *   historical
-	 * @param record the certification record to append to the target's certification history in the base worktree,
-	 *   non-null exactly when the request is labelled {@code certified}
+	 * @param entry the entry to append to the target's certification history in the base worktree: the certification
+	 *   record of a certified request, or a delivery entry with the request's label, or labelled
+	 *   {@code incumbent kept} if the user kept the incumbent
 	 * @param tests the confirmed prompt tests to write, empty unless the request is labelled {@code certified} or the
 	 *   user kept the incumbent
 	 * @return the result; a {@link Delivered} result carries no label when the user kept the incumbent
-	 * @throws NullPointerException if {@code campaignId}, {@code selected}, {@code working}, {@code promptSources}
-	 *   or {@code tests} are null
+	 * @throws NullPointerException if {@code campaignId}, {@code selected}, {@code working}, {@code promptSources},
+	 *   {@code entry} or {@code tests} are null
 	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if {@code selected} changes
 	 *   an external file, if the request names a different candidate than {@code selected}, if {@code selected} and
-	 *   {@code working} have different forks, if {@code record} is absent from a certified request or present in
-	 *   another, if {@code tests} accompany a request that is not labelled {@code certified}, if a kept incumbent
-	 *   changes a file, or if a prompt test cannot be written as a regression scenario
+	 *   {@code working} have different forks, if {@code entry}'s label differs from the delivery's, if {@code tests}
+	 *   accompany a request that is not labelled {@code certified}, if a kept incumbent changes a file, or if a prompt
+	 *   test cannot be written as a regression scenario
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
 	 * @throws IOException if a file cannot be read or written, if Git fails, or if the target's certification history
 	 *   does not describe a valid history
 	 */
 	public DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
-		Set<Path> promptSources, CertificationRecord record, List<DeliveredTest> tests)
+		Set<Path> promptSources, HistoryEntry entry, List<DeliveredTest> tests)
 		throws IOException
 	{
 		requireThat(campaignId, "campaignId").isNotNull();
@@ -196,6 +199,7 @@ public final class Delivery
 		requireThat(working, "working").isNotNull();
 		requireThat(promptSources, "promptSources").isNotNull();
 		requireThat(tests, "tests").isNotNull();
+		requireThat(entry, "entry").isNotNull();
 		Outcome label = null;
 		if (request != null)
 		{
@@ -214,7 +218,7 @@ public final class Delivery
 			throw new IllegalArgumentException("The kept incumbent changes " + selected.entries().keySet() + ", but " +
 				"keeping the incumbent delivers its prompt tests alone.");
 		}
-		requireRecord(label, record);
+		requireEntry(label, entry);
 		requireThat(working.fork(), "working.fork()").isEqualTo(selected.fork(), "selected.fork()");
 		DeliveryPlan.requireProjectChanges(selected);
 
@@ -240,15 +244,12 @@ public final class Delivery
 			// live file, so delivery stops before overwriting that edit instead of dropping the records it added
 			FileInventory current = InventoryScanner.scan(base, externalPaths);
 			Map<Path, FileContent> additionalFiles = new HashMap<>();
-			if (record != null)
-			{
-				Path historyFile = PromptTestLocations.certificationHistory(record.target());
-				CertificationHistory history = CertificationHistory.EMPTY;
-				// Anything else at the path is a conflict that the plan reports
-				if (current.entry(historyFile).orElse(null) instanceof RegularFile)
-					history = historyCodec.read(base.resolve(historyFile));
-				additionalFiles.put(historyFile, new FileContent(historyCodec.write(history.appended(record))));
-			}
+			Path historyFile = PromptTestLocations.certificationHistory(entry.target());
+			CertificationHistory history = CertificationHistory.EMPTY;
+			// Anything else at the path is a conflict that the plan reports
+			if (current.entry(historyFile).orElse(null) instanceof RegularFile)
+				history = historyCodec.read(base.resolve(historyFile));
+			additionalFiles.put(historyFile, new FileContent(historyCodec.write(history.appended(entry))));
 			DeliveryPlan plan = DeliveryPlan.of(selected, current, testFiles(selected, tests), additionalFiles);
 			if (!plan.conflicts().isEmpty())
 				return new Conflicted(plan.conflicts());
@@ -275,25 +276,19 @@ public final class Delivery
 	}
 
 	/**
-	 * Rejects a certification record that does not match the delivery's label.
+	 * Rejects a history entry that does not match the delivery's label.
 	 *
 	 * @param label the label of the delivery request, or {@code null} if the user kept the incumbent
-	 * @param record the certification record to write, or null if there is none
-	 * @throws IllegalArgumentException if {@code record} is absent from a certified request or present otherwise
+	 * @param entry the history entry to write
+	 * @throws IllegalArgumentException if {@code entry}'s label differs from the delivery's
 	 */
-	private static void requireRecord(Outcome label, CertificationRecord record)
+	private static void requireEntry(Outcome label, HistoryEntry entry)
 	{
-		boolean certified = label == Outcome.CERTIFIED;
-		if (certified && record == null)
-			throw new IllegalArgumentException("A delivery labelled \"certified\" requires a certification record.");
-		if (!certified && record != null)
+		DeliveryLabel expected = DeliveryLabel.of(label);
+		if (entry.label() != expected)
 		{
-			String writer;
-			if (label == null)
-				writer = "Keeping the incumbent";
-			else
-				writer = "A delivery labelled \"" + label.label() + "\"";
-			throw new IllegalArgumentException(writer + " may not write a certification record.");
+			throw new IllegalArgumentException("A delivery labelled \"" + expected.label() + "\" requires a history " +
+				"entry with that label, not \"" + entry.label().label() + "\".");
 		}
 	}
 

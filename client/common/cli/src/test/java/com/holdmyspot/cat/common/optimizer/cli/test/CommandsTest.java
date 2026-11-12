@@ -868,7 +868,7 @@ public final class CommandsTest
 			neither records nor controls. To limit changes to them, run the campaign, and the sessions that later use \
 			the prompt, in the same container image.
 
-			Earlier certifications:
+			Earlier deliveries:
 			  Attempt 1 in provider-1: certified, scope latest_versions""");
 		requireThat(json.get("proposal_file").isNull(), "proposalFileIsNull").isTrue();
 		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();

@@ -19,7 +19,6 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -44,7 +43,7 @@ import java.util.TreeMap;
  */
 public record CertificationRecord(Path target, int certificationIndex, CertificationScope scope,
 	CertificationParameters parameters, List<CellResult> cells, Map<Path, Sha256> promptFiles,
-	MeasurementIdentity identity)
+	MeasurementIdentity identity) implements HistoryEntry
 {
 	/**
 	 * Creates a record.
@@ -117,6 +116,20 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 				attempt.pairing(Reference.INCUMBENT, cell).comparisons()));
 		}
 
+		return new CertificationRecord(target, attempt.index(), contract.profiles().scope(), attempt.parameters(),
+			cells, promptFilesOf(snapshot, promptSources), attempt.identity());
+	}
+
+	/**
+	 * Returns the content hash of each delivered prompt file.
+	 *
+	 * @param snapshot the files of the delivered snapshot
+	 * @param promptSources the participating prompt sources: paths relative to the project, or absolute paths of
+	 *   read-only external participants, which are omitted
+	 * @return the hashes, keyed by the file's path relative to the project
+	 */
+	static Map<Path, Sha256> promptFilesOf(FileInventory snapshot, Set<Path> promptSources)
+	{
 		Map<Path, Sha256> promptFiles = new TreeMap<>();
 		for (Entry<Path, FileEntry> entry : snapshot.entries().entrySet())
 		{
@@ -127,8 +140,13 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 				promptFiles.put(path, file.contentHash());
 			}
 		}
-		return new CertificationRecord(target, attempt.index(), contract.profiles().scope(), attempt.parameters(),
-			cells, promptFiles, attempt.identity());
+		return promptFiles;
+	}
+
+	@Override
+	public DeliveryLabel label()
+	{
+		return DeliveryLabel.CERTIFIED;
 	}
 
 	/**
@@ -149,17 +167,6 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	}
 
 	/**
-	 * Returns the harness that measured the certification.
-	 *
-	 * @return the model provider that the measurement conditions record, which names the harness, or empty if they
-	 *   record none
-	 */
-	public Optional<String> harness()
-	{
-		return Optional.ofNullable(identity.values().get(MeasurementCondition.PROVIDER));
-	}
-
-	/**
 	 * Decides whether the certification applies to the current prompt files and conditions.
 	 *
 	 * @param currentPromptFiles the content hash of each recorded prompt file that exists now, keyed by its path
@@ -174,18 +181,38 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	public Applicability applicability(Map<Path, Sha256> currentPromptFiles, MeasurementIdentity known,
 		BigDecimal minimumPassRate)
 	{
+		List<CertificationParameter> notImplied = parameters.notImplying(
+			CertificationParameters.current(certificationIndex, minimumPassRate));
+		return applicability(this, currentPromptFiles, known, notImplied);
+	}
+
+	/**
+	 * Decides whether an entry of the certification history applies to the current prompt files and conditions.
+	 *
+	 * @param entry the entry
+	 * @param currentPromptFiles the content hash of each recorded prompt file that exists now, keyed by its path
+	 *   relative to the project
+	 * @param known the conditions that CAT knows now
+	 * @param notImplied the certification parameters whose recorded value does not imply their current value
+	 * @return the applicability, naming each known change and each recorded condition that {@code known} lacks. If
+	 *   {@code known} records another provider than the entry, the harness-specific conditions are unchecked rather
+	 *   than changed.
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	static Applicability applicability(HistoryEntry entry, Map<Path, Sha256> currentPromptFiles,
+		MeasurementIdentity known, List<CertificationParameter> notImplied)
+	{
 		requireThat(currentPromptFiles, "currentPromptFiles").isNotNull();
 		requireThat(known, "known").isNotNull();
-		boolean promptContentChanged = !promptFiles.equals(currentPromptFiles);
+		MeasurementIdentity identity = entry.identity();
+		boolean promptContentChanged = !entry.promptFiles().equals(currentPromptFiles);
 		String recordedProvider = identity.values().get(MeasurementCondition.PROVIDER);
 		String knownProvider = known.values().get(MeasurementCondition.PROVIDER);
-		// Another harness cannot observe what the certifying harness recorded, so its values are unchecked
+		// Another harness cannot observe what the recording harness recorded, so its values are unchecked
 		if (recordedProvider != null && knownProvider != null && !recordedProvider.equals(knownProvider))
 			known = known.withoutHarnessSpecific();
 		List<MeasurementCondition> changed = identity.differences(known);
 		List<MeasurementCondition> unchecked = identity.unobservedBy(known);
-		List<CertificationParameter> notImplied = parameters.notImplying(
-			CertificationParameters.current(certificationIndex, minimumPassRate));
 		Applicability.Status status = Applicability.Status.CURRENT;
 		if (promptContentChanged || !changed.isEmpty() || !notImplied.isEmpty())
 			status = Applicability.Status.HISTORICAL;

@@ -18,6 +18,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
@@ -6133,9 +6135,79 @@ public final class OptimizerCoreTest
 			requireThat(earlier.get(0).get("attempt").asInt(), "earlierAttempt").isEqualTo(1);
 			requireThat(status.get("summary").asString(), "summary").contains("Latest certification in codex:").
 				contains("Latest certification in claude:").contains("""
-					Earlier certifications:
+					Earlier deliveries:
 					  Attempt 1 in claude: certified, scope latest_versions""");
 		}
+	}
+
+	/**
+	 * Verifies that {@code status} of a target whose certification a later uncertified delivery followed reports the
+	 * later entry with its label and claim, compares its conditions like a record's, and reports the earlier
+	 * certification as historical, naming the prompt file that the later delivery changed. The report never presents
+	 * the later entry as a certification.
+	 */
+	@Test
+	public void statusReportsLaterUncertifiedEntry() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Files.writeString(repository.root().resolve("CLAUDE.md"), "Be terse.\n");
+			writeRecord(repository, "Be brief.\n", _ ->
+			{
+			});
+			appendDeliveryEntry(repository, "Be terse.\n");
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			requireThat(status.get("status").asString(), "status").isEqualTo("improved, not certified");
+			JsonNode latest = status.get("latest");
+			requireThat(latest.size(), "latestSize").isEqualTo(1);
+			requireThat(latest.get(0).get("label").asString(), "label").isEqualTo("improved, not certified");
+			requireThat(latest.get(0).has("scope"), "hasScope").isFalse();
+			requireThat(latest.get(0).get("applicability").get("status").asString(), "applicability").
+				isEqualTo("current");
+			JsonNode superseded = latest.get(0).get("superseded_certification");
+			requireThat(superseded.get("label").asString(), "supersededLabel").isEqualTo("certified");
+			requireThat(superseded.get("applicability").asString(), "supersededApplicability").isEqualTo("historical");
+			requireThat(superseded.get("changed_sources").get(0).asString(), "changedSources").isEqualTo("CLAUDE.md");
+			requireThat(status.get("earlier").get(0).get("label").asString(), "earlierLabel").isEqualTo("certified");
+			requireThat(status.get("summary").asString(), "summary").
+				contains("Latest delivery in claude: improved, not certified").
+				contains("Attempt 1: proven better than the incumbent in formatting, none proven worse (current)").
+				contains("This delivery is not a certification.").
+				contains("Earlier certification, attempt 1 (scope latest_versions): historical, followed by this " +
+					"delivery; changed sources: CLAUDE.md").
+				doesNotContain("Latest certification").doesNotContain("Certified for the following environment");
+		}
+	}
+
+	/**
+	 * Appends the entry of an improvement of {@code CLAUDE.md} that was kept without certification to the target's
+	 * history, as such a delivery would, under the conditions that {@link #writeRecord} records by default.
+	 *
+	 * @param repository the test project
+	 * @param promptText the text whose hash the entry holds for {@code CLAUDE.md}
+	 * @throws IOException if the history cannot be read or written
+	 */
+	private static void appendDeliveryEntry(Repository repository, String promptText) throws IOException
+	{
+		Map<MeasurementCondition, String> values = new java.util.EnumMap<>(MeasurementCondition.class);
+		values.put(MeasurementCondition.PROVIDER, Harness.CLAUDE.commandName());
+		values.put(MeasurementCondition.HARNESS_VERSION, "1.0");
+		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
+			String.valueOf(FakeSessionPort.SESSION_ENVIRONMENT_VERSION));
+		values.put(MeasurementCondition.JUDGE, String.valueOf(FakeSessionPort.JUDGE_VERSION));
+		values.put(MeasurementCondition.MODEL, "model-a");
+		DeliveryEntry entry = new DeliveryEntry(Path.of("CLAUDE.md"), DeliveryLabel.IMPROVED_NOT_CERTIFIED, 1,
+			List.of("formatting"), Sha256.of("Be brief.\n".getBytes(StandardCharsets.UTF_8)),
+			Map.of(Path.of("CLAUDE.md"), Sha256.of(promptText.getBytes(StandardCharsets.UTF_8))),
+			new MeasurementIdentity(values));
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		Path file = repository.root().resolve(PromptTestLocations.certificationHistory(entry.target()));
+		Files.write(file, codec.write(codec.read(file).appended(entry)));
 	}
 
 	/**
@@ -6164,7 +6236,7 @@ public final class OptimizerCoreTest
 
 			requireThat(proposalText(started), "proposal").contains("## Incumbent certification").
 				contains("Attempt 2: certified").contains("""
-					Earlier certifications:
+					Earlier deliveries:
 					  Attempt 1 in claude: certified, scope latest_versions""");
 		}
 	}
@@ -6378,7 +6450,7 @@ public final class OptimizerCoreTest
 
 			requireThat(proposalText(started), "proposal").contains("""
 
-				## Incumbent certification
+				## Incumbent certification history
 
 				Certification history of CLAUDE.md
 				Latest certification in claude: scope latest_versions (every cell of each model family's latest \

@@ -16,6 +16,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord.CellResult;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -41,14 +44,22 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Converts a {@link CertificationHistory} to and from the JSON file that a certified delivery appends to in the
+ * Converts a {@link CertificationHistory} to and from the JSON file that every delivery appends to in the
  * project.
  * <p>
- * The file holds the format version and the {@code records}, oldest first. Each record holds the target, the
- * certification index, the scope's identifier, the minimum pass rate and the significance level {@code alpha} as
- * decimal strings, whether the control and incumbent comparisons follow from the minimum pass rate, each cell's counts
- * with the pairs of each assertion's control and incumbent comparisons, each prompt file's content hash and the
- * measurement conditions. A cell whose comparisons follow from the minimum pass rate has no pairs.
+ * The file holds the format version and the {@code records}, one entry per delivery, oldest first. Each entry holds
+ * its {@code label}: {@code certified} for a certification record, or the label of a {@link DeliveryEntry}. An entry
+ * without a label is a certification record that an earlier version of CAT wrote.
+ * <p>
+ * A delivery entry holds the target, the label, the delivered attempt's certification index or 0, the cells proven
+ * better than the incumbent, the incumbent's snapshot hash, each prompt file's content hash and the measurement
+ * conditions. Reading ignores the fields that it does not know.
+ * <p>
+ * A certification record holds the target, the certification index, the scope's identifier, the minimum pass rate
+ * and the significance level {@code alpha} as decimal strings, whether the control and incumbent comparisons follow
+ * from the minimum pass rate, each cell's counts with the pairs of each assertion's control and incumbent
+ * comparisons, each prompt file's content hash and the measurement conditions. A cell whose comparisons follow from
+ * the minimum pass rate has no pairs.
  * <p>
  * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
  * {@value #ALPHA_DIGITS} significant digits, so the written value never understates the level's error probability.
@@ -65,6 +76,7 @@ public final class CertificationHistoryJson
 	private static final int FORMAT_VERSION = 1;
 	private static final String MALFORMED = "is malformed";
 	private static final String RECORDS = "records";
+	private static final String LABEL = "label";
 	/**
 	 * The significant digits of an {@code alpha} that has no finite decimal form.
 	 */
@@ -101,8 +113,14 @@ public final class CertificationHistoryJson
 		ObjectNode root = json.createObjectNode();
 		root.put(VERSION, FORMAT_VERSION);
 		ArrayNode records = root.putArray(RECORDS);
-		for (CertificationRecord record : history.records())
-			writeRecord(records.addObject(), record);
+		for (HistoryEntry entry : history.entries())
+		{
+			switch (entry)
+			{
+				case CertificationRecord record -> writeRecord(records.addObject(), record);
+				case DeliveryEntry delivery -> writeDeliveryEntry(records.addObject(), delivery);
+			}
+		}
 		return JsonFiles.write(json, root);
 	}
 
@@ -130,6 +148,7 @@ public final class CertificationHistoryJson
 	private void writeRecord(ObjectNode root, CertificationRecord record)
 	{
 		root.put("target", PortablePaths.text(record.target()));
+		root.put(LABEL, record.label().label());
 		root.put("certification_index", record.certificationIndex());
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
@@ -150,10 +169,60 @@ public final class CertificationHistoryJson
 				"incumbent_only");
 		}
 
-		ObjectNode promptFiles = root.putObject("prompt_files");
-		for (Entry<Path, Sha256> entry : record.promptFiles().entrySet())
-			promptFiles.put(PortablePaths.text(entry.getKey()), entry.getValue().hex());
+		writePromptFiles(root, record.promptFiles());
 		root.set("identity", new CampaignJson(json).writeIdentity(record.identity()));
+	}
+
+	/**
+	 * Writes a delivery entry.
+	 *
+	 * @param root the object that receives the entry's fields
+	 * @param entry the entry
+	 */
+	private void writeDeliveryEntry(ObjectNode root, DeliveryEntry entry)
+	{
+		root.put("target", PortablePaths.text(entry.target()));
+		root.put(LABEL, entry.label().label());
+		root.put("attempt", entry.attempt());
+		ArrayNode provenBetter = root.putArray("proven_better");
+		for (String cell : entry.provenBetter())
+			provenBetter.add(cell);
+		root.put("incumbent", entry.incumbent().hex());
+		writePromptFiles(root, entry.promptFiles());
+		root.set("identity", new CampaignJson(json).writeIdentity(entry.identity()));
+	}
+
+	/**
+	 * Writes the content hash of each prompt file.
+	 *
+	 * @param root the object that receives the {@code prompt_files} field
+	 * @param promptFiles the hashes, keyed by the file's path relative to the project
+	 */
+	private static void writePromptFiles(ObjectNode root, Map<Path, Sha256> promptFiles)
+	{
+		ObjectNode node = root.putObject("prompt_files");
+		for (Entry<Path, Sha256> entry : promptFiles.entrySet())
+			node.put(PortablePaths.text(entry.getKey()), entry.getValue().hex());
+	}
+
+	/**
+	 * Reads the content hash of each prompt file.
+	 *
+	 * @param root the entry's node
+	 * @return the hashes, keyed by the file's path relative to the project
+	 * @throws IllegalArgumentException if the field is missing or malformed
+	 */
+	private static Map<Path, Sha256> readPromptFiles(JsonNode root)
+	{
+		JsonNode promptFilesNode = field(root, "prompt_files");
+		requireObject(promptFilesNode, "prompt_files");
+		Map<Path, Sha256> promptFiles = new TreeMap<>();
+		for (Entry<String, JsonNode> entry : promptFilesNode.properties())
+		{
+			promptFiles.put(Path.of(entry.getKey()),
+				new Sha256(stringValue(entry.getValue(), "prompt_files." + entry.getKey())));
+		}
+		return promptFiles;
 	}
 
 	/**
@@ -209,7 +278,7 @@ public final class CertificationHistoryJson
 	private static CertificationHistory readHistory(JsonNode root)
 	{
 		requireVersion(root, FORMAT_VERSION);
-		List<CertificationRecord> records = new ArrayList<>();
+		List<HistoryEntry> records = new ArrayList<>();
 		List<JsonNode> elements = elements(root, RECORDS);
 		for (int i = 0; i < elements.size(); ++i)
 		{
@@ -217,7 +286,7 @@ public final class CertificationHistoryJson
 			requireObject(elements.get(i), path);
 			try
 			{
-				records.add(readRecord(elements.get(i)));
+				records.add(readEntry(elements.get(i)));
 			}
 			catch (IllegalArgumentException | NullPointerException e)
 			{
@@ -225,6 +294,31 @@ public final class CertificationHistoryJson
 			}
 		}
 		return new CertificationHistory(records);
+	}
+
+	/**
+	 * Converts an entry's document to an entry.
+	 *
+	 * @param root the document
+	 * @return the entry
+	 * @throws IllegalArgumentException if the document does not describe a valid entry
+	 */
+	private static HistoryEntry readEntry(JsonNode root)
+	{
+		// Earlier versions of CAT wrote certification records alone, without a label
+		if (!root.has(LABEL))
+			return readRecord(root);
+		String text = text(root, LABEL);
+		DeliveryLabel label = DeliveryLabel.fromLabel(text).orElseThrow(() ->
+			new IllegalArgumentException(LABEL + ": " + text + " is not a delivery label"));
+		if (label == DeliveryLabel.CERTIFIED)
+			return readRecord(root);
+		List<String> provenBetter = new ArrayList<>();
+		List<JsonNode> cells = elements(root, "proven_better");
+		for (int i = 0; i < cells.size(); ++i)
+			provenBetter.add(stringValue(cells.get(i), "proven_better[" + i + "]"));
+		return new DeliveryEntry(Path.of(text(root, "target")), label, integer(root, "attempt"), provenBetter,
+			new Sha256(text(root, "incumbent")), readPromptFiles(root), CampaignJson.readIdentity(field(root, "identity")));
 	}
 
 	/**
@@ -256,16 +350,8 @@ public final class CertificationHistoryJson
 				readComparisons(element, "incumbent_comparisons", "incumbent_only")));
 		}
 
-		JsonNode promptFilesNode = field(root, "prompt_files");
-		requireObject(promptFilesNode, "prompt_files");
-		Map<Path, Sha256> promptFiles = new TreeMap<>();
-		for (Entry<String, JsonNode> entry : promptFilesNode.properties())
-		{
-			promptFiles.put(Path.of(entry.getKey()),
-				new Sha256(stringValue(entry.getValue(), "prompt_files." + entry.getKey())));
-		}
 		return new CertificationRecord(Path.of(text(root, "target")), integer(root, "certification_index"), scope,
-			parameters, cells, promptFiles, CampaignJson.readIdentity(field(root, "identity")));
+			parameters, cells, readPromptFiles(root), CampaignJson.readIdentity(field(root, "identity")));
 	}
 
 	/**

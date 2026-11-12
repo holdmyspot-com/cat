@@ -17,12 +17,15 @@ import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Baseline;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable.CellDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
+import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Development;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
@@ -2564,7 +2567,8 @@ public final class DriverTest
 
 	/**
 	 * A certified campaign whose user kept the incumbent delivers every confirmed prompt test as scenario, values and
-	 * workspace files, keeps the base prompt unchanged and writes no certification record.
+	 * workspace files, keeps the base prompt unchanged and appends an {@code incumbent kept} entry, not a certification
+	 * record, that names the incumbent by hash and holds the campaign's conditions and nothing proven.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
@@ -2594,8 +2598,64 @@ public final class DriverTest
 				DriverHarness.PROMPT))
 				contract.delivered(test);
 			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "keptPrompt").isEqualTo("fork");
-			requireThat(Files.exists(base.resolve(PromptTestLocations.certificationHistory(DriverHarness.PROMPT))),
-				"certificationHistory").isFalse();
+			CertificationHistory history = harness.deliveredHistory();
+			requireThat(history.records(), "records").isEmpty();
+			requireThat(history.entries().size(), "entries").isEqualTo(1);
+			DeliveryEntry entry = (DeliveryEntry) history.entries().getFirst();
+			requireThat(entry.label(), "label").isEqualTo(DeliveryLabel.INCUMBENT_KEPT);
+			requireThat(entry.provenBetter(), "provenBetter").isEmpty();
+			requireThat(entry.incumbent(), "incumbent").isEqualTo(campaign.incumbent().snapshot());
+			requireThat(entry.identity(), "identity").isEqualTo(campaign.identity());
+			requireThat(entry.promptFiles().get(DriverHarness.PROMPT), "promptFile").
+				isEqualTo(Sha256.of("fork".getBytes(UTF_8)));
+		}
+	}
+
+	/**
+	 * A candidate that the user explicitly accepted without certification is delivered with a {@code not certified}
+	 * entry, not a certification record: the entry names no attempt, proves nothing, names the incumbent by hash and
+	 * holds the campaign's conditions and the delivered prompt file's hash.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void acceptedUncertifiedAppendsEntry() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("accepted-delivery"));
+			Path base = Files.createDirectory(root.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
+			FileInventory fork = InventoryScanner.scan(base, Set.of());
+			DriverHarness harness = new DriverHarness(root.resolve("driver"),
+				new Builder().confirmed().working(1).build(), fork, base);
+			Overlay selected = harness.candidate("accepted");
+			Candidate candidate = new Candidate(1, selected.identity());
+			harness.overlays().put(candidate.snapshot(), selected);
+			harness.workspace().materialize(selected);
+			harness.store().replaceSnapshot(new Builder().confirmed().working(candidate).lifecycle(Lifecycle.FINISHED).
+				outcome(Outcome.NOT_CERTIFIED).delivery(new DeliveryRequest(candidate, 0, Outcome.NOT_CERTIFIED)).
+				build());
+			try (Driver driver = Driver.open(deliveryContext(harness), DriverHarness.CAMPAIGN).orElseThrow())
+			{
+				SliceResult result = harness.runSlice(driver);
+				requireThat(result.delivery().result(), "delivery").isInstanceOf(DeliveryResult.Delivered.class);
+				requireThat(result.delivery().environment(), "environment").isNull();
+			}
+			Campaign campaign = harness.campaign();
+			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "deliveredPrompt").isEqualTo("accepted");
+			CertificationHistory history = harness.deliveredHistory();
+			requireThat(history.records(), "records").isEmpty();
+			requireThat(history.entries().size(), "entries").isEqualTo(1);
+			DeliveryEntry entry = (DeliveryEntry) history.entries().getFirst();
+			requireThat(entry.label(), "label").isEqualTo(DeliveryLabel.NOT_CERTIFIED);
+			requireThat(entry.attempt(), "attempt").isEqualTo(0);
+			requireThat(entry.provenBetter(), "provenBetter").isEmpty();
+			requireThat(entry.claim(), "claim").isEqualTo("nothing proven");
+			requireThat(entry.incumbent(), "incumbent").isEqualTo(campaign.incumbent().snapshot());
+			requireThat(entry.identity(), "identity").isEqualTo(campaign.identity());
+			requireThat(entry.promptFiles().get(DriverHarness.PROMPT), "promptFile").
+				isEqualTo(Sha256.of("accepted".getBytes(UTF_8)));
 		}
 	}
 
@@ -3929,6 +3989,19 @@ public final class DriverTest
 					isEqualTo("kept improvement");
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Ended(Outcome.IMPROVED_NOT_CERTIFIED));
+				CertificationHistory history = harness.deliveredHistory();
+				requireThat(history.records(), "records").isEmpty();
+				requireThat(history.entries().size(), "entries").isEqualTo(1);
+				DeliveryEntry entry = (DeliveryEntry) history.entries().getFirst();
+				requireThat(entry.label(), "label").isEqualTo(DeliveryLabel.IMPROVED_NOT_CERTIFIED);
+				requireThat(entry.attempt(), "attempt").isEqualTo(1);
+				requireThat(entry.provenBetter(), "provenBetter").
+					isEqualTo(List.of("formatting", "plain_list", "safety"));
+				requireThat(entry.incumbent(), "incumbent").isEqualTo(campaign.incumbent().snapshot());
+				requireThat(entry.identity(), "identity").isEqualTo(campaign.attempt(1).identity());
+				requireThat(entry.promptFiles().get(DriverHarness.PROMPT), "promptFile").
+					isEqualTo(Sha256.of("kept improvement".getBytes(UTF_8)));
+				requireThat(result.delivery().environment(), "environment").isNull();
 			}
 		}
 	}
@@ -4008,8 +4081,13 @@ public final class DriverTest
 				requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "deliveredPrompt").
 					isEqualTo("earlier best");
 				// Requirement: R-W11
-				requireThat(InventoryScanner.scan(base, Set.of()).entries(), "deliveredInventory").
-					isEqualTo(earlier.snapshot().entries());
+				Map<Path, FileEntry> delivered = new HashMap<>(InventoryScanner.scan(base, Set.of()).entries());
+				Path history = PromptTestLocations.certificationHistory(DriverHarness.PROMPT);
+				requireThat(delivered.remove(history), "history").isNotNull();
+				// The history's directory exists only to hold it
+				for (Path parent = history.getParent(); parent != null; parent = parent.getParent())
+					delivered.remove(parent);
+				requireThat(delivered, "deliveredInventory").isEqualTo(earlier.snapshot().entries());
 			}
 		}
 	}

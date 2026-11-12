@@ -171,7 +171,7 @@ public final class CertificationRecordTest
 		JsonNode root = JSON.readTree(bytes);
 		requireThat(new HashSet<>(root.propertyNames()), "fileFields").isEqualTo(Set.of("format_version", "records"));
 		JsonNode entry = root.get("records").get(0);
-		requireThat(new HashSet<>(entry.propertyNames()), "fields").isEqualTo(Set.of("target",
+		requireThat(new HashSet<>(entry.propertyNames()), "fields").isEqualTo(Set.of("target", "label",
 			"certification_index", "scope", "minimum_pass_rate", "comparisons_implied", "alpha", "cells", "prompt_files",
 			"identity"));
 		requireThat(entry.get("scope").asString(), "scope").isEqualTo("weakest_cell");

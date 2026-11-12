@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
@@ -1825,9 +1826,9 @@ public final class OptimizerCore implements Core
 		// A finished campaign must not hide a certification that a later campaign delivered
 		Path relative = root.relativize(absolute);
 		CertificationHistory history = history(root, relative);
-		if (history.records().isEmpty() && header.isPresent())
+		if (history.entries().isEmpty() && header.isPresent())
 			return report(root, header.get());
-		if (history.records().isEmpty())
+		if (history.entries().isEmpty())
 		{
 			String absent = "no campaign or certification record exists for " + relative + ".";
 			if (isId)
@@ -1912,9 +1913,9 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Compares the latest certification of each harness with the prompt files and conditions that exist now.
+	 * Compares the latest entry of each harness with the prompt files and conditions that exist now.
 	 *
-	 * @param history the target's certification history, which holds at least one record
+	 * @param history the target's certification history, which holds at least one entry
 	 * @param files the files that exist now
 	 * @param known the conditions that CAT knows now
 	 * @param minimumPassRate the minimum pass rate {@code p_min} that a record must prove now
@@ -1925,9 +1926,9 @@ public final class OptimizerCore implements Core
 		MeasurementIdentity known, Function<CertificationRecord, BigDecimal> minimumPassRate) throws IOException
 	{
 		Map<Path, Sha256> promptFiles = new TreeMap<>();
-		for (CertificationRecord record : history.latest())
+		for (HistoryEntry delivered : history.latest())
 		{
-			for (Path path : record.promptFiles().keySet())
+			for (Path path : delivered.promptFiles().keySet())
 			{
 				Optional<FileEntry> entry = files.entry(path);
 				if (entry.isPresent() && entry.get() instanceof FileEntry.RegularFile file)
@@ -2851,9 +2852,9 @@ public final class OptimizerCore implements Core
 		LinkReport links = LinkReport.of(inventory, authority);
 		CertificationStatus incumbent = null;
 		CertificationHistory history = history(root, relativeTarget(campaign));
-		if (!history.records().isEmpty())
+		if (!history.entries().isEmpty())
 		{
-			// Compare each harness's latest record with the fork's files and the campaign's known conditions
+			// Compare each harness's latest entry with the fork's files and the campaign's known conditions
 			incumbent = certificationStatus(history, inventory::entry, campaign.identity(),
 				record -> derived.contract().minimumPassRate());
 		}

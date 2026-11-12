@@ -7,7 +7,9 @@ import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
@@ -1247,8 +1249,19 @@ public final class DriverHarness
 	 */
 	public List<CertificationRecord> deliveredRecords() throws IOException
 	{
+		return deliveredHistory().records();
+	}
+
+	/**
+	 * Returns the certification history that deliveries wrote for the prompt.
+	 *
+	 * @return the history
+	 * @throws IOException if the history cannot be read
+	 */
+	public CertificationHistory deliveredHistory() throws IOException
+	{
 		Path history = base.resolve(PromptTestLocations.certificationHistory(PROMPT));
-		return new CertificationHistoryJson(json).read(history).records();
+		return new CertificationHistoryJson(json).read(history);
 	}
 
 	/**
@@ -1261,14 +1274,14 @@ public final class DriverHarness
 	 * @param selected the overlay of the candidate that the request names, or the incumbent's
 	 * @param working the working candidate's overlay
 	 * @param promptSources the participating prompt sources
-	 * @param record the certification record to write, or null
+	 * @param entry the entry to append to the certification history
 	 * @param tests the prompt tests to write
 	 * @return the result
 	 * @throws IllegalStateException if the harness has no base worktree
 	 * @throws IOException if a file cannot be read or written
 	 */
 	private DeliveryResult deliver(String campaignId, DeliveryRequest request, Overlay selected, Overlay working,
-		Set<Path> promptSources, CertificationRecord record, List<DeliveredTest> tests) throws IOException
+		Set<Path> promptSources, HistoryEntry entry, List<DeliveredTest> tests) throws IOException
 	{
 		if (base == null)
 		{
@@ -1283,6 +1296,6 @@ public final class DriverHarness
 		}
 		Delivery delivery = new Delivery(crashingStore, fakeWorkspace, new GitlessForks(Set.of(), Yielding.fileReplacer()),
 			json, Yielding.fileReplacer(), afterWrite);
-		return delivery.deliver(campaignId, named, selected, working, promptSources, record, tests);
+		return delivery.deliver(campaignId, named, selected, working, promptSources, entry, tests);
 	}
 }
