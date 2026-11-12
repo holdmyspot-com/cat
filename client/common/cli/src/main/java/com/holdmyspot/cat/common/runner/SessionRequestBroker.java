@@ -967,7 +967,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param run     the requesting run
 	 * @param options the requesting runner's options
 	 * @param limits  the bounds that each request's archive must stay within
-	 * @param slots   the run roots that the run's requested sessions take
+	 * @param slots   the slots, each a run root, that the run's requested sessions take
 	 */
 	private record RunSite(HarnessRun run, HarnessRunnerOptions options, RequestLimits limits, SessionSlots slots)
 		implements Site
@@ -978,7 +978,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @param run     the requesting run
 		 * @param options the requesting runner's options
 		 * @param limits  the bounds that each request's archive must stay within
-		 * @param slots   the run roots that the run's requested sessions take
+		 * @param slots   the slots, each a run root, that the run's requested sessions take
 		 * @throws NullPointerException if any of the arguments are null
 		 */
 		private RunSite

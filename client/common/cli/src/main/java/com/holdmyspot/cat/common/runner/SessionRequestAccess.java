@@ -21,19 +21,24 @@ import tools.jackson.databind.json.JsonMapper;
  * every harness. The session's commands may write the run's requests directory, the one directory outside the
  * session's project and home that they may write, and may read, but not write, the run's responses directory, so that
  * a link that the session plants cannot redirect the runner's writes. Their environment names the requests directory
- * and the {@code request-session} launcher of the artifact that the run uses. The runs of the requested sessions live
- * in the run's requested-runs directory, which exists before the session starts so that its sandbox denies the
- * session's commands every read below it, the logins of those runs included. It holds one run root for each session
- * that the session may request, numbered from 1, so that each of those directories exists before any requested
- * session starts, and the sandbox of each requested session denies the runs of the others.
+ * and the {@code request-session} launcher of the artifact that the run uses. The runs of the requested sessions are
+ * built below the run's requested-runs directory, which exists before the session starts so that its sandbox denies
+ * the session's commands every read below it, the logins of those runs included. The run's broker builds each of
+ * those runs in a {@link SessionSlots slot}, a directory that it creates below the requested-runs directory, named
+ * for the part of the session and the slot's number, when a requested session takes it, so the sandbox of each
+ * requested session denies the runs of the others.
  * <p>
- * A session that may request no session gets the same access with no run root of a requested session. A runner
+ * Before the session starts, the requested-runs directory also holds one empty directory for each session that the
+ * session may request, numbered from 1. No run is built in these directories. Each exists before any requested
+ * session starts, and the existence of the first shows that the session may request sessions.
+ * <p>
+ * A session that may request no session gets the same access with none of these directories. A runner
  * launcher that its commands run then still hands its launch to the session's runner, instead of starting a harness
  * inside the session, and the runner refuses every such request with {@link #NO_REQUESTS_REASON}.
  *
  * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
  * @param responses the run's responses directory, where the runner answers each request
- * @param requestedRuns the run root of the requested sessions' runs
+ * @param requestedRuns the directory below which the runs of the requested sessions are built
  * @param launcher  the {@code request-session} launcher of the run's artifact
  * @param shell the shell of the session's commands, in whose form the launcher prints the command that waits again
  */
@@ -85,7 +90,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public static final String LIMITS_FILE = "limits.json";
 	/**
-	 * How many run roots of requested sessions share a directory of the requested-runs directory.
+	 * How many of the directories that stand for the sessions that a session may request share a group directory of the
+	 * requested-runs directory.
 	 */
 	public static final int GROUP_SIZE = 100;
 	/**
@@ -179,7 +185,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 *
 	 * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
 	 * @param responses the run's responses directory, where the runner answers each request
-	 * @param requestedRuns the run root of the requested sessions' runs
+	 * @param requestedRuns the directory below which the runs of the requested sessions are built
 	 * @param launcher  the {@code request-session} launcher of the run's artifact
 	 * @param shell the shell of the session's commands, in whose form the launcher prints the command that waits again
 	 * @throws NullPointerException if any of the arguments are null
@@ -220,8 +226,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the run root of the runs of the sessions that a run's session requests, which exists once a runner has
-	 * given the run's session its access.
+	 * Returns the directory below which the runs of the sessions that a run's session requests are built, which exists
+	 * once a runner has given the run's session its access.
 	 *
 	 * @param run the run
 	 * @return the directory
@@ -234,10 +240,11 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the run root of one requested session.
+	 * Returns the empty directory that stands for one session that the run's session may request. The requested
+	 * session does not run there: the run's broker builds its run in a slot.
 	 *
-	 * @param ordinal the session's place among the sessions that the run's session requested, from 1
-	 * @return the run root
+	 * @param ordinal the session's place among the sessions that the run's session may request, from 1
+	 * @return the directory
 	 * @throws IllegalArgumentException if {@code ordinal} is not positive
 	 */
 	public Path requestedRunRoot(int ordinal)
@@ -246,12 +253,13 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the run root of one requested session of a run, which lies in the directory of the {@link #GROUP_SIZE}
-	 * run roots that include it, named by how many whole groups precede that one.
+	 * Returns the empty directory that stands for one session that a run's session may request, which lies in the
+	 * directory of the {@link #GROUP_SIZE} directories that include it, named by how many whole groups precede that
+	 * one. The requested session does not run there: the run's broker builds its run in a slot.
 	 *
 	 * @param requestedRuns the run's requested-runs directory
-	 * @param ordinal       the session's place among the sessions that the run's session requested, from 1
-	 * @return the run root
+	 * @param ordinal       the session's place among the sessions that the run's session may request, from 1
+	 * @return the directory
 	 * @throws NullPointerException     if {@code requestedRuns} is null
 	 * @throws IllegalArgumentException if {@code ordinal} is not positive
 	 */
@@ -263,8 +271,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Indicates whether the session may request a session, which is whether the run holds the run root of a first
-	 * requested session.
+	 * Indicates whether the session may request a session, which is whether the run holds the directory that stands
+	 * for a first requested session.
 	 *
 	 * @return {@code true} if the session may request at least one session
 	 */
@@ -279,8 +287,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 *
 	 * @param run             the run
 	 * @param artifact        the harness artifact that the run uses, whose {@code bin} directory holds the launcher
-	 * @param sessionRequests how many sessions the session may request, which is the number of requested-run roots
-	 *                        that this creates
+	 * @param sessionRequests how many sessions the session may request, which is the number of directories that
+	 *                        stand for a requested session that this creates
 	 * @param platform        the platform that the session runs on, which decides the launcher's file name
 	 * @param shell           the shell of the session's commands, in whose form the launcher prints the command that
 	 *                        waits again

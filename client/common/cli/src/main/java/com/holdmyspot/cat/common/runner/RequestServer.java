@@ -647,7 +647,8 @@ public final class RequestServer
 	 *
 	 * @param requests     the directory into which the session's commands write their requests
 	 * @param responses    the directory that holds one response directory per request
-	 * @param slots        the run roots that the requested sessions take, which the server empties for each session
+	 * @param slots        the slots, each a run root, that the requested sessions take, which the server empties for
+	 *                     each session
 	 * @param bound        bounds each requested session by the session's policy
 	 * @param askingThread the thread of the session that runs the server, or empty for its main thread
 	 */

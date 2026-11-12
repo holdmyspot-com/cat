@@ -423,7 +423,7 @@ public abstract class SessionCommandLimitsContract
 	/**
 	 * Verifies that a session that may request no session still has the run's requests and responses directories and
 	 * the variables that name them, so that a runner launch that its commands make goes to its runner, which refuses it,
-	 * instead of starting a harness inside the session's sandbox; and that no run root of a requested session exists.
+	 * instead of starting a harness inside the session's sandbox; and that no directory for a requested session exists.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
