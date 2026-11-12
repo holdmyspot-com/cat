@@ -131,7 +131,58 @@ public final class HarnessProjectRepositoryTest
 		Map<String, String> environment = ACCESS.environment(parent, gitHome);
 
 		requireThat(environment, "environment").isEqualTo(Map.of("PATH", "/bin", "HOME", gitHome.toString(),
-			"GIT_CONFIG_NOSYSTEM", "1", "GIT_TERMINAL_PROMPT", "0"));
+			"GIT_CONFIG_NOSYSTEM", "1", "GIT_TERMINAL_PROMPT", "0", "GIT_AUTHOR_DATE", "@946684800 +0000",
+			"GIT_COMMITTER_DATE", "@946684800 +0000"));
+	}
+
+	/**
+	 * Verifies, through real Git, that two copies of the same fixture get the same baseline commit hash, whatever the
+	 * time of their initialization, and that a different fixture gets a different one. The baseline's dates are the
+	 * fixed ones, not the clock's, so copies made at different times also agree.
+	 *
+	 * @throws IOException if the fixture cannot be created or initialization fails
+	 */
+	@Test
+	public void sameFixtureGetsSameCommitHash() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "repository-hash-"));
+			Path sourceProject = GitWorkTrees.notIgnoring(root.resolve("source"));
+			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"),
+				"[user]\n\tname = A User\n\temail = user@example.test\n", UTF_8);
+			Map<String, String> parent = parentEnvironment(root, hostConfiguration);
+
+			String first = baselineHash(sourceProject, root.resolve("first"), "content", parent);
+			String second = baselineHash(sourceProject, root.resolve("second"), "content", parent);
+			String other = baselineHash(sourceProject, root.resolve("other"), "other content", parent);
+
+			requireThat(second, "second").isEqualTo(first);
+			requireThat(other, "other").isNotEqualTo(first);
+			List<String> dates = new Git(root.resolve("first").resolve("project")).lines("log", "--format=%at %ct");
+			requireThat(dates, "dates").isEqualTo(List.of("946684800 946684800"));
+		}
+	}
+
+	/**
+	 * Copies a one-file fixture to a new project, initializes it and returns its baseline commit hash.
+	 *
+	 * @param sourceProject the source project whose Git identity is inherited
+	 * @param run           the run directory, created by this method; the project is its {@code project} child
+	 * @param content       the fixture file's content
+	 * @param parent        the parent environment
+	 * @return the hash of the project's {@code HEAD}
+	 * @throws IOException if the fixture cannot be created or initialization fails
+	 */
+	private static String baselineHash(Path sourceProject, Path run, String content, Map<String, String> parent)
+		throws IOException
+	{
+		Path project = Files.createDirectories(run.resolve("project"));
+		Files.writeString(project.resolve("file.txt"), content, UTF_8);
+		HarnessProjectRepository.initialize(sourceProject, project, run, parent, Yielding.executableFiles(), null,
+			null);
+		return new Git(project).lines("rev-parse", "HEAD").getFirst();
 	}
 
 	/**

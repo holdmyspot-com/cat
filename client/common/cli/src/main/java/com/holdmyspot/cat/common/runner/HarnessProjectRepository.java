@@ -20,6 +20,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  */
 public final class HarnessProjectRepository
 {
+	/**
+	 * The author and committer date of every baseline commit, in Git's internal format (2000-01-01T00:00:00Z).
+	 */
+	private static final String BASELINE_DATE = "@946684800 +0000";
+
 	static
 	{
 		HarnessProjectRepositorySecrets.setHarnessProjectRepositoryAccess(new HarnessProjectRepositoryAccess()
@@ -198,7 +203,10 @@ public final class HarnessProjectRepository
 	}
 
 	/**
-	 * Returns the environment that isolates the baseline's Git commands from the user's configuration.
+	 * Returns the environment that isolates the baseline's Git commands from the user's configuration. The baseline's
+	 * author and committer dates are fixed, so the same fixture and identity always give the same commit hash. The
+	 * hash appears in the session's Git status, so a stable hash keeps that text the same from one session to the
+	 * next.
 	 *
 	 * @param parentEnvironment the environment resolved by the production entry point
 	 * @param gitHome the run-owned directory that Git uses as its home
@@ -210,6 +218,8 @@ public final class HarnessProjectRepository
 		environment.put("HOME", gitHome.toString());
 		environment.put("GIT_CONFIG_NOSYSTEM", "1");
 		environment.put("GIT_TERMINAL_PROMPT", "0");
+		environment.put("GIT_AUTHOR_DATE", BASELINE_DATE);
+		environment.put("GIT_COMMITTER_DATE", BASELINE_DATE);
 		return environment;
 	}
 
