@@ -5547,6 +5547,200 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Returns a repository whose contract author revises the prompt test {@code formatting} one way in the first test
+	 * revision and another way in every later one.
+	 *
+	 * @param scope owns the repository's temporary directories
+	 * @return the repository
+	 * @throws IOException if the repository cannot be created
+	 */
+	private static Repository changingAuthorRepository(TemporaryDirectories scope) throws IOException
+	{
+		return repository(scope, count ->
+		{
+			if (count == 0)
+			{
+				return derivation(_ ->
+				{
+				});
+			}
+			if (count == 1)
+			{
+				return revisedFormatting(_ ->
+				{
+				});
+			}
+			return revisedFormatting(test -> test.putArray("turns").add("Condense the meeting notes in {{tone}} style.").
+				add("Now shorten it for {{audience}} reader."));
+		});
+	}
+
+	/**
+	 * Starts and confirms a campaign whose test revision ran in a slice that ended before the revised contract's guard
+	 * pilot did.
+	 *
+	 * @param repository the repository whose contract author revises the test
+	 * @return the campaign's identifier
+	 * @throws Exception if a command fails
+	 */
+	private static String unfinishedRevision(Repository repository) throws Exception
+	{
+		String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+		repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+		requestTestRevision(repository, id, false);
+		repository.sessions().sessionDuration(Duration.ofSeconds(20));
+		ObjectNode slice = output(repository, List.of("run", id));
+		requireThat(slice.get("status").asString(), "status").withContext(slice.toString(), "output").
+			isEqualTo("running");
+		return id;
+	}
+
+	/**
+	 * Verifies that a {@code run} that continues the guard pilot of a test revision starts no contract author session,
+	 * keeps the pilot's decided trials, and leaves the confirmed proposal as it was, even though the contract author
+	 * would now revise the test differently.
+	 */
+	@Test
+	public void runContinuesStoredRevision() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = changingAuthorRepository(scope);
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			Path heldOut = repository.directory(id).resolve("held_out");
+			String confirmed = Files.readString(heldOut.resolve("proposal.json"));
+			requestTestRevision(repository, id, false);
+			repository.sessions().sessionDuration(Duration.ofSeconds(20));
+			int authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
+
+			ObjectNode first = output(repository, List.of("run", id));
+
+			requireThat(first.get("status").asString(), "status").withContext(first.toString(), "output").
+				isEqualTo("running");
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "authors").
+				isEqualTo(authors + 1);
+			requireThat(Files.isRegularFile(heldOut.resolve("revision.json")), "revisionStored").isTrue();
+			requireThat(Files.isRegularFile(heldOut.resolve("revised_proposal.json")), "contractStored").isTrue();
+			requireThat(Files.readString(heldOut.resolve("proposal.json")), "confirmedProposal").isEqualTo(confirmed);
+			int decided = decidedTrials(first.get("message").asString());
+			repository.sessions().sessionDuration(Duration.ofSeconds(60));
+
+			ObjectNode second = output(repository, List.of("run", id));
+
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "continuingAuthors").
+				isEqualTo(authors + 1);
+			requireThat(decidedTrials(second.get("message").asString()), "decided").withContext(second.toString(), "second").
+				isGreaterThan(decided);
+			List<SessionRequest> trials = repository.sessions().requests(SessionRole.TRIAL);
+			requireThat(trials.stream().anyMatch(trial -> trial.turns().getFirst().startsWith("Condense")),
+				"differentTestRan").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the run that confirms the revised contract deletes the stored revision and the draft directories
+	 * that only it needed, and that the stored proposal is then the revised contract of the first test revision.
+	 */
+	@Test
+	public void confirmedRevisionDeletesStoredRevision() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = changingAuthorRepository(scope);
+			String id = unfinishedRevision(repository);
+			Path heldOut = repository.directory(id).resolve("held_out");
+			int authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
+
+			for (int slices = 0; repository.load(id).awaitsTestRevision(); ++slices)
+			{
+				requireThat(slices, "slices").isLessThan(30);
+				output(repository, List.of("run", id));
+			}
+
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "authors").isEqualTo(authors);
+			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
+			requireThat(Files.exists(heldOut.resolve("revised_proposal.json")), "contractStored").isFalse();
+			try (Stream<Path> drafts = Files.list(heldOut.resolve("drafts")))
+			{
+				requireThat(drafts.count(), "drafts").isEqualTo(1L);
+			}
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
+			requireThat(campaign.testRevisions().revisions().getFirst().after(), "after").contains("Summarize");
+		}
+	}
+
+	/**
+	 * Verifies that cancelling a campaign whose test revision's guard pilot has not ended deletes the stored revision
+	 * and its draft directory, and keeps the confirmed proposal.
+	 */
+	@Test
+	public void cancelDeletesStoredRevision() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = changingAuthorRepository(scope);
+			String id = unfinishedRevision(repository);
+			Path heldOut = repository.directory(id).resolve("held_out");
+
+			repository.core().cancel(id);
+
+			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
+			requireThat(Files.exists(heldOut.resolve("revised_proposal.json")), "contractStored").isFalse();
+			try (Stream<Path> drafts = Files.list(heldOut.resolve("drafts")))
+			{
+				requireThat(drafts.count(), "drafts").isEqualTo(1L);
+			}
+			requireThat(Files.isRegularFile(heldOut.resolve("proposal.json")), "confirmedProposal").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that choosing to stop a campaign whose test revision's guard pilot has not ended deletes the stored
+	 * revision.
+	 */
+	@Test
+	public void stopDeletesStoredRevision() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = changingAuthorRepository(scope);
+			String id = unfinishedRevision(repository);
+			Path heldOut = repository.directory(id).resolve("held_out");
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
+				replaceSnapshot(Transitions.apply(repository.load(id), new CampaignEvent.PilotFailed("A trial failed.")));
+
+			output(repository, List.of("choose", id, "stop"));
+
+			requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
+			requireThat(Files.exists(heldOut.resolve("revised_proposal.json")), "contractStored").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a new contract proposal for a campaign whose test revision's guard pilot has not ended replaces the
+	 * stored revision, so that the next {@code run} does not continue it.
+	 */
+	@Test
+	public void reviseDeletesStoredRevision() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = changingAuthorRepository(scope);
+			String id = unfinishedRevision(repository);
+			Path heldOut = repository.directory(id).resolve("held_out");
+
+			repository.core().revise(id, "Name the audience in every test.");
+
+			requireThat(Files.exists(heldOut.resolve("revision.json")), "revisionStored").isFalse();
+			requireThat(Files.exists(heldOut.resolve("revised_proposal.json")), "contractStored").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that a test revision that finds the test sound records the report under the current lineage and keeps
 	 * the confirmed contract.
 	 * <p>

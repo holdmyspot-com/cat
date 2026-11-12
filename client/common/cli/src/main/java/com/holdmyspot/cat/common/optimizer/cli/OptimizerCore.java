@@ -1433,6 +1433,10 @@ public final class OptimizerCore implements Core
 	 * at once. Once every session has ended, the corrected tests replace the confirmed tests, their guard pilot runs,
 	 * and the revised contract starts a new lineage under the confirmed certification scope; then each test whose
 	 * revision cannot proceed pauses the campaign.
+	 * <p>
+	 * The corrected contract and what the sessions decided are stored before the pilot runs, so that when the slice
+	 * ends before the pilot does, the next call continues the pilot without any session. The stored revision is deleted
+	 * once the pilot has ended.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign, which awaits a test revision and no contract revision
@@ -1453,32 +1457,87 @@ public final class OptimizerCore implements Core
 		ProposalFile.Stored stored = new ProposalFile(heldOutDirectory(id), scope.json(), scope.fileReplacer()).read().
 			orElseThrow(() -> new IOException("Campaign " + id + " has no stored confirmed proposal"));
 		ContractAuthorProtocol contractAuthor = contractAuthor(root, campaign);
-		DerivedProposal current;
-		try
-		{
-			current = stored.restore(contractAuthor.proposal(stored.derivation(), stored.draft(),
-				stored.observedSources(), stored.profiles(), stored.salt()));
-		}
-		catch (InvalidProposalException e)
-		{
-			throw new IOException("The stored proposal is invalid: " + String.join("; ", e.problems()), e);
-		}
-		TestRevisionProtocol protocol = new TestRevisionProtocol(scope.json(), schema, contractAuthor);
+		RevisionFile revisionFile = revisionFile(id);
+		Optional<RevisionFile.Stored> pending = revisionFile.read();
 		ForkView fork = openFork(root, campaign);
+		DerivedProposal current;
+		List<TestRevision> revisions;
+		List<CampaignEvent.BlockTestRevision> blocked;
+		if (pending.isPresent())
+		{
+			// The sessions ended in an earlier slice, which stored what they decided
+			current = restore(contractAuthor, pending.get().proposal());
+			revisions = pending.get().revisions();
+			blocked = pending.get().blocked();
+		}
+		else
+		{
+			Examined examined = examineTests(root, campaign, lock, contractAuthor, fork, restore(contractAuthor, stored),
+				stored.profiles());
+			if (examined.notice() != null)
+				return Optional.of(examined.notice());
+			current = examined.current();
+			revisions = examined.revisions();
+			blocked = examined.blocked();
+			if (!revisions.isEmpty())
+				revisionFile.write(current, stored.profiles(), revisions, blocked);
+		}
+
+		campaign = require(scope.store(), id, true);
+		List<CampaignEvent> events = new ArrayList<>();
+		if (!revisions.isEmpty())
+		{
+			RevisedContract revised = revisedContract(root, campaign, fork, current, stored, revisions, sliceStart);
+			// A blocked revision is examined again with the next run, which also continues the pilot
+			if (revised.unfinished() != null)
+				return Optional.of(revised.unfinished());
+			events.addAll(revised.events());
+		}
+		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
+		events.addAll(blocked);
+		if (!events.isEmpty())
+			apply(root, campaign, events, lock);
+		// A pilot that failed leaves the campaign awaiting its test revision, which runs again
+		discardRevision(id);
+		return Optional.empty();
+	}
+
+	/**
+	 * Runs a test revision session for each prompt test whose revision the campaign awaits.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param lock the campaign's write lock, which the caller holds
+	 * @param contractAuthor the contract author's protocol
+	 * @param fork the campaign's fork
+	 * @param confirmed the confirmed contract
+	 * @param profiles the confirmed contract's profile evidence
+	 * @return what the sessions decided, or a notice that a session failed or its result is invalid
+	 * @throws CommandRefusedException if the campaign does not accept a test revision
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	private Examined examineTests(Path root, Campaign campaign, CampaignLock lock,
+		ContractAuthorProtocol contractAuthor, ForkView fork, DerivedProposal confirmed, ProfileEvidence profiles)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		String id = campaign.header().id();
+		TestRevisionProtocol protocol = new TestRevisionProtocol(scope.json(), schema, contractAuthor);
 		Overlay incumbent = new FileCandidateOverlays(campaignDirectory(id), fork.inventory(), fork::version,
 			scope.json(), scope.fileReplacer()).require(campaign.incumbent().snapshot());
 		Path staged = fork.workspace().stage(incumbent, Set.of());
 
+		DerivedProposal current = confirmed;
 		List<TestRevision> revisions = new ArrayList<>();
-		List<CampaignEvent> blocked = new ArrayList<>();
+		List<CampaignEvent.BlockTestRevision> blocked = new ArrayList<>();
 		for (TestRevisionRequest request : campaign.testRevisions().requests())
 		{
-			TestRevisionProtocol.Examination examined = new TestRevisionProtocol.Examination(current,
-				stored.profiles(), request, evidenceSections(request));
+			TestRevisionProtocol.Examination examined = new TestRevisionProtocol.Examination(current, profiles, request,
+				evidenceSections(request));
 			SessionResult result = await(sessions(campaign).start(protocol.request(staged, examined)));
 			String session = "The test revision of `" + request.test() + "`";
 			if (!(result instanceof SessionResult.Completed completed))
-				return Optional.of(session + " " + describe(result) + " Run `run` again to retry.");
+				return Examined.notice(session + " " + describe(result) + " Run `run` again to retry.");
 			campaign = require(scope.store(), id, true);
 			if (completed.usage() != null)
 			{
@@ -1494,7 +1553,7 @@ public final class OptimizerCore implements Core
 			}
 			catch (InvalidProposalException e)
 			{
-				return Optional.of(session + " is invalid: " + String.join("; ", e.problems()) +
+				return Examined.notice(session + " is invalid: " + String.join("; ", e.problems()) +
 					". Run `run` again to retry.");
 			}
 			switch (outcome)
@@ -1514,22 +1573,80 @@ public final class OptimizerCore implements Core
 					request.test(), block.reason(), block.reasons(), block.proposedChange()));
 			}
 		}
+		return new Examined(current, revisions, blocked, null);
+	}
 
-		campaign = require(scope.store(), id, true);
-		List<CampaignEvent> events = new ArrayList<>();
-		if (!revisions.isEmpty())
+	/**
+	 * What the test revision sessions decided.
+	 *
+	 * @param current the confirmed contract with every corrected test
+	 * @param revisions the corrections, one per corrected test
+	 * @param blocked the test revisions that cannot proceed
+	 * @param notice a notice that a session failed or its result is invalid, or {@code null} if every session ended
+	 */
+	private record Examined(DerivedProposal current, List<TestRevision> revisions,
+		List<CampaignEvent.BlockTestRevision> blocked, String notice)
+	{
+		/**
+		 * Returns the outcome of sessions that did not all end.
+		 *
+		 * @param notice the notice
+		 * @return the outcome
+		 */
+		static Examined notice(String notice)
 		{
-			RevisedContract revised = revisedContract(root, campaign, fork, current, stored, revisions, sliceStart);
-			// A blocked revision is examined again with the next run, which also continues the pilot
-			if (revised.unfinished() != null)
-				return Optional.of(revised.unfinished());
-			events.addAll(revised.events());
+			return new Examined(null, List.of(), List.of(), notice);
 		}
-		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
-		events.addAll(blocked);
-		if (!events.isEmpty())
-			apply(root, campaign, events, lock);
-		return Optional.empty();
+	}
+
+	/**
+	 * Restores a stored proposal and validates it against the project.
+	 *
+	 * @param contractAuthor the contract author's protocol
+	 * @param stored the stored proposal
+	 * @return the proposal
+	 * @throws IOException if the stored proposal is invalid
+	 */
+	private DerivedProposal restore(ContractAuthorProtocol contractAuthor, ProposalFile.Stored stored)
+		throws IOException
+	{
+		try
+		{
+			return stored.restore(contractAuthor.proposal(stored.derivation(), stored.draft(),
+				stored.observedSources(), stored.profiles(), stored.salt()));
+		}
+		catch (InvalidProposalException e)
+		{
+			throw new IOException("The stored proposal is invalid: " + String.join("; ", e.problems()), e);
+		}
+	}
+
+	/**
+	 * Returns the file that holds a campaign's revised contract while its guard pilot has not ended.
+	 *
+	 * @param id the campaign's identifier
+	 * @return the file
+	 * @throws IOException if the host session's CAT session directory cannot be opened
+	 */
+	private RevisionFile revisionFile(String id) throws IOException
+	{
+		return new RevisionFile(heldOutDirectory(id), scope.json(), scope.fileReplacer());
+	}
+
+	/**
+	 * Deletes a campaign's stored test revision, if it has one, and the draft directories that only it needed.
+	 *
+	 * @param id the campaign's identifier
+	 * @throws IOException if a file cannot be deleted
+	 */
+	private void discardRevision(String id) throws IOException
+	{
+		if (!revisionFile(id).delete())
+			return;
+		Path heldOut = heldOutDirectory(id);
+		Optional<ProposalFile.Stored> confirmed = new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).read();
+		if (confirmed.isPresent())
+			DraftDirectory.keepOnly(heldOut, confirmed.get().draft());
 	}
 
 	/**
@@ -2300,7 +2417,11 @@ public final class OptimizerCore implements Core
 			throw new CommandRefusedException("Campaign " + id + " does not accept this command now: " +
 				e.getMessage(), e);
 		}
-		return report(root, require(scope.store(), id, true), null, null);
+		Campaign applied = require(scope.store(), id, true);
+		// A campaign that no longer awaits its test revision has no use for the revised contract that it stored
+		if (applied.lifecycle() != Lifecycle.ACTIVE || !applied.awaitsTestRevision() || applied.revisionRequested())
+			discardRevision(id);
+		return report(root, applied, null, null);
 	}
 
 	/**
@@ -2430,6 +2551,8 @@ public final class OptimizerCore implements Core
 		// The draft's values files hold the expected outcomes of both parts, so it moves into the held-out directory
 		Path heldOut = heldOutDirectory(campaign.header().id());
 		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
+		// A new proposal replaces the revised contract of a test revision, whose draft directory the write removes
+		revisionFile(campaign.header().id()).delete();
 		new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).write(derived, profiles);
 		return present(root, store, campaign, fork, derived, sliceStart);
 	}

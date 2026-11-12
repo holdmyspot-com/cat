@@ -48,8 +48,14 @@ final class ProposalFile
 	 * whose prompt tests its stored draft directory holds.
 	 */
 	private static final int FORMAT_VERSION = 19;
+	/**
+	 * The name of the file that holds the contract that a test revision corrected, while the revision's guard pilot
+	 * has not ended.
+	 */
+	static final String REVISED_NAME = "revised_proposal.json";
 	private final Path heldOut;
 	private final Path file;
+	private final boolean prunes;
 	private final JsonMapper json;
 	private final FileReplacer replacer;
 
@@ -110,17 +116,51 @@ final class ProposalFile
 	 */
 	ProposalFile(Path heldOut, JsonMapper json, FileReplacer replacer)
 	{
+		this(heldOut, NAME, true, json, replacer);
+	}
+
+	/**
+	 * Creates the file that holds a test revision's corrected contract beside the confirmed proposal. Writing it
+	 * keeps every draft directory that the held-out directory stores, because one of them holds the confirmed
+	 * contract, and the file never replaces the confirmed proposal.
+	 *
+	 * @param heldOut the campaign's {@code held_out} directory
+	 * @param json the operation-owned JSON mapper
+	 * @param replacer replaces the file
+	 * @return the file
+	 * @throws NullPointerException if any argument is null
+	 */
+	static ProposalFile revised(Path heldOut, JsonMapper json, FileReplacer replacer)
+	{
+		return new ProposalFile(heldOut, REVISED_NAME, false, json, replacer);
+	}
+
+	/**
+	 * Creates a proposal file.
+	 *
+	 * @param heldOut the campaign's {@code held_out} directory
+	 * @param name the file's name
+	 * @param prunes {@code true} if writing the file removes every other draft directory that the held-out directory
+	 *   stores
+	 * @param json the operation-owned JSON mapper
+	 * @param replacer replaces the file
+	 * @throws NullPointerException if any argument is null
+	 */
+	private ProposalFile(Path heldOut, String name, boolean prunes, JsonMapper json, FileReplacer replacer)
+	{
 		requireThat(heldOut, "heldOut").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		this.heldOut = heldOut;
-		this.file = heldOut.resolve(NAME);
+		this.file = heldOut.resolve(name);
+		this.prunes = prunes;
 		this.json = json;
 		this.replacer = replacer;
 	}
 
 	/**
-	 * Replaces the stored proposal, then removes every other draft directory that the held-out directory stores.
+	 * Replaces the stored proposal, then removes every other draft directory that the held-out directory stores,
+	 * unless the file sits beside the confirmed proposal.
 	 *
 	 * @param derived the proposal, whose draft directory the held-out directory stores
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
@@ -144,12 +184,24 @@ final class ProposalFile
 		root.put("derivation", derived.derivation());
 		root.put("salt", derived.contract().salt());
 		profiles.write(root);
-		Path temporary = file.resolveSibling(NAME + ".tmp");
+		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
 		replacer.replace(temporary, file);
 		// The stored proposal names the new draft directory only now, so the previous one stayed whole until then
-		DraftDirectory.keepOnly(heldOut, draft);
+		if (prunes)
+			DraftDirectory.keepOnly(heldOut, draft);
+	}
+
+	/**
+	 * Deletes the stored proposal, without touching any draft directory.
+	 *
+	 * @return {@code true} if a proposal was stored
+	 * @throws IOException if the file cannot be deleted
+	 */
+	boolean delete() throws IOException
+	{
+		return Files.deleteIfExists(file);
 	}
 
 	/**
