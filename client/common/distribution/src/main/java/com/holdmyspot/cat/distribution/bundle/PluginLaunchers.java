@@ -66,10 +66,13 @@ public final class PluginLaunchers
 	public static final String JAVA_WRAPPER = "java";
 	/**
 	 * The options of every launcher's JVM. The CLI's standard output carries structured responses, so JVM warnings go to
-	 * standard error instead of corrupting that channel. HotSpot shares its performance data through the file
-	 * {@code /tmp/hsperfdata_<user>/<pid>}, and JVMs in separate PID namespaces, such as two sandboxed sessions that
-	 * share {@code /tmp}, can have the same PID and contend for that file; keeping the data in the process avoids that
-	 * contention, at the cost of tools such as {@code jps} and {@code jstat} not seeing the JVM. Java writes its
+	 * standard error instead of corrupting that channel. HotSpot would otherwise write its performance counters to
+	 * the memory-mapped file {@code /tmp/hsperfdata_<user>/<pid>}. Sandboxed sessions run in their own PID namespaces,
+	 * so JVMs of different sessions can have the same PID and overwrite each other's file, and {@code /tmp} is
+	 * read-only inside a sandbox; HotSpot always puts the file in {@code /tmp}, so {@code java.io.tmpdir} cannot move
+	 * it. Only outside monitoring tools such as {@code jps} and {@code jstat} read the file, and no JVM reads another's,
+	 * so CAT's JVMs lose nothing by keeping the counters in the process; their startup sharing comes from the
+	 * startup cache. Java writes its
 	 * standard streams in the console's or the system's character set, which on Windows is not UTF-8, while the
 	 * harnesses read UTF-8. On Windows, the common module reads the program's arguments from the process's command line
 	 * through native code, because the Java launcher loses the characters that the system's code page lacks. A host

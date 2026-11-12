@@ -104,6 +104,10 @@ final class InstallerLaunchers
 		esac
 		tmpdir=
 		@TMPDIR@
+		# -XX:+PerfDisableSharedMem: without it the JVM writes its performance counters to the memory-mapped file
+		# /tmp/hsperfdata_<user>/<pid>. Sandboxed sessions have their own PID namespaces, so JVMs of different sessions
+		# can share a PID and overwrite each other's file, and /tmp is read-only in a sandbox; HotSpot always uses /tmp
+		# there, not java.io.tmpdir. Only outside tools such as jps and jstat read the file, never another JVM.
 		exec "$java" ${tmpdir:+"$tmpdir"} -Xshare:auto -Xlog:all=off:stdout -Xlog:all=warning:stderr \\
 			-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 \\
 			-Djdk.http.auth.tunneling.disabledSchemes= \\
@@ -155,6 +159,9 @@ final class InstallerLaunchers
 			exit 3
 		}
 
+		# -XX:+PerfDisableSharedMem: without it the JVM writes its performance counters to a memory-mapped file named by
+		# its process ID in a shared temporary folder, which JVMs of sandboxed sessions with their own PID namespaces
+		# can share and overwrite. Only outside tools such as jps and jstat read the file, never another JVM.
 		$javaArguments = @('-Xshare:auto', '-Xlog:all=off:stdout', '-Xlog:all=warning:stderr',
 			'-XX:+PerfDisableSharedMem', '-Dstdout.encoding=UTF-8', '-Dstderr.encoding=UTF-8',
 			'-Djdk.http.auth.tunneling.disabledSchemes=', '--enable-native-access=com.holdmyspot.cat.common.cli',
