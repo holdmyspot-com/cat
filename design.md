@@ -916,10 +916,14 @@ runs in a **slot**: one of a fixed set of run directories, one per session that 
 same for the campaign's life. A slot holds the session's isolated home and harness configuration directory and its
 project, exactly as a fresh run directory would. Before a session takes a slot, CAT empties it and builds the
 session's run in it from nothing, so no file of an earlier session remains; it does so only after every process of
-the slot's previous session has ended, and a session holds its slot exclusively until then. Sessions that the held-out
-run root holds take slots there and the others take them under the runner's run root, so the read denial between them
-is unchanged. A kept run's artifacts are copied out of its slot to the run's own kept location before the slot is
-emptied, and every record reads those copies.
+the slot's previous session has ended, and a session holds its slot exclusively until then. Slots live where the
+harness runs, never in the driver's run roots, which hold only kept copies: in the request server's directory for a
+session that the host session's request server serves, and in the requesting run's directory for requested sessions
+that serve a run, so the copy of the user's login in a slot's home stays out of the sandboxed driver's reach. Each
+request names whether its session belongs to the held-out part; held-out sessions take slots of their own, so the read
+denial between the parts is unchanged. A request waits for a free slot, and the slot count is the server's or run's
+concurrency limit. A kept run's artifacts are copied out of its slot to the driver's kept location before the slot is
+emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12).
 
 The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
 and project into the instructions they send before the conversation: in an E1 campaign, every Claude trial and judge
