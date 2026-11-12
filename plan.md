@@ -4645,6 +4645,19 @@ selection and download it describes are unchanged.
 	clean full offline build, reporting every test taking at least one second. Then one Claude and one Codex campaign's
 	first-call cache reads compared with the E1 figures, when prompt optimization resumes.
 
+### WI-144 — The guard pilot runs in slices (user ruling, 2026-11-12)
+
+- **Problem:** `start`, `revise` and the `retry` choice run the whole guard pilot inside one call, which a host's tool
+	timeout can end, losing the trials in flight and leaving the agent without a status.
+- **Scope:** `client/common/cli/` (the pilot's run in `OptimizerCore` and `GuardPilot`, the status), the
+	prompt-optimizer skill (uncertified text, user approval 2026-11-09), this design and plan.
+- **Change:** as `design.md` D141 and the paragraph on unfinished pilots define it.
+- **Verification:** requirement-level tests with CAT's real classes and fakes: a pilot longer than the budget returns
+	`running` with its progress and decided trials kept; repeating `start` continues it without repeating decided trials
+	and ends by presenting the proposal; the admission rule and grace period apply; a cancelled trial is not an
+	infrastructure attempt; `revise` and `retry` behave the same. Then the clean full offline build, reporting every test
+	taking at least one second.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -4784,6 +4797,7 @@ blocks only the part of a work item that it names.
 | WI-141 | WI-140 |
 | WI-142 | WI-141 |
 | WI-143 | WI-142 |
+| WI-144 | WI-143 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

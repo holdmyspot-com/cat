@@ -2047,7 +2047,13 @@ trial, `start`, or a `revise` that reruns the pilot, pauses with the retry and s
 the logical trial and why each run ended, and does not offer the proposal for confirmation. A pilot that is unfinished
 for any reason, paused, interrupted or stopped by a refusal, cannot be confirmed: the proposal shows how far the pilot
 got, and `confirm` is refused until a pilot runs to its end. The next `start`, `revise` or `retry` runs only the trials
-that the pilot has not decided, with the test cases it already drew; `stop` cancels the campaign. A trial whose
+that the pilot has not decided, with the test cases it already drew; `stop` cancels the campaign. The pilot runs in slices,
+as the driver does (user ruling, 2026-11-12): `start`, `revise` and the `retry` choice run it within the slice budget
+counted from the command's start, with the driver's admission rule, grace period and cancellation, and a pilot that is
+unfinished at the slice's end returns `running` with a summary of how many of its trials are decided and the command to
+repeat, `start`, which continues the stored proposal's pilot. Cancelled pilot trials are not infrastructure attempts
+and rerun as the same logical trials. The skill repeats `start` while it returns `running`, showing the progress after
+each slice, as it does for `run`. No call holds a whole pilot, so a host's tool timeout never ends one. A trial whose
 built-in tool cannot be decided is not an infrastructure attempt: the proposal causes it, and the pilot shows it as a
 failed run (D136).
 
@@ -3449,6 +3455,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D138 | Never add guidance to a session's instructions; a session that may request sessions learns how from CAT's lazy-loaded rules and its run's files, and the run enforces its limits by refusal (user rulings, 2026-11-09: "never eagerly inject this prompt into a session"). | Injected request instructions reached optimizer trials, which a user's own sessions never see, so tests and production ran different prompts. | A session without CAT installed has no rules telling it how to request a session; its caller passes `--install-cat` or explains it in its own prompt. Whether a session finds the launcher from the rules alone needs a live check. |
 | D139 | The contract declares the files that its target refers to in its text; CAT copies each into every trial unchanged, never optimizes it, and shows its authority warning in the proposal; undeclared references in prose stay absent (user ruling, 2026-11-10: option A). | The end-to-end E7 run's target referred to `docs/reply-rules.md`, a link to a file outside the project, which no trial held, and the status text hid why; reading prose for references would make the staged files depend on guesses. | A referenced file that the contract author does not declare is absent from trials until a revision declares it; a declared file that the campaign cannot edit limits what it can repair; contracts that declare files change identity. |
 | D140 | Every nested session of the optimizer runs in a reusable slot, a run directory at a fixed path that CAT empties and rebuilds after the previous session's processes end (user rulings, 2026-11-12). | Each session's own home and project put different paths into the system prompt, so both harnesses' prompt caches reused only the shared prefix; an E1 campaign wrote about 88 million of its 91 million cache-write tokens on first calls. Options that move parts of the system prompt would change what sessions receive, and mount namespaces work only on Linux. | A slot's reuse depends on emptying it completely; a session may wait for a slot; paths that sessions see change once, which no identity includes. |
+| D141 | `start`, `revise` and `retry` run the guard pilot in slices and return `running` until it ends; repeating `start` continues it (user ruling, 2026-11-12: option B). | One call ran a pilot for 81 minutes in E5 r2, past Claude's 10-minute foreground tool timeout, which would end it and lose its trials in flight with no status; a detached worker is ruled out (H6). | More calls and agent turns per pilot; a pilot's last slice may run past the budget by the grace period. |
 
 ## 14. Acceptance evidence
 
