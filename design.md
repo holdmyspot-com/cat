@@ -923,7 +923,9 @@ that serve a run, so the copy of the user's login in a slot's home stays out of 
 request names whether its session belongs to the held-out part; held-out sessions take slots of their own, so the read
 denial between the parts is unchanged. A request waits for a free slot, and the slot count is the server's or run's
 concurrency limit. A kept run's artifacts are copied out of its slot to the driver's kept location before the slot is
-emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12).
+emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12). Each kept copy
+gets a run id of its own, since slot run ids repeat. A slot is not handed on while a process that its previous run
+recorded, the runner or the harness, is alive; the runner already ends the rest of the run's process tree.
 
 The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
 and project into the instructions they send before the conversation: in an E1 campaign, every Claude trial and judge
