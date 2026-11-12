@@ -13,8 +13,8 @@ delegating its fix. Do
 not load it for a production incident, or for an infrastructure failure, which the project's commands did not cause: no
 runner assigned or the runner lost, a service or network outage, a quota or rate-limit refusal, or the platform
 cancelling the job or timing it out before the project's commands ran. A flaky test or a timeout inside the project's
-own steps is a project failure. When the cause is unclear, rerun the job once without loading it, and lazy load it if
-the same failure occurs again.
+own steps is a project failure. When the cause is unclear, such as a job killed abruptly or a runner lost, rerun the job
+once without loading it, and lazy load it if the same failure occurs again.
 
 After you read the log of a job that failed on another machine, and before you choose a fix, lazy load
 `../upstream-fallbacks.md` when the log shows a download from an upstream server that failed because the server could
@@ -37,8 +37,8 @@ triggers it on only some runs, or before adding a randomized or property-based t
 When a test creates or shares a fixture, lazy load `../temporary-resources.md`.
 
 When running a build, when a revision's tests are about to run again (a rerun, a filtered subset, a repeated stress run
-or a run on another machine), or when selecting, configuring, or reusing a build or workflow cache, lazy load
-`../build-caching.md`.
+or a run on another machine), or when selecting, configuring, or reusing a build or workflow cache, or building a
+dependency once for the jobs of a workflow to share, lazy load `../build-caching.md`.
 
 When writing or changing a build or job step that downloads dependencies, packages or tools from one upstream server,
 lazy load `../upstream-fallbacks.md`.

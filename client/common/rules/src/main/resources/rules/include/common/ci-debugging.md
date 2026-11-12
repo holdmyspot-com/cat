@@ -19,6 +19,8 @@
 	so that delegating a fix never replaces trying it where the failure occurs.
 - A session or diagnostic run covers only the failing platforms and jobs and the jobs whose output they consume, and
 	the complete required workflow runs once, after the fix passes, as the acceptance gate.
+- A job that the machine killed abruptly is fitted to the machine's memory on evidence, not by lowering its parallelism
+	until it is slow.
 - Preserve hosted acceptance evidence when the required platform, identity, artifact, or service boundary is unavailable
 	locally or is part of the required outcome.
 
@@ -54,6 +56,12 @@ the session, and any diagnostic run, only for the failing platforms and jobs and
 When the failure depends on a hosted identity or permission, protected input, attestation, live service, or other
 boundary that neither the local machine nor a session on a runner of the same kind exercises, identify the smallest
 supported hosted check that can distinguish the remaining cause and run only that check.
+
+When a job is killed abruptly, such as with exit status 137 or 143 or a lost runner, at the same point in two runs, it
+has almost certainly run out of memory. Confirm that with the machine's memory evidence, such as the kernel's
+out-of-memory log or the runner's resource report, before you lower its parallelism. Then measure the fastest
+parallelism that fits in memory instead of guessing a low value; swap may absorb short peaks. Make a memory loss leave
+evidence, such as logging memory use during the build, so that the next kill shows its cause.
 
 After every check of the failed job passes locally or in the session, push the fix and run the complete required
 hosted workflow once, on every platform, whenever its CI-specific result remains an acceptance gate. If that run
