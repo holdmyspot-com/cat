@@ -32,6 +32,9 @@ Each item of `tests` gives:
 - `applicability`: the conditions under which those requirements apply to a trial;
 - `assertions`: one item for each assertion of the test's `scenario.md`, giving its `id` and the `requirement_id`
 	whose compliance it shows. Give each requirement that the test proves at least one assertion;
+- `near_misses`: for each assertion that the judge decides, replies that test how closely a judge applies it, as
+	Near misses below describes. Give it for every such assertion, or CAT looks for no cheaper development judge for this
+	test;
 - `uncovered_interactions`: every material interaction this test cannot cover.
 
 For each requirement with a `trigger`, write at least one test whose turns leave the trigger absent, whose expected
@@ -206,6 +209,29 @@ a tool's output before the model receives it, and the part that they cut off doe
 
 CAT refuses a built-in tool whose evidence the harness does not report, such as `exit-status` for a harness that
 reports no exit statuses.
+
+### Near misses
+
+CAT judges development trials with a cheaper judge when one agrees with the frozen judge closely enough. It first tests
+each candidate on near misses: replies that sit just on either side of an assertion's boundary. Write them in
+`near_misses` for every assertion that the judge decides, that is every assertion without a built-in `tool`,
+`expected_outcome` included unless the test gives it a built-in tool. Give each such assertion an item with:
+
+- `assertion_id`: the assertion's id;
+- `satisfying`: exactly 2 replies that only just satisfy the assertion;
+- `failing`: exactly 2 replies that only just fail it.
+
+A reply is the final assistant message of a trial, written as an agent would write it. Make each side differ from the
+other in the one detail that the assertion's words decide, so that a judge that reads the assertion loosely or strictly
+labels one of them differently from a judge that reads it as written. A reply that fails by a wide margin, or a
+satisfying reply that is a perfect answer, shows nothing about how a judge reads the boundary. The two replies of a side
+differ from each other in that detail's wording or position, not only in filler. A reply may contain `{{name}}`
+placeholders for the test's variables and `{{expected_outcome}}`; CAT inserts the values of the test's first
+development test case. Do not write which side a reply is on, or what the assertion requires, in the reply.
+
+CAT asks the frozen judge to label every reply once. A candidate judge that labels any reply differently is not used
+for this test, so a reply whose side is arguable costs a cheaper judge rather than showing that it is weaker: leave
+out a reply that you would not defend.
 
 ### Checking your files
 

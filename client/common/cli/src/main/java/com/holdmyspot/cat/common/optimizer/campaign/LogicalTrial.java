@@ -3,8 +3,10 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 
 import java.util.List;
+import java.util.Optional;
 
 /**
  * One assigned trial whose result is not yet included in campaign evidence. Retries run the same test case
@@ -31,11 +33,13 @@ import java.util.List;
  * @param responses each completed turn's assistant messages in order; empty before the trial is judged
  * @param files where the trial session's harness events and file changes were retained, or {@code null} if the trial
  *   is not judged
+ * @param judge the profile whose verdict counted, or empty if the trial is not judged, no judge ran, or an earlier
+ *   build recorded it
  */
 public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIdentity identity, Allocation allocation,
 	TrialState state, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions, Triage triage,
 	int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts, int observations,
-	List<List<String>> responses, TrialFiles files)
+	List<List<String>> responses, TrialFiles files, Optional<TrialProfile> judge)
 {
 	/**
 	 * Creates a trial.
@@ -60,8 +64,10 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	 * @param responses each completed turn's assistant messages in order; empty before the trial is judged
 	 * @param files where the trial session's harness events and file changes were retained, or {@code null} if the
 	 *   trial is not judged
+	 * @param judge the profile whose verdict counted, or empty if the trial is not judged or no judge ran
 	 * @throws NullPointerException if {@code key}, {@code testCase}, {@code identity}, {@code allocation},
-	 *   {@code state}, {@code failedAssertions}, {@code infrastructureAttempts} or {@code responses} are null, or a
+	 *   {@code state}, {@code failedAssertions}, {@code infrastructureAttempts}, {@code responses} or {@code judge}
+	 *   are null, or a
 	 *   failed assertion, a turn's messages or an assistant message is null
 	 * @throws IllegalArgumentException if a count is negative, the test case's cell differs from the key's, the
 	 *   allocation rule does not assign the key's purpose, a verdict exists without the {@link TrialState#JUDGED} state
@@ -82,11 +88,14 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 		requireThat(infrastructureAttempts, "infrastructureAttempts").isNotNull();
 		requireThat(observations, "observations").isNotNegative();
 		requireThat(responses, "responses").isNotNull();
+		requireThat(judge, "judge").isNotNull();
 		requireThat(testCase.cellId(), "testCase.cellId()").isEqualTo(key.cell(), "key.cell()");
 		requireThat(allocation.rule().assigns(key.purpose()), "allocation.rule().assigns(key.purpose())").isTrue();
 		requireThat(verdict != null, "hasVerdict").isEqualTo(state == TrialState.JUDGED, "isJudged");
 		requireThat(rationale != null, "hasRationale").isEqualTo(verdict != null, "hasVerdict");
 		requireThat(files != null, "hasFiles").isEqualTo(verdict != null, "hasVerdict");
+		if (verdict == null)
+			requireThat(judge.isPresent(), "hasJudge").isFalse();
 		if (verdict != Verdict.FAIL)
 			requireThat(failedAssertions, "failedAssertions").isEmpty();
 		if (triage != null)
@@ -102,6 +111,35 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 			count();
 		requireThat((long) infrastructureFailures, "infrastructureFailures").
 			isLessThanOrEqualTo(infrastructure, "infrastructureAttempts(INFRASTRUCTURE)");
+	}
+
+	/**
+	 * Creates a trial that records no judge profile.
+	 *
+	 * @param key the trial's identity
+	 * @param testCase the assigned test case, which every retry reuses
+	 * @param identity the measurement conditions that the trial belongs to
+	 * @param allocation the allocation decision that assigned the trial
+	 * @param state whether the trial is assigned, running or awaiting inclusion in evidence
+	 * @param verdict the judged outcome, or {@code null} if the trial is not judged
+	 * @param rationale the judge's explanation of {@code verdict}, or {@code null} if the trial is not judged
+	 * @param failedAssertions the assertions that a failed trial failed, each with its behavior
+	 * @param triage the impact of a failed development trial, or {@code null}
+	 * @param infrastructureFailures the runs that ended without an outcome and count toward the limit
+	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
+	 * @param observations the runs that ended under conditions that differ from the trial's identity
+	 * @param responses each completed turn's assistant messages in order
+	 * @param files where the trial session's harness events and file changes were retained, or {@code null}
+	 * @throws NullPointerException if the canonical constructor rejects the arguments
+	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+	 */
+	public LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIdentity identity, Allocation allocation,
+		TrialState state, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions, Triage triage,
+		int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts, int observations,
+		List<List<String>> responses, TrialFiles files)
+	{
+		this(key, testCase, identity, allocation, state, verdict, rationale, failedAssertions, triage,
+			infrastructureFailures, infrastructureAttempts, observations, responses, files, Optional.empty());
 	}
 
 	/**

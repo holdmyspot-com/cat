@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
+import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileBinding;
@@ -72,6 +73,7 @@ final class ReportJson
 		OptimizationJson.write(root, report.optimization());
 		reverts(root.putArray("reverts"), report.reverts());
 		addedTestCases(root.putArray("added_test_cases"), report.addedTestCases());
+		developmentJudges(root.putArray("development_judges"), report.developmentJudges());
 		StatusReport.Concurrency concurrency = report.concurrency();
 		ObjectNode concurrencyNode = root.putObject("concurrency");
 		concurrencyNode.put("window", concurrency.window());
@@ -157,6 +159,40 @@ final class ReportJson
 			for (Map.Entry<String, String> value : testCase.values().entrySet())
 				values.addObject().put("variable", value.getKey()).put("text", value.getValue());
 			node.put("expected_outcome", testCase.expectedOutcome());
+		}
+	}
+
+	/**
+	 * Adds the judge of each prompt test's development trials.
+	 *
+	 * @param array the report's array of development judges
+	 * @param judges the judges, in the contract's order of tests
+	 */
+	private static void developmentJudges(ArrayNode array, List<DevelopmentJudgeReport> judges)
+	{
+		for (DevelopmentJudgeReport judge : judges)
+		{
+			ObjectNode node = array.addObject();
+			node.put("test", judge.test());
+			node.put("judge", judge.judge());
+			node.put("frozen", judge.frozen());
+			node.put("stage", judge.stage());
+			putText(node, "examining", judge.examining());
+			node.put("shadowed", judge.shadowed());
+			node.put("spot_checked", judge.spotChecked());
+			node.put("lenient_disagreements", judge.lenient());
+			node.put("strict_disagreements", judge.strict());
+			ArrayNode rejected = node.putArray("rejected");
+			for (RejectedJudge turnedDown : judge.rejected())
+			{
+				ObjectNode element = rejected.addObject();
+				element.put("judge", turnedDown.profile().label());
+				element.put("reason", EnumNames.lowerCase(turnedDown.reason()));
+				element.put("shadowed", turnedDown.shadowed());
+				element.put("spot_checked", turnedDown.spotChecked());
+				element.put("lenient_disagreements", turnedDown.lenient());
+				element.put("strict_disagreements", turnedDown.strict());
+			}
 		}
 	}
 

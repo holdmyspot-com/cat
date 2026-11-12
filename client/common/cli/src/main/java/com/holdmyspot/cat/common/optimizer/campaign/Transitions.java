@@ -154,6 +154,10 @@ public final class Transitions
 			}
 			case CampaignEvent.ReportUnavailable report -> reportUnavailable(draft, report.outcome());
 			case CampaignEvent.WarnAuthority warn -> warnAuthority(draft, warn.warnings());
+			case CampaignEvent.LabelNearMisses label -> draft.judges.putIfAbsent(label.test(),
+				DevelopmentJudge.start(label.labels(), label.candidates()));
+			case CampaignEvent.CheckNearMisses check -> draft.judges.computeIfPresent(check.test(),
+				(_, judge) -> judge.nearMissesChecked(check.candidate(), check.agreed()));
 		}
 		TrialAdoption.settle(draft);
 		TrialAdoption.checkReviewPoints(draft);
@@ -695,7 +699,13 @@ public final class Transitions
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.testCase(), measured,
 			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(), complete.failedAssertions(),
 			complete.triage(), trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations(),
-			complete.responses(), complete.files()));
+			complete.responses(), complete.files(), complete.judge()));
+		if (complete.shadow().isPresent())
+		{
+			ShadowResult shadow = complete.shadow().get();
+			draft.judges.computeIfPresent(trial.testCase().testId(), (_, judge) -> judge.trialShadowed(
+				shadow.candidate(), shadow.spotCheck(), shadow.lenient(), shadow.strict()));
+		}
 	}
 
 	/**

@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.optimizer.campaign.Predecessor;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
@@ -122,6 +123,7 @@ public final class Builder
 	private PromptAuthorAttempt promptAuthor;
 	private final Map<String, Integer> reviewPoints = new LinkedHashMap<>();
 	private final Map<String, StallProgress> stalls = new LinkedHashMap<>();
+	private final Map<String, DevelopmentJudge> judges = new LinkedHashMap<>();
 	private Predecessor predecessor;
 	private int baselineIndex = 1;
 	private MeasurementIdentity baselineIdentity;
@@ -493,6 +495,19 @@ public final class Builder
 	public Builder stalls(String test, StallProgress progress)
 	{
 		stalls.put(test, progress);
+		return this;
+	}
+
+	/**
+	 * Sets the development judge state of a prompt test.
+	 *
+	 * @param test the test's identifier
+	 * @param state the judge state
+	 * @return this builder
+	 */
+	public Builder judge(String test, DevelopmentJudge state)
+	{
+		judges.put(test, state);
 		return this;
 	}
 
@@ -899,7 +914,7 @@ public final class Builder
 		return new Campaign(header, ceiling, lineages, identity, new Candidate(0, INCUMBENT), candidates,
 			promptAuthorAttempts, state, incumbentBaseline, built, trials, sequences, evidenceRevision, builtWindows,
 			throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings,
-			testRevisions, Optional.of(plugins));
+			testRevisions, Optional.of(plugins), judges);
 	}
 
 	/**

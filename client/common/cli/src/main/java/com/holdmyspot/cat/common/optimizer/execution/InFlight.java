@@ -2,9 +2,12 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
+import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
@@ -15,6 +18,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * A nested session that a {@link Driver} started and that has not ended yet.
@@ -49,6 +53,16 @@ sealed interface InFlight
 	 * @param handle the session
 	 */
 	record Judge(Judging judging, SessionHandle handle) implements InFlight
+	{
+	}
+
+	/**
+	 * A judge session that decides a near-miss reply.
+	 *
+	 * @param job the reply that the judge decides
+	 * @param handle the session
+	 */
+	record NearMiss(NearMissJob job, SessionHandle handle) implements InFlight
 	{
 	}
 
@@ -116,11 +130,38 @@ sealed interface InFlight
 	 * @param results the results of the test's built-in tools, which the judge receives as evidence
 	 * @param attempt the judge attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
+	 * @param judge the judge that decides the assertions
+	 * @param seat the judge's part in the trial's verdict
+	 * @param pair the frozen judge and the candidate that both judge the trial, or {@code null} if one judge decides
 	 */
 	record Judging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence,
 		String evidenceSection, List<JudgedAssertion> assertions, List<BuiltInToolResult> results, int attempt,
-		int concurrency)
+		int concurrency, JudgeProfile judge, Seat seat, ShadowPair pair)
 	{
+		/**
+		 * A judge's part in the trial's verdict.
+		 */
+		enum Seat
+		{
+			/**
+			 * The frozen judge decides alone.
+			 */
+			FROZEN_ALONE,
+			/**
+			 * A qualified candidate decides alone.
+			 */
+			CANDIDATE_ALONE,
+			/**
+			 * The frozen judge decides, and a candidate judges the trial too.
+			 */
+			FROZEN_OF_PAIR,
+			/**
+			 * A candidate judges the trial that the frozen judge decides.
+			 */
+			CANDIDATE_OF_PAIR
+		}
+
+
 		/**
 		 * Returns the next judge attempt with the same evidence.
 		 *
@@ -129,7 +170,7 @@ sealed interface InFlight
 		Judging retry()
 		{
 			return new Judging(key, testCase, evidence, evidenceSection, assertions, results, attempt + 1,
-				concurrency);
+				concurrency, judge, seat, pair);
 		}
 	}
 
@@ -146,10 +187,12 @@ sealed interface InFlight
 	 * @param failures the assertions that the trial failed, each with its behavior
 	 * @param attempt the triage attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
+	 * @param judge the profile of the judge whose verdict failed the trial, or empty if a built-in tool did
+	 * @param shadow the comparison of a candidate judge with the frozen judge, or empty if none judged the trial
 	 */
 	record Triaging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence, String evidenceSection,
 		List<BuiltInToolResult> results, String rationale, List<FailedAssertion> failures, int attempt,
-		int concurrency)
+		int concurrency, Optional<TrialProfile> judge, Optional<ShadowResult> shadow)
 	{
 		/**
 		 * Returns the next triage attempt with the same evidence.
@@ -159,7 +202,7 @@ sealed interface InFlight
 		Triaging retry()
 		{
 			return new Triaging(key, testCase, evidence, evidenceSection, results, rationale, failures, attempt + 1,
-				concurrency);
+				concurrency, judge, shadow);
 		}
 	}
 }

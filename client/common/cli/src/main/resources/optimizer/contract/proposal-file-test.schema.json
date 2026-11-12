@@ -5,6 +5,20 @@
 	"required": ["directory", "risk_rank", "requirement_ids", "absent_triggers", "applicability", "assertions", "uncovered_interactions"],
 	"properties": {
 		"directory": {"description": "The prompt test's directory relative to the draft directory, with / separators, such as .cat/tests/rules/notes/long_document. It holds scenario.md, values.json and an optional workspace/ directory. Its last name is the prompt test's identifier, in snake_case. A recorded prompt test keeps its directory; a new one lies directly in the target's test directory.", "type": "string", "pattern": "\\S"},
+		"near_misses": {
+			"description": "For each assertion that the judge decides, that is every assertion of scenario.md without a tool and expected_outcome unless it has a tool, the replies that only just satisfy it and the replies that only just fail it. CAT compares a cheaper development judge with the frozen judge on them.",
+			"type": "array",
+			"items": {
+				"type": "object",
+				"additionalProperties": false,
+				"required": ["assertion_id", "satisfying", "failing"],
+				"properties": {
+					"assertion_id": {"description": "The id of an assertion without a tool, or expected_outcome.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+					"satisfying": {"description": "Exactly two replies that satisfy the assertion by the smallest margin that its words allow. A reply is the final assistant message of a trial and may contain {{name}} placeholders for the test's variables and for expected_outcome.", "type": "array", "minItems": 2, "items": {"type": "string", "pattern": "\\S"}},
+					"failing": {"description": "Exactly two replies that fail the assertion by the smallest margin that its words allow.", "type": "array", "minItems": 2, "items": {"type": "string", "pattern": "\\S"}}
+				}
+			}
+		},
 		"assertions": {
 			"description": "The requirement that each assertion of the scenario's ## Assertions section checks, one item per assertion. Each requirement that the test proves has at least one assertion.",
 			"type": "array",

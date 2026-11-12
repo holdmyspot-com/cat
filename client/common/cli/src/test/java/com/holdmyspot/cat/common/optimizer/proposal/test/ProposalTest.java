@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
@@ -2879,6 +2880,31 @@ public final class ProposalTest
 				contains("CAT supplies the kind of the assertion expected_outcome; give it only a tool and, " +
 					"optionally, on_tool_failure");
 		}
+	}
+
+	/**
+	 * Verifies that the near misses that the contract author writes in a prompt test's item of the proposal file
+	 * reach the contract, for the assertions that the judge decides, and that a test without them has none.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void nearMissesReachTheContract() throws InvalidProposalException
+	{
+		String output = changedDerivation(derivation ->
+		{
+			ObjectNode nearMiss = ((ObjectNode) derivation.at("/tests/0")).putArray("near_misses").addObject();
+			nearMiss.put("assertion_id", "expected_outcome");
+			nearMiss.putArray("satisfying").add("Exactly {{expected_outcome}}").add("{{expected_outcome}} and a period");
+			nearMiss.putArray("failing").add("{{expected_outcome}}x").add("Nearly {{expected_outcome}}");
+		});
+
+		Contract contract = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT).contract();
+
+		requireThat(contract.tests().get(0).nearMisses(), "formatting").isEqualTo(List.of(new NearMisses(
+			"expected_outcome", List.of("Exactly {{expected_outcome}}", "{{expected_outcome}} and a period"),
+			List.of("{{expected_outcome}}x", "Nearly {{expected_outcome}}"))));
+		requireThat(contract.tests().get(1).nearMisses(), "plainList").isEmpty();
 	}
 
 	/**

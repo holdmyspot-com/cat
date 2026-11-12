@@ -123,6 +123,17 @@ public final class FakeProfileInventoryContractTest
 	}
 
 	/**
+	 * Verifies that the fake's development judge candidates are distinct and differ from its role profile.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void candidatesAreDistinctAndCheaper() throws IOException
+	{
+		contract().candidatesAreDistinctAndCheaper();
+	}
+
+	/**
 	 * Verifies that the fake ranks the family of every model that it lists.
 	 *
 	 * @throws IOException if the check fails

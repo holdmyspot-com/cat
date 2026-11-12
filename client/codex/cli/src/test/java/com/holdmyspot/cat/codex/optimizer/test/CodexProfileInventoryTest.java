@@ -107,9 +107,22 @@ public final class CodexProfileInventoryTest
 	 */
 	private static void writeAgent(Path artifact, String fields) throws IOException
 	{
+		writeAgent(artifact, "optimize-xhigh", fields);
+	}
+
+	/**
+	 * Writes an agent definition into an artifact.
+	 *
+	 * @param artifact the artifact
+	 * @param agent the agent's name
+	 * @param fields the lines that select the model and effort
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void writeAgent(Path artifact, String agent, String fields) throws IOException
+	{
 		Path agents = Files.createDirectories(artifact.resolve("agents/codex"));
-		Files.writeString(agents.resolve("optimize-xhigh.toml"), "name = \"cat-optimize-xhigh\"\n" + fields +
-			"developer_instructions = '''\nImplementer tier: xhigh.\n'''\n", UTF_8);
+		Files.writeString(agents.resolve(agent + ".toml"), "name = \"cat-" + agent + "\"\n" + fields +
+			"developer_instructions = '''\nImplementer tier.\n'''\n", UTF_8);
 	}
 
 	/**
@@ -122,6 +135,9 @@ public final class CodexProfileInventoryTest
 	private static ProfileInventoryContract contract(Path artifact) throws IOException
 	{
 		writeAgent(artifact, "model = \"gpt-6.1-sol\"\nmodel_reasoning_effort = \"high\"\n");
+		writeAgent(artifact, "optimize-low", "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"low\"\n");
+		writeAgent(artifact, "optimize-medium", "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"medium\"\n");
+		writeAgent(artifact, "optimize-high", "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"high\"\n");
 		CodexProfileInventory port = new CodexProfileInventory(artifact, "codex",
 			launcher(recorded(), new CopyOnWriteArrayList<>()));
 		return new ProfileInventoryContract(new ProfileInventoryContract.Subject()
@@ -505,6 +521,43 @@ public final class CodexProfileInventoryTest
 
 			requireThat(new CodexProfileInventory(artifact, "codex", launcher("", new CopyOnWriteArrayList<>())).
 				roleProfile(), "roleProfile").isEqualTo(new TrialProfile("gpt-6-sol", "xhigh"));
+		}
+	}
+
+	/**
+	 * Verifies that the candidate judge profiles are those that the cheaper agents bind, cheapest first, without the
+	 * role profile or a repeated profile.
+	 *
+	 * @throws IOException if the artifact cannot be written
+	 */
+	@Test
+	public void candidateJudgesComeFromTheCheaperAgents() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			writeAgent(artifact, "model = \"gpt-6.1-sol\"\nmodel_reasoning_effort = \"high\"\n");
+			writeAgent(artifact, "optimize-low", "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"low\"\n");
+			writeAgent(artifact, "optimize-medium", "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"low\"\n");
+			writeAgent(artifact, "optimize-high", "model = \"gpt-6.1-sol\"\nmodel_reasoning_effort = \"high\"\n");
+
+			requireThat(new CodexProfileInventory(artifact, "codex", launcher("", new CopyOnWriteArrayList<>())).
+				candidateJudgeProfiles(), "candidates").isEqualTo(List.of(new TrialProfile("gpt-6-luna", "low")));
+		}
+	}
+
+	/**
+	 * Verifies that the contract holds for candidate judge profiles.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void candidatesAreDistinctAndCheaper() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).
+				candidatesAreDistinctAndCheaper();
 		}
 	}
 

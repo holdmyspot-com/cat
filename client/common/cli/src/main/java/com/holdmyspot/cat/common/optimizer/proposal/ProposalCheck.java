@@ -1006,6 +1006,8 @@ public final class ProposalCheck
 				toolNode.put("on_tool_failure",
 					EnumNames.lowerCase(scenario.expectedOutcomeTool().get().onToolFailure()));
 			}
+			if (item.has(ProposalSchema.NEAR_MISSES))
+				test.set(ProposalSchema.NEAR_MISSES, item.get(ProposalSchema.NEAR_MISSES));
 
 			if (!committedTestCases.isEmpty())
 				committed.put(id, committedTestCases);

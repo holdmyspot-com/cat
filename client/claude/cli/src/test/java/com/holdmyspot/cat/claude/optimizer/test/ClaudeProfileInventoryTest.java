@@ -69,6 +69,9 @@ public final class ClaudeProfileInventoryTest
 	private static ProfileInventoryContract contract(Path artifact) throws IOException
 	{
 		writeAgent(artifact, "model: opus\neffort: high\n");
+		writeAgent(artifact, "optimize-low", "model: haiku\neffort: low\n");
+		writeAgent(artifact, "optimize-medium", "model: sonnet\neffort: medium\n");
+		writeAgent(artifact, "optimize-high", "model: sonnet\neffort: high\n");
 		ClaudeProfileInventory port = new ClaudeProfileInventory(artifact);
 		return new ProfileInventoryContract(new ProfileInventoryContract.Subject()
 		{
@@ -121,9 +124,22 @@ public final class ClaudeProfileInventoryTest
 	 */
 	private static void writeAgent(Path artifact, String fields) throws IOException
 	{
+		writeAgent(artifact, "optimize-xhigh", fields);
+	}
+
+	/**
+	 * Writes an agent definition into an artifact.
+	 *
+	 * @param artifact the artifact
+	 * @param agent the agent's name
+	 * @param fields the frontmatter lines that follow the agent's name
+	 * @throws IOException if the file cannot be written
+	 */
+	private static void writeAgent(Path artifact, String agent, String fields) throws IOException
+	{
 		Path agents = Files.createDirectories(artifact.resolve("agents/claude"));
-		Files.writeString(agents.resolve("optimize-xhigh.md"), "---\nname: optimize-xhigh\n" + fields +
-			"---\nImplementer tier: xhigh.\n", UTF_8);
+		Files.writeString(agents.resolve(agent + ".md"), "---\nname: " + agent + "\n" + fields +
+			"---\nImplementer tier.\n", UTF_8);
 	}
 
 	/**
@@ -428,6 +444,43 @@ public final class ClaudeProfileInventoryTest
 
 			requireThat(new ClaudeProfileInventory(artifact).roleProfile(), "roleProfile").
 				isEqualTo(new TrialProfile("sonnet", "xhigh"));
+		}
+	}
+
+	/**
+	 * Verifies that the candidate judge profiles are those that the cheaper agents bind, cheapest first, without the
+	 * role profile or a repeated profile.
+	 *
+	 * @throws IOException if the artifact cannot be written
+	 */
+	@Test
+	public void candidateJudgesComeFromTheCheaperAgents() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path artifact = cleanup.add(Files.createTempDirectory("cat-profiles-"));
+			writeAgent(artifact, "model: opus\neffort: high\n");
+			writeAgent(artifact, "optimize-low", "model: haiku\neffort: low\n");
+			writeAgent(artifact, "optimize-medium", "model: haiku\neffort: low\n");
+			writeAgent(artifact, "optimize-high", "model: opus\neffort: high\n");
+
+			requireThat(new ClaudeProfileInventory(artifact).candidateJudgeProfiles(), "candidates").
+				isEqualTo(List.of(new TrialProfile("haiku", "low")));
+		}
+	}
+
+	/**
+	 * Verifies that the contract holds for candidate judge profiles.
+	 *
+	 * @throws IOException if the check fails
+	 */
+	@Test
+	public void candidatesAreDistinctAndCheaper() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			contract(cleanup.add(Files.createTempDirectory("cat-profiles-"))).
+				candidatesAreDistinctAndCheaper();
 		}
 	}
 

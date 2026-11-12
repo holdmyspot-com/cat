@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileBinding;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -86,6 +87,14 @@ public final class ContractFixtures
 	 * {@code tmp} and {@code build} to the development part, and every other expected outcome to the held-out part.
 	 */
 	public static final long SALT = 272_275L;
+	/**
+	 * The start of every near-miss reply that only just satisfies its assertion.
+	 */
+	public static final String SATISFYING_REPLY = "Just meets";
+	/**
+	 * The start of every near-miss reply that only just fails its assertion.
+	 */
+	public static final String FAILING_REPLY = "Just misses";
 	/**
 	 * The tones of the {@code formatting} test cases, by label, with the text that each inserts.
 	 */
@@ -226,6 +235,38 @@ public final class ContractFixtures
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
+	 * Returns a contract in which every prompt test has near misses for each assertion that its judge decides: replies
+	 * that start with {@value #SATISFYING_REPLY} satisfy the assertion and replies that start with
+	 * {@value #FAILING_REPLY} fail it.
+	 *
+	 * @param contract the contract
+	 * @return the contract with the near misses
+	 */
+	public static Contract withNearMisses(Contract contract)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			List<NearMisses> nearMisses = new ArrayList<>();
+			for (Assertion assertion : test.judgedAssertions())
+			{
+				String id = assertion.id();
+				nearMisses.add(new NearMisses(id,
+					List.of(SATISFYING_REPLY + " " + id + " (1)", SATISFYING_REPLY + " " + id + " (2)"),
+					List.of(FAILING_REPLY + " " + id + " (1)", FAILING_REPLY + " " + id + " (2)")));
+			}
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+				test.assertions(), test.regressionScenarios(), test.workspaceFiles(), test.draft(),
+				test.expectedOutcomeTool(), nearMisses));
+		}
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
+			contract.referencedFiles());
 	}
 
 	/**

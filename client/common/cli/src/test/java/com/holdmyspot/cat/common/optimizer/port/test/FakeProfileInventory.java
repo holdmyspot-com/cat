@@ -37,9 +37,15 @@ public final class FakeProfileInventory implements ProfileInventory
 	 * The role profile of a fresh fake.
 	 */
 	public static final TrialProfile ROLE = new TrialProfile("role-model", "high");
+	/**
+	 * The development judge candidates of a fresh fake, cheapest first.
+	 */
+	public static final List<TrialProfile> CANDIDATES = List.of(new TrialProfile("cheap-model", "low"),
+		new TrialProfile("middle-model", "medium"));
 	private final ProfileCatalog inventory;
 	private final CapabilityRanking ranking;
 	private final TrialProfile role;
+	private final List<TrialProfile> candidates;
 	private final Set<String> rejectedModels = new CopyOnWriteArraySet<>();
 
 	/**
@@ -72,12 +78,29 @@ public final class FakeProfileInventory implements ProfileInventory
 	 */
 	public FakeProfileInventory(ProfileCatalog inventory, CapabilityRanking ranking, TrialProfile role)
 	{
+		this(inventory, ranking, role, CANDIDATES);
+	}
+
+	/**
+	 * Creates a fake.
+	 *
+	 * @param inventory the inventory
+	 * @param ranking the capability ranking
+	 * @param role the role profile
+	 * @param candidates the development judge candidates, cheapest first
+	 * @throws NullPointerException if any of the arguments are null
+	 */
+	public FakeProfileInventory(ProfileCatalog inventory, CapabilityRanking ranking, TrialProfile role,
+		List<TrialProfile> candidates)
+	{
 		requireThat(inventory, "inventory").isNotNull();
 		requireThat(ranking, "ranking").isNotNull();
 		requireThat(role, "role").isNotNull();
+		requireThat(candidates, "candidates").isNotNull();
 		this.inventory = inventory;
 		this.ranking = ranking;
 		this.role = role;
+		this.candidates = List.copyOf(candidates);
 	}
 
 	/**
@@ -156,6 +179,12 @@ public final class FakeProfileInventory implements ProfileInventory
 	public TrialProfile roleProfile()
 	{
 		return role;
+	}
+
+	@Override
+	public List<TrialProfile> candidateJudgeProfiles()
+	{
+		return candidates;
 	}
 
 	/**

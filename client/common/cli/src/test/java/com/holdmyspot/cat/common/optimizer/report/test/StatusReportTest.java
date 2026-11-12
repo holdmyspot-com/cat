@@ -12,6 +12,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
+import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
@@ -50,6 +52,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
@@ -147,6 +150,64 @@ public final class StatusReportTest
 			contains("A file that a prompt names in its text without a loader loading it is absent from trials").
 			contains("declares it as a referenced file");
 		requireThat(String.join("\n", without.limitations()), "withoutLinks").doesNotContain("symbolic link");
+	}
+
+	/**
+	 * The text and JSON reports name the judge of each prompt test's development trials: the frozen judge while no
+	 * candidate was examined, the candidate in examination with its counts, the candidate that qualified, and the
+	 * candidates that were turned down. The text says that certification attempts always use the frozen judge, and
+	 * omits the section while no test has examined a candidate.
+	 */
+	@Test
+	public void reportsDevelopmentJudges()
+	{
+		TrialProfile cheap = new TrialProfile("cheap-model", "low");
+		TrialProfile middle = new TrialProfile("middle-model", "medium");
+		Campaign unexamined = new Builder().confirmed().build();
+		StatusReport before = StatusReport.of(unexamined, ReportEvidence.NONE);
+		requireThat(before.summary(ZoneOffset.UTC), "summaryBefore").doesNotContain("Development judges");
+		JsonNode idle = before.toJson(JsonMapper.builder().build()).path("development_judges");
+		requireThat(idle.size(), "tests").isEqualTo(unexamined.contract().tests().size());
+		requireThat(idle.get(0).path("stage").asString(), "stageBefore").isEqualTo("not_examined");
+		requireThat(idle.get(0).path("judge").asString(), "judgeBefore").
+			isEqualTo(unexamined.contract().judge().profile().label());
+		requireThat(idle.get(0).path("frozen").asBoolean(), "frozenBefore").isTrue();
+
+		Campaign campaign = new Builder().confirmed().
+			judge("formatting", new DevelopmentJudge(Map.of(), List.of(middle), DevelopmentJudge.Stage.SHADOWING,
+				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.NEAR_MISS, 0, 0, 0, 0)), 120, 0, 0, 3)).
+			judge("plain_list", new DevelopmentJudge(Map.of(), List.of(cheap), DevelopmentJudge.Stage.QUALIFIED,
+				List.of(), 299, 31, 0, 2)).
+			judge("safety", new DevelopmentJudge(Map.of(), List.of(), DevelopmentJudge.Stage.FROZEN,
+				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.SPOT_CHECK, 299, 12, 1, 2)), 0, 0, 0, 0)).
+			build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		String summary = report.summary(ZoneOffset.UTC);
+		requireThat(summary, "summary").contains("Development judges (certification attempts, baselines and " +
+			"control comparisons always use the frozen judge):").
+			contains("test formatting: frozen judge " + campaign.contract().judge().profile().label() +
+				"; candidate " + middle.label() + " is shadowing it: 120 trials shadowed, 0 lenient and 3 strict " +
+				"disagreements; rejected " + cheap.label() + " (judged a near miss differently from the frozen judge").
+			contains("test plain_list: candidate " + cheap.label() +
+				"; 299 trials shadowed, 31 spot-checked, 0 lenient and 2 strict disagreements").
+			contains("test safety: frozen judge " + campaign.contract().judge().profile().label() +
+				"; no candidate is left; rejected " + cheap.label() + " (disagreed too often in spot checks");
+		JsonNode judges = report.toJson(JsonMapper.builder().build()).path("development_judges");
+		JsonNode formatting = judges.get(0);
+		requireThat(formatting.path("test").asString(), "test").isEqualTo("formatting");
+		requireThat(formatting.path("stage").asString(), "stage").isEqualTo("shadowing");
+		requireThat(formatting.path("examining").asString(), "examining").isEqualTo(middle.label());
+		requireThat(formatting.path("frozen").asBoolean(), "frozen").isTrue();
+		requireThat(formatting.path("shadowed").asInt(), "shadowed").isEqualTo(120);
+		requireThat(formatting.path("strict_disagreements").asInt(), "strict").isEqualTo(3);
+		requireThat(formatting.path("rejected").get(0).path("reason").asString(), "reason").isEqualTo("near_miss");
+		JsonNode plainList = judges.get(1);
+		requireThat(plainList.path("judge").asString(), "qualifiedJudge").isEqualTo(cheap.label());
+		requireThat(plainList.path("frozen").asBoolean(), "qualifiedFrozen").isFalse();
+		requireThat(plainList.path("spot_checked").asInt(), "spotChecked").isEqualTo(31);
+		requireThat(judges.get(2).path("rejected").get(0).path("reason").asString(), "spotReason").
+			isEqualTo("spot_check");
 	}
 
 	/**

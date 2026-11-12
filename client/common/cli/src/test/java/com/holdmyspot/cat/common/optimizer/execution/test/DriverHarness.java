@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
@@ -180,6 +181,7 @@ public final class DriverHarness
 	 */
 	private List<FakeProcessHandle> processes = List.of();
 	private SliceSettings settings = SliceSettings.DEFAULT;
+	private List<TrialProfile> candidateJudges = List.of();
 	private Set<Path> promptSources = Set.of(PROMPT);
 	private final List<Integer> openTrials = new ArrayList<>();
 	private int ended;
@@ -325,7 +327,8 @@ public final class DriverHarness
 			calibrator, terminator,
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
-			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json);
+			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json,
+			candidateJudges);
 	}
 
 	/**
@@ -635,6 +638,16 @@ public final class DriverHarness
 		return new SessionResult.Completed(directory.resolve("judge-transcript"), List.of(List.of(response)),
 			directory.resolve("judge-effects"), directory.resolve("judge-initial-project"), JUDGE_MODEL, null, null,
 			List.of(), PROMPT_SOURCES, List.of());
+	}
+
+	/**
+	 * Replaces the profiles that drivers opened later may examine as development judges.
+	 *
+	 * @param value the candidate profiles, cheapest first
+	 */
+	public void candidateJudges(List<TrialProfile> value)
+	{
+		candidateJudges = List.copyOf(value);
 	}
 
 	/**

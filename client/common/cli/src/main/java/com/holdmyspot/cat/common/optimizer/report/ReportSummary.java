@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.report;
 
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
@@ -12,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
+import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -61,6 +63,67 @@ final class ReportSummary
 	}
 
 	/**
+	 * Lists which judge decides each prompt test's development trials, once CAT has examined a candidate judge for
+	 * some test.
+	 *
+	 * @param lines receives the text's lines
+	 * @param judges the judge of each prompt test
+	 */
+	private static void developmentJudges(List<String> lines, List<DevelopmentJudgeReport> judges)
+	{
+		if (judges.stream().allMatch(judge -> judge.stage().equals(DevelopmentJudgeReport.NOT_EXAMINED)))
+			return;
+		lines.add("Development judges (certification attempts, baselines and control comparisons always use the " +
+			"frozen judge):");
+		for (DevelopmentJudgeReport judge : judges)
+		{
+			StringBuilder line = new StringBuilder(256).append("  test ").append(judge.test()).append(": ");
+			switch (judge.stage())
+			{
+				case DevelopmentJudgeReport.NOT_EXAMINED ->
+					line.append("frozen judge ").append(judge.judge()).append("; no candidate examined yet");
+				case "near_misses" -> line.append("frozen judge ").append(judge.judge()).append("; candidate ").
+					append(judge.examining()).append(" has not judged the near misses yet");
+				case "shadowing" -> line.append("frozen judge ").append(judge.judge()).append("; candidate ").
+					append(judge.examining()).append(" is shadowing it: ").append(judge.shadowed()).
+					append(" trials shadowed, ").append(judge.lenient()).append(" lenient and ").
+					append(judge.strict()).append(" strict disagreements");
+				case "qualified" -> line.append("candidate ").append(judge.judge()).append("; ").
+					append(judge.shadowed()).append(" trials shadowed, ").append(judge.spotChecked()).
+					append(" spot-checked, ").append(judge.lenient()).append(" lenient and ").
+					append(judge.strict()).append(" strict disagreements");
+				default -> line.append("frozen judge ").append(judge.judge()).append("; no candidate is left");
+			}
+			for (RejectedJudge turnedDown : judge.rejected())
+			{
+				line.append("; rejected ").append(turnedDown.profile().label()).append(" (").
+					append(rejection(turnedDown.reason())).append(", ").append(turnedDown.shadowed()).
+					append(" shadowed, ").append(turnedDown.spotChecked()).append(" spot-checked, ").
+					append(turnedDown.lenient()).append(" lenient and ").append(turnedDown.strict()).
+					append(" strict disagreements)");
+			}
+			lines.add(line.toString());
+		}
+	}
+
+	/**
+	 * Describes why a candidate judge was turned down.
+	 *
+	 * @param reason the reason
+	 * @return the description
+	 */
+	private static String rejection(RejectedJudge.Rejection reason)
+	{
+		return switch (reason)
+		{
+			case NEAR_MISS -> "judged a near miss differently from the frozen judge";
+			case SHADOWING -> "disagreed too often to qualify within " + DevelopmentJudge.SHADOWING_LIMIT +
+				" shadowed trials";
+			case SPOT_CHECK -> "disagreed too often in spot checks";
+		};
+	}
+
+	/**
 	 * Shows line breaks in a value on one line.
 	 *
 	 * @param text the value
@@ -104,6 +167,7 @@ final class ReportSummary
 				decimal(revert.predecessorLowerBound()));
 		}
 		addedTestCases(lines, report.addedTestCases());
+		developmentJudges(lines, report.developmentJudges());
 		if (!report.choices().isEmpty())
 		{
 			List<String> labels = new ArrayList<>();

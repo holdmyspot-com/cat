@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.OptionalLong;
 
 /**
@@ -21,6 +22,11 @@ public interface ProfileInventory
 	 * The installed agent definition whose binding supplies the role profile: CAT's highest implementer tier.
 	 */
 	String ROLE_AGENT = "optimize-xhigh";
+	/**
+	 * The installed agent definitions of CAT's cheaper implementer tiers, cheapest first. The profiles that they bind
+	 * are the candidates for a prompt test's development judge.
+	 */
+	List<String> CANDIDATE_AGENTS = List.of("optimize-low", "optimize-medium", "optimize-high");
 
 	/**
 	 * Returns the harness's profile inventory: every model that it offers the user, each with every reasoning effort
@@ -76,6 +82,17 @@ public interface ProfileInventory
 	 * @throws IOException if the installed agent definition is missing or binds no profile
 	 */
 	TrialProfile roleProfile() throws IOException;
+
+	/**
+	 * Returns the candidates for a prompt test's development judge: the profiles that the installed definitions of
+	 * CAT's cheaper implementer tiers, {@link #CANDIDATE_AGENTS}, bind, cheapest tier first. A profile that an earlier
+	 * tier already binds, and a profile equal to the {@link #roleProfile() role profile}, appear no more than once and
+	 * not at all, respectively.
+	 *
+	 * @return the candidate profiles, empty if the cheaper tiers bind only the role profile
+	 * @throws IOException if an installed agent definition is missing or binds no profile
+	 */
+	List<TrialProfile> candidateJudgeProfiles() throws IOException;
 
 	/**
 	 * Returns the number of bytes of each tool output that a trial of a profile receives whole; the harness shortens

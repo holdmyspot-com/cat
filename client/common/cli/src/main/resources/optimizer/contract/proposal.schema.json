@@ -6,6 +6,17 @@
 	"additionalProperties": false,
 	"required": ["requirements", "tests", "trial_profiles", "judge", "limitations", "minimum_pass_rate", "salt"],
 	"$defs": {
+		"near_misses": {
+			"description": "The replies that the contract author wrote for one assertion that the judge decides: exactly two that only just satisfy it and exactly two that only just fail it. A reply is the final assistant message of a trial. It may contain {{name}} placeholders for the test's variables and for expected_outcome.",
+			"type": "object",
+			"additionalProperties": false,
+			"required": ["assertion_id", "satisfying", "failing"],
+			"properties": {
+				"assertion_id": {"description": "The id of an assertion without a tool, or expected_outcome when the judge decides it.", "type": "string", "pattern": "^[a-z0-9]+(_[a-z0-9]+)*$"},
+				"satisfying": {"description": "Two replies that satisfy the assertion by the smallest margin that the assertion's words allow.", "type": "array", "minItems": 2, "items": {"type": "string", "pattern": "\\S"}},
+				"failing": {"description": "Two replies that fail the assertion by the smallest margin that the assertion's words allow.", "type": "array", "minItems": 2, "items": {"type": "string", "pattern": "\\S"}}
+			}
+		},
 		"assertion": {
 			"description": "One statement that a compliant trial satisfies. CAT adds the assertion expected_outcome to every test: the reply's result matches the test case's expected outcome. The judge decides it unless the test gives it a built-in tool in expected_outcome_tool.",
 			"type": "object",
@@ -172,6 +183,11 @@
 						"type": "array",
 						"minItems": 1,
 						"items": {"$ref": "#/$defs/assertion"}
+					},
+					"near_misses": {
+						"description": "Present only when the author wrote near misses. For each assertion that the judge decides, the replies that only just satisfy it and the replies that only just fail it, so that CAT can compare a cheaper development judge with the frozen judge before it trusts that judge. Written in the proposal, labeled once by the frozen judge.",
+						"type": "array",
+						"items": {"$ref": "#/$defs/near_misses"}
 					},
 					"expected_outcome_tool": {
 						"description": "The built-in tool that decides the assertion expected_outcome, which CAT adds to every test. Present only when the scenario gives that assertion a tool; otherwise the judge decides it. CAT supplies the assertion's description and kind.",

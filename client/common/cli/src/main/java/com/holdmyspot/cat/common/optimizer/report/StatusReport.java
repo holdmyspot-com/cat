@@ -105,6 +105,8 @@ import tools.jackson.databind.node.ObjectNode;
  *   ended with formal failures, in the order they were added
  * @param certifiedEnvironment the environment that the campaign's delivered certification was measured in, or
  *   {@code null} if the campaign delivered none
+ * @param developmentJudges the judge of each prompt test's development trials and how the test's candidate judges
+ *   have fared, empty before a contract is confirmed
  */
 public record StatusReport(ReportStatus status, String campaignId, Lifecycle lifecycle, Phase phase, int attempt,
 	int candidate, String snapshot, String outcome, String outcomeDetail,
@@ -116,7 +118,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	Concurrency concurrency,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts,
-	List<AddedTestCaseReport> addedTestCases, CertifiedEnvironment certifiedEnvironment)
+	List<AddedTestCaseReport> addedTestCases, CertifiedEnvironment certifiedEnvironment,
+	List<DevelopmentJudgeReport> developmentJudges)
 {
 	/**
 	 * The text of an outcome that is not a pass or fail outcome: work stopped and can resume.
@@ -235,6 +238,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 *   ended with formal failures, in the order they were added
 	 * @param certifiedEnvironment the environment that the campaign's delivered certification was measured in, or
 	 *   {@code null} if the campaign delivered none
+	 * @param developmentJudges the judge of each prompt test's development trials and how the test's candidate judges
+	 *   have fared
 	 * @throws NullPointerException if any argument other than {@code outcome}, {@code outcomeDetail},
 	 *   {@code delivery}, {@code pending},
 	 *   {@code benchmark}, {@code trialProfiles}, {@code cellTier}, {@code claim} or {@code certifiedEnvironment} is
@@ -274,6 +279,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		conditions = Map.copyOf(conditions);
 		reverts = List.copyOf(reverts);
 		addedTestCases = List.copyOf(addedTestCases);
+		developmentJudges = List.copyOf(developmentJudges);
 	}
 
 	/**
@@ -376,7 +382,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			concurrency(campaign, evidence.sharedHoldUntil(), commands(campaign, phase, attemptIndex)), assumptions,
 			attempts, keepOffers, claim, limitations, conditions,
 			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign),
-			evidence.certifiedEnvironment());
+			evidence.certifiedEnvironment(), DevelopmentJudgeReport.of(campaign));
 	}
 
 	/**

@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.Diagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
 import com.holdmyspot.cat.common.optimizer.campaign.Development;
+import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.IncumbentBaseline;
 import com.holdmyspot.cat.common.optimizer.campaign.InfrastructureAttempt;
@@ -40,6 +41,7 @@ import java.nio.file.Path;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
@@ -120,6 +122,46 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Confirm(campaign.contract(), REVISED, 5L));
 		requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
 		requireThat(campaign.revisionRequested(), "revisionRequested").isFalse();
+	}
+
+	/**
+	 * Verifies that the frozen judge's labels start a prompt test's examination once, that the near-miss check of the
+	 * candidate in examination advances it, that events for another candidate or for a test that was not labeled
+	 * change nothing, and that a revised contract starts every test over.
+	 */
+	@Test
+	public void nearMissEventsChooseDevelopmentJudge()
+	{
+		TrialProfile cheap = new TrialProfile("cheap-model", "low");
+		TrialProfile middle = new TrialProfile("middle-model", "medium");
+		Campaign campaign = new Builder().confirmed().working(1).build();
+		requireThat(campaign.judges(), "initial").isEmpty();
+
+		campaign = Transitions.apply(campaign, new CampaignEvent.LabelNearMisses("safety", Map.of("a/satisfying/1", true),
+			List.of(cheap, middle)));
+		DevelopmentJudge labeled = campaign.judges().get("safety");
+		requireThat(labeled.stage(), "stage").isEqualTo(DevelopmentJudge.Stage.NEAR_MISSES);
+		requireThat(labeled.current().orElseThrow(), "current").isEqualTo(cheap);
+
+		Campaign again = Transitions.apply(campaign, new CampaignEvent.LabelNearMisses("safety", Map.of(),
+			List.of(middle)));
+		requireThat(again.judges(), "labeledTwice").isEqualTo(campaign.judges());
+		again = Transitions.apply(campaign, new CampaignEvent.CheckNearMisses("safety", middle, true));
+		requireThat(again.judges(), "otherCandidate").isEqualTo(campaign.judges());
+		again = Transitions.apply(campaign, new CampaignEvent.CheckNearMisses("formatting", cheap, true));
+		requireThat(again.judges(), "unlabeledTest").isEqualTo(campaign.judges());
+
+		campaign = Transitions.apply(campaign, new CampaignEvent.CheckNearMisses("safety", cheap, false));
+		DevelopmentJudge rejected = campaign.judges().get("safety");
+		requireThat(rejected.current().orElseThrow(), "next").isEqualTo(middle);
+		requireThat(rejected.rejected().size(), "rejected").isEqualTo(1);
+
+		campaign = Transitions.apply(campaign, new CampaignEvent.CheckNearMisses("safety", middle, true));
+		requireThat(campaign.judges().get("safety").stage(), "shadowing").isEqualTo(DevelopmentJudge.Stage.SHADOWING);
+
+		Campaign revised = Transitions.apply(Transitions.apply(campaign, new CampaignEvent.Revise()),
+			new CampaignEvent.Confirm(campaign.contract(), REVISED, 5L));
+		requireThat(revised.judges(), "afterRevision").isEmpty();
 	}
 
 	/**

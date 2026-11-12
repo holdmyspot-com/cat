@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -16,6 +17,8 @@ import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Map;
+import java.util.Optional;
 
 /**
  * An input to {@link Transitions#apply(Campaign, CampaignEvent)} that requests a campaign state change.
@@ -190,10 +193,13 @@ public sealed interface CampaignEvent
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 	 * @param responses each completed turn's assistant messages in order, ending with its final response
 	 * @param files where the trial session's harness events and file changes were retained
+	 * @param judge the profile whose verdict counted, or empty if no judge ran
+	 * @param shadow how a candidate development judge's verdicts compared with the frozen judge's, or empty if no
+	 *   candidate judged the trial next to the frozen judge
 	 */
 	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions,
-		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files)
-		implements CampaignEvent
+		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files,
+		Optional<TrialProfile> judge, Optional<ShadowResult> shadow) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -209,9 +215,11 @@ public sealed interface CampaignEvent
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
 		 * @param responses each completed turn's assistant messages in order, ending with its final response
 		 * @param files where the trial session's harness events and file changes were retained
+		 * @param judge the profile whose verdict counted, or empty if no judge ran
+		 * @param shadow how a candidate development judge's verdicts compared with the frozen judge's, or empty
 		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale},
-		 *   {@code failedAssertions}, {@code observed}, {@code responses}, {@code files}, a failed assertion, a
-		 *   turn's messages or an assistant message are null
+		 *   {@code failedAssertions}, {@code observed}, {@code responses}, {@code files}, {@code judge},
+		 *   {@code shadow}, a failed assertion, a turn's messages or an assistant message are null
 		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed assertions, or a
 		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial
 		 */
@@ -226,6 +234,8 @@ public sealed interface CampaignEvent
 			requireThat(observed, "observed").isNotNull();
 			requireThat(responses, "responses").isNotNull();
 			requireThat(files, "files").isNotNull();
+			requireThat(judge, "judge").isNotNull();
+			requireThat(shadow, "shadow").isNotNull();
 			if (inputTokens != null)
 				requireThat(inputTokens.longValue(), "inputTokens").isNotNegative();
 			if (triage != null)
@@ -236,6 +246,87 @@ public sealed interface CampaignEvent
 
 			failedAssertions = List.copyOf(failedAssertions);
 			responses = responses.stream().map(List::copyOf).toList();
+		}
+
+		/**
+		 * Creates the event of a trial that no model judged next to another.
+		 *
+		 * @param key the trial
+		 * @param verdict the trial's label
+		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
+		 *   built-in tools
+		 * @param failedAssertions the assertions that a failed trial failed, each with its behavior
+		 * @param triage the impact of a failed development trial, or {@code null} for any other trial
+		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
+		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
+		 * @param responses each completed turn's assistant messages in order, ending with its final response
+		 * @param files where the trial session's harness events and file changes were retained
+		 * @throws NullPointerException if the canonical constructor rejects the arguments
+		 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+		 */
+		public Complete(TrialKey key, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions,
+			Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses,
+			TrialFiles files)
+		{
+			this(key, verdict, rationale, failedAssertions, triage, observed, inputTokens, responses, files,
+				Optional.empty(), Optional.empty());
+		}
+	}
+
+	/**
+	 * The frozen judge labeled a prompt test's near misses, so that the test can examine its candidate development
+	 * judges.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param test       the prompt test's identifier
+	 * @param labels     the frozen judge's label of each near-miss reply: {@code true} if it passed the reply
+	 * @param candidates the candidate profiles in examination order, cheapest first
+	 */
+	record LabelNearMisses(String test, Map<String, Boolean> labels, List<TrialProfile> candidates)
+		implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param test       the prompt test's identifier
+		 * @param labels     the frozen judge's label of each near-miss reply
+		 * @param candidates the candidate profiles in examination order
+		 * @throws NullPointerException if any argument is null
+		 */
+		public LabelNearMisses
+		{
+			requireThat(test, "test").isNotNull();
+			requireThat(labels, "labels").isNotNull();
+			requireThat(candidates, "candidates").isNotNull();
+			labels = Map.copyOf(labels);
+			candidates = List.copyOf(candidates);
+		}
+	}
+
+	/**
+	 * A candidate development judge judged a prompt test's near misses.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param test      the prompt test's identifier
+	 * @param candidate the candidate that judged the near misses
+	 * @param agreed    {@code true} if it labeled every near miss as the frozen judge did
+	 */
+	record CheckNearMisses(String test, TrialProfile candidate, boolean agreed) implements CampaignEvent
+	{
+		/**
+		 * Creates the event.
+		 *
+		 * @param test      the prompt test's identifier
+		 * @param candidate the candidate that judged the near misses
+		 * @param agreed    {@code true} if it labeled every near miss as the frozen judge did
+		 * @throws NullPointerException if {@code test} or {@code candidate} are null
+		 */
+		public CheckNearMisses
+		{
+			requireThat(test, "test").isNotNull();
+			requireThat(candidate, "candidate").isNotNull();
 		}
 	}
 

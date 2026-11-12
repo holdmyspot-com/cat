@@ -261,6 +261,21 @@ public final class ClaudeProfileInventory implements ProfileInventory
 	}
 
 	@Override
+	public List<TrialProfile> candidateJudgeProfiles() throws IOException
+	{
+		TrialProfile role = roleProfile();
+		List<TrialProfile> candidates = new ArrayList<>();
+		for (String agent : CANDIDATE_AGENTS)
+		{
+			ClaudeAgentDefinition definition = ClaudeAgentDefinition.load(artifact, agent);
+			TrialProfile profile = new TrialProfile(definition.model(), definition.effort());
+			if (!profile.equals(role) && !candidates.contains(profile))
+				candidates.add(profile);
+		}
+		return candidates;
+	}
+
+	@Override
 	public OptionalLong toolOutputBytes(TrialProfile profile)
 	{
 		requireThat(profile, "profile").isNotNull();

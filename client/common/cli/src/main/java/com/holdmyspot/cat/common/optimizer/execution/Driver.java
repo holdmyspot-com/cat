@@ -22,6 +22,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Development;
+import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
@@ -48,7 +50,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -139,6 +143,10 @@ public final class Driver implements AutoCloseable
 	 */
 	public static final int TRIAGE_ATTEMPTS = 3;
 	/**
+	 * Spot-check one in this many development trials of a qualified candidate judge.
+	 */
+	public static final int SPOT_CHECK_ONE_IN = 10;
+	/**
 	 * Stop the slice with an infrastructure failure after this many prompt author sessions fail.
 	 */
 	public static final int PROMPT_AUTHOR_FAILURE_LIMIT = 3;
@@ -156,6 +164,20 @@ public final class Driver implements AutoCloseable
 	private final Map<Long, InFlight> inFlight = new LinkedHashMap<>();
 	private final List<Judging> judgingQueue = new ArrayList<>();
 	private final List<Triaging> triageQueue = new ArrayList<>();
+	private final List<NearMissJob> nearMissQueue = new ArrayList<>();
+	/**
+	 * The near-miss judging that runs for each prompt test, by test identifier.
+	 */
+	private final Map<String, NearMissBatch> nearMissBatches = new HashMap<>();
+	/**
+	 * The prompt tests whose near-miss replies the frozen judge could not label, which this driver does not label
+	 * again.
+	 */
+	private final Set<String> labelingFailed = new HashSet<>();
+	/**
+	 * Owns the directories that hold the evidence of near-miss replies.
+	 */
+	private final TemporaryDirectories nearMissDirectories = new TemporaryDirectories();
 	private final SliceEvidence evidence = new SliceEvidence();
 	/**
 	 * The overlay identity of each snapshot that this slice staged.
@@ -376,6 +398,7 @@ public final class Driver implements AutoCloseable
 			started |= startValues(now);
 			started |= commitIfDue();
 			started |= startPromptAuthor(now);
+			started |= startNearMisses(now);
 			started |= admit(now);
 		}
 		if (!isDrained())
@@ -417,7 +440,7 @@ public final class Driver implements AutoCloseable
 		if (closed)
 			return;
 		closed = true;
-		try (lock)
+		try (lock; nearMissDirectories)
 		{
 			if (!isDrained())
 				cancel("The driver closed before the session ended", context.clock().instant());
@@ -568,6 +591,7 @@ public final class Driver implements AutoCloseable
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
 			case InFlight.Judge judge -> judgeEnded(judge.judging(), result, event.failure(), now);
 			case InFlight.Triage triage -> triageEnded(triage.triaging(), result, event.failure());
+			case InFlight.NearMiss nearMiss -> nearMissEnded(nearMiss.job(), result);
 			case InFlight.Ranking ranking -> rankingEnded(ranking, result, event.failure());
 			case InFlight.PromptAuthor promptAuthor -> promptAuthorEnded(promptAuthor, result, event.failure());
 			case InFlight.Values values -> valuesEnded(values, result, event.failure());
@@ -620,7 +644,7 @@ public final class Driver implements AutoCloseable
 		SessionRole role = switch (session)
 		{
 			case InFlight.Trial _ -> SessionRole.TRIAL;
-			case InFlight.Judge _ -> SessionRole.JUDGE;
+			case InFlight.Judge _, InFlight.NearMiss _ -> SessionRole.JUDGE;
 			case InFlight.Triage _ -> SessionRole.TRIAGE;
 			case InFlight.Ranking _ -> SessionRole.APPROACH_RANKER;
 			case InFlight.PromptAuthor _ -> SessionRole.PROMPT_AUTHOR;
@@ -761,7 +785,7 @@ public final class Driver implements AutoCloseable
 			if (section.isPresent())
 			{
 				triageQueue.add(new Triaging(trial.key(), testCase, completed, section.get(), results, record, failures,
-					1, trial.concurrency()));
+					1, trial.concurrency(), Optional.empty(), Optional.empty()));
 			}
 			return;
 		}
@@ -780,8 +804,78 @@ public final class Driver implements AutoCloseable
 				return;
 			section = rendered.get();
 		}
-		judgingQueue.add(new Judging(trial.key(), testCase, completed, section, judged, results, 1,
-			trial.concurrency()));
+		queueJudging(trial, completed, section, judged, results);
+	}
+
+	/**
+	 * Queues the judge sessions of a completed trial. The frozen judge decides every trial except a development trial
+	 * of a prompt test whose candidate judge is shadowed or qualified: while the candidate is shadowed, the frozen
+	 * judge decides and the candidate judges the trial too; once it is qualified, the candidate decides, except for a
+	 * random {@value #SPOT_CHECK_ONE_IN}th of the trials, which both judge and the frozen judge decides.
+	 *
+	 * @param trial the trial session
+	 * @param completed the trial session's result
+	 * @param section the rendered trial evidence, or an empty string if the frozen judge template does not name it
+	 * @param judged the assertions to decide
+	 * @param results the results of the test's built-in tools
+	 */
+	private void queueJudging(InFlight.Trial trial, SessionResult.Completed completed, String section,
+		List<JudgedAssertion> judged, List<BuiltInToolResult> results)
+	{
+		JudgeProfile frozen = campaign.contract().judge();
+		DevelopmentJudge state = null;
+		if (trial.key().purpose() == Purpose.DEVELOPMENT)
+			state = campaign.judges().get(trial.testCase().testId());
+		JudgeProfile decider = frozen;
+		Judging.Seat seat = Judging.Seat.FROZEN_ALONE;
+		ShadowPair pair = null;
+		if (state != null)
+		{
+			switch (state.stage())
+			{
+				case SHADOWING ->
+				{
+					pair = new ShadowPair(frozen.profile(), state.current().orElseThrow(), false);
+					seat = Judging.Seat.FROZEN_OF_PAIR;
+				}
+				case QUALIFIED ->
+				{
+					if (context.random().nextInt(SPOT_CHECK_ONE_IN) == 0)
+					{
+						pair = new ShadowPair(frozen.profile(), state.current().orElseThrow(), true);
+						seat = Judging.Seat.FROZEN_OF_PAIR;
+					}
+					else
+					{
+						decider = withProfile(frozen, state.current().orElseThrow());
+						seat = Judging.Seat.CANDIDATE_ALONE;
+					}
+				}
+				case NEAR_MISSES, FROZEN ->
+				{
+				}
+			}
+		}
+		judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
+			trial.concurrency(), decider, seat, pair));
+		if (pair != null)
+		{
+			judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
+				trial.concurrency(), withProfile(frozen, pair.candidate()), Judging.Seat.CANDIDATE_OF_PAIR, pair));
+		}
+	}
+
+	/**
+	 * Returns the frozen judge's instructions under another profile.
+	 *
+	 * @param frozen the frozen judge
+	 * @param profile the profile that the judge session runs under
+	 * @return the judge
+	 */
+	private static JudgeProfile withProfile(JudgeProfile frozen, TrialProfile profile)
+	{
+		return new JudgeProfile(profile, frozen.prompt(), frozen.rubric(), frozen.decisionRule(),
+			frozen.resultSchema());
 	}
 
 	/**
@@ -849,10 +943,10 @@ public final class Driver implements AutoCloseable
 		while (!judgingQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
 		{
 			Judging judging = judgingQueue.removeFirst();
-			if (findRunningTrial(judging.key()).isEmpty())
+			if (findRunningTrial(judging.key()).isEmpty() || isAbandoned(judging))
 				continue;
 			started = true;
-			SessionRequest request = context.judge().request(campaign.contract().judge(), judging.testCase(),
+			SessionRequest request = context.judge().request(judging.judge(), judging.testCase(),
 				judging.evidence(), judging.assertions(), judging.results(), judging.evidenceSection());
 			SessionHandle handle;
 			try
@@ -882,7 +976,7 @@ public final class Driver implements AutoCloseable
 	private void judgeEnded(Judging judging, SessionResult result, Throwable failure, Instant now)
 		throws IOException
 	{
-		if (findRunningTrial(judging.key()).isEmpty())
+		if (findRunningTrial(judging.key()).isEmpty() || isAbandoned(judging))
 			return;
 		String reason;
 		switch (result)
@@ -893,7 +987,7 @@ public final class Driver implements AutoCloseable
 				Optional<Judgment> judgment = context.judge().judgment(completed, judging.assertions());
 				if (judgment.isPresent())
 				{
-					judged(judging, judgment.get(), now);
+					decided(judging, judgment.get(), now);
 					return;
 				}
 				reason = "The judge's output does not match its result schema";
@@ -912,19 +1006,78 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Completes a judged trial, or queues the triage of a failed development trial.
+	 * Indicates whether the frozen judge failed to judge the trial that a judge session belongs to, so that the trial
+	 * reruns and the session's result is ignored.
+	 *
+	 * @param judging the judged trial
+	 * @return {@code true} if the session's pair was abandoned
+	 */
+	private static boolean isAbandoned(Judging judging)
+	{
+		return judging.pair() != null && judging.pair().isAbandoned();
+	}
+
+	/**
+	 * Consumes a judge's valid verdict. A judge that decides alone completes the trial. In a pair, the trial completes
+	 * once both judges are done, with the frozen judge's verdict and the comparison of the candidate's.
 	 *
 	 * @param judging the judged trial
 	 * @param judgment the judge's verdict and rationale
 	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void judged(Judging judging, Judgment judgment, Instant now) throws IOException
+	private void decided(Judging judging, Judgment judgment, Instant now) throws IOException
+	{
+		ShadowPair pair = judging.pair();
+		switch (judging.seat())
+		{
+			case FROZEN_ALONE, CANDIDATE_ALONE ->
+				judged(judging, judgment, judging.judge().profile(), Optional.empty(), now);
+			case FROZEN_OF_PAIR ->
+			{
+				pair.recordFrozen(judgment);
+				finishPair(judging, now);
+			}
+			case CANDIDATE_OF_PAIR ->
+			{
+				pair.recordCandidate(judgment);
+				finishPair(judging, now);
+			}
+		}
+	}
+
+	/**
+	 * Completes a trial that a pair of judges judged, if both are done.
+	 *
+	 * @param judging one of the pair's judge sessions
+	 * @param now the current time
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void finishPair(Judging judging, Instant now) throws IOException
+	{
+		ShadowPair pair = judging.pair();
+		if (!pair.isComplete())
+			return;
+		judged(judging, pair.frozen(), pair.frozenProfile(), Optional.of(pair.result()), now);
+	}
+
+	/**
+	 * Completes a judged trial, or queues the triage of a failed development trial.
+	 *
+	 * @param judging the judged trial
+	 * @param judgment the judge's verdict and rationale
+	 * @param judge the profile of the judge whose verdict counts
+	 * @param shadow the comparison of a candidate judge with the frozen judge, or empty if none judged the trial
+	 * @param now the current time
+	 * @throws IOException if the store or the worktree cannot be read or written
+	 */
+	private void judged(Judging judging, Judgment judgment, TrialProfile judge, Optional<ShadowResult> shadow,
+		Instant now) throws IOException
 	{
 		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
 		{
 			complete(judging.key(), judging.testCase(), judging.concurrency(), judging.evidence(), judgment.verdict(),
-				judgment.rationale(), judgment.failures(), null);
+				judgment.rationale(), judgment.failures(), null, Optional.of(judge), shadow);
 			return;
 		}
 		String section = judging.evidenceSection();
@@ -936,12 +1089,19 @@ public final class Driver implements AutoCloseable
 			section = rendered.get();
 		}
 		triageQueue.add(new Triaging(judging.key(), judging.testCase(), judging.evidence(), section, judging.results(),
-			judgment.rationale(), judgment.failures(), 1, judging.concurrency()));
+			judgment.rationale(), judgment.failures(), 1, judging.concurrency(), Optional.of(judge), shadow));
 	}
 
 	/**
-	 * Reruns a judge with the same evidence, or returns the trial to the queue as an infrastructure failure once the
-	 * judge has failed {@value #JUDGE_ATTEMPTS} times.
+	 * Reruns a judge with the same evidence. Once the judge has failed {@value #JUDGE_ATTEMPTS} times, the outcome
+	 * depends on the judge:
+	 * <ul>
+	 *   <li>A frozen judge returns the trial to the queue as an infrastructure failure, and drops the candidate's
+	 *     session.</li>
+	 *   <li>A candidate that was shadowed counts as strict, because it produced no usable verdict.</li>
+	 *   <li>A qualified candidate that decided alone is replaced by the frozen judge, with the candidate counted as
+	 *     strict in a spot check.</li>
+	 * </ul>
 	 *
 	 * @param judging the judged trial
 	 * @param reason why the judge failed
@@ -955,8 +1115,226 @@ public final class Driver implements AutoCloseable
 			judgingQueue.add(judging.retry());
 			return;
 		}
-		fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
-			"failure: " + reason, now);
+		switch (judging.seat())
+		{
+			case FROZEN_ALONE ->
+				fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
+					"failure: " + reason, now);
+			case FROZEN_OF_PAIR ->
+			{
+				judging.pair().abandon();
+				fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
+					"failure: " + reason, now);
+			}
+			case CANDIDATE_OF_PAIR ->
+			{
+				judging.pair().recordUnusable();
+				finishPair(judging, now);
+			}
+			case CANDIDATE_ALONE ->
+			{
+				JudgeProfile frozen = campaign.contract().judge();
+				ShadowPair pair = new ShadowPair(frozen.profile(), judging.judge().profile(), true);
+				pair.recordUnusable();
+				judgingQueue.add(new Judging(judging.key(), judging.testCase(), judging.evidence(),
+					judging.evidenceSection(), judging.assertions(), judging.results(), 1, judging.concurrency(), frozen,
+					Judging.Seat.FROZEN_OF_PAIR, pair));
+			}
+		}
+	}
+
+	/**
+	 * Indicates whether a near-miss judge session was started or failed to start. Plans the near-miss judging that
+	 * candidate development judges need, then starts the judges of near-miss replies while capacity is free and no
+	 * throttle holds admissions.
+	 *
+	 * @param now the current time
+	 * @return {@code true} if a judge session was started or failed to start
+	 * @throws IOException if the store cannot be written or the evidence of a reply cannot be created
+	 */
+	private boolean startNearMisses(Instant now) throws IOException
+	{
+		planNearMisses();
+		boolean started = false;
+		while (!nearMissQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
+		{
+			NearMissJob job = nearMissQueue.removeFirst();
+			if (job.batch().isDone())
+				continue;
+			started = true;
+			SessionRequest request = context.judge().request(job.batch().judge(), job.testCase(), job.evidence(),
+				job.assertions(), List.of(), job.evidenceSection());
+			SessionHandle handle;
+			try
+			{
+				handle = context.sessions().start(request);
+			}
+			catch (IOException _)
+			{
+				nearMissFailed(job);
+				continue;
+			}
+			register(new InFlight.NearMiss(job, handle));
+		}
+		return started;
+	}
+
+	/**
+	 * Queues the judging of near-miss replies that the campaign needs and that no judge is deciding yet. The frozen
+	 * judge labels the replies of a prompt test that has a complete set and no judge state; the first candidate of a
+	 * test whose state is at its near misses is checked against the labels. A campaign that waits for a decision
+	 * queues nothing.
+	 *
+	 * @throws IOException if the evidence of a reply cannot be created
+	 */
+	private void planNearMisses() throws IOException
+	{
+		if (context.candidateJudges().isEmpty() || !isAdmissible())
+			return;
+		JudgeProfile frozen = campaign.contract().judge();
+		for (PromptTest test : campaign.contract().tests())
+		{
+			if (nearMissBatches.containsKey(test.id()))
+				continue;
+			DevelopmentJudge state = campaign.judges().get(test.id());
+			if (state == null)
+			{
+				if (!labelingFailed.contains(test.id()) && test.hasCompleteNearMisses())
+					queueNearMisses(test, frozen, true);
+			}
+			else if (state.stage() == DevelopmentJudge.Stage.NEAR_MISSES)
+				queueNearMisses(test, withProfile(frozen, state.current().orElseThrow()), false);
+		}
+	}
+
+	/**
+	 * Queues a judge session for each near-miss reply of a prompt test.
+	 *
+	 * @param test the prompt test
+	 * @param judge the judge that decides the replies
+	 * @param labeling {@code true} if the frozen judge labels the replies
+	 * @throws IOException if the evidence of a reply cannot be created
+	 */
+	private void queueNearMisses(PromptTest test, JudgeProfile judge, boolean labeling) throws IOException
+	{
+		Optional<DrawnTestCase> testCase = campaign.contract().nearMissContext(test);
+		if (testCase.isEmpty())
+			return;
+		List<NearMisses.Reply> replies = test.nearMissReplies(testCase.get().testCase());
+		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements(), List.of());
+		NearMissBatch batch = new NearMissBatch(test.id(), judge, labeling, replies.size());
+		List<NearMissJob> jobs = new ArrayList<>();
+		for (NearMisses.Reply reply : replies)
+		{
+			List<JudgedAssertion> assertions = judged.stream().
+				filter(candidate -> candidate.assertion().id().equals(reply.assertionId())).toList();
+			SessionResult.Completed evidence = nearMissEvidence(reply.text());
+			String section = "";
+			if (judgeRendersEvidence())
+			{
+				section = EvidenceSection.render(new SessionEvidence(List.of()), evidence.transcript(),
+					evidence.effects(), evidence.initialProject());
+			}
+			jobs.add(new NearMissJob(batch, reply, testCase.get(), evidence, section, assertions, 1));
+		}
+		nearMissBatches.put(test.id(), batch);
+		nearMissQueue.addAll(jobs);
+	}
+
+	/**
+	 * Returns a near-miss reply as the result of a trial whose only response is the reply and whose project is empty.
+	 *
+	 * @param reply the reply
+	 * @return the result
+	 * @throws IOException if the evidence directories cannot be created
+	 */
+	private SessionResult.Completed nearMissEvidence(String reply) throws IOException
+	{
+		Path directory = nearMissDirectories.add(Files.createTempDirectory("near-miss-"));
+		Path transcript = Files.createFile(directory.resolve("transcript.jsonl"));
+		Path effects = Files.createDirectory(directory.resolve("effects"));
+		Path initialProject = Files.createDirectory(directory.resolve("initial-project"));
+		return new SessionResult.Completed(transcript, List.of(List.of(reply)), effects, initialProject, null, null,
+			null, List.of(), "none", List.of());
+	}
+
+	/**
+	 * Consumes the end of a near-miss judge session. A valid verdict records the reply's label; anything else reruns
+	 * the judge with the same evidence.
+	 *
+	 * @param job the reply
+	 * @param result the session's result, or {@code null} if the session failed with an exception
+	 * @throws IOException if the store cannot be written
+	 */
+	private void nearMissEnded(NearMissJob job, SessionResult result) throws IOException
+	{
+		NearMissBatch batch = job.batch();
+		if (batch.isDone() || nearMissBatches.get(batch.test()) != batch)
+			return;
+		switch (result)
+		{
+			case null -> nearMissFailed(job);
+			case SessionResult.Completed completed ->
+			{
+				Optional<Judgment> judgment = context.judge().judgment(completed, job.assertions());
+				if (judgment.isPresent())
+				{
+					batch.record(job.reply().key(), judgment.get().verdict() == Verdict.PASS);
+					finishNearMisses(batch);
+				}
+				else
+					nearMissFailed(job);
+			}
+			// The reply is judged again once the shared hold ends or the user runs the command again
+			case SessionResult.RateLimited _, SessionResult.Refused _, SessionResult.LaunchRefused _ ->
+				nearMissQueue.add(job);
+			case SessionResult.Interrupted _, SessionResult.Failed _ -> nearMissFailed(job);
+		}
+	}
+
+	/**
+	 * Reruns the judge of a near-miss reply, or ends its batch once the judge has failed {@value #JUDGE_ATTEMPTS}
+	 * times.
+	 *
+	 * @param job the reply
+	 * @throws IOException if the store cannot be written
+	 */
+	private void nearMissFailed(NearMissJob job) throws IOException
+	{
+		if (job.attempt() < JUDGE_ATTEMPTS)
+		{
+			nearMissQueue.add(job.retry());
+			return;
+		}
+		job.batch().fail();
+		finishNearMisses(job.batch());
+	}
+
+	/**
+	 * Records what the judging of a prompt test's near-miss replies showed, once it ended. The frozen judge's labels
+	 * are recorded with the candidates to examine; a frozen judge that could not label a reply is not asked again by
+	 * this driver. A candidate agrees if it labels every reply as the frozen judge did; one that could not judge a
+	 * reply disagrees.
+	 *
+	 * @param batch the judging
+	 * @throws IOException if the store cannot be written
+	 */
+	private void finishNearMisses(NearMissBatch batch) throws IOException
+	{
+		if (!batch.isDone())
+			return;
+		nearMissBatches.remove(batch.test());
+		if (batch.isLabeling())
+		{
+			if (batch.hasFailed())
+				labelingFailed.add(batch.test());
+			else
+				record(new CampaignEvent.LabelNearMisses(batch.test(), batch.verdicts(), context.candidateJudges()));
+			return;
+		}
+		DevelopmentJudge state = campaign.judges().get(batch.test());
+		boolean agreed = !batch.hasFailed() && state != null && state.labels().equals(batch.verdicts());
+		record(new CampaignEvent.CheckNearMisses(batch.test(), batch.judge().profile(), agreed));
 	}
 
 	/**
@@ -1065,7 +1443,7 @@ public final class Driver implements AutoCloseable
 	private void completeTriaged(Triaging triaging, Triage triage) throws IOException
 	{
 		complete(triaging.key(), triaging.testCase(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
-			triaging.rationale(), triaging.failures(), triage);
+			triaging.rationale(), triaging.failures(), triage, triaging.judge(), triaging.shadow());
 	}
 
 	/**
@@ -1090,10 +1468,35 @@ public final class Driver implements AutoCloseable
 		Verdict verdict, String rationale, List<FailedAssertion> failures, Triage triage)
 		throws IOException
 	{
+		complete(key, testCase, concurrency, trial, verdict, rationale, failures, triage, Optional.empty(),
+			Optional.empty());
+	}
+
+	/**
+	 * Records a trial's verdict, naming the judge whose verdict counts and the comparison of a candidate judge with
+	 * the frozen judge. Otherwise as the overload without them.
+	 *
+	 * @param key the logical trial
+	 * @param testCase the trial's test case
+	 * @param concurrency the number of trial sessions that ran once the trial's session started
+	 * @param trial the trial session's result
+	 * @param verdict the trial's label
+	 * @param rationale the judge's rationale or, when a built-in tool failed, the record of the failed tools
+	 * @param failures the assertions that a failed trial failed, each with its behavior; empty for a pass
+	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
+	 * @param judge the profile of the judge whose verdict decided the trial, or empty if built-in tools did
+	 * @param shadow the comparison of a candidate judge with the frozen judge, or empty if none judged the trial
+	 * @throws IOException if the store or the worktree cannot be read or written, or a passing trial's project copies
+	 *   cannot be deleted
+	 */
+	private void complete(TrialKey key, DrawnTestCase testCase, int concurrency, SessionResult.Completed trial,
+		Verdict verdict, String rationale, List<FailedAssertion> failures, Triage triage, Optional<TrialProfile> judge,
+		Optional<ShadowResult> shadow) throws IOException
+	{
 		MeasurementIdentity observed = observedIdentity(testCase, trial);
 		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects(), trial.initialProject());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
-			triage, observed, trialInputTokens(trial), trial.responses(), files);
+			triage, observed, trialInputTokens(trial), trial.responses(), files, judge, shadow);
 		boolean recorded = campaign.identity().differences(observed).isEmpty();
 		if (recorded)
 		{
@@ -2057,7 +2460,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
 				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
 				// The prompt author copy is cleaned up by interrupt(); prompt authors have no logical trial to queue.
-				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _ ->
+				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _, InFlight.NearMiss _ ->
 				{
 				}
 			}
@@ -2081,6 +2484,8 @@ public final class Driver implements AutoCloseable
 		inFlight.clear();
 		judgingQueue.clear();
 		triageQueue.clear();
+		nearMissQueue.clear();
+		nearMissBatches.clear();
 		Campaign before = campaign;
 		for (TrialKey key : abandoned)
 		{
@@ -2114,7 +2519,7 @@ public final class Driver implements AutoCloseable
 				case InFlight.Trial trial -> trial.key();
 				case InFlight.Judge judge -> judge.judging().key();
 				case InFlight.Triage triage -> triage.triaging().key();
-				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _ -> null;
+				case InFlight.PromptAuthor _, InFlight.Values _, InFlight.Ranking _, InFlight.NearMiss _ -> null;
 			};
 			if (key == null || !isRemoved(key))
 				continue;

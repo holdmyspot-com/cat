@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.port.CandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
@@ -14,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.List;
 import java.util.Set;
 import java.util.random.RandomGenerator;
 
@@ -53,6 +55,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param random the source of the certification trial stream's seed when a candidate is committed
  * @param settings the time limits of one bounded driver run (a slice)
  * @param json reads and writes the hook configurations that control trials remove dependents from
+ * @param candidateJudges the profiles that a prompt test may examine as its development judge, cheapest first;
+ *   empty if every test keeps the frozen judge
  */
 public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
@@ -60,7 +64,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	Deliverer deliverer,
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
-	SliceSettings settings, JsonMapper json)
+	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges)
 {
 	/**
 	 * Creates a context.
@@ -91,6 +95,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param random the source of the certification trial stream's seed when a candidate is committed
 	 * @param settings the time limits of one bounded driver run (a slice)
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
+	 * @param candidateJudges the profiles that a prompt test may examine as its development judge, cheapest first
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
 	 */
@@ -122,6 +127,49 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		requireThat(random, "random").isNotNull();
 		requireThat(settings, "settings").isNotNull();
 		requireThat(json, "json").isNotNull();
+		requireThat(candidateJudges, "candidateJudges").isNotNull();
 		promptSources = Set.copyOf(promptSources);
+		candidateJudges = List.copyOf(candidateJudges);
+	}
+
+	/**
+	 * Creates a context whose prompt tests keep the frozen judge for their development trials.
+	 *
+	 * @param fileLocks the process-owned lock coordinator
+	 * @param store the campaign store
+	 * @param sessions starts nested sessions
+	 * @param workspace stages candidates, prepares prompt author copies and reads or writes the optimization worktree
+	 * @param interrupts reports whether the host interrupted the run
+	 * @param clock the clock
+	 * @param overlays the candidates' overlays
+	 * @param judge builds judge requests and reads their verdicts
+	 * @param triage builds triage requests and reads the impacts of failed development trials
+	 * @param ranking builds and validates approach rankings
+	 * @param promptAuthor builds prompt author requests and reads their reports
+	 * @param values builds the requests of the sessions that add development values
+	 * @param deliverer delivers the candidate that the campaign selects
+	 * @param calibrator calibrates the cap of a certification attempt
+	 * @param terminator requests termination of processes that an earlier driver left running
+	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running
+	 * @param authority the confirmed edit authority
+	 * @param promptSources the in-project prompt sources, relative to the project
+	 * @param environment the measurement conditions that the driver observes outside trials
+	 * @param lockFile the campaign's write-lock file
+	 * @param random the source of the certification trial stream's seed when a candidate is committed
+	 * @param settings the time limits of one bounded driver run (a slice)
+	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
+	 */
+	public DriverContext(FileLocks fileLocks, CampaignStore store, SessionPort sessions, WorkspacePort workspace,
+		HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
+		TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor,
+		ValuesProtocol values, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
+		LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
+		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json)
+	{
+		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
+			values, deliverer, calibrator, terminator, leftoverRuns, authority, promptSources, environment, lockFile,
+			random, settings, json, List.of());
 	}
 }

@@ -187,6 +187,10 @@ final class Draft
 	 * The trial plugins that every trial installs, or empty until {@code start} has built them.
 	 */
 	final Optional<List<TrialPlugin>> plugins;
+	/**
+	 * How each prompt test chooses the profile that judges its development trials, by test identifier.
+	 */
+	Map<String, DevelopmentJudge> judges;
 
 	/**
 	 * Copies a campaign.
@@ -238,6 +242,7 @@ final class Draft
 		answeredWarnings = new ArrayList<>(campaign.answeredWarnings());
 		testRevisions = campaign.testRevisions();
 		plugins = campaign.plugins();
+		judges = new LinkedHashMap<>(campaign.judges());
 	}
 
 	/**
@@ -358,6 +363,7 @@ final class Draft
 		lineages.add(lineage);
 		loadLineage(lineage);
 		stalls.clear();
+		judges.clear();
 	}
 
 	/**
@@ -644,6 +650,6 @@ final class Draft
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
-			plugins);
+			plugins, judges);
 	}
 }

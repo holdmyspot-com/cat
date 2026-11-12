@@ -258,6 +258,33 @@ public final class CodexProfileInventory implements ProfileInventory
 		return new TrialProfile(definition.model(), definition.effort());
 	}
 
+	/**
+	 * {@inheritDoc}
+	 *
+	 * @throws IOException if an installed agent definition is missing or binds no profile, or binds a model that is
+	 *   not of version 6 or later
+	 */
+	@Override
+	public List<TrialProfile> candidateJudgeProfiles() throws IOException
+	{
+		TrialProfile role = roleProfile();
+		List<TrialProfile> candidates = new ArrayList<>();
+		for (String agent : CANDIDATE_AGENTS)
+		{
+			CodexAgentDefinition definition = CodexAgentDefinition.load(artifact, agent);
+			if (!CodexModelVersions.isSixOrLater(definition.model()))
+			{
+				throw new IOException("The candidate judge profile " + artifact.resolve("agents/codex").
+					resolve(agent + ".toml") + " binds the model " + definition.model() + ", which is not of version 6 " +
+					"or later.");
+			}
+			TrialProfile profile = new TrialProfile(definition.model(), definition.effort());
+			if (!profile.equals(role) && !candidates.contains(profile))
+				candidates.add(profile);
+		}
+		return candidates;
+	}
+
 	@Override
 	public OptionalLong toolOutputBytes(TrialProfile profile)
 	{

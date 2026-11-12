@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.OptionalLong;
 
@@ -129,6 +130,21 @@ public final class ProfileInventoryContract
 	public void roleProfileIsBound() throws IOException
 	{
 		requireThat(subject.port().roleProfile().isBound(), "roleProfile().isBound()").isTrue();
+	}
+
+	/**
+	 * Checks that every development judge candidate binds a model and an effort, that no candidate repeats another or
+	 * equals the role profile.
+	 *
+	 * @throws IOException if the candidates or the role profile cannot be read
+	 */
+	public void candidatesAreDistinctAndCheaper() throws IOException
+	{
+		List<TrialProfile> candidates = subject.port().candidateJudgeProfiles();
+		requireThat(candidates, "candidates").doesNotContain(subject.port().roleProfile());
+		requireThat(candidates.stream().distinct().count(), "distinctCandidates").isEqualTo((long) candidates.size());
+		for (TrialProfile candidate : candidates)
+			requireThat(candidate.isBound(), "candidate.isBound()").isTrue();
 	}
 
 	/**

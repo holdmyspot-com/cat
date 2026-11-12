@@ -50,6 +50,8 @@ import java.util.Set;
  * @param testRevisions the pending test revision requests, the applied test revisions and the tests reported sound
  * @param plugins the trial plugins that every trial installs, in configuration order; empty until {@code start} has
  *   built them and copied their bases
+ * @param judges how each prompt test chooses the profile that judges its development trials, by test identifier; a
+ *   test without an entry has examined no candidate yet and keeps the frozen judge
  */
 public record Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
 	Candidate incumbent, int candidates, int promptAuthorAttempts, Development development,
@@ -57,7 +59,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	Map<SequenceGroup, Long> sequences, long evidenceRevision, ConcurrencyWindows windows, Throttle throttle,
 	List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
 	DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings,
-	TestRevisions testRevisions, Optional<List<TrialPlugin>> plugins)
+	TestRevisions testRevisions, Optional<List<TrialPlugin>> plugins, Map<String, DevelopmentJudge> judges)
 {
 	/**
 	 * The default maximum number of concurrent nested sessions.
@@ -103,6 +105,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 *   sound
 	 * @param plugins the trial plugins that every trial installs, in configuration order; empty until {@code start}
 	 *   has built them and copied their bases
+	 * @param judges how each prompt test chooses the profile that judges its development trials, by test identifier
 	 * @throws NullPointerException if a component other than {@code baseline}, {@code outcome} or
 	 *   {@code delivery} is null, {@code baseline} is null after a confirmation, or {@code answeredWarnings} contains
 	 *   null
@@ -158,6 +161,51 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		requireThat(testRevisions, "testRevisions").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		plugins = plugins.map(List::copyOf);
+		requireThat(judges, "judges").isNotNull();
+		judges = Map.copyOf(judges);
+	}
+
+	/**
+	 * Creates a campaign state in which no prompt test has examined a candidate development judge.
+	 *
+	 * @param header the campaign's identity, binding and lifecycle state
+	 * @param ceiling the most nested sessions that may run at once
+	 * @param lineages every lineage, the last being the current one; empty before the first confirmation
+	 * @param identity the current measurement identity
+	 * @param incumbent the prompt snapshot recorded before optimization
+	 * @param candidates the number of candidates promoted so far
+	 * @param promptAuthorAttempts the number of prompt author attempts validated so far
+	 * @param development the working candidate's development state
+	 * @param baseline the original prompt's measured outcomes, or {@code null} before the first confirmation
+	 * @param attempts every certification attempt, in index order
+	 * @param trials the assigned trials whose outcomes have not entered campaign evidence, in assignment order
+	 * @param sequences the last sequence number assigned in each sequence group
+	 * @param evidenceRevision the number of outcomes the campaign has adopted
+	 * @param windows the concurrency windows of the units of work, and the halvings after runs without an outcome
+	 * @param throttle the provider's rate-limit waiting and concurrency limits
+	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose
+	 * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
+	 * @param outcome the outcome that the campaign reports, or {@code null} if none
+	 * @param delivery the candidate that the campaign decided to deliver, or {@code null} if none
+	 * @param optimization the retained prompt author and minimality evidence
+	 * @param answeredWarnings the warnings about edits outside the edit authority that the user answered
+	 * @param testRevisions the pending test revision requests, the applied test revisions and the tests reported
+	 *   sound
+	 * @param plugins the trial plugins that every trial installs, in configuration order
+	 * @throws NullPointerException if the canonical constructor rejects the arguments
+	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+	 */
+	public Campaign(Header header, int ceiling, List<Lineage> lineages, MeasurementIdentity identity,
+		Candidate incumbent, int candidates, int promptAuthorAttempts, Development development,
+		IncumbentBaseline baseline, List<CertificationAttempt> attempts, List<LogicalTrial> trials,
+		Map<SequenceGroup, Long> sequences, long evidenceRevision, ConcurrencyWindows windows, Throttle throttle,
+		List<PendingDecision> pendingDecisions, boolean revisionRequested, Outcome outcome,
+		DeliveryRequest delivery, OptimizationEvidence optimization, List<AuthorityWarning> answeredWarnings,
+		TestRevisions testRevisions, Optional<List<TrialPlugin>> plugins)
+	{
+		this(header, ceiling, lineages, identity, incumbent, candidates, promptAuthorAttempts, development, baseline,
+			attempts, trials, sequences, evidenceRevision, windows, throttle, pendingDecisions, revisionRequested,
+			outcome, delivery, optimization, answeredWarnings, testRevisions, plugins, Map.of());
 	}
 
 	/**
@@ -202,7 +250,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 		return new Campaign(header, ceiling, lineages, identity, candidate, candidates, promptAuthorAttempts,
 			Development.start(candidate, 0), baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
-			plugins);
+			plugins, judges);
 	}
 
 	/**
@@ -222,7 +270,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 			versions)),
 			incumbent, candidates, promptAuthorAttempts, development, baseline, attempts, trials, sequences,
 			evidenceRevision, windows, throttle, pendingDecisions, revisionRequested, outcome, delivery, optimization,
-			answeredWarnings, testRevisions, Optional.of(value));
+			answeredWarnings, testRevisions, Optional.of(value), judges);
 	}
 
 	/**

@@ -48,13 +48,15 @@ import java.util.TreeMap;
  *   that it holds, which delivery writes; empty for a test that the contract author wrote into the proposal itself
  * @param expectedOutcomeTool the built-in tool that the test gives the assertion {@value TestCase#EXPECTED_OUTCOME}, or
  *   empty if the judge decides it
+ * @param nearMisses the replies that only just satisfy and only just fail judged assertions, which a candidate
+ *   development judge must label as the frozen judge does; at most one entry per judged assertion
  */
 public record PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 	List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
 	List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
 	List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft,
-	Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	Optional<ExpectedOutcomeTool> expectedOutcomeTool, List<NearMisses> nearMisses)
 {
 	/**
 	 * The behavior through which a reply fails the assertion {@value TestCase#EXPECTED_OUTCOME}.
@@ -142,6 +144,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 *   author wrote into the proposal itself
 	 * @param expectedOutcomeTool the built-in tool that the test gives the assertion {@value TestCase#EXPECTED_OUTCOME},
 	 *   or empty if the judge decides it
+	 * @param nearMisses the replies that only just satisfy and only just fail judged assertions; at most one entry per
+	 *   judged assertion
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id}, a requirement identifier or an absent trigger is not lowercase
 	 *   words joined by underscores, a text is blank, a list that must not be empty is empty, {@code timeLimit} is not
@@ -175,6 +179,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(workspaceFiles, "workspaceFiles").isNotNull();
 		requireThat(draft, "draft").isNotNull();
 		requireThat(expectedOutcomeTool, "expectedOutcomeTool").isNotNull();
+		requireThat(nearMisses, "nearMisses").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
 		absentTriggers = List.copyOf(absentTriggers);
 		turns = List.copyOf(turns);
@@ -185,6 +190,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		assertions = List.copyOf(assertions);
 		regressionScenarios = List.copyOf(regressionScenarios);
 		workspaceFiles = List.copyOf(workspaceFiles);
+		nearMisses = List.copyOf(nearMisses);
 		for (String requirementId : requirementIds)
 			requireThat(requirementId, "requirementId").matches(Identifier.SNAKE_CASE);
 		for (String absentTrigger : absentTriggers)
@@ -224,7 +230,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 					"' twice");
 			}
 		}
-		Set<String> inText = namedInText(turns, assertions, expectedOutcomeTool);
+		requireValidNearMisses(id, names, assertions, expectedOutcomeTool, nearMisses);
+		Set<String> inText = namedInText(turns, assertions, expectedOutcomeTool, nearMisses);
 		List<PromptTestFiles.WorkspaceEntry> described = describe(workspaceFiles, names);
 		List<TestCase> allTestCases = concat(committedTestCases, testCases);
 		Set<TestCase> seen = new HashSet<>();
@@ -350,6 +357,43 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
+	 * Creates a prompt test that has no near-miss replies, so that its trials are judged by the frozen judge alone.
+	 *
+	 * @param id the identifier that is unique within the contract
+	 * @param riskRank the rank that breaks allocation ties
+	 * @param requirementIds the identifiers of the requirements that this test checks
+	 * @param absentTriggers the identifiers of the requirements whose trigger this test leaves absent
+	 * @param applicability the conditions under which the checked requirements apply to a trial
+	 * @param turns the complete prewritten user turns, which may contain {@code {{variable}}} placeholders
+	 * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
+	 *   shown
+	 * @param expectedBehaviour what a compliant response does
+	 * @param uncoveredInteractions the material interactions that this test cannot cover
+	 * @param variables the variables that every test case gives a value
+	 * @param committedTestCases the test cases that an earlier campaign committed with the prompt
+	 * @param testCases the test cases that the contract author wrote for this campaign
+	 * @param assertions the assertions that the contract author declared, each with the requirement that it checks
+	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
+	 * @param workspaceFiles the files that each trial's workspace receives
+	 * @param draft the test's directory in the contract author's draft directory and the
+	 *   {@value PromptTestFiles#SCENARIO} that it holds, or empty
+	 * @param expectedOutcomeTool the built-in tool of {@value TestCase#EXPECTED_OUTCOME}, or empty
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+	 */
+	public PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
+		String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
+		List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
+		List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
+		List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft,
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	{
+		this(id, riskRank, requirementIds, absentTriggers, applicability, turns, timeLimit, expectedBehaviour,
+			uncoveredInteractions, variables, committedTestCases, testCases, assertions, regressionScenarios, workspaceFiles,
+			draft, expectedOutcomeTool, List.of());
+	}
+
+	/**
 	 * Returns two lists joined.
 	 *
 	 * @param first the first list
@@ -361,6 +405,57 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		List<TestCase> all = new ArrayList<>(first);
 		all.addAll(second);
 		return all;
+	}
+
+	/**
+	 * Rejects near misses that name an assertion the judge does not decide, name an assertion twice or name a
+	 * placeholder that the test does not define.
+	 *
+	 * @param id the test's identifier
+	 * @param names the names of the declared variables
+	 * @param assertions the declared assertions
+	 * @param expectedOutcomeTool the tool of {@value TestCase#EXPECTED_OUTCOME}, if the test gives it one
+	 * @param nearMisses the near misses
+	 * @throws IllegalArgumentException if the near misses do not fit the test
+	 */
+	private static void requireValidNearMisses(String id, Set<String> names, List<MappedAssertion> assertions,
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool, List<NearMisses> nearMisses)
+	{
+		Set<String> judged = new LinkedHashSet<>();
+		for (MappedAssertion mapped : assertions)
+		{
+			if (mapped.assertion().tool() == null)
+				judged.add(mapped.assertion().id());
+		}
+		if (expectedOutcomeTool.isEmpty())
+			judged.add(TestCase.EXPECTED_OUTCOME);
+		Set<String> described = new HashSet<>();
+		for (NearMisses nearMiss : nearMisses)
+		{
+			if (!judged.contains(nearMiss.assertionId()))
+			{
+				throw new IllegalArgumentException("Test '" + id + "' has near misses for the assertion '" +
+					nearMiss.assertionId() + "', which its judge does not decide. Judged assertions: " + judged);
+			}
+			if (!described.add(nearMiss.assertionId()))
+			{
+				throw new IllegalArgumentException("Test '" + id + "' has near misses for the assertion '" +
+					nearMiss.assertionId() + "' twice");
+			}
+			List<String> replies = new ArrayList<>(nearMiss.satisfying());
+			replies.addAll(nearMiss.failing());
+			for (String reply : replies)
+			{
+				for (String name : Placeholders.scenarioNames(reply))
+				{
+					if (!names.contains(name) && !name.equals(TestCase.EXPECTED_OUTCOME))
+					{
+						throw new IllegalArgumentException("A near miss of test '" + id + "' has the placeholder {{" +
+							name + "}}, but the test defines no such variable. Defined variables: " + names);
+					}
+				}
+			}
+		}
 	}
 
 	/**
@@ -381,15 +476,16 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Returns the variables that turns, assertion statements and {@code tool} values name.
+	 * Returns the variables that turns, assertion statements, {@code tool} values and near-miss replies name.
 	 *
 	 * @param turns the turns
 	 * @param assertions the declared assertions
 	 * @param expectedOutcomeTool the tool of {@value TestCase#EXPECTED_OUTCOME}, if the test gives it one
+	 * @param nearMisses the near-miss replies
 	 * @return the names, without {@value TestCase#EXPECTED_OUTCOME}
 	 */
 	private static Set<String> namedInText(List<String> turns, List<MappedAssertion> assertions,
-		Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool, List<NearMisses> nearMisses)
 	{
 		Set<String> named = new LinkedHashSet<>();
 		for (String turn : turns)
@@ -402,6 +498,13 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 				named.addAll(Placeholders.scenarioNames(assertion.tool()));
 		}
 		expectedOutcomeTool.ifPresent(tool -> named.addAll(Placeholders.scenarioNames(tool.tool())));
+		for (NearMisses nearMiss : nearMisses)
+		{
+			for (String reply : nearMiss.satisfying())
+				named.addAll(Placeholders.scenarioNames(reply));
+			for (String reply : nearMiss.failing())
+				named.addAll(Placeholders.scenarioNames(reply));
+		}
 		named.remove(TestCase.EXPECTED_OUTCOME);
 		return named;
 	}
@@ -447,8 +550,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		for (VariableDeclaration variable : variables)
 			names.add(variable.name());
 		List<PromptTestFiles.WorkspaceEntry> described = describe(workspaceFiles, names);
-		List<String> problems = PromptTestFiles.problems(names, namedInText(turns, assertions, expectedOutcomeTool),
-			described, testCase);
+		List<String> problems = PromptTestFiles.problems(names,
+			namedInText(turns, assertions, expectedOutcomeTool, nearMisses), described, testCase);
 		if (!problems.isEmpty())
 		{
 			throw new IllegalArgumentException("The test case does not fit test '" + id + "': " +
@@ -581,6 +684,47 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	public List<Assertion> judgedAssertions()
 	{
 		return allAssertions().stream().filter(assertion -> assertion.tool() == null).toList();
+	}
+
+	/**
+	 * Returns the near-miss replies of every judged assertion with a test case's values in place of their
+	 * placeholders.
+	 *
+	 * @param testCase the test case whose values the replies receive
+	 * @return the replies in the order of {@link #nearMisses}
+	 * @throws NullPointerException if {@code testCase} is null
+	 */
+	public List<NearMisses.Reply> nearMissReplies(TestCase testCase)
+	{
+		requireThat(testCase, "testCase").isNotNull();
+		Map<String, String> textByName = textByName(testCase);
+		List<NearMisses.Reply> replies = new ArrayList<>();
+		for (NearMisses nearMiss : nearMisses)
+			replies.addAll(nearMiss.replies(textByName));
+		return replies;
+	}
+
+	/**
+	 * Indicates whether the test has near misses for every assertion that the judge decides, so that a candidate
+	 * development judge can be compared with the frozen judge on all of them.
+	 *
+	 * @return {@code true} if every assertion without a {@code tool} has near misses and the test has at least one
+	 *   such assertion
+	 */
+	public boolean hasCompleteNearMisses()
+	{
+		List<Assertion> judged = judgedAssertions();
+		if (judged.isEmpty())
+			return false;
+		Set<String> described = new HashSet<>();
+		for (NearMisses nearMiss : nearMisses)
+			described.add(nearMiss.assertionId());
+		for (Assertion assertion : judged)
+		{
+			if (!described.contains(assertion.id()))
+				return false;
+		}
+		return true;
 	}
 
 	/**

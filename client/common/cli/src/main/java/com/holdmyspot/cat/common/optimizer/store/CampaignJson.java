@@ -75,6 +75,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.ApproachAssignment;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.SequenceGroup;
+import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -98,6 +99,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValueJson;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
@@ -168,6 +170,10 @@ import tools.jackson.databind.node.ObjectNode;
  * A development has a {@code stalls} object only when CAT has recorded the best values of a prompt test's development
  * cells for counting its rounds without progress; a development without one has counted no round for any test, so
  * campaigns that started before CAT counted them still load.
+ * <p>
+ * A campaign snapshot has a {@code development_judges} object only when CAT has examined a candidate development judge
+ * for a prompt test, and a trial outcome has a {@code judge} or a {@code shadow} object only when a model judged it;
+ * a document without them reads as no candidate examined and no judge recorded.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
@@ -245,6 +251,8 @@ final class CampaignJson
 		root.put("prompt_author_attempts", campaign.promptAuthorAttempts());
 		root.set("development", writeDevelopment(campaign.development()));
 		root.set("optimization", writeOptimization(campaign.optimization()));
+		if (!campaign.judges().isEmpty())
+			root.set("development_judges", DevelopmentJudgeJson.write(json, campaign.judges()));
 		IncumbentBaseline baseline = campaign.baseline();
 		if (baseline == null)
 			root.putNull("baseline");
@@ -378,7 +386,7 @@ final class CampaignJson
 			longInteger(root, "evidence_revision"), windows,
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
 			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
-			answered, readTestRevisions(field(root, "test_revisions")), plugins);
+			answered, readTestRevisions(field(root, "test_revisions")), plugins, DevelopmentJudgeJson.read(root));
 	}
 
 	/**
@@ -905,6 +913,10 @@ final class CampaignJson
 			node.put("input_tokens", outcome.inputTokens());
 			node.set("responses", writeResponses(outcome.responses()));
 			node.set("files", writeFiles(outcome.files()));
+			if (outcome.judge().isPresent())
+				DevelopmentJudgeJson.writeProfile(node.putObject("judge"), outcome.judge().get());
+			if (outcome.shadow().isPresent())
+				DevelopmentJudgeJson.writeShadow(node.putObject("shadow"), outcome.shadow().get());
 		}
 		return root;
 	}
@@ -926,10 +938,16 @@ final class CampaignJson
 		JsonNode outcomeNode = nullable(root, "outcome");
 		if (outcomeNode != null)
 		{
+			Optional<TrialProfile> judge = Optional.empty();
+			if (outcomeNode.has("judge"))
+				judge = Optional.of(DevelopmentJudgeJson.readProfile(field(outcomeNode, "judge")));
+			Optional<ShadowResult> shadow = Optional.empty();
+			if (outcomeNode.has("shadow"))
+				shadow = Optional.of(DevelopmentJudgeJson.readShadow(field(outcomeNode, "shadow")));
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
 				text(outcomeNode, "rationale"), readFailedAssertions(outcomeNode), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
-				readResponses(outcomeNode), readFiles(outcomeNode));
+				readResponses(outcomeNode), readFiles(outcomeNode), judge, shadow);
 		}
 		List<TrialSession> sessions = new ArrayList<>();
 		for (JsonNode session : elements(root, "sessions"))
@@ -2071,6 +2089,8 @@ final class CampaignJson
 		node.put("observations", trial.observations());
 		node.set("responses", writeResponses(trial.responses()));
 		node.set("files", writeFiles(trial.files()));
+		if (trial.judge().isPresent())
+			DevelopmentJudgeJson.writeProfile(node.putObject("judge"), trial.judge().get());
 		return node;
 	}
 
@@ -2084,12 +2104,15 @@ final class CampaignJson
 	{
 		Verdict verdict = nullableConstant(node, "verdict", Verdict.class);
 		String rationale = nullableText(node, "rationale");
+		Optional<TrialProfile> judge = Optional.empty();
+		if (node.has("judge"))
+			judge = Optional.of(DevelopmentJudgeJson.readProfile(field(node, "judge")));
 		return new LogicalTrial(readKey(field(node, "key")), readTestCase(field(node, "test_case")),
 			readIdentity(field(node, "identity")), readAllocation(field(node, "allocation")),
 			constant(node, "state", TrialState.class), verdict, rationale, readFailedAssertions(node),
 			readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
-			readResponses(node), readFiles(node));
+			readResponses(node), readFiles(node), judge);
 	}
 
 	/**

@@ -398,4 +398,25 @@ public record Contract(List<Requirement> requirements, List<PromptTest> tests, T
 		return findTest(cell.testId()).orElseThrow(() -> new IllegalArgumentException(
 			"The contract has no test '" + cell.testId() + "'"));
 	}
+
+	/**
+	 * Returns the trial that a prompt test's near misses are judged under: the test's first development test case,
+	 * which gives the near-miss replies their placeholder values and the judge its expected outcome.
+	 *
+	 * @param test the prompt test
+	 * @return the trial, or empty if the test has no development test case or no cell
+	 * @throws NullPointerException if {@code test} is null
+	 */
+	public Optional<DrawnTestCase> nearMissContext(PromptTest test)
+	{
+		requireThat(test, "test").isNotNull();
+		List<TestCase> development = split().testCases(test, Part.DEVELOPMENT);
+		List<Cell> testCells = profiles.cellsOf(test.id());
+		if (development.isEmpty() || testCells.isEmpty())
+			return Optional.empty();
+		TestCase testCase = development.getFirst();
+		return Optional.of(new DrawnTestCase(testCells.getFirst().id(), test.id(), testCase,
+			test.expandTurns(testCase), test.expectedBehaviour(), Generator.IDENTITY, DrawStream.Kind.DEVELOPMENT, 0,
+			true));
+	}
 }

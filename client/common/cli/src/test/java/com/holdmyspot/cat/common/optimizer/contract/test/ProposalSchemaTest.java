@@ -108,6 +108,64 @@ public final class ProposalSchemaTest
 	}
 
 	/**
+	 * Verifies that the near misses of judged assertions survive writing the contract and reading it back, that they
+	 * are part of the contract's identity, that a contract without them writes no property for them, and that a test
+	 * accepts them only for the assertions that its judge decides, with two replies on each side.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void nearMissesAreStored() throws InvalidProposalException
+	{
+		Contract original = ContractFixtures.contract();
+		Contract described = ContractFixtures.withNearMisses(original);
+		requireThat(json.readTree(schema().toJson(original)).get("tests").get(1).has("near_misses"), "without").
+			isFalse();
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(described));
+		ArrayNode nearMisses = (ArrayNode) stored.get("tests").get(1).get("near_misses");
+		requireThat(nearMisses.size(), "described").isEqualTo(described.tests().get(1).judgedAssertions().size());
+		requireThat(nearMisses.get(0).get("satisfying").size(), "satisfying").isEqualTo(2);
+		requireThat(nearMisses.get(0).get("failing").size(), "failing").isEqualTo(2);
+
+		Contract loaded = schema().parse(json.writeValueAsString(stored));
+
+		requireThat(loaded, "loaded").isEqualTo(described);
+		requireThat(json.readTree(schema().toJson(loaded)), "roundTrip").isEqualTo(stored);
+		requireThat(loaded.tests().get(1).hasCompleteNearMisses(), "complete").isTrue();
+		requireThat(original.tests().get(1).hasCompleteNearMisses(), "completeWithout").isFalse();
+		ProposalSchema schema = schema();
+		requireThat(ContractIdentity.of(schema, described), "identity").
+			isNotEqualTo(ContractIdentity.of(schema, original));
+
+		ObjectNode oneReply = stored.deepCopy();
+		((ArrayNode) oneReply.get("tests").get(1).get("near_misses").get(0).get("satisfying")).remove(1);
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(oneReply)).problems()), "oneReply").
+			contains("$.tests[1].near_misses[0]");
+
+		ObjectNode threeReplies = stored.deepCopy();
+		((ArrayNode) threeReplies.get("tests").get(1).get("near_misses").get(0).get("failing")).add("A third reply");
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(threeReplies)).problems()), "threeReplies").
+			contains("$.tests[1].near_misses[0]");
+
+		ObjectNode undecided = stored.deepCopy();
+		((ObjectNode) undecided.get("tests").get(1).get("near_misses").get(0)).put("assertion_id", "no_such_assertion");
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(undecided)).problems()), "undecided").
+			contains("$.tests[1]").contains("no_such_assertion");
+
+		ObjectNode shared = stored.deepCopy();
+		ObjectNode first = (ObjectNode) shared.get("tests").get(1).get("near_misses").get(0);
+		((ArrayNode) first.get("failing")).set(0, first.get("satisfying").get(0));
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(shared)).problems()), "sharedReply").
+			contains("$.tests[1].near_misses[0]");
+
+		ObjectNode unknownName = stored.deepCopy();
+		((ArrayNode) unknownName.get("tests").get(1).get("near_misses").get(0).get("failing")).set(0,
+			json.getNodeFactory().stringNode("Mentions {{no_such_variable}}"));
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(unknownName)).problems()), "unknownName").
+			contains("no_such_variable");
+	}
+
+	/**
 	 * Verifies that an assertion whose {@code tool} line names no built-in tool, or gives a tool arguments that do
 	 * not suit it, is rejected at the assertion's location.
 	 */

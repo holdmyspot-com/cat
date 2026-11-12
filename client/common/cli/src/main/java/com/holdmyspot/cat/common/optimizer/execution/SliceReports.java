@@ -49,7 +49,7 @@ public final class SliceReports
 			report.tokens(),
 			report.concurrency(), report.assumptions(), report.attempts(), report.keepOffers(), report.claim(),
 			report.limitations(), report.conditions(), report.optimization(), report.reverts(), report.addedTestCases(),
-			report.certifiedEnvironment());
+			report.certifiedEnvironment(), report.developmentJudges());
 	}
 
 	/**
