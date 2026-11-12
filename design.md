@@ -1347,9 +1347,13 @@ the user to inspect.
 **Moved project (user ruling, 2026-11-12).** Git links a worktree to its repository by absolute paths, so moving or
 copying the project during a campaign leaves the optimization worktree pointing at the old location, where Git reports
 it prunable. At every campaign command, before the inventory check, CAT finds the optimization worktree at its
-recorded place under campaign storage and, when its links name another location, repairs them (`git worktree repair`).
-If the repair fails, CAT recreates the worktree at the working candidate's recorded content, and the inventory check
-then runs as usual.
+recorded place under campaign storage and, when its links name another location, rewrites the two links itself: the
+worktree's `.git` file and its registration's `gitdir` in the project's repository. It does not run
+`git worktree repair`, which in a copied project rewrites every registered worktree's links first, including the
+original project's, and so points the original at the copy (Git 2.43). A registration that another worktree owns, or
+that is missing, fails the repair; CAT then deletes the worktree, prunes Git's registrations and recreates it at the
+working candidate's recorded content. Removal relinks the same way first, since Git refuses to remove a worktree whose
+links name another place. The inventory check then runs as usual.
 
 When CAT presents a proposal, it records and copies the proposal's prompt tests, with their scenarios, `workspace/`
 directories and the shared files that their links reach, and the derived prompt sources that the fork does not yet hold
