@@ -2390,8 +2390,10 @@ assertion would add sessions. It examines the candidates cheapest first, and sta
 		verdicts and the agreement counts never reach the author, so judging held-out transcripts reveals nothing to
 		authoring.
 	- **Overlapping candidates (user ruling, 2026-11-12).** The next candidate starts shadowing as soon as the current
-		one can no longer qualify within 299 shadowed trials, or when it is rejected, so a backup is paid only when the
-		current candidate is likely to fail. Both share each trial's frozen verdict. The first to qualify takes over the
+		one's disagreements rule out qualifying at the minimum of 299 shadowed trials, or when it is rejected, so a backup
+		is paid only when the current candidate is likely to fail. Until its rejection rule stops it (it can no longer
+		qualify within 400), the current candidate keeps shadowing, because it can still qualify first at a fraction of
+		the backup's price. Both share each trial's frozen verdict. The first to qualify takes over the
 		test and every other candidate of the test stops.
 	- **Only when it can pay off (user ruling, 2026-11-12).** CAT starts live shadowing of a candidate only when the
 		development trials the test is expected to run before the next certification attempt, estimated from the
