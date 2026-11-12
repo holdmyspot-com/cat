@@ -57,8 +57,12 @@ where this section does not replace them.
 		turn and checks at the start of the next user turn. Claude: the background command's exit notifies the agent.
 		The driver keeps one flag file, set when the campaign ends or needs the user (a pause or a failure); the skill
 		checks only that flag at each turn start. Delivery must refuse a target that changed during the campaign.
-	- Racing candidates: when the author cannot settle on one diagnosis, it may write 2–3 alternative edits whose
-		development trials run in parallel; a candidate is dropped as soon as its confidence bound shows it cannot win.
+	- Racing candidates: when the previous candidate was rejected against its parent, or the author cannot settle on one
+		diagnosis, the author writes 2–3 alternative edits, each from a different diagnosis, whose development trials run
+		in parallel; a candidate is dropped as soon as its confidence bound shows it cannot win. Tests decided by a code
+		check at the first tool call (such as whether a rule or skill loads) may race more candidates, since their trials
+		are cheap; a triggering change still has to pass the compliance tests. Development pauses for the user only if a
+		race also finds no winner.
 	- Batched judging (development only, shadowed against the frozen single-reply judge, certification unchanged):
 		decide after the token comparison shows how much of the cost judge start-up still is.
 	- Code checks wherever the outcome is visible in the transcript (a file read in full, a tool or skill invoked, only
