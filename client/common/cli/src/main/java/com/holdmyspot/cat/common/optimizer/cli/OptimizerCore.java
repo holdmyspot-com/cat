@@ -113,6 +113,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.PluginBuild;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -123,6 +124,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -170,6 +172,18 @@ public final class OptimizerCore implements Core
 	 * The largest prompt test configuration that CAT reads.
 	 */
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
+	/**
+	 * The deepest level below {@code .cat/tests} at which a refusal looks for other prompt test configurations.
+	 */
+	private static final int MAXIMUM_CONFIGURATION_DEPTH = 8;
+	/**
+	 * The most prompt test configuration files that a refusal examines.
+	 */
+	private static final int MAXIMUM_CONFIGURATIONS_EXAMINED = 200;
+	/**
+	 * The most prompt test configurations that a refusal lists.
+	 */
+	private static final int MAXIMUM_CONFIGURATIONS_LISTED = 20;
 	/**
 	 * The typical length of one line that the loader configuration's identity digests: a file's path and its content
 	 * hash, or the user's loader settings.
@@ -886,10 +900,84 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " has " +
 				"no \"" + harness + "\" key, so it does not say which plugins trials in " + harness + " install. Add " +
-				"the key, with an empty plugin list if trials install none.\n" + pluginChoices(root) + retry);
+				"the key, with an empty plugin list if trials install none.\n" + configurationsWithKey(root, file) +
+				pluginChoices(root) + retry);
 		}
 		requireBuiltWhenTracked(root, file, plugins.get());
 		return plugins.get();
+	}
+
+	/**
+	 * Lists the other prompt test configurations in the project that have a key for the harness, with the prompt files
+	 * that they configure, so that a refusal can point to the targets that the harness can run. The search does not
+	 * follow symbolic links, descends at most {@value #MAXIMUM_CONFIGURATION_DEPTH} levels below {@code .cat/tests},
+	 * examines at most {@value #MAXIMUM_CONFIGURATIONS_EXAMINED} files named {@value PromptConfiguration#FILE_NAME} and
+	 * lists at most {@value #MAXIMUM_CONFIGURATIONS_LISTED} configurations. A configuration that cannot be read, exceeds
+	 * {@code MAXIMUM_CONFIGURATION_BYTES} or does not parse is skipped.
+	 *
+	 * @param root the project root
+	 * @param excluded the configuration that the refusal is about, relative to the project
+	 * @return the heading and one line per configuration, in order of configuration path, each ending with a line
+	 *   break, or an empty string if no other configuration has the key
+	 */
+	private String configurationsWithKey(Path root, Path excluded)
+	{
+		String harness = scope.harness().commandName();
+		Path tests = root.resolve(".cat").resolve("tests");
+		List<Path> files;
+		try (Stream<Path> walk = Files.walk(tests, MAXIMUM_CONFIGURATION_DEPTH))
+		{
+			files = walk.filter(path -> path.getFileName() != null &&
+					path.getFileName().toString().equals(PromptConfiguration.FILE_NAME) &&
+					Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)).
+				map(root::relativize).
+				filter(path -> !path.equals(excluded)).
+				limit(MAXIMUM_CONFIGURATIONS_EXAMINED).
+				sorted(Comparator.comparing(PortablePaths::text)).
+				toList();
+		}
+		catch (IOException | UncheckedIOException _)
+		{
+			return "";
+		}
+		StringBuilder entries = new StringBuilder(256);
+		int listed = 0;
+		for (Path file : files)
+		{
+			if (listed == MAXIMUM_CONFIGURATIONS_LISTED)
+				break;
+			try
+			{
+				PromptConfiguration configuration = PromptConfiguration.parse(scope.json(),
+					BoundedInput.readUtf8(root.resolve(file), MAXIMUM_CONFIGURATION_BYTES,
+						"Prompt test configuration"));
+				if (configuration.plugins(harness).isEmpty())
+					continue;
+			}
+			catch (IOException | PromptConfigurationException | UncheckedIOException _)
+			{
+				continue;
+			}
+			Path directory = file.getParent();
+			Path relative = Path.of(".cat", "tests").relativize(directory);
+			StringBuilder entry = new StringBuilder(128);
+			for (Path candidate : List.of(Path.of(relative + ".md"), Path.of(".cat", "rules", relative + ".md")))
+			{
+				if (Files.isRegularFile(root.resolve(candidate), LinkOption.NOFOLLOW_LINKS) &&
+					PromptTestLocations.scenarioDirectory(candidate).equals(directory))
+				{
+					entry.append(PortablePaths.text(candidate)).append(", configured by ");
+					break;
+				}
+			}
+			entry.append(PortablePaths.text(file));
+			entries.append("- ").append(entry).append('\n');
+			++listed;
+		}
+		if (listed == 0)
+			return "";
+		return "These prompt test configurations have a \"" + harness + "\" key, so their prompt files can be " +
+			"targets in " + harness + ":\n" + entries;
 	}
 
 	/**

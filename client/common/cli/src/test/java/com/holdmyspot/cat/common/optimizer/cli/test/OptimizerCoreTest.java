@@ -3484,6 +3484,65 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that the refusal of a configuration without a key for the harness names the other configurations that
+	 * have the key and the prompt files that they configure, and omits the target's own configuration.
+	 */
+	@Test
+	public void startRefusalListsKeyedConfigurations() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("AGENTS.md")));
+			Files.writeString(repository.root().resolve("AGENTS.md"), "Be brief.\n");
+			configure(repository.root(), Path.of("AGENTS.md"), "{\"codex\": {\"plugins\": []}}");
+			Map<String, String> before = contents(repository.root());
+
+			String message = refusal(() -> repository.core().start(Path.of("AGENTS.md")));
+
+			Path claude = PromptConfiguration.location(Path.of("CLAUDE.md"));
+			requireThat(message, "message").
+				contains("no \"claude\" key").
+				contains("These prompt test configurations have a \"claude\" key, so their prompt files can be " +
+					"targets in claude:\n- CLAUDE.md, configured by " + PortablePaths.text(claude) + "\n").
+				doesNotContain("configured by " + PortablePaths.text(PromptConfiguration.location(
+					Path.of("AGENTS.md"))));
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Verifies that the refusal of a configuration without a key for the harness skips another configuration that does
+	 * not parse, and lists none when no other configuration has the key.
+	 */
+	@Test
+	public void startRefusalSkipsInvalidConfigs() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}), Set.of(Path.of("CLAUDE.md"), Path.of("AGENTS.md")));
+			Files.writeString(repository.root().resolve("AGENTS.md"), "Be brief.\n");
+			configure(repository.root(), Path.of("AGENTS.md"), "{\"codex\": {\"plugins\": []}}");
+			configure(repository.root(), Path.of("CLAUDE.md"), "{not json");
+			Map<String, String> before = contents(repository.root());
+
+			String message = refusal(() -> repository.core().start(Path.of("AGENTS.md")));
+
+			requireThat(message, "message").
+				contains(PortablePaths.text(PromptConfiguration.location(Path.of("AGENTS.md")))).
+				contains("no \"claude\" key").
+				doesNotContain("These prompt test configurations").
+				contains("Run `start` again once the configuration names the plugins that trials install.");
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
+		}
+	}
+
+	/**
 	 * Verifies that both refusals for a missing prompt test configuration list every plugin installed in the harness,
 	 * by its {@code <plugin>@<marketplace>} name and the version that its manifest states, and every plugin manifest of
 	 * the harness that Git tracks in the project, by its name, path and version.
