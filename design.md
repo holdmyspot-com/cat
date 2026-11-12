@@ -2383,12 +2383,13 @@ assertion would add sessions. It examines the candidates cheapest first, and sta
 	counted per shadowed trial: with no disagreement, 299 trials qualify. It is rejected once either bound can no longer reach
 	its limit within 400 shadowed trials, so any lenient disagreement rejects it. A rejected candidate is followed by the next; when none remains, the test
 	keeps the frozen judge.
-	- **Stored verdicts first (user ruling, 2026-11-12).** Before shadowing live trials, the candidate judges stored
-		transcripts that the frozen judge has already judged for the same test, contract version and frozen judge
-		version, such as the incumbent's baseline trials, and those comparisons count as shadowed trials. Only the
-		candidate's session is paid, so a cheap candidate can qualify before development needs it. The candidate's
-		verdicts and the agreement counts never reach the author, so judging held-out transcripts reveals nothing to
-		authoring.
+	- **Held-out trials shadowed too (user ruling, 2026-11-12).** The candidate also judges every trial of the test that
+		the frozen judge judges anyway, such as the incumbent's baseline trials and certification trials, at the moment
+		the frozen judge does, while the trial's evidence still exists (a passing trial's effects and initial project
+		are deleted once its verdict is recorded, D51). Those comparisons count as shadowed trials, but the frozen
+		verdict alone counts for the trial. Only the candidate's session is added, so a cheap candidate can qualify
+		early in development. The candidate's verdicts and the agreement counts never reach the author, so shadowing a
+		held-out trial reveals nothing to authoring.
 	- **Overlapping candidates (user ruling, 2026-11-12).** The next candidate starts shadowing as soon as the current
 		one's disagreements rule out qualifying at the minimum of 299 shadowed trials, or when it is rejected, so a backup
 		is paid only when the current candidate is likely to fail. Until its rejection rule stops it (it can no longer
@@ -2398,15 +2399,18 @@ assertion would add sessions. It examines the candidates cheapest first, and sta
 	- **Only when it can pay off (user ruling, 2026-11-12).** CAT starts live shadowing of a candidate only when the
 		development trials the test is expected to run before the next certification attempt, estimated from the
 		campaign's trials per round so far, can bring it to qualification; otherwise the test keeps the frozen judge for
-		now, and the stored-verdict comparisons, which cost only the candidate, still run.
+		now, and the shadowing of held-out trials, which costs only the candidate, still runs.
 3. **Spot checks.** After a candidate qualifies, the frozen judge also judges a random one in ten of the test's
 	development trials, and its verdict counts for those. Each spot check is added to the counts of step 2; once
 	either bound exceeds its limit, the test returns to the frozen judge for the rest of the campaign. Judgings already
 	queued keep the judge they were queued with.
-4. **Carried qualification (user ruling, 2026-11-12).** A delivered or kept candidate's certification record names, per
-	prompt test, the development judge that had qualified and its counts. A later campaign on the same target starts
-	that test at step 3 with those counts while the test's contract version, near misses, frozen judge version and the
-	candidate's profile are unchanged; any change discards the carried qualification.
+4. **Carried qualification (user ruling, 2026-11-12).** Whenever a campaign ends, delivered or not, CAT records per
+	prompt test the development judge that had qualified, its counts, and the test's contract version, near-miss
+	labels, frozen judge version and the candidate's profile. The record is not a certification record and is not
+	written to the base worktree, whose only writer is delivery: it goes to the harness's CAT data directory, keyed by
+	the real paths of the project and the target, and a later record for the same test replaces it. A later campaign on
+	the same target starts that test at step 3 with those counts while all of those recorded values are unchanged; any
+	change discards the carried qualification.
 
 The trial record names the profile whose verdict counted. Status shows each test's development judge, its shadowed
 and spot-checked trial counts and its disagreements. A test with fewer development trials than shadowing needs saves
