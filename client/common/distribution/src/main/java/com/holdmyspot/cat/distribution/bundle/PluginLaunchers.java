@@ -38,7 +38,8 @@ import java.util.Set;
  * On Linux, Java ignores {@code TMPDIR} and keeps its temporary files in {@code /tmp}, which a sandboxed session
  * cannot write to. When {@code TMPDIR} is set and not empty, a POSIX launcher therefore passes it to Java as
  * {@code -Djava.io.tmpdir}; it passes nothing when {@code TMPDIR} is unset or empty. On Windows, Java already follows
- * {@code TEMP} and {@code TMP}, so a batch launcher passes nothing.
+ * {@code TEMP} and {@code TMP}, and Git Bash gives the POSIX launcher a {@code TMPDIR} such as {@code /c/Users/...}
+ * that Java does not understand, so no launcher of a Windows plugin passes it.
  * <p>
  * Java names files and decodes its arguments in the character set of {@code LC_CTYPE}, which in the C locale cannot
  * name a file whose name is not ASCII. When the caller's {@code LC_CTYPE} is not UTF-8, a POSIX launcher therefore runs
@@ -96,6 +97,19 @@ public final class PluginLaunchers
 	 * The path from the plugin's {@code bin/} folder to the plugin's application modules.
 	 */
 	private static final String MODULES_FROM_BIN = PluginDirectory.BIN.relativize(PluginDirectory.MODULES).toString();
+	/**
+	 * The lines of a POSIX launcher that pass {@code TMPDIR} to Java, in the launchers of a plugin on a platform other
+	 * than Windows.
+	 */
+	private static final String PASS_TMPDIR = """
+		if [ -n "${TMPDIR:-}" ]; then
+		  tmpdir=-Djava.io.tmpdir=$TMPDIR
+		fi""";
+	/**
+	 * The line that stands in the POSIX launcher of a Windows plugin for the lines that pass {@code TMPDIR}.
+	 */
+	private static final String IGNORE_TMPDIR =
+		"# Java on Windows follows TEMP and TMP, and does not read Git Bash's TMPDIR.";
 	private static final String POSIX_TEMPLATE = """
 		#!/bin/sh
 		# Starts %1$s on the Java runtime that the plugin's bin/runtime-binding names.
@@ -153,9 +167,7 @@ public final class PluginLaunchers
 		  cache=-XX:AOTCache=$bin/%6$s
 		fi
 		tmpdir=
-		if [ -n "${TMPDIR:-}" ]; then
-		  tmpdir=-Djava.io.tmpdir=$TMPDIR
-		fi
+		%8$s
 		exec "$java" ${cache:+"$cache"} ${tmpdir:+"$tmpdir"} %4$s --module-path "$bin/%7$s" %5$s"$@"
 		""";
 	private static final String BATCH_TEMPLATE = """
@@ -266,21 +278,18 @@ public final class PluginLaunchers
 		}
 
 		Files.createDirectories(bin);
-		String javaName = "java";
-		if (platform.isWindows())
-			javaName = "java.exe";
 		for (Launcher launcher : launchers)
 		{
 			String program = launcher.module() + "/" + launcher.mainClass();
 			String arguments = String.join(" ", programArguments(launcher)) + " ";
 			if (posix)
-				writePosix(bin.resolve(launcher.name()), program, javaName, arguments);
+				writePosix(bin.resolve(launcher.name()), program, platform, arguments);
 			if (platform.isWindows())
 				writeBatch(bin.resolve(launcher.name() + ".cmd"), program, arguments);
 		}
 		String wrapper = "java with the plugin's modules";
 		if (posix)
-			writePosix(bin.resolve(JAVA_WRAPPER), wrapper, javaName, "");
+			writePosix(bin.resolve(JAVA_WRAPPER), wrapper, platform, "");
 		if (platform.isWindows())
 			writeBatch(bin.resolve(JAVA_WRAPPER + ".cmd"), wrapper, "");
 	}
@@ -290,15 +299,22 @@ public final class PluginLaunchers
 	 *
 	 * @param path      the launcher's path
 	 * @param program   the program that the launcher's comment names
-	 * @param javaName  the file name of {@code java} in the runtime's {@code bin} folder
+	 * @param platform  the platform that the plugin runs on
 	 * @param arguments the arguments, each followed by a space, that precede the caller's
 	 * @throws IOException if the launcher cannot be written
 	 */
-	private static void writePosix(Path path, String program, String javaName, String arguments)
+	private static void writePosix(Path path, String program, Platform platform, String arguments)
 		throws IOException
 	{
+		String javaName = "java";
+		String tmpdirLines = PASS_TMPDIR;
+		if (platform.isWindows())
+		{
+			javaName = "java.exe";
+			tmpdirLines = IGNORE_TMPDIR;
+		}
 		Files.writeString(path, POSIX_TEMPLATE.formatted(program, javaName, UNUSABLE_BINDING_STATUS, VM_OPTIONS,
-			arguments, CACHE_FROM_BIN.replace('\\', '/'), MODULES_FROM_BIN.replace('\\', '/')), UTF_8);
+			arguments, CACHE_FROM_BIN.replace('\\', '/'), MODULES_FROM_BIN.replace('\\', '/'), tmpdirLines), UTF_8);
 		PosixFileAttributeView attributes = Files.getFileAttributeView(path, PosixFileAttributeView.class);
 		if (attributes != null)
 			attributes.setPermissions(LAUNCHER_PERMISSIONS);

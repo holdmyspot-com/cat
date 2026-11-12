@@ -17,9 +17,11 @@ import java.util.Set;
  * Writes the launchers in a plugin's {@code bin} folder that run the plugin's installer on the Java runtime in the
  * plugin's {@code bin/runtime} folder, with the plugin's modules and fixed JVM options. The launchers discard the JVM
  * options that the environment supplies, and exit with status 3, writing one line that names the missing file, when
- * the plugin's runtime has no {@code java}. The POSIX launcher passes a set, non-empty {@code TMPDIR} to Java as
- * {@code -Djava.io.tmpdir}, because Java on Linux ignores {@code TMPDIR} and a sandboxed session cannot write to
- * {@code /tmp}. The installer receives the caller's PATH and working directory.
+ * the plugin's runtime has no {@code java}. The POSIX launcher of a plugin on a platform other than Windows passes a
+ * set, non-empty {@code TMPDIR} to Java as {@code -Djava.io.tmpdir}, because Java on Linux ignores {@code TMPDIR} and a
+ * sandboxed session cannot write to {@code /tmp}. Java on Windows follows {@code TEMP} and {@code TMP} and does not
+ * understand the {@code /c/Users/...} {@code TMPDIR} that Git Bash gives the POSIX launcher, so a Windows plugin's
+ * launcher passes nothing. The installer receives the caller's PATH and working directory.
  */
 final class InstallerLaunchers
 {
@@ -34,8 +36,21 @@ final class InstallerLaunchers
 	private static final String MODULES_FROM_BIN = PluginDirectory.BIN.relativize(PluginDirectory.MODULES).
 		toString().replace('\\', '/');
 	/**
+	 * The lines of the POSIX launcher that pass {@code TMPDIR} to Java, in the launcher of a plugin on a platform other
+	 * than Windows.
+	 */
+	private static final String PASS_TMPDIR = """
+		if [ -n "${TMPDIR:-}" ]; then
+			tmpdir=-Djava.io.tmpdir=$TMPDIR
+		fi""";
+	/**
+	 * The line that stands in the POSIX launcher of a Windows plugin for the lines that pass {@code TMPDIR}.
+	 */
+	private static final String IGNORE_TMPDIR =
+		"# Java on Windows follows TEMP and TMP, and does not read Git Bash's TMPDIR.";
+	/**
 	 * The POSIX launcher, in which {@code @RUNTIME@} and {@code @MODULES@} stand for the paths from {@code bin/} to the
-	 * runtime and to the modules.
+	 * runtime and to the modules, and {@code @TMPDIR@} for the lines that pass {@code TMPDIR} to Java.
 	 */
 	private static final String POSIX_TEMPLATE = """
 		#!/bin/sh
@@ -88,9 +103,7 @@ final class InstallerLaunchers
 				;;
 		esac
 		tmpdir=
-		if [ -n "${TMPDIR:-}" ]; then
-			tmpdir=-Djava.io.tmpdir=$TMPDIR
-		fi
+		@TMPDIR@
 		exec "$java" ${tmpdir:+"$tmpdir"} -Xshare:auto -Xlog:all=off:stdout -Xlog:all=warning:stderr \\
 			-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 \\
 			-Djdk.http.auth.tunneling.disabledSchemes= \\
@@ -192,7 +205,10 @@ final class InstallerLaunchers
 		Files.createDirectories(bin);
 		if (posix)
 		{
-			Files.writeString(launcher, substitute(POSIX_TEMPLATE, '/'), UTF_8);
+			String tmpdirLines = PASS_TMPDIR;
+			if (platform.isWindows())
+				tmpdirLines = IGNORE_TMPDIR;
+			Files.writeString(launcher, substitute(POSIX_TEMPLATE, '/').replace("@TMPDIR@", tmpdirLines), UTF_8);
 			PosixFileAttributeView attributes = Files.getFileAttributeView(launcher, PosixFileAttributeView.class);
 			if (attributes != null)
 				attributes.setPermissions(LAUNCHER_PERMISSIONS);

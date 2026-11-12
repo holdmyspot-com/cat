@@ -214,7 +214,9 @@ public final class PluginLaunchersTest
 	/**
 	 * Verifies that a POSIX launcher passes the session's {@code TMPDIR} to Java as {@code java.io.tmpdir}, including a
 	 * folder whose name holds a space, because Java on Linux ignores {@code TMPDIR} and would use a {@code /tmp} that a
-	 * sandboxed session cannot write to.
+	 * sandboxed session cannot write to. A launcher of a Windows plugin passes nothing, because Java on Windows follows
+	 * {@code TEMP} and {@code TMP}; Git Bash gives such a launcher a {@code /c/...} {@code TMPDIR}, which that Java does
+	 * not understand.
 	 */
 	@Test
 	public void launcherPassesTmpdirToJava() throws IOException, InterruptedException
@@ -223,16 +225,39 @@ public final class PluginLaunchersTest
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("session temp ")).toRealPath();
 
-			List<String> arguments = launcherJavaArguments(temporary, temporary.toString());
+			List<String> arguments = launcherJavaArguments(Platform.current(), temporary, temporary.toString());
 
-			requireThat(arguments, "arguments").contains("-Djava.io.tmpdir=" + temporary);
-			requireThat(arguments.stream().filter(argument -> argument.startsWith("-Djava.io.tmpdir=")).count(),
-				"tmpdirOptions").isEqualTo(1L);
+			List<String> tmpdirOptions = arguments.stream().filter(argument -> argument.contains("java.io.tmpdir")).
+				toList();
+			if (Platform.current().isWindows())
+				requireThat(tmpdirOptions, "tmpdirOptions").isEmpty();
+			else
+				requireThat(tmpdirOptions, "tmpdirOptions").isEqualTo(List.of("-Djava.io.tmpdir=" + temporary));
 		}
 	}
 
 	/**
-	 * Verifies that a POSIX launcher passes no {@code java.io.tmpdir} when {@code TMPDIR} is unset or empty.
+	 * Verifies that a POSIX launcher of a Windows plugin passes no {@code java.io.tmpdir} when {@code TMPDIR} is set,
+	 * whatever the host that runs it, because the plugin's Java on Windows follows {@code TEMP} and {@code TMP} and
+	 * cannot use the {@code /c/...} path that Git Bash gives {@code TMPDIR}.
+	 */
+	@Test
+	public void windowsLauncherPassesNoTmpdirToJava() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("session temp ")).toRealPath();
+
+			List<String> arguments = launcherJavaArguments(Platform.WINDOWS_X64, temporary, "/c/session temp");
+
+			requireThat(arguments.stream().filter(argument -> argument.contains("java.io.tmpdir")).toList(),
+				"tmpdirOptions").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a POSIX launcher passes no {@code java.io.tmpdir} when {@code TMPDIR} is unset or empty, on every
+	 * platform.
 	 */
 	@Test
 	public void launcherPassesNoTmpdirWithoutTmpdir() throws IOException, InterruptedException
@@ -243,7 +268,7 @@ public final class PluginLaunchersTest
 
 			for (String tmpdir : new String[]{null, ""})
 			{
-				List<String> arguments = launcherJavaArguments(temporary, tmpdir);
+				List<String> arguments = launcherJavaArguments(Platform.current(), temporary, tmpdir);
 
 				requireThat(arguments.stream().filter(argument -> argument.contains("java.io.tmpdir")).toList(),
 					"tmpdirOptions").withContext(tmpdir, "TMPDIR").isEmpty();
@@ -254,21 +279,23 @@ public final class PluginLaunchersTest
 	/**
 	 * Runs a generated POSIX launcher over a stand-in {@code java} that prints its arguments.
 	 *
-	 * @param work   an existing folder that receives the plugin
-	 * @param tmpdir the launcher's {@code TMPDIR}, or {@code null} to leave it unset
+	 * @param platform the platform that the plugin runs on, which decides the launcher's content and the stand-in's
+	 *                 name
+	 * @param work     an existing folder that receives the plugin
+	 * @param tmpdir   the launcher's {@code TMPDIR}, or {@code null} to leave it unset
 	 * @return the arguments that the launcher passed to {@code java}
 	 * @throws IOException          if the fixture cannot be created or the launcher cannot be run
 	 * @throws InterruptedException if the test is interrupted
 	 */
-	private static List<String> launcherJavaArguments(Path work, String tmpdir)
+	private static List<String> launcherJavaArguments(Platform platform, Path work, String tmpdir)
 		throws IOException, InterruptedException
 	{
 		Path plugin = Files.createTempDirectory(work, "plugin launchers ").toRealPath();
 		Path bin = plugin.resolve("bin");
-		PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, bin);
+		PluginLaunchers.write(List.of(READ_PART), platform, true, bin);
 		Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 		String javaName = "java";
-		if (Platform.current().isWindows())
+		if (platform.isWindows())
 			javaName = "java.exe";
 		Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
 			#!/bin/sh
