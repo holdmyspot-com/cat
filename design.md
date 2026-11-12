@@ -911,6 +911,27 @@ and prompt author sessions run under the harness's **role profile**: the model a
 `optimize-xhigh`, the most capable of CAT's implementation agents, binds in that harness. The contract records the role
 profile as part of the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
 
+**Reusable session slots (user rulings, 2026-11-12):** every nested session that the optimizer starts, in every role,
+runs in a **slot**: one of a fixed set of run directories, one per session that may run at once, at paths that stay the
+same for the campaign's life. A slot holds the session's isolated home and harness configuration directory and its
+project, exactly as a fresh run directory would. Before a session takes a slot, CAT empties it and builds the
+session's run in it from nothing, so no file of an earlier session remains; it does so only after every process of
+the slot's previous session has ended, and a session holds its slot exclusively until then. Sessions that the held-out
+run root holds take slots there and the others take them under the runner's run root, so the read denial between them
+is unchanged. A kept run's artifacts are copied out of its slot to the run's own kept location before the slot is
+emptied, and every record reads those copies.
+
+The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
+and project into the instructions they send before the conversation: in an E1 campaign, every Claude trial and judge
+reused only the first 11,663 tokens from the cache and wrote about 27,000 to 31,000 tokens again, about 88 million of
+the campaign's 91 million cache-write tokens, because each session's own home put a different memory path into the
+system prompt; Codex sessions likewise reused about 10,000 of 15,000 to 19,000 tokens. In a slot those paths repeat
+from one session to the next, so a session reuses what the slot's previous session of the same model cached. The
+content that the harness sends is otherwise unchanged: CAT adds no option that moves or removes parts of the system
+prompt and appends nothing to it. Paths are not part of any measurement identity, and every trial, of the baseline,
+the control and every candidate, runs in a slot, so comparisons stay fair. The slots work the same on every platform;
+they need no mount namespace or other facility of one operating system.
+
 Trial sessions run as the prompt system's users run it: a trial installs the trial plugins that the campaign
 configuration lists for the campaign's harness, and no other plugin, together with the project's own files
 ([§4.4](#44-trial-staging)). A trial runs with CAT only when the configuration lists CAT. The contract author,
@@ -3427,6 +3448,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D137 | The Claude runner classifies the user's login from key names and states the class to its sessions in `CAT_HOST_LOGIN` (user rulings, 2026-11-09: "Read the store", "Runner states it"). | A session's commands are denied reading the login file, so every trial recorded its login as `unknown`; lifting the denial for key names would break the guarantee that commands cannot read the login. | The variable carries only a class word; a caller's own value is never inherited. A macOS Keychain-only login stays `unknown`. |
 | D138 | Never add guidance to a session's instructions; a session that may request sessions learns how from CAT's lazy-loaded rules and its run's files, and the run enforces its limits by refusal (user rulings, 2026-11-09: "never eagerly inject this prompt into a session"). | Injected request instructions reached optimizer trials, which a user's own sessions never see, so tests and production ran different prompts. | A session without CAT installed has no rules telling it how to request a session; its caller passes `--install-cat` or explains it in its own prompt. Whether a session finds the launcher from the rules alone needs a live check. |
 | D139 | The contract declares the files that its target refers to in its text; CAT copies each into every trial unchanged, never optimizes it, and shows its authority warning in the proposal; undeclared references in prose stay absent (user ruling, 2026-11-10: option A). | The end-to-end E7 run's target referred to `docs/reply-rules.md`, a link to a file outside the project, which no trial held, and the status text hid why; reading prose for references would make the staged files depend on guesses. | A referenced file that the contract author does not declare is absent from trials until a revision declares it; a declared file that the campaign cannot edit limits what it can repair; contracts that declare files change identity. |
+| D140 | Every nested session of the optimizer runs in a reusable slot, a run directory at a fixed path that CAT empties and rebuilds after the previous session's processes end (user rulings, 2026-11-12). | Each session's own home and project put different paths into the system prompt, so both harnesses' prompt caches reused only the shared prefix; an E1 campaign wrote about 88 million of its 91 million cache-write tokens on first calls. Options that move parts of the system prompt would change what sessions receive, and mount namespaces work only on Linux. | A slot's reuse depends on emptying it completely; a session may wait for a slot; paths that sessions see change once, which no identity includes. |
 
 ## 14. Acceptance evidence
 

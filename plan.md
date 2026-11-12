@@ -4629,6 +4629,22 @@ selection and download it describes are unchanged.
 	Codex's shared background server is identified; a run's Claude session can append to `to-child.jsonl`.
 - **Exit:** tests, the clean build and the live checks pass on the committed revision. Closes D133 and D134.
 
+### WI-143 — Reusable session slots (user rulings, 2026-11-12)
+
+- **Problem:** every nested session of the optimizer runs in a fresh run directory with its own home, configuration
+	directory and project, whose paths reach both harnesses' system prompts, so their prompt caches reuse only the
+	shared prefix and each first call writes the rest again.
+- **Scope:** `client/common/cli/` (the optimizer's session start, run management for both run roots, kept-run
+	artifacts), both harnesses' runners where they place the home, configuration directory and project, and this design
+	and plan.
+- **Change:** as `design.md` "Reusable session slots" and D140 define it.
+- **Verification:** requirement-level tests with CAT's real classes and the contracted harness process doubles: two
+	sessions in one slot see the same home, configuration and project paths; a session finds nothing of the slot's
+	previous session; a slot is not reused before its previous session's processes end; held-out sessions take
+	held-out slots; kept-run artifacts survive the slot's reuse; concurrency never exceeds the slot count. Then the
+	clean full offline build, reporting every test taking at least one second. Then one Claude and one Codex campaign's
+	first-call cache reads compared with the E1 figures, when prompt optimization resumes.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -4767,6 +4783,7 @@ blocks only the part of a work item that it names.
 | WI-140 | WI-3 |
 | WI-141 | WI-140 |
 | WI-142 | WI-141 |
+| WI-143 | WI-142 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
