@@ -59,12 +59,16 @@ import tools.jackson.databind.json.JsonMapper;
  *   that completes, before the turn's {@code turn_completed} record, or {@code null} if the launch asks for none
  * @param continueAfterFailedTurn indicates whether the bridge keeps serving after a turn fails while the harness keeps
  *   running, because the records are a conversation's; a conversation named by {@code conversation} always does
+ * @param runId the identifier that the run takes, which is also its directory's name, or {@code null} for a newly
+ *   generated identifier. A run with an identifier of its own starts in an empty directory and fails if the directory
+ *   exists.
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
-	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn)
+	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
+	String runId)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -86,7 +90,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
-		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy");
+		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy",
+		RunnerArguments.RUN_ID_OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -151,6 +156,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			if (option.equals("--install-cat"))
 			{
 				options.installCat = true;
+				index += 1;
+				continue;
+			}
+			if (option.equals(RunnerArguments.HELD_OUT_OPTION))
+			{
+				// Only a request server or a run's broker uses the part, to pick the slot that the session runs in
 				index += 1;
 				continue;
 			}
@@ -245,6 +256,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.conversation = Path.of(value).toAbsolutePath();
 			else if (option.equals("--turn-copy"))
 				options.turnCopy = Path.of(value).toAbsolutePath();
+			else if (option.equals(RunnerArguments.RUN_ID_OPTION))
+			{
+				if (!HarnessRunManager.isRunId(value))
+					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RUN_ID_OPTION + ": " + value);
+				options.runId = value;
+			}
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -266,7 +283,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
-			options.turnCopy, options.continueAfterFailedTurn);
+			options.turnCopy, options.continueAfterFailedTurn, options.runId);
 	}
 
 	/**
@@ -595,10 +612,10 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " [--project <path>] [--run-root <path>] " +
 			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] [--receipt <path>] " +
-			"[--session-transcripts] [--install-cat] [--max-concurrency <1..16>] " +
+			"[--session-transcripts] [--install-cat] [--held-out] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file> | --conversation <folder>] " +
-			"[--capacity-wait <seconds>] [--extra-permissions <file>]";
+			"[--capacity-wait <seconds>] [--extra-permissions <file>] [--run-id <id>]";
 	}
 
 	/**
@@ -637,13 +654,14 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *   turn that completes, or {@code null} if the launch asks for none
 	 * @param continueAfterFailedTurn whether the bridge keeps serving after a turn fails while the harness keeps
 	 *   running, because the records are a conversation's
+	 * @param runId the identifier that the run takes, or {@code null} for a newly generated identifier
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
-	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions} and {@code turnCopy}
+	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy} and {@code runId}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
-	 *   {@code capacityWait} is not positive
+	 *   {@code capacityWait} is not positive, or {@code runId} is not a run identifier
 	 */
 	public HarnessRunnerOptions
 	{
@@ -675,6 +693,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(requestDepth, "requestDepth").isNotNegative();
 		if (requestDepth > 0 && sessionRequests == 0)
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
+		if (runId != null && !HarnessRunManager.isRunId(runId))
+			throw new IllegalArgumentException("runId is not a run identifier: " + runId);
 	}
 
 	/**
@@ -779,5 +799,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Path extraPermissions;
 		private Path turnCopy;
 		private boolean continueAfterFailedTurn;
+		private String runId;
 	}
 }

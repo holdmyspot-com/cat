@@ -36,7 +36,7 @@ public sealed interface LaunchRoute
 	 */
 	List<String> INTERNAL_OPTIONS = List.of(PolicyBoundFile.OPTION, RunnerArguments.CAPACITY_HELD_OPTION,
 		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION,
-		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION);
+		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION, RunnerArguments.RUN_ID_OPTION);
 
 	/**
 	 * Returns the reason for refusing a launch that a harness session runs and that names an option that only CAT's

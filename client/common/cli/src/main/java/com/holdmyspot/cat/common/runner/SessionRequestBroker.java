@@ -71,9 +71,8 @@ public final class SessionRequestBroker implements Closeable
 	private final Map<String, Process> processes = new HashMap<>();
 	private final Map<String, String> harnesses = new HashMap<>();
 	/**
-	 * The run root of each accepted request, which holds its child's run below the child's harness.
+	 * The run root of each request that holds a slot, which holds its child's run below the child's harness.
 	 */
-	private final Map<String, Path> runRoots = new HashMap<>();
 	private final Map<String, Path> childRoots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
 	/**
@@ -112,7 +111,24 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter,
 		RequestLimits limits)
 	{
-		this(new RunSite(run, options, limits), starter);
+		this(run, options, starter, limits, new ProcessHandleLiveness());
+	}
+
+	/**
+	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds. Its
+	 * children run in as many slots, in the run's directory, as the run's options allow to run at once.
+	 *
+	 * @param run      the requesting run
+	 * @param options  the requesting runner's options
+	 * @param starter  resolves and starts child runners
+	 * @param limits   the bounds that each request's archive must stay within
+	 * @param liveness checks and stops the processes that a slot's previous session left
+	 */
+	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter,
+		RequestLimits limits, HarnessProcessLiveness liveness)
+	{
+		this(new RunSite(run, options, limits, new SessionSlots(SessionRequestAccess.requestedRunsDirectory(run),
+			options.maximumConcurrency(), liveness)), starter);
 	}
 
 	/**
@@ -225,10 +241,7 @@ public final class SessionRequestBroker implements Closeable
 			accepted += 1;
 			site.accepted(json, accepted);
 			harnesses.put(id, request.harness());
-			Path runRoot = site.runRoot(id, accepted);
-			runRoots.put(id, runRoot);
-			childRoots.put(id, runRoot.resolve(request.harness()));
-			List<String> arguments = arguments(request, runRoot, directory);
+			List<String> arguments = arguments(request, directory);
 			if (request.streamed())
 				streams.put(id, new Streamed(directory));
 			if (request.keepRun())
@@ -324,20 +337,19 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Builds the runner options that every child receives from its request's private copies: its project, run root,
+	 * Builds the runner options that every child receives from its request's private copies: its project,
 	 * transcript, receipt and kept run, and the request's options, which only narrow the child or describe its own
-	 * inputs. The site adds its own options before the child starts.
+	 * inputs. The child's run root and the site's own options are added when the child starts.
 	 *
 	 * @param request   the validated request
-	 * @param runRoot   the request's run root
 	 * @param directory the response directory
 	 * @return the runner options
 	 * @throws IOException if the request's extra permissions cannot be written for the runner
 	 */
-	private List<String> arguments(RunRequest request, Path runRoot, Path directory) throws IOException
+	private List<String> arguments(RunRequest request, Path directory) throws IOException
 	{
-		List<String> arguments = new ArrayList<>(List.of("--project", request.project().toString(), "--run-root",
-			runRoot.toString(), "--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
+		List<String> arguments = new ArrayList<>(List.of("--project", request.project().toString(),
+			"--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
 			"--receipt", directory.resolve("receipt.json").toString()));
 		if (request.turnCopy())
 			arguments.addAll(List.of("--turn-copy", directory.resolve(TURN_COPY).toString()));
@@ -382,19 +394,19 @@ public final class SessionRequestBroker implements Closeable
 	private void execute(String id, RunRequest request, List<String> arguments, Path directory)
 	{
 		Process process = null;
+		SessionSlots.Slot slot = null;
 		try
 		{
-			Path runRoot;
-			synchronized (this)
-			{
-				runRoot = runRoots.get(id);
-			}
-			List<String> options = new ArrayList<>(arguments);
-			options.addAll(site.options(request, runRoot));
+			slot = site.slots().acquire(request.heldOut());
+			List<String> options = new ArrayList<>(List.of("--run-root", slot.root().toString(), "--run-id",
+				slot.runId()));
+			options.addAll(arguments);
+			options.addAll(site.options(request, slot.root()));
 			synchronized (this)
 			{
 				if (stopped || cancelled.contains(id))
 					return;
+				childRoots.put(id, slot.root().resolve(request.harness()));
 			}
 			process = starter.start(request.harness(), options, directory);
 			synchronized (this)
@@ -463,13 +475,20 @@ public final class SessionRequestBroker implements Closeable
 			{
 				processes.remove(id);
 				streams.remove(id);
+			}
+			if (slot != null)
+			{
 				try
 				{
-					site.answered(runRoots.get(id));
+					// The session has ended and its response is published, with its results copied out of the slot
+					site.slots().release(slot);
 				}
 				catch (IOException e)
 				{
-					recordFailure(e);
+					synchronized (this)
+					{
+						recordFailure(e);
+					}
 				}
 			}
 		}
@@ -899,13 +918,11 @@ public final class SessionRequestBroker implements Closeable
 		void accepted(JsonMapper json, int accepted) throws IOException;
 
 		/**
-		 * Returns the run root of an accepted request.
+		 * Returns the slots in which the site's requested sessions run, one session at a time in each.
 		 *
-		 * @param id      the request's identifier
-		 * @param ordinal the request's number among the accepted requests, starting at {@code 1}
-		 * @return the run root
+		 * @return the slots
 		 */
-		Path runRoot(String id, int ordinal);
+		SessionSlots slots();
 
 		/**
 		 * Returns the options that the site adds to an accepted request's child, on the request's own thread before
@@ -940,15 +957,6 @@ public final class SessionRequestBroker implements Closeable
 		 * @throws IOException if the archive cannot be released
 		 */
 		void taken(Path file) throws IOException;
-
-		/**
-		 * Releases what an accepted request leaves in its run root once its child has ended and the request is
-		 * answered.
-		 *
-		 * @param runRoot the request's run root
-		 * @throws IOException if what the request leaves cannot be released
-		 */
-		void answered(Path runRoot) throws IOException;
 	}
 
 	/**
@@ -959,8 +967,10 @@ public final class SessionRequestBroker implements Closeable
 	 * @param run     the requesting run
 	 * @param options the requesting runner's options
 	 * @param limits  the bounds that each request's archive must stay within
+	 * @param slots   the run roots that the run's requested sessions take
 	 */
-	private record RunSite(HarnessRun run, HarnessRunnerOptions options, RequestLimits limits) implements Site
+	private record RunSite(HarnessRun run, HarnessRunnerOptions options, RequestLimits limits, SessionSlots slots)
+		implements Site
 	{
 		/**
 		 * Creates the site of a run.
@@ -968,6 +978,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @param run     the requesting run
 		 * @param options the requesting runner's options
 		 * @param limits  the bounds that each request's archive must stay within
+		 * @param slots   the run roots that the run's requested sessions take
 		 * @throws NullPointerException if any of the arguments are null
 		 */
 		private RunSite
@@ -975,6 +986,7 @@ public final class SessionRequestBroker implements Closeable
 			requireThat(run, "run").isNotNull();
 			requireThat(options, "options").isNotNull();
 			requireThat(limits, "limits").isNotNull();
+			requireThat(slots, "slots").isNotNull();
 		}
 
 		@Override
@@ -1023,9 +1035,9 @@ public final class SessionRequestBroker implements Closeable
 		}
 
 		@Override
-		public Path runRoot(String id, int ordinal)
+		public SessionSlots slots()
 		{
-			return SessionRequestAccess.requestedRunRoot(SessionRequestAccess.requestedRunsDirectory(run), ordinal);
+			return slots;
 		}
 
 		/**
@@ -1071,12 +1083,6 @@ public final class SessionRequestBroker implements Closeable
 		public void taken(Path file)
 		{
 			// The request stays in the run, which the run's runner removes with it
-		}
-
-		@Override
-		public void answered(Path runRoot)
-		{
-			// The requested runs stay in the run, which the run's runner removes with it
 		}
 	}
 }

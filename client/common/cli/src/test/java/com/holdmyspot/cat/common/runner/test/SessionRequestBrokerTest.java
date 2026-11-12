@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
@@ -47,8 +48,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -1141,6 +1144,392 @@ public final class SessionRequestBrokerTest
 			requireThat(response.path("reason").asString(), "reason").
 				isEqualTo(SessionRequestAccess.NO_REQUESTS_REASON).contains("--session-requests").
 				contains("--request-depth");
+		}
+	}
+
+	/**
+	 * Verifies that two sessions that run one after the other in the one slot of a run build their run at the same
+	 * paths, which are in the slot of the requesting run's directory, so that the paths that the harness puts into its
+	 * instructions repeat from one session to the next.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void sessionsOfOneSlotShareRunPaths() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
+			{
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+				fixture.request("second");
+				broker.scan();
+				fixture.await("second");
+			}
+			requireThat(runs, "runs").size().isEqualTo(2);
+			SlotRun first = runs.getFirst();
+			SlotRun second = runs.getLast();
+			requireThat(second.runRoot(), "runRoot").isEqualTo(first.runRoot());
+			requireThat(second.run().id(), "runId").isEqualTo(first.run().id());
+			requireThat(second.run().directory(), "directory").isEqualTo(first.run().directory());
+			requireThat(second.run().directory().resolve("home"), "home").
+				isEqualTo(first.run().directory().resolve("home"));
+			requireThat(second.run().directory().resolve("project"), "project").
+				isEqualTo(first.run().directory().resolve("project"));
+			requireThat(first.runRoot(), "runRoot").isEqualTo(SessionRequestAccess.requestedRunsDirectory(fixture.run).
+				resolve("development").resolve("1"));
+		}
+	}
+
+	/**
+	 * Verifies that a session that takes a slot finds nothing of the previous session's files, neither in its run's
+	 * home and project nor beside them.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void sessionFindsNothingOfPreviousSession() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
+			{
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+				fixture.request("second");
+				broker.scan();
+				fixture.await("second");
+			}
+			requireThat(runs, "runs").size().isEqualTo(2);
+			requireThat(runs.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a slot is not reused while a process that its previous session's run recorded remains alive: the
+	 * run's runner asks the process to end, waits while it lives, and starts the next session once it has ended, in a
+	 * slot that holds nothing of the previous session.
+	 *
+	 * @throws IOException          if fixture or broker I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void slotWaitsForPreviousSessionsProcesses() throws IOException, InterruptedException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			ScriptedLiveness liveness = new ScriptedLiveness();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 4242), RequestLimits.IN_RUN, liveness))
+			{
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+				fixture.request("second");
+				broker.scan();
+				requireThat(liveness.awaitPolls(4), "polled").isTrue();
+				requireThat(runs, "runsWhileAlive").size().isEqualTo(1);
+				requireThat(liveness.terminations(), "terminations").isGreaterThan(0);
+				liveness.end();
+				fixture.await("second");
+			}
+			requireThat(runs, "runs").size().isEqualTo(2);
+			requireThat(runs.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a development session and a held-out session take slots of their own: the held-out session runs
+	 * in the held-out part while the development session holds the only development slot.
+	 *
+	 * @throws IOException          if fixture or broker I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void heldOutSessionTakesHeldOutSlot() throws IOException, InterruptedException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			CountDownLatch developmentStarted = new CountDownLatch(1);
+			CountDownLatch release = new CountDownLatch(1);
+			AtomicInteger calls = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
+					if (calls.getAndIncrement() == 0)
+					{
+						developmentStarted.countDown();
+						awaitStarted(release);
+					}
+					return process;
+				}))
+			{
+				fixture.request("development");
+				broker.scan();
+				awaitStarted(developmentStarted);
+				ObjectNode heldOut = fixture.document().put("held_out", true);
+				fixture.writeRequest("held-out", heldOut);
+				broker.scan();
+				requireThat(fixture.await("held-out").path("status").asString(), "heldOutStatus").
+					isEqualTo("completed");
+				release.countDown();
+				requireThat(fixture.await("development").path("status").asString(), "developmentStatus").
+					isEqualTo("completed");
+			}
+			Path slots = SessionRequestAccess.requestedRunsDirectory(fixture.run);
+			requireThat(runs, "runs").size().isEqualTo(2);
+			requireThat(runs.getFirst().runRoot(), "development").isEqualTo(slots.resolve("development").resolve("1"));
+			requireThat(runs.getLast().runRoot(), "heldOut").isEqualTo(slots.resolve("held_out").resolve("1"));
+		}
+	}
+
+	/**
+	 * Verifies that the copy of a session's kept run, which the requester reads, survives the next session's use of
+	 * the slot: each response keeps the files of its own session.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void keptRunSurvivesSlotReuse() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
+			{
+				for (String id : List.of("first", "second"))
+				{
+					fixture.writeRequest(id, fixture.document().put("keep_run", true));
+					broker.scan();
+					fixture.await(id);
+				}
+				requireThat(runs, "runs").size().isEqualTo(2);
+				// The second session has taken the slot that the first one left, and the first one's copy remains
+				requireThat(Files.readString(fixture.responses.resolve("first/run/result.txt")), "first").
+					isEqualTo("1");
+				requireThat(Files.readString(fixture.responses.resolve("second/run/result.txt")), "second").
+					isEqualTo("2");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a run never has more sessions of one part running at once than its concurrency limit, and that
+	 * it does run as many as the limit when requests wait.
+	 *
+	 * @throws IOException          if fixture or broker I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void runsNoMoreSessionsThanSlots() throws IOException, InterruptedException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "4", "--max-concurrency", "2"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			Set<Path> active = ConcurrentHashMap.newKeySet();
+			AtomicInteger running = new AtomicInteger();
+			AtomicInteger peak = new AtomicInteger();
+			CountDownLatch full = new CountDownLatch(2);
+			Semaphore gate = new Semaphore(0);
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					Path runRoot = Path.of(option(options, "--run-root"));
+					requireThat(active.add(runRoot), "slotFree").isTrue();
+					peak.accumulateAndGet(running.incrementAndGet(), Math::max);
+					full.countDown();
+					try
+					{
+						if (!gate.tryAcquire(10, TimeUnit.SECONDS))
+							throw new IOException("The test did not release the session");
+					}
+					catch (InterruptedException e)
+					{
+						Thread.currentThread().interrupt();
+						throw new IOException("Interrupted while the session held its slot", e);
+					}
+					FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
+					process.onExit().thenRun(() ->
+					{
+						running.decrementAndGet();
+						active.remove(runRoot);
+					});
+					return process;
+				}))
+			{
+				List<String> ids = List.of("a", "b", "c", "d");
+				for (String id : ids)
+					fixture.request(id);
+				broker.scan();
+				awaitStarted(full);
+				gate.release(4);
+				for (String id : ids)
+					requireThat(fixture.await(id).path("status").asString(), id).isEqualTo("completed");
+			}
+			requireThat(peak.get(), "peak").isEqualTo(2);
+			requireThat(runs, "runs").size().isEqualTo(4);
+		}
+	}
+
+	/**
+	 * Verifies that a request that waits for a free slot is answered when the broker closes, and that closing does
+	 * not wait for a slot to be released.
+	 *
+	 * @throws IOException          if fixture or broker I/O fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void closeAnswersRequestWaitingForSlot() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			CountDownLatch started = new CountDownLatch(1);
+			AtomicInteger calls = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			{
+				calls.incrementAndGet();
+				started.countDown();
+				return new FakeHarnessCli(_ ->
+				{
+				});
+			}))
+			{
+				fixture.request("running");
+				broker.scan();
+				awaitStarted(started);
+				fixture.request("waiting");
+				broker.scan();
+			}
+			requireThat(fixture.await("waiting").path("status").asString(), "waiting").isEqualTo("stopped");
+			requireThat(calls.get(), "sessionsStarted").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Starts a double of a requested runner that builds its run in the run root and under the run identifier that the
+	 * broker names, as the real runner does, and completes.
+	 *
+	 * @param fixture    the requesting run
+	 * @param fileLocks  the file locks of the requested run
+	 * @param options    the requested runner's options
+	 * @param runs       receives what the runner finds in its slot and builds there
+	 * @param harnessPid the identifier of the harness process that the run records, or {@code 0} to record none
+	 * @return the runner
+	 * @throws IOException if the run cannot be created or the runner refuses to reuse the slot
+	 */
+	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
+		List<SlotRun> runs, long harnessPid) throws IOException
+	{
+		Path runRoot = Path.of(option(options, "--run-root"));
+		List<String> entries;
+		try (Stream<Path> paths = Files.list(runRoot))
+		{
+			entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).toList();
+		}
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+			Yielding.fileReplacer()).withFixedRunId(option(options, "--run-id"));
+		HarnessRun run = manager.create("claude");
+		if (harnessPid != 0)
+			manager.recordHarnessProcess(run, harnessPid, "abc");
+		runs.add(new SlotRun(runRoot, run, entries));
+		Files.writeString(run.directory().resolve("left-behind"), "left behind");
+		Files.writeString(run.directory().resolve("result.txt"), String.valueOf(runs.size()));
+		Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
+		HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
+			transcript, List.of());
+		FakeHarnessCli process = new FakeHarnessCli(_ ->
+		{
+		});
+		process.closeOutputThenExitWhenAwaited();
+		return process;
+	}
+
+	/**
+	 * What a session finds in its slot, and the run that it builds there.
+	 *
+	 * @param runRoot       the run root that the session received
+	 * @param run           the run that it built
+	 * @param entriesAtStart the names of the entries of the run root when the session started
+	 */
+	private record SlotRun(Path runRoot, HarnessRun run, List<String> entriesAtStart)
+	{
+	}
+
+	/**
+	 * Tells which processes live, as the requesting run's runner would see them.
+	 */
+	private static final class ScriptedLiveness implements HarnessProcessLiveness
+	{
+		private final Semaphore polls = new Semaphore(0);
+		private final AtomicInteger terminations = new AtomicInteger();
+		private volatile boolean alive = true;
+
+		/**
+		 * Creates a liveness in which every recorded process lives.
+		 */
+		private ScriptedLiveness()
+		{
+		}
+
+		/**
+		 * Makes every recorded process end.
+		 */
+		private void end()
+		{
+			alive = false;
+		}
+
+		/**
+		 * Waits until the runner has checked for a process the given number of times.
+		 *
+		 * @param count the number of checks
+		 * @return {@code true} if the runner has checked that often
+		 * @throws InterruptedException if the test is interrupted
+		 */
+		private boolean awaitPolls(int count) throws InterruptedException
+		{
+			return polls.tryAcquire(count, 10, TimeUnit.SECONDS);
+		}
+
+		/**
+		 * Returns how many times the runner asked a process to end.
+		 *
+		 * @return the number of requests
+		 */
+		private int terminations()
+		{
+			return terminations.get();
+		}
+
+		@Override
+		public boolean isAlive(long pid, String start)
+		{
+			polls.release();
+			return alive;
+		}
+
+		@Override
+		public boolean terminate(long pid, String start)
+		{
+			terminations.incrementAndGet();
+			return false;
 		}
 	}
 

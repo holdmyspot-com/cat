@@ -103,7 +103,7 @@ public final class RequestArchive
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
-		"tool_output_token_limit", "keep_run", "turn_copy");
+		"tool_output_token_limit", "keep_run", "turn_copy", "held_out");
 	/**
 	 * The manifest fields that a session's request server reads and the run's runner refuses, because the run's runner
 	 * chooses them for the sessions that it starts.
@@ -1090,7 +1090,7 @@ public final class RequestArchive
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), toolOutputTokenLimit,
 			flag(value, "keep_run"), flag(value, "turn_copy"), agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
-			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"));
+			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"));
 	}
 
 	/**
@@ -1426,13 +1426,15 @@ public final class RequestArchive
 	 * @param capacityWait       the most seconds that the requested session waits for capacity, or empty for the
 	 *                           requester's choice
 	 * @param maximumConcurrency the most sessions that run at once, or empty for the requester's choice
+	 * @param heldOut            indicates whether the session belongs to the held-out part, which runs in slots of
+	 *                           its own; a request that does not say so is not held out
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
 		boolean streamed, boolean conversation, Optional<Path> workspace, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, Optional<String> instructionFiles, Optional<Integer> toolOutputTokenLimit, boolean keepRun,
 		boolean turnCopy, Optional<String> agent, int sessionRequests, int requestDepth,
-		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency)
+		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut)
 	{
 	}
 

@@ -194,6 +194,57 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
+	 * Verifies that a launch may name the identifier of the run, which a slot gives so that the run keeps its paths.
+	 */
+	@Test
+	public void parsesRunId()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--project", absolute("project"), "--run-root", absolute("slot"), "--run-id", "slot-1", "--model",
+			"test-model", "--effort", "high"}, "harness", SESSION);
+
+		requireThat(result.runId(), "runId").isEqualTo("slot-1");
+	}
+
+	/**
+	 * Verifies that a launch for a session of the held-out part is accepted by the runner, which does not need the
+	 * part itself.
+	 */
+	@Test
+	public void acceptsHeldOutLaunch()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--project", absolute("project"), "--run-root", absolute("slot"), "--held-out", "--model", "test-model",
+			"--effort", "high"}, "harness", SESSION);
+
+		requireThat(result.model(), "model").isEqualTo("test-model");
+	}
+
+	/**
+	 * Verifies that a launch that names no run identifier leaves the run's identifier to the runner.
+	 */
+	@Test
+	public void leavesRunIdToRunner()
+	{
+		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
+			"--project", absolute("project"), "--run-root", absolute("slot"), "--model", "test-model", "--effort",
+			"high"}, "harness", SESSION);
+
+		requireThat(result.runId(), "runId").isNull();
+	}
+
+	/**
+	 * Verifies that a run identifier that could name another directory is refused.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class)
+	public void refusesRunIdThatIsNotAnIdentifier()
+	{
+		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--project", absolute("project"),
+			"--run-root", absolute("slot"), "--run-id", "../escape", "--model", "test-model", "--effort", "high"},
+			"harness", SESSION);
+	}
+
+	/**
 	 * Returns launches that name an option that no runner accepts, wherever it appears in the launch.
 	 *
 	 * @return each launch

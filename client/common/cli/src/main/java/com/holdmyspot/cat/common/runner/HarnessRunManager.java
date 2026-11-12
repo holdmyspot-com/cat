@@ -24,6 +24,7 @@ import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -133,6 +134,10 @@ public final class HarnessRunManager
 	private final Clock clock;
 	private final FileReplacer replacer;
 	private final HarnessProcessLiveness processLiveness;
+	/**
+	 * The identifier of every run that {@link #create(String)} makes, or {@code null} to generate one for each run.
+	 */
+	private final String fixedRunId;
 
 	/**
 	 * Creates a manager rooted at an absolute directory.
@@ -163,6 +168,24 @@ public final class HarnessRunManager
 	HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness)
 	{
+		this(fileLocks, root, clock, replacer, processLiveness, null);
+	}
+
+	/**
+	 * Creates a manager whose runs may all have one identifier.
+	 *
+	 * @param fileLocks the process-owned lock coordinator
+	 * @param root the absolute owned-run root
+	 * @param clock the clock used for generated identifiers
+	 * @param replacer replaces the runs' manifests and output files
+	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
+	 * @param fixedRunId the identifier of every run that the manager creates, or {@code null} to generate one for each
+	 * @throws NullPointerException if any argument other than {@code fixedRunId} is null
+	 * @throws IllegalArgumentException if {@code root} is relative, or {@code fixedRunId} is not a run identifier
+	 */
+	private HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
+		HarnessProcessLiveness processLiveness, String fixedRunId)
+	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(root, "root").isNotNull();
 		requireThat(clock, "clock").isNotNull();
@@ -170,11 +193,14 @@ public final class HarnessRunManager
 		requireThat(processLiveness, "processLiveness").isNotNull();
 		if (!root.isAbsolute())
 			throw new IllegalArgumentException("root must be absolute");
+		if (fixedRunId != null && !RUN_ID.matcher(fixedRunId).matches())
+			throw new IllegalArgumentException("fixedRunId must be a run identifier: " + fixedRunId);
 		this.fileLocks = fileLocks;
 		this.root = root.normalize();
 		this.clock = clock;
 		this.replacer = replacer;
 		this.processLiveness = processLiveness;
+		this.fixedRunId = fixedRunId;
 	}
 
 	/**
@@ -185,6 +211,64 @@ public final class HarnessRunManager
 	public Path root()
 	{
 		return root;
+	}
+
+	/**
+	 * Returns a manager over the same root whose {@link #create(String) created} runs all have one identifier, so that
+	 * each run lives at the same path as the one before it. The caller must empty the run's directory before every
+	 * run, and must keep it from running two runs at once.
+	 *
+	 * @param runId the identifier of every run that the returned manager creates
+	 * @return the manager
+	 * @throws NullPointerException     if {@code runId} is null
+	 * @throws IllegalArgumentException if {@code runId} is not a run identifier, which is two groups of lowercase
+	 *                                  letters and digits joined by a hyphen
+	 */
+	public HarnessRunManager withFixedRunId(String runId)
+	{
+		requireThat(runId, "runId").isNotNull();
+		return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness, runId);
+	}
+
+	/**
+	 * Indicates whether text is the identifier of a run, which is also the name of its directory.
+	 *
+	 * @param text the text
+	 * @return {@code true} if the text is two groups of lowercase letters and digits joined by a hyphen
+	 * @throws NullPointerException if {@code text} is null
+	 */
+	public static boolean isRunId(String text)
+	{
+		requireThat(text, "text").isNotNull();
+		return RUN_ID.matcher(text).matches();
+	}
+
+	/**
+	 * Gives the copy of a finished run the identifier under which it is kept, which is the name of its directory, by
+	 * rewriting the identifier in the copy's manifest. A run that ran in a slot has the slot's identifier, which every
+	 * run of the slot shares, so the copies that are kept each take an identifier of their own.
+	 *
+	 * @param directory the directory of the copy
+	 * @param id        the identifier under which the copy is kept
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code id} is not a run identifier
+	 * @throws IOException              if the copy's manifest is malformed or cannot be rewritten
+	 */
+	public static void renameCopy(Path directory, String id) throws IOException
+	{
+		requireThat(directory, "directory").isNotNull();
+		requireThat(id, "id").matches(RUN_ID);
+		Path manifest = directory.resolve("run.json");
+		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
+			return;
+		String content = Files.readString(manifest);
+		Matcher matcher = MANIFEST.matcher(content);
+		if (!matcher.matches())
+			throw new IOException("Run manifest is malformed or unsupported: " + manifest);
+		Path replacement = Files.createTempFile(directory, "run-", ".json");
+		Files.writeString(replacement, content.substring(0, matcher.start("id")) + id +
+			content.substring(matcher.end("id")));
+		Files.move(replacement, manifest, REPLACE_EXISTING);
 	}
 
 	/**
@@ -203,20 +287,36 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Creates one owned run directory.
+	 * Creates one owned run directory, named by the manager's fixed run identifier if it has one.
 	 *
 	 * @param harness the harness name
 	 * @return the created run
-	 * @throws IOException if the directory cannot be created
+	 * @throws IOException if the directory cannot be created, or a run with the fixed identifier exists already
 	 */
 	public HarnessRun create(String harness) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
-		String id = Long.toUnsignedString(clock.millis(), 36) + "-" + Long.toUnsignedString(System.nanoTime(), 36);
+		String id = fixedRunId;
+		if (id == null)
+			id = newRunId(clock);
 		Path directory = root.resolve(harness).resolve(id).normalize();
 		if (!directory.startsWith(root))
 			throw new IOException("Run directory escapes the configured root");
-		Files.createDirectories(directory);
+		if (fixedRunId != null)
+		{
+			// A run that reuses a path must start from nothing, so that it sees no file of the run before it
+			Files.createDirectories(directory.getParent());
+			try
+			{
+				Files.createDirectory(directory);
+			}
+			catch (FileAlreadyExistsException e)
+			{
+				throw new IOException("The run directory is not empty, so a run cannot reuse it: " + directory, e);
+			}
+		}
+		else
+			Files.createDirectories(directory);
 		setOwnerOnlyDirectoryPermissions(directory);
 		Files.createDirectories(directory.resolve("project"));
 		Files.createDirectories(directory.resolve("home"));
@@ -230,6 +330,19 @@ public final class HarnessRunManager
 			clock.instant(),
 			"", "", "", "", null, 0, null, null, ""), directory);
 		return run;
+	}
+
+	/**
+	 * Generates the identifier of a new run, which is unique across runs started at different times.
+	 *
+	 * @param clock the clock that gives the time
+	 * @return the identifier
+	 * @throws NullPointerException if {@code clock} is null
+	 */
+	public static String newRunId(Clock clock)
+	{
+		requireThat(clock, "clock").isNotNull();
+		return Long.toUnsignedString(clock.millis(), 36) + "-" + Long.toUnsignedString(System.nanoTime(), 36);
 	}
 
 	/**

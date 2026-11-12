@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.BufferedReader;
 import java.io.ByteArrayOutputStream;
@@ -15,6 +16,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -204,7 +206,7 @@ public final class SessionRequestForwarder
 			Path runRoot = launch.runRoot();
 			if (runRoot == null)
 				runRoot = defaultRunRoot;
-			Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness));
+			Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "");
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 			if (incomplete.isPresent() && status.equals("completed"))
 			{
@@ -224,21 +226,30 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Copies the kept run that a response names into a harness's runs.
+	 * Copies the kept run that a response names into a harness's runs. The session ran in a slot, which every session
+	 * of the slot shares, so the copy gets an identifier of its own, which no other kept run has.
 	 *
 	 * @param response the response
 	 * @param runs     the directory that holds the harness's runs in the launch's run root
+	 * @param keptId   the identifier of the kept run that the command has been told of, or an empty string to give it
+	 *                 a new one
 	 * @return the reason why the copy is incomplete, or empty if the response names no kept run or the copy is
 	 *   complete
 	 * @throws IOException if the run cannot be copied
 	 */
-	private static Optional<String> copyKeptRun(JsonNode response, Path runs) throws IOException
+	private static Optional<String> copyKeptRun(JsonNode response, Path runs, String keptId)
+		throws IOException
 	{
 		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
 		String runId = response.path("child_run_id").asString("");
 		if (run.isEmpty() || !RecordCopy.isRunId(runId))
 			return Optional.empty();
-		return KeptRunCopy.copy(Path.of(run), runs.resolve(runId)).incomplete();
+		String kept = keptId;
+		if (kept.isEmpty())
+			kept = HarnessRunManager.newRunId(Clock.systemUTC());
+		Optional<String> incomplete = KeptRunCopy.copy(Path.of(run), runs.resolve(kept)).incomplete();
+		HarnessRunManager.renameCopy(runs.resolve(kept), kept);
+		return incomplete;
 	}
 
 	/**
@@ -332,6 +343,7 @@ public final class SessionRequestForwarder
 			request.withArray("plugins").insert(0, launch.artifact().toString());
 		}
 		JsonNode response;
+		String keptId;
 		Path responses = responses(requests, id);
 		try (RecordCopy copy = new RecordCopy(json, output, launch.runRoot().resolve(harness),
 			     responses.resolve(SessionRequestBroker.TURN_COPY));
@@ -349,12 +361,13 @@ public final class SessionRequestForwarder
 			response = await(json, responses, sending, copy);
 			// The run's copy replaces the copies of the turns, which the copy of the run would otherwise collide with
 			copy.deleteTurnCopies();
+			keptId = copy.keptRunId();
 		}
 		String status = response.path("status").asString("");
 		String reason = response.path("reason").asString("");
 		boolean kept = !response.path(SessionRequestBroker.RUN_COPY).asString("").isEmpty() &&
 			RecordCopy.isRunId(response.path("child_run_id").asString(""));
-		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness));
+		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness), keptId);
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		if (incomplete.isPresent() && status.equals("completed"))
@@ -427,6 +440,11 @@ public final class SessionRequestForwarder
 				{
 					keepRun = true;
 					request.put("keep_run", true);
+					continue;
+				}
+				case RunnerArguments.HELD_OUT_OPTION ->
+				{
+					request.put("held_out", true);
 					continue;
 				}
 				case "--install-cat" ->
@@ -800,6 +818,16 @@ public final class SessionRequestForwarder
 		}
 
 		/**
+		 * Returns the identifier under which the command knows the session's kept run.
+		 *
+		 * @return the identifier, or an empty string until the session reports its start
+		 */
+		String keptRunId()
+		{
+			return runId;
+		}
+
+		/**
 		 * Indicates whether a text can name a run's directory.
 		 *
 		 * @param runId the text
@@ -829,7 +857,10 @@ public final class SessionRequestForwarder
 					String id = record.path("run_id").asString("");
 					if (type.equals("started") && isRunId(id))
 					{
-						runId = id;
+						// Every session of a slot runs under the slot's identifier, but each kept run needs its own
+						runId = HarnessRunManager.newRunId(Clock.systemUTC());
+						((ObjectNode) record).put("run_id", runId);
+						line = json.writeValueAsString(record);
 						Files.createDirectories(runs.resolve(runId).resolve("artifacts"));
 					}
 					else if (type.equals("turn_completed") && !runId.isEmpty() && Files.isDirectory(turnCopy))

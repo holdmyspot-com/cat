@@ -70,8 +70,8 @@ public final class RequestServer
 	 */
 	private static final String RESPONSES = "responses";
 	/**
-	 * The directory, in the session's CAT session directory, that holds the runs of the sessions that the server
-	 * starts until it has answered their requests.
+	 * The directory, in the session's CAT session directory, that holds the slots in which the sessions that the
+	 * server starts run, each from its start until the server has answered its request.
 	 */
 	private static final String RUNS = "request-runs";
 	/**
@@ -589,8 +589,9 @@ public final class RequestServer
 	{
 		Path requests = directory(directory.directory().resolve(REQUESTS));
 		Path responses = directory(directory.directory().resolve(RESPONSES));
-		Path runs = directory.directory().resolve(RUNS);
-		ServerSite site = new ServerSite(requests, responses, runs, bound, session.askingThread());
+		SessionSlots slots = new SessionSlots(directory.directory().resolve(RUNS), HarnessCapacity.MAXIMUM_CONCURRENCY,
+			new ProcessHandleLiveness());
+		ServerSite site = new ServerSite(requests, responses, slots, bound, session.askingThread());
 		try (SessionRequestBroker broker = new SessionRequestBroker(site, host.starter()))
 		{
 			errors.println("The request server serves this " + productName(host.harness()) +
@@ -646,11 +647,11 @@ public final class RequestServer
 	 *
 	 * @param requests     the directory into which the session's commands write their requests
 	 * @param responses    the directory that holds one response directory per request
-	 * @param runs         the directory that holds the run root of each accepted request
+	 * @param slots        the run roots that the requested sessions take, which the server empties for each session
 	 * @param bound        bounds each requested session by the session's policy
 	 * @param askingThread the thread of the session that runs the server, or empty for its main thread
 	 */
-	private record ServerSite(Path requests, Path responses, Path runs, ChildBound bound,
+	private record ServerSite(Path requests, Path responses, SessionSlots slots, ChildBound bound,
 		Optional<String> askingThread) implements SessionRequestBroker.Site
 	{
 		@Override
@@ -680,9 +681,9 @@ public final class RequestServer
 		}
 
 		@Override
-		public Path runRoot(String id, int ordinal)
+		public SessionSlots slots()
 		{
-			return runs.resolve(id);
+			return slots;
 		}
 
 		/**
@@ -733,13 +734,6 @@ public final class RequestServer
 			// The response directory marks the request as taken until the requester removes it with its results, so a
 			// request that stayed would be taken again once its response is gone
 			Files.deleteIfExists(file);
-		}
-
-		@Override
-		public void answered(Path runRoot) throws IOException
-		{
-			// The run's home holds a copy of the user's login, and the requester has its kept run's copy
-			TemporaryDirectories.deleteRecursively(runRoot);
 		}
 	}
 }

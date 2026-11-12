@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import java.io.IOException;
@@ -611,6 +612,8 @@ final class Session implements SessionHandle
 		// Only a trial's transcripts are read, to learn what its agents received
 		if (request.role() == SessionRole.TRIAL)
 			arguments.add("--session-transcripts");
+		if (request.part() == Part.HELD_OUT)
+			arguments.add(RunnerArguments.HELD_OUT_OPTION);
 		TrialProfile profile = request.profile();
 		arguments.addAll(List.of("--model", profile.model(), "--effort", profile.effort()));
 		if (profile.toolOutputTokenLimit() > 0)

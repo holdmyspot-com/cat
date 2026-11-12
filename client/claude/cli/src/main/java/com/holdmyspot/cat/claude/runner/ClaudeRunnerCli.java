@@ -468,14 +468,30 @@ public final class ClaudeRunnerCli
 				options.extraPermissions());
 			ClaudeRunner.requireLogin(process, environment, Platform.current());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			HarnessRunManager manager = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
+			HarnessRunManager opened = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
+			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
+			HarnessRunManager manager = inSlot(opened, options.runId());
 			HarnessCapacity capacity = null;
 			if (!options.capacityHeld())
 				capacity = capacityForMaximum.apply(options.maximumConcurrency());
 			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, bound, extraPermissions, manager,
 				input, output, environment, replacer, capacity);
 		}
+	}
+
+	/**
+	 * Gives a run manager the identifier of the slot that the run is in, if it is in one.
+	 *
+	 * @param manager the manager of the run root
+	 * @param runId   the slot's run identifier, or {@code null} if the run is not in a slot
+	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
+	 */
+	private static HarnessRunManager inSlot(HarnessRunManager manager, String runId)
+	{
+		if (runId == null)
+			return manager;
+		return manager.withFixedRunId(runId);
 	}
 
 	/**

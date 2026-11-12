@@ -41,10 +41,12 @@ import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -425,57 +427,14 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			FileLocks fileLocks = new FileLocks();
-			fixture.child = arguments ->
-			{
-				HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(arguments, "--run-root")),
-					Clock.systemUTC(), Yielding.fileReplacer()).create("claude");
-				Files.writeString(run.directory().resolve("result.txt"), "result");
-				Path output = Path.of(option(arguments, "--output"));
-				Files.writeString(output, fixture.json.createObjectNode().put("type", "started").
-					put("run_id", run.id()) + "\n");
-				AtomicReference<FakeHarnessCli> process = new AtomicReference<>();
-				process.set(new FakeHarnessCli(line ->
-				{
-					try
-					{
-						if (fixture.json.readTree(line).path("type").asString().equals("complete"))
-						{
-							Files.writeString(output, fixture.json.createObjectNode().put("type", "completed").
-								put("run_id", run.id()) + "\n", StandardOpenOption.APPEND);
-							HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(),
-								Path.of(option(arguments, "--receipt")), run, output, List.of());
-							process.get().exit();
-						}
-					}
-					catch (IOException e)
-					{
-						throw new UncheckedIOException(e);
-					}
-				}));
-				return process.get();
-			};
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
-			Path ownArtifact = Files.createDirectories(fixture.root.resolve("artifact"));
 			try (Fixture.Running server = fixture.start())
 			{
-				StringWriter output = new StringWriter();
-				long deadline = System.nanoTime() + WAIT.toNanos();
-				SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "The prompt optimizer", "claude",
-					ownArtifact, List.of("--project", fixture.project.toString(), "--run-root", runRoot.toString(),
-						"--keep-run", "--model", "haiku", "--effort", "low"),
-					new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"), output,
-					server.requests(), () ->
-					{
-						if (System.nanoTime() > deadline)
-							throw new IOException("The served session did not end");
-						Thread.yield();
-					});
-
-				String runId = fixture.json.readTree(output.toString().lines().findFirst().orElseThrow()).
-					path("run_id").asString();
+				String runId = serve(fixture, server, runRoot);
 				Path kept = runRoot.resolve("claude").resolve(runId);
-				requireThat(Files.readString(kept.resolve("result.txt")), "result").isEqualTo("result");
+				requireThat(Files.readString(kept.resolve("result.txt")), "result").isEqualTo("1");
 				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
 				{
 					requireThat(responses.toList(), "responses").isEmpty();
@@ -485,10 +444,220 @@ public final class RequestServerTest
 					requireThat(requests.filter(path -> path.toString().endsWith(".tar")).toList(),
 						"requests").isEmpty();
 				}
-				requireThat(awaitAbsent(fixture.sessionDirectory().resolve("request-runs").resolve(runId)),
-					"serverRunRemains").isFalse();
+				requireThat(awaitAbsent(served.getFirst().runRoot()), "serverRunRemains").isFalse();
 			}
 		}
+	}
+
+	/**
+	 * Verifies that two sessions that the server serves one after the other build their run at the same paths, in
+	 * the one slot of the session's server, so that the paths that the harness puts into its instructions repeat from
+	 * one session to the next.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void servedSessionsShareRunPaths() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
+			Path runRoot = fixture.root.resolve("optimizer-runs");
+			try (Fixture.Running server = fixture.start())
+			{
+				serve(fixture, server, runRoot);
+				serve(fixture, server, runRoot);
+			}
+			requireThat(served, "served").size().isEqualTo(2);
+			ServedRun first = served.getFirst();
+			ServedRun second = served.getLast();
+			requireThat(second.runRoot(), "runRoot").isEqualTo(first.runRoot());
+			requireThat(second.run().directory(), "directory").isEqualTo(first.run().directory());
+			requireThat(second.run().directory().resolve("home"), "home").
+				isEqualTo(first.run().directory().resolve("home"));
+			requireThat(second.run().directory().resolve("project"), "project").
+				isEqualTo(first.run().directory().resolve("project"));
+			requireThat(first.runRoot(), "runRoot").isEqualTo(fixture.sessionDirectory().resolve("request-runs").
+				resolve("development").resolve("1"));
+		}
+	}
+
+	/**
+	 * Verifies that a session that the server serves finds nothing of the previous session's files in its slot.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void servedSessionFindsEmptySlot() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
+			Path runRoot = fixture.root.resolve("optimizer-runs");
+			try (Fixture.Running server = fixture.start())
+			{
+				serve(fixture, server, runRoot);
+				serve(fixture, server, runRoot);
+			}
+			requireThat(served, "served").size().isEqualTo(2);
+			requireThat(served.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a request that names the held-out part runs in a slot of the held-out part, and one that does not
+	 * runs in a slot of the development part.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void servedHeldOutSessionTakesHeldOutSlot() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
+			Path runRoot = fixture.root.resolve("optimizer-runs");
+			try (Fixture.Running server = fixture.start())
+			{
+				serve(fixture, server, runRoot, "--held-out");
+				serve(fixture, server, runRoot);
+			}
+			Path slots = fixture.sessionDirectory().resolve("request-runs");
+			requireThat(served, "served").size().isEqualTo(2);
+			requireThat(served.getFirst().runRoot(), "heldOut").isEqualTo(slots.resolve("held_out").resolve("1"));
+			requireThat(served.getLast().runRoot(), "development").
+				isEqualTo(slots.resolve("development").resolve("1"));
+		}
+	}
+
+	/**
+	 * Verifies that the kept run that the command receives survives the next session's use of the slot: each session's
+	 * kept run is in the command's run root under an identifier of its own, with the files of its own session.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void keptRunsOfServedSessionsSurviveSlotReuse() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
+			Path runRoot = fixture.root.resolve("optimizer-runs");
+			try (Fixture.Running server = fixture.start())
+			{
+				String first = serve(fixture, server, runRoot);
+				String second = serve(fixture, server, runRoot);
+				requireThat(second, "secondRunId").isNotEqualTo(first);
+				requireThat(Files.readString(runRoot.resolve("claude").resolve(first).resolve("result.txt")),
+					"first").isEqualTo("1");
+				requireThat(Files.readString(runRoot.resolve("claude").resolve(second).resolve("result.txt")),
+					"second").isEqualTo("2");
+				requireThat(Files.readString(runRoot.resolve("claude").resolve(first).resolve("run.json")),
+					"manifest").contains("\"id\": \"" + first + "\"");
+			}
+		}
+	}
+
+	/**
+	 * Serves one session of a command through the server, as the prompt optimizer does.
+	 *
+	 * @param fixture the session that runs the server
+	 * @param server  the running server
+	 * @param runRoot the command's run root
+	 * @param extra   further options of the launch
+	 * @return the identifier of the session's kept run, as the command's records name it
+	 * @throws IOException if the session does not complete
+	 */
+	private static String serve(Fixture fixture, Fixture.Running server, Path runRoot, String... extra)
+		throws IOException
+	{
+		Path ownArtifact = Files.createDirectories(fixture.root.resolve("artifact"));
+		StringWriter output = new StringWriter();
+		long deadline = System.nanoTime() + WAIT.toNanos();
+		List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString(), "--run-root",
+			runRoot.toString(), "--keep-run", "--model", "haiku", "--effort", "low"));
+		arguments.addAll(List.of(extra));
+		SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "The prompt optimizer", "claude",
+			ownArtifact, arguments,
+			new StringReader("{\"type\":\"turn\",\"prompt\":\"hello\"}\n{\"type\":\"complete\"}\n"), output,
+			server.requests(), () ->
+			{
+				if (System.nanoTime() > deadline)
+					throw new IOException("The served session did not end");
+				Thread.yield();
+			});
+		return fixture.json.readTree(output.toString().lines().findFirst().orElseThrow()).path("run_id").asString();
+	}
+
+	/**
+	 * Returns a double of a requested runner that builds its run in the run root and under the run identifier that the
+	 * server names, as the real runner does, and completes the session when its records end.
+	 *
+	 * @param fixture the session that runs the server
+	 * @param served  receives what each session finds in its slot and builds there
+	 * @return the double
+	 */
+	private static Child slotChild(Fixture fixture, List<ServedRun> served)
+	{
+		FileLocks fileLocks = new FileLocks();
+		return arguments ->
+		{
+			Path runRoot = Path.of(option(arguments, "--run-root"));
+			List<String> entries;
+			try (Stream<Path> paths = Files.list(runRoot))
+			{
+				// The server prepares the session's policy in the slot, in entries whose names start with a dot
+				entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).
+					toList();
+			}
+			HarnessRun run = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(), Yielding.fileReplacer()).
+				withFixedRunId(option(arguments, "--run-id")).create("claude");
+			served.add(new ServedRun(runRoot, run, entries));
+			Files.writeString(run.directory().resolve("result.txt"), String.valueOf(served.size()));
+			Files.writeString(run.directory().resolve("left-behind"), "left behind");
+			Path output = Path.of(option(arguments, "--output"));
+			Files.writeString(output, fixture.json.createObjectNode().put("type", "started").
+				put("run_id", run.id()) + "\n");
+			AtomicReference<FakeHarnessCli> process = new AtomicReference<>();
+			process.set(new FakeHarnessCli(line ->
+			{
+				try
+				{
+					if (fixture.json.readTree(line).path("type").asString().equals("complete"))
+					{
+						Files.writeString(output, fixture.json.createObjectNode().put("type", "completed").
+							put("run_id", run.id()) + "\n", StandardOpenOption.APPEND);
+						HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(),
+							Path.of(option(arguments, "--receipt")), run, output, List.of());
+						process.get().exit();
+					}
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			}));
+			return process.get();
+		};
+	}
+
+	/**
+	 * What a served session finds in its slot, and the run that it builds there.
+	 *
+	 * @param runRoot        the run root that the session received
+	 * @param run            the run that it built
+	 * @param entriesAtStart the names of the entries of the run root when the session started
+	 */
+	private record ServedRun(Path runRoot, HarnessRun run, List<String> entriesAtStart)
+	{
 	}
 
 	/**

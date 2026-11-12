@@ -9,6 +9,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import static java.time.ZoneOffset.UTC;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -117,6 +118,81 @@ public final class HarnessRunManagerTest
 				requireThat(Files.getPosixFilePermissions(run.directory()), "permissions").isEqualTo(
 					Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE));
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a manager with a fixed run identifier creates each run at the same path, once the directory of the
+	 * run before it is gone, so that the paths of the run's home and project repeat.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void fixedRunIdRepeatsRunPaths() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("slot-1");
+			HarnessRun first = manager.create("harness");
+			TemporaryDirectories.deleteRecursively(first.directory());
+			HarnessRun second = manager.create("harness");
+			requireThat(second.id(), "id").isEqualTo("slot-1");
+			requireThat(second.directory(), "directory").isEqualTo(first.directory()).
+				isEqualTo(root.resolve("harness").resolve("slot-1"));
+			requireThat(Files.isDirectory(second.directory().resolve("home")), "home").isTrue();
+			requireThat(Files.isDirectory(second.directory().resolve("project")), "project").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a manager with a fixed run identifier refuses to create a run where a run's files remain, so that
+	 * no run sees the files of the one before it.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void fixedRunIdRefusesDirectoryThatRemains() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("slot-1");
+			HarnessRun first = manager.create("harness");
+			Files.writeString(first.directory().resolve("home/login"), "left behind");
+			expectThrows(IOException.class, () -> manager.create("harness"));
+			requireThat(Files.readString(first.directory().resolve("home/login")), "login").isEqualTo("left behind");
+		}
+	}
+
+	/**
+	 * Verifies that the copy of a run that ran under a fixed identifier can be kept under another, so that the run's
+	 * manifest identifies the directory that holds it.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void renamesCopyOfFixedIdRun() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.withFixedRunId("slot-1").create("harness");
+			Path kept = root.resolve("kept").resolve("abc-def");
+			Files.createDirectories(kept);
+			Files.copy(run.directory().resolve("run.json"), kept.resolve("run.json"));
+
+			HarnessRunManager.renameCopy(kept, "abc-def");
+
+			manager.markCompleted(new HarnessRun("harness", "abc-def", kept));
+			requireThat(Files.readString(kept.resolve("run.json")), "manifest").contains("\"id\": \"abc-def\"");
 		}
 	}
 
