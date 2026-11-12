@@ -2968,10 +2968,15 @@ when the previous one has ended; `{"interrupt": true}` interrupts the turn in pr
 conversation. A line that is not one of these is answered in `<folder>/from-child.jsonl` with
 `{"refused": "<line>", "reason": "<reason>"}` and changes nothing. The folder may already hold `to-child.jsonl` when the
 launcher starts, so the asking session can write its first turn before it starts the command; any other file in it is
-refused before the child starts. The launcher writes the child's output to `<folder>/from-child.jsonl` as it arrives:
-the child's reply and tool events of each turn, then a line `{"turn_end": <n>, "status": "<status>"}` when turn `n`
-ends, where the status is `completed`, `interrupted` or `failed`, so the asking session waits for that line before it
-reads the reply. An interrupt ends only the turn in progress, with the status `interrupted`, in both harnesses, and the
+refused before the child starts. The launcher writes the child's output as it arrives. The harness's tool and stream
+events go to `<folder>/events.jsonl`; `<folder>/from-child.jsonl` holds only the turn-level records: each turn's reply
+(`turn_completed` or `turn_failed`), then a line `{"turn_end": <n>, "status": "<status>"}` when turn `n` ends, where
+the status is `completed`, `interrupted` or `failed`, and the keep-alive, refusal, start, steer, interrupt, transcript
+and end records. Every event of turn `n` is in `events.jsonl` before its `turn_end` line, so the asking session waits
+for that line before it reads the reply (user request, 2026-11-11: a driving session reads tens of records instead of
+tens of thousands). `request-session --reply <folder> --turn <n>` prints turn `n`'s reply or failure reason and exits
+0 when the turn completed, 1 when it failed or the conversation ended without it, and 75 while it has not ended;
+`--status-only` omits the reply, so it serves as `wait-until`'s check without putting the reply in the wait's output. An interrupt ends only the turn in progress, with the status `interrupted`, in both harnesses, and the
 conversation continues; Claude Code reports an interrupted turn as failed, and the launcher reports it as interrupted and
 keeps the child. A turn that fails while the harness keeps running, such as one that a provider error or a usage
 limit rejects, ends only that turn, with the status `failed`: the `turn_failed` record before the `turn_end` line names
