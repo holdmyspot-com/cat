@@ -31,7 +31,8 @@ separate session, including from inside a CAT run, lazy load `../harness-runners
 Before installing, updating or uninstalling CAT or any plugin, lazy load `../install-running-work.md`.
 
 When a task needs a state change that something else produces, such as a hosted build finishing, a background process
-exiting or a subagent returning, lazy load `../external-waits.md` before you check that state or continue other work.
+exiting, a subagent returning, another session's turn ending, or a file or log gaining an expected line, lazy load
+`../external-waits.md` before you check that state, poll it, sleep or continue other work.
 
 When defining, changing, executing, retrying, or resuming a workflow with progress handoff, retry, or resumption, or
 before dispatching independent work units to run concurrently, lazy load `../monotonic-progress.md`.

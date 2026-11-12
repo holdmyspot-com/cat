@@ -439,6 +439,8 @@ public final class BundledRuleAudienceTest
 			Path include = plugin.resolve("rules/include/common");
 
 			requireThat(oneLine(Files.readString(include.resolve("rule-routing/workflows.md"))), "workflowIndex").
+				contains("another session's turn ending").
+				contains("poll it, sleep").
 				contains("lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/external-waits.md`");
 			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
 				"testingIndex").
