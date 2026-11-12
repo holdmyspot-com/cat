@@ -23,8 +23,8 @@ import java.util.Set;
  * @param deleteData    true if uninstall also deletes the harness's plugin data
  * @param createProfile true if the user allows install to create a permission profile for CAT, when the harness
  *                      configuration needs one
- * @param json          true if the user asks for the machine-readable JSON result even where the installer would
- *                      describe the result to a person
+ * @param json          true if the user asks for the machine-readable JSON result instead of the report that the
+ *                      installer otherwise prints for a person
  * @param verbose       true if status also lists each permission and sandbox entry that install recorded, as the
  *                      harness configuration holds it
  */
@@ -42,8 +42,11 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	/**
 	 * Parses the complete argument vector, refusing unknown, repeated, reordered or operation-inapplicable inputs.
 	 * <p>
-	 * {@code --json} comes before the operation as well and applies to every operation: it asks for the
-	 * machine-readable result where the installer would describe the result to a person.
+	 * {@code --json} applies to every operation: it asks for the machine-readable result instead of the report to a
+	 * person that the installer prints otherwise. It comes before the operation or as the last argument of the command,
+	 * after the operation and its arguments, but not both. A program that parses the result gives it last, so that
+	 * the command still starts with the operation, as the commands that Claude Code and Codex allow an agent to run
+	 * without asking do.
 	 * <p>
 	 * The options that give the user's permission or redirect the installation, {@code --home} and
 	 * {@code --create-profile}, come before the operation. Claude Code and Codex allow an agent to run the commands that
@@ -94,8 +97,16 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 				default -> throw usage();
 			}
 		}
-		String[] command = Arrays.copyOfRange(args, next, args.length);
-		Arguments parsed = parseOperation(command, harnesses, home, createProfile);
+		int end = args.length;
+		if (end > next && args[end - 1].equals("--json"))
+		{
+			if (json)
+				throw usage();
+			json = true;
+			--end;
+		}
+		String[] command = Arrays.copyOfRange(args, next, end);
+		Arguments parsed = parseOperation(command, harnesses, home, createProfile, json);
 		if ((home != null || createProfile) && parsed.operation() != Operation.INSTALL)
 			throw usage();
 		return new Arguments(parsed.operation(), parsed.harness(), parsed.tag(), parsed.home(), parsed.deleteData(),
@@ -109,10 +120,12 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 * @param harnesses     identifiers of the installed activation providers
 	 * @param home          the harness home that the options before the operation name, or null
 	 * @param createProfile true if the options before the operation give the permission to create a profile
+	 * @param json          true if the command asks for {@code --json}
 	 * @return the validated operation
 	 * @throws IllegalArgumentException if the arguments do not match the installer grammar
 	 */
-	private static Arguments parseOperation(String[] args, Set<String> harnesses, Path home, boolean createProfile)
+	private static Arguments parseOperation(String[] args, Set<String> harnesses, Path home, boolean createProfile,
+		boolean json)
 	{
 		if (args.length == 0)
 			throw usage();
@@ -136,7 +149,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 		String harness = args[2];
 		return switch (operation)
 		{
-			case INSTALL -> parseInstall(args, harness, home, createProfile, harnesses);
+			case INSTALL -> parseInstall(args, harness, home, createProfile, json, harnesses);
 			case UNINSTALL ->
 			{
 				if (args.length > 4 || (args.length == 4 && !args[3].equals("--delete-data")))
@@ -159,6 +172,7 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 * @param harness       the validated harness identifier
 	 * @param home          the harness home that the options before the operation name, or null
 	 * @param createProfile true if the options before the operation give the permission to create a profile
+	 * @param json          true if the command asks for {@code --json}
 	 * @param harnesses     identifiers of the installed activation providers
 	 * @return the install operation
 	 * @throws IllegalArgumentException if the arguments after the harness are not {@code [vX.Y[.Z]|latest]}; when
@@ -166,11 +180,11 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 *                                  command with them before the operation
 	 */
 	private static Arguments parseInstall(String[] args, String harness, Path home, boolean createProfile,
-		Set<String> harnesses)
+		boolean json, Set<String> harnesses)
 	{
 		List<String> options = Arrays.asList(args).subList(3, args.length);
 		if (options.contains("--home") || options.contains("--create-profile"))
-			throw lateOptions(args, home, createProfile, harnesses);
+			throw lateOptions(args, home, createProfile, json, harnesses);
 		String tag = null;
 		if (args.length == 4)
 			tag = parseTag(args[3]);
@@ -198,12 +212,13 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	 * @param args          the arguments from the operation on
 	 * @param home          the harness home that the options before the operation name, or null
 	 * @param createProfile true if the options before the operation give the permission to create a profile
+	 * @param json          true if the command asks for {@code --json}, which the named command keeps last
 	 * @param harnesses     identifiers of the installed activation providers
 	 * @return the refusal, which names the same command with those options before the operation when the installer
 	 * 	accepts that command, and otherwise only the usage
 	 */
 	private static IllegalArgumentException lateOptions(String[] args, Path home, boolean createProfile,
-		Set<String> harnesses)
+		boolean json, Set<String> harnesses)
 	{
 		List<String> moved = new ArrayList<>();
 		if (home != null)
@@ -232,6 +247,8 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 			return usage();
 		List<String> accepted = new ArrayList<>(moved);
 		accepted.addAll(rest);
+		if (json)
+			accepted.add("--json");
 		try
 		{
 			parse(accepted.toArray(String[]::new), harnesses);
@@ -315,6 +332,6 @@ public record Arguments(Operation operation, String harness, String tag, Path ho
 	{
 		return new IllegalArgumentException("Usage: installer [--home <absolute dir>] [--create-profile] [--json] " +
 			"install --harness <id> [vX.Y[.Z]|latest]; installer status [--harness <id>] [--verbose]; installer " +
-			"uninstall [--harness <id>] [--delete-data]");
+			"uninstall [--harness <id>] [--delete-data]; --json may instead be the last argument of any command");
 	}
 }

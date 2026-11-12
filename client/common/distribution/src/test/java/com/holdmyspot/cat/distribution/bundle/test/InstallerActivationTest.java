@@ -34,6 +34,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -578,7 +579,7 @@ public final class InstallerActivationTest
 		 */
 		private JsonNode run(Path plugin, String... arguments) throws IOException
 		{
-			return json(output(plugin, _ -> Optional.empty(), this::cli, arguments));
+			return json(output(plugin, _ -> Optional.empty(), this::cli, withJson(arguments)));
 		}
 
 		/**
@@ -595,7 +596,21 @@ public final class InstallerActivationTest
 			throws IOException
 		{
 			return json(output(plugin, _ -> Optional.empty(), (command, directory) ->
-				ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, directory, starter), arguments));
+				ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, directory, starter),
+				withJson(arguments)));
+		}
+
+		/**
+		 * Returns a command line that asks for the result as JSON, as the last argument.
+		 *
+		 * @param arguments the command line
+		 * @return the command line with {@code --json} added
+		 */
+		private static String[] withJson(String... arguments)
+		{
+			String[] json = Arrays.copyOf(arguments, arguments.length + 1);
+			json[arguments.length] = "--json";
+			return json;
 		}
 
 		/**
@@ -619,7 +634,7 @@ public final class InstallerActivationTest
 		}
 
 		/**
-		 * Runs an installer command of a plugin folder in a terminal that a person reads.
+		 * Runs an installer command of a plugin folder without {@code --json}, so that it prints the report to a person.
 		 *
 		 * @param plugin    the plugin folder that the installer belongs to
 		 * @param arguments the command line
@@ -633,12 +648,6 @@ public final class InstallerActivationTest
 				public Optional<String> ask(String question)
 				{
 					return Optional.empty();
-				}
-
-				@Override
-				public boolean isStdoutTerminal()
-				{
-					return true;
 				}
 			}, this::cli, arguments);
 			requireThat(printed.diagnostics(), "diagnostics").withContext(printed.output(), "output").isEmpty();

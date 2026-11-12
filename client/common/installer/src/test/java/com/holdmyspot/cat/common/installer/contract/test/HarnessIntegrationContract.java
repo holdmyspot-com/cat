@@ -84,7 +84,6 @@ public final class HarnessIntegrationContract
 		requireThat(integration.harness(), "harness").isEqualTo(subject.activation().harness());
 		requireThat(integration.productName(), "productName").isNotBlank();
 		requireThat(integration.programName(), "programName").isNotBlank();
-		requireThat(integration.agentSessionVariable(), "agentSessionVariable").isNotBlank();
 	}
 
 	/**

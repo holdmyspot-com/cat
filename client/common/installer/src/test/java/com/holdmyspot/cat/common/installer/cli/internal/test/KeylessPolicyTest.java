@@ -27,6 +27,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.KeyPair;
 import java.time.Clock;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -328,6 +329,19 @@ public final class KeylessPolicyTest
 		}
 
 		/**
+		 * Returns a command line that asks for the result as JSON, as the last argument.
+		 *
+		 * @param arguments the command line
+		 * @return the command line with {@code --json} added
+		 */
+		private static String[] json(String... arguments)
+		{
+			String[] json = Arrays.copyOf(arguments, arguments.length + 1);
+			json[arguments.length] = "--json";
+			return json;
+		}
+
+		/**
 		 * Runs one installer invocation whose terminal answers nothing and whose harness program never starts.
 		 *
 		 * @param image     the plugin folder that the installer runs from
@@ -353,7 +367,7 @@ public final class KeylessPolicyTest
 				{
 					throw new AssertionError("Started " + builder.command());
 				}), stdout, stderr);
-				status = invocation.run(arguments);
+				status = invocation.run(json(arguments));
 			}
 			return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));
 		}

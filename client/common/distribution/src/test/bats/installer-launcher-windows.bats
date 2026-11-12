@@ -232,7 +232,7 @@ $file.Close()' "HELD=$(cygpath -w "${held}")" "READY=$(cygpath -w "${ready}")" "
 	mkdir "${TEST_ROOT}/user"
 	USERPROFILE="$(cygpath -w "${TEST_ROOT}/user")"
 	export USERPROFILE HOME="${TEST_ROOT}/user"
-	run --separate-stderr powershell_file "${VERSION_FOLDER}/bin/installer.ps1" uninstall
+	run --separate-stderr powershell_file "${VERSION_FOLDER}/bin/installer.ps1" uninstall --json
 	: > "${RELEASE}"
 
 	[ "${status}" -eq 0 ]

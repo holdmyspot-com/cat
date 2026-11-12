@@ -498,6 +498,50 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * A command that a program that parses the result runs, with {@code --json} as its last argument, still starts with
+	 * the pattern of the rule for its operation, so that it gets the decision of the same command without
+	 * {@code --json}. The same command with {@code --json} before the operation starts with no rule's pattern, so
+	 * Codex asks the user.
+	 *
+	 * @throws IOException if a fixture cannot be written or read
+	 */
+	@Test
+	public void trailingJsonKeepsDecisions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
+			List<String> launcher = launcherCommand(installer(home, VERSION));
+			provider().installPermissions(home, installer(home, VERSION), replacer());
+			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
+
+			for (List<String> operation : List.of(List.of("install", "--harness", "codex"),
+				List.of("install", "--harness", "codex", "latest"), List.of("install", "--harness", "codex", "v1.2"),
+				List.of("status"), List.of("status", "--harness", "codex")))
+			{
+				List<String> trailing = new ArrayList<>(launcher);
+				trailing.addAll(operation);
+				trailing.add("--json");
+				requireThat(decisions(content, trailing), "trailingJson").withContext(operation, "operation").
+					isEqualTo(List.of("allow"));
+				List<String> leading = new ArrayList<>(launcher);
+				leading.add("--json");
+				leading.addAll(operation);
+				requireThat(decisions(content, leading), "leadingJson").withContext(operation, "operation").isEmpty();
+			}
+			for (List<String> operation : List.of(List.of("uninstall", "--harness", "codex"),
+				List.of("uninstall", "--harness", "codex", "--delete-data")))
+			{
+				List<String> trailing = new ArrayList<>(launcher);
+				trailing.addAll(operation);
+				trailing.add("--json");
+				requireThat(decisions(content, trailing), "uninstallJson").withContext(operation, "operation").
+					isEqualTo(List.of("prompt"));
+			}
+		}
+	}
+
+	/**
 	 * Install deletes the {@code rules/cat-updater.rules} file that an earlier CAT wrote before the installer was
 	 * renamed, because the launcher it names is gone.
 	 *
@@ -1079,16 +1123,6 @@ public final class IntegrationTest
 	public void namesCodex()
 	{
 		requireThat(provider().productName(), "productName").isEqualTo("Codex");
-	}
-
-	/**
-	 * The integration names the variable in which Codex gives the commands that its agent runs the session's
-	 * identifier, which tells the installer that an agent reads its result.
-	 */
-	@Test
-	public void namesAgentSessionVariable()
-	{
-		requireThat(provider().agentSessionVariable(), "agentSessionVariable").isEqualTo("CODEX_THREAD_ID");
 	}
 
 	/**

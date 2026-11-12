@@ -10,9 +10,10 @@ import java.util.regex.Pattern;
 
 /**
  * The install command with which the user allows the change that an install asked for: the same install, run by the
- * installer launcher of the version folder, with {@code --create-profile} before the operation. The command does not
- * start like the install that the harness's permission entries allow without asking, so the harness asks the user
- * before it runs.
+ * installer launcher of the version folder, with {@code --create-profile} before the operation, and with
+ * {@code --json} last when the install asked for it, so that a program that parses the install's result parses the
+ * command's. The command does not start like the install that the harness's permission entries allow without asking,
+ * so the harness asks the user before it runs.
  */
 public final class ConsentCommand
 {
@@ -51,6 +52,8 @@ public final class ConsentCommand
 		command.add("--create-profile").add("install").add("--harness").add(arguments.harness());
 		if (arguments.tag() != null)
 			command.add(arguments.tag());
+		if (arguments.json())
+			command.add("--json");
 		return command.toString();
 	}
 

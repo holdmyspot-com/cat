@@ -2,15 +2,13 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.util.Collection;
-import java.util.Map;
 import java.util.Optional;
-import java.util.function.BooleanSupplier;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Decides who reads the installer's result, and what the installer prints for that reader.
+ * Decides what the installer prints for its result. The installer always describes the result to a person, unless the
+ * command line asks for {@code --json}, whatever the standard output is, and whoever runs the command.
  */
 public final class ReportAudience
 {
@@ -21,30 +19,6 @@ public final class ReportAudience
 	 */
 	private ReportAudience()
 	{
-	}
-
-	/**
-	 * Returns whether a person, not a program, reads the standard output: it shows on a terminal, the command does not
-	 * ask for {@code --json}, and no installed harness's agent session runs the installer. An agent parses the result
-	 * even where its harness gives the command a terminal.
-	 *
-	 * @param json                  {@code true} if the command line asks for {@code --json}
-	 * @param stdoutIsTerminal      tells whether the standard output shows on a terminal; it is asked only when the
-	 *                              command does not ask for {@code --json}
-	 * @param environment           the installer's environment
-	 * @param agentSessionVariables the variable that each installed harness sets in the environment of its agent
-	 *                              sessions
-	 * @return {@code true} if the result is described to a person
-	 * @throws NullPointerException if any of the arguments are null
-	 */
-	public static boolean isPerson(boolean json, BooleanSupplier stdoutIsTerminal, Map<String, String> environment,
-		Collection<String> agentSessionVariables)
-	{
-		requireThat(stdoutIsTerminal, "stdoutIsTerminal").isNotNull();
-		requireThat(environment, "environment").isNotNull();
-		requireThat(agentSessionVariables, "agentSessionVariables").isNotNull();
-		return !json && stdoutIsTerminal.getAsBoolean() &&
-			agentSessionVariables.stream().allMatch(variable -> environment.getOrDefault(variable, "").isEmpty());
 	}
 
 	/**

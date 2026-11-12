@@ -479,23 +479,6 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public String agentSessionVariable()
-	{
-		return agentSessionVariable(harness);
-	}
-
-	/**
-	 * Returns the variable in which a harness's agent sessions give the commands that they run an identifier.
-	 *
-	 * @param harness the harness
-	 * @return the variable name
-	 */
-	public static String agentSessionVariable(String harness)
-	{
-		return "AGENT_SESSION_" + harness;
-	}
-
-	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return layout(harness, home);

@@ -13,7 +13,6 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.List;
 import java.util.Optional;
 
 /**
@@ -21,9 +20,6 @@ import java.util.Optional;
  * script's installer reaches even though the script reads itself from a pipe on standard input; a process without a
  * controlling terminal, such as a command that an agent runs, cannot open it. On Windows it is the console, when both
  * standard input and standard output are attached to it.
- * <p>
- * Whether the installer's standard output is a terminal is decided separately, because the entry script's pipe on
- * standard input hides a terminal on standard output from {@link System#console()}.
  */
 public final class ProcessTerminal implements Terminal
 {
@@ -31,10 +27,6 @@ public final class ProcessTerminal implements Terminal
 	 * The controlling terminal of the process on Linux and macOS.
 	 */
 	private static final Path TTY = Path.of("/dev/tty");
-	/**
-	 * The device that supplies no input on Linux and macOS.
-	 */
-	private static final Path NULL_DEVICE = Path.of("/dev/null");
 	private final Platform platform;
 
 	/**
@@ -47,35 +39,6 @@ public final class ProcessTerminal implements Terminal
 	{
 		requireThat(platform, "platform").isNotNull();
 		this.platform = platform;
-	}
-
-	@Override
-	public boolean isStdoutTerminal()
-	{
-		if (platform.isWindows())
-		{
-			// The console reports a terminal only when standard input and standard output are both attached to it
-			Console console = System.console();
-			return console != null && console.isTerminal();
-		}
-		// The JDK offers no check of standard output alone, so ask a POSIX shell, which inherits the descriptor
-		ProcessBuilder builder = new ProcessBuilder(List.of("/bin/sh", "-c", "test -t 1"));
-		builder.redirectInput(ProcessBuilder.Redirect.from(NULL_DEVICE.toFile()));
-		builder.redirectOutput(ProcessBuilder.Redirect.INHERIT);
-		builder.redirectError(ProcessBuilder.Redirect.DISCARD);
-		try
-		{
-			return builder.start().waitFor() == 0;
-		}
-		catch (IOException _)
-		{
-			return false;
-		}
-		catch (InterruptedException _)
-		{
-			Thread.currentThread().interrupt();
-			return false;
-		}
 	}
 
 	@Override

@@ -114,7 +114,8 @@ public final class Invocation
 	 */
 	private ReportedEntries reportedEntries;
 	/**
-	 * Whether the result is described to a person instead of printed as JSON.
+	 * Whether the result is described to a person instead of printed as JSON: unless the command line asks for
+	 * {@code --json}.
 	 */
 	private boolean describesToPerson;
 
@@ -134,11 +135,11 @@ public final class Invocation
 	 * @param clock        supplies UTC diagnostic times
 	 * @param waiting      creates pauses between installer lock attempts
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
-	 * @param terminal     asks the user whether they allow a change that needs their permission, and tells whether the
-	 *                     user reads the standard output
+	 * @param terminal     asks the user whether they allow a change that needs their permission
 	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
 	 *                     it cannot delete while it runs
-	 * @param stdout       receives exactly one JSON result, or a report to a person where the terminal shows it
+	 * @param stdout       receives exactly one JSON result where the command asks for {@code --json}, and otherwise a
+	 *                     report to a person
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -169,13 +170,13 @@ public final class Invocation
 	 * @param clock        supplies UTC diagnostic times
 	 * @param waiting      creates pauses between installer lock attempts
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
-	 * @param terminal     asks the user whether they allow a change that needs their permission, and tells whether the
-	 *                     user reads the standard output
+	 * @param terminal     asks the user whether they allow a change that needs their permission
 	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
 	 *                     it cannot delete while it runs
 	 * @param sources      opens the release source at a policy's release location
 	 * @param installers   runs the installer of the version folder that an install of another version installed
-	 * @param stdout       receives exactly one JSON result, or a report to a person where the terminal shows it
+	 * @param stdout       receives exactly one JSON result where the command asks for {@code --json}, and otherwise a
+	 *                     report to a person
 	 * @param stderr       receives human diagnostics
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -215,8 +216,8 @@ public final class Invocation
 	}
 
 	/**
-	 * Runs one complete command, reporting every operational failure as one JSON result, or as a report to a person
-	 * where the terminal shows the standard output and the command does not ask for {@code --json}.
+	 * Runs one complete command, reporting every operational failure as one JSON result where the command asks for
+	 * {@code --json}, and otherwise as a report to a person.
 	 *
 	 * @param args the complete argument vector
 	 * @return the documented shell exit status
@@ -228,11 +229,11 @@ public final class Invocation
 		try
 		{
 			arguments = Arguments.parse(args, harnesses);
-			describesToPerson = readerIsPerson(arguments.json());
+			describesToPerson = !arguments.json();
 		}
 		catch (IllegalArgumentException e)
 		{
-			describesToPerson = readerIsPerson(Arrays.asList(args).contains("--json"));
+			describesToPerson = !Arrays.asList(args).contains("--json");
 			return print(failure(Result.USAGE, "unknown", e.getMessage(), List.of()), null, null);
 		}
 		try
@@ -488,10 +489,14 @@ public final class Invocation
 	{
 		Path folder = managed.session().integration().installation(managed.home()).versionFolder(installed);
 		List<String> line = installArguments(arguments, ReleaseVersion.parse(installed.release()).tag());
+		// This installer parses the result, so the run asks for JSON, in the position that every installer release accepts
+		List<String> parsed = new ArrayList<>();
+		parsed.add("--json");
+		parsed.addAll(line);
 		String reason;
 		try
 		{
-			CommandResult run = installers.run(PluginInstall.installer(folder, platform.isWindows()), line);
+			CommandResult run = installers.run(PluginInstall.installer(folder, platform.isWindows()), parsed);
 			String reported = reportedMessage(run.output());
 			if (run.exitCode() == 0)
 			{
@@ -514,6 +519,8 @@ public final class Invocation
 			else
 				command.add(line.get(i));
 		}
+		if (arguments.json())
+			command.add("--json");
 		return new UpdateResult(Result.FAILED, update.harness(), update.version(), update.previousVersion(),
 			update.message() + " The installer of CAT " + installed + " could not rewrite the settings entries, so " +
 				"they are still those that CAT " + running + " wrote. " + sentence(reason) + " To write the entries " +
@@ -522,7 +529,8 @@ public final class Invocation
 	}
 
 	/**
-	 * Returns the arguments of an install that names a release, in the order that the installer's grammar gives them.
+	 * Returns the arguments of an install that names a release, in the order that the installer's grammar gives them,
+	 * without {@code --json}.
 	 *
 	 * @param arguments the validated install operation, whose release is replaced
 	 * @param tag       the tag of the release that the arguments name
@@ -531,8 +539,6 @@ public final class Invocation
 	private static List<String> installArguments(Arguments arguments, String tag)
 	{
 		List<String> line = new ArrayList<>();
-		if (arguments.json())
-			line.add("--json");
 		if (arguments.home() != null)
 			line.addAll(List.of("--home", arguments.home().toString()));
 		if (arguments.createProfile())
@@ -670,6 +676,8 @@ public final class Invocation
 				if (arguments.home() != null)
 					command.append(" --home ").append(ConsentCommand.quote(arguments.home().toString(), platform));
 				command.append(" install --harness ").append(harness).append(' ').append(release.tag());
+				if (arguments.json())
+					command.append(" --json");
 				update = "with that installation's installer: " + command;
 			}
 		}
@@ -1079,18 +1087,6 @@ public final class Invocation
 		stdout.flush();
 		new ExitDeletion(platform, environment, starter, stderr).delete(result.exitDeletions());
 		return result.result().exitStatus();
-	}
-
-	/**
-	 * Returns whether a person, not a program, reads the standard output.
-	 *
-	 * @param json {@code true} if the command line asks for {@code --json}
-	 * @return {@code true} if the result is described to a person
-	 */
-	private boolean readerIsPerson(boolean json)
-	{
-		return ReportAudience.isPerson(json, terminal::isStdoutTerminal, environment,
-			integrations.stream().map(HarnessIntegration::agentSessionVariable).toList());
 	}
 
 	/**

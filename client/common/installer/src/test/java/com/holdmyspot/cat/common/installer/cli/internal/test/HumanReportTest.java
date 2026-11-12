@@ -39,8 +39,8 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Tests what the installer prints to a person who runs it in a terminal, and that it prints its machine-readable
- * result to every other reader.
+ * Tests what the installer prints to the person who runs it, and that it prints its machine-readable result only when
+ * the command line asks for {@code --json}.
  */
 public final class HumanReportTest
 {
@@ -54,22 +54,24 @@ public final class HumanReportTest
 	}
 
 	/**
-	 * A reader that is not a terminal, as the update skill is, reads one line of JSON and the exit status of the
-	 * result. Under the test runner the installer's standard output is a pipe, which the process's own terminal
-	 * reports.
+	 * A command that ends with {@code --json}, as the update skill's commands do, prints one line of JSON and has the
+	 * exit status of the result.
 	 *
 	 * @throws IOException    if the fixture cannot be created
 	 * @throws TrustException if the release's policy is invalid
 	 */
 	@Test
-	public void pipeReadsMachineResult() throws IOException, TrustException
+	public void jsonReadsMachineResult() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture piped = new Fixture(cleanup.add(testDirectory("human-report-pipe-")));
 			Map<String, List<String>> entries = Map.of("settings.json", List.of("entry"));
 
-			Run machine = piped.run(new RecordingIntegration().maintain(entries), "install", "--harness", "harness-a");
+			Run machine = piped.run(new RecordingIntegration().maintain(entries), "install", "--harness", "harness-a",
+				"--json");
+			Fixture unasked = new Fixture(cleanup.add(testDirectory("human-report-default-")));
+			Run person = unasked.run(new RecordingIntegration().maintain(entries), "install", "--harness", "harness-a");
 
 			requireThat(machine.status, "status").withContext(machine.output, "output").isEqualTo(0);
 			requireThat(machine.output, "output").startsWith("{\"result\":\"installed\",\"harness\":\"harness-a\"," +
@@ -78,25 +80,30 @@ public final class HumanReportTest
 			requireThat(machine.result().path("permissions").path("settings.json").get(0).stringValue(), "entry").
 				isEqualTo("entry");
 			requireThat(machine.diagnostics, "diagnostics").isEmpty();
+			requireThat(person.status, "personStatus").withContext(person.output, "output").isEqualTo(0);
+			requireThat(person.output, "personOutput").contains("CAT 1.2 is installed").doesNotContain("{");
 		}
 	}
 
 	/**
-	 * A command line that the installer rejects prints one line of JSON and the usage exit status to a reader that is
-	 * not a terminal.
+	 * A command that ends with {@code --json} and that the installer rejects prints one line of JSON and the usage
+	 * exit status.
 	 *
 	 * @throws IOException    if the fixture cannot be created
 	 * @throws TrustException if the release's policy is invalid
 	 */
 	@Test
-	public void pipeReadsFailureJson() throws IOException, TrustException
+	public void jsonReadsFailure() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = new Fixture(cleanup.add(testDirectory("human-report-usage-json-")));
 
-			Run machine = fixture.run(new RecordingIntegration(), "rollback", "--harness", "harness-a");
+			Run machine = fixture.run(new RecordingIntegration(), "rollback", "--harness", "harness-a", "--json");
+			Run person = fixture.run(new RecordingIntegration(), "rollback", "--harness", "harness-a");
 
+			requireThat(person.output, "personOutput").doesNotStartWith("{");
+			requireThat(person.status, "personStatus").isEqualTo(Result.USAGE.exitStatus());
 			requireThat(machine.output, "output").startsWith("{\"result\":\"usage\"");
 			requireThat(machine.output.lines().count(), "lines").isEqualTo(1L);
 			requireThat(machine.status, "status").isEqualTo(Result.USAGE.exitStatus());

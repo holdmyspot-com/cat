@@ -30,7 +30,9 @@
 	Resolve the version folder to its absolute path first, then write the launcher's absolute path literally in every
 	command that runs it, because the user's permission entries match that exact text. Write each such command as the
 	launcher followed by its arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of
-	commands.
+	commands. End each such command with `--json`, after the operation and its arguments, never before the operation:
+	the launcher prints a report for a person unless the command asks for JSON, and the permission entries match
+	only the commands that start with the operation.
 2. When the launcher does not exist, CAT's trusted installer is not installed for this harness: the plugin's version
 	folder is incomplete. The other harness's installation does not count. End your turn with a reply that says so and
 	gives the user, in its own code block, the one command that installs CAT for this harness. The user runs it in a
@@ -70,21 +72,22 @@
 	under the session's harness home now holds the launcher. When none does, the command acted on another harness
 	home: ask the user for the command's printed output instead of continuing.
 3. Run the launcher:
-	- When the user asks to install or update CAT to a release they name, run `<launcher> install --harness <h> <tag>`,
-		with the release's tag such as `v1.1`. This is also how to move to a release other than the one that the
-		installation runs. An install of another release moves the Java runtime, the installer and the plugin together.
-	- When the user asks to go back to an earlier release, run `<launcher> install --harness <h> <tag>` with the tag of
-		the release they name, such as `v1.1`. When they do not name one, ask the user which release to go back to. An
-		install without a release never goes back to an earlier one.
+	- When the user asks to install or update CAT to a release they name, run
+		`<launcher> install --harness <h> <tag> --json`, with the release's tag such as `v1.1`. This is also how to move
+		to a release other than the one that the installation runs. An install of another release moves the Java runtime,
+		the installer and the plugin together.
+	- When the user asks to go back to an earlier release, run `<launcher> install --harness <h> <tag> --json` with the
+		tag of the release they name, such as `v1.1`. When they do not name one, ask the user which release to go back
+		to. An install without a release never goes back to an earlier one.
 	- When the user asks only whether a newer release exists, or which release is active, run
-		`<launcher> status --harness <h>`, report what it prints, and stop. Its `version` names the active release; it
-		does not look for a newer one, so when the user asked about a newer release, say so and offer to run the
+		`<launcher> status --harness <h> --json`, report what it prints, and stop. Its `version` names the active
+		release; it does not look for a newer one, so when the user asked about a newer release, say so and offer to run the
 		install below, which installs the latest approved release when it is newer. When its `installed` field is
 		false, CAT's plugin is absent: say so, and offer to install it.
 	- Otherwise, including when the user asks to install or update CAT without naming a release, or when CAT's plugin
-		was removed by other means, run `<launcher> install --harness <h>`. It installs the latest release that the
+		was removed by other means, run `<launcher> install --harness <h> --json`. It installs the latest release that the
 		user's policy approves, or repairs the active one when that is the latest.
-4. The launcher prints one line of JSON. Act on its `result` field:
+4. Because the command ends with `--json`, the launcher prints one line of JSON. Act on its `result` field:
 	- `installed`: tell the user that the release that `version` names is installed and registered, and that it takes
 		effect once they restart or resume the session. In Codex, also say that Codex asks them to review a new or
 		changed CAT hook before it runs.
@@ -104,7 +107,7 @@
 	- `refused`: CAT's release policy or its data structures rejected the operation, and the active installation is
 		unchanged. Report its `message`, and do not try to install the release in any other way. When the message tells
 		the user to run the entry command again, give the user that command as step 2 describes. When the message says
-		that the latest release is older than the active one, run `<launcher> install --harness <h> <tag>` for an older
+		that the latest release is older than the active one, run `<launcher> install --harness <h> <tag> --json` for an older
 		release only when the user asked for that release. When the message says that CAT's data structures changed
 		between the releases and are not backward compatible, the earlier release would lose the user's data: report the
 		message to the user as it is, and do not retry the install or go back in any other way.

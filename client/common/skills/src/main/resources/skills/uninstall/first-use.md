@@ -27,7 +27,9 @@
 	Resolve the version folder to its absolute path first, then write the launcher's absolute path literally in the
 	command that runs it, because the user's permission entries match that exact text. Write the command as the
 	launcher followed by its arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of
-	commands.
+	commands. End it with `--json`, after the operation and its arguments, never before the operation: the launcher
+	prints a report for a person unless the command asks for JSON, and the permission entries match only the commands
+	that start with the operation.
 
 	When the launcher does not exist, there is no trusted installer to remove CAT with for this harness; the other
 	harness's installation does not count. End your turn with a reply that says so, and that the user can install CAT's
@@ -40,11 +42,11 @@
 	user's own files or rules. End your turn with the question, and continue only when the user answers. Skip the
 	question when the user's request already says whether to delete the data. Treat any answer other than an
 	explicit yes to deleting the data, including no answer to that part, as keeping it.
-3. Run one command: `<launcher> uninstall --harness <h>` to keep CAT's plugin data, or
-	`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it with an explicit yes.
+3. Run one command: `<launcher> uninstall --harness <h> --json` to keep CAT's plugin data, or
+	`<launcher> uninstall --harness <h> --delete-data --json` only when the user asked to delete it with an explicit yes.
 	The harness may ask the user to approve this command before it runs; that approval is separate from the user's
 	answer in step 2. When the user declines it, stop and report that nothing was removed.
-4. The launcher prints one line of JSON. Act on its `result` field:
+4. Because the command ends with `--json`, the launcher prints one line of JSON. Act on its `result` field:
 	- `uninstalled`: tell the user that CAT is removed from this harness and that sessions they start from now on run
 		without it. Say whether CAT's plugin data was kept or deleted. Also tell them that installing CAT again is a new
 		installation, which needs the one manual entry command again, and that you cannot run it for them. Run nothing

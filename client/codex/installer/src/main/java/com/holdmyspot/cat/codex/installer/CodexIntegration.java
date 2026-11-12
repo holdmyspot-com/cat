@@ -140,12 +140,6 @@ public final class CodexIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public String agentSessionVariable()
-	{
-		return "CODEX_THREAD_ID";
-	}
-
-	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return new CodexInstallation(home);

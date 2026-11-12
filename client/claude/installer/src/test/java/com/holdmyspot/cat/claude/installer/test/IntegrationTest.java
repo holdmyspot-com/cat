@@ -97,17 +97,6 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The integration names the variable in which Claude Code gives the commands that its agent runs the session's
-	 * identifier, which tells the installer that an agent reads its result.
-	 */
-	@Test
-	public void namesAgentSessionVariable()
-	{
-		requireThat(new Integration(Platform.LINUX_X64).agentSessionVariable(), "agentSessionVariable").
-			isEqualTo("CLAUDE_CODE_SESSION_ID");
-	}
-
-	/**
 	 * Setup finds Claude Code's {@code claude} program.
 	 */
 	@Test
@@ -586,13 +575,18 @@ public final class IntegrationTest
 			String quoted = launcherCommand(launcher);
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
 			requireThat(allowed, "allowed").isEqualTo(platformEntries(launcher).get(SETTINGS_KEY_ALLOW));
-			requireThat(allowed.subList(0, 4), "installerAllowed").isEqualTo(List.of(
+			requireThat(allowed.subList(0, 6), "installerAllowed").isEqualTo(List.of(
 				"Bash(" + quoted + " install --harness claude)",
 				"Bash(" + pattern(quoted + " install --harness claude") + ")",
 				"Bash(" + quoted + " status)",
-				"Bash(" + quoted + " status --harness claude)"));
+				"Bash(" + quoted + " status --harness claude)",
+				"Bash(" + quoted + " status --json)",
+				"Bash(" + quoted + " status --harness claude --json)"));
 			requireThat(added.get(SETTINGS_KEY_EXCLUDED), "excluded").containsAll(List.of(
-				quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data"));
+				quoted + " uninstall --harness claude", quoted + " uninstall --harness claude --delete-data",
+				quoted + " uninstall --harness claude --json", quoted + " uninstall --harness claude --delete-data --json"));
+			for (String entry : allowed)
+				requireThat(entry, "allowedEntry").doesNotContain(" uninstall");
 			for (List<String> entries : added.values())
 			{
 				for (String entry : entries)
@@ -632,8 +626,10 @@ public final class IntegrationTest
 				isEqualTo(List.of(installWildcard));
 			List<String> expected = new ArrayList<>(List.of(quoted + " install --harness claude",
 				quoted + " install --harness claude latest", installWildcard, quoted + " status",
-				quoted + " status --harness claude", quoted + " uninstall --harness claude",
-				quoted + " uninstall --harness claude --delete-data"));
+				quoted + " status --harness claude", quoted + " status --json",
+				quoted + " status --harness claude --json", quoted + " uninstall --harness claude",
+				quoted + " uninstall --harness claude --delete-data", quoted + " uninstall --harness claude --json",
+				quoted + " uninstall --harness claude --delete-data --json"));
 			expected.addAll(servers);
 			requireThat(excluded, "excluded").containsExactly(expected);
 			requireThat(added.get(SETTINGS_KEY_ALLOW), "allowed").contains("Bash(" + installWildcard + ")");
@@ -740,6 +736,65 @@ public final class IntegrationTest
 				}
 			}
 		}
+	}
+
+	/**
+	 * Every installer command that a program that parses the result runs, with {@code --json} as its last argument, runs
+	 * outside the sandbox, and runs without a prompt except uninstall, as the same command without {@code --json} does.
+	 * Claude Code matches each entry exactly, except an entry that ends with {@code " *"}, which also matches any
+	 * arguments after its text. The same commands with {@code --json} before the operation match no entry.
+	 *
+	 * @param platform the platform, whose launcher form differs
+	 * @throws IOException if the launcher path cannot be named in an entry
+	 */
+	@Test(dataProvider = "platforms")
+	public void jsonCommandsMatchEntries(Platform platform) throws IOException
+	{
+		Path home = absoluteTestPath("claude");
+		Path launcher = launcher(home);
+		String prefix = ShellQuoting.posix(launcher.toString());
+		if (platform.isWindows())
+		{
+			launcher = launcher.resolveSibling("installer.ps1");
+			prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher + "\"";
+		}
+		Map<String, List<String>> maintained = new Integration(platform).permissions(launcher);
+		List<String> excluded = maintained.get(SETTINGS_KEY_EXCLUDED);
+		List<String> allowed = maintained.get(SETTINGS_KEY_ALLOW).stream().
+			map(entry -> entry.substring("Bash(".length(), entry.length() - ")".length())).toList();
+		List<String> operations = List.of("install --harness claude", "install --harness claude latest",
+			"install --harness claude v1.2", "status", "status --harness claude", "uninstall --harness claude",
+			"uninstall --harness claude --delete-data");
+
+		for (String operation : operations)
+		{
+			String command = prefix + " " + operation + " --json";
+			requireThat(excluded.stream().anyMatch(entry -> matchesExactly(entry, command)), "excluded").
+				withContext(command, "command").isTrue();
+			requireThat(allowed.stream().anyMatch(entry -> matchesExactly(entry, command)), "allowed").
+				withContext(command, "command").isEqualTo(!operation.startsWith("uninstall"));
+			String leading = prefix + " --json " + operation;
+			requireThat(excluded.stream().anyMatch(entry -> matchesExactly(entry, leading)), "leadingExcluded").
+				withContext(leading, "command").isFalse();
+			requireThat(allowed.stream().anyMatch(entry -> matchesExactly(entry, leading)), "leadingAllowed").
+				withContext(leading, "command").isFalse();
+		}
+	}
+
+	/**
+	 * Returns whether an entry matches a command as Claude Code matches it: exactly, or, for an entry that ends with
+	 * {@code " *"}, as any command that continues the entry's text before the star with at least one more character.
+	 *
+	 * @param entry   the entry, whose trailing {@code " *"} is a wildcard and whose other stars are escaped
+	 * @param command the command
+	 * @return true if the entry matches the command
+	 */
+	private static boolean matchesExactly(String entry, String command)
+	{
+		if (!entry.endsWith(" *"))
+			return entry.equals(command);
+		String literal = entry.substring(0, entry.length() - 1).replace("\\*", "*").replace("\\\\", "\\");
+		return command.startsWith(literal) && command.length() > literal.length();
 	}
 
 	/**
@@ -1068,9 +1123,11 @@ public final class IntegrationTest
 				items.put(group.setting(), group.items());
 			requireThat(items, "items").isEqualTo(Map.of(
 				"sandbox.excludedCommands", List.of("installer install", "installer install", "installer install",
-					"installer status", "installer status", "installer uninstall", "installer uninstall", "request-server"),
+					"installer status", "installer status", "installer status", "installer status",
+					"installer uninstall", "installer uninstall", "installer uninstall", "installer uninstall",
+					"request-server"),
 				"permissions.allow", List.of("installer install", "installer install", "installer status",
-					"installer status", "request-server")));
+					"installer status", "installer status", "installer status", "request-server")));
 		}
 	}
 
@@ -1097,9 +1154,11 @@ public final class IntegrationTest
 				items.put(group.setting(), group.items());
 			requireThat(items, "items").isEqualTo(Map.of(
 				"sandbox.excludedCommands", List.of("installer install", "installer install", "installer install",
-					"installer status", "installer status", "installer uninstall", "installer uninstall", "request-server"),
+					"installer status", "installer status", "installer status", "installer status",
+					"installer uninstall", "installer uninstall", "installer uninstall", "installer uninstall",
+					"request-server"),
 				"permissions.allow", List.of("installer install", "installer install", "installer status",
-					"installer status", "request-server")));
+					"installer status", "installer status", "installer status", "request-server")));
 		}
 	}
 
@@ -1125,7 +1184,9 @@ public final class IntegrationTest
 			requireThat(added.get(SETTINGS_KEY_EXCLUDED), "excluded").isEqualTo(List.of(
 				prefix + " install --harness claude", prefix + " install --harness claude latest",
 				pattern(prefix + " install --harness claude"), prefix + " status", prefix + " status --harness claude",
-				prefix + " uninstall --harness claude", prefix + " uninstall --harness claude --delete-data"));
+				prefix + " status --json", prefix + " status --harness claude --json",
+				prefix + " uninstall --harness claude", prefix + " uninstall --harness claude --delete-data",
+				prefix + " uninstall --harness claude --json", prefix + " uninstall --harness claude --delete-data --json"));
 		}
 	}
 
@@ -1460,11 +1521,14 @@ public final class IntegrationTest
 	{
 		String install = command + " install --harness claude";
 		List<String> excluded = new ArrayList<>(List.of(install, install + " latest", pattern(install),
-			command + " status", command + " status --harness claude", command + " uninstall --harness claude",
-			command + " uninstall --harness claude --delete-data"));
+			command + " status", command + " status --harness claude", command + " status --json",
+			command + " status --harness claude --json", command + " uninstall --harness claude",
+			command + " uninstall --harness claude --delete-data", command + " uninstall --harness claude --json",
+			command + " uninstall --harness claude --delete-data --json"));
 		excluded.addAll(servers);
 		List<String> allowed = new ArrayList<>(List.of("Bash(" + install + ")", "Bash(" + pattern(install) + ")",
-			"Bash(" + command + " status)", "Bash(" + command + " status --harness claude)"));
+			"Bash(" + command + " status)", "Bash(" + command + " status --harness claude)",
+			"Bash(" + command + " status --json)", "Bash(" + command + " status --harness claude --json)"));
 		for (String server : servers)
 			allowed.add("Bash(" + server + ")");
 		return Map.of(SETTINGS_KEY_EXCLUDED, List.copyOf(excluded), SETTINGS_KEY_ALLOW, List.copyOf(allowed));

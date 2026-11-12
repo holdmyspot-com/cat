@@ -18,8 +18,10 @@ import tools.jackson.databind.json.JsonMapper;
  * active version folder and the request server beside it.
  * <p>
  * Each rule is a {@code prefix_rule}. Codex applies a prefix rule to every command that starts with its pattern, so
- * the installer validates its complete argument list itself. Every rule that allows a command names this harness
- * after {@code --harness}, or names {@code status}, so installing CAT into another harness always needs the user.
+ * the installer validates its complete argument list itself. That includes {@code --json}, which a program that parses
+ * the result gives as the last argument, so that the command still starts with the rule's pattern. Every rule that
+ * allows a command names this harness after {@code --harness}, or names {@code status}, so installing CAT into another
+ * harness always needs the user.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

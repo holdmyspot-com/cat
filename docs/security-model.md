@@ -101,15 +101,15 @@ installer, records the entries it added so that uninstall removes only those, an
 older version folder. Each harness's entries name that harness's own installer. Earlier versions also added exceptions
 for the runner launchers' absolute paths; an install now removes those entries and leaves an entry that you added
 yourself. `status --verbose` lists each recorded entry exactly as your harness configuration holds it, under the file
-and the setting that hold it; with `--json` before the operation, the result's `permissions` field holds the same
-entries.
+and the setting that hold it; with `--json`, the result's `permissions` field holds the same entries.
 
 **Claude Code.** The entries go into `settings.json` in your Claude home, which keeps every other setting.
 
 - `sandbox.excludedCommands`: each exclusion is one exact command: `install --harness claude`,
 	`install --harness claude latest`, `status`, `status --harness claude`, `uninstall --harness claude` and
-	`uninstall --harness claude --delete-data`, except `install --harness claude` followed by a release tag, which is a
-	wildcard entry. A command on this list runs outside the sandbox.
+	`uninstall --harness claude --delete-data`, each also with `--json` at the end, which asks for the result as one
+	line of JSON, except `install --harness claude` followed by a release tag or `--json`, which is a wildcard entry.
+	A command on this list runs outside the sandbox.
 - `permissions.allow`: install and status commands run without a prompt. `uninstall` keeps Claude Code's prompt.
 - `sandbox.filesystem.denyWrite`: sandboxed commands may not write the other harness's marketplace folder, version
 	folders and data directory.
@@ -119,7 +119,8 @@ entries.
 	their sandbox and without a prompt. The runners' isolation section below describes the protection around it.
 
 **Codex.** The install writes the CAT-owned file `rules/cat-installer.rules` in your Codex home. It allows
-`install --harness codex` and `status`, and keeps Codex's prompt for `uninstall --harness codex`. On Linux and macOS it
+`install --harness codex` and `status`, and keeps Codex's prompt for `uninstall --harness codex`; each rule also
+covers the command with `--json` at the end. On Linux and macOS it
 also allows the request server's absolute path with no arguments, so that Codex runs it outside its sandbox without
 asking. The install also adds the lock folder as the next section describes, and records the hook trust below.
 

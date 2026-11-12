@@ -37,6 +37,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Base64;
 import java.util.HashMap;
 import java.util.List;
@@ -59,6 +60,12 @@ public final class InvocationTest
 	 * home that the tests' environment names.
 	 */
 	private static final Path ACCOUNT_HOME = Path.of("/account");
+	/**
+	 * A command line argument that makes {@link #run} leave out {@code --json}, so that the installer prints its
+	 * report to a person. Every other command line gets {@code --json} as its last argument, so that the test reads
+	 * the result as JSON. The installer never sees this argument.
+	 */
+	private static final String REPORT_TO_PERSON = "<report to a person>";
 
 	/**
 	 * Creates the test.
@@ -615,6 +622,83 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Without {@code --json}, the installer describes the result to a person whatever the standard output is and
+	 * whichever harness's agent session variable is set: here the standard output is a file, the terminal is absent
+	 * and both harnesses' agent session variables are set.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void reportsToPersonWhenRedirected() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-redirected-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Path redirected = installation.root.resolve("output.txt");
+			Map<String, String> environment = new HashMap<>();
+			environment.put(Platform.current().homeVariable(), installation.root.toString());
+			environment.put("CLAUDE_CODE_SESSION_ID", "session");
+			environment.put("CODEX_THREAD_ID", "thread");
+			int status;
+			try (PrintStream stdout = new PrintStream(Files.newOutputStream(redirected), false, UTF_8);
+				PrintStream stderr = new PrintStream(new ByteArrayOutputStream(), false, UTF_8))
+			{
+				Invocation invocation = new Invocation(installation.image, Platform.current(), environment, ACCOUNT_HOME,
+					List.of(new RegisteredProvider()), List.of(new RecordingIntegration()), (command, home) ->
+					RecordingIntegration.cli(), Clock.systemUTC(), interval -> () -> {}, replacer(),
+					_ -> Optional.empty(), command ->
+				{
+					throw new AssertionError("Started " + command);
+				}, stdout, stderr);
+				status = invocation.run(new String[]{"status", "--harness", "harness-a"});
+			}
+
+			String output = Files.readString(redirected);
+			requireThat(status, "status").withContext(output, "output").isEqualTo(0);
+			requireThat(output, "output").contains("1.2").doesNotContain("{").doesNotContain("\"result\"");
+		}
+	}
+
+	/**
+	 * {@code --json} asks for the result as one line of JSON, before the operation or as the last argument, and
+	 * the same command without it describes the result to a person.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void jsonOptionPositionsPrintJson() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-json-position-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			List<HarnessIntegration> integrations = List.of(new RecordingIntegration());
+
+			Run before = installation.run(Map.of(), List.of(new RegisteredProvider()), integrations.getFirst(),
+				"--json", "status", "--harness", "harness-a");
+			Run after = installation.run(Map.of(), List.of(new RegisteredProvider()), integrations.getFirst(),
+				"status", "--harness", "harness-a", "--json");
+			Run person = installation.run(Map.of(), List.of(new RegisteredProvider()), integrations.getFirst(),
+				REPORT_TO_PERSON, "status", "--harness", "harness-a");
+			Run usage = installation.run(Map.of(), List.of(new RegisteredProvider()), integrations.getFirst(),
+				"rollback", "--harness", "harness-a", "--json");
+
+			requireThat(before.status, "before").withContext(before.output, "output").isEqualTo(0);
+			requireThat(before.result().path("result").stringValue(), "beforeResult").isEqualTo("status");
+			requireThat(before.result().path("version").stringValue(), "beforeVersion").isEqualTo("1.2");
+			requireThat(after.output, "after").isEqualTo(before.output);
+			requireThat(person.output, "person").doesNotContain("{").contains("1.2");
+			requireThat(usage.status, "usage").isEqualTo(2);
+			requireThat(usage.result().path("result").stringValue(), "usageResult").isEqualTo("usage");
+		}
+	}
+
+	/**
 	 * The installer has no rollback operation: the command is refused as a usage error and changes nothing.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
@@ -684,30 +768,15 @@ public final class InvocationTest
 			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
 			PermissionRecord.add(InstallerState.of(installation.data, "harness-a").permissions(),
 				Map.of("settings.json#sandbox.excludedCommands", List.of("first entry", "second entry")));
-			Terminal person = new Terminal()
-			{
-				@Override
-				public Optional<String> ask(String question)
-				{
-					return Optional.empty();
-				}
-
-				@Override
-				public boolean isStdoutTerminal()
-				{
-					return true;
-				}
-			};
-
 			Run plain = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a");
 			Run verbose = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
 				"--harness", "harness-a", "--verbose");
 			Run shown = run(installation.image, installation.root, Map.of(), List.of(new RegisteredProvider()),
-				new RecordingIntegration(), person, Platform.current(), command ->
+				new RecordingIntegration(), _ -> Optional.empty(), Platform.current(), command ->
 				{
 					throw new AssertionError("Started " + command);
-				}, "status", "--verbose");
+				}, REPORT_TO_PERSON, "status", "--verbose");
 
 			requireThat(plain.status, "plain").withContext(plain.output, "output").isEqualTo(0);
 			requireThat(plain.result().has("permissions"), "plainPermissions").isFalse();
@@ -1359,6 +1428,9 @@ public final class InvocationTest
 		List<PluginActivation> activations, HarnessIntegration integration, Terminal terminal, Platform platform,
 		ProcessStarter starter, HarnessCliFactory cliFactory, String... arguments)
 	{
+		List<String> command = new ArrayList<>(Arrays.asList(arguments));
+		if (!command.remove(REPORT_TO_PERSON) && !command.contains("--json"))
+			command.add("--json");
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 		int status;
@@ -1371,7 +1443,7 @@ public final class InvocationTest
 			Invocation invocation = new Invocation(image, platform, variables, ACCOUNT_HOME, activations,
 				List.of(integration), cliFactory, Clock.systemUTC(), interval -> () -> {}, replacer(), terminal, starter,
 				stdout, stderr);
-			status = invocation.run(arguments);
+			status = invocation.run(command.toArray(String[]::new));
 		}
 		return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));
 	}

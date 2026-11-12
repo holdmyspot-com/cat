@@ -32,15 +32,6 @@ public interface HarnessIntegration
 	String productName();
 
 	/**
-	 * Returns the name of the environment variable that the harness sets, to a non-empty value, in the commands that
-	 * its agent sessions run. When any installed harness integration's variable is set, an agent reads the installer's
-	 * result, so the installer prints JSON even where a terminal shows its output.
-	 *
-	 * @return the variable name
-	 */
-	String agentSessionVariable();
-
-	/**
 	 * Returns where the harness keeps CAT's installation below a harness home.
 	 *
 	 * @param home the absolute, normalized harness home

@@ -34,6 +34,7 @@ import java.nio.file.Path;
 import java.security.KeyPair;
 import java.time.Clock;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -63,6 +64,12 @@ public final class UpdateEntriesTest
 	 * The optional change that the harness integrations of releases 1.0 and 1.2 both ask the user to allow.
 	 */
 	private static final String QUESTION = "CAT can add a profile to the shared configuration.";
+	/**
+	 * A command line argument that makes the fixture leave out {@code --json}, so that the installer prints its report
+	 * to a person. Every other command line gets {@code --json} as its last argument, so that the test reads the result
+	 * as JSON, unless it already holds {@code --json}. The installer never sees this argument.
+	 */
+	private static final String REPORT_TO_PERSON = "<report to a person>";
 
 	/**
 	 * Creates the test.
@@ -97,10 +104,63 @@ public final class UpdateEntriesTest
 			requireThat(fixture.started, "started").size().isEqualTo(1);
 			List<String> command = fixture.started.getFirst();
 			requireThat(fixture.fromLauncher(command), "command").isEqualTo(fixture.installedLine());
-			requireThat(Path.of(command.get(command.size() - UPDATE.size() - 1)), "launcher").isAbsolute();
+			requireThat(Path.of(command.get(command.size() - UPDATE.size() - 2)), "launcher").isAbsolute();
 			requireThat(fixture.installed.callsWithSubjects(), "installedCalls").
 				contains("installPermissions " + fixture.installedLauncher());
 			requireThat(result.path("message").stringValue(), "message").contains(Fixture.NEW_NOTICE);
+		}
+	}
+
+	/**
+	 * An update that does not ask for {@code --json} describes its result to the person who ran it, and still runs the
+	 * installed version's installer with {@code --json} before the operation, because the update parses what that run
+	 * prints, as every installer release reads it.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if a test policy is invalid
+	 */
+	@Test
+	public void personUpdateStillParsesJson() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(testDirectory("update-entries-person-")));
+
+			Run update = fixture.updateForPerson(UPDATE);
+
+			requireThat(update.status, "status").withContext(update.output, "output").
+				withContext(update.diagnostics, "diagnostics").isEqualTo(0);
+			requireThat(update.output, "output").contains(PluginArchive.VERSION).doesNotContain("\"result\"");
+			requireThat(fixture.started, "started").size().isEqualTo(1);
+			requireThat(fixture.fromLauncher(fixture.started.getFirst()), "command").isEqualTo(fixture.installedLine());
+			requireThat(update.output, "output").contains(Fixture.NEW_NOTICE);
+		}
+	}
+
+	/**
+	 * The command that names how to write the installed version's entries asks for {@code --json} last exactly when
+	 * the update asked for it, so that whoever runs it reads the result as the update's reader does.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if a test policy is invalid
+	 */
+	@Test
+	public void failureCommandKeepsJsonChoice() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture asked = new Fixture(cleanup.add(testDirectory("update-entries-json-command-")));
+			asked.installed.fail("installPermissions");
+			Fixture person = new Fixture(cleanup.add(testDirectory("update-entries-person-command-")));
+			person.installed.fail("installPermissions");
+
+			Run json = asked.update(UPDATE);
+			Run report = person.updateForPerson(UPDATE);
+
+			requireThat(json.result().path("message").stringValue(), "jsonMessage").
+				contains(asked.installedCommand() + " --json");
+			requireThat(report.output, "reportOutput").contains(person.installedCommand()).
+				doesNotContain(person.installedCommand() + " --json");
 		}
 	}
 
@@ -537,6 +597,8 @@ public final class UpdateEntriesTest
 		{
 			List<String> line = new ArrayList<>();
 			line.add(installedLauncher().toString());
+			// The installer that ends an update parses the result, so it asks for JSON whatever the update asked for
+			line.add("--json");
 			line.addAll(UPDATE);
 			return line;
 		}
@@ -566,6 +628,19 @@ public final class UpdateEntriesTest
 		{
 			return ConsentCommand.launcher(versionFolder(PluginArchive.VERSION), Platform.current()) + " " +
 				String.join(" ", UPDATE);
+		}
+
+		/**
+		 * Runs the installer of release 1.0 to update the installation to release 1.2, without {@code --json}.
+		 *
+		 * @param arguments the command line
+		 * @return the outcome
+		 */
+		private Run updateForPerson(List<String> arguments)
+		{
+			List<String> command = new ArrayList<>(arguments);
+			command.add(REPORT_TO_PERSON);
+			return runOld(ACTIVE, command);
 		}
 
 		/**
@@ -615,7 +690,7 @@ public final class UpdateEntriesTest
 		private Process runInstalled(ProcessBuilder builder)
 		{
 			List<String> command = builder.command();
-			int launcher = command.indexOf("install") - 1;
+			int launcher = command.indexOf("--json") - 1;
 			Path image = Path.of(command.get(launcher)).getParent().getParent();
 			String[] arguments = command.subList(launcher + 1, command.size()).toArray(String[]::new);
 			InstallerProcess installers = InstallerProcessSecrets.getInstallerProcessAccess().create(Platform.current(),
@@ -648,6 +723,9 @@ public final class UpdateEntriesTest
 		private Run run(Path image, Map<String, String> environment, RecordingIntegration integration,
 			Terminal terminal, InstallerProcess installers, String... arguments)
 		{
+			List<String> line = new ArrayList<>(Arrays.asList(arguments));
+			if (!line.remove(REPORT_TO_PERSON) && !line.contains("--json"))
+				line.add("--json");
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			ByteArrayOutputStream diagnostics = new ByteArrayOutputStream();
 			int status;
@@ -661,7 +739,7 @@ public final class UpdateEntriesTest
 				{
 					throw new AssertionError("Started " + command);
 				}, source::open, installers, stdout, stderr);
-				status = invocation.run(arguments);
+				status = invocation.run(line.toArray(String[]::new));
 			}
 			return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));
 		}

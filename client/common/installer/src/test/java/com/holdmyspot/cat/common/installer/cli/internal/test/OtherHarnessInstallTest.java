@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -422,7 +423,7 @@ public final class OtherHarnessInstallTest
 				{
 					throw new AssertionError("Started " + builder.command());
 				}), stdout, stderr);
-				status = invocation.run(arguments.toArray(String[]::new));
+				status = invocation.run(Stream.concat(arguments.stream(), Stream.of("--json")).toArray(String[]::new));
 			}
 			return new Run(status, output.toString(UTF_8), diagnostics.toString(UTF_8));
 		}

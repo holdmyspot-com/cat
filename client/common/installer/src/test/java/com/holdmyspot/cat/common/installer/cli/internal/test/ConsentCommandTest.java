@@ -80,6 +80,35 @@ public final class ConsentCommandTest
 	}
 
 	/**
+	 * An install that asked for {@code --json} gets a command that asks for it as its last argument, so that a program
+	 * that parses the install's result parses the command's, and the command still does not start like the install
+	 * that permission entries allow without asking. An install that did not ask gets a command that does not.
+	 */
+	@Test
+	public void keepsJsonRequestLast()
+	{
+		Path plugin = Path.of(System.getProperty("cat.installer.test.directory")).toAbsolutePath().
+			resolve("plugin");
+		Set<String> harnesses = Set.of("harness-a");
+		Arguments asked = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2", "--json"},
+			harnesses);
+		Arguments askedFirst = Arguments.parse(new String[]{"--json", "install", "--harness", "harness-a"}, harnesses);
+		Arguments person = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2"}, harnesses);
+
+		String command = ConsentCommand.of(plugin, Platform.LINUX_X64, asked);
+
+		String launcher = posixWord(plugin.resolve("bin/installer").toString());
+		requireThat(command, "command").isEqualTo(launcher + " --create-profile install --harness harness-a v1.2 --json");
+		requireThat(ConsentCommand.of(plugin, Platform.LINUX_X64, askedFirst), "commandOfLeadingJson").
+			isEqualTo(launcher + " --create-profile install --harness harness-a --json");
+		requireThat(ConsentCommand.of(plugin, Platform.LINUX_X64, person), "commandForPerson").
+			doesNotContain("--json");
+		Arguments allowed = Arguments.parse(command.substring(launcher.length() + 1).split(" "), harnesses);
+		requireThat(allowed.json(), "json").isTrue();
+		requireThat(allowed.createProfile(), "createProfile").isTrue();
+	}
+
+	/**
 	 * Returns the word that a POSIX shell reads as a path: the path itself, or, when it holds the backslashes of a
 	 * Windows path that the shell would take as escapes, the path in single quotes.
 	 *

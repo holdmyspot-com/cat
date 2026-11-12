@@ -9,20 +9,17 @@ import com.holdmyspot.cat.common.installer.cli.internal.ReportedEntries;
 import java.nio.file.FileSystems;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Tests who the installer takes to read its result, and what it prints for each reader.
+ * Tests what the installer prints for its result: the report to a person, or one line of JSON.
  */
 public final class ReportAudienceTest
 {
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
-	private static final List<String> AGENT_VARIABLES = List.of("HARNESS_A_SESSION", "HARNESS_B_SESSION");
 
 	/**
 	 * Creates the test.
@@ -32,64 +29,7 @@ public final class ReportAudienceTest
 	}
 
 	/**
-	 * Supplies the facts that decide the reader.
-	 *
-	 * @return whether the command line asks for {@code --json}, whether the standard output shows on a terminal, the
-	 *         environment, and whether a person reads the result
-	 */
-	@DataProvider
-	public Object[][] readers()
-	{
-		return new Object[][]
-			{
-				// A person at a terminal
-				{false, true, Map.of(), true},
-				// A reader that is not a terminal, as the update skill is
-				{false, false, Map.of(), false},
-				// The same command with --json at a terminal prints the same line as the reader that is not a terminal
-				{true, true, Map.of(), false},
-				{true, false, Map.of(), false},
-				// An agent that runs the installer in a terminal that its harness allocates parses the result
-				{false, true, Map.of("HARNESS_A_SESSION", "1"), false},
-				{false, true, Map.of("HARNESS_B_SESSION", "1"), false},
-				// A variable with an empty value does not mark an agent session
-				{false, true, Map.of("HARNESS_A_SESSION", ""), true}
-			};
-	}
-
-	/**
-	 * The installer describes its result to a person only where one reads it.
-	 *
-	 * @param json        whether the command line asks for {@code --json}
-	 * @param terminal    whether the standard output shows on a terminal
-	 * @param environment the installer's environment
-	 * @param person      whether a person reads the result
-	 */
-	@Test(dataProvider = "readers")
-	public void personReadsOnlyAtTerminal(boolean json, boolean terminal,
-		Map<String, String> environment, boolean person)
-	{
-		boolean actual = ReportAudience.isPerson(json, () -> terminal, environment, AGENT_VARIABLES);
-
-		requireThat(actual, "person").isEqualTo(person);
-	}
-
-	/**
-	 * A command line that asks for {@code --json} does not ask the terminal where the standard output shows.
-	 */
-	@Test
-	public void jsonOptionSkipsTerminalCheck()
-	{
-		boolean person = ReportAudience.isPerson(true, () ->
-		{
-			throw new AssertionError("The terminal was asked");
-		}, Map.of(), AGENT_VARIABLES);
-
-		requireThat(person, "person").isFalse();
-	}
-
-	/**
-	 * A person at a terminal reads which product CAT is installed for, the installed version, that the product must be
+	 * A person reads which product CAT is installed for, the installed version, that the product must be
 	 * restarted, and what the permission entries that install added let the product do, with the file that holds
 	 * them. The report is not JSON.
 	 */
@@ -121,7 +61,7 @@ public final class ReportAudienceTest
 	}
 
 	/**
-	 * A reader that is not a person reads the result as one line of JSON, whatever the product and home.
+	 * A command that asks for {@code --json} prints the result as one line of JSON, whatever the product and home.
 	 */
 	@Test
 	public void programReadsJsonLine()

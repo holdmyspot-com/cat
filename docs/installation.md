@@ -92,6 +92,9 @@ Start or restart Claude Code or Codex. Then either ask your agent "Which CAT ver
 installer from a version folder. `status` reads the active version and changes nothing; add `--verbose` to also list
 the entries that the install added.
 
+Every installer command prints a report for you to read. Give `--json` as its last argument to get the result as one
+line of JSON instead, as your agent's skills do.
+
 Linux and macOS:
 
 ```bash

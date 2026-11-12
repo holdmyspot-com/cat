@@ -155,12 +155,6 @@ public final class Integration implements HarnessIntegration
 	}
 
 	@Override
-	public String agentSessionVariable()
-	{
-		return "CLAUDE_CODE_SESSION_ID";
-	}
-
-	@Override
 	public HarnessInstallation installation(Path home)
 	{
 		return new ClaudeInstallation(home);
@@ -607,12 +601,14 @@ public final class Integration implements HarnessIntegration
 
 	/**
 	 * Returns the entries for each setting. Every sandbox exclusion is one exact command except the pattern for
-	 * {@code install --harness claude} followed by a release, so an install of a named release runs outside the
+	 * {@code install --harness claude} followed by arguments, so an install of a named release runs outside the
 	 * sandbox without a prompt. Claude Code 2.1.277 and later run a call outside the sandbox only when every command
 	 * in it matches an exclusion, and a redirect, a {@code cd} or a command substitution keeps the call sandboxed, so
 	 * a command chained after the launcher stays inside the sandbox. Earlier versions ran the whole call outside the
 	 * sandbox when one command matched a wildcard exclusion, so CAT's Claude Code support requires 2.1.277 or later.
-	 * Every other exclusion stays exact, because no other operation takes a release. Except on Windows, where Claude
+	 * Every other exclusion stays exact, because no other operation takes a release. A program that parses the result
+	 * gives {@code --json} last, so each of them also has its exact command with {@code --json} at the end; the
+	 * install pattern already matches that, as it matches a release. Except on Windows, where Claude
 	 * Code has no sandbox, the request server beside the installer also runs outside the sandbox without a prompt,
 	 * exactly as its absolute path with no arguments, so that it can start the sessions that the session's sandboxed
 	 * commands request inside Claude Code's own sandbox, which a sandboxed command cannot do. Claude Code matches the
@@ -627,9 +623,11 @@ public final class Integration implements HarnessIntegration
 	{
 		String launcher = launcherCommand(installer);
 		String install = launcher + " install --harness claude";
-		List<String> status = List.of(launcher + " status", launcher + " status --harness claude");
+		List<String> status = List.of(launcher + " status", launcher + " status --harness claude",
+			launcher + " status --json", launcher + " status --harness claude --json");
 		List<String> uninstall = List.of(launcher + " uninstall --harness claude",
-			launcher + " uninstall --harness claude --delete-data");
+			launcher + " uninstall --harness claude --delete-data", launcher + " uninstall --harness claude --json",
+			launcher + " uninstall --harness claude --delete-data --json");
 
 		List<String> excluded = new ArrayList<>(List.of(install, install + " latest", versionPattern(install)));
 		excluded.addAll(status);

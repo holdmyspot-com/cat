@@ -181,6 +181,75 @@ public final class ArgumentsTest
 	}
 
 	/**
+	 * Every operation accepts a request for the JSON result as the last argument, after the operation and its
+	 * arguments, so that the command that asks for it still starts with the operation.
+	 */
+	@Test
+	public void parsesTrailingJsonRequest()
+	{
+		Set<String> harnesses = Set.of("harness-a");
+		Arguments install = Arguments.parse(new String[]{"install", "--harness", "harness-a", "--json"}, harnesses);
+		Arguments release = Arguments.parse(new String[]{"install", "--harness", "harness-a", "v1.2", "--json"},
+			harnesses);
+		Arguments latest = Arguments.parse(new String[]{"install", "--harness", "harness-a", "latest", "--json"},
+			harnesses);
+		Arguments status = Arguments.parse(new String[]{"status", "--json"}, harnesses);
+		Arguments statusOfHarness = Arguments.parse(new String[]{"status", "--harness", "harness-a", "--json"},
+			harnesses);
+		Arguments verbose = Arguments.parse(new String[]{"status", "--harness", "harness-a", "--verbose", "--json"},
+			harnesses);
+		Arguments uninstall = Arguments.parse(new String[]{"uninstall", "--json"}, harnesses);
+		Arguments uninstallHarness = Arguments.parse(new String[]{"uninstall", "--harness", "harness-a", "--json"},
+			harnesses);
+		Arguments deleteData = Arguments.parse(new String[]{"uninstall", "--harness", "harness-a", "--delete-data",
+			"--json"}, harnesses);
+		Arguments withOptions = Arguments.parse(new String[]{"--create-profile", "install", "--harness", "harness-a",
+			"v1.2", "--json"}, harnesses);
+		requireThat(install.json(), "install").isTrue();
+		requireThat(install.operation(), "installOperation").isEqualTo(Operation.INSTALL);
+		requireThat(install.tag(), "installTag").isNull();
+		requireThat(release.json(), "release").isTrue();
+		requireThat(release.tag(), "releaseTag").isEqualTo("v1.2");
+		requireThat(latest.json(), "latest").isTrue();
+		requireThat(latest.tag(), "latestTag").isNull();
+		requireThat(status.json(), "status").isTrue();
+		requireThat(status.harness(), "statusHarness").isEmpty();
+		requireThat(statusOfHarness.json(), "statusOfHarness").isTrue();
+		requireThat(statusOfHarness.harness(), "statusOfHarnessName").isEqualTo("harness-a");
+		requireThat(verbose.json(), "verbose").isTrue();
+		requireThat(verbose.verbose(), "verboseListsEntries").isTrue();
+		requireThat(uninstall.json(), "uninstall").isTrue();
+		requireThat(uninstall.deleteData(), "uninstallDeleteData").isFalse();
+		requireThat(uninstallHarness.json(), "uninstallHarness").isTrue();
+		requireThat(deleteData.json(), "deleteData").isTrue();
+		requireThat(deleteData.deleteData(), "deletesData").isTrue();
+		requireThat(withOptions.json(), "withOptions").isTrue();
+		requireThat(withOptions.createProfile(), "createProfile").isTrue();
+		requireThat(withOptions.tag(), "withOptionsTag").isEqualTo("v1.2");
+	}
+
+	/**
+	 * An install that gives a consent option after the operation is refused with the command that gives it before the
+	 * operation, which keeps the {@code --json} that the refused command asked for as its last argument.
+	 */
+	@Test
+	public void lateOptionRefusalKeepsJsonRequest()
+	{
+		try
+		{
+			Arguments.parse(new String[]{"install", "--harness", "harness-a", "--create-profile", "--json"},
+				Set.of("harness-a"));
+		}
+		catch (IllegalArgumentException e)
+		{
+			requireThat(e.getMessage(), "message").endsWith("installer --create-profile install --harness harness-a " +
+				"--json");
+			return;
+		}
+		throw new AssertionError("A late option was accepted");
+	}
+
+	/**
 	 * The usage diagnostic names the option that asks for the JSON result.
 	 */
 	@Test
@@ -281,8 +350,14 @@ public final class ArgumentsTest
 			{new String[]{"--delete-data", "uninstall", "--harness", "harness-a"}},
 			{new String[]{"--json"}},
 			{new String[]{"--json", "--json", "install", "--harness", "harness-a"}},
-			{new String[]{"install", "--harness", "harness-a", "--json"}},
-			{new String[]{"status", "--json"}},
+			{new String[]{"--json", "install", "--harness", "harness-a", "--json"}},
+			{new String[]{"install", "--harness", "harness-a", "--json", "--json"}},
+			{new String[]{"install", "--harness", "harness-a", "--json", "v1.0"}},
+			{new String[]{"status", "--json", "--harness", "harness-a"}},
+			{new String[]{"status", "--verbose", "--json", "--json"}},
+			{new String[]{"uninstall", "--json", "--harness", "harness-a"}},
+			{new String[]{"uninstall", "--harness", "harness-a", "--json", "--delete-data"}},
+			{new String[]{"--home", "--json"}},
 			{new String[]{"rollback", "--harness", "harness-a"}},
 			{new String[]{"rollback", "--harness", "harness-a", "v1.0"}},
 			{new String[]{"status", "extra"}},

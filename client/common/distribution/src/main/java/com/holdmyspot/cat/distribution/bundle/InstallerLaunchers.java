@@ -57,8 +57,8 @@ final class InstallerLaunchers
 		# Runs the plugin's installer on the Java runtime in the plugin's bin/@RUNTIME@ folder, with fixed JVM options;
 		# environment-provided JVM options are discarded.
 		# Arguments: the installer operation and its arguments.
-		# Output: the installer's result as one JSON line; a person at a terminal reads a plain-text report instead, unless
-		# the installer runs in a harness's agent session or receives --json.
+		# Output: a plain-text report of the result for a person, or, when --json is given before the operation or as the
+		# last argument, the result as one JSON line.
 		# Exit status: the installer operation's status, or 3 when the plugin's runtime has no executable java.
 		set -eu
 		unset JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS CLASSPATH JLINK_VM_OPTIONS
@@ -125,8 +125,8 @@ final class InstallerLaunchers
 		# options; environment-provided JVM options are discarded. The installer receives the caller's PATH and working
 		# directory, because it finds the harness program on that PATH.
 		# Arguments: the installer operation and its arguments, forwarded to Java without interpretation.
-		# Output: the installer's result as one JSON line; a person at a terminal reads a plain-text report instead, unless
-		# the installer runs in a harness's agent session or receives --json.
+		# Output: a plain-text report of the result for a person, or, when --json is given before the operation or as the
+		# last argument, the result as one JSON line.
 		# Exit status: the installer operation's status, or 3 when the plugin's runtime has no java.exe.
 		Set-StrictMode -Version 3.0
 		$ErrorActionPreference = 'Stop'

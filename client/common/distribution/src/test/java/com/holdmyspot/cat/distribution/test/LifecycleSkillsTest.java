@@ -102,20 +102,21 @@ public final class LifecycleSkillsTest
 			String updateBody = Files.readString(plugin.resolve("skills/update/first-use.md")).replaceAll("\\s+", " ");
 			requireThat(updateBody, "updateBody").contains("version folder of CAT's plugin that holds this skill").
 				contains("`bin/installer`").contains("`bin\\installer.ps1`").
-				contains("`<launcher> install --harness <h>`").contains("`<launcher> install --harness <h> <tag>`").
+				contains("`<launcher> install --harness <h> --json`").
+				contains("`<launcher> install --harness <h> <tag> --json`").
 				doesNotContain("cat-updater").doesNotContain("XDG_DATA_HOME").doesNotContain("LOCALAPPDATA").
 				doesNotContain("<launcher> update").doesNotContain("`setup`").
 				doesNotContain("rollback").doesNotContain("roll back").doesNotContain("rolled_back").
 				doesNotContain("pending_swap").doesNotContain("not_swapped").doesNotContain("not_restored").
 				doesNotContain("`restored`").
 				contains("When the user asks to go back to an earlier release, run " +
-					"`<launcher> install --harness <h> <tag>`").
+					"`<launcher> install --harness <h> <tag> --json`").
 				contains("An install without a release never goes back to an earlier one.").
 				contains("report the message to the user as it is, and do not retry the install or go back in any " +
 					"other way.").
 				contains("`powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File`").
 				doesNotContain("cat-updater.cmd").
-				contains("`<launcher> status --harness <h>`").
+				contains("`<launcher> status --harness <h> --json`").
 				contains("`installed`").contains("`up_to_date`").contains("`refused`").
 				contains("`refused` with a `consent_command` field").
 				contains("asks whether they allow the change. Only when the user answers yes, run the command that " +
@@ -148,8 +149,8 @@ public final class LifecycleSkillsTest
 				contains("version folder of CAT's plugin that holds this skill").contains("`bin/installer`").
 				contains("`bin\\installer.ps1`").doesNotContain("cat-updater").doesNotContain("XDG_DATA_HOME").
 				contains("Before you run anything, ask the user whether").
-				contains("the default is to keep it").contains("`<launcher> uninstall --harness <h>`").
-				contains("`<launcher> uninstall --harness <h> --delete-data` only when the user asked to delete it " +
+				contains("the default is to keep it").contains("`<launcher> uninstall --harness <h> --json`").
+				contains("`<launcher> uninstall --harness <h> --delete-data --json` only when the user asked to delete it " +
 					"with an explicit yes").
 				contains("Treat any answer other than an explicit yes to deleting the data, including no answer to " +
 					"that part, as keeping it").doesNotContain(".cat/bundles").
@@ -233,6 +234,11 @@ public final class LifecycleSkillsTest
 				}
 			}
 			requireThat(commands, "commands").isNotEmpty();
+			// A skill's agent parses the result, so every command ends with --json, after the operation, where the
+			// permission entries still match it
+			for (String command : commands)
+				requireThat(command, "command").endsWith(" --json").doesNotContain(" --json install").
+					doesNotContain(" --json status").doesNotContain(" --json uninstall");
 			List<String> exclusions = entries.getOrDefault("settings.json#sandbox.excludedCommands", List.of());
 			for (String command : commands)
 			{
