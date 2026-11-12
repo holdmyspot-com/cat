@@ -217,16 +217,38 @@ Append one JSON object per line to `<folder>/to-child.jsonl` for each message:
 - `{"interrupt": true}` ends the turn in progress, and the conversation goes on.
 - `{"end": true}` ends the conversation.
 
-The session's records go to `<folder>/from-child.jsonl` as they arrive. When turn `<n>` ends, the line
-`{"turn_end": <n>, "status": "<status>"}` follows its records, with the status `completed`, `interrupted` or `failed`.
-A `failed` turn does not end the conversation: the `turn_failed` record before that line names the cause, such as a
-usage limit, and the next `turn` message, sent now or once the cause is gone, continues the same session.
-Before you read a turn's reply, lazy load `./external-waits.md` and wait for that file to contain its `turn_end` line
-or the `ended` line below, using a search of that file with your shell's search command as the wait's check; then read
-the reply as "Replies" describes, from the same file. A line of yours that is not one of these messages is refused there
-with a `refused` line and changes nothing. The last line in that file, however the session ends, is
-`{"ended": "<status>"}`, with the status of the request; once it is there, no `turn_end` line that you wait for will
-come. The launcher then exits as it does without `--conversation`.
+The session's records go to `<folder>/from-child.jsonl` as they arrive, except the harness's own events, which go to
+`<folder>/events.jsonl`. `from-child.jsonl` holds only what you need to drive the conversation: the
+`turn_completed` and `turn_failed` records, one line for each turn's end, `waiting` records that repeat while a turn
+is quiet, `refused` lines, and the `ended` line. `events.jsonl` holds one `harness_event` record for each event of the
+harness, tens of thousands in a long conversation; never read it to find a reply or to follow a turn, and open it only
+to look into one particular event, with a search of that file. When turn `<n>` ends, the line
+`{"turn_end": <n>, "status": "<status>"}` follows its records in `from-child.jsonl`, with the status `completed`,
+`interrupted` or `failed`. A `failed` turn does not end the conversation: the `turn_failed` record before that line
+names the cause, such as a usage limit, and the next `turn` message, sent now or once the cause is gone, continues the
+same session.
+Before you read a turn's reply, lazy load `./external-waits.md` and wait for turn `<n>` to end with one `wait-until`
+and a deadline that exceeds the longest the turn may take, such as `--deadline 2h`. Its check is the reply command
+below with `--status-only`, which exits with `75` while the turn has not ended, `0` once it completed, and `1` once it
+failed or the conversation ended without it:
+
+```text
+"${CAT_PLUGIN_ROOT}/bin/wait-until" --deadline 2h --check '"${CAT_PLUGIN_ROOT}/bin/request-session" --reply <folder> --turn <n> --status-only'
+```
+
+Inside a run, give the launcher that `CAT_REQUEST_SESSION` names in place of `"${CAT_PLUGIN_ROOT}/bin/request-session"`.
+Then print the reply of turn `<n>` with the same command, without `--status-only`:
+
+```text
+"${CAT_PLUGIN_ROOT}/bin/request-session" --reply <folder> --turn <n>
+```
+
+It prints only that turn's final reply, followed by the lines `exit_code: <status>` and `error: <text>` when the
+harness's exit status is not `0` or its standard error is not empty, or `turn <n> failed: <reason>` for a turn that
+failed. Relay that output as the reply; do not read `from-child.jsonl` or `events.jsonl` for it. A line of yours that is not one of
+these messages is refused in `from-child.jsonl` with a `refused` line and changes nothing. The last line in that file,
+however the session ends, is `{"ended": "<status>"}`, with the status of the request; once it is there, no `turn_end`
+line that you wait for will come. The launcher then exits as it does without `--conversation`.
 
 ### Replies
 

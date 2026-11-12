@@ -37,8 +37,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * With {@code --conversation <folder>}, the request carries no prompts: each message that the requesting session
  * appends to the folder's {@value Conversation#TO_CHILD_FILE} goes to the requested session while it runs, the
- * requested session's records go to {@value Conversation#FROM_CHILD_FILE}, and the command waits until the session
- * ends, without a bound, because ending the command stops the session.
+ * requested session's records go to {@value Conversation#FROM_CHILD_FILE}, except the harness's events, which go to
+ * {@value Conversation#EVENTS_FILE}, and the command waits until the session ends, without a bound, because ending
+ * the command stops the session.
+ * <p>
+ * With {@code --reply <folder> --turn <n> [--status-only]}, the command submits nothing: it prints the reply of
+ * turn {@code n} of the conversation in {@code <folder>}, as {@link ConversationReply#print} describes, and exits
+ * with that method's status, so that it also serves as the check of a wait for the turn to end.
  * <p>
  * Inside a run, the command writes its requests for the run's runner. Outside a run, a harness session's command
  * writes them for the session's {@link RequestServer}, and is refused when no request server serves the session.
@@ -61,8 +66,23 @@ public final class SessionRequestCli
 				"(--prompt <file> [--prompt <file>]... [--wait <seconds>] | --conversation <folder>) " +
 				"[--plugin <dir>]... --model <name> --effort <level> " +
 				"[--install-cat] [--session-transcripts] [--extra-permissions <file>] | " +
-				"--await <id> [--wait <seconds>]");
+				"--await <id> [--wait <seconds>] | --reply <folder> --turn <n> [--status-only]");
 			return;
+		}
+		if (args.length > 0 && args[0].equals("--reply"))
+		{
+			int status;
+			try
+			{
+				status = reply(args, new PrintWriter(System.out, true, StandardCharsets.UTF_8));
+			}
+			catch (IOException e)
+			{
+				// A conversation that cannot be read is not a turn that failed, so a wait on it must not end as failed
+				System.err.println("Cannot read the conversation: " + e);
+				status = 2;
+			}
+			System.exit(status);
 		}
 		String directory = System.getenv(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (directory == null || directory.isBlank())
@@ -85,6 +105,64 @@ public final class SessionRequestCli
 			Pause.sleeping(Duration.ofMillis(100)),
 			new PrintWriter(System.out, true, StandardCharsets.UTF_8));
 		System.exit(status);
+	}
+
+	/**
+	 * Prints the reply of a turn of a conversation, as {@link ConversationReply#print} does.
+	 *
+	 * @param args   {@code --reply <folder> --turn <n>}, with {@code --status-only} to print nothing
+	 * @param output receives the reply
+	 * @return the status that {@link ConversationReply#print} returns
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if options are incomplete, unknown, repeated, or invalid
+	 * @throws IOException              if the conversation's file cannot be read
+	 */
+	public static int reply(String[] args, PrintWriter output) throws IOException
+	{
+		requireThat(args, "args").isNotNull();
+		requireThat(output, "output").isNotNull();
+		Path folder = null;
+		Integer turn = null;
+		boolean statusOnly = false;
+		for (int index = 0; index < args.length; ++index)
+		{
+			String option = args[index];
+			if (option.equals("--status-only"))
+			{
+				statusOnly = true;
+				continue;
+			}
+			if (index + 1 == args.length)
+				throw new IllegalArgumentException("Missing value for " + option);
+			String value = args[index + 1];
+			index += 1;
+			switch (option)
+			{
+				case "--reply" ->
+				{
+					if (folder != null)
+						throw new IllegalArgumentException("Repeated option: " + option);
+					folder = Path.of(value);
+				}
+				case "--turn" ->
+				{
+					if (turn != null)
+						throw new IllegalArgumentException("Repeated option: " + option);
+					try
+					{
+						turn = Integer.parseInt(value);
+					}
+					catch (NumberFormatException _)
+					{
+						throw new IllegalArgumentException("--turn needs a turn number, not " + value);
+					}
+				}
+				default -> throw new IllegalArgumentException("Unsupported option: " + option);
+			}
+		}
+		if (folder == null || turn == null)
+			throw new IllegalArgumentException("--reply requires a folder and --turn");
+		return ConversationReply.print(folder, turn, statusOnly, output);
 	}
 
 	/**

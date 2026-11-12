@@ -435,9 +435,11 @@ public final class RunnerLaunchersTest
 	/**
 	 * Verifies that the bundled rule on running a harness tells an agent how to hold a conversation with a new
 	 * session through any launcher: to keep the launcher running with {@code --conversation <folder>}, to append its
-	 * turn, interrupt and end messages to the folder's {@code to-child.jsonl}, to wait for a turn's {@code turn_end}
-	 * line in {@code from-child.jsonl} before it reads the reply, that the {@code ended} line comes last, and that the
-	 * session stops with the command. The rule keeps its guidance on a run's records file.
+	 * turn, interrupt and end messages to the folder's {@code to-child.jsonl}, that {@code from-child.jsonl} holds the
+	 * turn-level records and {@code events.jsonl} the harness's events, to wait for a turn to end with one
+	 * {@code wait-until} whose check is the reply command, to print the reply with the same command, that the
+	 * {@code ended} line comes last, and that the session stops with the command. The rule keeps its guidance on a
+	 * run's records file.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -454,7 +456,11 @@ public final class RunnerLaunchersTest
 			contains("`{\"interrupt\": true}` ends the turn in progress, and the conversation goes on").
 			contains("`{\"end\": true}`").contains("`<folder>/from-child.jsonl`").
 			contains("`{\"turn_end\": <n>, \"status\": \"<status>\"}`").
+			contains("`<folder>/events.jsonl`").contains("never read it to find a reply").
 			contains("Before you read a turn's reply").contains("`{\"ended\": \"<status>\"}`").
+			contains("\"${CAT_PLUGIN_ROOT}/bin/wait-until\" --deadline 2h --check " +
+				"'\"${CAT_PLUGIN_ROOT}/bin/request-session\" --reply <folder> --turn <n> --status-only'").
+			contains("\"${CAT_PLUGIN_ROOT}/bin/request-session\" --reply <folder> --turn <n> ```").
 			contains("The new session stops when that command stops").
 			contains("name that file with `--input <file>`");
 	}
