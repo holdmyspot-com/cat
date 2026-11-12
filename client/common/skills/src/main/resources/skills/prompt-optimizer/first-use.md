@@ -152,6 +152,11 @@ from a launcher field.
 	- For a conflict pause, the choices are the conflict's resolutions and `stop`. Mark the entry whose `recommended` is
 		true as recommended and show its `reason`. The user may also describe another resolution; pass it as `revise
 		<campaign> <feedback>`.
+	- For a stalled-development pause (the summary says development stalled), show the `summary` in full: it gives each
+		stalled test's cell estimates after each of the 5 rounds that made no progress. The choices are
+		`continue_development`, which runs 5 more rounds for the stalled tests, `keep_improvement` only when `choices`
+		lists it (pass its `attempt` as `--attempt`), and `stop`. The user may also describe a change to the contract;
+		pass it as `revise <campaign> <feedback>`.
 	- When the chosen entry is `retry` on a guard pilot pause (the summary says a guard pilot trial ran without an
 		outcome), the result of `choose` names a proposal file: continue with step 2.
 	- Continue with the step that the new result's `status` selects.

@@ -103,6 +103,11 @@ final class Draft
 	 */
 	Diagnosis diagnosis;
 	/**
+	 * Each prompt test's progress through the completed rounds that CAT counts to detect stalled development, by test
+	 * identifier.
+	 */
+	Map<String, StallProgress> stalls;
+	/**
 	 * The targeted-optimization round in progress, or {@code null}.
 	 */
 	Round round;
@@ -208,6 +213,7 @@ final class Draft
 		predecessor = development.predecessor();
 		reverts = new ArrayList<>(development.reverts());
 		diagnosis = development.diagnosis();
+		stalls = new LinkedHashMap<>(development.stalls());
 		round = development.round();
 		promptAuthor = development.promptAuthor();
 		optimization = campaign.optimization();
@@ -351,6 +357,7 @@ final class Draft
 			lineages.set(lineages.size() - 1, buildCurrentLineage());
 		lineages.add(lineage);
 		loadLineage(lineage);
+		stalls.clear();
 	}
 
 	/**
@@ -450,6 +457,7 @@ final class Draft
 		developmentCounts = new LinkedHashMap<>();
 		reviewPoints = new LinkedHashMap<>();
 		predecessor = null;
+		stalls.clear();
 	}
 
 	/**
@@ -632,7 +640,7 @@ final class Draft
 			baseline = new IncumbentBaseline(baselineIndex, baselineIdentity, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
-			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts);
+			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts, stalls);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,

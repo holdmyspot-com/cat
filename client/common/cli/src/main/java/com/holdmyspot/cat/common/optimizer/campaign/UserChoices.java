@@ -56,12 +56,13 @@ final class UserChoices
 			case TARGETED_OPTIMIZATION ->
 			{
 				PendingDecision.CheckpointReached checkpoint = (PendingDecision.CheckpointReached) pending;
-				draft.round = TrialAdoption.failingRound(draft.developmentCounts, draft.developmentCells(),
-					checkpoint.cell());
+				TrialAdoption.startRound(draft, checkpoint.cell());
 				draft.resolve();
 			}
 			case KEEP_IMPROVEMENT -> keepImprovement(draft, campaign, choose.attempt());
 			case OPTIMIZE_FURTHER -> draft.resolve();
+			case CONTINUE_DEVELOPMENT -> StalledDevelopment.continueDevelopment(draft,
+				(PendingDecision.DevelopmentStalled) pending);
 			case ACCEPT_TRADE_OFF ->
 			{
 				CertificationAttempt attempt = draft.attempt(((PendingDecision.RegressionTradeOff) pending).attempt());
@@ -96,6 +97,7 @@ final class UserChoices
 		draft.identity = draft.identity.replaceWith(changed.observed());
 		draft.endRunningAttempt(Outcome.TESTING_ENVIRONMENT_CHANGED);
 		draft.startDevelopment(draft.working);
+		draft.stalls.clear();
 		draft.startBaseline();
 		draft.resolve();
 	}

@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
 import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
@@ -1358,6 +1359,36 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			requireThat(loaded.windows(), "windows").isEqualTo(ConcurrencyWindows.EMPTY);
 			requireThat(ConcurrencyPolicy.window(loaded), "window").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that a snapshot written before CAT counted development rounds without progress, which has no
+	 * {@code stalls} object, loads with no rounds counted for any prompt test, while a snapshot that has one keeps it.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void snapshotWithoutStallsCountsNoRounds() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-stalls-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			StallProgress progress = new StallProgress(Map.of("safety", 0.9), 0,
+				List.of(Map.of("safety", 0.85), Map.of("safety", 0.8)));
+			store.replaceSnapshot(new Builder().header(header(ID)).confirmed().working(1).
+				development("formatting", 60, 0).development("safety", 60, 0).stalls("safety", progress).build());
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow().
+				development().stalls(), "kept").isEqualTo(Map.of("safety", progress));
+
+			((ObjectNode) root.get("development")).remove("stalls");
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
+			requireThat(loaded.development().stalls(), "stalls").isEmpty();
 		}
 	}
 

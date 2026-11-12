@@ -21,11 +21,13 @@ import java.util.Map;
  * @param testCaseOutcomes the working candidate's adopted outcomes grouped by test case
  * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
  * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
+ * @param stalls each prompt test's progress through the completed rounds that CAT counts to detect stalled
+ *   development, by test identifier
  */
 public record Development(Candidate working, int series, Map<String, CellCounts> counts,
 	List<Failure> failures, Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor,
 	Map<String, Integer> reviewPoints, List<TestCaseOutcomes> testCaseOutcomes,
-	Predecessor predecessor, List<Revert> reverts)
+	Predecessor predecessor, List<Revert> reverts, Map<String, StallProgress> stalls)
 {
 	/**
 	 * The adopted-outcome count that triggers a cell's review unless the user extends it.
@@ -46,9 +48,12 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 * @param testCaseOutcomes the working candidate's adopted outcomes grouped by test case
 	 * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
 	 * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
+	 * @param stalls each prompt test's progress through the completed rounds that CAT counts to detect stalled
+	 *   development, by test identifier
 	 * @throws NullPointerException if {@code working}, {@code counts}, {@code failures} or {@code reviewPoints} are
 	 *   null
-	 * @throws NullPointerException if {@code testCaseOutcomes} or {@code reverts} are null or contain null
+	 * @throws NullPointerException if {@code testCaseOutcomes}, {@code reverts} or {@code stalls} are null or
+	 *   contain null
 	 * @throws NullPointerException if {@code promptAuthor} is non-null while {@code round} is null
 	 * @throws IllegalArgumentException if {@code series} is negative
 	 */
@@ -66,6 +71,7 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 		reviewPoints = Map.copyOf(reviewPoints);
 		testCaseOutcomes = List.copyOf(testCaseOutcomes);
 		reverts = List.copyOf(reverts);
+		stalls = Map.copyOf(stalls);
 	}
 
 	/**
@@ -86,7 +92,7 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 		Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor, Map<String, Integer> reviewPoints)
 	{
 		this(working, series, counts, failures, diagnosis, round, promptAuthor, reviewPoints,
-			TestCaseOutcomes.fromFailures(failures), null, List.of());
+			TestCaseOutcomes.fromFailures(failures), null, List.of(), Map.of());
 	}
 
 	/**

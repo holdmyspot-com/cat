@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
+import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
@@ -1730,6 +1731,30 @@ public final class StatusReportTest
 			isEqualTo("awaiting_user");
 		requireThat(StatusReport.of(new Builder().build(), ReportEvidence.NONE).phase(), "unconfirmed").
 			isEqualTo(Phase.UNCONFIRMED);
+	}
+
+	/**
+	 * Verifies that a stalled-development pause names the stalled test, shows each of its cells' estimates after each
+	 * of the five rounds, and offers continuing and stopping.
+	 */
+	@Test
+	public void reportsStalledDevelopment()
+	{
+		List<Map<String, Double>> rounds = List.of(Map.of("safety", 0.912), Map.of("safety", 0.901),
+			Map.of("safety", 0.887), Map.of("safety", 0.8765), Map.of("safety", 0.8641));
+		Campaign campaign = confirmed().working(1).development("safety", 60, 5).
+			stalls("safety", new StallProgress(Map.of("safety", 0.92), 0, rounds)).
+			pending(new PendingDecision.DevelopmentStalled(List.of("safety"))).build();
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+
+		requireThat(report.status().label(), "status").isEqualTo("awaiting_user");
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Waiting for: development stalled").
+			contains("5 completed rounds in a row made no progress in test safety").
+			contains("round 1: safety 0.912").contains("round 2: safety 0.901").contains("round 3: safety 0.887").
+			contains("round 4: safety 0.877").contains("round 5: safety 0.864");
+		requireThat(report.choices().stream().map(ChoiceItem::choice).toList(), "choices").
+			containsExactly(List.of(Choice.CONTINUE_DEVELOPMENT, Choice.STOP));
 	}
 
 	/**

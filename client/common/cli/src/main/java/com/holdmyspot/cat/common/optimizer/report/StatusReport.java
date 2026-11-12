@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
+import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -47,6 +48,7 @@ import java.util.Collections;
 import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.TreeMap;
 import tools.jackson.databind.json.JsonMapper;
@@ -452,7 +454,42 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 				yield "a prompt author needs edits outside the edit authority: " + String.join("; ", edits);
 			}
 			case PendingDecision.TestRevisionBlocked blocked -> describeBlocked(blocked);
+			case PendingDecision.DevelopmentStalled stalled -> describeStalled(campaign, stalled);
 		};
+	}
+
+	/**
+	 * Describes the prompt tests whose development stalled.
+	 *
+	 * @param campaign the campaign
+	 * @param stalled the pending decision
+	 * @return each test with each of its cells' development estimates after each of the rounds without progress
+	 */
+	private static String describeStalled(Campaign campaign, PendingDecision.DevelopmentStalled stalled)
+	{
+		StringBuilder text = new StringBuilder(256).append("development stalled: ").
+			append(StallProgress.ROUNDS).append(" completed rounds in a row made no progress in test");
+		if (stalled.tests().size() > 1)
+			text.append('s');
+		text.append(' ').append(String.join(", ", stalled.tests())).
+			append(". Each cell's development estimate (95% lower bound) after each round:");
+		for (String test : stalled.tests())
+		{
+			StallProgress progress = campaign.development().stalls().get(test);
+			if (progress == null)
+				continue;
+			text.append("\n  test ").append(test).append(':');
+			for (int i = 0; i < progress.rounds().size(); ++i)
+			{
+				text.append("\n    round ").append(i + 1).append(':');
+				for (Map.Entry<String, Double> estimate : progress.rounds().get(i).entrySet())
+				{
+					text.append(' ').append(estimate.getKey()).append(' ').
+						append(String.format(Locale.ROOT, "%.3f", estimate.getValue()));
+				}
+			}
+		}
+		return text.toString();
 	}
 
 	/**

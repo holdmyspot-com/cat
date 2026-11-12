@@ -82,6 +82,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
+import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
@@ -163,6 +164,10 @@ import tools.jackson.databind.node.ObjectNode;
  * A campaign snapshot written before it recorded the concurrency window of each unit of work has no
  * {@code concurrency} object; every unit then starts at its starting window, and its earlier single window is
  * ignored.
+ * <p>
+ * A development has a {@code stalls} object only when CAT has recorded the best values of a prompt test's development
+ * cells for counting its rounds without progress; a development without one has counted no round for any test, so
+ * campaigns that started before CAT counted them still load.
  * <p>
  * Reading reports a document that does not describe a valid value with an {@link IllegalArgumentException} or a
  * {@link NullPointerException}. Reading ignores a measurement condition that CAT recorded in the current format but no
@@ -1550,6 +1555,44 @@ final class CampaignJson
 			element.put("predecessor_lower_bound", revert.predecessorLowerBound());
 			element.set("development", writeDevelopment(revert.development()));
 		}
+		if (!development.stalls().isEmpty())
+			node.set("stalls", writeStalls(development.stalls()));
+		return node;
+	}
+
+	/**
+	 * Converts each prompt test's stalled-development progress to a document.
+	 *
+	 * @param stalls the progress by test identifier
+	 * @return the document
+	 */
+	private ObjectNode writeStalls(Map<String, StallProgress> stalls)
+	{
+		ObjectNode node = json.createObjectNode();
+		for (Entry<String, StallProgress> entry : new TreeMap<>(stalls).entrySet())
+		{
+			StallProgress progress = entry.getValue();
+			ObjectNode element = node.putObject(entry.getKey());
+			element.set("best_estimates", writeEstimates(progress.bestEstimates()));
+			element.put("best_met_cells", progress.bestMetCells());
+			ArrayNode rounds = element.putArray("rounds");
+			for (Map<String, Double> round : progress.rounds())
+				rounds.add(writeEstimates(round));
+		}
+		return node;
+	}
+
+	/**
+	 * Converts development estimates to a document.
+	 *
+	 * @param estimates the estimates by cell identifier
+	 * @return the document
+	 */
+	private ObjectNode writeEstimates(Map<String, Double> estimates)
+	{
+		ObjectNode node = json.createObjectNode();
+		for (Entry<String, Double> entry : new TreeMap<>(estimates).entrySet())
+			node.put(entry.getKey(), entry.getValue());
 		return node;
 	}
 
@@ -1813,7 +1856,46 @@ final class CampaignJson
 		}
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
 			readCounts(field(node, "counts")), failures, diagnosis, round, promptAuthor,
-			reviewPoints, outcomes, predecessor, reverts);
+			reviewPoints, outcomes, predecessor, reverts, readStalls(node));
+	}
+
+	/**
+	 * Reads each prompt test's stalled-development progress. A development that does not have the field counts no
+	 * rounds.
+	 *
+	 * @param node the development's document
+	 * @return the progress by test identifier
+	 */
+	private static Map<String, StallProgress> readStalls(JsonNode node)
+	{
+		Map<String, StallProgress> stalls = new LinkedHashMap<>();
+		if (!node.has("stalls"))
+			return stalls;
+		for (Entry<String, JsonNode> entry : object(node, "stalls").properties())
+		{
+			JsonNode element = entry.getValue();
+			List<Map<String, Double>> rounds = new ArrayList<>();
+			for (JsonNode round : elements(element, "rounds"))
+				rounds.add(readEstimates(round));
+			stalls.put(entry.getKey(), new StallProgress(readEstimates(field(element, "best_estimates")),
+				integer(element, "best_met_cells"), rounds));
+		}
+		return stalls;
+	}
+
+	/**
+	 * Reads development estimates.
+	 *
+	 * @param node the document
+	 * @return the estimates by cell identifier
+	 */
+	private static Map<String, Double> readEstimates(JsonNode node)
+	{
+		requireObject(node, "estimates");
+		Map<String, Double> estimates = new LinkedHashMap<>();
+		for (String cell : node.propertyNames())
+			estimates.put(cell, floating(node, cell));
+		return estimates;
 	}
 
 	/**
@@ -2154,6 +2236,13 @@ final class CampaignJson
 				node.put("cell", checkpoint.cell());
 				node.put("outcomes", checkpoint.outcomes());
 			}
+			case PendingDecision.DevelopmentStalled stalled ->
+			{
+				node.put("type", "development_stalled");
+				ArrayNode tests = node.putArray("tests");
+				for (String test : stalled.tests())
+					tests.add(test);
+			}
 			case PendingDecision.FailuresNotReproduced notReproduced ->
 			{
 				node.put("type", "failures_not_reproduced");
@@ -2258,6 +2347,13 @@ final class CampaignJson
 			case "pilot_failure" -> new PendingDecision.PilotFailure(text(node, "detail"));
 			case "checkpoint_reached" ->
 				new PendingDecision.CheckpointReached(text(node, "cell"), integer(node, "outcomes"));
+			case "development_stalled" ->
+			{
+				List<String> tests = new ArrayList<>();
+				for (JsonNode element : elements(node, "tests"))
+					tests.add(stringValue(element, "tests"));
+				yield new PendingDecision.DevelopmentStalled(tests);
+			}
 			case "failures_not_reproduced" -> new PendingDecision.FailuresNotReproduced(integer(node, "attempt"));
 			case "improvement_proven" -> new PendingDecision.ImprovementProven(integer(node, "attempt"));
 			case "regression_trade_off" -> new PendingDecision.RegressionTradeOff(integer(node, "attempt"));

@@ -32,6 +32,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.SequenceGroup;
+import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
+import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
@@ -118,6 +120,7 @@ public final class Builder
 	private Round round;
 	private PromptAuthorAttempt promptAuthor;
 	private final Map<String, Integer> reviewPoints = new LinkedHashMap<>();
+	private final Map<String, StallProgress> stalls = new LinkedHashMap<>();
 	private int baselineIndex = 1;
 	private MeasurementIdentity baselineIdentity;
 	private final Map<String, CellCounts> baseline = new LinkedHashMap<>();
@@ -463,6 +466,19 @@ public final class Builder
 	public Builder round(Round value)
 	{
 		this.round = value;
+		return this;
+	}
+
+	/**
+	 * Sets a prompt test's progress through the development rounds that CAT counts to detect stalled development.
+	 *
+	 * @param test the test's identifier
+	 * @param progress the progress
+	 * @return this builder
+	 */
+	public Builder stalls(String test, StallProgress progress)
+	{
+		stalls.put(test, progress);
 		return this;
 	}
 
@@ -859,7 +875,7 @@ public final class Builder
 			incumbentBaseline = new IncumbentBaseline(baselineIndex, measuredIdentity, baseline);
 		}
 		Development state = new Development(working, series, development, failures, diagnosis, round, promptAuthor,
-			reviewPoints);
+			reviewPoints, TestCaseOutcomes.fromFailures(failures), null, List.of(), stalls);
 		List<CertificationAttempt> built = new ArrayList<>();
 		for (AttemptBuilder attempt : attempts)
 			built.add(attempt.toAttempt());

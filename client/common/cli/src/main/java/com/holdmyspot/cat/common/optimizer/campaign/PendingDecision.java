@@ -170,6 +170,34 @@ public sealed interface PendingDecision
 	}
 
 	/**
+	 * Development of some prompt tests stalled: {@value StallProgress#ROUNDS} consecutive completed rounds raised
+	 * neither a development estimate of the test's cells above its best value nor the number of the test's cells
+	 * that meet the commit gate's count conditions. {@link Development#stalls()} holds each stalled test's estimates
+	 * after those rounds.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param tests the identifiers of the stalled prompt tests, in contract order
+	 */
+	record DevelopmentStalled(List<String> tests) implements PendingDecision
+	{
+		/**
+		 * Creates the decision.
+		 *
+		 * @param tests the identifiers of the stalled prompt tests, in contract order
+		 * @throws NullPointerException if {@code tests} is null or contains null
+		 * @throws IllegalArgumentException if {@code tests} is empty or contains a blank identifier
+		 */
+		public DevelopmentStalled
+		{
+			requireThat(tests, "tests").isNotEmpty();
+			tests = List.copyOf(tests);
+			for (String test : tests)
+				requireThat(test, "test").isNotBlank();
+		}
+	}
+
+	/**
 	 * A certification attempt ended without certification and meets {@link KeepImprovement}'s conditions for offering
 	 * its snapshot as an improvement over the original prompt system.
 	 * <p>

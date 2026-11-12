@@ -494,7 +494,7 @@ public final class TrialAdoption
 		});
 		draft.diagnosis = null;
 		if (draft.round == null && draft.promptAuthor == null)
-			draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), null);
+			startRound(draft, null);
 	}
 
 	/**
@@ -572,7 +572,7 @@ public final class TrialAdoption
 	private static Development snapshotDevelopment(Draft draft)
 	{
 		return new Development(draft.working, draft.series, draft.developmentCounts, draft.developmentFailures,
-			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of());
+			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of(), Map.of());
 	}
 
 	/**
@@ -669,10 +669,23 @@ public final class TrialAdoption
 			case EDIT ->
 			{
 				draft.diagnosis = null;
-				draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), null);
+				startRound(draft, null);
 			}
 			case CONTINUE -> draft.diagnosis = null;
 		}
+	}
+
+	/**
+	 * Starts a round over the currently failing development cells, and records the best values of the tests that it
+	 * addresses for stalled-development detection.
+	 *
+	 * @param draft the state, with no round in progress
+	 * @param required a development cell to address even without failures, or null
+	 */
+	static void startRound(Draft draft, String required)
+	{
+		draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), required);
+		StalledDevelopment.roundStarted(draft);
 	}
 
 	/**
@@ -943,12 +956,13 @@ public final class TrialAdoption
 	 * attempts and prompt author diagnoses remain in the optimization evidence. A later failure goes through
 	 * edit-or-continue and can start a new round with new failure evidence. Every regression test case that the working
 	 * candidate failed last becomes settled, so that failure no longer blocks the commit gate until the working
-	 * candidate runs the test case again.
+	 * candidate runs the test case again. The round counts toward stalled development.
 	 *
 	 * @param draft the state, whose round is complete
 	 */
 	private static void endUnproductiveRound(Draft draft)
 	{
+		Round completed = draft.round;
 		draft.round = null;
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
 		{
@@ -956,6 +970,7 @@ public final class TrialAdoption
 			if (regression.working() == Verdict.FAIL)
 				draft.regressionSet.set(i, new RegressionTestCase(regression.testCase(), Verdict.FAIL, true));
 		}
+		StalledDevelopment.roundCompleted(draft, completed);
 	}
 
 	/**
@@ -993,13 +1008,15 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Makes a prompt author attempt the working candidate.
+	 * Makes a prompt author attempt the working candidate, which ends the round that produced it. The new working
+	 * candidate has no development outcomes, and the round counts toward stalled development.
 	 *
 	 * @param draft the state
 	 * @param promptAuthor the prompt author attempt
 	 */
 	static void promote(Draft draft, PromptAuthorAttempt promptAuthor)
 	{
+		Round completed = draft.round;
 		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft), draft.round, promptAuthor.cell(),
 			draft.regressionSet);
 		for (int i = 0; i < draft.regressionSet.size(); ++i)
@@ -1016,6 +1033,7 @@ public final class TrialAdoption
 			if (!run.role().measuresWorking() && run.verdict() != null)
 				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
 		}
+		StalledDevelopment.roundCompleted(draft, completed);
 	}
 
 	/**

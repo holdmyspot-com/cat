@@ -451,6 +451,12 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 				if (acceptable)
 					choices.add(Choice.ACCEPT_WITHOUT_CERTIFICATION);
 			}
+			case PendingDecision.DevelopmentStalled _ ->
+			{
+				choices.add(Choice.CONTINUE_DEVELOPMENT);
+				if (offersKeep)
+					choices.add(Choice.KEEP_IMPROVEMENT);
+			}
 			case PendingDecision.FailuresNotReproduced _ ->
 			{
 				choices.add(Choice.MORE_ROUNDS);

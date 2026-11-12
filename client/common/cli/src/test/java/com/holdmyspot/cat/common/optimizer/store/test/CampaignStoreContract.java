@@ -45,6 +45,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
@@ -208,6 +209,45 @@ public abstract class CampaignStoreContract
 			Round round = loaded.orElseThrow().development().round();
 			requireThat(List.copyOf(round.attempts().keySet()), "roundOrder").
 				isEqualTo(List.of("safety", "formatting"));
+		}
+	}
+
+	/**
+	 * Rounds without progress that were counted before a reload keep counting after it: a round that ends without
+	 * progress after the reload is the fifth, and pauses the campaign.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void countedRoundsContinueAfterReload() throws IOException
+	{
+		List<Map<String, Double>> counted = List.of(Map.of("safety", 0.93), Map.of("safety", 0.92),
+			Map.of("safety", 0.91), Map.of("safety", 0.90));
+		Campaign before = new Builder().confirmed().working(1).development("safety", 100, 5).
+			development("formatting", 100, 0).development("plain_list", 100, 0).
+			stalls("safety", new StallProgress(Map.of("safety", 0.95), 0, counted)).
+			round(new Round(Map.of("safety", 1))).promptAuthorAttempts(3).window(4).build();
+		try (StoreFixture fixture = open())
+		{
+			fixture.store().replaceSnapshot(before);
+
+			Campaign loaded = fixture.reopen().load(before.header().id()).orElseThrow();
+
+			requireThat(loaded.development().stalls().get("safety").rounds(), "rounds").isEqualTo(counted);
+			requireThat(loaded.pending(), "pendingBefore").isNull();
+			// An attempt that leaves the prompt unchanged ends the sequential round without a promotion
+			Campaign reserved = Transitions.apply(loaded, new CampaignEvent.StartPromptAuthorAttempt("safety"));
+			int number = reserved.development().round().reservations().keySet().stream().mapToInt(Integer::intValue).
+				max().orElseThrow();
+			Campaign ended = Transitions.apply(reserved, new CampaignEvent.SubmitPromptAuthorAttempt(number, "safety",
+				loaded.development().working().snapshot(), List.of()));
+
+			requireThat(ended.development().round(), "round").isNull();
+			requireThat(ended.pending(), "pendingAfter").isEqualTo(new PendingDecision.DevelopmentStalled(List.of("safety")));
+			requireThat(ended.development().stalls().get("safety").rounds().size(), "roundsAfter").
+				isEqualTo(StallProgress.ROUNDS);
+			fixture.store().replaceSnapshot(ended);
+			requireThat(fixture.reopen().load(before.header().id()).orElseThrow(), "reloadedPause").isEqualTo(ended);
 		}
 	}
 
@@ -1258,6 +1298,10 @@ public abstract class CampaignStoreContract
 			pending(new PendingDecision.CalibrationFailure("cap exceeds 300")).
 			pending(new PendingDecision.PilotFailure("Pilot trial 6 of `safety` ended without an outcome 3 times")).
 			pending(new PendingDecision.CheckpointReached("safety", 200)).
+			pending(new PendingDecision.DevelopmentStalled(List.of("safety", "formatting"))).
+			stalls("safety", new StallProgress(Map.of("safety", 2.0 / 3.0), 1,
+				List.of(Map.of("safety", 0.8), Map.of("safety", 0.75)))).
+			stalls("formatting", new StallProgress(Map.of("formatting", 0.5), 0, List.of())).
 			pending(new PendingDecision.ImprovementProven(1)).
 			pending(new PendingDecision.RegressionTradeOff(2)).
 			pending(new PendingDecision.CertificationUnavailable(Outcome.UNSUPPORTED_TEST_INTERACTION)).

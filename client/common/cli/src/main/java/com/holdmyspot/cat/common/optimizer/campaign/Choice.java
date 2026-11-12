@@ -43,6 +43,11 @@ public enum Choice
 	 */
 	TARGETED_OPTIMIZATION,
 	/**
+	 * Continue development of the stalled tests for another {@value StallProgress#ROUNDS} rounds before asking
+	 * again.
+	 */
+	CONTINUE_DEVELOPMENT,
+	/**
 	 * Deliver a qualifying attempt's candidate labelled {@code improved, not certified} and end optimization.
 	 */
 	KEEP_IMPROVEMENT,

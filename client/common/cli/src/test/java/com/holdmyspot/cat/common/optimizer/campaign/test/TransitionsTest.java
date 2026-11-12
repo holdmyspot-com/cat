@@ -230,7 +230,7 @@ public final class TransitionsTest
 		Development current = campaign.development();
 		Development development = new Development(current.working(), current.series(), ready.development().counts(),
 			current.failures(), current.diagnosis(), current.round(), current.promptAuthor(), current.reviewPoints(),
-			current.testCaseOutcomes(), current.predecessor(), current.reverts());
+			current.testCaseOutcomes(), current.predecessor(), current.reverts(), current.stalls());
 		IncumbentBaseline baseline = new IncumbentBaseline(campaign.baseline().index(),
 			campaign.baseline().identity(), ready.baseline().counts());
 		return new Campaign(campaign.header(), campaign.ceiling(), campaign.lineages(), campaign.identity(),
