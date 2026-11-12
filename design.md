@@ -2321,6 +2321,34 @@ prompt's behaviour, such as an answer found only by reading a long file whole, d
 general requirement that each reply correctly and completely does what the turn asked: a judge disagrees less often on a
 specific expected answer than on "complete and correct", and every judge error counts against the minimum pass rate.
 
+**Development judge (user ruling, 2026-11-11).** Development may judge a prompt test's trials with a cheaper profile
+than the frozen judge's role profile, while every certification attempt, incumbent baseline and control comparison
+keeps the frozen judge. The development judge is a cost control like the commit gate: its errors can misdirect an edit
+or send a weak candidate to an attempt that then fails, but they never enter a claim, so choosing it changes neither
+the judge version nor any certification's currency. The candidates are the profiles that the agent definitions of
+CAT's cheaper implementation agents bind in the harness, cheapest first, excluding any equal to the role profile.
+
+CAT chooses per prompt test, because one judge session decides all of a trial's judged assertions and splitting it by
+assertion would add sessions. It examines one candidate at a time:
+
+1. **Near misses.** The contract author writes, for each judged assertion, two replies that only just satisfy it and
+	two that only just fail it, as part of the proposal. The frozen judge labels them once at confirmation. A candidate
+	that passes a reply that the frozen judge fails, or fails one that it passes, is rejected without shadowing.
+2. **Shadowing.** The test's development trials are judged by both the frozen judge and the candidate; the frozen
+	judge's verdict counts. A *lenient disagreement* is an assertion that the candidate passes and the frozen judge
+	fails; a *strict disagreement* is the reverse. The candidate qualifies when the one-sided 95% Clopper–Pearson upper
+	bound on its lenient-disagreement rate is at most 1% and that on its strict-disagreement rate is at most 5%,
+	counted per shadowed trial: with no disagreement, 299 trials qualify. It is rejected once neither bound can reach
+	its limit within 400 shadowed trials. A rejected candidate is followed by the next; when none remains, the test
+	keeps the frozen judge.
+3. **Spot checks.** After a candidate qualifies, the frozen judge also judges a random one in ten of the test's
+	development trials, and its verdict counts for those. Each spot check is added to the counts of step 2; once
+	either bound exceeds its limit, the test returns to the frozen judge for the rest of the campaign.
+
+The trial record names the profile whose verdict counted. Status shows each test's development judge, its shadowed
+and spot-checked trial counts and its disagreements. A test with fewer development trials than shadowing needs saves
+nothing, and the shadow sessions are an added cost that a rejected candidate does not recover.
+
 **Mechanical expected outcome (user ruling, 2026-11-11).** A scenario may give `expected_outcome` a built-in tool:
 its `## Assertions` section may hold `### expected_outcome` with only `tool` and, optionally, `on_tool_failure`. CAT
 still supplies the assertion's description and kind. The same rules apply as for any assertion: under `fail` the tool
