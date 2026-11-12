@@ -2363,22 +2363,24 @@ CAT chooses per prompt test, because one judge session decides all of a trial's 
 assertion would add sessions. It examines one candidate at a time:
 
 1. **Near misses.** The contract author writes, for each judged assertion, two replies that only just satisfy it and
-	two that only just fail it, as part of the proposal. The frozen judge labels them once at confirmation. A candidate
+	two that only just fail it, as part of the proposal. The frozen judge labels them once, when development starts, since confirmation starts no session. A candidate
 	that passes a reply that the frozen judge fails, or fails one that it passes, is rejected without shadowing.
 2. **Shadowing.** The test's development trials are judged by both the frozen judge and the candidate; the frozen
 	judge's verdict counts. A *lenient disagreement* is an assertion that the candidate passes and the frozen judge
 	fails; a *strict disagreement* is the reverse. The candidate qualifies when the one-sided 95% Clopper–Pearson upper
 	bound on its lenient-disagreement rate is at most 1% and that on its strict-disagreement rate is at most 5%,
-	counted per shadowed trial: with no disagreement, 299 trials qualify. It is rejected once neither bound can reach
-	its limit within 400 shadowed trials. A rejected candidate is followed by the next; when none remains, the test
+	counted per shadowed trial: with no disagreement, 299 trials qualify. It is rejected once either bound can no longer reach
+	its limit within 400 shadowed trials, so any lenient disagreement rejects it. A rejected candidate is followed by the next; when none remains, the test
 	keeps the frozen judge.
 3. **Spot checks.** After a candidate qualifies, the frozen judge also judges a random one in ten of the test's
 	development trials, and its verdict counts for those. Each spot check is added to the counts of step 2; once
-	either bound exceeds its limit, the test returns to the frozen judge for the rest of the campaign.
+	either bound exceeds its limit, the test returns to the frozen judge for the rest of the campaign. Judgings already
+	queued keep the judge they were queued with.
 
 The trial record names the profile whose verdict counted. Status shows each test's development judge, its shadowed
 and spot-checked trial counts and its disagreements. A test with fewer development trials than shadowing needs saves
-nothing, and the shadow sessions are an added cost that a rejected candidate does not recover.
+nothing, and the shadow sessions are an added cost that a rejected candidate does not recover. A test without near misses
+for every judged assertion keeps the frozen judge, so contracts written before this ruling are unchanged.
 
 **Mechanical expected outcome (user ruling, 2026-11-11).** A scenario may give `expected_outcome` a built-in tool:
 its `## Assertions` section may hold `### expected_outcome` with only `tool` and, optionally, `on_tool_failure`. CAT
