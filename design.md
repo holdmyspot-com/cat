@@ -1344,6 +1344,13 @@ links. It copies participating files that are ignored by Git, or that lie outsid
 It then adds a detached optimization worktree at the base `HEAD`, which always holds the current working candidate for
 the user to inspect.
 
+**Moved project (user ruling, 2026-11-12).** Git links a worktree to its repository by absolute paths, so moving or
+copying the project during a campaign leaves the optimization worktree pointing at the old location, where Git reports
+it prunable. At every campaign command, before the inventory check, CAT finds the optimization worktree at its
+recorded place under campaign storage and, when its links name another location, repairs them (`git worktree repair`).
+If the repair fails, CAT recreates the worktree at the working candidate's recorded content, and the inventory check
+then runs as usual.
+
 When CAT presents a proposal, it records and copies the proposal's prompt tests, with their scenarios, `workspace/`
 directories and the shared files that their links reach, and the derived prompt sources that the fork does not yet hold
 in the same way, so neither the guard pilot nor the trials read a live workspace file, test or source. Before
@@ -2364,7 +2371,7 @@ the judge version nor any certification's currency. The candidates are the profi
 CAT's cheaper implementation agents bind in the harness, cheapest first, excluding any equal to the role profile.
 
 CAT chooses per prompt test, because one judge session decides all of a trial's judged assertions and splitting it by
-assertion would add sessions. It examines one candidate at a time:
+assertion would add sessions. It examines the candidates cheapest first, and starts the next one early (step 2):
 
 1. **Near misses.** The contract author writes, for each judged assertion, two replies that only just satisfy it and
 	two that only just fail it, as part of the proposal. The frozen judge labels them once, when development starts, since confirmation starts no session. A candidate
@@ -2376,10 +2383,28 @@ assertion would add sessions. It examines one candidate at a time:
 	counted per shadowed trial: with no disagreement, 299 trials qualify. It is rejected once either bound can no longer reach
 	its limit within 400 shadowed trials, so any lenient disagreement rejects it. A rejected candidate is followed by the next; when none remains, the test
 	keeps the frozen judge.
+	- **Stored verdicts first (user ruling, 2026-11-12).** Before shadowing live trials, the candidate judges stored
+		transcripts that the frozen judge has already judged for the same test, contract version and frozen judge
+		version, such as the incumbent's baseline trials, and those comparisons count as shadowed trials. Only the
+		candidate's session is paid, so a cheap candidate can qualify before development needs it. The candidate's
+		verdicts and the agreement counts never reach the author, so judging held-out transcripts reveals nothing to
+		authoring.
+	- **Overlapping candidates (user ruling, 2026-11-12).** The next candidate starts shadowing as soon as the current
+		one can no longer qualify within 299 shadowed trials, or when it is rejected, so a backup is paid only when the
+		current candidate is likely to fail. Both share each trial's frozen verdict. The first to qualify takes over the
+		test and every other candidate of the test stops.
+	- **Only when it can pay off (user ruling, 2026-11-12).** CAT starts live shadowing of a candidate only when the
+		development trials the test is expected to run before the next certification attempt, estimated from the
+		campaign's trials per round so far, can bring it to qualification; otherwise the test keeps the frozen judge for
+		now, and the stored-verdict comparisons, which cost only the candidate, still run.
 3. **Spot checks.** After a candidate qualifies, the frozen judge also judges a random one in ten of the test's
 	development trials, and its verdict counts for those. Each spot check is added to the counts of step 2; once
 	either bound exceeds its limit, the test returns to the frozen judge for the rest of the campaign. Judgings already
 	queued keep the judge they were queued with.
+4. **Carried qualification (user ruling, 2026-11-12).** A delivered or kept candidate's certification record names, per
+	prompt test, the development judge that had qualified and its counts. A later campaign on the same target starts
+	that test at step 3 with those counts while the test's contract version, near misses, frozen judge version and the
+	candidate's profile are unchanged; any change discards the carried qualification.
 
 The trial record names the profile whose verdict counted. Status shows each test's development judge, its shadowed
 and spot-checked trial counts and its disagreements. A test with fewer development trials than shadowing needs saves

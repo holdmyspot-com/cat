@@ -70,6 +70,16 @@ where this section does not replace them.
 		judge session; a judge decides only outcomes that need judgment.
 	- End a trial once its outcome is decided, such as at the first tool call for a test of whether a rule or skill
 		loads, instead of running the remaining turns.
+- **Development judge, accepted (user ruling, 2026-11-12, evening):** the token comparison (report
+	`/home/gili/cat/worktrees/token-compare-claude/report.md`) certified with no candidate qualified: each test reached
+	only 144–152 of the 299 shadowed trials needed, and the candidates cost about $30 for nothing. Implement the design's
+	stored-verdict comparisons, overlapping candidates, shadowing only when it can pay off, and carried qualification.
+	Same evening: a campaign whose project is moved or copied repairs or recreates its optimization worktree.
+- **Next comparison (user ruling, 2026-11-12, evening):** first find and fix why slots did not raise cache reads and
+	why trial cache writes rose (investigation report `/home/gili/cat/worktrees/token-compare-claude/cache-investigation.md`).
+	Then, on a release with that fix and the development judge changes, rerun the comparison campaign against E1 r9
+	with enough development trials that a cheap judge qualifies and then decides trials alone for a while, and compare
+	the cost per trial of the frozen-only, shadowing and qualified phases.
 - **Accepted limit (user ruling, 2026-11-12):** a top-level session optimizes only the project of its working
 	directory; its request server is found through that project's CAT session directory.
 
