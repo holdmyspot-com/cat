@@ -60,11 +60,33 @@ if [ "${JAVA_TOOL_OPTIONS+x}${JDK_JAVA_OPTIONS+x}${_JAVA_OPTIONS+x}${CLASSPATH+x
 fi
 printf "<%s>" "$@"'
 
-	run env JAVA_TOOL_OPTIONS=hostile JDK_JAVA_OPTIONS=hostile _JAVA_OPTIONS=hostile CLASSPATH=hostile \
+	run env -u TMPDIR JAVA_TOOL_OPTIONS=hostile JDK_JAVA_OPTIONS=hostile _JAVA_OPTIONS=hostile CLASSPATH=hostile \
 		JLINK_VM_OPTIONS=hostile "${PLUGIN}/bin/installer" status 'argument with spaces'
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "$(expected_plugin_java_options "${PLUGIN}")<status><argument with spaces>" ]
+}
+
+@test "the plugin's installer launcher passes a set, non-empty TMPDIR to java as java.io.tmpdir and otherwise nothing" {
+	create_plugin_installer 'printf "<%s>" "$@"'
+	local temporary="${TEST_ROOT}/session temp"
+	mkdir -p "${temporary}"
+
+	run env TMPDIR="${temporary}" "${PLUGIN}/bin/installer" status
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == "<-Djava.io.tmpdir=${temporary}>"* ]]
+	[ "$(printf '%s' "${output}" | grep -o 'java.io.tmpdir' | wc -l)" -eq 1 ]
+
+	run env TMPDIR= "${PLUGIN}/bin/installer" status
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" != *java.io.tmpdir* ]]
+
+	run env -u TMPDIR "${PLUGIN}/bin/installer" status
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" != *java.io.tmpdir* ]]
 }
 
 @test "the plugin's installer launcher started through a symbolic link runs the runtime of its real plugin" {
@@ -72,7 +94,7 @@ printf "<%s>" "$@"'
 	mkdir "${TEST_ROOT}/links"
 	ln -s "${PLUGIN}/bin/installer" "${TEST_ROOT}/links/installer"
 
-	run "${TEST_ROOT}/links/installer" status
+	run env -u TMPDIR "${TEST_ROOT}/links/installer" status
 
 	[ "${status}" -eq 0 ]
 	[ "${output}" = "$(expected_plugin_java_options "${PLUGIN}")<status>" ]

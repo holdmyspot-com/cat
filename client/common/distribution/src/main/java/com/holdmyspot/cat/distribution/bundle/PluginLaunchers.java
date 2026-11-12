@@ -35,6 +35,11 @@ import java.util.Set;
  * and the launcher's logging options keep Java from reporting that, so a cache never changes what the program's caller
  * sees.
  * <p>
+ * On Linux, Java ignores {@code TMPDIR} and keeps its temporary files in {@code /tmp}, which a sandboxed session
+ * cannot write to. When {@code TMPDIR} is set and not empty, a POSIX launcher therefore passes it to Java as
+ * {@code -Djava.io.tmpdir}; it passes nothing when {@code TMPDIR} is unset or empty. On Windows, Java already follows
+ * {@code TEMP} and {@code TMP}, so a batch launcher passes nothing.
+ * <p>
  * Java names files and decodes its arguments in the character set of {@code LC_CTYPE}, which in the C locale cannot
  * name a file whose name is not ASCII. When the caller's {@code LC_CTYPE} is not UTF-8, a POSIX launcher therefore runs
  * Java in {@code LC_CTYPE=C.UTF-8}. It keeps the caller's {@code LC_ALL} and {@code LC_CTYPE} in
@@ -147,7 +152,11 @@ public final class PluginLaunchers
 		if [ -f "$bin/%6$s" ]; then
 		  cache=-XX:AOTCache=$bin/%6$s
 		fi
-		exec "$java" ${cache:+"$cache"} %4$s --module-path "$bin/%7$s" %5$s"$@"
+		tmpdir=
+		if [ -n "${TMPDIR:-}" ]; then
+		  tmpdir=-Djava.io.tmpdir=$TMPDIR
+		fi
+		exec "$java" ${cache:+"$cache"} ${tmpdir:+"$tmpdir"} %4$s --module-path "$bin/%7$s" %5$s"$@"
 		""";
 	private static final String BATCH_TEMPLATE = """
 		@echo off

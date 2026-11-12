@@ -84,7 +84,7 @@ assert_unusable_binding()
 
 	# The loader variables are empty or name no file, so that the commands that run before the launcher removes them
 	# load nothing
-	run env JAVA_TOOL_OPTIONS=-Dinjected=1 JDK_JAVA_OPTIONS=-Dinjected=2 CLASSPATH=/injected LC_ALL=C.UTF-8 \
+	run env -u TMPDIR JAVA_TOOL_OPTIONS=-Dinjected=1 JDK_JAVA_OPTIONS=-Dinjected=2 CLASSPATH=/injected LC_ALL=C.UTF-8 \
 		LD_PRELOAD= LD_LIBRARY_PATH="${TEST_ROOT}/no libraries" LD_AUDIT= BASH_ENV="${TEST_ROOT}/no script" \
 		ENV="${TEST_ROOT}/no script" DYLD_INSERT_LIBRARIES= DYLD_LIBRARY_PATH="${TEST_ROOT}/no libraries" \
 		"${PLUGIN}/bin/plugin-info" "first argument" '' 'quote " and $dollar'
@@ -126,7 +126,7 @@ CLASSPATH=unset
 	create_echo_runtime_plugin
 	bin="$(cd -P "${PLUGIN}/bin" && pwd -P)"
 
-	run "${PLUGIN}/bin/plugin-info"
+	run env -u TMPDIR "${PLUGIN}/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" != *"AOTCache"* ]]
@@ -134,10 +134,15 @@ CLASSPATH=unset
 	mkdir "${PLUGIN}/bin/aot"
 	printf 'cache' > "${PLUGIN}/bin/aot/session-start.aot"
 
-	run "${PLUGIN}/bin/plugin-info"
+	run env -u TMPDIR "${PLUGIN}/bin/plugin-info"
 
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *$'\nCLASSPATH=unset\n[-XX:AOTCache='"${bin}"$'/aot/session-start.aot]\n[-Xlog:all=off:stdout]\n'* ]]
+
+	run env TMPDIR="${TEST_ROOT}/session temp" "${PLUGIN}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *$'\n[-XX:AOTCache='"${bin}"$'/aot/session-start.aot]\n[-Djava.io.tmpdir='"${TEST_ROOT}"$'/session temp]\n[-Xlog:all=off:stdout]\n'* ]]
 }
 
 # Trains a startup cache for a copy of the generated Codex plugin at another path, as an installation at that path

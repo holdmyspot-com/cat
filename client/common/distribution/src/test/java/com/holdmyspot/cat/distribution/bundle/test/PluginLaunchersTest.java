@@ -65,12 +65,12 @@ public final class PluginLaunchersTest
 				"session-start"));
 			requireThat(Files.readString(bin.resolve("read-part")), "launcher").
 				startsWith("#!/bin/sh\n").
-				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS +
+				contains("exec \"$java\" ${cache:+\"$cache\"} ${tmpdir:+\"$tmpdir\"} " + VM_OPTIONS +
 					" --module-path \"$bin/runtime/modules\" --add-modules org.slf4j.nop -m app/example.Main \"$@\"\n").
 				contains("java=$runtime/bin/java\n").
 				doesNotContain("bwrap");
 			requireThat(Files.readString(bin.resolve("java")), "wrapper").
-				contains("exec \"$java\" ${cache:+\"$cache\"} " + VM_OPTIONS +
+				contains("exec \"$java\" ${cache:+\"$cache\"} ${tmpdir:+\"$tmpdir\"} " + VM_OPTIONS +
 					" --module-path \"$bin/runtime/modules\" \"$@\"\n");
 		}
 	}
@@ -195,6 +195,7 @@ public final class PluginLaunchersTest
 			command.addAll(List.of("first arg", "second"));
 			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 			builder.environment().put("JAVA_TOOL_OPTIONS", "-Dinjected=true");
+			builder.environment().remove("TMPDIR");
 			builder.environment().put("LC_ALL", "C.UTF-8");
 			String output;
 			try (Process process = builder.start())
@@ -207,6 +208,97 @@ public final class PluginLaunchersTest
 			requireThat(output, "output").isEqualTo("JAVA_TOOL_OPTIONS=unset|" +
 				String.join("|", VM_OPTIONS.replace("\"", "").split(" ")) + "|--module-path|" + modulePath +
 				"|--add-modules|org.slf4j.nop|-m|app/example.Main|first arg|second|");
+		}
+	}
+
+	/**
+	 * Verifies that a POSIX launcher passes the session's {@code TMPDIR} to Java as {@code java.io.tmpdir}, including a
+	 * folder whose name holds a space, because Java on Linux ignores {@code TMPDIR} and would use a {@code /tmp} that a
+	 * sandboxed session cannot write to.
+	 */
+	@Test
+	public void launcherPassesTmpdirToJava() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("session temp ")).toRealPath();
+
+			List<String> arguments = launcherJavaArguments(temporary, temporary.toString());
+
+			requireThat(arguments, "arguments").contains("-Djava.io.tmpdir=" + temporary);
+			requireThat(arguments.stream().filter(argument -> argument.startsWith("-Djava.io.tmpdir=")).count(),
+				"tmpdirOptions").isEqualTo(1L);
+		}
+	}
+
+	/**
+	 * Verifies that a POSIX launcher passes no {@code java.io.tmpdir} when {@code TMPDIR} is unset or empty.
+	 */
+	@Test
+	public void launcherPassesNoTmpdirWithoutTmpdir() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("session temp ")).toRealPath();
+
+			for (String tmpdir : new String[]{null, ""})
+			{
+				List<String> arguments = launcherJavaArguments(temporary, tmpdir);
+
+				requireThat(arguments.stream().filter(argument -> argument.contains("java.io.tmpdir")).toList(),
+					"tmpdirOptions").withContext(tmpdir, "TMPDIR").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Runs a generated POSIX launcher over a stand-in {@code java} that prints its arguments.
+	 *
+	 * @param work   an existing folder that receives the plugin
+	 * @param tmpdir the launcher's {@code TMPDIR}, or {@code null} to leave it unset
+	 * @return the arguments that the launcher passed to {@code java}
+	 * @throws IOException          if the fixture cannot be created or the launcher cannot be run
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	private static List<String> launcherJavaArguments(Path work, String tmpdir)
+		throws IOException, InterruptedException
+	{
+		Path plugin = Files.createTempDirectory(work, "plugin launchers ").toRealPath();
+		Path bin = plugin.resolve("bin");
+		PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, bin);
+		Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
+		String javaName = "java";
+		if (Platform.current().isWindows())
+			javaName = "java.exe";
+		Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
+			#!/bin/sh
+			printf '%s\\n' "$@"
+			""");
+		if (PortableFiles.hasModes(java))
+			Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
+		Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
+
+		List<String> command = new ArrayList<>();
+		if (Platform.current().isWindows())
+		{
+			// Git Bash takes the launcher's own folder from its path, which needs / separators
+			command.add("sh");
+			command.add(bin.resolve("read-part").toString().replace('\\', '/'));
+		}
+		else
+			command.add(bin.resolve("read-part").toString());
+		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+		builder.environment().put("LC_ALL", "C.UTF-8");
+		if (tmpdir == null)
+			builder.environment().remove("TMPDIR");
+		else
+			builder.environment().put("TMPDIR", tmpdir);
+		try (Process process = builder.start())
+		{
+			process.getOutputStream().close();
+			String output = new String(process.getInputStream().readAllBytes(), UTF_8);
+			requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
+			return output.lines().toList();
 		}
 	}
 

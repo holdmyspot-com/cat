@@ -17,7 +17,9 @@ import java.util.Set;
  * Writes the launchers in a plugin's {@code bin} folder that run the plugin's installer on the Java runtime in the
  * plugin's {@code bin/runtime} folder, with the plugin's modules and fixed JVM options. The launchers discard the JVM
  * options that the environment supplies, and exit with status 3, writing one line that names the missing file, when
- * the plugin's runtime has no {@code java}. The installer receives the caller's PATH and working directory.
+ * the plugin's runtime has no {@code java}. The POSIX launcher passes a set, non-empty {@code TMPDIR} to Java as
+ * {@code -Djava.io.tmpdir}, because Java on Linux ignores {@code TMPDIR} and a sandboxed session cannot write to
+ * {@code /tmp}. The installer receives the caller's PATH and working directory.
  */
 final class InstallerLaunchers
 {
@@ -85,8 +87,13 @@ final class InstallerLaunchers
 				export LC_CTYPE=C.UTF-8
 				;;
 		esac
-		exec "$java" -Xshare:auto -Xlog:all=off:stdout -Xlog:all=warning:stderr -XX:+PerfDisableSharedMem \\
-			-Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 -Djdk.http.auth.tunneling.disabledSchemes= \\
+		tmpdir=
+		if [ -n "${TMPDIR:-}" ]; then
+			tmpdir=-Djava.io.tmpdir=$TMPDIR
+		fi
+		exec "$java" ${tmpdir:+"$tmpdir"} -Xshare:auto -Xlog:all=off:stdout -Xlog:all=warning:stderr \\
+			-XX:+PerfDisableSharedMem -Dstdout.encoding=UTF-8 -Dstderr.encoding=UTF-8 \\
+			-Djdk.http.auth.tunneling.disabledSchemes= \\
 			--enable-native-access=com.holdmyspot.cat.common.cli \\
 			-Djava.util.logging.config.file="$runtime/conf/logging.properties" \\
 			--module-path "$bin/@MODULES@" --add-modules org.slf4j.nop \\
