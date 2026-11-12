@@ -464,6 +464,7 @@ public final class Delivery
 	 */
 	private Optional<UnownedChange> prepareWorktree(Overlay selected, Overlay working) throws IOException
 	{
+		workspace.reconnectWorktree(working);
 		Map<Path, FileEntry> worktree = projectEntries(workspace.scanWorktree());
 		if (worktree.equals(projectEntries(selected.snapshot())))
 			return Optional.empty();

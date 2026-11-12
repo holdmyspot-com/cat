@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.workspace.test;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.EXECUTABLE;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.READ_WRITE;
+import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.content;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.file;
 import static com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.writeFile;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -12,6 +13,7 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
+import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.workspace.Fork;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
@@ -343,6 +345,161 @@ public final class ForkTest
 			storeFork(base, campaign);
 			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).missingWorktreeIsNotAFork();
 		}
+	}
+
+	/**
+	 * Verifies that a copy of a project whose campaign holds an optimization worktree reconnects that worktree to the
+	 * copy's repository before the worktree is checked, leaves the original project's worktree linked to the original,
+	 * and keeps the working candidate in the worktree, so the check finds no change that CAT did not make.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void copiedProjectReconnectsWorktree() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path campaign = base.resolve(CAMPAIGNS + "/c1");
+			Fork original = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			original.workspace().materialize(edited(original));
+			Path copy = root.resolve("copy");
+			FileTrees.copy(base, copy);
+			Path copiedCampaign = copy.resolve(CAMPAIGNS + "/c1");
+			Path copiedWorktree = copiedCampaign.resolve("worktree");
+			requireThat(commonDirectory(copiedWorktree), "commonBefore").isEqualTo(base.resolve(".git").toRealPath());
+
+			ForkView fork = new GitForks(Yielding.fileReplacer()).open(copy, copiedCampaign);
+			Overlay working = edited(fork);
+			fork.workspace().reconnectWorktree(working);
+
+			requireThat(commonDirectory(copiedWorktree), "commonAfter").isEqualTo(copy.resolve(".git").toRealPath());
+			requireThat(registeredWorktrees(new Git(copy)), "copiedWorktrees").
+				isEqualTo(List.of(copy.toRealPath(), copiedWorktree.toRealPath()));
+			requireThat(prunable(new Git(copy)), "copiedPrunable").isEqualTo(0L);
+			requireThat(commonDirectory(campaign.resolve("worktree")), "originalCommon").
+				isEqualTo(base.resolve(".git").toRealPath());
+			requireThat(registeredWorktrees(new Git(base)), "originalWorktrees").
+				isEqualTo(List.of(base.toRealPath(), campaign.resolve("worktree").toRealPath()));
+			requireThat(fork.workspace().scanWorktree().entries(), "worktreeEntries").
+				isEqualTo(working.snapshot().entries());
+		}
+	}
+
+	/**
+	 * Verifies that an optimization worktree whose registration the copied project lacks, so that its links cannot be
+	 * repaired, is recreated as a worktree of the copy's repository that holds exactly the working candidate's files.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void unrepairableWorktreeIsRecreated() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Path copy = root.resolve("copy");
+			FileTrees.copy(base, copy);
+			TemporaryDirectories.deleteRecursively(copy.resolve(".git/worktrees"));
+			Path copiedCampaign = copy.resolve(CAMPAIGNS + "/c1");
+			Path copiedWorktree = copiedCampaign.resolve("worktree");
+			writeFile(copiedWorktree.resolve("leftover.md"), "leftover", READ_WRITE);
+
+			ForkView fork = new GitForks(Yielding.fileReplacer()).open(copy, copiedCampaign);
+			Overlay working = edited(fork);
+			fork.workspace().reconnectWorktree(working);
+
+			requireThat(commonDirectory(copiedWorktree), "common").isEqualTo(copy.resolve(".git").toRealPath());
+			requireThat(registeredWorktrees(new Git(copy)), "worktrees").
+				isEqualTo(List.of(copy.toRealPath(), copiedWorktree.toRealPath()));
+			requireThat(fork.workspace().scanWorktree().entries(), "worktreeEntries").
+				isEqualTo(working.snapshot().entries());
+		}
+	}
+
+	/**
+	 * Verifies that removing the campaign of a moved project removes its optimization worktree and the record that
+	 * the moved repository holds of it, although the worktree's links named the old location.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void removesMovedProjectsWorktree() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Path moved = Files.move(base, root.resolve("moved"));
+			Git git = new Git(moved);
+			requireThat(prunable(git), "prunableBefore").isEqualTo(1L);
+			Path campaign = moved.resolve(CAMPAIGNS + "/c1");
+
+			new GitForks(Yielding.fileReplacer()).remove(moved, campaign);
+
+			requireThat(Files.exists(campaign.resolve("worktree"), NOFOLLOW_LINKS), "worktreeExists").isFalse();
+			requireThat(registeredWorktrees(git), "worktrees").isEqualTo(List.of(moved.toRealPath()));
+		}
+	}
+
+	/**
+	 * Returns a working candidate that differs from the fork's files, as one that a prompt author wrote.
+	 *
+	 * @param fork the fork
+	 * @return the candidate
+	 */
+	private static Overlay edited(ForkView fork)
+	{
+		return Overlay.of(fork.inventory()).write(Path.of("prompt.md"), content("edited"), READ_WRITE);
+	}
+
+	/**
+	 * Returns the common Git directory that a worktree's links lead Git to.
+	 *
+	 * @param worktree the worktree
+	 * @return the directory's real path
+	 * @throws IOException if Git fails
+	 */
+	private static Path commonDirectory(Path worktree) throws IOException
+	{
+		return Path.of(new Git(worktree).run("rev-parse", "--path-format=absolute", "--git-common-dir").strip()).
+			toRealPath();
+	}
+
+	/**
+	 * Returns the worktrees that a repository registers, its main worktree first.
+	 *
+	 * @param git the repository's Git
+	 * @return the worktrees' real paths
+	 * @throws IOException if Git fails or a worktree does not exist
+	 */
+	private static List<Path> registeredWorktrees(Git git) throws IOException
+	{
+		List<Path> worktrees = new ArrayList<>();
+		for (String line : git.lines("worktree", "list", "--porcelain"))
+		{
+			if (line.startsWith("worktree "))
+				worktrees.add(Path.of(line.substring("worktree ".length())).toRealPath());
+		}
+		return worktrees;
+	}
+
+	/**
+	 * Returns how many worktrees of a repository Git reports as prunable, because their links name a location that
+	 * does not exist.
+	 *
+	 * @param git the repository's Git
+	 * @return the count
+	 * @throws IOException if Git fails
+	 */
+	private static long prunable(Git git) throws IOException
+	{
+		return git.lines("worktree", "list", "--porcelain").stream().filter(line -> line.startsWith("prunable")).
+			count();
 	}
 
 	/**

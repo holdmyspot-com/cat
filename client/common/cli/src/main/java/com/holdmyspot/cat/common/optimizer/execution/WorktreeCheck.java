@@ -55,7 +55,9 @@ public final class WorktreeCheck
 	}
 
 	/**
-	 * Verifies the optimization worktree of an active campaign. A worktree that holds the working candidate passes.
+	 * Verifies the optimization worktree of an active campaign. The worktree is first reconnected to the base's
+	 * repository if the project moved or was copied, which recreates it holding the working candidate if its links
+	 * cannot be repaired. A worktree that holds the working candidate passes.
 	 * A worktree that still holds the candidate that the working one replaced receives the working candidate. Any
 	 * other worktree has an unowned change, which pauses the campaign.
 	 *
@@ -68,9 +70,10 @@ public final class WorktreeCheck
 	static Campaign verify(DriverContext context, Campaign campaign, Candidate previous) throws IOException
 	{
 		assert campaign.lifecycle() == Lifecycle.ACTIVE : campaign.lifecycle();
-		FileInventory worktree = context.workspace().scanWorktree();
 		Candidate current = campaign.development().working();
 		Overlay working = context.overlays().require(current.snapshot());
+		context.workspace().reconnectWorktree(working);
+		FileInventory worktree = context.workspace().scanWorktree();
 		if (holds(worktree, working))
 			return campaign;
 		if (!previous.snapshot().equals(current.snapshot()) &&

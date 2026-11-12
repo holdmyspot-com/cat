@@ -46,6 +46,7 @@ public final class Workspace implements WorkspacePort
 	private final PluginCopies pluginCopies;
 	private final Path worktree;
 	private final Path worktreeMirror;
+	private final WorktreeLinks links;
 
 	/**
 	 * Creates the workspace of a fork.
@@ -54,13 +55,15 @@ public final class Workspace implements WorkspacePort
 	 * @param storage the campaign storage directory, which holds the staged sources, the authoring copies, the
 	 *   plugin copies and the mirror of the read-only external participants
 	 * @param worktree the optimization worktree's directory
+	 * @param links keeps the optimization worktree linked to the base's repository
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Workspace(ForkTree tree, Path storage, Path worktree)
+	public Workspace(ForkTree tree, Path storage, Path worktree, WorktreeLinks links)
 	{
 		requireThat(tree, "tree").isNotNull();
 		requireThat(storage, "storage").isNotNull();
 		requireThat(worktree, "worktree").isNotNull();
+		requireThat(links, "links").isNotNull();
 		Path normalizedStorage = storage.toAbsolutePath().normalize();
 		this.tree = tree;
 		this.stagedSources = new StagedSources(tree, normalizedStorage.resolve("staged"));
@@ -68,6 +71,7 @@ public final class Workspace implements WorkspacePort
 		this.pluginCopies = new PluginCopies(normalizedStorage.resolve("plugins"));
 		this.worktree = worktree.toAbsolutePath().normalize();
 		this.worktreeMirror = normalizedStorage.resolve("worktree-external");
+		this.links = links;
 	}
 
 	@Override
@@ -146,6 +150,28 @@ public final class Workspace implements WorkspacePort
 	public void deleteAuthoringCopy(Path copy) throws IOException
 	{
 		authoringCopies.delete(copy);
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * A worktree whose links cannot be repaired is replaced with a new one that the candidate's files are then written
+	 * into.
+	 *
+	 * @throws IllegalArgumentException if {@code candidate} is an overlay on a different fork
+	 */
+	@Override
+	public void reconnectWorktree(Overlay candidate) throws IOException
+	{
+		requireThat(candidate, "candidate").isNotNull();
+		tree.requireSameFork(candidate);
+		synchronized (worktreeLock)
+		{
+			if (links.repair())
+				return;
+			links.recreate();
+			materialize(candidate);
+		}
 	}
 
 	@Override

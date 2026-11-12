@@ -103,7 +103,8 @@ public final class ControlSourceTest
 			Files.createSymbolicLink(base.resolve("docs/reply-rules.md"), external);
 			ForkTree tree = ForkTree.record(base, campaign, Set.of(TARGET, Path.of("shared/rules.md"),
 				Path.of("docs/rules.md"), Path.of("docs/reply-rules.md")));
-			WorkspacePort port = new Workspace(tree, campaign, campaign.resolve("worktree"));
+			WorkspacePort port = new Workspace(tree, campaign, campaign.resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			List<Dependent> dependents = List.of(
 				new Dependent(Path.of("docs/rules.md"), new Dependent.WholeFile(), "Holds the prompt's rules."),
 				new Dependent(Path.of("docs/reply-rules.md"), new Dependent.Span("Close with the motto.\n"),
@@ -216,7 +217,8 @@ public final class ControlSourceTest
 		writeFile(base.resolve("other.md"), MENTION, READ_WRITE);
 		ForkTree tree = ForkTree.record(base, campaign, Set.of(TARGET, Path.of("repair.sh"), Path.of("AGENTS.md"),
 			Path.of("hooks.json"), Path.of("other.md")));
-		return new Project(tree, new Workspace(tree, campaign, campaign.resolve("worktree")));
+		return new Project(tree, new Workspace(tree, campaign, campaign.resolve("worktree"),
+			PlainWorktreeLinks.INSTANCE));
 	}
 
 	/**

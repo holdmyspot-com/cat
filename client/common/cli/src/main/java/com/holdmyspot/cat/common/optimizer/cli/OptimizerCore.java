@@ -1192,6 +1192,8 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		WorkspacePort workspace = fork.workspace();
+		// A build that runs Git in the worktree needs the worktree's links to name the project where it is now
+		workspace.reconnectWorktree(Overlay.of(fork.inventory()));
 		List<TrialPlugin> copied = new ArrayList<>();
 		try
 		{

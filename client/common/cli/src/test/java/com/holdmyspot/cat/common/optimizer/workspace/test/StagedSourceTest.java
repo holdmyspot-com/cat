@@ -279,7 +279,8 @@ public final class StagedSourceTest
 			Authority authority = new Authority(Set.of(Path.of("alias.md"), Path.of("docs"), Path.of("shared.md")),
 				Set.of(), fork);
 			StagedSources sources = new StagedSources(project.tree(), project.campaign().resolve("staged"));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 
 			Path staged = sources.stage(ControlSource.of(port, fork, Path.of("prompt.md"), List.of(), JSON), Set.of());
 
@@ -623,7 +624,8 @@ public final class StagedSourceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			Overlay overlay = Overlay.of(project.tree().inventory());
 
 			Path staged = port.stage(overlay, Set.of());
@@ -651,7 +653,8 @@ public final class StagedSourceTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
 			Path base = pluginBase(root.resolve("plugin-base"));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			TrialPlugin plugin = builtPlugin("cat", port.copyPluginBase(base));
 			FileInventory fork = project.tree().inventory();
 			Overlay candidate = Overlay.of(fork).write(Path.of("rules/a.md"), content("candidate rule a"), READ_WRITE);
@@ -698,7 +701,8 @@ public final class StagedSourceTest
 			Path base = pluginBase(root.resolve("plugin-base"));
 			writeFile(base.resolve("bin/read-part"), "#!/bin/sh\n", EXECUTABLE);
 			writeFile(base.resolve("hooks/hooks.json"), HOOKS, READ_WRITE);
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			TrialPlugin plugin = builtPlugin("cat", port.copyPluginBase(base));
 			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
 			PluginRemovals removals = PluginRemovals.of(List.of(
@@ -739,7 +743,8 @@ public final class StagedSourceTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
 			Path base = pluginBase(root.resolve("plugin-base"));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			TrialPlugin plugin = builtPlugin("cat", port.copyPluginBase(base));
 			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
 
@@ -762,7 +767,8 @@ public final class StagedSourceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-staged-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			TrialPlugin cat = builtPlugin("cat", port.copyPluginBase(pluginBase(root.resolve("cat-base"))));
 			Path docsBase = root.resolve("docs-base");
 			writeFile(docsBase.resolve(".codex-plugin/plugin.json"), "{\"name\": \"docs\"}", READ_WRITE);
@@ -805,7 +811,8 @@ public final class StagedSourceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			Path target = Path.of("prompt.md");
 			Path configuration = PromptConfiguration.location(target);
 			Overlay overlay = Overlay.of(project.tree().inventory()).
@@ -832,7 +839,8 @@ public final class StagedSourceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			Path target = Path.of("prompt.md");
 			Path history = PromptTestLocations.certificationHistory(target);
 			Overlay overlay = Overlay.of(project.tree().inventory()).
@@ -861,7 +869,8 @@ public final class StagedSourceTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-staged-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			Path source = port.stage(Overlay.of(project.tree().inventory()), Set.of());
 
 			port.pluginCopy(builtPlugin("cat", "0".repeat(64)), source, PluginRemovals.NONE);

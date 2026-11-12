@@ -160,6 +160,17 @@ public interface WorkspacePort
 	void deleteAuthoringCopy(Path copy) throws IOException;
 
 	/**
+	 * Reconnects the optimization worktree to the base's repository after the project moved or was copied, which
+	 * leaves the worktree's Git links naming the old location. Links that name another location are repaired; if that
+	 * fails, the worktree is recreated holding a candidate's files. A worktree whose links are intact is left as it is.
+	 *
+	 * @param candidate the candidate that a recreated worktree holds: the working candidate
+	 * @throws NullPointerException if {@code candidate} is null
+	 * @throws IOException if Git fails or the worktree cannot be read or written
+	 */
+	void reconnectWorktree(Overlay candidate) throws IOException;
+
+	/**
 	 * Scans the optimization worktree, for example to detect a change that CAT did not make.
 	 *
 	 * @return the worktree's inventory

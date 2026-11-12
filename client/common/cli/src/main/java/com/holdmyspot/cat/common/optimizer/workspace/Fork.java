@@ -16,8 +16,10 @@ import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -49,6 +51,7 @@ public final class Fork implements ForkView
 	private final Path worktree;
 	private final Optional<String> ignoreNotice;
 	private final FileReplacer replacer;
+	private final WorktreeLinks links;
 
 	/**
 	 * Creates a fork.
@@ -59,17 +62,19 @@ public final class Fork implements ForkView
 	 * @param ignoreNotice the notice, for the agent that reads the command's output, that creating the fork added CAT's
 	 *   session directories to the base's {@code .gitignore} or could not
 	 * @param replacer replaces the stored participant selection
+	 * @param links keeps the optimization worktree linked to the base's repository
 	 */
 	private Fork(ForkTree recorded, ParticipantSelection selection, Path worktree, Optional<String> ignoreNotice,
-		FileReplacer replacer)
+		FileReplacer replacer, WorktreeLinks links)
 	{
 		this.recorded = recorded;
 		this.selection = selection;
 		this.tree = recorded.reachableFrom(selection::holds);
-		this.workspace = new Workspace(tree, recorded.directory().getParent(), worktree);
+		this.workspace = new Workspace(tree, recorded.directory().getParent(), worktree, links);
 		this.worktree = worktree;
 		this.ignoreNotice = ignoreNotice;
 		this.replacer = replacer;
+		this.links = links;
 	}
 
 	/**
@@ -179,7 +184,8 @@ public final class Fork implements ForkView
 		{
 			addWorktree(git, worktree, registrations);
 			worktreeAdded = true;
-			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, ignoreNotice, replacer);
+			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, ignoreNotice, replacer,
+				new GitWorktreeLinks(git, worktree));
 			// Git checks out the tracked files only, so write the participants and the recorded modes as well
 			fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 			return fork;
@@ -343,18 +349,43 @@ public final class Fork implements ForkView
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
+		Path worktree = worktreeOf(campaign.toAbsolutePath().normalize());
+		return open(base, campaign, replacer, new GitWorktreeLinks(new Git(base.toAbsolutePath().normalize()),
+			worktree));
+	}
+
+	/**
+	 * Opens a fork that a campaign holds, as {@link #open(Path, Path, FileReplacer)} does, keeping its optimization
+	 * worktree linked to the base's repository through {@code links}.
+	 *
+	 * @param base the base worktree
+	 * @param campaign the campaign storage directory
+	 * @param replacer replaces the fork's stored participant selection
+	 * @param links keeps the optimization worktree linked to the base's repository
+	 * @return the fork, which reports no notice about the base's {@code .gitignore}
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws WorkspaceException if the campaign holds no fork
+	 * @throws IOException if the recorded files cannot be read
+	 */
+	public static Fork open(Path base, Path campaign, FileReplacer replacer, WorktreeLinks links) throws IOException
+	{
+		requireThat(base, "base").isNotNull();
+		requireThat(campaign, "campaign").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
+		requireThat(links, "links").isNotNull();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		ForkTree tree = ForkTree.open(base, normalizedCampaign);
 		Path worktree = worktreeOf(normalizedCampaign);
 		if (!Files.isDirectory(worktree))
 			throw new WorkspaceException("The campaign directory " + campaign + " holds no optimization worktree.");
-		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, Optional.empty(), replacer);
+		return new Fork(tree, ParticipantSelection.read(normalizedCampaign), worktree, Optional.empty(), replacer,
+			links);
 	}
 
 	/**
 	 * Removes the optimization worktree that a campaign holds, and Git's record of it. Removing a worktree that does
-	 * not exist only prunes Git's records of missing worktrees.
+	 * not exist only prunes Git's records of missing worktrees. The links of a worktree that the project's move left
+	 * naming the old location are repaired first, so that Git removes the record that the base's repository holds.
 	 *
 	 * @param base the base worktree
 	 * @param campaign the campaign storage directory
@@ -368,8 +399,11 @@ public final class Fork implements ForkView
 		Git git = new Git(base.toAbsolutePath().normalize());
 		Path worktree = worktreeOf(campaign.toAbsolutePath().normalize());
 		// A worktree whose deletion was interrupted may have lost its ".git" file, which Git needs to remove it
-		if (Files.exists(worktree.resolve(".git"), LinkOption.NOFOLLOW_LINKS))
+		if (Files.exists(worktree.resolve(".git"), LinkOption.NOFOLLOW_LINKS) &&
+			new GitWorktreeLinks(git, worktree).repair())
+		{
 			git.run("worktree", "remove", "--force", worktree.toString());
+		}
 		TemporaryDirectories.deleteRecursively(worktree);
 		git.run("worktree", "prune");
 	}
@@ -571,7 +605,7 @@ public final class Fork implements ForkView
 			next[0] = next[0].withTarget(target);
 			next[0].write(campaign, replacer);
 		});
-		Fork fork = new Fork(extended, next[0], worktree, ignoreNotice, replacer);
+		Fork fork = new Fork(extended, next[0], worktree, ignoreNotice, replacer, links);
 		fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 		return fork;
 	}
@@ -603,7 +637,7 @@ public final class Fork implements ForkView
 		});
 		Set<Path> held = new HashSet<>(selection.selected());
 		held.addAll(chosen);
-		return new Fork(extended, stored[0].withSelected(held), worktree, ignoreNotice, replacer);
+		return new Fork(extended, stored[0].withSelected(held), worktree, ignoreNotice, replacer, links);
 	}
 
 	@Override
@@ -616,7 +650,7 @@ public final class Fork implements ForkView
 			if (selection.added().contains(participant))
 				held.add(participant);
 		}
-		return new Fork(recorded, selection.withSelected(held), worktree, ignoreNotice, replacer);
+		return new Fork(recorded, selection.withSelected(held), worktree, ignoreNotice, replacer, links);
 	}
 
 	/**
@@ -696,5 +730,139 @@ public final class Fork implements ForkView
 	public Optional<String> ignoreNotice()
 	{
 		return ignoreNotice;
+	}
+
+	/**
+	 * The links that Git keeps between the optimization worktree and the base's repository: the worktree's
+	 * {@code .git} file names the worktree's registration in the repository, and the registration's {@code gitdir}
+	 * file names the worktree's {@code .git} file.
+	 * <p>
+	 * CAT writes both links itself instead of running {@code git worktree repair}. That command also rewrites the
+	 * {@code .git} file of every other worktree that the repository registers, and in a copied project those
+	 * registrations name the original project's worktrees, which the command would then link to the copy.
+	 * <p>
+	 * <b>Thread Safety:</b> This class is thread-safe.
+	 *
+	 * @param git the base's Git
+	 * @param worktree the optimization worktree's directory
+	 */
+	private record GitWorktreeLinks(Git git, Path worktree) implements WorktreeLinks
+	{
+		private static final String GIT_FILE_PREFIX = "gitdir:";
+
+		@Override
+		public boolean repair() throws IOException
+		{
+			Path dotGit = worktree.resolve(".git");
+			Optional<Path> named = linkedPath(dotGit, GIT_FILE_PREFIX, worktree);
+			if (named.isEmpty())
+				return false;
+			Path name = named.get().getFileName();
+			if (name == null)
+				return false;
+			// Git names a registration after the worktree's directory, and the copied registration keeps its name
+			Path registration = worktreeRegistrations(git).resolve(name.toString());
+			if (!Files.isRegularFile(registration.resolve("HEAD"), LinkOption.NOFOLLOW_LINKS))
+				return false;
+			Path backlinkFile = registration.resolve("gitdir");
+			Optional<Path> backlink = linkedPath(backlinkFile, "", registration);
+			boolean backlinked = backlink.isPresent() && isSameFile(backlink.get(), dotGit);
+			if (isSameFile(named.get(), registration) && backlinked)
+				return true;
+			if (!backlinked && backlink.isPresent() && isLinkedTo(backlink.get(), registration))
+			{
+				// Another worktree of the base's repository uses the registration
+				return false;
+			}
+			Files.writeString(dotGit, GIT_FILE_PREFIX + " " + gitText(registration.toRealPath()) + "\n", UTF_8);
+			Files.writeString(backlinkFile, gitText(dotGit.toRealPath()) + "\n", UTF_8);
+			return true;
+		}
+
+		@Override
+		public void recreate() throws IOException
+		{
+			TemporaryDirectories.deleteRecursively(worktree);
+			// Drops the registration of the deleted worktree, if the base's repository holds one
+			git.run("worktree", "prune");
+			addWorktree(git, worktree, worktreeRegistrations(git));
+		}
+
+		/**
+		 * Reads the path that a link file of Git names.
+		 *
+		 * @param file the link file
+		 * @param prefix the text that precedes the path
+		 * @param directory the directory that a relative path is relative to
+		 * @return the path, or empty if the file does not exist or names no path
+		 * @throws IOException if the file cannot be read
+		 */
+		private static Optional<Path> linkedPath(Path file, String prefix, Path directory) throws IOException
+		{
+			if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+				return Optional.empty();
+			String content = Files.readString(file, UTF_8);
+			if (!content.startsWith(prefix))
+				return Optional.empty();
+			String path = content.substring(prefix.length()).strip();
+			if (path.isEmpty())
+				return Optional.empty();
+			try
+			{
+				return Optional.of(directory.resolve(path).normalize());
+			}
+			catch (InvalidPathException _)
+			{
+				return Optional.empty();
+			}
+		}
+
+		/**
+		 * Indicates whether a {@code .git} file names a registration.
+		 *
+		 * @param dotGit the {@code .git} file
+		 * @param registration the registration's directory
+		 * @return {@code true} if the file exists and names the registration
+		 * @throws IOException if the file cannot be read
+		 */
+		private static boolean isLinkedTo(Path dotGit, Path registration) throws IOException
+		{
+			Path parent = dotGit.getParent();
+			if (parent == null)
+				return false;
+			Optional<Path> named = linkedPath(dotGit, GIT_FILE_PREFIX, parent);
+			return named.isPresent() && isSameFile(named.get(), registration);
+		}
+
+		/**
+		 * Indicates whether two paths locate the same file.
+		 *
+		 * @param first a path
+		 * @param second another path
+		 * @return {@code true} if both locate the same existing file, or the paths are equal
+		 * @throws IOException if a file's identity cannot be read
+		 */
+		private static boolean isSameFile(Path first, Path second) throws IOException
+		{
+			try
+			{
+				return Files.isSameFile(first, second);
+			}
+			catch (NoSuchFileException _)
+			{
+				return false;
+			}
+		}
+
+		/**
+		 * Returns a path as Git writes it in a link file, with {@code /} between names on every platform.
+		 *
+		 * @param path an absolute path
+		 * @return the text
+		 */
+		private static String gitText(Path path)
+		{
+			return path.toString().replace(File.separatorChar, '/');
+		}
 	}
 }

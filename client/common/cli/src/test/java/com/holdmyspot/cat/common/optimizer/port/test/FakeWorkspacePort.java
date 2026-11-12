@@ -414,6 +414,17 @@ public final class FakeWorkspacePort implements WorkspacePort
 		}
 	}
 
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * The in-memory worktree has no links to a repository, so nothing changes.
+	 */
+	@Override
+	public void reconnectWorktree(Overlay candidate)
+	{
+		requireThat(candidate, "candidate").isNotNull();
+	}
+
 	@Override
 	public FileInventory scanWorktree()
 	{

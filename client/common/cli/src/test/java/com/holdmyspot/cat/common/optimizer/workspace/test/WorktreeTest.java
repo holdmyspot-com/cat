@@ -49,7 +49,8 @@ public final class WorktreeTest
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-worktree-")));
 			Path worktree = project.campaign().resolve("worktree");
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), worktree);
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), worktree,
+				PlainWorktreeLinks.INSTANCE);
 			Overlay fork = Overlay.of(project.tree().inventory());
 
 			port.materialize(fork);
@@ -77,7 +78,8 @@ public final class WorktreeTest
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-worktree-")));
 			Path worktree = project.campaign().resolve("worktree");
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), worktree);
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), worktree,
+				PlainWorktreeLinks.INSTANCE);
 			Overlay fork = Overlay.of(project.tree().inventory());
 			Overlay edited = fork.
 				write(Path.of("prompt.md"), content("edited"), READ_WRITE).

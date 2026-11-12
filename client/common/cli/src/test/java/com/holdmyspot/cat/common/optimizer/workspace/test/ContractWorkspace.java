@@ -64,7 +64,7 @@ public final class ContractWorkspace implements WorkspaceContract.Subject
 		}
 		else
 		{
-			this.port = new Workspace(tree, storage, worktree);
+			this.port = new Workspace(tree, storage, worktree, PlainWorktreeLinks.INSTANCE);
 			port.materialize(Overlay.of(fork));
 		}
 	}

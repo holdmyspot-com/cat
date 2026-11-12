@@ -126,7 +126,8 @@ public final class AuthoringCopyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-authoring-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 			Path copy = port.prepareAuthoringCopy(Overlay.of(project.tree().inventory()));
 			FileInventory before = port.scanAuthoringCopy(copy);
 			// The session's runner copies the project source into a run directory, whose state is the effects
@@ -161,7 +162,8 @@ public final class AuthoringCopyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-authoring-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 
 			port.scanPromptAuthorEffects(project.base(), project.base());
 		}
@@ -180,7 +182,8 @@ public final class AuthoringCopyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			LinkedProject project = ProjectFixtures.linkedProject(cleanup.add(Files.createTempDirectory("cat-authoring-")));
-			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"));
+			WorkspacePort port = new Workspace(project.tree(), project.campaign(), project.campaign().resolve("worktree"),
+				PlainWorktreeLinks.INSTANCE);
 
 			Path copy = port.prepareAuthoringCopy(Overlay.of(project.tree().inventory()));
 			requireThat(port.scanAuthoringCopy(copy).entries().get(Path.of("prompt.md")), "prompt").

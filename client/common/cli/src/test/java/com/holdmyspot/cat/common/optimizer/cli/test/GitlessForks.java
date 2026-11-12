@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.ForkGit;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
+import com.holdmyspot.cat.common.optimizer.workspace.test.PlainWorktreeLinks;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -120,7 +121,7 @@ public final class GitlessForks implements Forks
 		ForkTree.record(base.toAbsolutePath().normalize(), campaign.toAbsolutePath().normalize(), paths);
 		// A Git worktree holds the tracked files apart from the base; here the workspace writes all of them
 		Files.createDirectories(campaign.resolve("worktree"));
-		Fork fork = Fork.open(base, campaign, replacer);
+		Fork fork = Fork.open(base, campaign, replacer, PlainWorktreeLinks.INSTANCE);
 		fork.workspace().materialize(Overlay.of(fork.inventory()));
 		return new Noticing(fork, ignoreNotice);
 	}
@@ -151,7 +152,7 @@ public final class GitlessForks implements Forks
 	@Override
 	public ForkView open(Path base, Path campaign) throws IOException
 	{
-		return new Noticing(Fork.open(base, campaign, replacer), Optional.empty());
+		return new Noticing(Fork.open(base, campaign, replacer, PlainWorktreeLinks.INSTANCE), Optional.empty());
 	}
 
 	@Override
