@@ -60,6 +60,7 @@ import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
+import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator.ProcessLookup;
@@ -184,6 +185,7 @@ public final class DriverHarness
 	private List<FakeProcessHandle> processes = List.of();
 	private SliceSettings settings = SliceSettings.DEFAULT;
 	private List<TrialProfile> candidateJudges = List.of();
+	private DevelopmentJudgeRecords judgeRecords = DevelopmentJudgeRecords.none();
 	private Path temporaryDirectory;
 	private Set<Path> promptSources = Set.of(PROMPT);
 	private final List<Integer> openTrials = new ArrayList<>();
@@ -332,7 +334,7 @@ public final class DriverHarness
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json,
-			candidateJudges, temporaryDirectory);
+			candidateJudges, judgeRecords, temporaryDirectory);
 	}
 
 	/**
@@ -652,6 +654,17 @@ public final class DriverHarness
 	public void candidateJudges(List<TrialProfile> value)
 	{
 		candidateJudges = List.copyOf(value);
+	}
+
+	/**
+	 * Replaces the development judge records that drivers opened later look up when a test's near misses are labeled.
+	 * They start as records that keep nothing.
+	 *
+	 * @param value the records
+	 */
+	public void judgeRecords(DevelopmentJudgeRecords value)
+	{
+		judgeRecords = value;
 	}
 
 	/**

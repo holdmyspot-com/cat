@@ -161,6 +161,13 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
+	protected Path dataDirectory()
+	{
+		ensureOpen();
+		return new CodexInstallation(configurationDirectory.toAbsolutePath()).dataDirectory();
+	}
+
+	@Override
 	protected Path plugin()
 	{
 		ensureOpen();

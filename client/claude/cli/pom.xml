@@ -27,6 +27,10 @@
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-claude-layout</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-codex-layout</artifactId>
 		</dependency>
 		<dependency>

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.report;
 import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
@@ -73,25 +74,36 @@ final class ReportSummary
 	{
 		if (judges.stream().allMatch(judge -> judge.stage().equals(DevelopmentJudgeReport.NOT_EXAMINED)))
 			return;
-		lines.add("Development judges (certification attempts, baselines and control comparisons always use the " +
-			"frozen judge):");
+		lines.add("Development judges (certification attempts, baselines and control comparisons always count the " +
+			"frozen judge's verdicts):");
 		for (DevelopmentJudgeReport judge : judges)
 		{
-			StringBuilder line = new StringBuilder(256).append("  test ").append(judge.test()).append(": ");
+			StringBuilder line = new StringBuilder(512).append("  test ").append(judge.test()).append(": ");
 			switch (judge.stage())
 			{
 				case DevelopmentJudgeReport.NOT_EXAMINED ->
 					line.append("frozen judge ").append(judge.judge()).append("; no candidate examined yet");
-				case "near_misses" -> line.append("frozen judge ").append(judge.judge()).append("; candidate ").
-					append(judge.examining()).append(" has not judged the near misses yet");
-				case "shadowing" -> line.append("frozen judge ").append(judge.judge()).append("; candidate ").
-					append(judge.examining()).append(" is shadowing it: ").append(judge.shadowed()).
-					append(" trials shadowed, ").append(judge.lenient()).append(" lenient and ").
-					append(judge.strict()).append(" strict disagreements");
+				case "near_misses", "shadowing" ->
+				{
+					line.append("frozen judge ").append(judge.judge());
+					for (ExaminedJudge candidate : judge.candidates())
+					{
+						line.append("; candidate ").append(candidate.profile().label());
+						if (candidate.stage() == DevelopmentJudge.Stage.NEAR_MISSES)
+							line.append(" has not judged the near misses yet");
+						else
+						{
+							line.append(" is shadowing it: ").append(candidate.shadowed()).append(" trials shadowed (").
+								append(candidate.heldOut()).append(" held-out), ").append(candidate.lenient()).
+								append(" lenient and ").append(candidate.strict()).append(" strict disagreements");
+						}
+					}
+				}
 				case "qualified" -> line.append("candidate ").append(judge.judge()).append("; ").
-					append(judge.shadowed()).append(" trials shadowed, ").append(judge.spotChecked()).
-					append(" spot-checked, ").append(judge.lenient()).append(" lenient and ").
-					append(judge.strict()).append(" strict disagreements");
+					append(judge.shadowed()).append(" trials shadowed (").append(judge.heldOut()).
+					append(" held-out), ").append(judge.spotChecked()).append(" spot-checked, ").
+					append(judge.lenient()).append(" lenient and ").append(judge.strict()).
+					append(" strict disagreements");
 				default -> line.append("frozen judge ").append(judge.judge()).append("; no candidate is left");
 			}
 			for (RejectedJudge turnedDown : judge.rejected())

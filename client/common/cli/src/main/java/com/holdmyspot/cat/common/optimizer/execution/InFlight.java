@@ -132,11 +132,11 @@ sealed interface InFlight
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 * @param judge the judge that decides the assertions
 	 * @param seat the judge's part in the trial's verdict
-	 * @param pair the frozen judge and the candidate that both judge the trial, or {@code null} if one judge decides
+	 * @param group the frozen judge and the candidates that all judge the trial, or {@code null} if one judge decides
 	 */
 	record Judging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence,
 		String evidenceSection, List<JudgedAssertion> assertions, List<BuiltInToolResult> results, int attempt,
-		int concurrency, JudgeProfile judge, Seat seat, ShadowPair pair)
+		int concurrency, JudgeProfile judge, Seat seat, ShadowGroup group)
 	{
 		/**
 		 * A judge's part in the trial's verdict.
@@ -152,13 +152,13 @@ sealed interface InFlight
 			 */
 			CANDIDATE_ALONE,
 			/**
-			 * The frozen judge decides, and a candidate judges the trial too.
+			 * The frozen judge decides, and candidates judge the trial too.
 			 */
-			FROZEN_OF_PAIR,
+			FROZEN_OF_GROUP,
 			/**
 			 * A candidate judges the trial that the frozen judge decides.
 			 */
-			CANDIDATE_OF_PAIR
+			CANDIDATE_OF_GROUP
 		}
 
 
@@ -170,7 +170,7 @@ sealed interface InFlight
 		Judging retry()
 		{
 			return new Judging(key, testCase, evidence, evidenceSection, assertions, results, attempt + 1,
-				concurrency, judge, seat, pair);
+				concurrency, judge, seat, group);
 		}
 	}
 
@@ -188,11 +188,11 @@ sealed interface InFlight
 	 * @param attempt the triage attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started
 	 * @param judge the profile of the judge whose verdict failed the trial, or empty if a built-in tool did
-	 * @param shadow the comparison of a candidate judge with the frozen judge, or empty if none judged the trial
+	 * @param shadows the comparisons of candidate judges with the frozen judge, empty if none judged the trial
 	 */
 	record Triaging(TrialKey key, DrawnTestCase testCase, SessionResult.Completed evidence, String evidenceSection,
 		List<BuiltInToolResult> results, String rationale, List<FailedAssertion> failures, int attempt,
-		int concurrency, Optional<TrialProfile> judge, Optional<ShadowResult> shadow)
+		int concurrency, Optional<TrialProfile> judge, List<ShadowResult> shadows)
 	{
 		/**
 		 * Returns the next triage attempt with the same evidence.
@@ -202,7 +202,7 @@ sealed interface InFlight
 		Triaging retry()
 		{
 			return new Triaging(key, testCase, evidence, evidenceSection, results, rationale, failures, attempt + 1,
-				concurrency, judge, shadow);
+				concurrency, judge, shadows);
 		}
 	}
 }

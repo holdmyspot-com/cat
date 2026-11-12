@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
@@ -101,6 +102,7 @@ import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -163,6 +165,7 @@ public final class StatusReportTest
 	{
 		TrialProfile cheap = new TrialProfile("cheap-model", "low");
 		TrialProfile middle = new TrialProfile("middle-model", "medium");
+		TrialProfile expensive = new TrialProfile("expensive-model", "high");
 		Campaign unexamined = new Builder().confirmed().build();
 		StatusReport before = StatusReport.of(unexamined, ReportEvidence.NONE);
 		requireThat(before.summary(ZoneOffset.UTC), "summaryBefore").doesNotContain("Development judges");
@@ -174,23 +177,29 @@ public final class StatusReportTest
 		requireThat(idle.get(0).path("frozen").asBoolean(), "frozenBefore").isTrue();
 
 		Campaign campaign = new Builder().confirmed().
-			judge("formatting", new DevelopmentJudge(Map.of(), List.of(middle), DevelopmentJudge.Stage.SHADOWING,
-				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.NEAR_MISS, 0, 0, 0, 0)), 120, 0, 0, 3)).
-			judge("plain_list", new DevelopmentJudge(Map.of(), List.of(cheap), DevelopmentJudge.Stage.QUALIFIED,
-				List.of(), 299, 31, 0, 2)).
-			judge("safety", new DevelopmentJudge(Map.of(), List.of(), DevelopmentJudge.Stage.FROZEN,
-				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.SPOT_CHECK, 299, 12, 1, 2)), 0, 0, 0, 0)).
+			judge("formatting", new DevelopmentJudge(Map.of(), List.of(), List.of(
+				new ExaminedJudge(middle, DevelopmentJudge.Stage.SHADOWING, 120, 40, 0, 0, 3),
+				ExaminedJudge.started(expensive)),
+				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.NEAR_MISS, 0, 0, 0, 0)), Optional.empty(), 0,
+				0)).
+			judge("plain_list", new DevelopmentJudge(Map.of(), List.of(), List.of(
+				new ExaminedJudge(cheap, DevelopmentJudge.Stage.QUALIFIED, 299, 0, 31, 0, 2)), List.of(), Optional.empty(),
+				0, 0)).
+			judge("safety", new DevelopmentJudge(Map.of(), List.of(), List.of(),
+				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.SPOT_CHECK, 299, 12, 1, 2)), Optional.empty(), 0,
+				0)).
 			build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 
 		String summary = report.summary(ZoneOffset.UTC);
 		requireThat(summary, "summary").contains("Development judges (certification attempts, baselines and " +
-			"control comparisons always use the frozen judge):").
+			"control comparisons always count the frozen judge's verdicts):").
 			contains("test formatting: frozen judge " + campaign.contract().judge().profile().label() +
-				"; candidate " + middle.label() + " is shadowing it: 120 trials shadowed, 0 lenient and 3 strict " +
-				"disagreements; rejected " + cheap.label() + " (judged a near miss differently from the frozen judge").
+				"; candidate " + middle.label() + " is shadowing it: 120 trials shadowed (40 held-out), 0 lenient and 3 " +
+				"strict disagreements; candidate " + expensive.label() + " has not judged the near misses yet; rejected " +
+				cheap.label() + " (judged a near miss differently from the frozen judge").
 			contains("test plain_list: candidate " + cheap.label() +
-				"; 299 trials shadowed, 31 spot-checked, 0 lenient and 2 strict disagreements").
+				"; 299 trials shadowed (0 held-out), 31 spot-checked, 0 lenient and 2 strict disagreements").
 			contains("test safety: frozen judge " + campaign.contract().judge().profile().label() +
 				"; no candidate is left; rejected " + cheap.label() + " (disagreed too often in spot checks");
 		JsonNode judges = report.toJson(JsonMapper.builder().build()).path("development_judges");
@@ -201,6 +210,10 @@ public final class StatusReportTest
 		requireThat(formatting.path("frozen").asBoolean(), "frozen").isTrue();
 		requireThat(formatting.path("shadowed").asInt(), "shadowed").isEqualTo(120);
 		requireThat(formatting.path("strict_disagreements").asInt(), "strict").isEqualTo(3);
+		requireThat(formatting.path("held_out").asInt(), "heldOut").isEqualTo(40);
+		requireThat(formatting.path("candidates").size(), "candidates").isEqualTo(2);
+		requireThat(formatting.path("candidates").get(1).path("stage").asString(), "secondStage").
+			isEqualTo("near_misses");
 		requireThat(formatting.path("rejected").get(0).path("reason").asString(), "reason").isEqualTo("near_miss");
 		JsonNode plainList = judges.get(1);
 		requireThat(plainList.path("judge").asString(), "qualifiedJudge").isEqualTo(cheap.label());

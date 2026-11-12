@@ -1,6 +1,7 @@
 module com.holdmyspot.cat.claude.cli
 {
 	requires com.holdmyspot.cat.claude.installer;
+	requires com.holdmyspot.cat.claude.layout;
 	requires com.holdmyspot.cat.common.cli;
 	requires com.holdmyspot.cat.common.installer;
 	requires com.holdmyspot.cat.codex.layout;

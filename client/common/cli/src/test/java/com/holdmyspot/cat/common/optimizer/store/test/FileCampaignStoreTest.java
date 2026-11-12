@@ -51,6 +51,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.JudgeBasis;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
 import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
@@ -1588,6 +1590,21 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Returns a trial profile as a snapshot stores it.
+	 *
+	 * @param profile the profile
+	 * @return the profile's object
+	 */
+	private static ObjectNode profileNode(TrialProfile profile)
+	{
+		ObjectNode node = JSON.createObjectNode();
+		node.put("model", profile.model());
+		node.put("effort", profile.effort());
+		node.put("tool_output_token_limit", profile.toolOutputTokenLimit());
+		return node;
+	}
+
+	/**
 	 * Verifies that the development judge of each prompt test survives a reload with its labels, its candidates, the
 	 * candidates it turned down and its counts, that the snapshot names nothing when no test has a choice, and that a
 	 * snapshot written before CAT chose development judges loads with no candidate examined.
@@ -1608,24 +1625,49 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 			TrialProfile cheap = new TrialProfile("cheap-model", "low", 4_000);
 			TrialProfile middle = new TrialProfile("middle-model", "medium");
+			TrialProfile expensive = new TrialProfile("expensive-model", "high");
 			Map<String, DevelopmentJudge> judges = new LinkedHashMap<>();
 			judges.put("formatting", new DevelopmentJudge(Map.of("tone/satisfying/1", true, "tone/failing/1", false),
-				List.of(middle), DevelopmentJudge.Stage.SHADOWING,
-				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.NEAR_MISS, 0, 0, 0, 0)), 120, 0, 0, 3));
-			judges.put("safety", new DevelopmentJudge(Map.of("safe/satisfying/1", true), List.of(cheap),
-				DevelopmentJudge.Stage.QUALIFIED, List.of(), 299, 7, 0, 1));
-			judges.put("plain_list", new DevelopmentJudge(Map.of(), List.of(), DevelopmentJudge.Stage.FROZEN,
-				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.SPOT_CHECK, 299, 12, 1, 2)), 0, 0, 0, 0));
+				List.of(), List.of(new ExaminedJudge(middle, DevelopmentJudge.Stage.SHADOWING, 120, 40, 0, 0, 3)),
+				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.NEAR_MISS, 0, 0, 0, 0)),
+				Optional.of(new JudgeBasis(Sha256.of("formatting".getBytes(UTF_8)), 2)), 57, 3));
+			judges.put("safety", new DevelopmentJudge(Map.of("safe/satisfying/1", true), List.of(),
+				List.of(new ExaminedJudge(cheap, DevelopmentJudge.Stage.QUALIFIED, 299, 0, 7, 0, 1)), List.of(),
+				Optional.empty(), 0, 0));
+			judges.put("plain_list", new DevelopmentJudge(Map.of(), List.of(), List.of(),
+				List.of(new RejectedJudge(cheap, RejectedJudge.Rejection.SPOT_CHECK, 299, 12, 1, 2)), Optional.empty(),
+				0, 0));
+			judges.put("two_candidates", new DevelopmentJudge(Map.of(), List.of(expensive),
+				List.of(new ExaminedJudge(cheap, DevelopmentJudge.Stage.SHADOWING, 20, 5, 0, 0, 9),
+					ExaminedJudge.started(middle)), List.of(), Optional.empty(), 0, 0));
 			Campaign campaign = new Builder().header(header(ID)).confirmed().working(1).
 				judge("formatting", judges.get("formatting")).judge("safety", judges.get("safety")).
-				judge("plain_list", judges.get("plain_list")).build();
+				judge("plain_list", judges.get("plain_list")).judge("two_candidates", judges.get("two_candidates")).
+				build();
 			store.replaceSnapshot(campaign);
 
 			Campaign loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
 			requireThat(loaded.judges(), "judges").isEqualTo(judges);
 			requireThat(loaded, "campaign").isEqualTo(campaign);
 
+			// A state written before a test could examine several candidates names them in one list, the first in
+			// examination
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			ObjectNode earlier = ((ObjectNode) root.get("development_judges")).putObject("earlier");
+			earlier.put("stage", "shadowing");
+			earlier.putObject("labels").put("tone/satisfying/1", true);
+			earlier.putArray("candidates").add(profileNode(cheap)).add(profileNode(middle));
+			earlier.putArray("rejected");
+			earlier.put("shadowed", 10);
+			earlier.put("spot_checked", 0);
+			earlier.put("lenient", 0);
+			earlier.put("strict", 1);
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+			requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow().judges().
+				get("earlier"), "earlierState").isEqualTo(new DevelopmentJudge(Map.of("tone/satisfying/1", true),
+				List.of(middle), List.of(new ExaminedJudge(cheap, DevelopmentJudge.Stage.SHADOWING, 10, 0, 0, 0, 1)),
+				List.of(), Optional.empty(), 0, 0));
+
 			root.remove("development_judges");
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 			requireThat(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow().judges(),
@@ -1648,8 +1690,11 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path campaigns = cleanup.add(Files.createTempDirectory("cat-judge-outcome-"));
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			TrialProfile cheap = new TrialProfile("cheap-model", "low");
-			DevelopmentJudge shadowing = new DevelopmentJudge(Map.of(), List.of(cheap), DevelopmentJudge.Stage.SHADOWING,
-				List.of(), 10, 0, 0, 0);
+			TrialProfile middle = new TrialProfile("middle-model", "medium");
+			DevelopmentJudge shadowing = new DevelopmentJudge(Map.of(), List.of(), List.of(
+				new ExaminedJudge(cheap, DevelopmentJudge.Stage.SHADOWING, 10, 0, 0, 0, 0),
+				new ExaminedJudge(middle, DevelopmentJudge.Stage.SHADOWING, 4, 0, 0, 0, 0)), List.of(), Optional.empty(),
+				0, 0);
 			Campaign campaign = new Builder().header(header(ID)).confirmed().working(1).judge("safety", shadowing).
 				build();
 			Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
@@ -1661,21 +1706,24 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(trial.key()));
 			store.replaceSnapshot(running);
 			TrialProfile frozen = new TrialProfile("judge-model", "high");
-			ShadowResult shadow = new ShadowResult(cheap, false, false, true);
+			List<ShadowResult> shadows = List.of(new ShadowResult(cheap, false, false, true),
+				new ShadowResult(middle, false, false, true));
 			store.writeOutcome(ID, new CampaignEvent.Complete(trial.key(), Verdict.PASS, "", List.of(), null,
-				running.identity(), 0L, List.of(), Builder.FILES, Optional.of(frozen), Optional.of(shadow)));
+				running.identity(), 0L, List.of(), Builder.FILES, Optional.of(frozen), shadows));
 
 			List<CampaignEvent.Complete> outcomes = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).
 				listUnadoptedOutcomes(store.load(ID).orElseThrow());
 			requireThat(outcomes.size(), "outcomes").isEqualTo(1);
 			requireThat(outcomes.getFirst().judge(), "judge").isEqualTo(Optional.of(frozen));
-			requireThat(outcomes.getFirst().shadow(), "shadow").isEqualTo(Optional.of(shadow));
+			requireThat(outcomes.getFirst().shadows(), "shadows").isEqualTo(shadows);
 
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			DevelopmentJudge counted = store.load(ID).orElseThrow().judges().get("safety");
 			requireThat(counted.shadowed(), "shadowed").isEqualTo(11);
 			requireThat(counted.strict(), "strict").isEqualTo(1);
 			requireThat(counted.lenient(), "lenient").isEqualTo(0);
+			requireThat(counted.developmentTrials(), "developmentTrials").isEqualTo(1);
+			requireThat(counted.shadowing().getLast().strict(), "middleStrict").isEqualTo(1);
 			reconcile(new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()));
 			requireThat(store.load(ID).orElseThrow().judges().get("safety"), "afterSecondRecovery").isEqualTo(counted);
 		}

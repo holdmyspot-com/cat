@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.AssumptionCheck;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
+import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
@@ -179,9 +180,22 @@ final class ReportJson
 			node.put("stage", judge.stage());
 			putText(node, "examining", judge.examining());
 			node.put("shadowed", judge.shadowed());
+			node.put("held_out", judge.heldOut());
 			node.put("spot_checked", judge.spotChecked());
 			node.put("lenient_disagreements", judge.lenient());
 			node.put("strict_disagreements", judge.strict());
+			ArrayNode candidates = node.putArray("candidates");
+			for (ExaminedJudge candidate : judge.candidates())
+			{
+				ObjectNode element = candidates.addObject();
+				element.put("judge", candidate.profile().label());
+				element.put("stage", EnumNames.lowerCase(candidate.stage()));
+				element.put("shadowed", candidate.shadowed());
+				element.put("held_out", candidate.heldOut());
+				element.put("spot_checked", candidate.spotChecked());
+				element.put("lenient_disagreements", candidate.lenient());
+				element.put("strict_disagreements", candidate.strict());
+			}
 			ArrayNode rejected = node.putArray("rejected");
 			for (RejectedJudge turnedDown : judge.rejected())
 			{

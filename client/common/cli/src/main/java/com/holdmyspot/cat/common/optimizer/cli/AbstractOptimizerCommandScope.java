@@ -14,7 +14,9 @@ import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.JudgeRecordingStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeAccess;
@@ -374,6 +376,26 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 		throws CommandRefusedException, IOException;
 
 	/**
+	 * Returns the harness's CAT data directory, which outlives campaigns, sessions and plugin updates.
+	 *
+	 * @return the directory, which may not exist
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	protected abstract Path dataDirectory();
+
+	/**
+	 * Returns the development judges that earlier campaigns qualified, kept in the harness's CAT data directory.
+	 *
+	 * @return the records
+	 * @throws IllegalStateException if this scope is closed
+	 */
+	final DevelopmentJudgeRecords judgeRecords()
+	{
+		ensureOpen();
+		return new DevelopmentJudgeRecords(dataDirectory(), json(), fileReplacer());
+	}
+
+	/**
 	 * Returns the store of the campaigns of the host session that runs this command.
 	 *
 	 * @return the store
@@ -386,7 +408,10 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	{
 		ensureOpen();
 		if (store == null)
-			store = new FileCampaignStore(sessionDirectory().campaigns(), projectRoot(), json(), fileReplacer());
+		{
+			store = new JudgeRecordingStore(new FileCampaignStore(sessionDirectory().campaigns(), projectRoot(),
+				json(), fileReplacer()), judgeRecords());
+		}
 		return store;
 	}
 

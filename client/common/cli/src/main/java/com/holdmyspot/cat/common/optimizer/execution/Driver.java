@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.execution;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -23,7 +24,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Development;
+import com.holdmyspot.cat.common.optimizer.campaign.CarriedJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.JudgeBasis;
 import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.campaign.Failure;
@@ -50,6 +55,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
@@ -59,6 +65,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
@@ -168,9 +175,9 @@ public final class Driver implements AutoCloseable
 	private final List<Triaging> triageQueue = new ArrayList<>();
 	private final List<NearMissJob> nearMissQueue = new ArrayList<>();
 	/**
-	 * The near-miss judging that runs for each prompt test, by test identifier.
+	 * The near-miss judging that runs for each prompt test and judge.
 	 */
-	private final Map<String, NearMissBatch> nearMissBatches = new HashMap<>();
+	private final Map<NearMissBatch.Key, NearMissBatch> nearMissBatches = new HashMap<>();
 	/**
 	 * The prompt tests whose near-miss replies the frozen judge could not label, which this driver does not label
 	 * again.
@@ -811,7 +818,7 @@ public final class Driver implements AutoCloseable
 			if (section.isPresent())
 			{
 				triageQueue.add(new Triaging(trial.key(), testCase, completed, section.get(), results, record, failures,
-					1, trial.concurrency(), Optional.empty(), Optional.empty()));
+					1, trial.concurrency(), Optional.empty(), List.of()));
 			}
 			return;
 		}
@@ -835,9 +842,12 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Queues the judge sessions of a completed trial. The frozen judge decides every trial except a development trial
-	 * of a prompt test whose candidate judge is shadowed or qualified: while the candidate is shadowed, the frozen
-	 * judge decides and the candidate judges the trial too; once it is qualified, the candidate decides, except for a
-	 * random {@value #SPOT_CHECK_ONE_IN}th of the trials, which both judge and the frozen judge decides.
+	 * of a prompt test whose candidate judge qualified, which the candidate decides, except for a random
+	 * {@value #SPOT_CHECK_ONE_IN}th of the trials, which both judge and the frozen judge decides.
+	 * <p>
+	 * Each shadowed candidate of the test judges the trial next to the frozen judge if the trial is not a development
+	 * trial, or if it is one and the development trials that the test is expected to run before the next
+	 * certification attempt can bring the candidate to qualification.
 	 *
 	 * @param trial the trial session
 	 * @param completed the trial session's result
@@ -849,46 +859,78 @@ public final class Driver implements AutoCloseable
 		List<JudgedAssertion> judged, List<BuiltInToolResult> results)
 	{
 		JudgeProfile frozen = campaign.contract().judge();
-		DevelopmentJudge state = null;
-		if (trial.key().purpose() == Purpose.DEVELOPMENT)
-			state = campaign.judges().get(trial.testCase().testId());
+		String test = trial.testCase().testId();
+		DevelopmentJudge state = campaign.judges().get(test);
+		boolean development = trial.key().purpose() == Purpose.DEVELOPMENT;
 		JudgeProfile decider = frozen;
 		Judging.Seat seat = Judging.Seat.FROZEN_ALONE;
-		ShadowPair pair = null;
+		ShadowGroup group = null;
 		if (state != null)
 		{
-			switch (state.stage())
+			Optional<ExaminedJudge> qualified = state.qualified();
+			if (qualified.isPresent())
 			{
-				case SHADOWING ->
-				{
-					pair = new ShadowPair(frozen.profile(), state.current().orElseThrow(), false);
-					seat = Judging.Seat.FROZEN_OF_PAIR;
-				}
-				case QUALIFIED ->
+				if (development)
 				{
 					if (context.random().nextInt(SPOT_CHECK_ONE_IN) == 0)
 					{
-						pair = new ShadowPair(frozen.profile(), state.current().orElseThrow(), true);
-						seat = Judging.Seat.FROZEN_OF_PAIR;
+						group = new ShadowGroup(frozen.profile(), List.of(qualified.get().profile()), true, false);
+						seat = Judging.Seat.FROZEN_OF_GROUP;
 					}
 					else
 					{
-						decider = withProfile(frozen, state.current().orElseThrow());
+						decider = withProfile(frozen, qualified.get().profile());
 						seat = Judging.Seat.CANDIDATE_ALONE;
 					}
 				}
-				case NEAR_MISSES, FROZEN ->
+			}
+			else
+			{
+				List<TrialProfile> shadowing = new ArrayList<>();
+				int expected = state.expectedDevelopmentTrials(commitGateTrials(test));
+				for (ExaminedJudge candidate : state.shadowing())
 				{
+					if (!development || DevelopmentJudge.paysOff(candidate, expected))
+						shadowing.add(candidate.profile());
+				}
+				if (!shadowing.isEmpty())
+				{
+					group = new ShadowGroup(frozen.profile(), shadowing, false, !development);
+					seat = Judging.Seat.FROZEN_OF_GROUP;
 				}
 			}
 		}
 		judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
-			trial.concurrency(), decider, seat, pair));
-		if (pair != null)
+			trial.concurrency(), decider, seat, group));
+		if (group != null)
 		{
-			judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
-				trial.concurrency(), withProfile(frozen, pair.candidate()), Judging.Seat.CANDIDATE_OF_PAIR, pair));
+			for (TrialProfile candidate : group.candidates())
+			{
+				judgingQueue.add(new Judging(trial.key(), trial.testCase(), completed, section, judged, results, 1,
+					trial.concurrency(), withProfile(frozen, candidate), Judging.Seat.CANDIDATE_OF_GROUP, group));
+			}
 		}
+	}
+
+	/**
+	 * Returns the development trials that a prompt test's cells still need before each holds the commit gate's
+	 * minimum number of trials.
+	 *
+	 * @param test the prompt test's identifier
+	 * @return the number of trials
+	 */
+	private int commitGateTrials(String test)
+	{
+		int trials = 0;
+		for (Cell cell : CellTier.developmentCells(campaign))
+		{
+			if (cell.testId().equals(test))
+			{
+				trials += Math.max(0, CommitGate.MINIMUM_TRIALS - campaign.development().count(cell.id()).
+					outcomes());
+			}
+		}
+		return trials;
 	}
 
 	/**
@@ -1040,12 +1082,12 @@ public final class Driver implements AutoCloseable
 	 */
 	private static boolean isAbandoned(Judging judging)
 	{
-		return judging.pair() != null && judging.pair().isAbandoned();
+		return judging.group() != null && judging.group().isAbandoned();
 	}
 
 	/**
-	 * Consumes a judge's valid verdict. A judge that decides alone completes the trial. In a pair, the trial completes
-	 * once both judges are done, with the frozen judge's verdict and the comparison of the candidate's.
+	 * Consumes a judge's valid verdict. A judge that decides alone completes the trial. In a group, the trial
+	 * completes once every judge is done, with the frozen judge's verdict and the comparison of each candidate's.
 	 *
 	 * @param judging the judged trial
 	 * @param judgment the judge's verdict and rationale
@@ -1054,37 +1096,37 @@ public final class Driver implements AutoCloseable
 	 */
 	private void decided(Judging judging, Judgment judgment, Instant now) throws IOException
 	{
-		ShadowPair pair = judging.pair();
+		ShadowGroup group = judging.group();
 		switch (judging.seat())
 		{
 			case FROZEN_ALONE, CANDIDATE_ALONE ->
-				judged(judging, judgment, judging.judge().profile(), Optional.empty(), now);
-			case FROZEN_OF_PAIR ->
+				judged(judging, judgment, judging.judge().profile(), List.of(), now);
+			case FROZEN_OF_GROUP ->
 			{
-				pair.recordFrozen(judgment);
-				finishPair(judging, now);
+				group.recordFrozen(judgment);
+				finishGroup(judging, now);
 			}
-			case CANDIDATE_OF_PAIR ->
+			case CANDIDATE_OF_GROUP ->
 			{
-				pair.recordCandidate(judgment);
-				finishPair(judging, now);
+				group.recordCandidate(judging.judge().profile(), judgment);
+				finishGroup(judging, now);
 			}
 		}
 	}
 
 	/**
-	 * Completes a trial that a pair of judges judged, if both are done.
+	 * Completes a trial that a group of judges judged, if every judge is done.
 	 *
-	 * @param judging one of the pair's judge sessions
+	 * @param judging one of the group's judge sessions
 	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void finishPair(Judging judging, Instant now) throws IOException
+	private void finishGroup(Judging judging, Instant now) throws IOException
 	{
-		ShadowPair pair = judging.pair();
-		if (!pair.isComplete())
+		ShadowGroup group = judging.group();
+		if (!group.isComplete())
 			return;
-		judged(judging, pair.frozen(), pair.frozenProfile(), Optional.of(pair.result()), now);
+		judged(judging, group.frozen(), group.frozenProfile(), group.results(), now);
 	}
 
 	/**
@@ -1093,17 +1135,17 @@ public final class Driver implements AutoCloseable
 	 * @param judging the judged trial
 	 * @param judgment the judge's verdict and rationale
 	 * @param judge the profile of the judge whose verdict counts
-	 * @param shadow the comparison of a candidate judge with the frozen judge, or empty if none judged the trial
+	 * @param shadows the comparisons of candidate judges with the frozen judge, empty if none judged the trial
 	 * @param now the current time
 	 * @throws IOException if the store or the worktree cannot be read or written
 	 */
-	private void judged(Judging judging, Judgment judgment, TrialProfile judge, Optional<ShadowResult> shadow,
+	private void judged(Judging judging, Judgment judgment, TrialProfile judge, List<ShadowResult> shadows,
 		Instant now) throws IOException
 	{
 		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
 		{
 			complete(judging.key(), judging.testCase(), judging.concurrency(), judging.evidence(), judgment.verdict(),
-				judgment.rationale(), judgment.failures(), null, Optional.of(judge), shadow);
+				judgment.rationale(), judgment.failures(), null, Optional.of(judge), shadows);
 			return;
 		}
 		String section = judging.evidenceSection();
@@ -1115,7 +1157,7 @@ public final class Driver implements AutoCloseable
 			section = rendered.get();
 		}
 		triageQueue.add(new Triaging(judging.key(), judging.testCase(), judging.evidence(), section, judging.results(),
-			judgment.rationale(), judgment.failures(), 1, judging.concurrency(), Optional.of(judge), shadow));
+			judgment.rationale(), judgment.failures(), 1, judging.concurrency(), Optional.of(judge), shadows));
 	}
 
 	/**
@@ -1146,25 +1188,26 @@ public final class Driver implements AutoCloseable
 			case FROZEN_ALONE ->
 				fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
 					"failure: " + reason, now);
-			case FROZEN_OF_PAIR ->
+			case FROZEN_OF_GROUP ->
 			{
-				judging.pair().abandon();
+				judging.group().abandon();
 				fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
 					"failure: " + reason, now);
 			}
-			case CANDIDATE_OF_PAIR ->
+			case CANDIDATE_OF_GROUP ->
 			{
-				judging.pair().recordUnusable();
-				finishPair(judging, now);
+				judging.group().recordUnusable(judging.judge().profile());
+				finishGroup(judging, now);
 			}
 			case CANDIDATE_ALONE ->
 			{
 				JudgeProfile frozen = campaign.contract().judge();
-				ShadowPair pair = new ShadowPair(frozen.profile(), judging.judge().profile(), true);
-				pair.recordUnusable();
+				ShadowGroup group = new ShadowGroup(frozen.profile(), List.of(judging.judge().profile()), true,
+					false);
+				group.recordUnusable(judging.judge().profile());
 				judgingQueue.add(new Judging(judging.key(), judging.testCase(), judging.evidence(),
 					judging.evidenceSection(), judging.assertions(), judging.results(), 1, judging.concurrency(), frozen,
-					Judging.Seat.FROZEN_OF_PAIR, pair));
+					Judging.Seat.FROZEN_OF_GROUP, group));
 			}
 		}
 	}
@@ -1207,9 +1250,8 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Queues the judging of near-miss replies that the campaign needs and that no judge is deciding yet. The frozen
-	 * judge labels the replies of a prompt test that has a complete set and no judge state; the first candidate of a
-	 * test whose state is at its near misses is checked against the labels. A campaign that waits for a decision
-	 * queues nothing.
+	 * judge labels the replies of a prompt test that has a complete set and no judge state; each candidate of a test
+	 * that is at its near misses is checked against the labels. A campaign that waits for a decision queues nothing.
 	 *
 	 * @throws IOException if the evidence of a reply cannot be created
 	 */
@@ -1220,16 +1262,21 @@ public final class Driver implements AutoCloseable
 		JudgeProfile frozen = campaign.contract().judge();
 		for (PromptTest test : campaign.contract().tests())
 		{
-			if (nearMissBatches.containsKey(test.id()))
-				continue;
 			DevelopmentJudge state = campaign.judges().get(test.id());
 			if (state == null)
 			{
-				if (!labelingFailed.contains(test.id()) && test.hasCompleteNearMisses())
+				if (!nearMissBatches.containsKey(new NearMissBatch.Key(test.id(), Optional.empty())) &&
+					!labelingFailed.contains(test.id()) && test.hasCompleteNearMisses())
+				{
 					queueNearMisses(test, frozen, true);
+				}
+				continue;
 			}
-			else if (state.stage() == DevelopmentJudge.Stage.NEAR_MISSES)
-				queueNearMisses(test, withProfile(frozen, state.current().orElseThrow()), false);
+			for (TrialProfile candidate : state.atNearMisses())
+			{
+				if (!nearMissBatches.containsKey(new NearMissBatch.Key(test.id(), Optional.of(candidate))))
+					queueNearMisses(test, withProfile(frozen, candidate), false);
+			}
 		}
 	}
 
@@ -1263,7 +1310,7 @@ public final class Driver implements AutoCloseable
 			}
 			jobs.add(new NearMissJob(batch, reply, testCase.get(), evidence, section, assertions, 1));
 		}
-		nearMissBatches.put(test.id(), batch);
+		nearMissBatches.put(batch.key(), batch);
 		nearMissQueue.addAll(jobs);
 	}
 
@@ -1296,7 +1343,7 @@ public final class Driver implements AutoCloseable
 	private void nearMissEnded(NearMissJob job, SessionResult result) throws IOException
 	{
 		NearMissBatch batch = job.batch();
-		if (batch.isDone() || nearMissBatches.get(batch.test()) != batch)
+		if (batch.isDone() || nearMissBatches.get(batch.key()) != batch)
 			return;
 		switch (result)
 		{
@@ -1350,18 +1397,48 @@ public final class Driver implements AutoCloseable
 	{
 		if (!batch.isDone())
 			return;
-		nearMissBatches.remove(batch.test());
+		nearMissBatches.remove(batch.key());
 		if (batch.isLabeling())
 		{
 			if (batch.hasFailed())
 				labelingFailed.add(batch.test());
 			else
-				record(new CampaignEvent.LabelNearMisses(batch.test(), batch.verdicts(), context.candidateJudges()));
+			{
+				Optional<JudgeBasis> basis = judgeBasis(batch.test());
+				Optional<CarriedJudge> carried = Optional.empty();
+				if (basis.isPresent())
+				{
+					carried = context.judgeRecords().find(campaign.header().root(), campaign.header().target(),
+						batch.test());
+				}
+				record(new CampaignEvent.LabelNearMisses(batch.test(), batch.verdicts(), context.candidateJudges(),
+					basis, carried));
+			}
 			return;
 		}
 		DevelopmentJudge state = campaign.judges().get(batch.test());
 		boolean agreed = !batch.hasFailed() && state != null && state.labels().equals(batch.verdicts());
 		record(new CampaignEvent.CheckNearMisses(batch.test(), batch.judge().profile(), agreed));
+	}
+
+	/**
+	 * Returns what a prompt test's choice of development judge rests on besides its near-miss labels.
+	 *
+	 * @param test the prompt test's identifier
+	 * @return the test's definition and the judge version, or empty if the contract has no such test
+	 */
+	private Optional<JudgeBasis> judgeBasis(String test)
+	{
+		for (PromptTest candidate : campaign.contract().tests())
+		{
+			if (candidate.id().equals(test))
+			{
+				Sha256 definition = Sha256.of(new ProposalSchema(context.json()).toJson(campaign.contract(),
+					candidate).getBytes(UTF_8));
+				return Optional.of(new JudgeBasis(definition, context.sessions().judgeVersion()));
+			}
+		}
+		return Optional.empty();
 	}
 
 	/**
@@ -1470,7 +1547,7 @@ public final class Driver implements AutoCloseable
 	private void completeTriaged(Triaging triaging, Triage triage) throws IOException
 	{
 		complete(triaging.key(), triaging.testCase(), triaging.concurrency(), triaging.evidence(), Verdict.FAIL,
-			triaging.rationale(), triaging.failures(), triage, triaging.judge(), triaging.shadow());
+			triaging.rationale(), triaging.failures(), triage, triaging.judge(), triaging.shadows());
 	}
 
 	/**
@@ -1496,7 +1573,7 @@ public final class Driver implements AutoCloseable
 		throws IOException
 	{
 		complete(key, testCase, concurrency, trial, verdict, rationale, failures, triage, Optional.empty(),
-			Optional.empty());
+			List.of());
 	}
 
 	/**
@@ -1512,18 +1589,18 @@ public final class Driver implements AutoCloseable
 	 * @param failures the assertions that a failed trial failed, each with its behavior; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @param judge the profile of the judge whose verdict decided the trial, or empty if built-in tools did
-	 * @param shadow the comparison of a candidate judge with the frozen judge, or empty if none judged the trial
+	 * @param shadows the comparisons of candidate judges with the frozen judge, empty if none judged the trial
 	 * @throws IOException if the store or the worktree cannot be read or written, or a passing trial's project copies
 	 *   cannot be deleted
 	 */
 	private void complete(TrialKey key, DrawnTestCase testCase, int concurrency, SessionResult.Completed trial,
 		Verdict verdict, String rationale, List<FailedAssertion> failures, Triage triage, Optional<TrialProfile> judge,
-		Optional<ShadowResult> shadow) throws IOException
+		List<ShadowResult> shadows) throws IOException
 	{
 		MeasurementIdentity observed = observedIdentity(testCase, trial);
 		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects(), trial.initialProject());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
-			triage, observed, trialInputTokens(trial), trial.responses(), files, judge, shadow);
+			triage, observed, trialInputTokens(trial), trial.responses(), files, judge, shadows);
 		boolean recorded = campaign.identity().differences(observed).isEmpty();
 		if (recorded)
 		{

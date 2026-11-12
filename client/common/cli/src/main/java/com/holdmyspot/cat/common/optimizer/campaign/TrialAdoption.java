@@ -975,6 +975,7 @@ public final class TrialAdoption
 				draft.regressionSet.set(i, new RegressionTestCase(regression.testCase(), Verdict.FAIL, true));
 		}
 		StalledDevelopment.roundCompleted(draft, completed);
+		draft.judges.replaceAll((_, judge) -> judge.roundCompleted());
 	}
 
 	/**
@@ -1039,6 +1040,7 @@ public final class TrialAdoption
 				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
 		}
 		StalledDevelopment.roundPromoted(draft, completed);
+		draft.judges.replaceAll((_, judge) -> judge.roundCompleted());
 	}
 
 	/**

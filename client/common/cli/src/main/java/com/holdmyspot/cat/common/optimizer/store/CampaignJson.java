@@ -981,8 +981,12 @@ final class CampaignJson
 			node.set("files", writeFiles(outcome.files()));
 			if (outcome.judge().isPresent())
 				DevelopmentJudgeJson.writeProfile(node.putObject("judge"), outcome.judge().get());
-			if (outcome.shadow().isPresent())
-				DevelopmentJudgeJson.writeShadow(node.putObject("shadow"), outcome.shadow().get());
+			if (!outcome.shadows().isEmpty())
+			{
+				ArrayNode shadows = node.putArray("shadows");
+				for (ShadowResult shadow : outcome.shadows())
+					DevelopmentJudgeJson.writeShadow(shadows.addObject(), shadow);
+			}
 		}
 		return root;
 	}
@@ -1009,13 +1013,18 @@ final class CampaignJson
 			Optional<TrialProfile> judge = Optional.empty();
 			if (outcomeNode.has("judge"))
 				judge = Optional.of(DevelopmentJudgeJson.readProfile(field(outcomeNode, "judge")));
-			Optional<ShadowResult> shadow = Optional.empty();
+			List<ShadowResult> shadows = new ArrayList<>();
 			if (outcomeNode.has("shadow"))
-				shadow = Optional.of(DevelopmentJudgeJson.readShadow(field(outcomeNode, "shadow")));
+				shadows.add(DevelopmentJudgeJson.readShadow(field(outcomeNode, "shadow")));
+			if (outcomeNode.has("shadows"))
+			{
+				for (JsonNode shadow : elements(outcomeNode, "shadows"))
+					shadows.add(DevelopmentJudgeJson.readShadow(shadow));
+			}
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
 				text(outcomeNode, "rationale"), readFailedAssertions(outcomeNode), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
-				readResponses(outcomeNode), readFiles(outcomeNode), judge, shadow);
+				readResponses(outcomeNode), readFiles(outcomeNode), judge, shadows);
 		}
 		List<TrialSession> sessions = new ArrayList<>();
 		for (JsonNode session : elements(root, "sessions"))

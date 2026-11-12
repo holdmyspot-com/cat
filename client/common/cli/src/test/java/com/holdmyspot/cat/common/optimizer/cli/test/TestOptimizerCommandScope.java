@@ -296,6 +296,12 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 		return home;
 	}
 
+	@Override
+	protected Path dataDirectory()
+	{
+		return home().resolve("plugins/data/cat-cat");
+	}
+
 	/**
 	 * Sets the user's home folder, which is otherwise a folder that no test creates in the temporary folder, outside
 	 * every project directory, because a project directory that contains the home folder is refused.

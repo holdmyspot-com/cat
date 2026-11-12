@@ -1,12 +1,18 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.CarriedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge.Stage;
+import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.JudgeBasis;
+import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
@@ -22,15 +28,20 @@ import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
+import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
+import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.JudgeRecordingStore;
 import org.testng.annotations.Test;
 
 import java.io.IOException;
@@ -43,12 +54,15 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiFunction;
 import java.util.function.Function;
+
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests how the driver chooses the profile that judges each development trial, from the near misses that the frozen
@@ -60,6 +74,7 @@ public final class DevelopmentJudgeDriverTest
 	private static final TrialProfile MIDDLE = new TrialProfile("middle-model", "medium");
 	private static final String TEST = "formatting";
 	private static final List<String> TESTS = List.of("formatting", "plain_list", "safety");
+	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
 	 * Creates the test.
@@ -169,8 +184,7 @@ public final class DevelopmentJudgeDriverTest
 	public void shadowingCountsFrozenVerdicts() throws IOException
 	{
 		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
-		DevelopmentJudge shadowing = new DevelopmentJudge(labels(contract.tests().getFirst()), List.of(CHEAP, MIDDLE),
-			Stage.SHADOWING, List.of(), 295, 0, 0, 0);
+		DevelopmentJudge shadowing = shadowingAt(contract, 295, 0, List.of(MIDDLE), 0, 0);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("shadowing")),
@@ -294,8 +308,8 @@ public final class DevelopmentJudgeDriverTest
 	public void unusableCandidateCountsStrict() throws IOException
 	{
 		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
-		DevelopmentJudge shadowing = DevelopmentJudge.start(labels(contract.tests().getFirst()), List.of(CHEAP)).
-			nearMissesChecked(CHEAP, true);
+		// Rounds of 1,000 development trials make shadowing development trials pay off from the first one
+		DevelopmentJudge shadowing = shadowingAt(contract, 0, 0, List.of(), 1000, 1);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("unusable")),
@@ -360,8 +374,8 @@ public final class DevelopmentJudgeDriverTest
 	}
 
 	/**
-	 * Verifies that baseline trials are judged by the frozen judge alone, whatever the state of the test's candidate,
-	 * and that they leave the candidate's counts as they were.
+	 * Verifies that baseline trials are judged by the frozen judge alone once the test's candidate qualified, and that
+	 * they leave the candidate's counts as they were.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -400,7 +414,7 @@ public final class DevelopmentJudgeDriverTest
 
 	/**
 	 * Verifies that formal, control and incumbent trials of a certification attempt are judged by the frozen judge
-	 * alone, whatever the state of the test's candidate, and that they leave the candidate's counts as they were.
+	 * alone once the test's candidate qualified, and that they leave the candidate's counts as they were.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -455,6 +469,253 @@ public final class DevelopmentJudgeDriverTest
 	}
 
 	/**
+	 * Verifies that a shadowed candidate also judges the test's baseline trials, which the frozen judge judges anyway,
+	 * and that only the frozen judge's verdicts count.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void heldOutTrialsAreShadowed() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		Builder campaign = new Builder().confirmed(contract, 1).working(1).judge(TEST, shadowingAt(contract, 295, 0,
+			List.of(), 0, 0)).judge("plain_list", frozenOnly()).judge("safety", frozenOnly());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("held-out")),
+				campaign.build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(use ->
+			{
+				if (use.profile().equals(CHEAP))
+					return Verdict.FAIL;
+				return Verdict.PASS;
+			}, (_, _) -> Verdict.PASS);
+			try (Driver driver = harness.open())
+			{
+				Campaign state = harness.runUntil(driver, current -> current.judges().get(TEST).shadowed() >= 297);
+				requireThat(state.judges().get(TEST).strict(), "strict").isGreaterThan(0);
+				requireThat(fixture.uses(TEST, Purpose.BASELINE, CHEAP).isEmpty(), "candidateBaselineJudgments").
+					isFalse();
+				requireThat(state.baseline().count(TEST).failures(), "baselineFailures").isEqualTo(0);
+				for (Fixture.Use use : fixture.uses(CHEAP, false))
+					requireThat(use.purpose(), "candidatePurpose").isNotEqualTo(Purpose.DEVELOPMENT);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that held-out trials count toward a candidate's qualification, alongside the development trials it
+	 * shadows, when they bring it from 295 to 299 shadowed trials without a disagreement.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void heldOutTrialsQualifyCandidate() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		Builder campaign = new Builder().confirmed(contract, 1).working(1).judge(TEST, shadowingAt(contract, 295, 0,
+			List.of(), 0, 0)).judge("plain_list", frozenOnly()).judge("safety", frozenOnly());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("held-out-qualify")),
+				campaign.build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, _) -> Verdict.PASS);
+			try (Driver driver = harness.open())
+			{
+				Campaign state = harness.runUntil(driver, current ->
+					current.judges().get(TEST).stage() == Stage.QUALIFIED);
+				DevelopmentJudge judge = state.judges().get(TEST);
+				requireThat(judge.shadowed(), "shadowed").isGreaterThanOrEqualTo(DevelopmentJudge.QUALIFYING_TRIALS);
+				requireThat(judge.heldOut(), "heldOut").isPositive();
+				requireThat(fixture.uses(TEST, Purpose.BASELINE, CHEAP).size(), "candidateBaselineJudgments").
+					isGreaterThanOrEqualTo(judge.heldOut());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a candidate shadows no development trial while the trials that the test is expected to run before
+	 * the next certification attempt cannot bring it to qualification, and that it still shadows held-out trials.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void developmentShadowingWaitsForPayOff() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("pay-off")),
+				developing(contract).judge(TEST, shadowingAt(contract, 0, 0, List.of(), 0, 0)).
+					judge("plain_list", frozenOnly()).judge("safety", frozenOnly()).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, _) -> Verdict.PASS);
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state -> state.development().count(TEST).passes() >= 60);
+				requireThat(fixture.uses(TEST, Purpose.DEVELOPMENT, CHEAP), "candidateDevelopmentJudgments").isEmpty();
+				DevelopmentJudge judge = campaign.judges().get(TEST);
+				requireThat(judge.shadowed(), "shadowed").isEqualTo(judge.heldOut());
+				requireThat(judge.developmentTrials(), "developmentTrials").isGreaterThanOrEqualTo(10);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the next candidate judges the near misses while the current one keeps shadowing, once the current
+	 * one's disagreements rule out qualifying at 299 shadowed trials, and that both then judge the same development
+	 * trials next to the frozen judge.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void nextCandidateOverlapsCurrent() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		DevelopmentJudge overlapping = new DevelopmentJudge(labels(contract.tests().getFirst()), List.of(),
+			List.of(new ExaminedJudge(CHEAP, Stage.SHADOWING, 9, 0, 0, 0, 9), ExaminedJudge.started(MIDDLE)), List.of(),
+			Optional.empty(), 1000, 1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("overlap")),
+				developing(contract).judge(TEST, overlapping).judge("plain_list", frozenOnly()).
+					judge("safety", frozenOnly()).build());
+			harness.candidateJudges(List.of(CHEAP, MIDDLE));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, satisfying) ->
+			{
+				if (satisfying)
+					return Verdict.PASS;
+				return Verdict.FAIL;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> !fixture.uses(TEST, Purpose.DEVELOPMENT, MIDDLE).isEmpty());
+				harness.settle(driver);
+				DevelopmentJudge judge = harness.campaign().judges().get(TEST);
+				requireThat(judge.shadowing().size(), "shadowing").isEqualTo(2);
+				requireThat(judge.current().orElseThrow(), "current").isEqualTo(CHEAP);
+				requireThat(judge.shadowing().getFirst().shadowed(), "cheapShadowed").isGreaterThan(9);
+				requireThat(judge.shadowing().getLast().shadowed(), "middleShadowed").isGreaterThan(0);
+				PromptTest test = contract.tests().getFirst();
+				requireThat(fixture.uses(MIDDLE, true).size(), "middleChecks").
+					isEqualTo(test.nearMisses().size() * 2 * NearMisses.REPLIES_PER_SIDE);
+				requireThat(fixture.uses(CHEAP, true), "cheapChecks").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a campaign whose test's near misses are labeled starts the test with the judge that qualified when
+	 * an earlier campaign on the same project and target ended, without checking a candidate's near misses again, and
+	 * that a changed judge version discards it.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void carriedQualificationSkipsExamination() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		PromptTest test = contract.tests().getFirst();
+		for (boolean sameJudge : List.of(true, false))
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path directory = cleanup.add(Files.createTempDirectory("carried"));
+				DriverHarness harness = new DriverHarness(directory.resolve("driver"), developing(contract).build());
+				Sha256 version = Sha256.of(new ProposalSchema(JSON).toJson(contract, test).getBytes(UTF_8));
+				int judgeVersion = harness.sessions().judgeVersion();
+				if (!sameJudge)
+					++judgeVersion;
+				DevelopmentJudgeRecords records = new DevelopmentJudgeRecords(directory.resolve("data"),
+					JSON, Yielding.fileReplacer());
+				records.campaignEnded(developing(contract).judge(TEST, new DevelopmentJudge(labels(test), List.of(),
+					List.of(new ExaminedJudge(MIDDLE, Stage.QUALIFIED, 305, 0, 4, 0, 2)), List.of(),
+					Optional.of(new JudgeBasis(version, judgeVersion)), 0, 0)).build());
+				harness.judgeRecords(records);
+				harness.candidateJudges(List.of(CHEAP, MIDDLE));
+				Fixture fixture = new Fixture(harness);
+				fixture.judges(_ -> Verdict.PASS, (_, satisfying) ->
+				{
+					if (satisfying)
+						return Verdict.PASS;
+					return Verdict.FAIL;
+				});
+				try (Driver driver = harness.open())
+				{
+					Campaign campaign = harness.runUntil(driver, state -> state.judges().containsKey(TEST));
+					DevelopmentJudge judge = campaign.judges().get(TEST);
+					if (sameJudge)
+					{
+						requireThat(judge.stage(), "stage").isEqualTo(Stage.QUALIFIED);
+						requireThat(judge.current().orElseThrow(), "current").isEqualTo(MIDDLE);
+						requireThat(judge.shadowed(), "shadowed").isEqualTo(305);
+						requireThat(judge.spotChecked(), "spotChecked").isEqualTo(4);
+						requireThat(judge.strict(), "strict").isEqualTo(2);
+					}
+					else
+					{
+						requireThat(judge.stage(), "stage_changed_judge").isEqualTo(Stage.NEAR_MISSES);
+						requireThat(judge.current().orElseThrow(), "current_changed_judge").isEqualTo(CHEAP);
+					}
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a campaign store records a test's qualified judge in the data directory when the campaign ends,
+	 * not while it is active, that a later end replaces the record, and that a test whose judge is no longer qualified
+	 * at the end removes its record.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void campaignEndRecordsQualifiedJudge() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		PromptTest test = contract.tests().getFirst();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("campaign-end"));
+			DevelopmentJudgeRecords records = new DevelopmentJudgeRecords(directory.resolve("data"), JSON,
+				Yielding.fileReplacer());
+			JudgeRecordingStore store = new JudgeRecordingStore(new FileCampaignStore(directory.resolve("campaigns"),
+				JSON, Yielding.fileReplacer()), records);
+			JudgeBasis basis = new JudgeBasis(Sha256.of("definition".getBytes(UTF_8)), 5);
+			DevelopmentJudge qualified = new DevelopmentJudge(labels(test), List.of(),
+				List.of(new ExaminedJudge(CHEAP, Stage.QUALIFIED, 299, 20, 3, 0, 1)), List.of(), Optional.of(basis), 0,
+				0);
+			Builder active = developing(contract).judge(TEST, qualified);
+			Campaign campaign = active.build();
+			store.replaceSnapshot(campaign);
+			requireThat(records.find(campaign.header().root(), campaign.header().target(), TEST), "whileActive").
+				isEmpty();
+
+			store.replaceSnapshot(developing(contract).judge(TEST, qualified).lifecycle(Lifecycle.CANCELLED).build());
+			CarriedJudge carried = records.find(campaign.header().root(), campaign.header().target(), TEST).
+				orElseThrow();
+			requireThat(carried, "carried").isEqualTo(new CarriedJudge(CHEAP, 299, 3, 0, 1, basis.testVersion(),
+				labels(test), 5));
+			requireThat(records.file(campaign.header().root(), campaign.header().target()).orElseThrow().
+				startsWith(directory.resolve("data").resolve(DevelopmentJudgeRecords.DIRECTORY)), "inDataDirectory").
+				isTrue();
+
+			DevelopmentJudge reverted = new DevelopmentJudge(labels(test), List.of(), List.of(),
+				List.of(new RejectedJudge(CHEAP, Rejection.SPOT_CHECK, 299, 4, 1, 1)), Optional.of(basis), 0, 0);
+			store.replaceSnapshot(developing(contract).judge(TEST, reverted).build());
+			store.replaceSnapshot(developing(contract).judge(TEST, reverted).lifecycle(Lifecycle.CLOSED).build());
+			requireThat(records.find(campaign.header().root(), campaign.header().target(), TEST), "afterReversion").
+				isEmpty();
+		}
+	}
+
+	/**
 	 * Returns a builder for a confirmed campaign that develops candidate 1 and has met its baseline.
 	 *
 	 * @param contract the contract
@@ -495,8 +756,27 @@ public final class DevelopmentJudgeDriverTest
 	 */
 	private static DevelopmentJudge qualified(Contract contract)
 	{
-		return new DevelopmentJudge(labels(contract.tests().getFirst()), List.of(CHEAP), Stage.QUALIFIED, List.of(),
-			299, 0, 0, 0);
+		return new DevelopmentJudge(labels(contract.tests().getFirst()), List.of(),
+			List.of(new ExaminedJudge(CHEAP, Stage.QUALIFIED, 299, 0, 0, 0, 0)), List.of(), Optional.empty(), 0, 0);
+	}
+
+	/**
+	 * Returns the choice of a test whose cheapest candidate shadows the frozen judge.
+	 *
+	 * @param contract          the contract
+	 * @param shadowed          the candidate's shadowed trials, none of which disagreed strictly beyond {@code strict}
+	 * @param strict            the candidate's trials with a strict disagreement
+	 * @param waiting           the candidates that have not started
+	 * @param developmentTrials the test's development trials judged so far
+	 * @param rounds            the development rounds completed so far
+	 * @return the choice
+	 */
+	private static DevelopmentJudge shadowingAt(Contract contract, int shadowed, int strict,
+		List<TrialProfile> waiting, int developmentTrials, int rounds)
+	{
+		return new DevelopmentJudge(labels(contract.tests().getFirst()), waiting,
+			List.of(new ExaminedJudge(CHEAP, Stage.SHADOWING, shadowed, 0, 0, 0, strict)), List.of(), Optional.empty(),
+			developmentTrials, rounds);
 	}
 
 	/**

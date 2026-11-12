@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.JvmScope;
 import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 
 import com.holdmyspot.cat.claude.ClaudeConfiguration;
+import com.holdmyspot.cat.claude.layout.ClaudeInstallation;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -158,6 +159,13 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	{
 		ensureOpen();
 		return home;
+	}
+
+	@Override
+	protected Path dataDirectory()
+	{
+		ensureOpen();
+		return new ClaudeInstallation(configurationDirectory.toAbsolutePath()).dataDirectory();
 	}
 
 	@Override

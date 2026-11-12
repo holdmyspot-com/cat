@@ -194,12 +194,12 @@ public sealed interface CampaignEvent
 	 * @param responses each completed turn's assistant messages in order, ending with its final response
 	 * @param files where the trial session's harness events and file changes were retained
 	 * @param judge the profile whose verdict counted, or empty if no judge ran
-	 * @param shadow how a candidate development judge's verdicts compared with the frozen judge's, or empty if no
-	 *   candidate judged the trial next to the frozen judge
+	 * @param shadows how each candidate development judge that judged the trial next to the frozen judge compared
+	 *   with it, in the order the candidates started; empty if no candidate judged the trial
 	 */
 	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions,
 		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files,
-		Optional<TrialProfile> judge, Optional<ShadowResult> shadow) implements CampaignEvent
+		Optional<TrialProfile> judge, List<ShadowResult> shadows) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -216,10 +216,10 @@ public sealed interface CampaignEvent
 		 * @param responses each completed turn's assistant messages in order, ending with its final response
 		 * @param files where the trial session's harness events and file changes were retained
 		 * @param judge the profile whose verdict counted, or empty if no judge ran
-		 * @param shadow how a candidate development judge's verdicts compared with the frozen judge's, or empty
+		 * @param shadows how each candidate development judge compared with the frozen judge
 		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale},
 		 *   {@code failedAssertions}, {@code observed}, {@code responses}, {@code files}, {@code judge},
-		 *   {@code shadow}, a failed assertion, a turn's messages or an assistant message are null
+		 *   {@code shadows}, a comparison, a failed assertion, a turn's messages or an assistant message are null
 		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed assertions, or a
 		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial
 		 */
@@ -235,7 +235,8 @@ public sealed interface CampaignEvent
 			requireThat(responses, "responses").isNotNull();
 			requireThat(files, "files").isNotNull();
 			requireThat(judge, "judge").isNotNull();
-			requireThat(shadow, "shadow").isNotNull();
+			requireThat(shadows, "shadows").isNotNull();
+			shadows = List.copyOf(shadows);
 			if (inputTokens != null)
 				requireThat(inputTokens.longValue(), "inputTokens").isNotNegative();
 			if (triage != null)
@@ -269,7 +270,7 @@ public sealed interface CampaignEvent
 			TrialFiles files)
 		{
 			this(key, verdict, rationale, failedAssertions, triage, observed, inputTokens, responses, files,
-				Optional.empty(), Optional.empty());
+				Optional.empty(), List.of());
 		}
 	}
 
@@ -282,9 +283,13 @@ public sealed interface CampaignEvent
 	 * @param test       the prompt test's identifier
 	 * @param labels     the frozen judge's label of each near-miss reply: {@code true} if it passed the reply
 	 * @param candidates the candidate profiles in examination order, cheapest first
+	 * @param basis      the test's definition and the judge version that the labels rest on, or empty if they are
+	 *                   unknown
+	 * @param carried    the qualification that an earlier campaign on the same target recorded for the test, or empty
+	 *                   if there is none
 	 */
-	record LabelNearMisses(String test, Map<String, Boolean> labels, List<TrialProfile> candidates)
-		implements CampaignEvent
+	record LabelNearMisses(String test, Map<String, Boolean> labels, List<TrialProfile> candidates,
+		Optional<JudgeBasis> basis, Optional<CarriedJudge> carried) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -292,6 +297,8 @@ public sealed interface CampaignEvent
 		 * @param test       the prompt test's identifier
 		 * @param labels     the frozen judge's label of each near-miss reply
 		 * @param candidates the candidate profiles in examination order
+		 * @param basis      the test's definition and the judge version, or empty
+		 * @param carried    the qualification that an earlier campaign recorded for the test, or empty
 		 * @throws NullPointerException if any argument is null
 		 */
 		public LabelNearMisses
@@ -299,8 +306,23 @@ public sealed interface CampaignEvent
 			requireThat(test, "test").isNotNull();
 			requireThat(labels, "labels").isNotNull();
 			requireThat(candidates, "candidates").isNotNull();
+			requireThat(basis, "basis").isNotNull();
+			requireThat(carried, "carried").isNotNull();
 			labels = Map.copyOf(labels);
 			candidates = List.copyOf(candidates);
+		}
+
+		/**
+		 * Creates the event without a basis or a carried qualification.
+		 *
+		 * @param test       the prompt test's identifier
+		 * @param labels     the frozen judge's label of each near-miss reply
+		 * @param candidates the candidate profiles in examination order
+		 * @throws NullPointerException if any argument is null
+		 */
+		public LabelNearMisses(String test, Map<String, Boolean> labels, List<TrialProfile> candidates)
+		{
+			this(test, labels, candidates, Optional.empty(), Optional.empty());
 		}
 	}
 

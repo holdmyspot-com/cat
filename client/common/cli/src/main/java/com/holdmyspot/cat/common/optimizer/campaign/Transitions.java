@@ -155,7 +155,7 @@ public final class Transitions
 			case CampaignEvent.ReportUnavailable report -> reportUnavailable(draft, report.outcome());
 			case CampaignEvent.WarnAuthority warn -> warnAuthority(draft, warn.warnings());
 			case CampaignEvent.LabelNearMisses label -> draft.judges.putIfAbsent(label.test(),
-				DevelopmentJudge.start(label.labels(), label.candidates()));
+				DevelopmentJudge.start(label.labels(), label.candidates(), label.basis(), label.carried()));
 			case CampaignEvent.CheckNearMisses check -> draft.judges.computeIfPresent(check.test(),
 				(_, judge) -> judge.nearMissesChecked(check.candidate(), check.agreed()));
 		}
@@ -700,12 +700,11 @@ public final class Transitions
 			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(), complete.failedAssertions(),
 			complete.triage(), trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations(),
 			complete.responses(), complete.files(), complete.judge()));
-		if (complete.shadow().isPresent())
-		{
-			ShadowResult shadow = complete.shadow().get();
-			draft.judges.computeIfPresent(trial.testCase().testId(), (_, judge) -> judge.trialShadowed(
-				shadow.candidate(), shadow.spotCheck(), shadow.lenient(), shadow.strict()));
-		}
+		String test = trial.testCase().testId();
+		if (trial.key().purpose() == Purpose.DEVELOPMENT)
+			draft.judges.computeIfPresent(test, (_, judge) -> judge.developmentTrialJudged());
+		for (ShadowResult shadow : complete.shadows())
+			draft.judges.computeIfPresent(test, (_, judge) -> judge.trialShadowed(shadow));
 	}
 
 	/**

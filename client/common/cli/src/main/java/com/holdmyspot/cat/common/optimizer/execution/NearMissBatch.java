@@ -3,9 +3,11 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Optional;
 
 /**
  * The judging of every near-miss reply of one prompt test by one judge: the frozen judge, which labels the replies, or
@@ -52,6 +54,29 @@ final class NearMissBatch
 	String test()
 	{
 		return test;
+	}
+
+	/**
+	 * Returns what identifies the batch among the near-miss judging that runs at once.
+	 *
+	 * @return the prompt test with the candidate that is checked, or with no candidate for the frozen judge's
+	 *   labeling
+	 */
+	Key key()
+	{
+		if (labeling)
+			return new Key(test, Optional.empty());
+		return new Key(test, Optional.of(judge.profile()));
+	}
+
+	/**
+	 * Identifies a near-miss batch among the near-miss judging that runs at once.
+	 *
+	 * @param test      the prompt test's identifier
+	 * @param candidate the candidate that is checked, or empty for the frozen judge's labeling
+	 */
+	record Key(String test, Optional<TrialProfile> candidate)
+	{
 	}
 
 	/**
