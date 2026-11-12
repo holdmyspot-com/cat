@@ -61,6 +61,11 @@ where this section does not replace them.
 		development trials run in parallel; a candidate is dropped as soon as its confidence bound shows it cannot win.
 	- Batched judging (development only, shadowed against the frozen single-reply judge, certification unchanged):
 		decide after the token comparison shows how much of the cost judge start-up still is.
+	- Code checks wherever the outcome is visible in the transcript (a file read in full, a tool or skill invoked, only
+		allowed files changed, the right answer given): such a test's verdict comes from a deterministic check with no
+		judge session; a judge decides only outcomes that need judgment.
+	- End a trial once its outcome is decided, such as at the first tool call for a test of whether a rule or skill
+		loads, instead of running the remaining turns.
 - **Accepted limit (user ruling, 2026-11-12):** a top-level session optimizes only the project of its working
 	directory; its request server is found through that project's CAT session directory.
 
