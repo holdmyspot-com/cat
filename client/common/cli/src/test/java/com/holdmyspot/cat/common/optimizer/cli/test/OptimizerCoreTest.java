@@ -4587,6 +4587,54 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a {@code start} that the host ends in the middle of its guard pilot, as a failed host turn or a
+	 * killed command does, keeps the pilot trials that were decided, and that the next {@code start} presents the
+	 * stored proposal after running only the trials that were not decided.
+	 */
+	@Test
+	public void startEndedMidPilotKeepsDecidedTrials() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			int decidedBeforeEnd = 5;
+			repository.trialEnd().set(number ->
+			{
+				// The interrupt flag stands for the host ending the command while the sixth trial is in flight
+				if (number == decidedBeforeEnd + 1)
+					Thread.currentThread().interrupt();
+				return null;
+			});
+
+			try
+			{
+				repository.core().start(Path.of("CLAUDE.md"), 1, null, null);
+				throw new AssertionError("The start should have been interrupted");
+			}
+			catch (InterruptedException _)
+			{
+				// The command ended before its pilot did
+			}
+
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialsBeforeEnd").
+				isEqualTo(decidedBeforeEnd + 1);
+			repository.trialEnd().set(_ -> null);
+			ObjectNode resumed = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1"));
+
+			String id = resumed.get("campaign").asString();
+			requireThat(proposalText(resumed).split("20 trials decided, 0 failed runs\\.", -1).length,
+				"decidedPilots").isEqualTo(4);
+			// The 5 trials decided before the end are kept: 3 pilots of 20 trials less those 5 remain
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(decidedBeforeEnd + 1 + 3 * GuardPilot.TRIALS - decidedBeforeEnd);
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
 	 * Verifies that {@code choose stop} on a paused guard pilot ends the campaign without running a trial.
 	 */
 	@Test

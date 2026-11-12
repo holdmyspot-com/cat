@@ -2541,7 +2541,7 @@ public final class OptimizerCore implements Core
 
 	/**
 	 * Runs the guard pilot of a proposal, reusing the stored pilot of each prompt test that it still describes, and
-	 * stores the result. The pilot's control trials install the campaign's trial plugins.
+	 * stores the result after every decided trial. The pilot's control trials install the campaign's trial plugins.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
@@ -2565,8 +2565,10 @@ public final class OptimizerCore implements Core
 		GuardPilot pilot = new GuardPilot(sessions(campaign), fork.workspace(), judgePrompt(campaign), schema,
 			scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(campaign), root);
+		// Each decided trial is stored as soon as it is decided, so that a command that ends before the pilot does
+		// loses only the trials in flight
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
-			trialSelection(root, campaign, derived, plugin), file.read(), scope.random());
+			trialSelection(root, campaign, derived, plugin), file.read(), scope.random(), file::write);
 		file.write(pilots);
 		return pilots;
 	}

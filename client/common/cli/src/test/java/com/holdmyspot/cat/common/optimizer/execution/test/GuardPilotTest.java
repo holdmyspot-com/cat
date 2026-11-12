@@ -754,6 +754,114 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A pilot that ends abnormally, as when the process that runs it is killed or its thread is interrupted, loses only
+	 * the trials in flight: every decided trial was handed to the checkpoint when it was decided, and a later run that
+	 * starts from the last checkpoint runs only the trials that were not decided, with the test cases already drawn.
+	 * <p>
+	 * Runtime includes two pilot runs of the tiered contract's tests with 20 scripted trials each; no harness or
+	 * model runs. The thread's interrupt flag stands for the process's death: it ends the pilot's wait for its
+	 * session, the run throws, and the checkpoints are all that remains.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void checkpointKeepsTrialsOfKilledPilot() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-checkpoint"));
+			SessionScript reference = new SessionScript(directory.resolve("reference"), _ -> "pass");
+			Map<String, PilotResult> clean = pilot(reference, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(7));
+			int decidedBeforeKill = 6;
+			SessionScript killed = new SessionScript(directory.resolve("killed"), _ -> "pass");
+			List<Map<String, PilotResult>> checkpoints = new ArrayList<>();
+
+			try
+			{
+				pilot(killed, workspace(directory), 1).run(contract, List.of(), control(), Set.of(), SELECTION,
+					Map.of(), new SplittableRandom(7), pilots ->
+					{
+						checkpoints.add(pilots);
+						if (checkpoints.size() == decidedBeforeKill)
+							Thread.currentThread().interrupt();
+					});
+				throw new AssertionError("The run should have been interrupted");
+			}
+			catch (InterruptedException _)
+			{
+				// The thread's interrupt flag stood for the process's death
+			}
+
+			requireThat(checkpoints.size(), "checkpoints").isEqualTo(decidedBeforeKill);
+			Map<String, PilotResult> last = checkpoints.getLast();
+			String name = clean.keySet().iterator().next();
+			requireThat(last.keySet(), "tests").isEqualTo(clean.keySet());
+			requireThat(last.get(name).trials().size(), "decidedBeforeKill").isEqualTo(decidedBeforeKill);
+			for (PilotResult pilot : last.values())
+			{
+				requireThat(pilot.stopReason(), "stopReason").isNotNull();
+				requireThat(pilot.paused(), "paused").isFalse();
+				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
+					isFalse();
+				requireThat(pilot.ranIn(pilot.definition(), pilot.cellId(), pilot.control()), "ranIn").isTrue();
+			}
+
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, last, new SplittableRandom(99));
+
+			requireThat(resumed.requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(GuardPilot.TRIALS * second.size() - decidedBeforeKill);
+			for (Map.Entry<String, PilotResult> entry : second.entrySet())
+			{
+				PilotResult pilot = entry.getValue();
+				requireThat(pilot.seed(), "seed").isEqualTo(clean.get(entry.getKey()).seed());
+				requireThat(pilot.stopReason(), "stopReason").isNull();
+				requireThat(pilot.trials().stream().map(PilotTrial::record).toList(), "records").
+					isEqualTo(clean.get(entry.getKey()).trials().stream().map(PilotTrial::record).toList());
+			}
+		}
+	}
+
+	/**
+	 * A checkpoint that cannot be written ends the pilot with that failure and starts no session beyond the ones that
+	 * run already, because a pilot whose progress cannot be kept would lose it.
+	 *
+	 * @throws InterruptedException if the thread is interrupted
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void checkpointFailureEndsThePilot() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-checkpoint-failure"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			int ceiling = 2;
+
+			try
+			{
+				pilot(sessions, workspace(directory), ceiling).run(contract, List.of(), control(), Set.of(), SELECTION,
+					Map.of(), new SplittableRandom(3), _ ->
+					{
+						throw new IOException("The pilot file is full");
+					});
+				throw new AssertionError("The run should have failed");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").isEqualTo("The pilot file is full");
+			}
+
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trialSessions").isLessThanOrEqualTo(ceiling);
+		}
+	}
+
+	/**
 	 * A stored pilot whose test, cell and control source are unchanged is returned without starting a session.
 	 *
 	 * @throws IOException if the test directory cannot be used

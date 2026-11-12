@@ -68,6 +68,11 @@ public final class GuardPilot
 	 * The number of control trials of each prompt test.
 	 */
 	public static final int TRIALS = 20;
+	/**
+	 * Why a pilot that was kept before it ran every trial stopped, as a later reader sees it if the process that ran
+	 * the pilot ended without finishing it.
+	 */
+	private static final String UNFINISHED = "The process that ran the pilot ended before every trial did";
 	private final SessionPort sessions;
 	private final WorkspacePort workspace;
 	private final JudgeProtocol judge;
@@ -181,6 +186,40 @@ public final class GuardPilot
 		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random)
 		throws IOException, InterruptedException
 	{
+		return run(contract, plugins, control, excluded, selection, stored, random, _ ->
+		{
+		});
+	}
+
+	/**
+	 * Runs the pilot of each prompt test that a stored pilot does not describe, as
+	 * {@link #run(Contract, List, Overlay, Set, SourceSelection, Map, RandomGenerator)} does, and hands the pilots to a
+	 * checkpoint each time a trial is decided.
+	 *
+	 * @param contract the proposed contract
+	 * @param plugins the campaign's trial plugins, which every trial installs
+	 * @param control the control source: the incumbent with the target prompt file emptied and its dependents in the
+	 *   project removed
+	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
+	 *   read the prompt tests
+	 * @param selection the files of the control source that the staged control source holds
+	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
+	 * @param random draws the seed of each test's development stream
+	 * @param checkpoint keeps the pilots after each trial that ended with a decision or without one that the proposal's
+	 *   tools could give. A pilot that has more trials to run at that point has a stop reason that says so.
+	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, the project
+	 *   copies of a control trial that passes every assertion cannot be deleted, or the checkpoint fails. A failed
+	 *   checkpoint starts no further session and interrupts the running ones.
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
+	 *   is interrupted too.
+	 */
+	public Map<String, PilotResult> run(Contract contract, List<TrialPlugin> plugins, Overlay control,
+		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random,
+		PilotCheckpoint checkpoint) throws IOException, InterruptedException
+	{
+		requireThat(checkpoint, "checkpoint").isNotNull();
 		requireThat(contract, "contract").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(control, "control").isNotNull();
@@ -218,7 +257,7 @@ public final class GuardPilot
 		{
 			Path source = workspace.stage(control, excluded, selection);
 			List<Path> directories = TrialPlugins.of(plugins, contract, workspace, source, true, json);
-			new Run(contract, source, directories, pending).run();
+			new Run(contract, source, directories, pending, pilots, files, checkpoint).run();
 		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
@@ -348,14 +387,41 @@ public final class GuardPilot
 		 */
 		PilotResult result(Sha256 control)
 		{
+			return result(control, stopReason, paused);
+		}
+
+		/**
+		 * Returns the pilot's result as it stands while the pilot runs: a pilot with trials left to run says that it did
+		 * not finish, so that a later run keeps the trials that it decided and runs the others.
+		 *
+		 * @param control the identity of the conditions that the trials ran in
+		 * @return the result, whose trials are in draw order
+		 */
+		PilotResult interim(Sha256 control)
+		{
+			if (finished >= TRIALS)
+				return result(control, null, false);
+			return result(control, UNFINISHED, false);
+		}
+
+		/**
+		 * Returns the pilot's result with a reason why it stopped.
+		 *
+		 * @param control the identity of the conditions that the trials ran in
+		 * @param reason why the pilot stopped before running every trial, or {@code null}
+		 * @param pause {@code true} if the pilot paused for the user's choice
+		 * @return the result, whose trials are in draw order
+		 */
+		private PilotResult result(Sha256 control, String reason, boolean pause)
+		{
 			List<PilotTrial> decided = new ArrayList<>();
 			for (PilotTrial trial : trials)
 			{
 				if (trial != null)
 					decided.add(trial);
 			}
-			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedRuns, stopReason,
-				paused);
+			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedRuns, reason,
+				pause);
 		}
 	}
 
@@ -449,6 +515,13 @@ public final class GuardPilot
 		private final Path source;
 		private final List<Path> plugins;
 		private final List<Pilot> pilots;
+		/**
+		 * The pilots that every checkpoint holds, in contract order: a stored pilot that still applies stands for its
+		 * test, and a pilot that runs has a {@code null} place until the checkpoint replaces it.
+		 */
+		private final Map<String, PilotResult> places;
+		private final Sha256 files;
+		private final PilotCheckpoint checkpoint;
 		private final Deque<Job> queue = new ArrayDeque<>();
 		private final BlockingQueue<Ended> events = new LinkedBlockingQueue<>();
 		private final Map<Job, SessionHandle> inFlight = new HashMap<>();
@@ -470,20 +543,28 @@ public final class GuardPilot
 		 * @param source the staged control source
 		 * @param plugins the plugin directories that the trials of {@code source} install
 		 * @param pilots the pilots to run, in contract order
+		 * @param places the pilot of each prompt test in contract order, with {@code null} for each of {@code pilots}
+		 * @param files the identity of the conditions that the trials run in
+		 * @param checkpoint keeps the pilots after each trial that ended
 		 */
-		Run(Contract contract, Path source, List<Path> plugins, List<Pilot> pilots)
+		Run(Contract contract, Path source, List<Path> plugins, List<Pilot> pilots, Map<String, PilotResult> places,
+			Sha256 files, PilotCheckpoint checkpoint)
 		{
 			this.contract = contract;
 			this.source = source;
 			this.plugins = plugins;
 			this.pilots = pilots;
+			this.places = places;
+			this.files = files;
+			this.checkpoint = checkpoint;
 		}
 
 		/**
 		 * Draws each pilot's test cases, then runs their sessions until every trial ends or the pilot stops.
 		 *
 		 * @throws IOException if a passing trial's project copies cannot be deleted. No further session starts, and the
-		 *   failure is thrown once the running sessions end.
+		 *   failure is thrown once the running sessions end. If the checkpoint fails, the running sessions are
+		 *   interrupted and its failure is thrown.
 		 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
 		 *   is interrupted too.
 		 */
@@ -510,14 +591,18 @@ public final class GuardPilot
 						break;
 					Ended ended = events.take();
 					inFlight.remove(ended.job());
+					int endedBefore = endedTrials();
 					switch (ended.job())
 					{
 						case TrialJob trial -> trialEnded(trial, ended.result(), ended.failure());
 						case JudgeJob judge -> judgeEnded(judge, ended.result(), ended.failure());
 					}
+					// A process that ends from here on loses only the trials that are in flight
+					if (endedTrials() > endedBefore)
+						checkpoint.save(snapshot());
 				}
 			}
-			catch (InterruptedException e)
+			catch (InterruptedException | IOException e)
 			{
 				for (SessionHandle handle : inFlight.values())
 				{
@@ -544,6 +629,32 @@ public final class GuardPilot
 					pilot.paused = paused;
 				}
 			}
+		}
+
+		/**
+		 * Returns the number of trials that ended, with a decision or without one that the proposal's tools could give.
+		 *
+		 * @return the number of trials
+		 */
+		private int endedTrials()
+		{
+			int ended = 0;
+			for (Pilot pilot : pilots)
+				ended += pilot.finished;
+			return ended;
+		}
+
+		/**
+		 * Returns the pilots as they stand.
+		 *
+		 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+		 */
+		private Map<String, PilotResult> snapshot()
+		{
+			Map<String, PilotResult> snapshot = new LinkedHashMap<>(places);
+			for (Pilot pilot : pilots)
+				snapshot.put(pilot.test.id(), pilot.interim(files));
+			return snapshot;
 		}
 
 		/**
