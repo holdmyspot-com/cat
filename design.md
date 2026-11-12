@@ -1492,7 +1492,10 @@ that harness installs. For example:
 	`output` and gives no `command`.
 
 `start` refuses, before creating anything, a target whose test directory holds no prompt test configuration or whose
-configuration has no key for the harness that runs `start`, and names the file to write. The refusal lists every
+configuration has no key for the harness that runs `start`, and names the file to write. When the configuration exists
+but lacks that key, the refusal also names every other prompt test configuration under `.cat/tests` that has the key,
+with the prompt file each one configures when that file exists, because a session that picked a prompt file meant for
+another harness can then pick the one meant for its own (user ruling, 2026-11-11). The refusal lists every
 plugin installed in the user's harness home, by name and version, and every plugin manifest tracked in the project, so
 that the skill can write the configuration from the user's answer (user ruling, 2026-10-21). The skill asks the user
 which of them the prompt's users have installed, saying that a certification holds only for users with the chosen
