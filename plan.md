@@ -42,6 +42,28 @@ where this section does not replace them.
 - Open for the user: a prompt test whose time limit exceeds the slice budget can never be admitted in a slice, in the
 	driver or the pilot; no cap exists today.
 
+### Update (2026-11-12, afternoon): fixes for the next release, queued optimizer changes
+
+- **Next release (user approved the republish, 2026-11-12):** `prompt-optimizer run` inside a sandboxed session failed
+	on `1.0+baee7caff86ad` because near-miss evidence went to `/tmp` (fixed, `639e93167`), and the POSIX launchers now
+	pass the session's TMPDIR as `java.io.tmpdir` (user ruling, 2026-11-12). After both are merged: full build, push,
+	Build green, republish, install bare in both harnesses, restart the request server, then resume the token
+	comparison campaign `20261112T165928Z-45bdf9` (`/home/gili/cat/worktrees/token-compare-claude/`, no time limit,
+	user ruling 2026-11-12), which compares cache use per session against E1 r9.
+- **Queued, to implement together (user rulings, 2026-11-12):**
+	- Background campaign runs where the harness supports them, the 8-minute foreground slices as the fallback; no time
+		cap (the campaign's own limits apply). Probes on Codex 0.160.0+41: a background command survives the turn's end
+		and can be polled, the agent is not told when it exits, and the session's end stops it. Codex: the skill ends its
+		turn and checks at the start of the next user turn. Claude: the background command's exit notifies the agent.
+		The driver keeps one flag file, set when the campaign ends or needs the user (a pause or a failure); the skill
+		checks only that flag at each turn start. Delivery must refuse a target that changed during the campaign.
+	- Racing candidates: when the author cannot settle on one diagnosis, it may write 2–3 alternative edits whose
+		development trials run in parallel; a candidate is dropped as soon as its confidence bound shows it cannot win.
+	- Batched judging (development only, shadowed against the frozen single-reply judge, certification unchanged):
+		decide after the token comparison shows how much of the cost judge start-up still is.
+- **Accepted limit (user ruling, 2026-11-12):** a top-level session optimizes only the project of its working
+	directory; its request server is found through that project's CAT session directory.
+
 ### Update (2026-11-11, evening): release `520d3dab3`, prompt optimization paused
 
 - **Paused by the user (2026-11-11): prompt optimization, because of this week's usage limit.** Do not resume a
