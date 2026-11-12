@@ -14,6 +14,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
@@ -53,14 +56,14 @@ public final class SessionSlotsTest
 			Path base = cleanup.add(Files.createTempDirectory("slots-"));
 			SessionSlots slots = new SessionSlots(base, 1, new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
-			Files.writeString(Files.createDirectories(first.root().resolve("claude/slot-1/home")).resolve("login"),
+			Files.writeString(Files.createDirectories(first.root().resolve("claude/s-1/home")).resolve("login"),
 				"login");
 			slots.release(first);
 			SessionSlots.Slot second = slots.acquire(false);
 
 			requireThat(second, "second").isEqualTo(first);
-			requireThat(second.root(), "root").isEqualTo(base.resolve("development").resolve("1"));
-			requireThat(second.runId(), "runId").isEqualTo("slot-1");
+			requireThat(second.root(), "root").isEqualTo(base.resolve("d1"));
+			requireThat(second.runId(), "runId").isEqualTo("s-1");
 			try (Stream<Path> entries = Files.list(second.root()))
 			{
 				requireThat(entries.toList(), "entries").isEmpty();
@@ -84,10 +87,46 @@ public final class SessionSlotsTest
 			SessionSlots.Slot development = slots.acquire(false);
 			SessionSlots.Slot heldOut = slots.acquire(true);
 
-			requireThat(development.root(), "development").isEqualTo(base.resolve("development").resolve("1"));
-			requireThat(heldOut.root(), "heldOut").isEqualTo(base.resolve("held_out").resolve("1"));
+			requireThat(development.root(), "development").isEqualTo(base.resolve("d1"));
+			requireThat(heldOut.root(), "heldOut").isEqualTo(base.resolve("h1"));
 			requireThat(heldOut.heldOut(), "heldOutFlag").isTrue();
 			requireThat(development.heldOut(), "developmentFlag").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the run of each slot that may be held at once, in both parts, has a path of its own, and that the
+	 * part of that path below the slots' base is short: at most 16 characters for a run of a harness named
+	 * {@code claude}, against the 41 of {@code development/1/claude/slot-1}.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void givesEachSlotShortPathOfItsOwn() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory("slots-"));
+			int count = 12;
+			SessionSlots slots = new SessionSlots(base, count, new Liveness());
+			Set<Path> runs = new HashSet<>();
+			for (boolean heldOut : List.of(false, true))
+			{
+				for (int i = 0; i < count; ++i)
+				{
+					SessionSlots.Slot slot = slots.acquire(heldOut);
+					HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
+						Yielding.fileReplacer()).withFixedRunId(slot.runId());
+					Path run = manager.create("claude").directory();
+					requireThat(base.relativize(run).toString().length(), "length").withContext(run, "run").
+						isLessThanOrEqualTo(16);
+					runs.add(run);
+				}
+			}
+
+			requireThat(runs, "runs").size().isEqualTo(2 * count);
 		}
 	}
 

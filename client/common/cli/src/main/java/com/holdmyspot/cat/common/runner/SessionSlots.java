@@ -25,6 +25,13 @@ import tools.jackson.databind.json.JsonMapper;
  * A slot belongs to either the development part or the held-out part. The two parts have slots of their own, in
  * separate directories, so that a session of one part never runs where a session of the other did.
  * <p>
+ * The paths are short: {@code d1}, {@code d2}, and so on, for the development part's slots and {@code h1},
+ * {@code h2}, and so on, for the held-out part's, each run below its harness's name under the identifier
+ * {@code s-<number>}. Every path of a session's home and project starts with its run's path, and a harness repeats
+ * those paths many times in what it sends the model, in its sandbox description among others, and again for each
+ * level of requested sessions. The names stay distinct across parts and numbers, and none is a name that Windows
+ * reserves.
+ * <p>
  * A slot is emptied before a session takes it, and again once the session has ended, but a slot is never emptied or
  * handed on while a process that its previous session recorded in its run's manifest remains alive: CAT stops each
  * such process, and if one stays alive, the slot waits. The manifest records only the runner's process and the
@@ -35,13 +42,18 @@ import tools.jackson.databind.json.JsonMapper;
 public final class SessionSlots
 {
 	/**
-	 * The directory, below the slots' base, of the development part's slots.
+	 * The start of the name of each development slot's directory below the slots' base, which the slot's number
+	 * follows.
 	 */
-	static final String DEVELOPMENT = "development";
+	static final String DEVELOPMENT = "d";
 	/**
-	 * The directory, below the slots' base, of the held-out part's slots.
+	 * The start of the name of each held-out slot's directory below the slots' base, which the slot's number follows.
 	 */
-	static final String HELD_OUT = "held_out";
+	static final String HELD_OUT = "h";
+	/**
+	 * The start of the identifier of each slot's run, which the slot's number follows.
+	 */
+	private static final String RUN_ID = "s-";
 	/**
 	 * How long a request waits for a slot to be released before it checks again, in milliseconds.
 	 */
@@ -215,7 +227,7 @@ public final class SessionSlots
 		String part = DEVELOPMENT;
 		if (heldOut)
 			part = HELD_OUT;
-		return new Slot(base.resolve(part).resolve(String.valueOf(number)), "slot-" + number, heldOut, number);
+		return new Slot(base.resolve(part + number), RUN_ID + number, heldOut, number);
 	}
 
 	/**

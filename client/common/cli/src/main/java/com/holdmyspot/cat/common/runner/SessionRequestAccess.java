@@ -102,6 +102,12 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	private static final String REQUESTED_RUN_ROOTS = "allowed";
 	/**
+	 * The requested-runs directory in a run's directory. The name is short because the paths of each requested
+	 * session's run, which every path of its home and project starts with, recur many times in what its harness sends
+	 * the model.
+	 */
+	private static final String REQUESTED_RUNS = "slots";
+	/**
 	 * The most bytes of a {@link #LIMITS_FILE} that a reader reads.
 	 */
 	private static final int MAXIMUM_LIMITS_BYTES = 4096;
@@ -243,7 +249,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	public static Path requestedRunsDirectory(HarnessRun run)
 	{
 		requireThat(run, "run").isNotNull();
-		return run.directory().resolve("requested-runs");
+		return run.directory().resolve(REQUESTED_RUNS);
 	}
 
 	/**

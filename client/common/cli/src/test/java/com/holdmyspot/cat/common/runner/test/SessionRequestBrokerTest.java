@@ -1182,7 +1182,7 @@ public final class SessionRequestBrokerTest
 			requireThat(second.run().directory().resolve("project"), "project").
 				isEqualTo(first.run().directory().resolve("project"));
 			requireThat(first.runRoot(), "runRoot").isEqualTo(SessionRequestAccess.requestedRunsDirectory(fixture.run).
-				resolve("development").resolve("1"));
+				resolve("d1"));
 		}
 	}
 
@@ -1292,8 +1292,8 @@ public final class SessionRequestBrokerTest
 			}
 			Path slots = SessionRequestAccess.requestedRunsDirectory(fixture.run);
 			requireThat(runs, "runs").size().isEqualTo(2);
-			requireThat(runs.getFirst().runRoot(), "development").isEqualTo(slots.resolve("development").resolve("1"));
-			requireThat(runs.getLast().runRoot(), "heldOut").isEqualTo(slots.resolve("held_out").resolve("1"));
+			requireThat(runs.getFirst().runRoot(), "development").isEqualTo(slots.resolve("d1"));
+			requireThat(runs.getLast().runRoot(), "heldOut").isEqualTo(slots.resolve("h1"));
 		}
 	}
 

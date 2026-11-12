@@ -479,8 +479,8 @@ public final class RequestServerTest
 				isEqualTo(first.run().directory().resolve("home"));
 			requireThat(second.run().directory().resolve("project"), "project").
 				isEqualTo(first.run().directory().resolve("project"));
-			requireThat(first.runRoot(), "runRoot").isEqualTo(fixture.sessionDirectory().resolve("request-runs").
-				resolve("development").resolve("1"));
+			requireThat(first.runRoot(), "runRoot").isEqualTo(fixture.sessionDirectory().resolve("slots").
+				resolve("d1"));
 		}
 	}
 
@@ -528,11 +528,10 @@ public final class RequestServerTest
 				serve(fixture, server, runRoot, "--held-out");
 				serve(fixture, server, runRoot);
 			}
-			Path slots = fixture.sessionDirectory().resolve("request-runs");
+			Path slots = fixture.sessionDirectory().resolve("slots");
 			requireThat(served, "served").size().isEqualTo(2);
-			requireThat(served.getFirst().runRoot(), "heldOut").isEqualTo(slots.resolve("held_out").resolve("1"));
-			requireThat(served.getLast().runRoot(), "development").
-				isEqualTo(slots.resolve("development").resolve("1"));
+			requireThat(served.getFirst().runRoot(), "heldOut").isEqualTo(slots.resolve("h1"));
+			requireThat(served.getLast().runRoot(), "development").isEqualTo(slots.resolve("d1"));
 		}
 	}
 

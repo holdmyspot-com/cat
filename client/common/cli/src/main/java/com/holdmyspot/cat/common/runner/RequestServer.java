@@ -71,9 +71,11 @@ public final class RequestServer
 	private static final String RESPONSES = "responses";
 	/**
 	 * The directory, in the session's CAT session directory, that holds the slots in which the sessions that the
-	 * server starts run, each from its start until the server has answered its request.
+	 * server starts run, each from its start until the server has answered its request. The name is short because
+	 * the paths of a session's run, which every path of its home and project starts with, recur many times in what
+	 * its harness sends the model.
 	 */
-	private static final String RUNS = "request-runs";
+	private static final String RUNS = "slots";
 	/**
 	 * How long the server tries to take its lock, which a client takes for a moment when it checks whether a server
 	 * serves the session.
