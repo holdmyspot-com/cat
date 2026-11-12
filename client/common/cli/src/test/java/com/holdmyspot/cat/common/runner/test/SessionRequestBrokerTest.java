@@ -1366,7 +1366,9 @@ public final class SessionRequestBrokerTest
 						throw new IOException("Interrupted while the session held its slot", e);
 					}
 					FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
-					process.onExit().thenRun(() ->
+					// The broker releases the slot after the session's exit, so the session must stop counting as
+					// running before that exit is observed
+					process.whenExited(() ->
 					{
 						running.decrementAndGet();
 						active.remove(runRoot);

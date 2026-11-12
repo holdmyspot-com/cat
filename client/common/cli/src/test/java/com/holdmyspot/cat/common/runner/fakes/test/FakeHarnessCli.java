@@ -62,6 +62,10 @@ public final class FakeHarnessCli extends Process
 	private final Consumer<String> requestHandler;
 	private final int exitStatus;
 	private final CountDownLatch exited = new CountDownLatch(1);
+	/**
+	 * The actions to run when the child exits, guarded by this list's monitor, which also guards the exit.
+	 */
+	private final List<Runnable> exitActions = new ArrayList<>();
 	private volatile boolean exitsWhenAwaited;
 	private volatile byte[] standardError = new byte[0];
 	private final OutputStream standardInput = new ChildInput();
@@ -131,7 +135,42 @@ public final class FakeHarnessCli extends Process
 	public void exit()
 	{
 		standardOutput.add(new byte[0]);
-		exited.countDown();
+		markExited();
+	}
+
+	/**
+	 * Runs an action when the child exits, or at once if it has. The action runs in the thread that marks the child as
+	 * exited, before any call that waits for the exit returns, so it is complete when a caller that waited for the exit
+	 * goes on. {@link Process#onExit()} cannot give that order, because it completes in another thread.
+	 *
+	 * @param action the action
+	 */
+	public void whenExited(Runnable action)
+	{
+		synchronized (exitActions)
+		{
+			if (exited.getCount() == 0)
+				action.run();
+			else
+				exitActions.add(action);
+		}
+	}
+
+	/**
+	 * Marks the child as exited, which runs the actions that {@link #whenExited(Runnable)} registered and then
+	 * releases the callers that wait for the exit. Does nothing if the child has exited.
+	 */
+	private void markExited()
+	{
+		synchronized (exitActions)
+		{
+			if (exited.getCount() == 0)
+				return;
+			for (Runnable action : exitActions)
+				action.run();
+			exitActions.clear();
+			exited.countDown();
+		}
 	}
 
 	/**
@@ -198,7 +237,7 @@ public final class FakeHarnessCli extends Process
 	private void exitIfAwaited()
 	{
 		if (exitsWhenAwaited)
-			exited.countDown();
+			markExited();
 	}
 
 	@Override
