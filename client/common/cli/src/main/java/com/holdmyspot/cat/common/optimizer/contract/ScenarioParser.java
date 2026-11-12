@@ -84,6 +84,17 @@ final class ScenarioParser
 	}
 
 	/**
+	 * The subsections of the {@code ## Assertions} section.
+	 *
+	 * @param assertions          the declared assertions, in order
+	 * @param expectedOutcomeTool the tool that the {@code ### expected_outcome} subsection gives the assertion that
+	 *                            CAT adds, or empty if the section has none
+	 */
+	private record ParsedAssertions(List<Assertion> assertions, Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	{
+	}
+
+	/**
 	 * Creates a parser.
 	 *
 	 * @param location the text that starts each problem's message, such as the file's path and a colon, or an empty
@@ -164,10 +175,10 @@ final class ScenarioParser
 		Optional<ExpectedBehavior> expectedBehavior = Optional.empty();
 		if (expectedSection != null)
 			expectedBehavior = Optional.of(expectedBehavior(expectedSection));
-		List<Assertion> assertions = assertions(sections.get(ASSERTIONS));
+		ParsedAssertions parsed = assertions(sections.get(ASSERTIONS));
 		try
 		{
-			return new Scenario(variables, turns, expectedBehavior, assertions);
+			return new Scenario(variables, turns, expectedBehavior, parsed.assertions(), parsed.expectedOutcomeTool());
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -508,10 +519,11 @@ final class ScenarioParser
 	 * Parses the assertions.
 	 *
 	 * @param section the {@code ## Assertions} section
-	 * @return the assertions, in order
-	 * @throws ScenarioFormatException if an assertion is malformed
+	 * @return the declared assertions, in order, and the tool of the subsection {@code ### expected_outcome}, if any
+	 * @throws ScenarioFormatException if an assertion is malformed, or the section declares no assertion besides
+	 *                                 {@code expected_outcome}
 	 */
-	private List<Assertion> assertions(Section section) throws ScenarioFormatException
+	private ParsedAssertions assertions(Section section) throws ScenarioFormatException
 	{
 		List<Integer> headings = subsections(section);
 		int first;
@@ -524,6 +536,7 @@ final class ScenarioParser
 		if (headings.isEmpty())
 			throw error(section.heading(), "the ## Assertions section has no assertion");
 		List<Assertion> assertions = new ArrayList<>();
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool = Optional.empty();
 		Set<String> ids = new HashSet<>();
 		for (int k = 0; k < headings.size(); ++k)
 		{
@@ -531,16 +544,56 @@ final class ScenarioParser
 			String id = lines.get(heading).substring("### ".length()).strip();
 			if (!Identifier.SNAKE_CASE.matcher(id).matches())
 				throw error(heading, "the assertion id '" + id + "' must be lowercase words joined by underscores");
-			if (id.equals(TestCase.EXPECTED_OUTCOME))
-			{
-				throw error(heading, "the assertion id " + TestCase.EXPECTED_OUTCOME + " is reserved for the " +
-					"assertion that CAT adds");
-			}
 			if (!ids.add(id))
 				throw error(heading, "the assertion " + id + " is declared twice");
-			assertions.add(assertion(id, heading, end(headings, k, section)));
+			if (id.equals(TestCase.EXPECTED_OUTCOME))
+				expectedOutcomeTool = Optional.of(expectedOutcomeTool(heading, end(headings, k, section)));
+			else
+				assertions.add(assertion(id, heading, end(headings, k, section)));
 		}
-		return assertions;
+		if (assertions.isEmpty())
+		{
+			throw error(section.heading(), "the ## Assertions section declares no assertion besides " +
+				TestCase.EXPECTED_OUTCOME + "; add one that checks a requirement, such as ### answer_given");
+		}
+		return new ParsedAssertions(assertions, expectedOutcomeTool);
+	}
+
+	/**
+	 * Parses the pairs of the subsection {@code ### expected_outcome}, which gives the assertion that CAT adds a
+	 * built-in tool. CAT supplies the assertion's description and kind.
+	 *
+	 * @param heading the index of its heading line
+	 * @param end     the index of the line after its last line
+	 * @return the tool
+	 * @throws ScenarioFormatException if the subsection holds prose, a {@code kind}, a {@code description} or an
+	 *                                 undefined key, lacks its {@code tool}, or holds an invalid value
+	 */
+	private ExpectedOutcomeTool expectedOutcomeTool(int heading, int end) throws ScenarioFormatException
+	{
+		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + TestCase.EXPECTED_OUTCOME + " holds only " +
+			"key-value pairs, such as - **tool**: `exact-text {{" + TestCase.EXPECTED_OUTCOME + "}}`");
+		for (Pair pair : pairs)
+		{
+			if (pair.key().equals(KIND) || pair.key().equals(DESCRIPTION))
+			{
+				throw error(pair.line(), "CAT supplies the " + pair.key() + " of the assertion " +
+					TestCase.EXPECTED_OUTCOME + "; give it only a tool and, optionally, on_tool_failure");
+			}
+		}
+		requireKeys(pairs, Set.of(TOOL, ON_TOOL_FAILURE), "tool and on_tool_failure");
+		Pair toolPair = find(pairs, TOOL);
+		if (toolPair == null)
+		{
+			throw error(heading, "the assertion " + TestCase.EXPECTED_OUTCOME + " has no tool; add - **tool**: " +
+				"followed by a built-in tool, or remove the subsection so that the judge decides it");
+		}
+		String tool = tool(toolPair);
+		OnToolFailure onToolFailure = OnToolFailure.FAIL;
+		Pair onToolFailurePair = find(pairs, ON_TOOL_FAILURE);
+		if (onToolFailurePair != null)
+			onToolFailure = onToolFailure(onToolFailurePair);
+		return new ExpectedOutcomeTool(tool, onToolFailure);
 	}
 
 	/**
@@ -588,13 +641,7 @@ final class ScenarioParser
 				throw error(onToolFailurePair.line(), "the key on_tool_failure needs a tool whose failure it handles; " +
 					"add - **tool**: or remove it");
 			}
-			onToolFailure = switch (onToolFailurePair.value())
-			{
-				case "fail" -> OnToolFailure.FAIL;
-				case "judge" -> OnToolFailure.JUDGE;
-				default -> throw error(onToolFailurePair.line(), "the on_tool_failure " + onToolFailurePair.value() +
-					" must be fail or judge");
-			};
+			onToolFailure = onToolFailure(onToolFailurePair);
 		}
 
 		Pair description = find(pairs, DESCRIPTION);
@@ -603,6 +650,23 @@ final class ScenarioParser
 		if (description.value().isEmpty())
 			throw error(description.line(), "the key description has no value");
 		return new Assertion(id, kind, tool, onToolFailure, description.value());
+	}
+
+	/**
+	 * Parses an {@code on_tool_failure}.
+	 *
+	 * @param pair the {@code on_tool_failure} pair
+	 * @return what a failure of the tool means
+	 * @throws ScenarioFormatException if the value is neither {@code fail} nor {@code judge}
+	 */
+	private OnToolFailure onToolFailure(Pair pair) throws ScenarioFormatException
+	{
+		return switch (pair.value())
+		{
+			case "fail" -> OnToolFailure.FAIL;
+			case "judge" -> OnToolFailure.JUDGE;
+			default -> throw error(pair.line(), "the on_tool_failure " + pair.value() + " must be fail or judge");
+		};
 	}
 
 	/**

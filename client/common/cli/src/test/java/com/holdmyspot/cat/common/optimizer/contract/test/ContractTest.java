@@ -9,8 +9,10 @@ import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
@@ -412,6 +414,78 @@ public final class ContractTest
 		requireThat(mixed.requirementId(TestCase.EXPECTED_OUTCOME), "expectedOutcome").isEmpty();
 		requireThat(asserting(List.of(asked, kept)).expectedOutcome().kind(), "guards").
 			isEqualTo(AssertionKind.GUARD);
+	}
+
+	/**
+	 * Verifies that a test may give the assertion {@code expected_outcome} a built-in tool: it is then no longer an
+	 * assertion without a tool, CAT still supplies its description and kind, the tool's {@code on_tool_failure}
+	 * applies, and the tool must suit the test.
+	 */
+	@Test
+	public void expectedOutcomeMayHaveABuiltInTool()
+	{
+		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
+		MappedAssertion kept = mapped("kept", AssertionKind.GUARD, "file-exists {{dir}}/keep.txt",
+			"The {{dir}} directory keeps keep.txt.", "r2");
+		MappedAssertion made = mapped("made", AssertionKind.GUARD, "file-exists {{dir}}/out.txt",
+			"The {{dir}} directory keeps out.txt.", "r1");
+
+		PromptTest failing = withExpectedOutcomeTool(List.of(tone, kept),
+			new ExpectedOutcomeTool("exact-text {{expected_outcome}}"));
+		requireThat(failing.judgedAssertions(), "failingJudged").isEqualTo(List.of(tone.assertion()));
+		requireThat(failing.expectedOutcome().id(), "failingId").isEqualTo(TestCase.EXPECTED_OUTCOME);
+		requireThat(failing.expectedOutcome().builtInTool().isPresent(), "failingHasTool").isTrue();
+		requireThat(failing.expectedOutcome().statement(), "failingStatement").
+			isEqualTo(asserting(List.of(tone, kept)).expectedOutcome().statement());
+
+		PromptTest deferring = withExpectedOutcomeTool(List.of(tone, kept),
+			new ExpectedOutcomeTool("exact-text {{expected_outcome}}", OnToolFailure.JUDGE));
+		requireThat(deferring.judgedAssertions(), "deferringJudged").isEqualTo(List.of(tone.assertion()));
+		requireThat(deferring.expectedOutcome().onToolFailure(), "deferringOnToolFailure").
+			isEqualTo(OnToolFailure.JUDGE);
+
+		PromptTest allByTool = withExpectedOutcomeTool(List.of(made, kept),
+			new ExpectedOutcomeTool("exact-text {{expected_outcome}}"));
+		requireThat(allByTool.judgedAssertions(), "allByToolJudged").isEmpty();
+		requireThat(asserting(List.of(made, kept)).judgedAssertions(), "withoutToolJudged").
+			isEqualTo(List.of(Assertion.expectedOutcome(AssertionKind.GUARD)));
+
+		boolean undeclared = false;
+		try
+		{
+			withExpectedOutcomeTool(List.of(made, kept), new ExpectedOutcomeTool("exact-text {{missing}}"));
+		}
+		catch (IllegalArgumentException e)
+		{
+			undeclared = true;
+			requireThat(e.getMessage(), "message").contains("{{missing}}");
+		}
+		requireThat(undeclared, "undeclared").isTrue();
+		boolean unknownTool = false;
+		try
+		{
+			new ExpectedOutcomeTool("no-such-tool x");
+		}
+		catch (IllegalArgumentException _)
+		{
+			unknownTool = true;
+		}
+		requireThat(unknownTool, "unknownTool").isTrue();
+	}
+
+	/**
+	 * Returns a test whose assertion {@code expected_outcome} has a built-in tool.
+	 *
+	 * @param assertions the declared assertions
+	 * @param tool the built-in tool of {@code expected_outcome}
+	 * @return the test
+	 */
+	private static PromptTest withExpectedOutcomeTool(List<MappedAssertion> assertions, ExpectedOutcomeTool tool)
+	{
+		return new PromptTest("t", new RiskRank(1), List.of("r1", "r2"), List.of(), "Always.", List.of("Clean {{dir}}."),
+			Duration.ofMinutes(1), "Complies.", List.of(), List.of(new VariableDeclaration("dir", "The directory.")),
+			List.of(), List.of(ContractFixtures.testCase("cleans build", Map.of("dir", "build"))), assertions,
+			List.of(), List.of(), Optional.empty(), Optional.of(tool));
 	}
 
 	/**

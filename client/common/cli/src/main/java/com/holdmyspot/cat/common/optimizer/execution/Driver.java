@@ -718,8 +718,10 @@ public final class Driver implements AutoCloseable
 	 * fails the trial with the record of each such tool and no judge runs; a failed development trial waits for its
 	 * triage before the failure is recorded. Otherwise the trial waits for a judge of the assertions without a
 	 * {@code tool}, of the assertions whose failed tool leaves them to the judge, and of the assertion
-	 * {@value TestCase#EXPECTED_OUTCOME}, which receives the tool results as evidence. A tool that the record cannot
-	 * decide, or evidence that cannot be rendered, makes the run an infrastructure failure.
+	 * {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed, which receive the tool
+	 * results as evidence. A trial whose passing tools decide every assertion starts no judge: it passes with the record
+	 * of its tools. A tool that the record cannot decide, or evidence that cannot be rendered, makes the run an
+	 * infrastructure failure.
 	 *
 	 * @param trial the trial session
 	 * @param completed the trial session's result
@@ -764,6 +766,12 @@ public final class Driver implements AutoCloseable
 			return;
 		}
 		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements(), results);
+		if (judged.isEmpty())
+		{
+			complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.PASS,
+				toolRecord("Passed built-in tools:", results), List.of(), null);
+			return;
+		}
 		String section = "";
 		if (judgeRendersEvidence())
 		{

@@ -61,6 +61,10 @@ public final class ProposalSchema
 	 */
 	private static final String DRAFT = "draft";
 	/**
+	 * The property of a test that holds the built-in tool of the assertion that CAT adds.
+	 */
+	private static final String EXPECTED_OUTCOME_TOOL = "expected_outcome_tool";
+	/**
 	 * The property of a test's {@value #DRAFT} that holds the links of its workspace directory whose targets lie
 	 * outside that directory, each with its path and target, which delivery writes as links.
 	 */
@@ -624,6 +628,13 @@ public final class ProposalSchema
 			assertionNode.put("statement", assertion.statement());
 			assertionNode.put("requirement_id", mapped.requirementId());
 		}
+		// A test whose judge decides the assertion that CAT adds keeps the identity that it had before the property existed
+		test.expectedOutcomeTool().ifPresent(tool ->
+		{
+			ObjectNode toolNode = node.putObject(EXPECTED_OUTCOME_TOOL);
+			toolNode.put("tool", tool.tool());
+			toolNode.put("on_tool_failure", EnumNames.lowerCase(tool.onToolFailure()));
+		});
 	}
 
 	/**
@@ -903,12 +914,17 @@ public final class ProposalSchema
 				return new PromptTest.Draft(Path.of(text(draftNode, "directory")), text(draftNode, "scenario"),
 					copiedLinks);
 			});
+			Optional<ExpectedOutcomeTool> expectedOutcomeTool = Optional.ofNullable(node.get(EXPECTED_OUTCOME_TOOL)).
+				map(toolNode -> attempt(location + "." + EXPECTED_OUTCOME_TOOL, () -> new ExpectedOutcomeTool(
+					text(toolNode, "tool"), EnumNames.parse(text(toolNode, "on_tool_failure"), OnToolFailure.class))));
+			if (problems.size() > problemsBefore)
+				return null;
 			PromptTest test = attempt(location, () -> new PromptTest(text(node, "id"),
 				new RiskRank(node.get("risk_rank").asInt()), strings(node.get("requirement_ids")),
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
-				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft));
+				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft, expectedOutcomeTool));
 			if (test == null)
 				return null;
 			// Delivery writes every prompt test as a scenario.md

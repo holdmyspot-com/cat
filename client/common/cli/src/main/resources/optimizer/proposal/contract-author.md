@@ -133,9 +133,9 @@ user's feedback changes it. A higher rate needs more trials to prove.
 ### Judge rubric and decision rule
 
 - `judge.rubric`: the criteria that the judge applies to one trial's text, file effects and tool effects for each
-	assertion without a built-in tool or whose `on_tool_failure` is `judge`, including `expected_outcome`. For
-	`expected_outcome`, say which differences from the expected outcome still match, such as another spelling of the
-	same date.
+	assertion without a built-in tool or whose `on_tool_failure` is `judge`, including `expected_outcome` unless the
+	scenario gives it a built-in tool. For `expected_outcome`, say which differences from the expected outcome still
+	match, such as another spelling of the same date.
 - `judge.decision_rule`: exactly when each assertion that the judge decides passes and when it fails. The judge sees
 	the built-in tool results as evidence but cannot override a tool that decided its assertion.
 

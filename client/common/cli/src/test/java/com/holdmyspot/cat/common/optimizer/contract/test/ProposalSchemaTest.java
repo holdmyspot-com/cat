@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
@@ -23,6 +24,7 @@ import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.SplittableRandom;
 import org.testng.annotations.DataProvider;
@@ -74,6 +76,35 @@ public final class ProposalSchemaTest
 		ProposalSchema schema = schema();
 		requireThat(ContractIdentity.of(schema, loaded), "identity").
 			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.contract()));
+	}
+
+	/**
+	 * Verifies that the built-in tool of the assertion that CAT adds survives writing the contract and reading it back,
+	 * that it is part of the contract's identity, that a contract without it writes no property for it, and that a tool
+	 * that names no built-in tool is rejected at the test's location.
+	 *
+	 * @throws InvalidProposalException if the stored contract is rejected
+	 */
+	@Test
+	public void expectedOutcomeToolIsStored() throws InvalidProposalException
+	{
+		ObjectNode stored = (ObjectNode) json.readTree(schema().toJson(ContractFixtures.contract()));
+		requireThat(stored.get("tests").get(1).has("expected_outcome_tool"), "withoutTool").isFalse();
+		((ObjectNode) stored.get("tests").get(1)).putObject("expected_outcome_tool").
+			put("tool", "pattern {{expected_outcome}}").put("on_tool_failure", "judge");
+
+		Contract loaded = schema().parse(json.writeValueAsString(stored));
+
+		requireThat(loaded.findTest("plain_list").orElseThrow().expectedOutcomeTool(), "tool").isEqualTo(Optional.of(
+			new ExpectedOutcomeTool("pattern {{expected_outcome}}", OnToolFailure.JUDGE)));
+		requireThat(json.readTree(schema().toJson(loaded)), "roundTrip").isEqualTo(stored);
+		ProposalSchema schema = schema();
+		requireThat(ContractIdentity.of(schema, loaded), "identity").
+			isNotEqualTo(ContractIdentity.of(schema, ContractFixtures.contract()));
+
+		((ObjectNode) stored.get("tests").get(1).get("expected_outcome_tool")).put("tool", "no-such-check x");
+		requireThat(String.join(" | ", rejection(json.writeValueAsString(stored)).problems()), "unknownTool").
+			contains("$.tests[1].expected_outcome_tool").contains("There is no built-in tool named no-such-check");
 	}
 
 	/**

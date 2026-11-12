@@ -94,7 +94,7 @@ public final class ProposalCheck
 	 * The fields of a completed prompt test whose values come from its {@value PromptTestFiles#SCENARIO}.
 	 */
 	private static final Set<String> SCENARIO_FIELDS = Set.of(".turns", ".variables", ".expected_behavior",
-		".time_limit_seconds");
+		".time_limit_seconds", ".expected_outcome_tool");
 	/**
 	 * The file name suffix of a scenario in an earlier format.
 	 */
@@ -999,6 +999,13 @@ public final class ProposalCheck
 			test.putArray("workspace_files");
 			test.set("test_cases", testCases);
 			test.set("assertions", assertions);
+			if (scenario.expectedOutcomeTool().isPresent())
+			{
+				ObjectNode toolNode = test.putObject("expected_outcome_tool");
+				toolNode.put("tool", scenario.expectedOutcomeTool().get().tool());
+				toolNode.put("on_tool_failure",
+					EnumNames.lowerCase(scenario.expectedOutcomeTool().get().onToolFailure()));
+			}
 
 			if (!committedTestCases.isEmpty())
 				committed.put(id, committedTestCases);

@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -179,7 +180,11 @@ public final class ValuesPrompt implements ValuesProtocol
 		if (requirementId.isEmpty())
 		{
 			node.putNull("requirement");
-			behaviors.add(PromptTest.UNEXPECTED_OUTCOME);
+			// A tool whose failure fails the trial names the behavior of the failure; otherwise the judge decides
+			if (assertion.tool() != null && assertion.onToolFailure() == OnToolFailure.FAIL)
+				behaviors.add(assertion.builtInTool().orElseThrow().behavior());
+			else
+				behaviors.add(PromptTest.UNEXPECTED_OUTCOME);
 		}
 		else
 		{

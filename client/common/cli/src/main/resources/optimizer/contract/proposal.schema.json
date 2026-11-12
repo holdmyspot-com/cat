@@ -7,7 +7,7 @@
 	"required": ["requirements", "tests", "trial_profiles", "judge", "limitations", "minimum_pass_rate", "salt"],
 	"$defs": {
 		"assertion": {
-			"description": "One statement that a compliant trial satisfies. CAT adds the assertion expected_outcome, which the judge decides, to every test: the reply's result matches the test case's expected outcome.",
+			"description": "One statement that a compliant trial satisfies. CAT adds the assertion expected_outcome to every test: the reply's result matches the test case's expected outcome. The judge decides it unless the test gives it a built-in tool in expected_outcome_tool.",
 			"type": "object",
 			"additionalProperties": false,
 			"required": ["id", "kind", "tool", "on_tool_failure", "statement", "requirement_id"],
@@ -172,6 +172,16 @@
 						"type": "array",
 						"minItems": 1,
 						"items": {"$ref": "#/$defs/assertion"}
+					},
+					"expected_outcome_tool": {
+						"description": "The built-in tool that decides the assertion expected_outcome, which CAT adds to every test. Present only when the scenario gives that assertion a tool; otherwise the judge decides it. CAT supplies the assertion's description and kind.",
+						"type": "object",
+						"additionalProperties": false,
+						"required": ["tool", "on_tool_failure"],
+						"properties": {
+							"tool": {"description": "The built-in tool and its arguments, written as for an assertion's tool. It may contain {{name}} placeholders for the test case's variables and for expected_outcome.", "type": "string", "pattern": "\\S"},
+							"on_tool_failure": {"description": "fail if a failure of tool fails the trial; judge if the judge then decides the assertion from the test case's expected outcome, with the tool's result as evidence.", "type": "string", "pattern": "^(fail|judge)$"}
+						}
 					}
 				}
 			}
@@ -237,7 +247,7 @@
 				"model": {"description": "The role profile's model.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"effort": {"description": "The role profile's reasoning effort; `none` selects no reasoning, and an empty effort loads as `none`.", "type": "string", "pattern": "^[^\\s/]*$"},
 				"prompt": {"type": "string", "pattern": "\\S"},
-				"rubric": {"description": "What the judge checks, in a trial's text, file effects and tool effects, for each assertion that no built-in tool decides, including expected_outcome.", "type": "string", "pattern": "\\S"},
+				"rubric": {"description": "What the judge checks, in a trial's text, file effects and tool effects, for each assertion that no built-in tool decides, including expected_outcome unless the test gives it a tool.", "type": "string", "pattern": "\\S"},
 				"decision_rule": {"description": "How the judge turns its findings into a pass or a failure of each assertion that it decides. The judge cannot override a built-in tool that decided its assertion.", "type": "string", "pattern": "\\S"},
 				"result_schema": {"description": "The JSON schema that a judge result must satisfy.", "type": "object"}
 			}

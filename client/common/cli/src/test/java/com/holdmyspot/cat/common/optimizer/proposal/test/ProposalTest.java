@@ -21,6 +21,8 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
@@ -88,6 +90,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.OptionalLong;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -2833,7 +2836,7 @@ public final class ProposalTest
 	/**
 	 * Verifies that CAT adds the assertion {@value TestCase#EXPECTED_OUTCOME} to every test, as a guard when every
 	 * declared assertion of the test is a guard and otherwise as an effect; that the proposal shows it; and that the
-	 * contract author cannot declare it itself.
+	 * contract author cannot declare it as an assertion of its own, with a kind and a description.
 	 *
 	 * @throws InvalidProposalException if the fixture is rejected
 	 */
@@ -2873,8 +2876,48 @@ public final class ProposalTest
 			requireThat(e.problems().size(), "problems.size()").isEqualTo(1);
 			requireThat(e.problems().getFirst(), "problem").
 				startsWith(DraftDirectory.NAME + "/.cat/tests/CLAUDE/formatting/scenario.md: Line ").
-				contains("the assertion id expected_outcome is reserved for the assertion that CAT adds");
+				contains("CAT supplies the kind of the assertion expected_outcome; give it only a tool and, " +
+					"optionally, on_tool_failure");
 		}
+	}
+
+	/**
+	 * Verifies that a scenario can give the assertion {@value TestCase#EXPECTED_OUTCOME} a built-in tool: the contract
+	 * keeps the tool, and the proposal shows it the way it shows the tool of any other assertion, while a test without
+	 * the subsection stays decided by the judge.
+	 *
+	 * @throws InvalidProposalException if the fixture is rejected
+	 */
+	@Test
+	public void expectedOutcomeMayHaveABuiltInTool() throws InvalidProposalException
+	{
+		String output = changedDerivation(derivation ->
+		{
+			((ObjectNode) derivation.at("/tests/0")).putObject("expected_outcome_tool").
+				put("tool", "exact-text {{expected_outcome}}").put("on_tool_failure", "fail");
+			((ObjectNode) derivation.at("/tests/1")).putObject("expected_outcome_tool").
+				put("tool", "pattern \"{{expected_outcome}}\"").put("on_tool_failure", "judge");
+		});
+
+		Contract contract = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT).contract();
+
+		requireThat(contract.tests().get(0).expectedOutcomeTool(), "formatting").
+			isEqualTo(Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}")));
+		requireThat(contract.tests().get(1).expectedOutcomeTool(), "plainList").isEqualTo(Optional.of(
+			new ExpectedOutcomeTool("pattern \"{{expected_outcome}}\"", OnToolFailure.JUDGE)));
+		requireThat(contract.tests().get(2).expectedOutcomeTool(), "safety").isEqualTo(Optional.empty());
+		requireThat(contract.tests().get(0).expectedOutcome().tool(), "assertionTool").
+			isEqualTo("exact-text {{expected_outcome}}");
+		String text = rendered(output);
+		requireThat(text, "text").
+			contains("  - `expected_outcome` (effect, added by CAT): " + Assertion.EXPECTED_OUTCOME_STATEMENT +
+				" The built-in tool `exact-text {{expected_outcome}}` decides it; a failure is the behavior " +
+				"`reply_not_exact`.\n").
+			contains("  - `expected_outcome` (effect, added by CAT): " + Assertion.EXPECTED_OUTCOME_STATEMENT +
+				" The built-in tool `pattern \"{{expected_outcome}}\"` decides it when it passes; when it fails, " +
+				"the judge decides it.\n").
+			contains("  - `expected_outcome` (guard, added by CAT): " + Assertion.EXPECTED_OUTCOME_STATEMENT +
+				" The judge decides it.\n");
 	}
 
 	/**

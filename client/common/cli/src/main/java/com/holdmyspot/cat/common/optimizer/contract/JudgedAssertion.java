@@ -52,7 +52,8 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 	 * @param requirements every requirement of the contract
 	 * @param results      the results of the trial's built-in tools
 	 * @return the test's assertions without a {@code tool} or whose result {@link BuiltInToolResult#leftToJudge()
-	 *   leaves them to the judge}, in the test's order, then {@value TestCase#EXPECTED_OUTCOME}
+	 *   leaves them to the judge}, in the test's order, then {@value TestCase#EXPECTED_OUTCOME} unless its built-in tool
+	 *   passed or fails the trial; empty if built-in tools decided every assertion
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an assertion checks a requirement that {@code requirements} does not list
 	 */
@@ -84,7 +85,9 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 			}
 			judged.add(new JudgedAssertion(mapped.assertion(), requirement));
 		}
-		judged.add(new JudgedAssertion(test.expectedOutcome(), null));
+		Assertion expectedOutcome = test.expectedOutcome();
+		if (expectedOutcome.tool() == null || leftToJudge.contains(expectedOutcome.id()))
+			judged.add(new JudgedAssertion(expectedOutcome, null));
 		return judged;
 	}
 

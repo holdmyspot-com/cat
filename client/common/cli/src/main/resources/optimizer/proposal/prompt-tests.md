@@ -145,9 +145,19 @@ the test case decides, or a file of the project that the turn works on.
 ### Assertions
 
 The `## Assertions` section lists every statement that a compliant trial satisfies. A trial passes when it passes every
-assertion of its test. Each assertion's `### <id>` is unique within the test. CAT adds the assertion `expected_outcome`,
-which the judge decides: the reply's result matches the test case's expected outcome. Do not use that id. Each
-assertion holds these pairs:
+assertion of its test. Each assertion's `### <id>` is unique within the test. CAT adds the assertion `expected_outcome`:
+the reply's result matches the test case's expected outcome. The judge decides it unless the test gives it a built-in
+tool. To give it one, add a `### expected_outcome` subsection with only these pairs; CAT supplies its description and
+kind, and refuses any other pair there:
+
+- `tool`: the built-in tool and its arguments in one code span, such as `` `exact-text {{expected_outcome}}` ``; the
+	arguments may name the test's variables and `{{expected_outcome}}`;
+- `on_tool_failure`, optionally: `fail`, the meaning when the pair is absent, or `judge`. The same rules apply as for
+	any other assertion, below: under `fail` the tool must observe everything that every test case's expected outcome
+	requires, and under `judge` it must pass no reply that the expected outcome rejects.
+
+Give every assertion that a built-in tool can decide under these rules that tool, `expected_outcome` included, because
+a trial whose tools decide every assertion needs no judge session. Every other assertion holds these pairs:
 
 - `kind`: `guard` when an agent passes the assertion almost always even when the target prompt files are empty, such
 	as answering a search question correctly; it protects an operation that the prompts must not harm. `effect` when the

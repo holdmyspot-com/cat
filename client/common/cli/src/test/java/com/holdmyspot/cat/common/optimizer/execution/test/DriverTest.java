@@ -67,6 +67,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
@@ -5469,7 +5470,8 @@ public final class DriverTest
 	/**
 	 * A trial whose built-in tools pass runs its judge, which decides only the test's assertions without a
 	 * {@code tool:} line and {@code expected_outcome}, and receives the tool results as evidence. The judge runs even
-	 * when a tool decides every declared assertion of the test, since it always decides {@code expected_outcome}.
+	 * when a tool decides every declared assertion of the test, since the judge decides {@code expected_outcome}
+	 * unless the test gives it a built-in tool.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -5771,6 +5773,132 @@ public final class DriverTest
 			requireThat(decided, "decided").containsExactly(List.of("list_intact", "expected_outcome"));
 			requireThat(request.turns().getFirst(), "turn").contains("\"assertion_id\" : \"list_intact\"").
 				contains("\"passed\" : false");
+		}
+	}
+
+	/**
+	 * Returns the fixture contract whose {@code plain_list} test is decided by the tool {@code list_intact} and by a
+	 * built-in tool for {@code expected_outcome}.
+	 *
+	 * @param expectedOutcomeTool the built-in tool of {@code expected_outcome}
+	 * @return the contract
+	 */
+	private static Contract withExpectedOutcomeTool(ExpectedOutcomeTool expectedOutcomeTool)
+	{
+		Contract fixture = ContractFixtures.contract();
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : fixture.tests())
+		{
+			if (test.id().equals("plain_list"))
+			{
+				test = new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+					test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+					test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+					List.of(LIST_INTACT), test.regressionScenarios(), List.of(), Optional.empty(),
+					Optional.of(expectedOutcomeTool));
+			}
+			tests.add(test);
+		}
+		return new Contract(fixture.requirements(), tests,
+			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(),
+			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+	}
+
+	/**
+	 * Verifies that a trial whose built-in tools decide every assertion, {@code expected_outcome} included, starts no
+	 * judge session and passes.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void toolsDecidingEveryAssertionStartNoJudge() throws IOException
+	{
+		Contract contract = withExpectedOutcomeTool(new ExpectedOutcomeTool("exact-text pass"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(_ -> harness.passed());
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				campaign = harness.runUntil(driver, state -> state.pending() != null ||
+					!plainListOutcomes(state).isEmpty());
+			}
+			List<TestCaseOutcomes> outcomes = plainListOutcomes(campaign);
+			requireThat(outcomes, "outcomes").isNotEmpty();
+			for (TestCaseOutcomes outcome : outcomes)
+				requireThat(outcome.passes(), "passes").isEqualTo(outcome.outcomes());
+			requireThat(judged(harness, "plain_list"), "judgedPlainList").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a failed built-in tool of {@code expected_outcome} whose {@code on_tool_failure} is {@code fail}
+	 * fails the trial without a judge session and records the tool's behavior as the failed assertion.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void failedExpectedOutcomeToolFailsTrial() throws IOException
+	{
+		Contract contract = withExpectedOutcomeTool(new ExpectedOutcomeTool("exact-text expected"));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().readyDevelopment().
+					development("plain_list", 50, 0).build());
+			harness.trials(_ -> harness.passed());
+			Failure failure;
+			try (Driver driver = harness.open())
+			{
+				Campaign failed = harness.runUntil(driver, state -> !state.development().failures().isEmpty());
+				failure = failed.development().failures().getFirst();
+			}
+			requireThat(failure.testCase().testId(), "testId").isEqualTo("plain_list");
+			requireThat(failure.failedAssertions(), "failedAssertions").
+				isEqualTo(List.of(new FailedAssertion(TestCase.EXPECTED_OUTCOME, "reply_not_exact")));
+			requireThat(failure.rationale(), "rationale").startsWith("Failed built-in tools:\n- Assertion `" +
+				TestCase.EXPECTED_OUTCOME + "`, `tool: exact-text expected`: failed (reply_not_exact).");
+			requireThat(judged(harness, "plain_list"), "judgedPlainList").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a failed built-in tool of {@code expected_outcome} whose {@code on_tool_failure} is {@code judge}
+	 * does not fail the trial: the judge decides {@code expected_outcome}, receives the tool's failed result as
+	 * evidence, and the trial passes when the judge passes it.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void failedExpectedOutcomeToolLeftToJudge() throws IOException
+	{
+		Contract contract = withExpectedOutcomeTool(new ExpectedOutcomeTool("exact-text expected",
+			OnToolFailure.JUDGE));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().build());
+			harness.trials(_ -> harness.passed());
+			Campaign campaign;
+			try (Driver driver = harness.open())
+			{
+				campaign = harness.runUntil(driver, state -> state.pending() != null ||
+					!plainListOutcomes(state).isEmpty());
+			}
+			List<TestCaseOutcomes> outcomes = plainListOutcomes(campaign);
+			requireThat(outcomes, "outcomes").isNotEmpty();
+			for (TestCaseOutcomes outcome : outcomes)
+				requireThat(outcome.passes(), "passes").isEqualTo(outcome.outcomes());
+			SessionRequest request = judgeRequests(harness).stream().
+				filter(candidate -> judgeTest(candidate).equals("plain_list")).findFirst().orElseThrow();
+			List<String> decided = new ArrayList<>();
+			for (JsonNode assertion : harness.decidedAssertions(request))
+				decided.add(assertion.get("id").asString());
+			requireThat(decided, "decided").containsExactly(List.of(TestCase.EXPECTED_OUTCOME));
+			requireThat(request.turns().getFirst(), "turn").
+				contains("\"assertion_id\" : \"" + TestCase.EXPECTED_OUTCOME + "\"").contains("\"passed\" : false");
 		}
 	}
 

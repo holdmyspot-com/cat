@@ -87,7 +87,26 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 	 */
 	public static Assertion expectedOutcome(AssertionKind kind)
 	{
-		return new Assertion(TestCase.EXPECTED_OUTCOME, kind, null, EXPECTED_OUTCOME_STATEMENT);
+		return expectedOutcome(kind, Optional.empty());
+	}
+
+	/**
+	 * Returns the assertion that CAT adds to every prompt test: that the reply's result matches the test case's
+	 * expected outcome. The judge decides it unless the test gives it a built-in tool.
+	 *
+	 * @param kind {@link AssertionKind#GUARD} when every other assertion of the test is a guard, otherwise
+	 *             {@link AssertionKind#EFFECT}
+	 * @param tool the built-in tool that the test gives the assertion, or empty if the judge decides it
+	 * @return the assertion
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static Assertion expectedOutcome(AssertionKind kind, Optional<ExpectedOutcomeTool> tool)
+	{
+		requireThat(tool, "tool").isNotNull();
+		if (tool.isEmpty())
+			return new Assertion(TestCase.EXPECTED_OUTCOME, kind, null, EXPECTED_OUTCOME_STATEMENT);
+		return new Assertion(TestCase.EXPECTED_OUTCOME, kind, tool.get().tool(), tool.get().onToolFailure(),
+			EXPECTED_OUTCOME_STATEMENT);
 	}
 
 	/**

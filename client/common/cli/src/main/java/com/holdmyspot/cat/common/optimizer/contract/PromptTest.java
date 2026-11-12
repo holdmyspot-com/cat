@@ -22,7 +22,8 @@ import java.util.TreeMap;
 /**
  * One kind of trial that checks one or more requirements through its assertions. A trial passes when it passes every
  * assertion: CAT decides an assertion that has a {@code tool} with its built-in tool, and a judge decides the
- * others. CAT adds the assertion {@value TestCase#EXPECTED_OUTCOME}, which the judge decides, to every test.
+ * others. CAT adds the assertion {@value TestCase#EXPECTED_OUTCOME} to every test; the judge decides it unless the
+ * test gives it a built-in tool.
  *
  * @param id the identifier that is unique within the contract
  * @param riskRank the rank that breaks allocation ties
@@ -45,12 +46,15 @@ import java.util.TreeMap;
  *   contents
  * @param draft the test's directory in the contract author's draft directory and the {@value PromptTestFiles#SCENARIO}
  *   that it holds, which delivery writes; empty for a test that the contract author wrote into the proposal itself
+ * @param expectedOutcomeTool the built-in tool that the test gives the assertion {@value TestCase#EXPECTED_OUTCOME}, or
+ *   empty if the judge decides it
  */
 public record PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 	List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
 	List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
-	List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft)
+	List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft,
+	Optional<ExpectedOutcomeTool> expectedOutcomeTool)
 {
 	/**
 	 * The behavior through which a reply fails the assertion {@value TestCase#EXPECTED_OUTCOME}.
@@ -136,6 +140,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 * @param draft the test's directory in the contract author's draft directory and the
 	 *   {@value PromptTestFiles#SCENARIO} that it holds, which delivery writes; empty for a test that the contract
 	 *   author wrote into the proposal itself
+	 * @param expectedOutcomeTool the built-in tool that the test gives the assertion {@value TestCase#EXPECTED_OUTCOME},
+	 *   or empty if the judge decides it
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code id}, a requirement identifier or an absent trigger is not lowercase
 	 *   words joined by underscores, a text is blank, a list that must not be empty is empty, {@code timeLimit} is not
@@ -146,8 +152,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 *   a path, two assertions share an identifier, an assertion has the reserved identifier
 	 *   {@value TestCase#EXPECTED_OUTCOME}, an assertion checks a requirement that the test does not check, a requirement
 	 *   has no assertion, an assertion's statement or {@code tool} names a placeholder that is neither a variable nor
-	 *   {@value TestCase#EXPECTED_OUTCOME}, a {@code tool} examines a turn that the test does not have, or a test case's
-	 *   values make a {@code tool} invalid
+	 *   {@value TestCase#EXPECTED_OUTCOME}, a {@code tool}, including the one of {@value TestCase#EXPECTED_OUTCOME},
+	 *   examines a turn that the test does not have, or a test case's values make a {@code tool} invalid
 	 */
 	public PromptTest
 	{
@@ -168,6 +174,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(regressionScenarios, "regressionScenarios").isNotNull();
 		requireThat(workspaceFiles, "workspaceFiles").isNotNull();
 		requireThat(draft, "draft").isNotNull();
+		requireThat(expectedOutcomeTool, "expectedOutcomeTool").isNotNull();
 		requirementIds = List.copyOf(requirementIds);
 		absentTriggers = List.copyOf(absentTriggers);
 		turns = List.copyOf(turns);
@@ -217,7 +224,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 					"' twice");
 			}
 		}
-		Set<String> inText = namedInText(turns, assertions);
+		Set<String> inText = namedInText(turns, assertions, expectedOutcomeTool);
 		List<PromptTestFiles.WorkspaceEntry> described = describe(workspaceFiles, names);
 		List<TestCase> allTestCases = concat(committedTestCases, testCases);
 		Set<TestCase> seen = new HashSet<>();
@@ -258,6 +265,11 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			}
 			mapped.add(requirementId);
 			requireValid(id, names, turns.size(), allTestCases, assertion);
+		}
+		if (expectedOutcomeTool.isPresent())
+		{
+			requireValid(id, names, turns.size(), allTestCases,
+				Assertion.expectedOutcome(AssertionKind.EFFECT, expectedOutcomeTool));
 		}
 		for (String requirementId : requirementIds)
 		{
@@ -303,6 +315,41 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
+	 * Creates a prompt test whose assertion {@value TestCase#EXPECTED_OUTCOME} has no built-in tool.
+	 *
+	 * @param id the identifier that is unique within the contract
+	 * @param riskRank the rank that breaks allocation ties
+	 * @param requirementIds the identifiers of the requirements that this test checks
+	 * @param absentTriggers the identifiers of the requirements whose trigger this test leaves absent
+	 * @param applicability the conditions under which the checked requirements apply to a trial
+	 * @param turns the complete prewritten user turns, which may contain {@code {{variable}}} placeholders
+	 * @param timeLimit the positive whole-second duration a trial may run before it is judged on the behaviour it has
+	 *   shown
+	 * @param expectedBehaviour what a compliant response does
+	 * @param uncoveredInteractions the material interactions that this test cannot cover
+	 * @param variables the variables that every test case gives a value
+	 * @param committedTestCases the test cases that an earlier campaign committed with the prompt
+	 * @param testCases the test cases that the contract author wrote for this campaign
+	 * @param assertions the assertions that the contract author declared, each with the requirement that it checks
+	 * @param regressionScenarios the recorded scenario paths covered by this test; empty when none are covered
+	 * @param workspaceFiles the files that each trial's workspace receives
+	 * @param draft the test's directory in the contract author's draft directory and the
+	 *   {@value PromptTestFiles#SCENARIO} that it holds, or empty
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects the arguments
+	 */
+	public PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
+		String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
+		List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
+		List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
+		List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft)
+	{
+		this(id, riskRank, requirementIds, absentTriggers, applicability, turns, timeLimit, expectedBehaviour,
+			uncoveredInteractions, variables, committedTestCases, testCases, assertions, regressionScenarios, workspaceFiles,
+			draft, Optional.empty());
+	}
+
+	/**
 	 * Returns two lists joined.
 	 *
 	 * @param first the first list
@@ -338,9 +385,11 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 *
 	 * @param turns the turns
 	 * @param assertions the declared assertions
+	 * @param expectedOutcomeTool the tool of {@value TestCase#EXPECTED_OUTCOME}, if the test gives it one
 	 * @return the names, without {@value TestCase#EXPECTED_OUTCOME}
 	 */
-	private static Set<String> namedInText(List<String> turns, List<MappedAssertion> assertions)
+	private static Set<String> namedInText(List<String> turns, List<MappedAssertion> assertions,
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool)
 	{
 		Set<String> named = new LinkedHashSet<>();
 		for (String turn : turns)
@@ -352,6 +401,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 			if (assertion.tool() != null)
 				named.addAll(Placeholders.scenarioNames(assertion.tool()));
 		}
+		expectedOutcomeTool.ifPresent(tool -> named.addAll(Placeholders.scenarioNames(tool.tool())));
 		named.remove(TestCase.EXPECTED_OUTCOME);
 		return named;
 	}
@@ -397,7 +447,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		for (VariableDeclaration variable : variables)
 			names.add(variable.name());
 		List<PromptTestFiles.WorkspaceEntry> described = describe(workspaceFiles, names);
-		List<String> problems = PromptTestFiles.problems(names, namedInText(turns, assertions), described, testCase);
+		List<String> problems = PromptTestFiles.problems(names, namedInText(turns, assertions, expectedOutcomeTool),
+			described, testCase);
 		if (!problems.isEmpty())
 		{
 			throw new IllegalArgumentException("The test case does not fit test '" + id + "': " +
@@ -472,7 +523,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	/**
 	 * Returns this test as a {@value PromptTestFiles#SCENARIO} describes it: its variables, its turns, its expected
 	 * behavior with its time limit, and the assertions that the contract author declared, without the one that CAT
-	 * adds.
+	 * adds, whose built-in tool the scenario holds if the test gives it one.
 	 *
 	 * @return the scenario
 	 * @throws IllegalArgumentException if the test declares no variable, which a scenario requires, or its expected
@@ -484,11 +535,12 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		for (MappedAssertion mapped : assertions)
 			declared.add(mapped.assertion());
 		return new Scenario(variables, turns, Optional.of(new ExpectedBehavior(expectedBehaviour, timeLimit)),
-			declared);
+			declared, expectedOutcomeTool);
 	}
 
 	/**
-	 * Returns the assertion that CAT adds: a guard when every declared assertion is a guard, otherwise an effect.
+	 * Returns the assertion that CAT adds: a guard when every declared assertion is a guard, otherwise an effect. The
+	 * judge decides it unless the test gives it a built-in tool.
 	 *
 	 * @return the assertion {@value TestCase#EXPECTED_OUTCOME}
 	 */
@@ -503,7 +555,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 				break;
 			}
 		}
-		return Assertion.expectedOutcome(kind);
+		return Assertion.expectedOutcome(kind, expectedOutcomeTool);
 	}
 
 	/**
@@ -521,8 +573,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Returns the assertions that the judge decides: those without a {@code tool}, then
-	 * {@value TestCase#EXPECTED_OUTCOME}.
+	 * Returns the assertions that the judge decides: those without a {@code tool}, including
+	 * {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool.
 	 *
 	 * @return the assertions
 	 */
@@ -601,7 +653,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	}
 
 	/**
-	 * Runs the built-in tool of every assertion that has a {@code tool} on a trial's record.
+	 * Runs the built-in tool of every assertion that has a {@code tool}, including
+	 * {@value TestCase#EXPECTED_OUTCOME} if the test gives it one, on a trial's record.
 	 *
 	 * @param testCase the test case that the trial ran
 	 * @param record the trial's record
@@ -616,9 +669,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(record, "record").isNotNull();
 		Map<String, String> textByName = textByName(testCase);
 		List<BuiltInToolResult> results = new ArrayList<>();
-		for (MappedAssertion mapped : assertions)
+		for (Assertion assertion : allAssertions())
 		{
-			Assertion assertion = mapped.assertion();
 			Optional<BuiltInTool> builtInTool = assertion.builtInTool();
 			if (builtInTool.isEmpty())
 				continue;

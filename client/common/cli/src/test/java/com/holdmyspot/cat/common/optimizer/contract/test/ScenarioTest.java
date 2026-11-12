@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
@@ -697,8 +698,75 @@ public final class ScenarioTest
 		requireThat(refusal(start + "### Summary Given\n\n" + body), "notSnakeCase").startsWith("Line 9:");
 		requireThat(refusal(start + "### summary_given\n\n" + body + "### summary_given\n\n" + body),
 			"duplicate").startsWith("Line 14:");
-		requireThat(refusal(start + "### expected_outcome\n\n" + body), "reserved").startsWith("Line 9:").
-			contains("expected_outcome");
+		requireThat(refusal(start + "### expected_outcome\n\n" + body), "reserved").startsWith("Line 11:").
+			contains("expected_outcome").contains("kind");
+	}
+
+	/**
+	 * Verifies that the subsection {@code expected_outcome} gives the assertion that CAT adds a built-in tool, that
+	 * {@code fail} is its default, that {@code on_tool_failure} is written only when it is {@code judge}, and that its
+	 * tool may name the expected outcome and the declared variables.
+	 *
+	 * @throws ScenarioFormatException if the scenario is refused
+	 */
+	@Test
+	public void parsesExpectedOutcomeTool() throws ScenarioFormatException
+	{
+		Scenario failing = Scenario.parse(VARIABLES + TURN + ASSERTIONS + """
+
+			### expected_outcome
+
+			- **tool**: `exact-text {{expected_outcome}}`
+			""");
+		requireThat(failing.assertions().stream().map(Assertion::id).toList(), "assertions").
+			isEqualTo(List.of("summary_given"));
+		requireThat(failing.expectedOutcomeTool(), "expectedOutcomeTool").
+			isEqualTo(Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}")));
+		requireThat(Scenario.parse(failing.render()), "roundTrip").isEqualTo(failing);
+		requireThat(failing.render(), "rendered").doesNotContain("on_tool_failure");
+
+		Scenario judging = Scenario.parse(VARIABLES + TURN + ASSERTIONS + """
+
+			### expected_outcome
+
+			- **tool**: `pattern "(?i){{expected_outcome}}"`
+			- **on_tool_failure**: judge
+			""");
+		requireThat(judging.expectedOutcomeTool(), "judging").isEqualTo(Optional.of(new ExpectedOutcomeTool(
+			"pattern \"(?i){{expected_outcome}}\"", OnToolFailure.JUDGE)));
+		String rendered = judging.render();
+		requireThat(Scenario.parse(rendered), "roundTrip").isEqualTo(judging);
+		requireThat(rendered, "rendered").contains("### expected_outcome\n\n- **tool**: ").
+			contains("- **on_tool_failure**: judge\n");
+
+		Scenario without = Scenario.parse(VARIABLES + TURN + ASSERTIONS);
+		requireThat(without.expectedOutcomeTool(), "without").isEqualTo(Optional.empty());
+		requireThat(without.render(), "withoutRendered").doesNotContain("expected_outcome");
+	}
+
+	/**
+	 * Verifies that the subsection {@code expected_outcome} refuses every pair besides {@code tool} and
+	 * {@code on_tool_failure}, a missing tool, an unknown tool, a repeated subsection and a scenario whose only
+	 * assertion it is.
+	 */
+	@Test
+	public void refusesInvalidExpectedOutcomeTool()
+	{
+		String start = VARIABLES + TURN + ASSERTIONS + "\n### expected_outcome\n\n";
+		String tool = "- **tool**: `exact-text {{expected_outcome}}`\n";
+		requireThat(refusal(start + "- **kind**: guard\n" + tool), "kind").startsWith("Line 16:").contains("kind");
+		requireThat(refusal(start + tool + "- **description**: The reply is right.\n"), "description").
+			startsWith("Line 17:").contains("description");
+		requireThat(refusal(start + tool + "- **other**: x\n"), "otherKey").startsWith("Line 17:").
+			contains("other");
+		requireThat(refusal(start + "- **on_tool_failure**: judge\n"), "noTool").startsWith("Line 14:").
+			contains("no tool");
+		requireThat(refusal(start + "- **tool**: `no-such-tool x`\n"), "unknownTool").startsWith("Line 16:");
+		requireThat(refusal(start + tool + "- **on_tool_failure**: retry\n"), "unknownValue").
+			startsWith("Line 17:").contains("retry");
+		requireThat(refusal(start + tool + "\n### expected_outcome\n\n" + tool), "twice").startsWith("Line 18:");
+		requireThat(refusal(VARIABLES + TURN + "## Assertions\n\n### expected_outcome\n\n" + tool), "only").
+			contains("no assertion besides expected_outcome");
 	}
 
 	/**

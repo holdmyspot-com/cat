@@ -621,8 +621,10 @@ public final class GuardPilot
 		 * Runs a completed trial's built-in tools. A failed tool whose {@code on_tool_failure} is {@code fail} decides
 		 * the trial without a judge; otherwise the trial waits for a judge of the assertions without a {@code tool}, of
 		 * the assertions whose failed tool leaves them to the judge, and of the assertion
-		 * {@value TestCase#EXPECTED_OUTCOME}. A tool that the trial's record cannot decide makes the trial a failed run
-		 * that records why; evidence that cannot be read or rendered makes the run an infrastructure attempt.
+		 * {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed. A trial whose passing
+		 * tools decide every assertion passes without a judge. A tool that the trial's record cannot decide makes the
+		 * trial a failed run that records why; evidence that cannot be read or rendered makes the run an infrastructure
+		 * attempt.
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
@@ -669,6 +671,19 @@ public final class GuardPilot
 				return;
 			}
 			List<JudgedAssertion> judged = JudgedAssertion.of(pilot.test, contract.requirements(), results);
+			if (judged.isEmpty())
+			{
+				Map<String, Boolean> assertions = new LinkedHashMap<>();
+				StringBuilder record = new StringBuilder("Passed built-in tools:");
+				for (BuiltInToolResult result : results)
+				{
+					assertions.put(result.assertion().id(), true);
+					record.append("\n- ").append(result.describe());
+				}
+				pilot.decided(trial.position(), testCase, assertions, record.toString());
+				deleteProjects(completed);
+				return;
+			}
 			queue.addFirst(new JudgeJob(pilot, trial.position(), testCase, completed, judged, results, section, 1));
 		}
 
@@ -728,9 +743,20 @@ public final class GuardPilot
 			judging.pilot().decided(judging.position(), judging.testCase(), assertions, judgment.rationale());
 			if (assertions.containsValue(false))
 				return;
+			deleteProjects(judging.trial());
+		}
+
+		/**
+		 * Deletes the effects and the copy of the initial project of a trial that passed every assertion. A failure to
+		 * delete them is kept for the pilot's report and stops the pilot.
+		 *
+		 * @param trial the passing trial's session result
+		 */
+		private void deleteProjects(SessionResult.Completed trial)
+		{
 			try
 			{
-				Driver.deleteProjects(judging.trial());
+				Driver.deleteProjects(trial);
 			}
 			catch (IOException e)
 			{

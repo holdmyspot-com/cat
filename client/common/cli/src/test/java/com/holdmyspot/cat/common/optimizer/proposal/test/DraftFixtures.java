@@ -33,7 +33,7 @@ public final class DraftFixtures
 	 * other property, including one that the proposal file does not allow, stays in the item.
 	 */
 	private static final Set<String> INLINE = Set.of("id", "turns", "time_limit_seconds", "expected_behavior",
-		"variables", "test_cases", "workspace_files", "regression_scenarios");
+		"variables", "test_cases", "workspace_files", "regression_scenarios", "expected_outcome_tool");
 
 	/**
 	 * Prevents instantiation.
@@ -223,6 +223,14 @@ public final class DraftFixtures
 			if (assertion.path("on_tool_failure").asString().equals("judge"))
 				appendPair(text, "on_tool_failure", "judge");
 			appendPair(text, "description", assertion.path("statement").asString());
+		}
+		JsonNode expectedOutcomeTool = test.get("expected_outcome_tool");
+		if (expectedOutcomeTool != null)
+		{
+			text.append("\n### expected_outcome\n\n");
+			appendPair(text, "tool", "`" + expectedOutcomeTool.path("tool").asString() + "`");
+			if (expectedOutcomeTool.path("on_tool_failure").asString().equals("judge"))
+				appendPair(text, "on_tool_failure", "judge");
 		}
 		return text.toString();
 	}
