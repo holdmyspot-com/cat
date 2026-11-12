@@ -18,7 +18,7 @@ disagree, fix `design.md` first, then this plan, before dependent work continues
 - **Concurrent, cheap tests:** Every work item preserves `design.md` [§10](design.md#10-testability-contract). A change
 	that makes a test depend on shared state, real time or replaying earlier work is rejected in review.
 
-## Current handoff (2026-11-10): end-to-end reruns on release 1.0+b0821deabed06
+## Current handoff (2026-11-11): end-to-end reruns on release 1.0+b520d3dab3eb6
 
 The user asked for this handoff so that another agent can continue. The goal is still "implement design.md and plan.md".
 It is complete only when all of the following hold:
@@ -29,6 +29,42 @@ It is complete only when all of the following hold:
 
 This section supersedes the release facts of the earlier handoff below. That handoff's remaining items still apply
 where this section does not replace them.
+
+### Update (2026-11-11, evening): release `520d3dab3`, prompt optimization paused
+
+- **Paused by the user (2026-11-11): prompt optimization, because of this week's usage limit.** Do not resume a
+  campaign or start an E run until the user lifts the pause. Screening is also off until the optimizer is complete;
+  verify rule changes with the build, the routing and audience tests, and at most one or two runs whose transcript is
+  read.
+- **Release:** `v1.0` was republished three times today, at `902234f7c` (Linux test-tool mirror fallback), `fb45002a2`
+  (a wait-until deadline report includes output the wait had not read) and `520d3dab3` (the CI-wait wording and a rule
+  to fill the runner concurrency limit with independent runs). The last was published at 6:12 PM Toronto. It is
+  installed in both harnesses as `1.0+b520d3dab3eb6`. The Codex update again hit status 10, and the new version's own
+  installer reported `up_to_date`.
+- **Local `v1.0` is 4 commits ahead of the release, not pushed:** a conversation writes harness events to
+  `<folder>/events.jsonl` and keeps only turn-level records in `from-child.jsonl` (`8ce3ffdc2`);
+  `request-session --reply <folder> --turn <n> [--status-only]` prints a turn's reply (`8e7897bea`, design
+  `492c37add`); the external-waits route also loads for another session's turn ending, a file gaining a line, polling
+  and sleeping (`1faed2e54`). Do not install a new build while the paused conversations below use the installed one.
+- **E runs on `1.0+b520d3dab3eb6`:** Codex E3 r3 PASS on both parts (possible wording defect: the stop part's revised
+  proposal still listed `no_boilerplate` as "no exception for the team motto"). Codex E5 r3 INCOMPLETE on a "No
+  available accounts" outage; r4 was paused before its first turn (`/home/gili/cat/worktrees/e5-codex-r4/`).
+- **Paused with their conversations open.** Each driver handed back; each launcher still runs, so each campaign
+  resumes in its own CAT session:
+
+  | Run | Folder | State |
+  |---|---|---|
+  | Claude E1 r9 | `/home/gili/cat/worktrees/E1-claude-r9/` | round 13; conflict listed PASS, confirmation refused PASS |
+  | Claude E7 r3 | `/home/gili/cat/worktrees/E7-claude-r3/` | link report, external file unchanged, authority warning PASS; about 1,750 of 4,000 session requests used |
+  | Codex E1 r3 | `/home/gili/cat/worktrees/E1-codex-r3/` | candidate 3 at 5/5, 5/5, 4/4 against a 0/50 baseline; conflict listed and confirmation refused PASS |
+  | Codex E7 r3 | `/home/gili/cat/worktrees/E7-codex-r3/` | all four link checks PASS; 1,121 session requests used |
+
+- **Defect 5, decision waiting for the user:** both Claude campaigns first targeted `AGENTS.md`, whose `prompt.json`
+  has only a `codex` key. CAT refused without naming `CLAUDE.md`, the file configured for Claude, so each session
+  spent turns finding it. The proposed fix names that file in the refusal; it needs only a build.
+- **Next, after the pause is lifted:** restart the request server; resume the four campaigns; rerun Codex E5 with
+  retries on "No available accounts"; E8 alone per harness; the failure-reporting runs; the WI-142 Codex checks; the
+  native loader check and the held-out denial recheck; WI-71; gates 2/4/5/7/8.
 
 ### Update (2026-11-11)
 
