@@ -185,7 +185,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Optimization worktree | CAT's fork of the base, holding the working candidate. |
 | Staged source | A symbolic-link-free directory for one snapshot, which the runner copies for each trial. |
 | Prompt test configuration | The committed `prompt.json` in the target's test directory, which lists for each harness the trial plugins, and how the project builds each one that it builds ([§4.4](#44-trial-staging)). |
-| Certification history | The committed `certifications.json` beside `prompt.json` in the target's test directory, holding the certification record of each certified delivery of the target ([§5](#5-measurement-identity-and-applicability)). |
+| Certification history | The committed `certifications.json` beside `prompt.json` in the target's test directory, holding an entry for each delivery of the target: the certification record of a certified delivery, and a labelled delivery entry for every other delivery ([§4.7](#47-delivery), [§5](#5-measurement-identity-and-applicability)). |
 | Trial plugin | A harness plugin that the prompt test configuration lists, which every trial installs. A plugin that the project builds is installed from a build of the fork commit, with the snapshot's prompt files in place of the build's copies ([§4.4](#44-trial-staging)). |
 | Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`); inside a run that may request sessions, its launchers forward a launch to the run's runner. |
 | Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
@@ -1719,6 +1719,16 @@ certified one, a kept improvement, or an explicitly accepted uncertified one:
 3. Journal the delivery, then apply each change after validating its live preimage. A concurrent edit stops further
 	writes without overwriting it. Restart resumes the same journaled delivery and applies each change at most once.
 4. Verify the combined result, then report the Git diff and certification applicability.
+
+**Delivery entries (user ruling, 2026-11-12).** Every delivery appends an entry to the certification history, labelled
+with its outcome: `certified`, `improved, not certified`, `not certified` (an explicitly accepted uncertified
+candidate) or `incumbent kept` (only the test files delivered). An entry other than `certified` holds the claim the
+campaign actually proved, or that it proved none, the incumbent it was compared with by hash, and the same measurement
+conditions as a certification record, and no trial results. `status` and a new campaign's proposal report the latest
+entry with its label and compare its conditions like a certification record's. Only a `certified` entry supports a
+certification claim: a later entry of another label reports the earlier certification as historical, naming the
+changed sources, and never presents itself as a certification. When the campaign delivers, the entry also holds the
+development judge qualifications that the campaign records at its end.
 
 When the candidate is certified, the change set also appends its certification record
 ([§5](#5-measurement-identity-and-applicability)) to the target's certification history, `certifications.json` beside
