@@ -25,6 +25,7 @@ import java.util.concurrent.TimeoutException;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.runner.Conversation;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -704,6 +705,52 @@ public final class HarnessRunnerBridgeTest
 				"{\"turn_end\":1,\"status\":\"interrupted\"}", "turn_completed",
 				"{\"turn_end\":2,\"status\":\"completed\"}", "completed", "{\"ended\":\"completed\"}"));
 			requireThat(output.toString(), "output").contains("\"assistant_response\":\"two\"");
+		}
+	}
+
+	/**
+	 * Verifies that a conversation's folder receives the harness's events in {@code events.jsonl}, whole and in order,
+	 * and that {@code from-child.jsonl} holds none of them, only the records that a driving session needs, with each
+	 * turn's {@code turn_end} line after the turn's events and its {@code turn_completed} record.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000)
+	public void splitsHarnessEventsIntoOwnFile() throws IOException
+	{
+		List<String> received = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one", "event a", "event b"),
+				Turn.replies("two", "event c")), received);
+			StringReader standardInput = new StringReader(""))
+		{
+			Path folder = askingFolder(cleanup,
+				"{\"turn\": \"first\"}\n{\"turn\": \"second\"}\n{\"end\": true}\n");
+
+			serveConversation(cleanup, folder, process, standardInput);
+
+			JsonMapper json = JsonMapper.builder().build();
+			List<String> events = new ArrayList<>();
+			for (String line : Files.readAllLines(folder.resolve(Conversation.EVENTS_FILE)))
+			{
+				JsonNode record = json.readTree(line);
+				requireThat(record.path("type").asString(), "type").isEqualTo("harness_event");
+				events.add(record.path("event").asString());
+			}
+			requireThat(events, "events").isEqualTo(List.of("event a", "event b", "event c"));
+			List<String> fromChild = new ArrayList<>();
+			for (String line : Files.readAllLines(folder.resolve(Conversation.FROM_CHILD_FILE)))
+			{
+				String type = json.readTree(line).path("type").asString("");
+				requireThat(type, "type").isNotEqualTo("harness_event");
+				if (type.equals("turn_completed"))
+					fromChild.add(type);
+				else if (type.isEmpty())
+					fromChild.add(line);
+			}
+			requireThat(fromChild, "fromChild").isEqualTo(List.of("turn_completed",
+				"{\"turn_end\":1,\"status\":\"completed\"}", "turn_completed",
+				"{\"turn_end\":2,\"status\":\"completed\"}", "{\"ended\":\"completed\"}"));
 		}
 	}
 

@@ -24,7 +24,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
- * A conversation between a session and a session that it requested, held through two files of a folder that the
+ * A conversation between a session and a session that it requested, held through the files of a folder that the
  * asking session's commands may write, because appended files work in every harness's sandbox and need no reader to
  * be present when a message is written.
  * <p>
@@ -39,8 +39,11 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * lets that turn finish. Until then the conversation still reads the lines after {@code end}, because an
  * {@code interrupt} behind it is the only way to stop a turn that does not finish; it ignores every other line there.
  * <p>
- * Every record of the child is appended to {@value #FROM_CHILD_FILE} as it arrives. When the child's turn {@code n}
- * ends, a line {@code {"turn_end": n, "status": "<status>"}} follows its last record, whose status is
+ * Every record of the child is appended as it arrives: its {@code harness_event} records, which are the harness's
+ * own events and number in the tens of thousands, to {@value #EVENTS_FILE}, and every other record to
+ * {@value #FROM_CHILD_FILE}, so that the asking session reads only the records of its turns. When the child's turn
+ * {@code n} ends, a line {@code {"turn_end": n, "status": "<status>"}} follows its last record in
+ * {@value #FROM_CHILD_FILE}, after every event of the turn was written to {@value #EVENTS_FILE}. Its status is
  * {@code interrupted} when the turn was interrupted, {@code failed} when it failed and {@code completed} otherwise. The
  * record before the line names why a failed turn failed. A failed turn does not end the conversation while the harness
  * runs: the next turn that the asking session sends continues the same session.
@@ -60,13 +63,21 @@ public final class Conversation implements TurnSource
 	 */
 	public static final String TO_CHILD_FILE = "to-child.jsonl";
 	/**
-	 * The file to which the child's records and the answers to the asking session go.
+	 * The file to which the child's records and the answers to the asking session go, except the harness's events.
 	 */
 	public static final String FROM_CHILD_FILE = "from-child.jsonl";
+	/**
+	 * The file to which the harness's events, which the child reports as {@code harness_event} records, go.
+	 */
+	public static final String EVENTS_FILE = "events.jsonl";
 	/**
 	 * How many bytes of the asking session's messages are read at a time.
 	 */
 	private static final int CHUNK_BYTES = 8192;
+	/**
+	 * The type of the records that carry the harness's own events.
+	 */
+	private static final String HARNESS_EVENT = "harness_event";
 	/**
 	 * Why a line is refused when it is not a message.
 	 */
@@ -75,6 +86,7 @@ public final class Conversation implements TurnSource
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final Path toChild;
 	private final Path fromChild;
+	private final Path events;
 	/**
 	 * The bytes of the line that the asking session has not finished yet.
 	 */
@@ -118,10 +130,11 @@ public final class Conversation implements TurnSource
 	{
 		this.toChild = folder.resolve(TO_CHILD_FILE);
 		this.fromChild = folder.resolve(FROM_CHILD_FILE);
+		this.events = folder.resolve(EVENTS_FILE);
 	}
 
 	/**
-	 * Opens a conversation in a folder that is new or empty, creating the folder and both files. The folder may
+	 * Opens a conversation in a folder that is new or empty, creating the folder and its files. The folder may
 	 * already hold {@value #TO_CHILD_FILE}, because the asking session may append its first message before the
 	 * launcher opens the conversation.
 	 *
@@ -152,6 +165,7 @@ public final class Conversation implements TurnSource
 		}
 		Conversation conversation = new Conversation(folder);
 		Files.createFile(conversation.fromChild);
+		Files.createFile(conversation.events);
 		try
 		{
 			Files.createFile(conversation.toChild);
@@ -300,8 +314,9 @@ public final class Conversation implements TurnSource
 	}
 
 	/**
-	 * Appends one of the child's records to {@value #FROM_CHILD_FILE}, followed by a {@code turn_end} line when the
-	 * record ends a turn.
+	 * Appends one of the child's records to {@value #EVENTS_FILE} if it is a {@code harness_event}, or else to
+	 * {@value #FROM_CHILD_FILE}, followed by a {@code turn_end} line when the record ends a turn. A line that is not
+	 * JSON goes to {@value #FROM_CHILD_FILE}.
 	 *
 	 * @param line the record, without its line terminator
 	 * @throws NullPointerException if {@code line} is null
@@ -312,7 +327,6 @@ public final class Conversation implements TurnSource
 		requireThat(line, "line").isNotNull();
 		synchronized (this)
 		{
-			append(line);
 			String type;
 			try
 			{
@@ -320,8 +334,15 @@ public final class Conversation implements TurnSource
 			}
 			catch (JacksonException _)
 			{
+				append(fromChild, line);
 				return;
 			}
+			if (type.equals(HARNESS_EVENT))
+			{
+				append(events, line);
+				return;
+			}
+			append(fromChild, line);
 			switch (type)
 			{
 				case "interrupted" -> interrupted = true;
@@ -424,7 +445,19 @@ public final class Conversation implements TurnSource
 	 */
 	private void append(String line) throws IOException
 	{
-		Files.writeString(fromChild, line + "\n", UTF_8, StandardOpenOption.APPEND);
+		append(fromChild, line);
+	}
+
+	/**
+	 * Appends a line to a file of the conversation.
+	 *
+	 * @param file the file
+	 * @param line the line, without its terminator
+	 * @throws IOException if it cannot be written
+	 */
+	private static void append(Path file, String line) throws IOException
+	{
+		Files.writeString(file, line + "\n", UTF_8, StandardOpenOption.APPEND);
 	}
 
 	@Override
