@@ -622,6 +622,17 @@ design rules can prove a requirement, or that correcting the failure needs a req
 session's proposed requirement change, another change that the user describes, and stop; a chosen change becomes
 revision feedback that needs confirmation like any other.
 
+**Stalled development (user ruling, 2026-11-11).** CAT also pauses the campaign for the user's choice when development
+stalls: 5 consecutive completed development rounds of a prompt test raise neither the working candidate's development
+estimate in any of that test's development cells above the best value it had before those rounds, nor the number of
+its development cells that meet the commit gate's count conditions. Stopping development spends no error budget, so
+the pause cannot cause a wrong certification; it trades rounds that are unlikely to succeed for the user's decision.
+The pause schedules no new rounds and lets in-flight work finish. The status shows, for each stalled test, each
+cell's development estimate after each of those rounds. The choices are: continue for 5 more rounds before CAT asks
+again; revise the contract with a change that the user describes, which becomes revision feedback; keep the best
+proven candidate when the keep-improvement conditions hold ([§2.10](#210-keeping-a-proven-improvement)); and stop
+without delivering. Rounds count again from the choice to continue.
+
 A *conflict* report pauses the campaign for the user's choice: CAT schedules no new trials, and in-flight work
 finishes. The choices are each offered resolution, with the recommended one marked, another resolution that the user
 describes, and stop. A resolution becomes revision feedback; the revised proposal needs confirmation like any other,
@@ -2309,6 +2320,15 @@ guard when every other assertion of the test is a guard, and an effect otherwise
 prompt's behaviour, such as an answer found only by reading a long file whole, depends on the prompt. It replaces the
 general requirement that each reply correctly and completely does what the turn asked: a judge disagrees less often on a
 specific expected answer than on "complete and correct", and every judge error counts against the minimum pass rate.
+
+**Mechanical expected outcome (user ruling, 2026-11-11).** A scenario may give `expected_outcome` a built-in tool:
+its `## Assertions` section may hold `### expected_outcome` with only `tool` and, optionally, `on_tool_failure`. CAT
+still supplies the assertion's description and kind. The same rules apply as for any assertion: under `fail` the tool
+must observe everything that each test case's expected outcome requires, such as `exact-text "{{answer}}"` when every
+test case's expected outcome is that exact reply, and under `judge` it must pass no reply that the expected outcome
+rejects. A trial whose tools decide every assertion, `expected_outcome` included, needs no judge session, which roughly
+halves the sessions of a test whose assertions are all mechanical. The contract author gives every assertion that a
+built-in tool can decide under these rules that tool, `expected_outcome` included.
 
 **Built-in tools (user rulings, 2026-10-10).** A mechanical assertion names a tool built into CAT in its `tool` key. CAT
 runs the tool on the trial record with no model, and its verdict is final unless the assertion leaves a failure to the
