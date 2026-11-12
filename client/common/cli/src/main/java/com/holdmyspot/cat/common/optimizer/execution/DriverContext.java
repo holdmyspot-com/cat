@@ -57,6 +57,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param json reads and writes the hook configurations that control trials remove dependents from
  * @param candidateJudges the profiles that a prompt test may examine as its development judge, cheapest first;
  *   empty if every test keeps the frozen judge
+ * @param temporaryDirectory the directory under which the driver creates its temporary directories; the process
+ *   temporary directory of the command that runs the driver
  */
 public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPort sessions, WorkspacePort workspace,
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
@@ -64,7 +66,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	Deliverer deliverer,
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
-	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges)
+	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges, Path temporaryDirectory)
 {
 	/**
 	 * Creates a context.
@@ -96,6 +98,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param settings the time limits of one bounded driver run (a slice)
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @param candidateJudges the profiles that a prompt test may examine as its development judge, cheapest first
+	 * @param temporaryDirectory the directory under which the driver creates its temporary directories
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
 	 */
@@ -128,6 +131,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		requireThat(settings, "settings").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(candidateJudges, "candidateJudges").isNotNull();
+		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		promptSources = Set.copyOf(promptSources);
 		candidateJudges = List.copyOf(candidateJudges);
 	}
@@ -158,6 +162,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param random the source of the certification trial stream's seed when a candidate is committed
 	 * @param settings the time limits of one bounded driver run (a slice)
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
+	 * @param temporaryDirectory the directory under which the driver creates its temporary directories
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
 	 */
@@ -166,10 +171,10 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor,
 		ValuesProtocol values, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
 		LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
-		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json)
+		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json, Path temporaryDirectory)
 	{
 		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
 			values, deliverer, calibrator, terminator, leftoverRuns, authority, promptSources, environment, lockFile,
-			random, settings, json, List.of());
+			random, settings, json, List.of(), temporaryDirectory);
 	}
 }

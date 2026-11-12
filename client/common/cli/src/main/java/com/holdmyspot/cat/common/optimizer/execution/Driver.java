@@ -1274,7 +1274,8 @@ public final class Driver implements AutoCloseable
 	 */
 	private SessionResult.Completed nearMissEvidence(String reply) throws IOException
 	{
-		Path directory = nearMissDirectories.add(Files.createTempDirectory("near-miss-"));
+		Path directory = nearMissDirectories.add(Files.createTempDirectory(context.temporaryDirectory(),
+			"near-miss-"));
 		Path transcript = Files.createFile(directory.resolve("transcript.jsonl"));
 		Path effects = Files.createDirectory(directory.resolve("effects"));
 		Path initialProject = Files.createDirectory(directory.resolve("initial-project"));

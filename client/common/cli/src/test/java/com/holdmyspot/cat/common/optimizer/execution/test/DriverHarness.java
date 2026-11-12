@@ -182,6 +182,7 @@ public final class DriverHarness
 	private List<FakeProcessHandle> processes = List.of();
 	private SliceSettings settings = SliceSettings.DEFAULT;
 	private List<TrialProfile> candidateJudges = List.of();
+	private Path temporaryDirectory;
 	private Set<Path> promptSources = Set.of(PROMPT);
 	private final List<Integer> openTrials = new ArrayList<>();
 	private int ended;
@@ -256,6 +257,7 @@ public final class DriverHarness
 		throws IOException
 	{
 		this.directory = directory;
+		this.temporaryDirectory = directory;
 		this.sessions = new FakeSessionPort(login, null,
 			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
 		this.fork = fork;
@@ -328,7 +330,7 @@ public final class DriverHarness
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json,
-			candidateJudges);
+			candidateJudges, temporaryDirectory);
 	}
 
 	/**
@@ -648,6 +650,17 @@ public final class DriverHarness
 	public void candidateJudges(List<TrialProfile> value)
 	{
 		candidateJudges = List.copyOf(value);
+	}
+
+	/**
+	 * Replaces the directory under which drivers opened later create their temporary directories. It starts as the
+	 * harness directory.
+	 *
+	 * @param value the directory
+	 */
+	public void temporaryDirectory(Path value)
+	{
+		temporaryDirectory = value;
 	}
 
 	/**

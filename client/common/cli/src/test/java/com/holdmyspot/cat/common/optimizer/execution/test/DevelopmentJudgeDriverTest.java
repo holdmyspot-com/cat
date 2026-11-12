@@ -126,6 +126,40 @@ public final class DevelopmentJudgeDriverTest
 	}
 
 	/**
+	 * Verifies that the evidence of near-miss replies is created under the directory that the driver's context names
+	 * for temporary directories.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void nearMissEvidenceInTempDirectory() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.contract());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("near-miss-location"));
+			Path scratch = Files.createDirectory(directory.resolve("scratch"));
+			DriverHarness harness = new DriverHarness(directory, developing(contract).build());
+			harness.candidateJudges(List.of(CHEAP));
+			harness.temporaryDirectory(scratch);
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, satisfying) ->
+			{
+				if (satisfying)
+					return Verdict.PASS;
+				return Verdict.FAIL;
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, _ -> !fixture.nearMissUses().isEmpty());
+				requireThat(fixture.nearMissEvidence.isEmpty(), "nearMissEvidence.isEmpty()").isFalse();
+				for (Path evidence : fixture.nearMissEvidence)
+					requireThat(evidence.startsWith(scratch), "evidence.startsWith(scratch)").isTrue();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that shadowing is judged by both judges, that the frozen judge's verdict counts, that a disagreement is
 	 * counted, and that the candidate qualifies when its fourth trial after 295 shadowed trials makes 299.
 	 *
@@ -525,6 +559,7 @@ public final class DevelopmentJudgeDriverTest
 		private final DriverHarness harness;
 		private final Map<Path, Use> trials = new ConcurrentHashMap<>();
 		private final List<Use> uses = new CopyOnWriteArrayList<>();
+		private final List<Path> nearMissEvidence = new CopyOnWriteArrayList<>();
 
 		/**
 		 * Scripts the trial sessions to pass.
@@ -563,6 +598,7 @@ public final class DevelopmentJudgeDriverTest
 					if (!satisfying && !turn.contains(ContractFixtures.FAILING_REPLY))
 						throw new AssertionError("Neither a trial nor a near miss: " + request.readOnly());
 					uses.add(new Use(null, null, request.profile()));
+					nearMissEvidence.addAll(request.readOnly());
 					Verdict verdict = onNearMiss.apply(request.profile(), satisfying);
 					return harness.judged(request, verdict, "The near miss was labeled.");
 				}

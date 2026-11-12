@@ -3209,7 +3209,8 @@ public final class OptimizerCore implements Core
 			scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
 			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
-			scope.sliceSettings(), scope.json(), scope.profiles().candidateJudgeProfiles());
+			scope.sliceSettings(), scope.json(), scope.profiles().candidateJudgeProfiles(),
+			scope.temporaryDirectory());
 	}
 
 	/**

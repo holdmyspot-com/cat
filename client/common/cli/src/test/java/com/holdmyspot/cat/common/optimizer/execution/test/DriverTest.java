@@ -433,7 +433,8 @@ public final class DriverTest
 				original.ranking(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
-				original.lockFile(), original.random(), original.settings(), original.json());
+				original.lockFile(), original.random(), original.settings(), original.json(),
+				original.temporaryDirectory());
 			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
 			harness.trials(_ -> withUsage(harness.failed(), SessionRole.TRIAL, expected));
 			AtomicInteger judgments = new AtomicInteger();
@@ -2671,7 +2672,8 @@ public final class DriverTest
 			original.triage(),
 				original.ranking(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
 			original.terminator(), original.leftoverRuns(), original.authority(), original.promptSources(),
-			original.environment(), original.lockFile(), original.random(), original.settings(), original.json());
+			original.environment(), original.lockFile(), original.random(), original.settings(), original.json(),
+				original.temporaryDirectory());
 	}
 
 	/**
@@ -6244,7 +6246,8 @@ public final class DriverTest
 				original.ranking(), original.promptAuthor(),
 				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
 				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
-				original.random(), original.settings(), original.json());
+				original.random(), original.settings(), original.json(),
+				original.temporaryDirectory());
 			try (Driver driver = Driver.open(failing, DriverHarness.CAMPAIGN).orElseThrow())
 			{
 				harness.settle(driver);
@@ -6630,7 +6633,8 @@ public final class DriverTest
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
 				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
 				original.promptSources(), original.environment(), original.lockFile(), original.random(),
-				original.settings(), original.json());
+				original.settings(), original.json(),
+				original.temporaryDirectory());
 			// The working candidate already changed the handbook, so its bytes come from the overlay
 			Sha256 working = Builder.snapshot("candidate-1");
 			harness.overlays().put(working, harness.candidate("candidate-1").
