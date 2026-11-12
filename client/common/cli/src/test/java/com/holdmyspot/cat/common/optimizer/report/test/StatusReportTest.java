@@ -1766,6 +1766,20 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * A campaign that its user has not confirmed reports {@code running}, not {@code awaiting_user}, while its guard
+	 * pilot is unfinished: nothing waits for the user until the pilot ends and the proposal is presented.
+	 */
+	@Test
+	public void unfinishedPilotReportsRunning()
+	{
+		Campaign unconfirmed = new Builder().build();
+		requireThat(StatusReport.of(unconfirmed, ReportEvidence.NONE).status().label(), "pilotEnded").
+			isEqualTo("awaiting_user");
+		requireThat(StatusReport.of(unconfirmed, ReportEvidence.NONE.withUnfinishedPilot()).status().label(),
+			"pilotUnfinished").isEqualTo("running");
+	}
+
+	/**
 	 * Verifies the status values and the checkpoint choice.
 	 */
 	@Test

@@ -210,8 +210,8 @@ public final class Driver implements AutoCloseable
 		this.campaign = campaign;
 		this.campaignId = campaign.header().id();
 		this.sliceStart = sliceStart;
-		this.deadline = sliceStart.plus(context.settings().budget());
-		this.graceEnd = deadline.plus(context.settings().grace());
+		this.deadline = context.settings().deadline(sliceStart);
+		this.graceEnd = context.settings().graceEnd(sliceStart);
 		this.login = login;
 	}
 

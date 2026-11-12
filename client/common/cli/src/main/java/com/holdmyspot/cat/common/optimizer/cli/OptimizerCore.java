@@ -54,6 +54,7 @@ import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
+import com.holdmyspot.cat.common.optimizer.execution.PilotSlice;
 import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
@@ -303,8 +304,9 @@ public final class OptimizerCore implements Core
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
+		Instant sliceStart = scope.clock().instant();
 		refuseUnlaunchable();
-		return withCleanup(_ -> startBody(target, ceiling, goal, extraPermissions));
+		return withCleanup(_ -> startBody(target, ceiling, goal, extraPermissions, sliceStart));
 	}
 
 	/**
@@ -332,12 +334,13 @@ public final class OptimizerCore implements Core
 	 * @param extraPermissions the file of extra permissions for a new campaign, or {@code null} if the user named
 	 *   none. A resumed campaign keeps the permissions it was started with, so a file whose permissions differ from
 	 *   them is refused.
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the command is refused
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult startBody(Path target, int ceiling, String goal, Path extraPermissions)
+	private CommandResult startBody(Path target, int ceiling, String goal, Path extraPermissions, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -364,9 +367,9 @@ public final class OptimizerCore implements Core
 			case Registry.Opening.Resume resume ->
 			{
 				requireUnchangedInputs(resume.header(), goal, extraPermissions);
-				yield resume(root, store, resume.header());
+				yield resume(root, store, resume.header(), sliceStart);
 			}
-			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal, extraPermissions);
+			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal, extraPermissions, sliceStart);
 		};
 	}
 
@@ -618,13 +621,14 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param store the store
 	 * @param header the campaign's header
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign cannot be shown, or its trial plugins are unrecorded and cannot
 	 *   be built, copied or mapped
 	 * @throws IOException if the store or the workspace fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
-	private CommandResult resume(Path root, CampaignStore store, Header header)
+	private CommandResult resume(Path root, CampaignStore store, Header header, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Campaign campaign = require(store, header.id(), true);
@@ -640,7 +644,7 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, null);
 		try (CampaignLock _ = lock(header.id()))
 		{
-			return resumeHeld(root, store, require(store, header.id(), true));
+			return resumeHeld(root, store, require(store, header.id(), true), sliceStart);
 		}
 	}
 
@@ -650,13 +654,14 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param store the store
 	 * @param campaign the campaign
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign cannot be shown, or its trial plugins are unrecorded and cannot
 	 *   be built, copied or mapped
 	 * @throws IOException if the store or the workspace fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
-	private CommandResult resumeHeld(Path root, CampaignStore store, Campaign campaign)
+	private CommandResult resumeHeld(Path root, CampaignStore store, Campaign campaign, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		ForkView fork = openFork(root, campaign);
@@ -675,7 +680,7 @@ public final class OptimizerCore implements Core
 		{
 			// A proposal that no longer validates against the project cannot be confirmed or revised, so only a new
 			// derivation lets the campaign continue
-			CommandResult derived = derive(root, store, campaign, fork, null, null);
+			CommandResult derived = derive(root, store, campaign, fork, null, null, sliceStart);
 			String message = "The stored proposal no longer validates against the project, so the contract author " +
 				"derived a new one. The stored proposal's problems: " + String.join("; ", e.problems());
 			if (derived.message() != null)
@@ -684,8 +689,8 @@ public final class OptimizerCore implements Core
 				message);
 		}
 		if (stored.isPresent())
-			return present(root, store, campaign, fork, stored.get());
-		return derive(root, store, campaign, fork, null, null);
+			return present(root, store, campaign, fork, stored.get(), sliceStart);
+		return derive(root, store, campaign, fork, null, null, sliceStart);
 	}
 
 	/**
@@ -698,6 +703,7 @@ public final class OptimizerCore implements Core
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 * @param extraPermissions the file that lists the writes and hosts that the campaign's sessions need beyond their
 	 *   own, or {@code null} if the user named none
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the file of extra permissions is missing or invalid, the prompt test
 	 *   configuration is missing or invalid, the base worktree has uncommitted changes, or the trial plugins cannot be
@@ -706,7 +712,7 @@ public final class OptimizerCore implements Core
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
 	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling, String goal,
-		Path extraPermissions) throws CommandRefusedException, IOException, InterruptedException
+		Path extraPermissions, Instant sliceStart) throws CommandRefusedException, IOException, InterruptedException
 	{
 		ExtraPermissions extra = readExtraPermissions(extraPermissions);
 		String id = ID_TIME.format(scope.clock().instant()) + "-" +
@@ -739,7 +745,7 @@ public final class OptimizerCore implements Core
 			Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
 			store.replaceSnapshot(campaign);
 			campaign = withTrialPlugins(root, store, campaign, fork, configured);
-			result = derive(root, store, campaign, fork, null, null);
+			result = derive(root, store, campaign, fork, null, null, sliceStart);
 		}
 		if (fork.ignoreNotice().isEmpty())
 			return result;
@@ -1543,7 +1549,7 @@ public final class OptimizerCore implements Core
 		if (!unheld(fork, participants).isEmpty())
 			fork = fork.extend(root, participants);
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
-		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin);
+		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin, null);
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
 		// The revised contract is not confirmed on a pilot that did not finish. The user chooses to retry or to stop,
 		// and the test revisions run again with the next run.
@@ -2074,12 +2080,13 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(feedback, "feedback").isNotBlank();
+		Instant sliceStart = scope.clock().instant();
 		return withCleanup(_ ->
 		{
 			require(scope.store(), campaign, true);
 			try (CampaignLock lock = lock(campaign))
 			{
-				return reviseBody(campaign, feedback, lock);
+				return reviseBody(campaign, feedback, lock, sliceStart);
 			}
 		});
 	}
@@ -2090,12 +2097,13 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign's identifier
 	 * @param feedback the user's feedback
 	 * @param lock the campaign's write lock, which the caller holds
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign cannot be revised
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
-	private CommandResult reviseBody(String campaign, String feedback, CampaignLock lock)
+	private CommandResult reviseBody(String campaign, String feedback, CampaignLock lock, Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -2110,13 +2118,14 @@ public final class OptimizerCore implements Core
 			apply(root, loaded, List.of(new CampaignEvent.Revise()), lock);
 			loaded = require(store, campaign, true);
 		}
-		return derive(root, store, loaded, fork, previous, feedback);
+		return derive(root, store, loaded, fork, previous, feedback, sliceStart);
 	}
 
 	@Override
 	public CommandResult choose(String campaign, Choice choice, int attempt, int reviewPoint)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		Instant sliceStart = scope.clock().instant();
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();
@@ -2130,7 +2139,7 @@ public final class OptimizerCore implements Core
 					loaded.pending() instanceof PendingDecision.TestRevisionBlocked blocked)
 				{
 					// The contract author derives the revised contract from the change, which the user then confirms
-					return reviseBody(campaign, blocked.proposedChange(), lock);
+					return reviseBody(campaign, blocked.proposedChange(), lock, sliceStart);
 				}
 				boolean retriesPilot = choice == Choice.RETRY && loaded.pending() instanceof PendingDecision.PilotFailure;
 				if (retriesPilot)
@@ -2140,7 +2149,7 @@ public final class OptimizerCore implements Core
 				// The retry runs the pilot's remaining trials and presents the proposal. A confirmed campaign's test
 				// revision pilot runs again with its test revision, when the user runs the campaign.
 				if (retriesPilot && !(chosen.isConfirmed() && !chosen.revisionRequested()))
-					return resumeHeld(root, scope.store(), chosen);
+					return resumeHeld(root, scope.store(), chosen, sliceStart);
 				if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
 				{
 					// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
@@ -2159,12 +2168,13 @@ public final class OptimizerCore implements Core
 	public CommandResult resolveConflict(String campaign, int resolution)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		Instant sliceStart = scope.clock().instant();
 		return withCleanup(_ ->
 		{
 			require(scope.store(), campaign, true);
 			try (CampaignLock lock = lock(campaign))
 			{
-				return resolveConflictBody(campaign, resolution, lock);
+				return resolveConflictBody(campaign, resolution, lock, sliceStart);
 			}
 		});
 	}
@@ -2175,12 +2185,14 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign's identifier
 	 * @param resolution the 1-based position among the current conflict's resolutions
 	 * @param lock the campaign's write lock, which the caller holds
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the campaign offers no such resolution now
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
-	private CommandResult resolveConflictBody(String campaign, int resolution, CampaignLock lock)
+	private CommandResult resolveConflictBody(String campaign, int resolution, CampaignLock lock,
+		Instant sliceStart)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
@@ -2201,7 +2213,7 @@ public final class OptimizerCore implements Core
 				resolution + ": " + e.getMessage(), e);
 		}
 		if (chosen.size() == conflicts.conflicts().size())
-			return reviseBody(campaign, conflicts.feedback(resolution), lock);
+			return reviseBody(campaign, conflicts.feedback(resolution), lock, sliceStart);
 		return apply(root, loaded, List.of(new CampaignEvent.ResolveConflict(resolution)), lock);
 	}
 
@@ -2275,12 +2287,13 @@ public final class OptimizerCore implements Core
 	 * @param fork the campaign's fork
 	 * @param previous the proposal that the user gave feedback on, or {@code null} for the first derivation
 	 * @param feedback the user's feedback, or {@code null} for the first derivation
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result. If the contract author fails, the result carries the reason instead of a proposal.
 	 * @throws IOException if the store, the workspace or the session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for the session
 	 */
 	private CommandResult derive(Path root, CampaignStore store, Campaign campaign, ForkView fork,
-		DerivedProposal previous, String feedback) throws IOException, InterruptedException
+		DerivedProposal previous, String feedback, Instant sliceStart) throws IOException, InterruptedException
 	{
 		Path directory = campaignDirectory(campaign.header().id());
 		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json(),
@@ -2391,7 +2404,7 @@ public final class OptimizerCore implements Core
 		Path heldOut = heldOutDirectory(campaign.header().id());
 		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
 		new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).write(derived, profiles);
-		return present(root, store, campaign, fork, derived);
+		return present(root, store, campaign, fork, derived, sliceStart);
 	}
 
 	/**
@@ -2455,13 +2468,15 @@ public final class OptimizerCore implements Core
 	 * @param campaign the campaign
 	 * @param fork the campaign's fork
 	 * @param derived the proposal
-	 * @return the result
+	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
+	 * @return the result, which presents no proposal and is {@code running} if the command's slice ended before its
+	 *   pilot did
 	 * @throws IOException if the host's login, the stored pilot or the workspace cannot be read, or the pilot or the
 	 *   campaign cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
 	private CommandResult present(Path root, CampaignStore store, Campaign campaign, ForkView fork,
-		DerivedProposal derived)
+		DerivedProposal derived, Instant sliceStart)
 		throws IOException, InterruptedException
 	{
 		Set<Path> participants = participants(root, derived);
@@ -2480,12 +2495,16 @@ public final class OptimizerCore implements Core
 		}
 
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
-		Map<String, PilotResult> pilots = pilot(root, campaign, fork, derived, plugin);
+		Map<String, PilotResult> pilots = pilot(root, campaign, fork, derived, plugin,
+			new PilotSlice(scope.clock(), scope.sliceSettings(), scope.interrupts(), sliceStart));
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
 		campaign = settlePilotPause(store, campaign, pause);
 		// A proposal whose pilot did not finish cannot be confirmed, so the user first chooses to retry or to stop
 		if (pause.isPresent())
 			return report(root, campaign, null, pilotPausedNotice(campaign));
+		// The slice ended with trials to run, so the host agent repeats `start`, which runs them
+		if (GuardPilot.endedBySlice(pilots))
+			return pilotContinues(root, campaign, pilots);
 		Proposal proposal = proposal(root, campaign, fork, derived, pilots, plugin);
 		String unfinished = null;
 		if (pilots.values().stream().anyMatch(pilot -> pilot.stopReason() != null))
@@ -2495,6 +2514,29 @@ public final class OptimizerCore implements Core
 				"the pilot's remaining trials, which keeps the trials it decided.";
 		}
 		return report(root, campaign, proposal.render(), unfinished);
+	}
+
+	/**
+	 * Reports a campaign whose guard pilot the command's slice left with trials to run. The campaign is
+	 * {@code running}, the result presents no proposal, and its summary says how many of the pilot's trials are decided
+	 * and that running {@code start} again continues the pilot.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @return the result
+	 * @throws IOException if the fork or the shared capacity hold cannot be read
+	 */
+	private CommandResult pilotContinues(Path root, Campaign campaign, Map<String, PilotResult> pilots)
+		throws IOException
+	{
+		int decided = 0;
+		for (PilotResult pilot : pilots.values())
+			decided += pilot.trials().size();
+		String progress = "The guard pilot has decided " + decided + " of " + pilots.size() * GuardPilot.TRIALS +
+			" trials. Run `start` again with the target prompt file to continue it, which keeps the trials it decided. " +
+			"The proposal is shown once the pilot ends.";
+		return report(root, campaign, null, null, true).withNotices(List.of(progress));
 	}
 
 	/**
@@ -2548,12 +2590,14 @@ public final class OptimizerCore implements Core
 	 * @param fork the fork that holds the proposal's derived prompt sources
 	 * @param derived the proposal
 	 * @param plugin the check of the campaign's trial plugins
+	 * @param slice the time bound of the command that runs the pilot, or {@code null} if the pilot runs until every
+	 *   trial ends or it stops
 	 * @return the pilot of each prompt test, by prompt test, or none if control trials cannot remove the dependents
 	 * @throws IOException if the stored pilot or the workspace cannot be read, or the pilot cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
 	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
-		PluginCheck plugin) throws IOException, InterruptedException
+		PluginCheck plugin, PilotSlice slice) throws IOException, InterruptedException
 	{
 		// Control trials cannot run without dependents that they cannot remove
 		if (!controlRefusals(campaign, fork, derived, plugin).isEmpty())
@@ -2568,7 +2612,7 @@ public final class OptimizerCore implements Core
 		// Each decided trial is stored as soon as it is decided, so that a command that ends before the pilot does
 		// loses only the trials in flight
 		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
-			trialSelection(root, campaign, derived, plugin), file.read(), scope.random(), file::write);
+			trialSelection(root, campaign, derived, plugin), file.read(), scope.random(), file::write, slice);
 		file.write(pilots);
 		return pilots;
 	}
@@ -2837,6 +2881,25 @@ public final class OptimizerCore implements Core
 	 */
 	private CommandResult report(Path root, Campaign campaign, String proposal, String message) throws IOException
 	{
+		return report(root, campaign, proposal, message, false);
+	}
+
+	/**
+	 * Builds a status result.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param proposal the rendered proposal, which the result names the file of, or {@code null}
+	 * @param message a notice, or {@code null}
+	 * @param pilotUnfinished {@code true} if a command left the campaign's guard pilot with trials to run, which makes
+	 *   the campaign {@code running}
+	 * @return the result
+	 * @throws IOException if the fork or the shared capacity hold cannot be read, or the proposal's file cannot be
+	 *   written
+	 */
+	private CommandResult report(Path root, Campaign campaign, String proposal, String message,
+		boolean pilotUnfinished) throws IOException
+	{
 		boolean links = false;
 		Path directory = campaignDirectory(campaign.header().id());
 		if (scope.forks().exists(directory))
@@ -2848,6 +2911,8 @@ public final class OptimizerCore implements Core
 		Instant sharedHoldUntil = scope.sessions().sharedHoldUntil(scope.clock().instant()).orElse(null);
 		ReportEvidence evidence = new ReportEvidence(List.of(), links, false, null).
 			withSharedHoldUntil(sharedHoldUntil).withCertifiedEnvironment(deliveredEnvironment(root, campaign));
+		if (pilotUnfinished)
+			evidence = evidence.withUnfinishedPilot();
 		Path proposalFile = null;
 		if (proposal != null)
 			proposalFile = new ProposalTextFile(directory, scope.fileReplacer()).write(proposal);

@@ -373,7 +373,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			limitations.add(SYMBOLIC_LINK_LIMITATION);
 		Map<String, String> conditions = conditions(campaign.identity());
 
-		return new StatusReport(status(campaign), campaign.header().id(), campaign.lifecycle(),
+		return new StatusReport(status(campaign, evidence), campaign.header().id(), campaign.lifecycle(),
 			phase, attemptIndex,
 			candidate.number(), candidate.snapshot().hex(), outcome, outcomeDetail, delivery, deliveryAttempt,
 			describe(campaign), choices(campaign), authorityWarnings(campaign), cells, allocation,
@@ -388,12 +388,15 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	/**
 	 * Returns what the host agent does next, or how a campaign that ended finished.
 	 * <p>
-	 * An inactive campaign reports its recorded outcome or delivery label, or {@code interrupted} if neither exists.
+	 * An inactive campaign reports its recorded outcome or delivery label, or {@code interrupted} if neither exists. An
+	 * active campaign whose guard pilot a command left with trials to run is {@code running}: the host agent repeats
+	 * the command, and the campaign waits for the user only once the pilot ends.
 	 *
 	 * @param campaign the campaign
+	 * @param evidence what the campaign does not persist
 	 * @return the status
 	 */
-	private static ReportStatus status(Campaign campaign)
+	private static ReportStatus status(Campaign campaign, ReportEvidence evidence)
 	{
 		return switch (campaign.lifecycle())
 		{
@@ -407,6 +410,8 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			}
 			case ACTIVE ->
 			{
+				if (evidence.pilotUnfinished())
+					yield new ReportStatus.Active(Status.RUNNING);
 				if (!campaign.isConfirmed() || campaign.pending() != null)
 					yield new ReportStatus.Active(Status.AWAITING_USER);
 				yield new ReportStatus.Active(Status.RUNNING);

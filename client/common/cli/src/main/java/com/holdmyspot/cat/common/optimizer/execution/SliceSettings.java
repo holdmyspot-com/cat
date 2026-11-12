@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import java.time.Duration;
+import java.time.Instant;
 
 /**
  * The time limits of one slice: the bounded interval during which {@link SliceRunner} advances the {@link Driver}.
@@ -41,5 +42,30 @@ public record SliceSettings(Duration budget, Duration grace, Duration pollInterv
 		requireThat(budget.isPositive(), "budget.isPositive()").isTrue();
 		requireThat(grace.isNegative(), "grace.isNegative()").isFalse();
 		requireThat(pollInterval.isPositive(), "pollInterval.isPositive()").isTrue();
+	}
+
+	/**
+	 * Returns the end of a slice's budget: the time after which no new work is admitted.
+	 *
+	 * @param sliceStart when the slice started
+	 * @return the deadline
+	 * @throws NullPointerException if {@code sliceStart} is null
+	 */
+	public Instant deadline(Instant sliceStart)
+	{
+		requireThat(sliceStart, "sliceStart").isNotNull();
+		return sliceStart.plus(budget);
+	}
+
+	/**
+	 * Returns the end of a slice's grace period: the time at which the sessions that still run are cancelled.
+	 *
+	 * @param sliceStart when the slice started
+	 * @return the end of the grace period
+	 * @throws NullPointerException if {@code sliceStart} is null
+	 */
+	public Instant graceEnd(Instant sliceStart)
+	{
+		return deadline(sliceStart).plus(grace);
 	}
 }

@@ -111,6 +111,12 @@ from a launcher field.
 	not an escalation of a choice and not an interruption of the skill, even when the proposal lists conflicts or says
 	that certification is unavailable. When the result also holds a `message`, show the `message` after the proposal. If
 	the result holds a `message` but no `proposal_file`, show the `message`.
+	- When the result of `start`, `revise` or `choose <campaign> retry` has `status` `running` and no `proposal_file`,
+		the guard pilot is not finished: it runs in slices, and this result ends one. Show its `summary`, which says
+		how many of the pilot's trials are decided, then run `start <target>` again with the same arguments and the
+		same tool timeout as `run`, and repeat this step with its result. The launcher keeps the trials that the
+		pilot decided and runs only the others. Do not run `run` for it. Ask the user nothing while `status` is
+		`running`: the proposal is shown once the pilot ends.
 	- If the proposal lists conflicts, confirmation is refused until each is resolved. After the proposal, for each
 		conflict, ask the user to choose one of its resolutions, naming the recommended one and its reason, or to
 		describe another. Do not offer confirmation. Run `revise <campaign> <feedback>` with the user's resolutions and
@@ -139,7 +145,9 @@ from a launcher field.
 		`latest_versions` or, for cells that the user described and confirmed, `described`. When the user confirms
 		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
 	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
-3. **Run.** While `status` is `running`, run `run <campaign>` again. After each run, show the user its `summary`.
+3. **Run.** While the `status` of the result of `confirm` or `run` is `running`, run `run <campaign>` again. After each
+	run, show the user its `summary`. (A `running` result of `start`, `revise` or `choose <campaign> retry` is step 2's
+	guard pilot, which `start` continues.)
 4. **Decide.** When `status` is `awaiting_user` and `proposal_file` is null, show the `summary` and each choice's
 	`label`, then ask the user to choose. Never choose on the user's behalf.
 	- Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
@@ -158,7 +166,8 @@ from a launcher field.
 		lists it (pass its `attempt` as `--attempt`), and `stop`. The user may also describe a change to the contract;
 		pass it as `revise <campaign> <feedback>`.
 	- When the chosen entry is `retry` on a guard pilot pause (the summary says a guard pilot trial ran without an
-		outcome), the result of `choose` names a proposal file: continue with step 2.
+		outcome), the result of `choose` names a proposal file or has `status` `running` while the guard pilot is
+		unfinished: continue with step 2.
 	- Continue with the step that the new result's `status` selects.
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its

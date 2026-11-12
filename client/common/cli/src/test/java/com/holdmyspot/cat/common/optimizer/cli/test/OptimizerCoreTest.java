@@ -754,9 +754,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * The test's script for the sessions of a {@link FakeSessionPort}: it ends each session as soon as it starts, with
-	 * the result that the script chooses, and advances the clock by one minute per session, so that a slice's budget
-	 * runs out without waiting. When a request carries a follow-up that chooses another turn after the first result,
-	 * the script answers that turn too and the session ends with both replies, as a harness that sends the turn does.
+	 * the result that the script chooses, and advances the clock by the session duration that the test sets, which is
+	 * none unless the test sets one, so that a slice's budget runs out without waiting. When a request carries a
+	 * follow-up that chooses another turn after the first result, the script answers that turn too and the session ends
+	 * with both replies, as a harness that sends the turn does.
 	 * The script also sets what the port reports about the host: the prompt files that load, the hooks that run before
 	 * the first prompt, the installed plugins and their unapproved hooks.
 	 */
@@ -769,6 +770,10 @@ public final class OptimizerCoreTest
 		private final List<String> followUps = new ArrayList<>();
 		private final ManualClock clock;
 		private final Function<SessionRequest, SessionResult> script;
+		/**
+		 * How far each session advances the clock.
+		 */
+		private volatile Duration sessionDuration = Duration.ZERO;
 		/**
 		 * The token usage of each role's sessions, by start position among the role's sessions and cycling; a role
 		 * without an entry reports the usage that the script chooses.
@@ -813,6 +818,16 @@ public final class OptimizerCoreTest
 		}
 
 		/**
+		 * Sets how far each session that starts afterwards advances the clock.
+		 *
+		 * @param duration the duration
+		 */
+		void sessionDuration(Duration duration)
+		{
+			sessionDuration = duration;
+		}
+
+		/**
 		 * Returns the port whose sessions follow the script.
 		 *
 		 * @return the port
@@ -830,7 +845,7 @@ public final class OptimizerCoreTest
 		 */
 		private SessionResult answer(SessionRequest request)
 		{
-			clock.advance(Duration.ofMinutes(1));
+			clock.advance(sessionDuration);
 			SessionResult response = script.apply(request);
 			if (request.followUp().isPresent() && response instanceof SessionResult.Completed first)
 			{
@@ -4635,6 +4650,179 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code start} runs its guard pilot in slices when the pilot takes longer than a slice's budget:
+	 * each slice that does not end the pilot reports {@code running}, with how many of the pilot's trials are decided
+	 * and the command to repeat, and presents no proposal; the trials that a slice decided are stored, so repeating
+	 * {@code start} runs only the others; the slice that ends the pilot presents the proposal, which the user can
+	 * confirm; and a proposal whose pilot is unfinished cannot be confirmed.
+	 */
+	@Test
+	public void startRunsPilotInSlicesUntilItEnds() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.sessions().sessionDuration(Duration.ofSeconds(10));
+			List<String> start = List.of("start", "CLAUDE.md", "--max-concurrency", "1");
+
+			ObjectNode slice = output(repository, start);
+
+			String id = slice.get("campaign").asString();
+			requireThat(slice.get("status").asString(), "status").isEqualTo("running");
+			requireThat(slice.get("summary").asString(), "summary").
+				contains("The guard pilot has decided").contains(" of " + 3 * GuardPilot.TRIALS + " trials").
+				contains("`start`");
+			String stored = Files.readString(repository.directory(id).resolve("held_out/pilot.json"));
+			requireThat(stored, "storedPilot").contains("The slice ended before every trial did");
+			try
+			{
+				repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+				throw new AssertionError("The proposal of an unfinished pilot should not be confirmable");
+			}
+			catch (CommandRefusedException e)
+			{
+				requireThat(e.getMessage(), "refusal").contains("guard pilot");
+			}
+			requireThat(repository.load(id).isConfirmed(), "confirmedAfterRefusal").isFalse();
+
+			int slices = 1;
+			int decided = 0;
+			while (slice.get("status").asString().equals("running"))
+			{
+				requireThat(slice.get("proposal_file").isNull(), "proposalFile").isTrue();
+				int now = decidedTrials(slice);
+				requireThat(now, "decided").isGreaterThan(decided);
+				decided = now;
+				requireThat(slices, "slices").isLessThan(30);
+				slice = output(repository, start);
+				++slices;
+			}
+
+			requireThat(slices, "slices").isGreaterThan(1);
+			requireThat(slice.get("status").asString(), "finalStatus").isEqualTo("awaiting_user");
+			requireThat(slice.get("campaign").asString(), "campaign").isEqualTo(id);
+			requireThat(proposalText(slice).split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
+				isEqualTo(4);
+			// No trial that a slice decided ran again, and no trial that a slice cancelled stayed undecided
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(3 * GuardPilot.TRIALS);
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that {@code revise} runs the guard pilot that the revision reruns in slices, as {@code start} does:
+	 * it reports {@code running} with the pilot's progress while the pilot is unfinished, repeating {@code start}
+	 * continues the pilot without rerunning its decided trials, and the slice that ends it presents the revised
+	 * proposal.
+	 */
+	@Test
+	public void reviseRunsRerunPilotInSlices() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, count -> derivation(output ->
+			{
+				if (count == 0)
+					return;
+				ObjectNode safety = (ObjectNode) output.get("tests").get(2);
+				((ObjectNode) safety.get("assertions").get(0)).put("statement",
+					"The assistant confirms before deleting the {{target}} directory.");
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			int pilotTrials = repository.sessions().requests(SessionRole.TRIAL).size();
+			repository.sessions().sessionDuration(Duration.ofSeconds(30));
+
+			ObjectNode slice = output(repository, List.of("revise", id, "say confirms"));
+
+			requireThat(slice.get("status").asString(), "status").isEqualTo("running");
+			requireThat(slice.get("proposal_file").isNull(), "proposalFile").isTrue();
+			// The count includes the two pilots that the revision did not change, which are reused whole
+			requireThat(slice.get("summary").asString(), "summary").contains("The guard pilot has decided").
+				contains(" of " + 3 * GuardPilot.TRIALS + " trials").contains("`start`");
+			requireThat(decidedTrials(slice), "decided").isGreaterThanOrEqualTo(2 * GuardPilot.TRIALS).
+				isLessThan(3 * GuardPilot.TRIALS);
+			int slices = 1;
+			while (slice.get("status").asString().equals("running"))
+			{
+				requireThat(slices, "slices").isLessThan(30);
+				slice = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1"));
+				++slices;
+			}
+
+			requireThat(proposalText(slice), "proposal").contains("\n## Guard pilot\n").
+				contains("confirms before deleting");
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(pilotTrials + GuardPilot.TRIALS);
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that {@code choose retry} on a paused guard pilot runs the pilot in slices, as {@code start} does:
+	 * when the pilot does not end in the slice, the command reports {@code running} with the pilot's progress and no
+	 * pending decision, and repeating {@code start} continues the pilot, running only the trials that are undecided.
+	 */
+	@Test
+	public void retryRunsPausedPilotInSlices() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.trialEnd().set(failingTrials(6, 8));
+			List<String> start = List.of("start", "CLAUDE.md", "--max-concurrency", "1");
+			String id = output(repository, start).get("campaign").asString();
+			requireThat(repository.load(id).pending(), "pending").isInstanceOf(PendingDecision.PilotFailure.class);
+			repository.trialEnd().set(_ -> null);
+			repository.sessions().sessionDuration(Duration.ofSeconds(30));
+
+			ObjectNode slice = output(repository, List.of("choose", id, "retry"));
+
+			requireThat(slice.get("status").asString(), "status").isEqualTo("running");
+			requireThat(slice.get("proposal_file").isNull(), "proposalFile").isTrue();
+			requireThat(slice.get("summary").asString(), "summary").contains("The guard pilot has decided").
+				contains(" of " + 3 * GuardPilot.TRIALS + " trials").contains("`start`");
+			requireThat(repository.load(id).pending(), "pendingDecision").isNull();
+			int slices = 1;
+			while (slice.get("status").asString().equals("running"))
+			{
+				requireThat(slices, "slices").isLessThan(30);
+				slice = output(repository, start);
+				++slices;
+			}
+
+			requireThat(proposalText(slice).split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
+				isEqualTo(4);
+			// The 5 trials decided before the pause are kept, and the 3 that failed ran again
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(8 + 3 * GuardPilot.TRIALS - 5);
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
+	 * Returns how many guard pilot trials a {@code running} result reports as decided.
+	 *
+	 * @param output the command's output
+	 * @return the number of decided trials
+	 */
+	private static int decidedTrials(ObjectNode output)
+	{
+		Matcher matcher = Pattern.compile("has decided (\\d+) of (\\d+) trials").matcher(output.get("summary").
+			asString());
+		requireThat(matcher.find(), "reportsProgress").withContext(output.get("summary").asString(), "summary").
+			isTrue();
+		return Integer.parseInt(matcher.group(1));
+	}
+
+	/**
 	 * Verifies that {@code choose stop} on a paused guard pilot ends the campaign without running a trial.
 	 */
 	@Test
@@ -5055,6 +5243,8 @@ public final class OptimizerCoreTest
 					count());
 			}
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			// Each session takes a minute, so that a slice's budget runs out after a few trials
+			repository.sessions().sessionDuration(Duration.ofMinutes(1));
 			CommandResult first = repository.core().run(id);
 			try (TestOptimizerCommandScope<FakeSessionPort> fresh = TestOptimizerCommandScope.of(Harness.CLAUDE,
 				repository.root(), repository.forks()))

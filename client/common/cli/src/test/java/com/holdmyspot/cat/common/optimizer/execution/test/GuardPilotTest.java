@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
@@ -29,7 +30,9 @@ import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
+import com.holdmyspot.cat.common.optimizer.execution.PilotSlice;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
+import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
@@ -42,6 +45,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
@@ -57,6 +61,7 @@ import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -1243,6 +1248,294 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A pilot that runs in a slice stops admitting trials that are expected to end after the slice's deadline, and a
+	 * later run continues it: the trials that the slice left undecided run with the test cases already drawn, so that
+	 * the pilot ends with the trials of a pilot that no slice bounded. Once 5 trials have completed, the admission rule
+	 * expects a trial to take as long as the 90th-percentile duration of the completed ones, not as long as its time
+	 * limit.
+	 * <p>
+	 * Runtime includes three pilot runs of the tiered contract's tests with 20 scripted trials each, whose clock a
+	 * test double moves; no harness or model runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void sliceAdmitsTrialsEndingByDeadline() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-slice-admission"));
+			SessionScript reference = new SessionScript(directory.resolve("reference"), _ -> "pass");
+			Map<String, PilotResult> clean = pilot(reference, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(3));
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass");
+			sliced.trialsTake(clock, Duration.ofMinutes(1));
+
+			Map<String, PilotResult> first = pilot(sliced, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(3), _ ->
+				{
+				}, slice(clock, new FakeHostInterruptSignal(), Duration.ofMinutes(30)));
+
+			// The first 5 trials start at minutes 0 to 4, where their time limits of at most 5 minutes end by the
+			// deadline; later trials are expected to take the observed minute and start through minute 29
+			requireThat(sliced.requests(SessionRole.TRIAL).size(), "trials").isEqualTo(30);
+			requireThat(decided(first), "decided").isEqualTo(30);
+			requireThat(clock.instant(), "clock").isEqualTo(Instant.EPOCH.plus(Duration.ofMinutes(30)));
+			requireThat(GuardPilot.endedBySlice(first), "endedBySlice").isTrue();
+			for (PilotResult pilot : first.values())
+			{
+				if (pilot.trials().size() < GuardPilot.TRIALS)
+				{
+					requireThat(pilot.stopReason(), "stopReason").isNotNull();
+					requireThat(pilot.paused(), "paused").isFalse();
+				}
+				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+			}
+			requireThat(GuardPilot.pauseReason(first), "pauseReason").isEqualTo(Optional.empty());
+
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, first, new SplittableRandom(99));
+
+			assertContinues(resumed, reference, second, clean, 30);
+			requireThat(GuardPilot.endedBySlice(second), "endedBySlice").isFalse();
+		}
+	}
+
+	/**
+	 * Before 5 trials have completed, the admission rule expects a trial to take as long as its time limit.
+	 * <p>
+	 * Runtime includes one pilot run of the tiered contract's tests, scripted so that a trial takes a minute on a clock
+	 * that a test double moves; no harness or model runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void sliceUsesTimeLimitBeforeFiveTrials() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-slice-limit"));
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass");
+			sliced.trialsTake(clock, Duration.ofMinutes(1));
+
+			Map<String, PilotResult> result = pilot(sliced, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(4), _ ->
+				{
+				}, slice(clock, new FakeHostInterruptSignal(), Duration.ofMinutes(5)));
+
+			// The formatting test's trials have a 5-minute limit and the safety test's a 3-minute limit, so a formatting
+			// trial is admitted only at minute 0 and a safety trial through minute 2. Fewer than 5 trials complete, so
+			// the observed minute never replaces the limits.
+			requireThat(sliced.requests(SessionRole.TRIAL).size(), "trials").isEqualTo(3);
+			requireThat(result.get("formatting").trials().size(), "formatting").isEqualTo(1);
+			requireThat(result.get("safety").trials().size(), "safety").isEqualTo(2);
+			requireThat(GuardPilot.endedBySlice(result), "endedBySlice").isTrue();
+		}
+	}
+
+	/**
+	 * A session that still runs when the slice's grace period ends is interrupted, which does not make its trial an
+	 * infrastructure attempt: a later run decides the trial again as the same logical trial, with the same test
+	 * case, and keeps the trials that were decided.
+	 * <p>
+	 * Runtime includes two pilot runs of the tiered contract's tests, one of which never ends its eighth trial; no
+	 * harness or model runs. The clock that a test double moves passes the end of the grace period as that trial
+	 * starts.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void sliceCancelsSessionsAtGraceEnd() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-slice-grace"));
+			SessionScript reference = new SessionScript(directory.resolve("reference"), _ -> "pass");
+			Map<String, PilotResult> clean = pilot(reference, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5));
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass");
+			sliced.trialsTake(clock, Duration.ofMinutes(1));
+			sliced.stallTrialsAfter(7, () -> clock.advance(Duration.ofMinutes(40)));
+
+			Map<String, PilotResult> first = pilot(sliced, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5), _ ->
+				{
+				}, slice(clock, new FakeHostInterruptSignal(), Duration.ofMinutes(30)));
+
+			List<FakeSession> trials = sliced.port().sessions().stream().
+				filter(session -> session.request().role() == SessionRole.TRIAL).toList();
+			requireThat(trials.size(), "trials").isEqualTo(8);
+			for (int i = 0; i < 7; ++i)
+				requireThat(trials.get(i).isInterruptRequested(), "interrupted" + i).isFalse();
+			requireThat(trials.get(7).isInterruptRequested(), "interrupted7").isTrue();
+			requireThat(decided(first), "decided").isEqualTo(7);
+			requireThat(GuardPilot.endedBySlice(first), "endedBySlice").isTrue();
+			requireThat(GuardPilot.pauseReason(first), "pauseReason").isEqualTo(Optional.empty());
+			for (PilotResult pilot : first.values())
+			{
+				requireThat(pilot.paused(), "paused").isFalse();
+				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				for (PilotTrial trial : pilot.trials())
+					requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
+			}
+
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, first, new SplittableRandom(99));
+
+			assertContinues(resumed, reference, second, clean, 7);
+		}
+	}
+
+	/**
+	 * A host interrupt that arrives while a trial runs interrupts that trial's session and stops the pilot without
+	 * pausing it, as it stops a driver's slice; the trial is not an infrastructure attempt.
+	 * <p>
+	 * Runtime includes one pilot run of the tiered contract's tests, whose fourth trial never ends; no harness or model
+	 * runs. The interrupt record that the test double holds is later than the slice's start.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void hostInterruptCancelsSliceSessions() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-slice-host"));
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			FakeHostInterruptSignal interrupts = new FakeHostInterruptSignal();
+			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass");
+			sliced.trialsTake(clock, Duration.ofMinutes(1));
+			sliced.stallTrialsAfter(3, () ->
+			{
+				clock.advance(Duration.ofSeconds(1));
+				interrupts.interrupt(clock.instant());
+			});
+
+			Map<String, PilotResult> result = pilot(sliced, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(6), _ ->
+				{
+				}, slice(clock, interrupts, Duration.ofMinutes(30)));
+
+			List<FakeSession> trials = sliced.port().sessions().stream().
+				filter(session -> session.request().role() == SessionRole.TRIAL).toList();
+			requireThat(trials.size(), "trials").isEqualTo(4);
+			requireThat(trials.get(3).isInterruptRequested(), "interrupted3").isTrue();
+			requireThat(decided(result), "decided").isEqualTo(3);
+			requireThat(GuardPilot.endedBySlice(result), "endedBySlice").isFalse();
+			requireThat(GuardPilot.pauseReason(result), "pauseReason").isEqualTo(Optional.empty());
+			for (PilotResult pilot : result.values())
+			{
+				requireThat(pilot.paused(), "paused").isFalse();
+				if (pilot.trials().size() < GuardPilot.TRIALS)
+					requireThat(pilot.stopReason(), "stopReason").startsWith("The host interrupted");
+				for (PilotTrial trial : pilot.trials())
+					requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
+			}
+		}
+	}
+
+	/**
+	 * A pilot whose trials all end within the slice finishes in it, with no stop reason.
+	 * <p>
+	 * Runtime includes one pilot run of the tiered contract's tests with 20 scripted trials each; no harness or model
+	 * runs.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void fittingSliceFinishesPilot() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-slice-fits"));
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass");
+			sliced.trialsTake(clock, Duration.ofMinutes(1));
+
+			Map<String, PilotResult> result = pilot(sliced, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(8), _ ->
+				{
+				}, slice(clock, new FakeHostInterruptSignal(), Duration.ofMinutes(500)));
+
+			requireThat(decided(result), "decided").isEqualTo(GuardPilot.TRIALS * result.size());
+			requireThat(GuardPilot.endedBySlice(result), "endedBySlice").isFalse();
+			for (PilotResult pilot : result.values())
+				requireThat(pilot.stopReason(), "stopReason").isNull();
+		}
+	}
+
+	/**
+	 * Asserts that a run which continued a pilot that a slice left unfinished ran only the undecided trials, with
+	 * the test cases of an unbounded pilot, and ended with the unbounded pilot's trials.
+	 *
+	 * @param resumed the script of the continuing run
+	 * @param reference the script of the unbounded run
+	 * @param continued the continuing run's pilots
+	 * @param clean the unbounded run's pilots
+	 * @param kept the number of trials that the first run decided
+	 */
+	private static void assertContinues(SessionScript resumed, SessionScript reference,
+		Map<String, PilotResult> continued, Map<String, PilotResult> clean, int kept)
+	{
+		List<SessionRequest> trials = resumed.requests(SessionRole.TRIAL);
+		requireThat(trials.size(), "continuedTrials").isEqualTo(GuardPilot.TRIALS * continued.size() - kept);
+		List<SessionRequest> expected = reference.requests(SessionRole.TRIAL);
+		for (int i = 0; i < trials.size(); ++i)
+			requireThat(trials.get(i).turns(), "turns" + i).isEqualTo(expected.get(kept + i).turns());
+		for (Map.Entry<String, PilotResult> entry : continued.entrySet())
+		{
+			PilotResult pilot = entry.getValue();
+			requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
+			requireThat(pilot.paused(), "paused").isFalse();
+			requireThat(pilot.stopReason(), "stopReason").isNull();
+			requireThat(pilot.trials().stream().map(PilotTrial::record).toList(), "records").
+				isEqualTo(clean.get(entry.getKey()).trials().stream().map(PilotTrial::record).toList());
+			for (PilotTrial trial : pilot.trials())
+				requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
+		}
+	}
+
+	/**
+	 * Returns the number of trials that the pilots decided.
+	 *
+	 * @param pilots the pilots
+	 * @return the number of decided trials
+	 */
+	private static int decided(Map<String, PilotResult> pilots)
+	{
+		return pilots.values().stream().mapToInt(pilot -> pilot.trials().size()).sum();
+	}
+
+	/**
+	 * Returns a slice that started now and has a one-minute grace period.
+	 *
+	 * @param clock the clock that measures the slice
+	 * @param interrupts the host's interrupt record
+	 * @param budget the slice's budget
+	 * @return the slice
+	 */
+	private static PilotSlice slice(ManualClock clock, FakeHostInterruptSignal interrupts, Duration budget)
+	{
+		return new PilotSlice(clock, new SliceSettings(budget, Duration.ofMinutes(1), Duration.ofMillis(1)),
+			interrupts, clock.instant());
+	}
+
+	/**
 	 * Returns a pilot whose judge session replies with the verdict named by the trial's reply.
 	 *
 	 * @param sessions the session port
@@ -1394,6 +1687,11 @@ public final class GuardPilotTest
 		private final Map<SessionRole, Deque<SessionResult>> rejections = new EnumMap<>(SessionRole.class);
 		private final Map<SessionRole, Integer> skips = new EnumMap<>(SessionRole.class);
 		private volatile Throwable trialCrash;
+		private final AtomicInteger trialStarts = new AtomicInteger();
+		private volatile ManualClock timer;
+		private volatile Duration trialDuration = Duration.ZERO;
+		private volatile int stallAfter = Integer.MAX_VALUE;
+		private volatile Runnable stall;
 
 		/**
 		 * Creates a script.
@@ -1513,6 +1811,31 @@ public final class GuardPilotTest
 		}
 
 		/**
+		 * Makes every trial session that ends take time: a clock advances by a duration as each trial session starts.
+		 *
+		 * @param clock    the clock
+		 * @param duration how long a trial takes
+		 */
+		void trialsTake(ManualClock clock, Duration duration)
+		{
+			timer = clock;
+			trialDuration = duration;
+		}
+
+		/**
+		 * Makes the trial sessions that follow the first ones never end on their own: each runs a step as it starts,
+		 * and only an interrupt ends it.
+		 *
+		 * @param completed the number of trial sessions that run as usual first
+		 * @param step      what happens, in the test's time, while a session that never ends runs
+		 */
+		void stallTrialsAfter(int completed, Runnable step)
+		{
+			stallAfter = completed;
+			stall = step;
+		}
+
+		/**
 		 * Returns the requests of the sessions that started with a role.
 		 *
 		 * @param role the role
@@ -1549,6 +1872,18 @@ public final class GuardPilotTest
 			{
 				session.fail(trialCrash);
 				return;
+			}
+			if (request.role() == SessionRole.TRIAL)
+			{
+				int started = trialStarts.incrementAndGet();
+				if (started > stallAfter)
+				{
+					stall.run();
+					return;
+				}
+				ManualClock clock = timer;
+				if (clock != null)
+					clock.advance(trialDuration);
 			}
 			// The session's start position names its evidence directory
 			int number = port.sessions().indexOf(session) + 1;

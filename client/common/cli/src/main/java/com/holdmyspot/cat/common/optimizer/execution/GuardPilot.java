@@ -33,11 +33,14 @@ import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -45,6 +48,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.TimeUnit;
 import java.util.random.RandomGenerator;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -61,6 +65,10 @@ import tools.jackson.databind.json.JsonMapper;
  * test case. After {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures of one logical trial, the
  * pilot pauses: it starts no further session, and its result says that the user must choose to retry or to stop. A
  * pilot that runs again keeps the trials that it decided.
+ * <p>
+ * A pilot that runs in a {@link PilotSlice} stops admitting trials as the driver does, cancels the sessions that still
+ * run when the grace period ends, and stays unfinished, so that the next command continues it. A cancelled session is
+ * not an infrastructure attempt: its trial runs again as the same logical trial with the same test case.
  */
 public final class GuardPilot
 {
@@ -73,6 +81,14 @@ public final class GuardPilot
 	 * the pilot ended without finishing it.
 	 */
 	private static final String UNFINISHED = "The process that ran the pilot ended before every trial did";
+	/**
+	 * Why a pilot that ran in a slice stopped when the slice ended before every trial did.
+	 */
+	private static final String SLICE_ENDED = "The slice ended before every trial did";
+	/**
+	 * Why a pilot that ran in a slice stopped when the host interrupted the command.
+	 */
+	private static final String HOST_INTERRUPTED = "The host interrupted the command that ran the pilot";
 	private final SessionPort sessions;
 	private final WorkspacePort workspace;
 	private final JudgeProtocol judge;
@@ -219,6 +235,46 @@ public final class GuardPilot
 		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random,
 		PilotCheckpoint checkpoint) throws IOException, InterruptedException
 	{
+		return run(contract, plugins, control, excluded, selection, stored, random, checkpoint, null);
+	}
+
+	/**
+	 * Runs the pilot of each prompt test that a stored pilot does not describe, as
+	 * {@link #run(Contract, List, Overlay, Set, SourceSelection, Map, RandomGenerator, PilotCheckpoint)} does, within
+	 * a slice's time bound.
+	 * <p>
+	 * The pilot admits a trial only if the slice's admission rule does: the trial is expected to end by the slice's
+	 * deadline, which the 90th-percentile duration of the trials that completed in this slice decides once 5 have
+	 * completed, and the prompt test's time limit decides before. Judges start until the grace period ends. When the
+	 * grace period ends, or the host interrupts the command, the pilot interrupts the sessions that still run and
+	 * ignores their results. A pilot that the slice left with trials to run says so in its stop reason, and
+	 * {@link #endedBySlice(Map)} recognizes it.
+	 *
+	 * @param contract the proposed contract
+	 * @param plugins the campaign's trial plugins, which every trial installs
+	 * @param control the control source: the incumbent with the target prompt file emptied and its dependents in the
+	 *   project removed
+	 * @param excluded the project-relative paths that the staged control source leaves out, so that a trial cannot
+	 *   read the prompt tests
+	 * @param selection the files of the control source that the staged control source holds
+	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
+	 * @param random draws the seed of each test's development stream
+	 * @param checkpoint keeps the pilots after each trial that ended with a decision or without one that the proposal's
+	 *   tools could give
+	 * @param slice the time bound, or {@code null} if the pilot runs until every trial ends or the pilot stops
+	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
+	 * @throws NullPointerException if any of the arguments other than {@code slice} are null
+	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, the project
+	 *   copies of a control trial that passes every assertion cannot be deleted, the host's interrupt record cannot
+	 *   be read, a session cannot be interrupted, or the checkpoint fails. A failure starts no further session and
+	 *   interrupts the running ones.
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
+	 *   is interrupted too.
+	 */
+	public Map<String, PilotResult> run(Contract contract, List<TrialPlugin> plugins, Overlay control,
+		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random,
+		PilotCheckpoint checkpoint, PilotSlice slice) throws IOException, InterruptedException
+	{
 		requireThat(checkpoint, "checkpoint").isNotNull();
 		requireThat(contract, "contract").isNotNull();
 		requireThat(plugins, "plugins").isNotNull();
@@ -257,7 +313,7 @@ public final class GuardPilot
 		{
 			Path source = workspace.stage(control, excluded, selection);
 			List<Path> directories = TrialPlugins.of(plugins, contract, workspace, source, true, json);
-			new Run(contract, source, directories, pending, pilots, files, checkpoint).run();
+			new Run(contract, source, directories, pending, pilots, files, checkpoint, slice).run();
 		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
@@ -280,6 +336,24 @@ public final class GuardPilot
 				return Optional.of(pilot.stopReason());
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * Indicates whether the pilots stopped because the slice that ran them ended: a later command continues them.
+	 *
+	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @return {@code true} if a pilot stopped because its slice ended before it ran every trial
+	 * @throws NullPointerException if {@code pilots} is null
+	 */
+	public static boolean endedBySlice(Map<String, PilotResult> pilots)
+	{
+		requireThat(pilots, "pilots").isNotNull();
+		for (PilotResult pilot : pilots.values())
+		{
+			if (SLICE_ENDED.equals(pilot.stopReason()))
+				return true;
+		}
+		return false;
 	}
 
 	/**
@@ -522,9 +596,21 @@ public final class GuardPilot
 		private final Map<String, PilotResult> places;
 		private final Sha256 files;
 		private final PilotCheckpoint checkpoint;
+		/**
+		 * The slice's time bound, or {@code null} if the pilot runs until every trial ends or the pilot stops.
+		 */
+		private final PilotSlice slice;
 		private final Deque<Job> queue = new ArrayDeque<>();
 		private final BlockingQueue<Ended> events = new LinkedBlockingQueue<>();
 		private final Map<Job, SessionHandle> inFlight = new HashMap<>();
+		/**
+		 * When each trial session that runs started, in a slice.
+		 */
+		private final Map<Job, Instant> startedAt = new HashMap<>();
+		/**
+		 * The durations of the trials that completed in the slice, which its admission rule uses.
+		 */
+		private final SliceEvidence evidence = new SliceEvidence();
 		private String stopReason;
 		/**
 		 * {@code true} if {@link #stopReason} is a pause for the user's choice to retry or to stop.
@@ -546,9 +632,11 @@ public final class GuardPilot
 		 * @param places the pilot of each prompt test in contract order, with {@code null} for each of {@code pilots}
 		 * @param files the identity of the conditions that the trials run in
 		 * @param checkpoint keeps the pilots after each trial that ended
+		 * @param slice the slice's time bound, or {@code null} if the pilot runs until every trial ends or the pilot
+		 *   stops
 		 */
 		Run(Contract contract, Path source, List<Path> plugins, List<Pilot> pilots, Map<String, PilotResult> places,
-			Sha256 files, PilotCheckpoint checkpoint)
+			Sha256 files, PilotCheckpoint checkpoint, PilotSlice slice)
 		{
 			this.contract = contract;
 			this.source = source;
@@ -557,6 +645,7 @@ public final class GuardPilot
 			this.places = places;
 			this.files = files;
 			this.checkpoint = checkpoint;
+			this.slice = slice;
 		}
 
 		/**
@@ -564,7 +653,9 @@ public final class GuardPilot
 		 *
 		 * @throws IOException if a passing trial's project copies cannot be deleted. No further session starts, and the
 		 *   failure is thrown once the running sessions end. If the checkpoint fails, the running sessions are
-		 *   interrupted and its failure is thrown.
+		 *   interrupted and its failure is thrown. In a slice, a running session that cannot be interrupted when the
+		 *   host interrupts the command or the grace period ends, or the host's interrupt record that cannot be read,
+		 *   also fails the run.
 		 * @throws InterruptedException if the thread is interrupted while it waits for a session. Every running session
 		 *   is interrupted too.
 		 */
@@ -589,8 +680,12 @@ public final class GuardPilot
 					startSessions();
 					if (inFlight.isEmpty())
 						break;
-					Ended ended = events.take();
+					Ended ended = awaitEnd();
+					// The slice ended, and the sessions that still ran were cancelled
+					if (ended == null)
+						break;
 					inFlight.remove(ended.job());
+					recordDuration(ended);
 					int endedBefore = endedTrials();
 					switch (ended.job())
 					{
@@ -619,6 +714,9 @@ public final class GuardPilot
 			}
 			if (deletionFailure != null)
 				throw deletionFailure;
+			// Trials that the slice's admission rule left in the queue run in a later command
+			if (stopReason == null && !queue.isEmpty())
+				stop(SLICE_ENDED);
 			if (stopReason == null)
 				return;
 			for (Pilot pilot : pilots)
@@ -629,6 +727,85 @@ public final class GuardPilot
 					pilot.paused = paused;
 				}
 			}
+		}
+
+		/**
+		 * Waits for the next session to end. In a slice, the wait also ends when the host interrupts the command or the
+		 * grace period ends: the sessions that still run are then interrupted and the pilot stops.
+		 *
+		 * @return the end of a session, or {@code null} if the pilot cancelled the sessions that still ran
+		 * @throws IOException if the host's interrupt record cannot be read, or a session cannot be interrupted
+		 * @throws InterruptedException if the thread is interrupted while it waits for a session
+		 */
+		private Ended awaitEnd() throws IOException, InterruptedException
+		{
+			if (slice == null)
+				return events.take();
+			Instant graceEnd = slice.graceEnd();
+			while (true)
+			{
+				Duration untilGraceEnd = Duration.between(slice.clock().instant(), graceEnd);
+				Duration wait = slice.settings().pollInterval();
+				if (untilGraceEnd.compareTo(wait) < 0)
+					wait = untilGraceEnd;
+				if (wait.isNegative())
+					wait = Duration.ZERO;
+				Ended ended = events.poll(wait.toNanos(), TimeUnit.NANOSECONDS);
+				if (ended != null)
+					return ended;
+				if (slice.interrupts().isInterruptedAfter(slice.start()))
+				{
+					cancel(HOST_INTERRUPTED);
+					return null;
+				}
+				if (!slice.clock().instant().isBefore(graceEnd))
+				{
+					cancel(SLICE_ENDED);
+					return null;
+				}
+			}
+		}
+
+		/**
+		 * Interrupts the sessions that still run and stops the pilot. Their trials are not infrastructure attempts,
+		 * and they run again as the same logical trials. Every session is interrupted even if interrupting one fails.
+		 *
+		 * @param reason why the pilot stopped
+		 * @throws IOException if a session cannot be interrupted
+		 */
+		private void cancel(String reason) throws IOException
+		{
+			stop(reason);
+			IOException failure = null;
+			for (SessionHandle handle : inFlight.values())
+			{
+				try
+				{
+					handle.interrupt();
+				}
+				catch (IOException e)
+				{
+					if (failure == null)
+						failure = e;
+					else
+						failure.addSuppressed(e);
+				}
+			}
+			inFlight.clear();
+			if (failure != null)
+				throw failure;
+		}
+
+		/**
+		 * Records how long a trial session took if it completed, for the slice's admission rule.
+		 *
+		 * @param ended the end of a session
+		 */
+		private void recordDuration(Ended ended)
+		{
+			Instant started = startedAt.remove(ended.job());
+			if (started != null && ended.job() instanceof TrialJob && ended.result() instanceof SessionResult.Completed)
+				evidence.recordDuration(Duration.between(started, slice.clock().instant()));
 		}
 
 		/**
@@ -658,13 +835,16 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Starts queued sessions while capacity is free and the pilot has not stopped.
+		 * Starts queued sessions while capacity is free and the pilot has not stopped. In a slice, a trial starts only if
+		 * the slice's admission rule admits it, and a judge starts until the grace period ends.
 		 */
 		private void startSessions()
 		{
-			while (stopReason == null && inFlight.size() < ceiling && !queue.isEmpty())
+			while (stopReason == null && inFlight.size() < ceiling)
 			{
-				Job job = queue.removeFirst();
+				Job job = nextAdmitted();
+				if (job == null)
+					return;
 				SessionRequest request = switch (job)
 				{
 					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
@@ -673,6 +853,8 @@ public final class GuardPilot
 					case JudgeJob judging -> judge.request(contract.judge(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section());
 				};
+				if (slice != null)
+					startedAt.put(job, slice.clock().instant());
 				SessionHandle handle;
 				try
 				{
@@ -680,12 +862,49 @@ public final class GuardPilot
 				}
 				catch (IOException e)
 				{
+					startedAt.remove(job);
 					sessionFailed(job, "The " + roleName(job) + " session could not start: " + Driver.describe(e));
 					continue;
 				}
 				inFlight.put(job, handle);
 				handle.completion().whenComplete((result, failure) -> events.add(new Ended(job, result, failure)));
 			}
+		}
+
+		/**
+		 * Removes the first queued session that may start now from the queue.
+		 *
+		 * @return the session, or {@code null} if the queue holds none: it is empty, or its trials are not admitted
+		 */
+		private Job nextAdmitted()
+		{
+			Iterator<Job> candidates = queue.iterator();
+			while (candidates.hasNext())
+			{
+				Job job = candidates.next();
+				boolean startable = slice == null || switch (job)
+				{
+					case JudgeJob _ -> true;
+					case TrialJob trial -> isAdmitted(trial);
+				};
+				if (startable)
+				{
+					candidates.remove();
+					return job;
+				}
+			}
+			return null;
+		}
+
+		/**
+		 * Indicates whether the slice admits a trial: it is expected to end by the slice's deadline.
+		 *
+		 * @param trial the trial
+		 * @return {@code true} if the slice admits it
+		 */
+		private boolean isAdmitted(TrialJob trial)
+		{
+			return evidence.admits(slice.clock().instant(), slice.deadline(), trial.pilot().test.timeLimit());
 		}
 
 		/**
