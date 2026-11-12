@@ -386,7 +386,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	{
 		ensureOpen();
 		if (store == null)
-			store = new FileCampaignStore(sessionDirectory().campaigns(), json(), fileReplacer());
+			store = new FileCampaignStore(sessionDirectory().campaigns(), projectRoot(), json(), fileReplacer());
 		return store;
 	}
 

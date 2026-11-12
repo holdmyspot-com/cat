@@ -90,6 +90,7 @@ import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
 import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
 import com.holdmyspot.cat.common.optimizer.report.Status;
 import com.holdmyspot.cat.common.optimizer.report.TokenStatistics;
+import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.statistics.ComparisonBoundaries;
@@ -388,8 +389,7 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that a session working in a copy of the project that a campaign started in, at another path, may report
-	 * the campaign by its identifier: the campaign's recorded target names the original project, and the report takes
-	 * the target's place in the campaign's own project, not in the copy's path.
+	 * the campaign by its identifier although the campaign's snapshot recorded the original project.
 	 */
 	@Test
 	public void statusWorksInCopyOfCampaignsProject() throws Exception
@@ -412,6 +412,91 @@ public final class OptimizerCoreTest
 				requireThat(String.join("\n", result.notices()), "notices").
 					contains(TestOptimizerCommandScope.SESSION_ID);
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a campaign whose project is copied to another directory continues in the copy: {@code start} for
+	 * its target resumes it, {@code status} finds it by its target, its header names the copy, and its delivery writes
+	 * the copy's files, while the original project stays exactly as it was.
+	 * <p>
+	 * The public start and confirmation run in the original project. In the copy, the fixture seeds a certified,
+	 * proven-worse attempt as {@link #retainIncumbentDeliversPromptTests()} does, and keeping the incumbent delivers its
+	 * prompt tests. The commands, the copies of the project and the delivery can exceed one second during a parallel
+	 * build.
+	 *
+	 * @throws Exception if the owned repository or store fails
+	 */
+	@Test
+	public void campaignContinuesInCopiedProject() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			Path copy = scope.add(Files.createTempDirectory("optimizer-copy")).toRealPath();
+			copyProject(repository.root(), copy);
+			Map<String, String> original = contents(repository.root());
+			String target = Files.readString(copy.resolve("CLAUDE.md"), StandardCharsets.UTF_8);
+			try (TestOptimizerCommandScope<FakeSessionPort> command = TestOptimizerCommandScope.of(Harness.CLAUDE,
+				copy, repository.forks()))
+			{
+				OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command);
+				OptimizerCore core = new OptimizerCore(command);
+				requireThat(core.start(Path.of("CLAUDE.md")).status().campaignId(), "resumed").isEqualTo(id);
+				requireThat(core.status("CLAUDE.md").status().campaignId(), "status").isEqualTo(id);
+				CampaignStore store = OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(command);
+				Campaign c = store.load(id).orElseThrow();
+				requireThat(c.header().root(), "root").isEqualTo(copy);
+				requireThat(c.header().target(), "target").isEqualTo(copy.resolve("CLAUDE.md"));
+
+				Path directory = OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().sessionDirectory(command).
+					campaigns().resolve(id);
+				ForkView fork = command.forks().open(copy, directory);
+				FileCandidateOverlays snapshots = new FileCandidateOverlays(directory, fork.inventory(), command.json(),
+					Yielding.fileReplacer());
+				Path prompt = Path.of("CLAUDE.md");
+				Overlay changed = snapshots.require(c.incumbent().snapshot()).write(prompt,
+					new FileContent("Use a different answer.\n".getBytes(StandardCharsets.UTF_8)),
+					((FileEntry.RegularFile) fork.inventory().entries().get(prompt)).permissions());
+				snapshots.save(changed);
+				fork.workspace().materialize(changed);
+				Candidate candidate = new Candidate(1, changed.identity());
+				MeasurementIdentity observed = c.identity().extendWith(Builder.OBSERVED);
+				ComparisonBoundaries comparison = Boundaries.comparison(Boundaries.STANDARD_CAP, 250, 0, 2);
+				DecisionBoundaries boundaries = Boundaries.decision(Boundaries.STANDARD_CAP, 100, 50, 5,
+					List.of(comparison, comparison, comparison));
+				Campaign evidence = new Builder().confirmed(c.contract(), c.lineage().number()).identity(observed).
+					certificationAttempt(1).candidate(candidate).boundaries(boundaries).
+					cell("formatting", 100, 0).cell("plain_list", 100, 0).cell("safety", 200, 2).
+					outcome(Outcome.CERTIFIED).build();
+				Campaign waiting = new Campaign(c.header(), c.ceiling(), c.lineages(), observed, c.incumbent(),
+					1, c.promptAuthorAttempts(), Development.start(candidate, c.development().series() + 1),
+					c.baseline(), evidence.attempts(),
+					c.trials(), c.sequences(), c.evidenceRevision(), c.windows(), c.throttle(),
+					List.of(new PendingDecision.RegressionTradeOff(1)), c.revisionRequested(), Outcome.CERTIFIED,
+					c.delivery(), c.optimization(), c.answeredWarnings(), c.testRevisions(), c.plugins());
+				store.replaceSnapshot(waiting);
+
+				CommandResult result = core.choose(id, Choice.RETAIN_INCUMBENT, 0, 0);
+
+				requireThat(result.delivery(), "delivery").isNotNull();
+				requireThat(result.delivery().result(), "result").isInstanceOf(Delivered.class);
+				requireThat(Files.readString(copy.resolve("CLAUDE.md"), StandardCharsets.UTF_8), "target").
+					isEqualTo(target);
+				for (PromptTest test : c.contract().tests())
+				{
+					Path tests = copy.resolve(".cat/tests/CLAUDE").resolve(test.id());
+					requireThat(tests.resolve(PromptTestFiles.SCENARIO), "scenario").withContext(test.id(), "id").
+						isRegularFile();
+				}
+				requireThat(Files.notExists(directory), "directoryIsAbsent").isTrue();
+				requireThat(command.sessions().sessions(), "sessions").isEmpty();
+			}
+			requireThat(contents(repository.root()), "original").isEqualTo(original);
 		}
 	}
 

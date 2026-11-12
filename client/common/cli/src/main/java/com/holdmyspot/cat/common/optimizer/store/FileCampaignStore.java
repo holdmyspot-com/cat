@@ -19,7 +19,10 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -36,6 +39,12 @@ import tools.jackson.databind.json.JsonMapper;
  * The file {@code removal} in a campaign directory records that the removal of the campaign's files started. The
  * campaign directory is deleted by renaming it to {@code .deleting-<campaign-id>} and deleting that directory, so an
  * interrupted deletion never leaves a partial campaign; a directory whose name starts with a dot is not a campaign.
+ * <p>
+ * A store that knows the root of the project that it belongs to reads every campaign in that project, wherever the
+ * campaign was recorded: the header's root is that project root, and the target and every other path that the
+ * campaign recorded inside its project lie below it. A copy of a project therefore reads and writes only its own
+ * files. A store that does not know its project root reads each campaign in the project root that the campaign
+ * recorded.
  * <p>
  * A snapshot stored directly in the campaign directory belongs to an older format and is refused with a message that
  * asks the user to start a new campaign.
@@ -64,14 +73,20 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String LOCK = "driver.lock";
 	private static final String DELETING_PREFIX = ".deleting-";
 	private final Path campaigns;
+	private final Path project;
 	private final JsonMapper json;
 	private final FileReplacer replacer;
 	private final CampaignJson codec;
 	private final DeliveryJournalJson journalCodec;
 	private final Consumer<WriteStep> afterStep;
+	/**
+	 * The project root that each campaign's snapshot recorded when this store first read it, by campaign. Trial
+	 * records of older formats hold absolute paths below that root.
+	 */
+	private final Map<String, Path> recordedRoots = new ConcurrentHashMap<>();
 
 	/**
-	 * Creates a store.
+	 * Creates a store that reads each campaign in the project root that the campaign recorded.
 	 *
 	 * @param campaigns the directory that holds the campaigns
 	 * @param json the JSON mapper
@@ -81,6 +96,22 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	public FileCampaignStore(Path campaigns, JsonMapper json, FileReplacer replacer)
 	{
 		this(campaigns, json, replacer, _ ->
+		{
+		});
+	}
+
+	/**
+	 * Creates a store of a project's campaigns, which reads every campaign in that project.
+	 *
+	 * @param campaigns the directory that holds the campaigns
+	 * @param project the canonical root of the project that holds {@code campaigns}
+	 * @param json the JSON mapper
+	 * @param replacer replaces the store's files
+	 * @throws NullPointerException if any argument is null
+	 */
+	public FileCampaignStore(Path campaigns, Path project, JsonMapper json, FileReplacer replacer)
+	{
+		this(campaigns, requireProject(project), json, replacer, _ ->
 		{
 		});
 	}
@@ -97,16 +128,47 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 */
 	public FileCampaignStore(Path campaigns, JsonMapper json, FileReplacer replacer, Consumer<WriteStep> afterStep)
 	{
+		this(campaigns, null, json, replacer, afterStep);
+	}
+
+	/**
+	 * Creates a store.
+	 *
+	 * @param campaigns the directory that holds the campaigns
+	 * @param project the canonical root of the project that holds {@code campaigns}, or {@code null} to read each
+	 *   campaign in the project root that it recorded
+	 * @param json the JSON mapper
+	 * @param replacer replaces the store's files
+	 * @param afterStep receives each step after it completes
+	 * @throws NullPointerException if any argument other than {@code project} is null
+	 */
+	private FileCampaignStore(Path campaigns, Path project, JsonMapper json, FileReplacer replacer,
+		Consumer<WriteStep> afterStep)
+	{
 		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(afterStep, "afterStep").isNotNull();
 		this.campaigns = campaigns;
+		this.project = project;
 		this.json = json;
 		this.replacer = replacer;
 		this.codec = new CampaignJson(json);
 		this.journalCodec = new DeliveryJournalJson(json);
 		this.afterStep = afterStep;
+	}
+
+	/**
+	 * Requires a project root.
+	 *
+	 * @param project the project root
+	 * @return {@code project}
+	 * @throws NullPointerException if {@code project} is null
+	 */
+	private static Path requireProject(Path project)
+	{
+		requireThat(project, "project").isNotNull();
+		return project;
 	}
 
 	/**
@@ -287,7 +349,11 @@ public final class FileCampaignStore extends AbstractCampaignStore
 			refuseOutsideHeldOut(directory);
 			return Optional.empty();
 		}
-		Campaign campaign = JsonFiles.read(json, file, codec::readCampaign, MALFORMED);
+		Campaign campaign = JsonFiles.read(json, file, document ->
+		{
+			recordedRoots.putIfAbsent(campaignId, CampaignJson.recordedRoot(document));
+			return codec.readCampaign(document, project);
+		}, MALFORMED);
 		requireOwner(file, campaignId, campaign.header());
 		return Optional.of(campaign);
 	}
@@ -307,7 +373,8 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		Path file = recordFile(campaignId, key);
 		if (Files.notExists(file))
 			return Optional.empty();
-		TrialRecord record = JsonFiles.read(json, file, codec::readRecord, MALFORMED);
+		ProjectPaths paths = recordPaths(campaignId);
+		TrialRecord record = JsonFiles.read(json, file, document -> codec.readRecord(document, paths), MALFORMED);
 		if (!record.key().equals(key))
 		{
 			throw new IOException("The trial record " + file + " belongs to a different trial.\n" +
@@ -322,7 +389,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	{
 		Path file = recordFile(campaignId, record.key());
 		AtomicFiles.createDirectories(file.getParent());
-		JsonFiles.replace(json, replacer, file, codec.writeRecord(record), afterStep);
+		JsonFiles.replace(json, replacer, file, codec.writeRecord(record, project), afterStep);
 	}
 
 	@Override
@@ -339,7 +406,8 @@ public final class FileCampaignStore extends AbstractCampaignStore
 				refuseOutsideHeldOut(directory);
 				continue;
 			}
-			Header header = JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
+			Header header = JsonFiles.read(json, file, document -> codec.readSnapshotHeader(document, project),
+				MALFORMED);
 			requireOwner(file, directory.getFileName().toString(), header);
 			headers.add(header);
 		}
@@ -361,6 +429,31 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		Path directory = directory(campaigns, campaignId);
 		AtomicFiles.createDirectories(directory);
 		JsonFiles.replace(json, replacer, directory.resolve(JOURNAL), journalCodec.write(journal), afterStep);
+	}
+
+	/**
+	 * Returns the conversion of the paths of a campaign's trial records.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @return the conversion, which reads the records in this store's project, and moves an older record's absolute
+	 *   paths from the project root that the campaign's snapshot recorded when this store first read it
+	 * @throws IOException if the snapshot cannot be read
+	 */
+	private ProjectPaths recordPaths(String campaignId) throws IOException
+	{
+		if (project == null)
+			return new ProjectPaths(null, null);
+		Path recorded = recordedRoots.get(campaignId);
+		if (recorded == null)
+		{
+			Path file = heldOutDirectory(campaigns, campaignId).resolve(SNAPSHOT);
+			if (Files.exists(file))
+			{
+				Path read = JsonFiles.read(json, file, CampaignJson::recordedRoot, MALFORMED);
+				recorded = Objects.requireNonNullElse(recordedRoots.putIfAbsent(campaignId, read), read);
+			}
+		}
+		return new ProjectPaths(recorded, project);
 	}
 
 	/**
@@ -390,7 +483,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 		if (Files.notExists(file))
 			return;
 		// Reading the header refuses the snapshot's format with the message that names its version
-		JsonFiles.read(json, file, codec::readSnapshotHeader, MALFORMED);
+		JsonFiles.read(json, file, document -> codec.readSnapshotHeader(document, project), MALFORMED);
 		throw new IOException("The snapshot " + file + " is stored outside the campaign's " + HELD_OUT + " directory, " +
 			"as older versions of CAT stored it. Start a new campaign.");
 	}

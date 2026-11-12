@@ -44,6 +44,10 @@ import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
 import com.holdmyspot.cat.common.optimizer.campaign.AllocationRule;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.Header;
+import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
@@ -1266,11 +1270,198 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(46);
+					"recordVersion").isEqualTo(47);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(46);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(47);
 		}
+	}
+
+	/**
+	 * Verifies that a campaign records its target and its retained evidence relative to its project, so that a copy of
+	 * the project reads them in the copy; and that a campaign that an older version recorded with absolute paths below
+	 * the original project loads in the copy with those paths moved below the copy, leaving the original untouched.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void copiedProjectReadsItsOwnPaths() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path parent = cleanup.add(Files.createTempDirectory("cat-campaign-copy-"));
+			Path original = Files.createDirectory(parent.resolve("original")).toAbsolutePath().normalize();
+			Path copy = parent.resolve("copy").toAbsolutePath().normalize();
+			Path relativeCampaigns = Path.of(".cat", "sessions", SESSION_ID, "optimizer");
+			Path campaigns = Files.createDirectories(original.resolve(relativeCampaigns));
+			Path runs = Path.of(".cat", "sessions", SESSION_ID, "optimizer-runs", "trial-1");
+			TrialFiles files = new TrialFiles(original.resolve(runs).resolve("transcript.jsonl"),
+				original.resolve(runs).resolve("effects"), original.resolve(runs).resolve("initial-project"));
+			Header header = new Header(ID, original, original.resolve("AGENTS.md"), Harness.CODEX, Lifecycle.ACTIVE);
+			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
+			LogicalTrial judged = judged(trial(1, TrialState.JUDGED), files);
+			FileCampaignStore store = new FileCampaignStore(campaigns, original, JSON, Yielding.fileReplacer());
+			store.writeAssignment(ID, assigned);
+			store.writeOutcome(ID, new CampaignEvent.Complete(assigned.key(), Verdict.PASS, "The reply was right.",
+				List.of(), null, Builder.confirmedIdentity("model-a"), null, List.of(), files));
+			store.replaceSnapshot(new Builder().header(header).confirmed().working(1).trial(judged).build());
+
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			Path record = onlyRecord(campaigns);
+			JsonNode stored = JSON.readTree(Files.readString(snapshot, UTF_8));
+			requireThat(stored.get("header").get("target").asString(), "storedTarget").isEqualTo("AGENTS.md");
+			String originalText = original.toString();
+			requireThat(Files.readString(record, UTF_8), "storedRecord").doesNotContain(originalText);
+			requireThat(JSON.writeValueAsString(stored.get("trials")), "storedTrials").doesNotContain(originalText);
+
+			copyTree(original, copy);
+			Map<Path, String> before = contents(original);
+			Path copiedCampaigns = copy.resolve(relativeCampaigns);
+			TrialFiles copied = new TrialFiles(copy.resolve(runs).resolve("transcript.jsonl"),
+				copy.resolve(runs).resolve("effects"), copy.resolve(runs).resolve("initial-project"));
+			requireReadInCopy(new FileCampaignStore(copiedCampaigns, copy, JSON, Yielding.fileReplacer()),
+				assigned.key(), copy, copied);
+
+			Path copiedSnapshot = heldOutDirectory(copiedCampaigns).resolve("campaign.json");
+			ObjectNode legacy = (ObjectNode) JSON.readTree(Files.readString(copiedSnapshot, UTF_8));
+			legacy.put("format_version", 46);
+			((ObjectNode) legacy.get("header")).put("target", original.resolve("AGENTS.md").toString());
+			absolute(legacy, original);
+			Files.writeString(copiedSnapshot, JSON.writeValueAsString(legacy), UTF_8);
+			Path copiedRecord = onlyRecord(copiedCampaigns);
+			ObjectNode legacyRecord = (ObjectNode) JSON.readTree(Files.readString(copiedRecord, UTF_8));
+			legacyRecord.put("format_version", 46);
+			absolute(legacyRecord, original);
+			Files.writeString(copiedRecord, JSON.writeValueAsString(legacyRecord), UTF_8);
+			requireThat(Files.readString(copiedRecord, UTF_8), "legacyRecord").contains(originalText);
+
+			FileCampaignStore legacyStore = new FileCampaignStore(copiedCampaigns, copy, JSON,
+				Yielding.fileReplacer());
+			requireReadInCopy(legacyStore, assigned.key(), copy, copied);
+			Campaign loaded = legacyStore.load(ID).orElseThrow();
+			legacyStore.replaceSnapshot(loaded);
+			JsonNode rewritten = JSON.readTree(Files.readString(copiedSnapshot, UTF_8));
+			requireThat(rewritten.get("format_version").asInt(), "rewrittenVersion").isEqualTo(47);
+			requireThat(rewritten.get("header").get("root").asString(), "rewrittenRoot").isEqualTo(copy.toString());
+			requireThat(rewritten.get("header").get("target").asString(), "rewrittenTarget").isEqualTo("AGENTS.md");
+			requireThat(contents(original), "original").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * Requires a store to read a campaign and its trial record in the copy of the campaign's project.
+	 *
+	 * @param store the store of the copy
+	 * @param key the trial whose record to read
+	 * @param copy the copy's root
+	 * @param files where the copy retained the trial's evidence
+	 * @throws IOException if the store fails
+	 */
+	private static void requireReadInCopy(FileCampaignStore store, TrialKey key, Path copy, TrialFiles files)
+		throws IOException
+	{
+		Campaign loaded = store.load(ID).orElseThrow();
+		requireThat(loaded.header().root(), "root").isEqualTo(copy);
+		requireThat(loaded.header().target(), "target").isEqualTo(copy.resolve("AGENTS.md"));
+		requireThat(loaded.trials().getFirst().files(), "trialFiles").isEqualTo(files);
+		requireThat(store.listHeaders().getFirst().target(), "listedTarget").isEqualTo(copy.resolve("AGENTS.md"));
+		requireThat(store.readRecord(ID, key).orElseThrow().outcome().files(), "recordFiles").isEqualTo(files);
+	}
+
+	/**
+	 * Returns a judged trial whose evidence was retained in other files.
+	 *
+	 * @param trial a judged trial
+	 * @param files where the evidence was retained
+	 * @return the trial
+	 */
+	private static LogicalTrial judged(LogicalTrial trial, TrialFiles files)
+	{
+		return new LogicalTrial(trial.key(), trial.testCase(), trial.identity(), trial.allocation(), trial.state(),
+			trial.verdict(), trial.rationale(), trial.failedAssertions(), trial.triage(), trial.infrastructureFailures(),
+			trial.infrastructureAttempts(), trial.observations(), trial.responses(), files, trial.judge());
+	}
+
+	/**
+	 * Returns the only trial record of the campaign.
+	 *
+	 * @param campaigns the directory that holds the campaigns
+	 * @return the record's file
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static Path onlyRecord(Path campaigns) throws IOException
+	{
+		List<Path> records = list(heldOutDirectory(campaigns).resolve("trials"));
+		requireThat(records.size(), "records").isEqualTo(1);
+		return records.getFirst();
+	}
+
+	/**
+	 * Records every relative evidence path of a document as an absolute path below a project root, as older versions
+	 * of CAT did.
+	 *
+	 * @param document the document
+	 * @param root the project root
+	 */
+	private static void absolute(JsonNode document, Path root)
+	{
+		if (document instanceof ObjectNode object)
+		{
+			for (String field : List.of("transcript", "effects", "initial_project"))
+			{
+				JsonNode value = object.get(field);
+				if (value != null && value.isString())
+					object.put(field, root.resolve(value.asString()).toString());
+			}
+		}
+		for (JsonNode child : document)
+		{
+			if (child.isContainer())
+				absolute(child, root);
+		}
+	}
+
+	/**
+	 * Copies a directory tree.
+	 *
+	 * @param source the directory to copy
+	 * @param target the directory to create
+	 * @throws IOException if the tree cannot be copied
+	 */
+	private static void copyTree(Path source, Path target) throws IOException
+	{
+		try (Stream<Path> paths = Files.walk(source))
+		{
+			for (Path path : paths.toList())
+			{
+				Path destination = target.resolve(source.relativize(path));
+				if (Files.isDirectory(path))
+					Files.createDirectories(destination);
+				else
+					Files.copy(path, destination);
+			}
+		}
+	}
+
+	/**
+	 * Returns the contents of every file below a directory.
+	 *
+	 * @param directory the directory
+	 * @return each file's path relative to the directory, mapped to its contents
+	 * @throws IOException if a file cannot be read
+	 */
+	private static Map<Path, String> contents(Path directory) throws IOException
+	{
+		Map<Path, String> contents = new LinkedHashMap<>();
+		try (Stream<Path> paths = Files.walk(directory))
+		{
+			for (Path path : paths.sorted().toList())
+			{
+				if (Files.isRegularFile(path))
+					contents.put(directory.relativize(path), Files.readString(path, UTF_8));
+			}
+		}
+		return contents;
 	}
 
 	/**
@@ -2026,7 +2217,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 47);
+			root.put("format_version", 48);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);

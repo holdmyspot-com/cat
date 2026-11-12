@@ -460,8 +460,11 @@ public final class OptimizerCore implements Core
 		{
 			if (session.getKey().equals(host.sessionId()))
 				continue;
-			for (Header header : new FileCampaignStore(session.getValue(), scope.json(), scope.fileReplacer()).listHeaders())
+			for (Header header : new FileCampaignStore(session.getValue(), scope.projectRoot(), scope.json(),
+				scope.fileReplacer()).listHeaders())
+			{
 				headers.add(new Registry.OwnedHeader(session.getKey(), header));
+			}
 		}
 		return headers;
 	}
@@ -1867,7 +1870,7 @@ public final class OptimizerCore implements Core
 		{
 			if (session.getKey().equals(host.sessionId()))
 				continue;
-			Optional<Campaign> campaign = new FileCampaignStore(session.getValue(), scope.json(),
+			Optional<Campaign> campaign = new FileCampaignStore(session.getValue(), scope.projectRoot(), scope.json(),
 				scope.fileReplacer()).load(id);
 			if (campaign.isPresent())
 			{
@@ -3286,8 +3289,8 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Returns a campaign's target relative to the project that recorded it. A session that works in a copy of that
-	 * project, at another path, still gets a path inside the project.
+	 * Returns a campaign's target relative to its project. The store reads a campaign in the project that it belongs
+	 * to, so a session that works in a moved or copied project gets the target's path in that project.
 	 *
 	 * @param campaign the campaign
 	 * @return the relative path

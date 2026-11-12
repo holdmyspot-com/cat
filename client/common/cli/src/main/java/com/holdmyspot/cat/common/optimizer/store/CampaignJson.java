@@ -160,6 +160,12 @@ import tools.jackson.databind.node.ObjectNode;
  * which that throttle stopped growth. Other unsupported versions are refused with a message that asks the user to
  * start a new campaign.
  * <p>
+ * A document records the campaign's target, and every path inside the project where a trial session's or a prompt
+ * author's evidence was retained, relative to the project root, so that the campaign keeps working after its project
+ * moves or is copied; reading resolves them against the root of the project that the store belongs to. Documents of
+ * version 46 and earlier recorded these paths as absolute paths below the header's {@code root}; reading moves each
+ * of them below that project root.
+ * <p>
  * A campaign header has an {@code extra_permissions} object only when the user named writes or hosts for the
  * campaign's sessions; a header without it asks for none, so campaigns that started without them still load.
  * <p>
@@ -186,7 +192,7 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 46;
+	private static final int FORMAT_VERSION = 47;
 	/**
 	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
 	 * loads: reading drops the condition.
@@ -237,6 +243,19 @@ final class CampaignJson
 	 * @return the document
 	 */
 	ObjectNode writeCampaign(Campaign campaign)
+	{
+		ObjectNode root = writeCampaignPaths(campaign);
+		ProjectPaths.relativize(root, campaign.header().root());
+		return root;
+	}
+
+	/**
+	 * Converts a campaign to a snapshot document whose evidence paths are absolute.
+	 *
+	 * @param campaign the campaign
+	 * @return the document
+	 */
+	private ObjectNode writeCampaignPaths(Campaign campaign)
 	{
 		ObjectNode root = json.createObjectNode();
 		root.put(VERSION, FORMAT_VERSION);
@@ -317,14 +336,18 @@ final class CampaignJson
 	 * Converts a snapshot document to a campaign.
 	 *
 	 * @param root the document
-	 * @return the campaign
+	 * @param project the project root that the store belongs to now, or {@code null} to read the campaign in the
+	 *   project root that it recorded
+	 * @return the campaign, whose paths inside the project lie below {@code project}
 	 * @throws IllegalArgumentException if the document has a different format version or does not describe a valid
 	 *   campaign
 	 * @throws NullPointerException if a required value is missing
 	 */
-	Campaign readCampaign(JsonNode root)
+	Campaign readCampaign(JsonNode root, Path project)
 	{
 		requireVersion(root);
+		ProjectPaths paths = paths(root, project);
+		paths.resolve(root);
 		List<Lineage> lineages = new ArrayList<>();
 		for (JsonNode node : elements(root, "lineages"))
 			lineages.add(readLineage(node));
@@ -379,7 +402,7 @@ final class CampaignJson
 				recorded.add(readPlugin(node));
 			plugins = Optional.of(recorded);
 		}
-		return new Campaign(readHeader(field(root, "header")), ceiling, lineages,
+		return new Campaign(readHeader(field(root, "header"), paths), ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "prompt_author_attempts"),
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
@@ -870,24 +893,67 @@ final class CampaignJson
 	 * Reads only the header of a snapshot document.
 	 *
 	 * @param root the document
-	 * @return the header
+	 * @param project the project root that the store belongs to now, or {@code null} to read the header in the
+	 *   project root that it recorded
+	 * @return the header, whose root is {@code project} and whose target lies below it
 	 * @throws IllegalArgumentException if the document has a different format version or does not describe a valid
 	 *   header
 	 * @throws NullPointerException if a required value is missing
 	 */
-	Header readSnapshotHeader(JsonNode root)
+	Header readSnapshotHeader(JsonNode root, Path project)
 	{
 		requireVersion(root);
-		return readHeader(field(root, "header"));
+		return readHeader(field(root, "header"), paths(root, project));
+	}
+
+	/**
+	 * Returns the project root that a snapshot document recorded, without checking or upgrading its format.
+	 *
+	 * @param root the document
+	 * @return the root
+	 * @throws IllegalArgumentException if the document does not describe a header
+	 * @throws NullPointerException if a required value is missing
+	 */
+	static Path recordedRoot(JsonNode root)
+	{
+		return Path.of(text(field(root, "header"), "root"));
+	}
+
+	/**
+	 * Returns the conversion of a snapshot document's paths.
+	 *
+	 * @param root the document
+	 * @param project the project root that the store belongs to now, or {@code null} to read the document in the
+	 *   project root that it recorded
+	 * @return the conversion
+	 */
+	private static ProjectPaths paths(JsonNode root, Path project)
+	{
+		return new ProjectPaths(Path.of(text(field(root, "header"), "root")), project);
 	}
 
 	/**
 	 * Converts a trial record to a document.
 	 *
 	 * @param record the record
+	 * @param project the root of the project that the record's campaign belongs to, which the document's paths
+	 *   inside the project are recorded relative to, or {@code null} to record every path as it is
 	 * @return the document
 	 */
-	ObjectNode writeRecord(TrialRecord record)
+	ObjectNode writeRecord(TrialRecord record, Path project)
+	{
+		ObjectNode root = writeRecordPaths(record);
+		ProjectPaths.relativize(root, project);
+		return root;
+	}
+
+	/**
+	 * Converts a trial record to a document whose evidence paths are absolute.
+	 *
+	 * @param record the record
+	 * @return the document
+	 */
+	private ObjectNode writeRecordPaths(TrialRecord record)
 	{
 		ObjectNode root = json.createObjectNode();
 		root.put(VERSION, FORMAT_VERSION);
@@ -925,14 +991,16 @@ final class CampaignJson
 	 * Converts a document to a trial record.
 	 *
 	 * @param root the document
-	 * @return the record
+	 * @param paths the conversion of the document's paths
+	 * @return the record, whose paths inside the project lie below the project root that {@code paths} reads them in
 	 * @throws IllegalArgumentException if the document has a different format version or does not describe a valid
 	 *   record
 	 * @throws NullPointerException if a required value is missing
 	 */
-	TrialRecord readRecord(JsonNode root)
+	TrialRecord readRecord(JsonNode root, ProjectPaths paths)
 	{
 		requireVersion(root);
+		paths.resolve(root);
 		TrialKey key = readKey(field(root, "key"));
 		CampaignEvent.Complete outcome = null;
 		JsonNode outcomeNode = nullable(root, "outcome");
@@ -1271,7 +1339,7 @@ final class CampaignJson
 		ObjectNode node = json.createObjectNode();
 		node.put("id", header.id());
 		node.put("root", header.root().toString());
-		node.put("target", PortablePaths.text(header.target()));
+		node.put("target", ProjectPaths.write(header.target(), header.root()));
 		node.put("harness", EnumNames.lowerCase(header.harness()));
 		node.put("lifecycle", EnumNames.lowerCase(header.lifecycle()));
 		node.put("goal", header.goal());
@@ -1284,9 +1352,10 @@ final class CampaignJson
 	 * Converts a document to a campaign header.
 	 *
 	 * @param node the document
-	 * @return the header
+	 * @param paths the conversion of the document's paths
+	 * @return the header, whose root is the project root that the paths are read in
 	 */
-	private static Header readHeader(JsonNode node)
+	private static Header readHeader(JsonNode node, ProjectPaths paths)
 	{
 		ExtraPermissions extra = ExtraPermissions.NONE;
 		if (node.has("extra_permissions"))
@@ -1300,7 +1369,10 @@ final class CampaignJson
 				throw new IllegalArgumentException(e.getMessage(), e);
 			}
 		}
-		return new Header(text(node, "id"), Path.of(text(node, "root")), Path.of(text(node, "target")),
+		Path root = paths.current();
+		if (root == null)
+			root = Path.of(text(node, "root"));
+		return new Header(text(node, "id"), root, paths.read(text(node, "target")),
 			constant(node, "harness", Harness.class), constant(node, "lifecycle", Lifecycle.class),
 			nullableText(node, "goal"), extra);
 	}
@@ -2967,7 +3039,9 @@ final class CampaignJson
 			upgradeVersion45((ObjectNode) root);
 			return;
 		}
-		if (version != FORMAT_VERSION)
+		// Version 46 differs only by recording absolute paths inside the project, which reading moves below the
+		// project root
+		if (version != FORMAT_VERSION && version != 46)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
 				" campaign file, but this version of CAT reads only version " + FORMAT_VERSION + ". Start a new " +
