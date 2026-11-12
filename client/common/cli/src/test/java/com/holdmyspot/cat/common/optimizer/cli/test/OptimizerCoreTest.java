@@ -5898,6 +5898,9 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(output -> output.putArray("scope_conditions")));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			// A slice ends at its deadline, so each session takes time on the test clock. Without it the slice would run
+			// every trial that the development judge's shadowing wants.
+			repository.sessions().sessionDuration(Duration.ofSeconds(20));
 			CommandResult result = repository.core().run(id);
 			requireThat(result.status().status().toString(), "status").contains("RUNNING");
 			requireThat(result.status().campaignId(), "campaignId").isEqualTo(id);
