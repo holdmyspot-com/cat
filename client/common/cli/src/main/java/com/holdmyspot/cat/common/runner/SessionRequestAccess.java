@@ -30,7 +30,9 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * Before the session starts, the requested-runs directory also holds one empty directory for each session that the
  * session may request, numbered from 1. No run is built in these directories. Each exists before any requested
- * session starts, and the existence of the first shows that the session may request sessions.
+ * session starts, and the existence of the first shows that the session may request sessions. They all lie in one
+ * directory of their own, which holds nothing else, so that the sandbox of each requested session denies them as one
+ * path, however many there are, rather than one path for each group of them.
  * <p>
  * A session that may request no session gets the same access with none of these directories. A runner
  * launcher that its commands run then still hands its launch to the session's runner, instead of starting a harness
@@ -94,6 +96,11 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * requested-runs directory.
 	 */
 	public static final int GROUP_SIZE = 100;
+	/**
+	 * The directory, in the requested-runs directory, that holds the directories that stand for the sessions that a
+	 * session may request.
+	 */
+	private static final String REQUESTED_RUN_ROOTS = "allowed";
 	/**
 	 * The most bytes of a {@link #LIMITS_FILE} that a reader reads.
 	 */
@@ -253,9 +260,24 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
+	 * Returns the directory that holds the directories that stand for the sessions that a run's session may request,
+	 * and nothing else. No requested session runs below it.
+	 *
+	 * @param requestedRuns the run's requested-runs directory
+	 * @return the directory
+	 * @throws NullPointerException if {@code requestedRuns} is null
+	 */
+	public static Path requestedRunRoots(Path requestedRuns)
+	{
+		requireThat(requestedRuns, "requestedRuns").isNotNull();
+		return requestedRuns.resolve(REQUESTED_RUN_ROOTS);
+	}
+
+	/**
 	 * Returns the empty directory that stands for one session that a run's session may request, which lies in the
 	 * directory of the {@link #GROUP_SIZE} directories that include it, named by how many whole groups precede that
-	 * one. The requested session does not run there: the run's broker builds its run in a slot.
+	 * one, in {@link #requestedRunRoots(Path)}. The requested session does not run there: the run's broker builds its
+	 * run in a slot.
 	 *
 	 * @param requestedRuns the run's requested-runs directory
 	 * @param ordinal       the session's place among the sessions that the run's session may request, from 1
@@ -267,7 +289,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	{
 		requireThat(requestedRuns, "requestedRuns").isNotNull();
 		requireThat(ordinal, "ordinal").isPositive();
-		return requestedRuns.resolve(String.valueOf(ordinal / GROUP_SIZE)).resolve(String.valueOf(ordinal));
+		return requestedRunRoots(requestedRuns).resolve(String.valueOf(ordinal / GROUP_SIZE)).
+			resolve(String.valueOf(ordinal));
 	}
 
 	/**

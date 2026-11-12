@@ -10,18 +10,24 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionSlots;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
 
@@ -380,11 +386,12 @@ public abstract class SessionCommandLimitsContract
 			requireThat(readable(limits, requests), "requestsReadable").isTrue();
 			requireThat(readable(limits, responses), "responsesReadable").isTrue();
 			// The runs of requested sessions hold their logins while they run
-			Path requestedRuns = fixture.run().directory().resolve("requested-runs");
+			Path requestedRuns = SessionRequestAccess.requestedRunsDirectory(fixture.run());
 			requireThat(requestedRuns, "requestedRuns").isDirectory();
 			requireThat(readable(limits, requestedRuns), "requestedRunsReadable").isFalse();
-			requireThat(requestedRuns.resolve("0/1"), "firstRequestedRunRoot").isDirectory();
-			requireThat(requestedRuns.resolve("0/2"), "secondRequestedRunRoot").isDirectory();
+			requireThat(SessionRequestAccess.requestedRunRoot(requestedRuns, 1), "firstRequestedRunRoot").isDirectory();
+			requireThat(SessionRequestAccess.requestedRunRoot(requestedRuns, 2), "secondRequestedRunRoot").
+				isDirectory();
 		}
 	}
 
@@ -403,20 +410,78 @@ public abstract class SessionCommandLimitsContract
 		{
 			Fixture parent = fixture(cleanup);
 			limits(parent, 2);
-			Path requested = parent.run().directory().resolve("requested-runs");
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, requested.resolve("0/1"), Clock.systemUTC(),
+			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
+			Path ownRoot = SessionRequestAccess.requestedRunRoot(requested, 1);
+			Path siblingRoot = SessionRequestAccess.requestedRunRoot(requested, 2);
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, ownRoot, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun childRun = manager.create("harness");
 			manager.snapshotProject(childRun);
 			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
 				parent.run(), parent.artifact(), List.of(parent.manager().root()));
-			write(requested.resolve("0/2/future/home/login"));
+			write(siblingRoot.resolve("future/home/login"));
 
 			Limits childLimits = limits(child, 0);
 
 			requireThat(readable(childLimits, childRun.directory().resolve("project")), "ownProject").isTrue();
 			requireThat(readable(childLimits, parent.runHome()), "parentHome").isFalse();
-			requireThat(readable(childLimits, requested.resolve("0/2/future/home/login")), "siblingLogin").isFalse();
+			requireThat(readable(childLimits, siblingRoot.resolve("future/home/login")), "siblingLogin").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that a session requested in a slot of its requester's run is denied the directories that stand for the
+	 * requester's requested sessions as one path, which holds them all and none of the session's own files, however
+	 * many groups of them there are, and that the denial still covers each of them.
+	 *
+	 * @throws IOException          if fixture or configuration I/O fails
+	 * @throws InterruptedException if the test is interrupted while it takes the slot
+	 */
+	@Test
+	public void childDeniesRequestedRunRootsAsOnePath() throws IOException, InterruptedException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture parent = fixture(cleanup);
+			int sessionRequests = 3 * SessionRequestAccess.GROUP_SIZE;
+			limits(parent, sessionRequests);
+			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
+			SessionSlots.Slot slot = new SessionSlots(requested, 1, new ProcessHandleLiveness()).acquire(false);
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, slot.root(), Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId(slot.runId());
+			HarnessRun childRun = manager.create("harness");
+			manager.snapshotProject(childRun);
+			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
+				parent.run(), parent.artifact(), List.of(parent.manager().root()));
+
+			Limits childLimits = limits(child, 0);
+
+			Path roots = SessionRequestAccess.requestedRunRoots(requested).toRealPath();
+			List<Path> covering = new ArrayList<>();
+			for (Path denied : realPaths(childLimits.deniedReads()))
+			{
+				if (denied.startsWith(roots) || roots.startsWith(denied))
+					covering.add(denied);
+			}
+			requireThat(covering, "covering").withContext(childLimits.deniedReads(), "deniedReads").
+				isEqualTo(List.of(roots));
+			for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
+			{
+				Path root = SessionRequestAccess.requestedRunRoot(requested, ordinal);
+				requireThat(readable(childLimits, root), "readable").withContext(root, "root").isFalse();
+			}
+			// The denied directory holds only the groups of the directories that stand for requested sessions
+			try (Stream<Path> entries = Files.list(roots))
+			{
+				Set<String> groups = new HashSet<>();
+				for (int group = 0; group <= sessionRequests / SessionRequestAccess.GROUP_SIZE; ++group)
+					groups.add(String.valueOf(group));
+				requireThat(entries.map(entry -> entry.getFileName().toString()).collect(Collectors.toSet()),
+					"entries").isEqualTo(groups);
+			}
+			requireThat(readable(childLimits, childRun.directory().resolve("project")), "ownProject").isTrue();
+			requireThat(readable(childLimits, childRun.directory().resolve("home")), "ownHome").isTrue();
 		}
 	}
 
@@ -444,7 +509,7 @@ public abstract class SessionCommandLimitsContract
 				isEqualTo(requests.toString());
 			requireThat(realPaths(limits.writable()), "writable").contains(requests.toRealPath());
 			requireThat(readable(limits, responses), "responsesReadable").isTrue();
-			Path requestedRuns = fixture.run().directory().resolve("requested-runs");
+			Path requestedRuns = SessionRequestAccess.requestedRunsDirectory(fixture.run());
 			try (Stream<Path> roots = Files.list(requestedRuns))
 			{
 				requireThat(roots.toList(), "requestedRunRoots").isEmpty();
