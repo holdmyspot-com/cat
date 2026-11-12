@@ -581,7 +581,11 @@ public final class SandboxEntriesTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Path locks = home.resolveSibling("user/.cat/locks");
+			// The state folder is created and deleted by this test alone. Tests run in parallel, and every other test names
+			// the shared user folder's state folder without creating it, so a second thread that inspects or deletes the
+			// folder while this install deletes it makes Windows refuse with AccessDeniedException (delete-pending).
+			Path user = cleanup.add(Files.createTempDirectory(testRoot(), "user-"));
+			Path locks = user.resolve(".cat/locks");
 			Path state = launcherState(locks);
 			Files.createDirectories(state.resolve("codex/launchers/1234"));
 			Files.writeString(state.resolve("codex/launchers/1234/heartbeat"), "1");
