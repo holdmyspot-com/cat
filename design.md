@@ -928,14 +928,17 @@ gets a run id of its own, since slot run ids repeat. A slot is not handed on whi
 recorded, the runner or the harness, is alive; the runner already ends the rest of the run's process tree.
 
 The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
-and project into the instructions they send before the conversation: in an E1 campaign, every Claude trial and judge
-reused only the first 11,663 tokens from the cache and wrote about 27,000 to 31,000 tokens again, about 88 million of
-the campaign's 91 million cache-write tokens, because each session's own home put a different memory path into the
-system prompt; Codex sessions likewise reused about 10,000 of 15,000 to 19,000 tokens. In a slot those paths repeat
-from one session to the next, so a session reuses what the slot's previous session of the same model cached. The
-content that the harness sends is otherwise unchanged: CAT adds no option that moves or removes parts of the system
-prompt and appends nothing to it. Paths are not part of any measurement identity, and every trial, of the baseline,
-the control and every candidate, runs in a slot, so comparisons stay fair. The slots work the same on every platform;
+and project into the instructions they send before the conversation. In a Claude session the memory path sits in the
+system prompt behind the shared prefix (11,663 tokens in an E1 campaign), so a fresh home per session made every
+session write that block again; in a slot the path repeats, and a session reads about 2,000 more tokens from what the
+slot's previous session of the same model cached (measured per model request, 2026-11-12). The larger per-session
+block that follows the request (sandbox lists, environment, deferred tools, skills) cannot be shared between sessions,
+because the request comes before it. Codex sessions reused about 10,000 of 15,000 to 19,000 tokens before slots and
+have not been measured in slots. For trials the content that the harness sends is otherwise unchanged: CAT adds no
+option that moves or removes parts of the system prompt and appends nothing to it. Judge sessions, which are not
+measured, start with only the read tools a judge needs and a 5-minute cache lifetime, as do trials for the cache
+lifetime alone (user rulings, 2026-11-12). Paths are not part of any measurement identity, and every trial, of the
+baseline, the control and every candidate, runs in a slot, so comparisons stay fair. The slots work the same on every platform;
 they need no mount namespace or other facility of one operating system.
 
 Trial sessions run as the prompt system's users run it: a trial installs the trial plugins that the campaign
