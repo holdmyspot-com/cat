@@ -85,44 +85,6 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that a forwarded launch can select the profile from a CAT agent definition.
-	 *
-	 * @throws IOException if fixture I/O fails
-	 */
-	@Test
-	public void forwardsAgentProfile() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")));
-			fixture.forward(SessionRequestForwarder.Route.SERVER, "codex",
-				new String[]{"--project", fixture.project.toString(), "--agent", "cat-optimize-xhigh"},
-				new StringReader(RECORDS), new ByteArrayOutputStream(), "completed");
-			JsonNode request = JsonMapper.builder().build().readTree(fixture.entries.get("request.json"));
-			requireThat(request.path("agent").asString(), "agent").isEqualTo("cat-optimize-xhigh");
-			requireThat(request.has("model"), "model").isFalse();
-			requireThat(request.has("effort"), "effort").isFalse();
-		}
-	}
-
-	/**
-	 * Verifies that a launch without an agent still requires both model and effort.
-	 */
-	@Test(expectedExceptions = InvalidArgumentsException.class,
-		expectedExceptionsMessageRegExp = "Missing --model and --effort\\. A run requires both --model and --effort\\..*")
-	public void refusesLaunchWithoutAgentOrProfile() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")));
-			fixture.forward("codex", new String[]{"--project", fixture.project.toString()}, new StringReader(RECORDS),
-				new ByteArrayOutputStream(), "completed");
-		}
-	}
-
-	/**
 	 * Verifies that the records may come from an input file and that the transcript goes to the named output file.
 	 *
 	 * @throws IOException if fixture I/O fails
@@ -466,30 +428,8 @@ public final class SessionRequestForwarderTest
 		int forward(String harness, String[] args, StringReader input, ByteArrayOutputStream output, String outcome)
 			throws IOException
 		{
-			return forward(SessionRequestForwarder.Route.RUN, harness, args, input, output, outcome);
-		}
-
-		/**
-		 * Forwards a launch over the specified route while the fake runner answers it.
-		 *
-		 * @param route   the runner that serves the request
-		 * @param harness the launcher's harness
-		 * @param args    the launcher's arguments
-		 * @param input   the launcher's standard input
-		 * @param output  the launcher's standard output
-		 * @param outcome the response status
-		 * @return the forwarder's exit status
-		 * @throws IOException if forwarding fails
-		 */
-		int forward(SessionRequestForwarder.Route route, String harness, String[] args, StringReader input,
-			ByteArrayOutputStream output, String outcome) throws IOException
-		{
 			int[] pauses = {0};
-			Path runRoot = null;
-			if (route == SessionRequestForwarder.Route.SERVER)
-				runRoot = root.resolve("run-root");
-			return SessionRequestForwarder.forward(route, harness, args, input, requests,
-				runRoot, () ->
+			return SessionRequestForwarder.forward(harness, args, input, requests, () ->
 			{
 				pauses[0] += 1;
 				Path response = responseDirectory();

@@ -499,11 +499,8 @@ public final class SessionRequestForwarder
 		}
 		if (conversation != null && records != null)
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
-		if (request.has("agent"))
-			HarnessRunnerOptions.requireNoProfileBesideAgent(args);
-		else
-			HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
-				request.path("effort").asString(""));
+		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
+			request.path("effort").asString(""));
 		return new Launch(request, records, conversation, transcript, receipt, runRoot, artifact, keepRun);
 	}
 
