@@ -23,10 +23,12 @@ import java.util.Set;
  * @param assertions       the assertions, in order, without {@value TestCase#EXPECTED_OUTCOME}
  * @param expectedOutcomeTool the built-in tool that the {@code ### expected_outcome} subsection of
  *                         {@code ## Assertions} gives the assertion that CAT adds, or empty if the judge decides it
+ * @param expectedOutcomeJudgeReason why no built-in tool decides the added assertion, or {@code null} for legacy
+ *                                   scenarios
  */
 public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions,
-	Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	Optional<ExpectedOutcomeTool> expectedOutcomeTool, String expectedOutcomeJudgeReason)
 {
 	/**
 	 * Creates a scenario.
@@ -50,6 +52,9 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 		requireThat(expectedBehavior, "expectedBehavior").isNotNull();
 		requireThat(assertions, "assertions").isNotEmpty();
 		requireThat(expectedOutcomeTool, "expectedOutcomeTool").isNotNull();
+		if (expectedOutcomeTool.isPresent() && expectedOutcomeTool.get().onToolFailure() == OnToolFailure.FAIL &&
+			expectedOutcomeJudgeReason != null)
+			throw new IllegalArgumentException("The expected outcome tool decides the assertion without a judge");
 		variables = List.copyOf(variables);
 		turns = List.copyOf(turns);
 		assertions = List.copyOf(assertions);
@@ -84,6 +89,22 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	}
 
 	/**
+	 * Creates a scenario with no explicit reason for the added assertion.
+	 *
+	 * @param variables the declared variables
+	 * @param turns the user turns
+	 * @param expectedBehavior the expected behavior, if any
+	 * @param assertions the declared assertions
+	 * @param expectedOutcomeTool the built-in tool for the added assertion, if any
+	 */
+	public Scenario(List<VariableDeclaration> variables, List<String> turns,
+		Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions,
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	{
+		this(variables, turns, expectedBehavior, assertions, expectedOutcomeTool, null);
+	}
+
+	/**
 	 * Creates a scenario whose assertion {@value TestCase#EXPECTED_OUTCOME} has no built-in tool.
 	 *
 	 * @param variables        the declared variables, in order
@@ -96,7 +117,7 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 	public Scenario(List<VariableDeclaration> variables, List<String> turns,
 		Optional<ExpectedBehavior> expectedBehavior, List<Assertion> assertions)
 	{
-		this(variables, turns, expectedBehavior, assertions, Optional.empty());
+		this(variables, turns, expectedBehavior, assertions, Optional.empty(), null);
 	}
 
 	/**
@@ -215,13 +236,20 @@ public record Scenario(List<VariableDeclaration> variables, List<String> turns,
 			if (assertion.onToolFailure() == OnToolFailure.JUDGE)
 				appendPair(text, "on_tool_failure", "judge");
 			appendPair(text, "description", assertion.statement());
+			if (assertion.judgeReason() != null)
+				appendPair(text, "judge_reason", assertion.judgeReason());
 		}
-		if (expectedOutcomeTool.isPresent())
+		if (expectedOutcomeTool.isPresent() || expectedOutcomeJudgeReason != null)
 		{
 			text.append("\n### ").append(TestCase.EXPECTED_OUTCOME).append("\n\n");
-			appendPair(text, "tool", CodeSpan.render(expectedOutcomeTool.get().tool()));
-			if (expectedOutcomeTool.get().onToolFailure() == OnToolFailure.JUDGE)
-				appendPair(text, "on_tool_failure", "judge");
+			if (expectedOutcomeTool.isPresent())
+			{
+				appendPair(text, "tool", CodeSpan.render(expectedOutcomeTool.get().tool()));
+				if (expectedOutcomeTool.get().onToolFailure() == OnToolFailure.JUDGE)
+					appendPair(text, "on_tool_failure", "judge");
+			}
+			if (expectedOutcomeJudgeReason != null)
+				appendPair(text, "judge_reason", expectedOutcomeJudgeReason);
 		}
 
 		String rendered = text.toString();

@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
@@ -94,7 +95,7 @@ public final class ProposalCheck
 	 * The fields of a completed prompt test whose values come from its {@value PromptTestFiles#SCENARIO}.
 	 */
 	private static final Set<String> SCENARIO_FIELDS = Set.of(".turns", ".variables", ".expected_behavior",
-		".time_limit_seconds", ".expected_outcome_tool");
+		".time_limit_seconds", ".expected_outcome_tool", ".expected_outcome_judge_reason");
 	/**
 	 * The file name suffix of a scenario in an earlier format.
 	 */
@@ -939,6 +940,15 @@ public final class ProposalCheck
 				throw new UncheckedIOException(e);
 			}
 			Scenario scenario = files.scenario();
+			boolean requireJudgeReasons = recordedTest == null;
+			if (requireJudgeReasons && (scenario.expectedOutcomeTool().isEmpty() ||
+				scenario.expectedOutcomeTool().get().onToolFailure() == OnToolFailure.JUDGE) &&
+				scenario.expectedOutcomeJudgeReason() == null)
+			{
+				problems.add(display(scenarioFile) + ": expected_outcome is judged but has no judge_reason; add one " +
+					"sentence explaining why no built-in tool decides it");
+				return null;
+			}
 			if (scenario.expectedBehavior().isEmpty())
 			{
 				problems.add(display(scenarioFile) + ": the scenario has no ## Expected Behavior section. Add one " +
@@ -953,7 +963,7 @@ public final class ProposalCheck
 			TestFiles filesOfTest = new TestFiles(display(testDirectory), display(scenarioFile),
 				display(testDirectory.resolve(ValuesFile.NAME)), new ArrayList<>(), new ArrayList<>());
 			ArrayNode testCases = testCases(testDirectory, committedTestCases, filesOfTest);
-			ArrayNode assertions = assertions(item, location, scenario, filesOfTest);
+			ArrayNode assertions = assertions(item, location, scenario, filesOfTest, requireJudgeReasons);
 			if (testCases == null || assertions == null)
 				return null;
 			Optional<List<WorkspaceFile>> readWorkspaceFiles = textWorkspaceFiles(files);
@@ -1006,6 +1016,8 @@ public final class ProposalCheck
 				toolNode.put("on_tool_failure",
 					EnumNames.lowerCase(scenario.expectedOutcomeTool().get().onToolFailure()));
 			}
+			if (scenario.expectedOutcomeJudgeReason() != null)
+				test.put("expected_outcome_judge_reason", scenario.expectedOutcomeJudgeReason());
 			if (item.has(ProposalSchema.NEAR_MISSES))
 				test.set(ProposalSchema.NEAR_MISSES, item.get(ProposalSchema.NEAR_MISSES));
 
@@ -1185,9 +1197,11 @@ public final class ProposalCheck
 		 * @param location     the item's JSON path
 		 * @param scenario     the prompt test's scenario
 		 * @param files        the prompt test's files, which receive the identifier of each assertion
+		 * @param requireJudgeReasons whether missing judge reasons are a proposal problem
 		 * @return the assertions, in the item's order, or {@code null} if a problem was added
 		 */
-		private ArrayNode assertions(ObjectNode item, String location, Scenario scenario, TestFiles files)
+		private ArrayNode assertions(ObjectNode item, String location, Scenario scenario, TestFiles files,
+			boolean requireJudgeReasons)
 		{
 			String scenarioFile = files.scenario();
 			int problemsBefore = problems.size();
@@ -1214,6 +1228,13 @@ public final class ProposalCheck
 						scenarioFile + " to one requirement.");
 					continue;
 				}
+				if (requireJudgeReasons && (assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE) &&
+					assertion.judgeReason() == null)
+				{
+					problems.add(scenarioFile + ": assertion `" + id + "` is judged but has no judge_reason; add one " +
+						"sentence explaining why no built-in tool decides it");
+					continue;
+				}
 				ObjectNode full = assertions.addObject();
 				files.assertionIds().add(id);
 				full.put("id", id);
@@ -1221,6 +1242,9 @@ public final class ProposalCheck
 				full.put("tool", assertion.tool());
 				full.put("on_tool_failure", EnumNames.lowerCase(assertion.onToolFailure()));
 				full.put("statement", assertion.statement());
+				if ((assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE) &&
+					assertion.judgeReason() != null)
+					full.put("judge_reason", assertion.judgeReason());
 				full.put("requirement_id", items.get(k).get("requirement_id").asString());
 			}
 			for (String id : declared.keySet())

@@ -71,6 +71,14 @@ final class ToolRecords
 		return firstCall(record, tool, null);
 	}
 
+	/**
+	 * Returns the first call to a named tool whose input matches the optional expression.
+	 *
+	 * @param record the trial record
+	 * @param tool the tool's name
+	 * @param inputRegex the optional input expression
+	 * @return the first matching call, or empty
+	 */
 	static Optional<Tool> firstCall(TrialRecord record, String tool, Pattern inputRegex)
 	{
 		return record.tools().stream().filter(call -> call.tool().equals(tool)).

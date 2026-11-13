@@ -150,14 +150,16 @@ the test case decides, or a file of the project that the turn works on.
 The `## Assertions` section lists every statement that a compliant trial satisfies. A trial passes when it passes every
 assertion of its test. Each assertion's `### <id>` is unique within the test. CAT adds the assertion `expected_outcome`:
 the reply's result matches the test case's expected outcome. The judge decides it unless the test gives it a built-in
-tool. To give it one, add a `### expected_outcome` subsection with only these pairs; CAT supplies its description and
-kind, and refuses any other pair there:
+tool. Add a `### expected_outcome` subsection when a built-in tool decides it or when the judge decides it and needs a
+reason. CAT supplies its description and kind. The subsection accepts:
 
 - `tool`: the built-in tool and its arguments in one code span, such as `` `exact-text {{expected_outcome}}` ``; the
 	arguments may name the test's variables and `{{expected_outcome}}`;
 - `on_tool_failure`, optionally: `fail`, the meaning when the pair is absent, or `judge`. The same rules apply as for
 	any other assertion, below: under `fail` the tool must observe everything that every test case's expected outcome
 	requires, and under `judge` it must pass no reply that the expected outcome rejects.
+- `judge_reason`, when no tool decides the assertion or `on_tool_failure` is `judge`: one sentence explaining why no
+	built-in tool can decide the whole expected outcome assertion.
 
 Give every assertion that a built-in tool can decide under these rules that tool, `expected_outcome` included, because
 a trial whose tools decide every assertion needs no judge session. Every other assertion holds these pairs:
@@ -171,7 +173,8 @@ a trial whose tools decide every assertion needs no judge session. Every other a
 - `on_tool_failure`, only with `tool`: what a failure of the tool means: `fail` when the failure fails the trial,
 	which is the meaning when the pair is absent; `judge` when the judge then decides the assertion from its description;
 - `description`: what the assertion requires, in words that the judge can decide from the trial's record.
-- `judge_reason`, for an assertion without a `tool`: one sentence explaining why no built-in tool can decide it.
+- `judge_reason`, when the judge decides any part of an assertion (no `tool`, or `on_tool_failure: judge`): one
+	sentence explaining why no built-in tool can decide the whole assertion.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
 that passes when the agent called its Read tool. The description may still describe the agent's tools, such as "the
@@ -211,6 +214,9 @@ a tool's output before the model receives it, and the part that they cut off doe
 
 CAT refuses a built-in tool whose evidence the harness does not report, such as `exit-status` for a harness that
 reports no exit statuses.
+
+A tool verdict is exact and final, so it needs no judge qualification. Qualification and near-miss comparisons apply
+only to assertions the judge decides.
 
 ### Near misses
 

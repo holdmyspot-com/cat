@@ -322,9 +322,11 @@ public final class ScenarioTest
 
 			- **kind**: guard
 			- **description**: The reply states {{expected_outcome}}.
+			- **judge_reason**: Whether the reply states the expected result requires understanding its meaning.
 			""");
 		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(new Assertion("answer_correct",
-			AssertionKind.GUARD, null, "The reply states {{expected_outcome}}.")));
+			AssertionKind.GUARD, null, OnToolFailure.FAIL, "The reply states {{expected_outcome}}.",
+			"Whether the reply states the expected result requires understanding its meaning.")));
 	}
 
 	/**
@@ -346,6 +348,7 @@ public final class ScenarioTest
 			- **tool**: `pattern "(?i)session store"`
 			- **on_tool_failure**: judge
 			- **description**: The reply names the session store in any wording.
+			- **judge_reason**: The wording can be correct without matching this exact phrase.
 
 			### notes_read
 
@@ -354,9 +357,10 @@ public final class ScenarioTest
 			- **on_tool_failure**: fail
 			- **description**: The agent reads all of `docs/{{notes}}`.
 			""");
-		requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(
+			requireThat(scenario.assertions(), "assertions").isEqualTo(List.of(
 			new Assertion("component_named", AssertionKind.EFFECT, "pattern \"(?i)session store\"",
-				OnToolFailure.JUDGE, "The reply names the session store in any wording."),
+				OnToolFailure.JUDGE, "The reply names the session store in any wording.",
+				"The wording can be correct without matching this exact phrase."),
 			new Assertion("notes_read", AssertionKind.EFFECT, "read-in-full docs/{{notes}}", OnToolFailure.FAIL,
 				"The agent reads all of `docs/{{notes}}`.")));
 		String rendered = scenario.render();
@@ -731,13 +735,22 @@ public final class ScenarioTest
 
 			- **tool**: `pattern "(?i){{expected_outcome}}"`
 			- **on_tool_failure**: judge
+			- **judge_reason**: A reply can state the correct result in wording the pattern misses.
 			""");
 		requireThat(judging.expectedOutcomeTool(), "judging").isEqualTo(Optional.of(new ExpectedOutcomeTool(
 			"pattern \"(?i){{expected_outcome}}\"", OnToolFailure.JUDGE)));
+		requireThat(judging.expectedOutcomeJudgeReason(), "judgeReason").isEqualTo(
+			"A reply can state the correct result in wording the pattern misses.");
 		String rendered = judging.render();
 		requireThat(Scenario.parse(rendered), "roundTrip").isEqualTo(judging);
 		requireThat(rendered, "rendered").contains("### expected_outcome\n\n- **tool**: ").
-			contains("- **on_tool_failure**: judge\n");
+			contains("- **on_tool_failure**: judge\n").contains("- **judge_reason**: ");
+
+		Scenario judgeOnly = Scenario.parse(VARIABLES + TURN + ASSERTIONS + "\n\n### expected_outcome\n\n" +
+			"- **judge_reason**: The expected result needs a semantic comparison.\n");
+		requireThat(judgeOnly.expectedOutcomeJudgeReason(), "judgeOnlyReason").isEqualTo(
+			"The expected result needs a semantic comparison.");
+		requireThat(Scenario.parse(judgeOnly.render()), "judgeOnlyRoundTrip").isEqualTo(judgeOnly);
 
 		Scenario without = Scenario.parse(VARIABLES + TURN + ASSERTIONS);
 		requireThat(without.expectedOutcomeTool(), "without").isEqualTo(Optional.empty());
@@ -759,7 +772,7 @@ public final class ScenarioTest
 			startsWith("Line 17:").contains("description");
 		requireThat(refusal(start + tool + "- **other**: x\n"), "otherKey").startsWith("Line 17:").
 			contains("other");
-		requireThat(refusal(start + "- **on_tool_failure**: judge\n"), "noTool").startsWith("Line 14:").
+		requireThat(refusal(start + "- **on_tool_failure**: judge\n"), "noTool").startsWith("Line 16:").
 			contains("no tool");
 		requireThat(refusal(start + "- **tool**: `no-such-tool x`\n"), "unknownTool").startsWith("Line 16:");
 		requireThat(refusal(start + tool + "- **on_tool_failure**: retry\n"), "unknownValue").

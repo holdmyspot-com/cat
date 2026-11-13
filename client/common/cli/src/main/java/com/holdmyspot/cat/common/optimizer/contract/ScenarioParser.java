@@ -34,6 +34,7 @@ final class ScenarioParser
 	private static final String TOOL = "tool";
 	private static final String ON_TOOL_FAILURE = "on_tool_failure";
 	private static final String DESCRIPTION = "description";
+	private static final String JUDGE_REASON = "judge_reason";
 	private static final String TIME_LIMIT_SECONDS = "time_limit_seconds";
 	/**
 	 * Matches a positive whole number of seconds without leading zeros.
@@ -89,8 +90,10 @@ final class ScenarioParser
 	 * @param assertions          the declared assertions, in order
 	 * @param expectedOutcomeTool the tool that the {@code ### expected_outcome} subsection gives the assertion that
 	 *                            CAT adds, or empty if the section has none
+	 * @param expectedOutcomeJudgeReason why no built-in tool decides the added assertion, or {@code null}
 	 */
-	private record ParsedAssertions(List<Assertion> assertions, Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	private record ParsedAssertions(List<Assertion> assertions, Optional<ExpectedOutcomeTool> expectedOutcomeTool,
+		String expectedOutcomeJudgeReason)
 	{
 	}
 
@@ -178,7 +181,8 @@ final class ScenarioParser
 		ParsedAssertions parsed = assertions(sections.get(ASSERTIONS));
 		try
 		{
-			return new Scenario(variables, turns, expectedBehavior, parsed.assertions(), parsed.expectedOutcomeTool());
+			return new Scenario(variables, turns, expectedBehavior, parsed.assertions(), parsed.expectedOutcomeTool(),
+				parsed.expectedOutcomeJudgeReason());
 		}
 		catch (IllegalArgumentException e)
 		{
@@ -537,6 +541,7 @@ final class ScenarioParser
 			throw error(section.heading(), "the ## Assertions section has no assertion");
 		List<Assertion> assertions = new ArrayList<>();
 		Optional<ExpectedOutcomeTool> expectedOutcomeTool = Optional.empty();
+		String expectedOutcomeJudgeReason = null;
 		Set<String> ids = new HashSet<>();
 		for (int k = 0; k < headings.size(); ++k)
 		{
@@ -547,7 +552,11 @@ final class ScenarioParser
 			if (!ids.add(id))
 				throw error(heading, "the assertion " + id + " is declared twice");
 			if (id.equals(TestCase.EXPECTED_OUTCOME))
-				expectedOutcomeTool = Optional.of(expectedOutcomeTool(heading, end(headings, k, section)));
+			{
+				OutcomeDeclaration outcome = expectedOutcome(heading, end(headings, k, section));
+				expectedOutcomeTool = outcome.tool();
+				expectedOutcomeJudgeReason = outcome.judgeReason();
+			}
 			else
 				assertions.add(assertion(id, heading, end(headings, k, section)));
 		}
@@ -556,20 +565,28 @@ final class ScenarioParser
 			throw error(section.heading(), "the ## Assertions section declares no assertion besides " +
 				TestCase.EXPECTED_OUTCOME + "; add one that checks a requirement, such as ### answer_given");
 		}
-		return new ParsedAssertions(assertions, expectedOutcomeTool);
+		return new ParsedAssertions(assertions, expectedOutcomeTool, expectedOutcomeJudgeReason);
 	}
 
 	/**
-	 * Parses the pairs of the subsection {@code ### expected_outcome}, which gives the assertion that CAT adds a
-	 * built-in tool. CAT supplies the assertion's description and kind.
+	 * The declaration of the assertion CAT adds from the expected outcome.
+	 *
+	 * @param tool its built-in tool, or empty when the judge decides it
+	 * @param judgeReason why no built-in tool decides it, or {@code null}
+	 */
+	private record OutcomeDeclaration(Optional<ExpectedOutcomeTool> tool, String judgeReason)
+	{
+	}
+
+	/**
+	 * Parses the pairs of the subsection {@code ### expected_outcome}. CAT supplies the assertion's description and kind.
 	 *
 	 * @param heading the index of its heading line
-	 * @param end     the index of the line after its last line
-	 * @return the tool
-	 * @throws ScenarioFormatException if the subsection holds prose, a {@code kind}, a {@code description} or an
-	 *                                 undefined key, lacks its {@code tool}, or holds an invalid value
+	 * @param end the index of the line after its last line
+	 * @return the tool and reason, if any
+	 * @throws ScenarioFormatException if the subsection holds an undefined key or invalid value
 	 */
-	private ExpectedOutcomeTool expectedOutcomeTool(int heading, int end) throws ScenarioFormatException
+	private OutcomeDeclaration expectedOutcome(int heading, int end) throws ScenarioFormatException
 	{
 		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + TestCase.EXPECTED_OUTCOME + " holds only " +
 			"key-value pairs, such as - **tool**: `exact-text {{" + TestCase.EXPECTED_OUTCOME + "}}`");
@@ -581,19 +598,27 @@ final class ScenarioParser
 					TestCase.EXPECTED_OUTCOME + "; give it only a tool and, optionally, on_tool_failure");
 			}
 		}
-		requireKeys(pairs, Set.of(TOOL, ON_TOOL_FAILURE), "tool and on_tool_failure");
+		requireKeys(pairs, Set.of(TOOL, ON_TOOL_FAILURE, JUDGE_REASON),
+			"tool, on_tool_failure and judge_reason when the judge decides it");
 		Pair toolPair = find(pairs, TOOL);
-		if (toolPair == null)
-		{
-			throw error(heading, "the assertion " + TestCase.EXPECTED_OUTCOME + " has no tool; add - **tool**: " +
-				"followed by a built-in tool, or remove the subsection so that the judge decides it");
-		}
-		String tool = tool(toolPair);
+		Pair reasonPair = find(pairs, JUDGE_REASON);
+		if (reasonPair != null && reasonPair.value().isBlank())
+			throw error(reasonPair.line(), "the key judge_reason has no value");
 		OnToolFailure onToolFailure = OnToolFailure.FAIL;
 		Pair onToolFailurePair = find(pairs, ON_TOOL_FAILURE);
+		if (toolPair == null && onToolFailurePair != null)
+			throw error(onToolFailurePair.line(), "on_tool_failure has no tool whose failure it handles");
 		if (onToolFailurePair != null)
 			onToolFailure = onToolFailure(onToolFailurePair);
-		return new ExpectedOutcomeTool(tool, onToolFailure);
+		if (reasonPair != null && toolPair != null && onToolFailure != OnToolFailure.JUDGE)
+			throw error(reasonPair.line(), "judge_reason is only needed when the judge decides the assertion");
+		Optional<ExpectedOutcomeTool> tool = Optional.empty();
+		if (toolPair != null)
+			tool = Optional.of(new ExpectedOutcomeTool(tool(toolPair), onToolFailure));
+		String judgeReason = null;
+		if (reasonPair != null)
+			judgeReason = reasonPair.value();
+		return new OutcomeDeclaration(tool, judgeReason);
 	}
 
 	/**
@@ -611,8 +636,8 @@ final class ScenarioParser
 	{
 		List<Pair> pairs = pairs(heading + 1, end, "the assertion " + id + " holds only key-value pairs, such as " +
 			"- **kind**: effect");
-		requireKeys(pairs, Set.of(KIND, TOOL, ON_TOOL_FAILURE, DESCRIPTION), "kind, tool, on_tool_failure and " +
-			"description");
+		requireKeys(pairs, Set.of(KIND, TOOL, ON_TOOL_FAILURE, DESCRIPTION, JUDGE_REASON),
+			"kind, tool, on_tool_failure, description and judge_reason when the judge decides it");
 
 		Pair kindPair = find(pairs, KIND);
 		if (kindPair == null)
@@ -649,7 +674,15 @@ final class ScenarioParser
 			throw error(heading, "the assertion " + id + " has no description; add - **description**: followed by it");
 		if (description.value().isEmpty())
 			throw error(description.line(), "the key description has no value");
-		return new Assertion(id, kind, tool, onToolFailure, description.value());
+		Pair reason = find(pairs, JUDGE_REASON);
+		if (reason != null && reason.value().isBlank())
+			throw error(reason.line(), "the key judge_reason has no value");
+		if (tool != null && onToolFailure != OnToolFailure.JUDGE && reason != null)
+			throw error(reason.line(), "judge_reason is only needed when the judge decides the assertion");
+		String judgeReason = null;
+		if (reason != null)
+			judgeReason = reason.value();
+		return new Assertion(id, kind, tool, onToolFailure, description.value(), judgeReason);
 	}
 
 	/**

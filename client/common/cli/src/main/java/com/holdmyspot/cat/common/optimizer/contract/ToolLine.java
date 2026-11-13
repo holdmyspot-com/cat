@@ -39,8 +39,10 @@ final class ToolLine
 			line -> new BuiltInTool.FileContent(line.text(0), line.text(1)))),
 		Map.entry("exit-status", new Parser(false, 2,
 			line -> new BuiltInTool.ExitStatus(line.text(0), line.wholeNumber(1, "status")))),
-		Map.entry("tool-used", new Parser(false, 2, line -> new BuiltInTool.ToolUsed(line.text(0), line.optionalText(1)))),
-		Map.entry("tool-unused", new Parser(false, 2, line -> new BuiltInTool.ToolUnused(line.text(0), line.optionalText(1)))),
+		Map.entry("tool-used", new Parser(false, 2,
+			line -> new BuiltInTool.ToolUsed(line.text(0), line.optionalText(1)))),
+		Map.entry("tool-unused", new Parser(false, 2,
+			line -> new BuiltInTool.ToolUnused(line.text(0), line.optionalText(1)))),
 		Map.entry("changed-only", new Parser(false, -1, line -> new BuiltInTool.ChangedOnly(line.allArguments()))),
 		Map.entry("no-tool-call", new Parser(false, 0, _ -> new BuiltInTool.NoToolCall())),
 		Map.entry("read-in-full", new Parser(false, 1, line -> new BuiltInTool.ReadInFull(line.text(0)))),
@@ -87,11 +89,24 @@ final class ToolLine
 			return arguments.get(index);
 		}
 
+		/**
+		 * Returns an argument when present.
+		 *
+		 * @param index the argument's index
+		 * @return the argument, or {@code null} when absent
+		 */
 		String optionalText(int index)
 		{
-			return arguments.size() > index ? arguments.get(index) : null;
+			if (arguments.size() > index)
+				return arguments.get(index);
+			return null;
 		}
 
+		/**
+		 * Returns all arguments.
+		 *
+		 * @return the arguments
+		 */
 		List<String> allArguments()
 		{
 			return arguments;
@@ -168,8 +183,14 @@ final class ToolLine
 			remaining = remaining.subList(1, remaining.size());
 		}
 		boolean optionalInput = name.equals("tool-used") || name.equals("tool-unused");
-		if (parser.arguments() < 0 ? remaining.isEmpty() : optionalInput ?
-			remaining.size() < 1 || remaining.size() > 2 : remaining.size() != parser.arguments())
+		boolean wrongArgumentCount;
+		if (parser.arguments() < 0)
+			wrongArgumentCount = remaining.isEmpty();
+		else if (optionalInput)
+			wrongArgumentCount = remaining.isEmpty() || remaining.size() > 2;
+		else
+			wrongArgumentCount = remaining.size() != parser.arguments();
+		if (wrongArgumentCount)
 		{
 			String noun = "arguments";
 			if (parser.arguments() == 1)

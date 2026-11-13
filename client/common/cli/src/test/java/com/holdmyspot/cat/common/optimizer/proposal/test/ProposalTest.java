@@ -110,6 +110,8 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class ProposalTest
 {
+	private static final String FIXTURE_JUDGE_REASON = "This fixture's assertion cannot be decided from " +
+		"the trial record by a built-in tool.";
 	private static final Path PROMPT_SYSTEM = Path.of("/staged/incumbent").toAbsolutePath();
 	/**
 	 * The campaign's target prompt file.
@@ -328,7 +330,24 @@ public final class ProposalTest
 	private Contract expectedContract()
 	{
 		Contract fixture = ContractFixtures.contract();
-		return new Contract(fixture.requirements(), fixture.tests(), fixture.profiles(),
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : fixture.tests())
+		{
+			List<com.holdmyspot.cat.common.optimizer.contract.MappedAssertion> assertions = new ArrayList<>();
+			for (com.holdmyspot.cat.common.optimizer.contract.MappedAssertion mapped : test.assertions())
+			{
+				Assertion assertion = mapped.assertion();
+				assertions.add(new com.holdmyspot.cat.common.optimizer.contract.MappedAssertion(new Assertion(
+					assertion.id(), assertion.kind(), assertion.tool(), assertion.onToolFailure(), assertion.statement(),
+					FIXTURE_JUDGE_REASON), mapped.requirementId()));
+			}
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(), assertions,
+				test.regressionScenarios(), test.workspaceFiles(), Optional.empty(), test.expectedOutcomeTool(),
+				test.nearMisses(), FIXTURE_JUDGE_REASON));
+		}
+		return new Contract(fixture.requirements(), tests, fixture.profiles(),
 			judge.profile("The response follows the requirement.", "Pass only if every rubric item holds."),
 			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
 	}
@@ -348,7 +367,8 @@ public final class ProposalTest
 			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
 				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
-				test.assertions(), test.regressionScenarios(), test.workspaceFiles()));
+				test.assertions(), test.regressionScenarios(), test.workspaceFiles(), Optional.empty(),
+				test.expectedOutcomeTool(), test.nearMisses(), test.expectedOutcomeJudgeReason()));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt());
@@ -2857,7 +2877,7 @@ public final class ProposalTest
 			else
 				kind = AssertionKind.EFFECT;
 			requireThat(test.expectedOutcome(), test.id() + ".expectedOutcome()").
-				isEqualTo(Assertion.expectedOutcome(kind));
+				isEqualTo(Assertion.expectedOutcome(kind, Optional.empty(), FIXTURE_JUDGE_REASON));
 		}
 		requireThat(rendered(fixture("derivation-with-checks.json")), "text").
 			contains("  - `expected_outcome` (guard, added by CAT): " + Assertion.EXPECTED_OUTCOME_STATEMENT +

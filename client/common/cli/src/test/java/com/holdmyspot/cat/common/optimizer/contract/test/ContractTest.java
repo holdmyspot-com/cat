@@ -440,7 +440,8 @@ public final class ContractTest
 
 		PromptTest deferring = withExpectedOutcomeTool(List.of(tone, kept),
 			new ExpectedOutcomeTool("exact-text {{expected_outcome}}", OnToolFailure.JUDGE));
-		requireThat(deferring.judgedAssertions(), "deferringJudged").isEqualTo(List.of(tone.assertion()));
+		requireThat(deferring.judgedAssertions(), "deferringJudged").isEqualTo(
+			List.of(tone.assertion(), deferring.expectedOutcome()));
 		requireThat(deferring.expectedOutcome().onToolFailure(), "deferringOnToolFailure").
 			isEqualTo(OnToolFailure.JUDGE);
 

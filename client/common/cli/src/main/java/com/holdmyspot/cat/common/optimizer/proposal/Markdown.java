@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.Split;
@@ -598,6 +599,34 @@ public final class Markdown
 			append(EnumNames.lowerCase(expectedOutcome.kind())).append(", added by CAT): ").
 			append(expectedOutcome.statement()).append(' ');
 		decider(expectedOutcome);
+		text.append("- Judged assertions:\n");
+		boolean any = false;
+		for (MappedAssertion mapped : test.assertions())
+		{
+			Assertion assertion = mapped.assertion();
+			if (assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE)
+			{
+				text.append("  - `").append(assertion.id()).append("`: ");
+				if (assertion.judgeReason() == null)
+					text.append("No built-in tool can decide this assertion.");
+				else
+					text.append(assertion.judgeReason());
+				text.append('\n');
+				any = true;
+			}
+		}
+		if (expectedOutcome.tool() == null || expectedOutcome.onToolFailure() == OnToolFailure.JUDGE)
+		{
+			text.append("  - `expected_outcome`: ");
+			if (test.expectedOutcomeJudgeReason() == null)
+				text.append("No built-in tool decides the expected outcome for this test.");
+			else
+				text.append(test.expectedOutcomeJudgeReason());
+			text.append('\n');
+			any = true;
+		}
+		if (!any)
+			text.append("  - None.\n");
 	}
 
 	/**

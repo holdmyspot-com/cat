@@ -33,7 +33,10 @@ public final class DraftFixtures
 	 * other property, including one that the proposal file does not allow, stays in the item.
 	 */
 	private static final Set<String> INLINE = Set.of("id", "turns", "time_limit_seconds", "expected_behavior",
-		"variables", "test_cases", "workspace_files", "regression_scenarios", "expected_outcome_tool");
+		"variables", "test_cases", "workspace_files", "regression_scenarios", "expected_outcome_tool",
+		"expected_outcome_judge_reason");
+	private static final String FIXTURE_JUDGE_REASON = "This fixture's assertion cannot be decided " +
+		"from the trial record by a built-in tool.";
 
 	/**
 	 * Prevents instantiation.
@@ -223,14 +226,19 @@ public final class DraftFixtures
 			if (assertion.path("on_tool_failure").asString().equals("judge"))
 				appendPair(text, "on_tool_failure", "judge");
 			appendPair(text, "description", assertion.path("statement").asString());
+			if (tool == null || tool.isNull() || assertion.path("on_tool_failure").asString().equals("judge"))
+				appendPair(text, "judge_reason", assertion.path("judge_reason").asString(FIXTURE_JUDGE_REASON));
 		}
 		JsonNode expectedOutcomeTool = test.get("expected_outcome_tool");
-		if (expectedOutcomeTool != null)
+		if (expectedOutcomeTool != null || !test.has("expected_outcome_judge_reason"))
 		{
 			text.append("\n### expected_outcome\n\n");
-			appendPair(text, "tool", "`" + expectedOutcomeTool.path("tool").asString() + "`");
-			if (expectedOutcomeTool.path("on_tool_failure").asString().equals("judge"))
+			if (expectedOutcomeTool != null)
+				appendPair(text, "tool", "`" + expectedOutcomeTool.path("tool").asString() + "`");
+			if (expectedOutcomeTool != null && expectedOutcomeTool.path("on_tool_failure").asString().equals("judge"))
 				appendPair(text, "on_tool_failure", "judge");
+			if (expectedOutcomeTool == null || expectedOutcomeTool.path("on_tool_failure").asString().equals("judge"))
+				appendPair(text, "judge_reason", test.path("expected_outcome_judge_reason").asString(FIXTURE_JUDGE_REASON));
 		}
 		return text.toString();
 	}

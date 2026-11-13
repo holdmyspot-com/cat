@@ -37,7 +37,12 @@ public interface TrialRecord
 	 */
 	List<String> received();
 
-	/** Returns project-relative paths created, modified or deleted by the trial. */
+	/**
+	 * Returns project-relative paths created, modified or deleted by the trial.
+	 *
+	 * @return the changed paths
+	 * @throws IOException if the trial's file changes cannot be read
+	 */
 	List<String> changedPaths() throws IOException;
 
 	/**

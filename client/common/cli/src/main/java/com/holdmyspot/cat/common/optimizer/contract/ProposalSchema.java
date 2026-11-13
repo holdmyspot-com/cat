@@ -631,6 +631,9 @@ public final class ProposalSchema
 			assertionNode.put("tool", assertion.tool());
 			assertionNode.put("on_tool_failure", EnumNames.lowerCase(assertion.onToolFailure()));
 			assertionNode.put("statement", assertion.statement());
+			if ((assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE) &&
+				assertion.judgeReason() != null)
+				assertionNode.put("judge_reason", assertion.judgeReason());
 			assertionNode.put("requirement_id", mapped.requirementId());
 		}
 		// A test whose judge decides the assertion that CAT adds keeps the identity that it had before the property existed
@@ -640,6 +643,8 @@ public final class ProposalSchema
 			toolNode.put("tool", tool.tool());
 			toolNode.put("on_tool_failure", EnumNames.lowerCase(tool.onToolFailure()));
 		});
+		if (test.expectedOutcomeJudgeReason() != null)
+			node.put("expected_outcome_judge_reason", test.expectedOutcomeJudgeReason());
 		// A test without near misses keeps the identity that it had before the property existed
 		if (!test.nearMisses().isEmpty())
 		{
@@ -951,7 +956,8 @@ public final class ProposalSchema
 				strings(node.get("absent_triggers")), text(node, "applicability"), strings(node.get("turns")),
 				Duration.ofSeconds(node.get("time_limit_seconds").asLong()), text(node, "expected_behavior"),
 				strings(node.get("uncovered_interactions")), variables, committed, testCases, assertions,
-				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft, expectedOutcomeTool, described));
+				strings(node.get(REGRESSION_SCENARIOS)), workspaceFiles, draft, expectedOutcomeTool, described,
+				optionalText(node, "expected_outcome_judge_reason")));
 			if (test == null)
 				return null;
 			// Delivery writes every prompt test as a scenario.md
@@ -1012,7 +1018,8 @@ public final class ProposalSchema
 		{
 			return attempt(location, () -> new MappedAssertion(new Assertion(text(node, "id"),
 				EnumNames.parse(text(node, "kind"), AssertionKind.class), optionalText(node, "tool"),
-				EnumNames.parse(text(node, "on_tool_failure"), OnToolFailure.class), text(node, "statement")),
+				EnumNames.parse(text(node, "on_tool_failure"), OnToolFailure.class), text(node, "statement"),
+				optionalText(node, "judge_reason")),
 				text(node, "requirement_id")));
 		}
 
@@ -1100,7 +1107,7 @@ public final class ProposalSchema
 		private static String optionalText(JsonNode node, String name)
 		{
 			JsonNode value = node.get(name);
-			if (value.isNull())
+			if (value == null || value.isNull())
 				return null;
 			return value.asString();
 		}

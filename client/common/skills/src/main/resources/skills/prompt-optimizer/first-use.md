@@ -127,6 +127,8 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 	not an escalation of a choice and not an interruption of the skill, even when the proposal lists conflicts or says
 	that certification is unavailable. When the result also holds a `message`, show the `message` after the proposal. If
 	the result holds a `message` but no `proposal_file`, show the `message`.
+	- The proposal's `Judged assertions` section explains why each assertion is left to the judge. If a built-in tool
+		could decide one, include that in the user's feedback for `revise`.
 	- When the result of `start`, `revise` or `choose <campaign> retry` has `status` `running` and no `proposal_file`,
 		the guard pilot is not finished: it runs in slices, and this result ends one. Show its `summary`, which says
 		how many of the pilot's trials are decided, then run `start <target>` again with the same arguments and the

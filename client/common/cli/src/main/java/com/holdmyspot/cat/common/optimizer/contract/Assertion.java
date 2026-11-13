@@ -17,8 +17,10 @@ import java.util.Optional;
  * @param onToolFailure what a failure of {@code tool} means; {@link OnToolFailure#FAIL} when {@code tool} is
  *                      {@code null}
  * @param statement     what the assertion requires
+ * @param judgeReason   why no built-in tool decides it, or {@code null} for a legacy assertion or one with a tool
  */
-public record Assertion(String id, AssertionKind kind, String tool, OnToolFailure onToolFailure, String statement)
+public record Assertion(String id, AssertionKind kind, String tool, OnToolFailure onToolFailure, String statement,
+	String judgeReason)
 {
 	/**
 	 * What the assertion that CAT adds to every prompt test requires.
@@ -56,6 +58,22 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 				"no tool");
 		}
 		requireThat(statement, "statement").isNotBlank();
+		if (tool != null && onToolFailure != OnToolFailure.JUDGE && judgeReason != null)
+			throw new IllegalArgumentException("The assertion '" + id + "' has a tool and needs no judge reason");
+	}
+
+	/**
+	 * Creates an assertion without a judge reason.
+	 *
+	 * @param id the assertion's identifier
+	 * @param kind whether it requires an effect or guards against a harm
+	 * @param tool the built-in tool, or {@code null} when the judge decides it
+	 * @param onToolFailure what a tool failure means
+	 * @param statement what the assertion requires
+	 */
+	public Assertion(String id, AssertionKind kind, String tool, OnToolFailure onToolFailure, String statement)
+	{
+		this(id, kind, tool, onToolFailure, statement, null);
 	}
 
 	/**
@@ -102,11 +120,25 @@ public record Assertion(String id, AssertionKind kind, String tool, OnToolFailur
 	 */
 	public static Assertion expectedOutcome(AssertionKind kind, Optional<ExpectedOutcomeTool> tool)
 	{
+		return expectedOutcome(kind, tool, null);
+	}
+
+	/**
+	 * Returns the added assertion, including why the judge decides it when the contract author supplied a reason.
+	 *
+	 * @param kind whether it is an effect or guard
+	 * @param tool its built-in tool, if any
+	 * @param judgeReason why no built-in tool decides it, or {@code null} for a legacy contract
+	 * @return the expected outcome assertion
+	 */
+	public static Assertion expectedOutcome(AssertionKind kind, Optional<ExpectedOutcomeTool> tool, String judgeReason)
+	{
 		requireThat(tool, "tool").isNotNull();
 		if (tool.isEmpty())
-			return new Assertion(TestCase.EXPECTED_OUTCOME, kind, null, EXPECTED_OUTCOME_STATEMENT);
+			return new Assertion(TestCase.EXPECTED_OUTCOME, kind, null, OnToolFailure.FAIL,
+				EXPECTED_OUTCOME_STATEMENT, judgeReason);
 		return new Assertion(TestCase.EXPECTED_OUTCOME, kind, tool.get().tool(), tool.get().onToolFailure(),
-			EXPECTED_OUTCOME_STATEMENT);
+			EXPECTED_OUTCOME_STATEMENT, judgeReason);
 	}
 
 	/**

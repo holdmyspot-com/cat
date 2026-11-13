@@ -60,8 +60,9 @@
 - Never write code. An assertion that a program can decide names one of CAT's built-in tools; CAT implements every
 	built-in tool.
 - For every assertion, including `expected_outcome`, assign a built-in tool when its truth is visible in the trial
-	record. For each assertion left for the judge, state one sentence explaining why no built-in tool decides it; CAT
-	shows these under `Judged assertions` so the user can see where judge sessions are spent. Choose `on_tool_failure: judge`
+	record. For each assertion the judge decides, including a failed check with `on_tool_failure: judge`, state one
+	sentence explaining why no built-in tool decides it; CAT shows these under `Judged assertions` so the user can see
+	where judge sessions are spent. Choose `on_tool_failure: judge`
 	when a failed check may reject a valid outcome, and `fail` when its pass condition is the assertion.
 - Learn what CAT accepts, and how it stages, runs and records trials, from this prompt, the output schema and the
 	problems that `contract check` prints. Do not read the source code of CAT's optimizer for it, even when the project

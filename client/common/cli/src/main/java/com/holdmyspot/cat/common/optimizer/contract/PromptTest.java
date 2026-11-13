@@ -50,13 +50,15 @@ import java.util.TreeMap;
  *   empty if the judge decides it
  * @param nearMisses the replies that only just satisfy and only just fail judged assertions, which a candidate
  *   development judge must label as the frozen judge does; at most one entry per judged assertion
+ * @param expectedOutcomeJudgeReason why no built-in tool decides the expected outcome assertion, or {@code null} for
+ *   a legacy contract
  */
 public record PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
 	String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
 	List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
 	List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
 	List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft,
-	Optional<ExpectedOutcomeTool> expectedOutcomeTool, List<NearMisses> nearMisses)
+	Optional<ExpectedOutcomeTool> expectedOutcomeTool, List<NearMisses> nearMisses, String expectedOutcomeJudgeReason)
 {
 	/**
 	 * The behavior through which a reply fails the assertion {@value TestCase#EXPECTED_OUTCOME}.
@@ -180,6 +182,11 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		requireThat(draft, "draft").isNotNull();
 		requireThat(expectedOutcomeTool, "expectedOutcomeTool").isNotNull();
 		requireThat(nearMisses, "nearMisses").isNotNull();
+		if (expectedOutcomeJudgeReason != null)
+			requireThat(expectedOutcomeJudgeReason, "expectedOutcomeJudgeReason").isNotBlank();
+		if (expectedOutcomeJudgeReason != null && expectedOutcomeTool.isPresent() &&
+			expectedOutcomeTool.get().onToolFailure() == OnToolFailure.FAIL)
+			throw new IllegalArgumentException("The expected outcome tool decides the assertion without a judge");
 		requirementIds = List.copyOf(requirementIds);
 		absentTriggers = List.copyOf(absentTriggers);
 		turns = List.copyOf(turns);
@@ -276,7 +283,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		if (expectedOutcomeTool.isPresent())
 		{
 			requireValid(id, names, turns.size(), allTestCases,
-				Assertion.expectedOutcome(AssertionKind.EFFECT, expectedOutcomeTool));
+				Assertion.expectedOutcome(AssertionKind.EFFECT, expectedOutcomeTool, expectedOutcomeJudgeReason));
 		}
 		for (String requirementId : requirementIds)
 		{
@@ -286,6 +293,40 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 					"', but none of its assertions checks it");
 			}
 		}
+	}
+
+	/**
+	 * Creates a prompt test without an explicit reason for the added assertion.
+	 *
+	 * @param id the test identifier
+	 * @param riskRank its risk rank
+	 * @param requirementIds the requirements it checks
+	 * @param absentTriggers the absent requirement triggers
+	 * @param applicability when its requirements apply
+	 * @param turns its user turns
+	 * @param timeLimit its time limit
+	 * @param expectedBehaviour its expected behavior
+	 * @param uncoveredInteractions interactions it cannot cover
+	 * @param variables its variables
+	 * @param committedTestCases its committed test cases
+	 * @param testCases its test cases
+	 * @param assertions its assertions
+	 * @param regressionScenarios its regression scenario citations
+	 * @param workspaceFiles its workspace files
+	 * @param draft its draft, if any
+	 * @param expectedOutcomeTool the tool for the added assertion, if any
+	 * @param nearMisses its near misses
+	 */
+	public PromptTest(String id, RiskRank riskRank, List<String> requirementIds, List<String> absentTriggers,
+		String applicability, List<String> turns, Duration timeLimit, String expectedBehaviour,
+		List<String> uncoveredInteractions, List<VariableDeclaration> variables, List<TestCase> committedTestCases,
+		List<TestCase> testCases, List<MappedAssertion> assertions, List<String> regressionScenarios,
+		List<WorkspaceFile> workspaceFiles, Optional<PromptTest.Draft> draft,
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool, List<NearMisses> nearMisses)
+	{
+		this(id, riskRank, requirementIds, absentTriggers, applicability, turns, timeLimit, expectedBehaviour,
+			uncoveredInteractions, variables, committedTestCases, testCases, assertions, regressionScenarios, workspaceFiles,
+			draft, expectedOutcomeTool, nearMisses, null);
 	}
 
 	/**
@@ -424,10 +465,10 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		Set<String> judged = new LinkedHashSet<>();
 		for (MappedAssertion mapped : assertions)
 		{
-			if (mapped.assertion().tool() == null)
+			if (mapped.assertion().tool() == null || mapped.assertion().onToolFailure() == OnToolFailure.JUDGE)
 				judged.add(mapped.assertion().id());
 		}
-		if (expectedOutcomeTool.isEmpty())
+		if (expectedOutcomeTool.isEmpty() || expectedOutcomeTool.get().onToolFailure() == OnToolFailure.JUDGE)
 			judged.add(TestCase.EXPECTED_OUTCOME);
 		Set<String> described = new HashSet<>();
 		for (NearMisses nearMiss : nearMisses)
@@ -638,7 +679,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 		for (MappedAssertion mapped : assertions)
 			declared.add(mapped.assertion());
 		return new Scenario(variables, turns, Optional.of(new ExpectedBehavior(expectedBehaviour, timeLimit)),
-			declared, expectedOutcomeTool);
+			declared, expectedOutcomeTool, expectedOutcomeJudgeReason);
 	}
 
 	/**
@@ -658,7 +699,7 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 				break;
 			}
 		}
-		return Assertion.expectedOutcome(kind, expectedOutcomeTool);
+		return Assertion.expectedOutcome(kind, expectedOutcomeTool, expectedOutcomeJudgeReason);
 	}
 
 	/**
@@ -683,7 +724,8 @@ public record PromptTest(String id, RiskRank riskRank, List<String> requirementI
 	 */
 	public List<Assertion> judgedAssertions()
 	{
-		return allAssertions().stream().filter(assertion -> assertion.tool() == null).toList();
+		return allAssertions().stream().filter(assertion -> assertion.tool() == null ||
+			assertion.onToolFailure() == OnToolFailure.JUDGE).toList();
 	}
 
 	/**
