@@ -16,6 +16,7 @@ public final class RaceDecision
 	/** The maximum representative prefix sampled for each racer and cell. */
 	public static final int CELL_LIMIT = 100;
 
+	/** Prevents instantiation. */
 	private RaceDecision()
 	{
 	}
@@ -34,27 +35,27 @@ public final class RaceDecision
 		requireThat(predecessor, "predecessor").isNotNull();
 		requireThat(cells, "cells").isNotEmpty();
 		Map<Integer, String> dropped = new LinkedHashMap<>();
-		for (Racer b : racers)
+		for (Racer candidate : racers)
 		{
-			if (b.dropped())
+			if (candidate.dropped())
 			{
-				dropped.put(b.attempt(), b.dropReason());
+				dropped.put(candidate.attempt(), candidate.dropReason());
 				continue;
 			}
-			String reason = belowPredecessor(b, predecessor, cells);
+			String reason = belowPredecessor(candidate, predecessor, cells);
 			if (reason == null)
 			{
-				for (Racer a : racers)
+				for (Racer competitor : racers)
 				{
-					if (a == b || a.dropped())
+					if (competitor == candidate || competitor.dropped())
 						continue;
-					reason = dominated(b, a, cells);
+					reason = dominated(candidate, competitor, cells);
 					if (reason != null)
 						break;
 				}
 			}
 			if (reason != null)
-				dropped.put(b.attempt(), reason);
+				dropped.put(candidate.attempt(), reason);
 		}
 		List<Racer> remaining = racers.stream().
 			filter(racer -> !racer.dropped() && !dropped.containsKey(racer.attempt())).toList();
@@ -71,17 +72,26 @@ public final class RaceDecision
 		return new Result(dropped, winner.attempt(), false);
 	}
 
-	private static String belowPredecessor(Racer b, Map<String, List<Verdict>> predecessor, List<String> cells)
+	/**
+	 * Compares a racer with the retained working candidate on equal prefixes.
+	 *
+	 * @param candidate the racer
+	 * @param predecessor the working candidate's verdicts
+	 * @param cells the development cells
+	 * @return a drop reason, or null if the racer is not below its predecessor
+	 */
+	private static String belowPredecessor(Racer candidate, Map<String, List<Verdict>> predecessor,
+		List<String> cells)
 	{
 		for (String cell : cells)
 		{
 			List<Verdict> base = predecessor.getOrDefault(cell, List.of());
-			CellCounts current = b.count(cell);
+			CellCounts current = candidate.count(cell);
 			if (base.isEmpty() || current.outcomes() == 0)
 				continue;
 			int m = Math.min(base.size(), current.outcomes());
 			CellCounts basePrefix = counts(base.subList(0, m));
-			CellCounts racerPrefix = b.prefix(cell, m);
+			CellCounts racerPrefix = candidate.prefix(cell, m);
 			if (ExploratoryBounds.wilson(racerPrefix.passes(), m).upper() <
 				ExploratoryBounds.wilson(basePrefix.passes(), m).lower())
 				return "below working candidate in " + cell + " at m=" + m;
@@ -89,25 +99,39 @@ public final class RaceDecision
 		return null;
 	}
 
+	/**
+	 * Converts an outcome prefix to its batch-aware counts.
+	 *
+	 * @param verdicts the verdicts
+	 * @return their batch-aware counts
+	 */
 	private static CellCounts counts(List<Verdict> verdicts)
 	{
 		int passes = (int) verdicts.stream().filter(verdict -> verdict == Verdict.PASS).count();
 		return new CellCounts(passes, verdicts.size() - passes, Racer.batches(verdicts));
 	}
 
-	private static String dominated(Racer b, Racer a, List<String> cells)
+	/**
+	 * Returns a drop reason when one competitor clearly dominates the candidate.
+	 *
+	 * @param candidate the racer that may be dropped
+	 * @param competitor the other racer
+	 * @param cells the development cells
+	 * @return a drop reason, or null if the candidate is not dominated
+	 */
+	private static String dominated(Racer candidate, Racer competitor, List<String> cells)
 	{
 		boolean aBetter = false;
 		boolean bBetter = false;
 		for (String cell : cells)
 		{
-			CellCounts ac = a.count(cell);
-			CellCounts bc = b.count(cell);
+			CellCounts ac = competitor.count(cell);
+			CellCounts bc = candidate.count(cell);
 			int m = Math.min(ac.outcomes(), bc.outcomes());
 			if (m == 0)
 				continue;
-			CellCounts ap = a.prefix(cell, m);
-			CellCounts bp = b.prefix(cell, m);
+			CellCounts ap = competitor.prefix(cell, m);
+			CellCounts bp = candidate.prefix(cell, m);
 			if (ExploratoryBounds.wilson(ap.passes(), m).lower() >
 				ExploratoryBounds.wilson(bp.passes(), m).upper())
 				aBetter = true;
@@ -116,19 +140,43 @@ public final class RaceDecision
 				bBetter = true;
 		}
 		if (aBetter && !bBetter)
-			return "dominated by attempt " + a.attempt();
+			return "dominated by attempt " + competitor.attempt();
 		return null;
 	}
 
+	/**
+	 * Counts failures across the addressed development cells.
+	 *
+	 * @param racer the racer
+	 * @param cells the development cells
+	 * @return the number of failures
+	 */
 	private static int failures(Racer racer, List<String> cells)
 	{
 		return cells.stream().mapToInt(cell -> racer.count(cell).failures()).sum();
 	}
 
-	/** A race contender's representative outcomes. */
+	/**
+	 * A race contender's representative outcomes.
+	 *
+	 * @param attempt the prompt author attempt number
+	 * @param outcomes the adopted verdicts by development cell
+	 * @param changedLines the number of changed prompt lines
+	 * @param dropped whether the racer has already been dropped
+	 * @param dropReason the recorded reason for dropping, or null while active
+	 */
 	public record Racer(int attempt, Map<String, List<Verdict>> outcomes, int changedLines, boolean dropped,
 		String dropReason)
 	{
+		/**
+		 * Creates a racer.
+		 *
+		 * @param attempt the prompt author attempt number
+		 * @param outcomes the adopted verdicts by development cell
+		 * @param changedLines the number of changed prompt lines
+		 * @param dropped whether the racer has already been dropped
+		 * @param dropReason the recorded reason for dropping, or null while active
+		 */
 		public Racer
 		{
 			requireThat(attempt, "attempt").isGreaterThan(0);
@@ -141,6 +189,12 @@ public final class RaceDecision
 			outcomes = Map.copyOf(copy);
 		}
 
+		/**
+		 * Returns the counts for a cell.
+		 *
+		 * @param cell the development cell
+		 * @return the counts
+		 */
 		public CellCounts count(String cell)
 		{
 			List<Verdict> verdicts = outcomes.getOrDefault(cell, List.of());
@@ -148,6 +202,13 @@ public final class RaceDecision
 			return new CellCounts(passes, verdicts.size() - passes, batches(verdicts));
 		}
 
+		/**
+		 * Returns counts from the first {@code size} adopted outcomes in a cell.
+		 *
+		 * @param cell the development cell
+		 * @param size the prefix length
+		 * @return the prefix counts
+		 */
 		public CellCounts prefix(String cell, int size)
 		{
 			List<Verdict> verdicts = outcomes.getOrDefault(cell, List.of()).subList(0, size);
@@ -155,6 +216,12 @@ public final class RaceDecision
 			return new CellCounts(passes, verdicts.size() - passes, batches(verdicts));
 		}
 
+		/**
+		 * Returns failure counts in batches of {@link CellCounts#BATCH_SIZE}.
+		 *
+		 * @param verdicts the verdicts
+		 * @return the failure counts by batch
+		 */
 		private static List<Integer> batches(List<Verdict> verdicts)
 		{
 			List<Integer> result = new ArrayList<>();
@@ -167,9 +234,22 @@ public final class RaceDecision
 		}
 	}
 
-	/** A race's newly established drops and terminal result. */
+	/**
+	 * A race's newly established drops and terminal result.
+	 *
+	 * @param dropped the racer drop reasons
+	 * @param winner the winning attempt, or null while unresolved or when no racer wins
+	 * @param noWinner whether every racer was dropped
+	 */
 	public record Result(Map<Integer, String> dropped, Integer winner, boolean noWinner)
 	{
+		/**
+		 * Creates a race result.
+		 *
+		 * @param dropped the racer drop reasons
+		 * @param winner the winning attempt, or null while unresolved or when no racer wins
+		 * @param noWinner whether every racer was dropped
+		 */
 		public Result
 		{
 			dropped = Map.copyOf(dropped);

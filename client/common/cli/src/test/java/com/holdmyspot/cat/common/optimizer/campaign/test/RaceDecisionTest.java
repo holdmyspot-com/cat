@@ -54,11 +54,27 @@ public final class RaceDecisionTest
 		requireThat(result.winner(), "winner").isEqualTo(3);
 	}
 
+	/**
+	 * Creates a list containing the same verdict.
+	 *
+	 * @param count the number of outcomes
+	 * @param verdict the repeated verdict
+	 * @return the outcomes
+	 */
 	private static List<Verdict> outcomes(int count, Verdict verdict)
 	{
 		return IntStream.range(0, count).mapToObj(_ -> verdict).toList();
 	}
 
+	/**
+	 * Creates two consecutive outcome groups.
+	 *
+	 * @param firstCount the first group's size
+	 * @param first the first group's verdict
+	 * @param secondCount the second group's size
+	 * @param second the second group's verdict
+	 * @return the concatenated outcomes
+	 */
 	private static List<Verdict> outcomes(int firstCount, Verdict first, int secondCount, Verdict second)
 	{
 		return java.util.stream.Stream.concat(outcomes(firstCount, first).stream(),
