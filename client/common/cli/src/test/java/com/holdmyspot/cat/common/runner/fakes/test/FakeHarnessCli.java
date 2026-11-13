@@ -15,6 +15,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -38,7 +39,8 @@ import java.util.stream.Stream;
  * <a href="https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/app-server-transport/src/transport/stdio.rs">
  * stdio transport</a> reports a closed connection on EOF, and
  * <a href="https://github.com/openai/codex/blob/rust-v0.147.0/codex-rs/app-server/src/lib.rs">app-server</a>
- * ends its single-client event loop. Claude tests make no claim about stdin EOF shutdown.
+ * ends its single-client event loop. A Claude session exits on stdin EOF too, after saving its record; a test of a
+ * child that does not exit on EOF uses {@link #keepRunningWhenInputCloses()}.
  * Explicit exit, output EOF, waiting, and termination model the generic JDK
  * <a href="https://docs.oracle.com/en/java/javase/27/docs/api/java.base/java/lang/Process.html">Process contract</a>:
  * output EOF and process termination are separate observations, and exit status is unavailable while alive.
@@ -67,6 +69,8 @@ public final class FakeHarnessCli extends Process
 	 */
 	private final List<Runnable> exitActions = new ArrayList<>();
 	private volatile boolean exitsWhenAwaited;
+	private volatile boolean keepsRunningWhenInputCloses;
+	private final AtomicInteger terminationRequests = new AtomicInteger();
 	private volatile byte[] standardError = new byte[0];
 	private final OutputStream standardInput = new ChildInput();
 	private final InputStream outputStream = new ChildOutput();
@@ -174,6 +178,26 @@ public final class FakeHarnessCli extends Process
 	}
 
 	/**
+	 * Makes the child keep running when its standard input closes, as a child that has not finished its cleanup does.
+	 * The child then ends only through {@link #exit()} or termination.
+	 */
+	public void keepRunningWhenInputCloses()
+	{
+		keepsRunningWhenInputCloses = true;
+	}
+
+	/**
+	 * Returns how many times the runner asked the child to terminate, through {@link #destroy()} or its process handle.
+	 * Closing the child's standard input is not a termination request.
+	 *
+	 * @return the number of termination requests
+	 */
+	public int terminationRequests()
+	{
+		return terminationRequests.get();
+	}
+
+	/**
 	 * Closes the child's standard output without marking the child as exited. The child is marked as exited, with
 	 * status 0, when a caller waits for it. This makes the JDK contract's separate output-EOF and exit observations
 	 * testable; it does not prescribe the ordering or delay of a real harness. Reading the exit status while the
@@ -257,6 +281,7 @@ public final class FakeHarnessCli extends Process
 	@Override
 	public void destroy()
 	{
+		terminationRequests.incrementAndGet();
 		if (isAlive())
 			exit();
 	}
@@ -278,7 +303,8 @@ public final class FakeHarnessCli extends Process
 		@Override
 		public void close()
 		{
-			destroy();
+			if (!keepsRunningWhenInputCloses && isAlive())
+				exit();
 		}
 
 		@Override

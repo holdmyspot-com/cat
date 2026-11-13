@@ -41,6 +41,12 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private static final Duration EXIT_TIMEOUT = Duration.ofSeconds(10);
 	/**
+	 * How long {@link #close()} waits for Claude to exit by itself after its input is closed. A recorded session exited
+	 * about 6 seconds after its input closed, having flushed its transcript and ended its own background tasks first,
+	 * so this leaves a margin before the process tree is terminated.
+	 */
+	private static final Duration STOP_GRACE = Duration.ofSeconds(10);
+	/**
 	 * Reports that a turn's output began with a follow-up reply that Claude finished for an earlier turn.
 	 */
 	public static final String LATE_FOLLOW_UP = "Claude finished a follow-up reply to a background task's " +
@@ -91,6 +97,10 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private final HarnessSessionTranscripts transcripts;
 	/**
+	 * How long {@link #close()} waits for Claude to exit after its input is closed before it terminates the process.
+	 */
+	private final Duration stopGrace;
+	/**
 	 * The root session's identifier, or an empty string until Claude reports it.
 	 */
 	private volatile String sessionId = "";
@@ -121,8 +131,30 @@ public final class ClaudeProcess implements HarnessProcess
 	public ClaudeProcess(HarnessRunnerScope scope, Process process, Path projectDirectory,
 		HarnessSessionTranscripts transcripts)
 	{
+		this(scope, process, projectDirectory, transcripts, STOP_GRACE);
+	}
+
+	/**
+	 * Wraps a started Claude process and sets how long closing it waits for Claude to exit by itself.
+	 *
+	 * @param scope services shared for the runner process lifetime
+	 * @param process the started Claude process
+	 * @param projectDirectory the directory in which Claude writes the root session's transcript, or {@code null} if
+	 *   the process keeps no transcripts
+	 * @param transcripts copies the session's transcripts when the process closes, or {@code null} if the process keeps
+	 *   no transcripts
+	 * @param stopGrace how long {@link #close()} waits for Claude to exit after closing its input, before it terminates
+	 *   the process
+	 * @throws NullPointerException if {@code scope}, {@code process} or {@code stopGrace} are null
+	 * @throws IllegalArgumentException if {@code stopGrace} is negative
+	 */
+	public ClaudeProcess(HarnessRunnerScope scope, Process process, Path projectDirectory,
+		HarnessSessionTranscripts transcripts, Duration stopGrace)
+	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(process, "process").isNotNull();
+		requireThat(stopGrace, "stopGrace").isGreaterThanOrEqualTo(Duration.ZERO);
+		this.stopGrace = stopGrace;
 		this.scope = scope;
 		this.process = process;
 		this.projectDirectory = projectDirectory;
@@ -489,7 +521,9 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
-	 * Closes input and waits for Claude to exit, and then copies the session's transcripts if the process keeps them.
+	 * Closes input and waits for Claude to exit by itself, which lets it save its session and end its own background
+	 * tasks, and then copies the session's transcripts if the process keeps them. Terminates the process tree only if
+	 * Claude has not exited when the grace period ends.
 	 *
 	 * @throws IOException if closing input fails or the transcripts cannot be copied
 	 */
@@ -501,11 +535,31 @@ public final class ClaudeProcess implements HarnessProcess
 			input.close();
 			// A child can keep standard error open after Claude exits, leaving the evaluator waiting for more output.
 			// Stop the harness process tree first, then close the stream once no harness child can write to it.
-			HarnessProcessTermination.terminate(process, "Claude");
+			if (!exitsAfterInputCloses())
+				HarnessProcessTermination.terminate(process, "Claude");
 			standardError.close();
 			standardError.await();
 			if (transcripts != null)
 				transcripts.copy();
+		}
+	}
+
+	/**
+	 * Waits up to the stop grace for Claude to exit after its input has closed.
+	 *
+	 * @return true if Claude exited; false if it is still running, or if the wait was interrupted, which stops waiting
+	 *   so that the caller terminates the process at once
+	 */
+	private boolean exitsAfterInputCloses()
+	{
+		try
+		{
+			return process.waitFor(stopGrace.toMillis(), TimeUnit.MILLISECONDS);
+		}
+		catch (InterruptedException _)
+		{
+			Thread.currentThread().interrupt();
+			return false;
 		}
 	}
 

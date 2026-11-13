@@ -16,6 +16,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
@@ -776,5 +777,49 @@ public final class ClaudeProcessTest
 			requireThat(result.completed(), "completed").isFalse();
 			requireThat(result.standardError(), "standardError").contains("Claude process ended before result");
 		}
+	}
+
+	/**
+	 * Verifies that closing a session whose Claude exits once its input closes does not signal the process, so that
+	 * Claude can finish saving its session and ending its own background tasks.
+	 *
+	 * @throws IOException if closing the session fails
+	 */
+	@Test(timeOut = 10_000)
+	public void closeLetsClaudeExitWithoutSignal() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess _ = new ClaudeProcess(new TestHarnessRunnerScope(), claude, null, null,
+			Duration.ofSeconds(5)))
+		{
+			// Closing the session at the end of the block is the behavior under test.
+		}
+
+		requireThat(claude.isAlive(), "claude.isAlive()").isFalse();
+		requireThat(claude.terminationRequests(), "terminationRequests").isEqualTo(0);
+	}
+
+	/**
+	 * Verifies that closing a session whose Claude does not exit within the grace period terminates the process.
+	 *
+	 * @throws IOException if closing the session fails
+	 */
+	@Test(timeOut = 10_000)
+	public void closeTerminatesClaudeAfterGrace() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess _ = new ClaudeProcess(new TestHarnessRunnerScope(), claude, null, null,
+			Duration.ofMillis(50)))
+		{
+			claude.keepRunningWhenInputCloses();
+			// Closing the session at the end of the block is the behavior under test.
+		}
+
+		requireThat(claude.isAlive(), "claude.isAlive()").isFalse();
+		requireThat(claude.terminationRequests(), "terminationRequests").isGreaterThan(0);
 	}
 }
