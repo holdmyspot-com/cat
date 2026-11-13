@@ -9,16 +9,32 @@ import java.nio.file.Path;
  *
  * @param kind the kind of conflict
  * @param target the candidate's overlay target that the conflict blocks
+ * @param forkHash the target hash at the fork, or null for other conflicts
+ * @param baseHash the current target hash, or null for other conflicts
  * @param path the path whose current state causes the conflict: {@code target} itself, a path above or below it, or a
  *             symbolic link
  */
-public record DeliveryConflict(Kind kind, Path target, Path path)
+public record DeliveryConflict(Kind kind, Path target, Path path, String forkHash, String baseHash)
 {
+	/**
+	 * Creates a conflict without target hashes.
+	 *
+	 * @param kind the conflict kind
+	 * @param target the blocked target
+	 * @param path the conflicting path
+	 */
+	public DeliveryConflict(Kind kind, Path target, Path path)
+	{
+		this(kind, target, path, null, null);
+	}
+
 	/**
 	 * Creates a conflict.
 	 *
 	 * @param kind the kind of conflict
 	 * @param target the candidate's overlay target that the conflict blocks
+	 * @param forkHash the target hash at the fork, or null for other conflicts
+	 * @param baseHash the current target hash, or null for other conflicts
 	 * @param path the path whose current state causes the conflict
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -38,6 +54,10 @@ public record DeliveryConflict(Kind kind, Path target, Path path)
 		 * The candidate changes a file that the base worktree also changed or deleted since the fork.
 		 */
 		BOTH_CHANGED,
+		/**
+		 * The measured prompt target changed in the base, whether or not the candidate edits it.
+		 */
+		TARGET_CHANGED,
 		/**
 		 * The candidate's file collides with the current structure: a file at a path the candidate creates, a file at a
 		 * directory the candidate's path passes through, or files below a path the candidate writes as a file.

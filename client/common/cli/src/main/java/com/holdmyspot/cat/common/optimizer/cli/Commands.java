@@ -26,6 +26,7 @@ import java.io.PrintStream;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
@@ -71,12 +72,12 @@ public final class Commands
 	 */
 	public static final String USAGE = """
 		usage: prompt-optimizer <command> ...
-		  start <target> [%s <text>] [%s <1..%d>] [%s <file>]
-		  run <campaign>
+		  start <target> [%s <text>] [%s <1..%d>] [%s <file>] [--background]
+		  run <campaign> [--background]
 		  status <campaign | target>
 		  confirm <campaign> [<%s>]
-		  revise <campaign> <feedback>
-		  choose <campaign> <choice> [--attempt N | --review-point N]
+		  revise <campaign> <feedback> [--background]
+		  choose <campaign> <choice> [--attempt N | --review-point N] [--background]
 		  cancel <campaign>
 		  contract check <context file>
 		  contract workspace %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, EXTRA_PERMISSIONS,
@@ -139,6 +140,15 @@ public final class Commands
 		if (args.isEmpty())
 			throw new InvalidCommandException("Missing command.");
 		String name = args.getFirst();
+		if (args.size() > 1 && args.getLast().equals("--background"))
+		{
+			if (!List.of("start", "run", "revise", "choose").contains(name) ||
+				args.stream().filter("--background"::equals).count() != 1)
+				throw new InvalidCommandException("--background is accepted once by start, run, revise and choose.");
+			List<String> foreground = new ArrayList<>(args);
+			foreground.remove("--background");
+			return new Command.Background(parseArguments(foreground));
+		}
 		List<String> rest = args.subList(1, args.size());
 		return switch (name)
 		{
@@ -620,6 +630,7 @@ public final class Commands
 	 */
 	private CommandResult dispatch(Command command) throws CommandRefusedException, IOException, InterruptedException
 	{
+		core.validate(command);
 		if (canStartTrial(command))
 		{
 			Optional<String> refusal = trialSandbox.refusal(platform);
@@ -628,6 +639,7 @@ public final class Commands
 		}
 		return switch (command)
 		{
+			case Command.Background background -> core.background(() -> dispatch(background.command()));
 			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal(), start.extraPermissions());
 			case Command.Run run -> core.run(run.campaign());
 			case Command.Status status -> core.status(status.subject());
@@ -651,6 +663,7 @@ public final class Commands
 	{
 		return switch (command)
 		{
+			case Command.Background background -> canStartTrial(background.command());
 			case Command.Status _, Command.Cancel _ -> false;
 			case Command.Start _, Command.Run _, Command.Confirm _, Command.Revise _, Command.Choose _,
 				Command.ResolveConflict _ -> true;
@@ -664,8 +677,21 @@ public final class Commands
 	 * @param result the result
 	 * @return the JSON text
 	 */
-	private String render(CommandResult result)
+	String render(CommandResult result)
 	{
+		if (result.backgroundResult() != null)
+		{
+			ObjectNode saved = result.backgroundResult().deepCopy();
+			saved.put("summary", result.summary(zone));
+			if (!result.notices().isEmpty() && !saved.path("proposal_file").isNull())
+			{
+				String message = saved.path("message").asString("");
+				if (!message.isEmpty())
+					message += "\n";
+				saved.put("message", message + String.join("\n", result.notices()));
+			}
+			return json.writeValueAsString(saved);
+		}
 		ObjectNode root;
 		if (result.status() == null)
 		{

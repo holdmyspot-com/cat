@@ -15,7 +15,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Writes and recognizes the CAT-owned Codex execution-policy file that lets an agent run the installer launcher of the
- * active version folder and the request server beside it.
+ * active version folder, the request server and prompt optimizer beside it.
  * <p>
  * Each rule is a {@code prefix_rule}. Codex applies a prefix rule to every command that starts with its pattern, so
  * the installer validates its complete argument list itself. That includes {@code --json}, which a program that parses
@@ -102,7 +102,7 @@ public final class InstallerRules
 	{
 		if (windows)
 			return List.of();
-		return List.of(REQUEST_SERVER);
+		return List.of(REQUEST_SERVER, "prompt-optimizer");
 	}
 
 	/**
@@ -131,8 +131,8 @@ public final class InstallerRules
 		allowed.put(ruleLine(command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW),
 			"installer install");
 		allowed.put(ruleLine(command, List.of("status"), ALLOW), "installer status");
-		allowed.put(ruleLine(List.of(launcher.resolveSibling(REQUEST_SERVER).toString()), List.of(), ALLOW),
-			REQUEST_SERVER);
+		for (String sibling : siblings(windows))
+			allowed.put(ruleLine(List.of(launcher.resolveSibling(sibling).toString()), List.of(), ALLOW), sibling);
 		Map<String, String> prompted = Map.of(
 			ruleLine(command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION),
 			"installer uninstall");
@@ -220,6 +220,7 @@ public final class InstallerRules
 	public static boolean isWrittenByCat(String content, boolean windows)
 	{
 		return isRenderedUnder(HEADER, content, windows, false, siblings(windows)) ||
+			!windows && isRenderedUnder(HEADER, content, false, false, List.of(REQUEST_SERVER)) ||
 			!windows && isRenderedUnder(HEADER, content, false, false, RUNNER_LAUNCHERS) ||
 			isRenderedUnder(HEADER, content, windows, false, List.of());
 	}

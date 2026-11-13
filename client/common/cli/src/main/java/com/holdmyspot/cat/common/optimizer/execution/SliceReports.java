@@ -40,7 +40,7 @@ public final class SliceReports
 	 * @param pending the decision that the campaign waits for
 	 * @return the report
 	 */
-	static StatusReport awaiting(StatusReport report, ReportStatus status, String pending)
+	public static StatusReport awaiting(StatusReport report, ReportStatus status, String pending)
 	{
 		return new StatusReport(status, report.campaignId(), report.lifecycle(), report.phase(), report.attempt(),
 			report.candidate(), report.snapshot(), report.outcome(), report.outcomeDetail(), report.delivery(),
@@ -92,9 +92,15 @@ public final class SliceReports
 			{
 				StringJoiner targets = new StringJoiner(", ");
 				for (DeliveryConflict conflict : conflicted.conflicts())
-					targets.add(conflict.target().toString());
-				yield "The base worktree changed files that the candidate also changes, so the delivery stopped: " +
-					targets;
+				{
+					if (conflict.forkHash() == null)
+						targets.add(conflict.target().toString());
+					else
+						targets.add(conflict.target() + " (fork hash " + conflict.forkHash() + ", base hash " +
+							conflict.baseHash() + ")");
+				}
+				yield "The base worktree changed the measured target or conflicts with the candidate, so delivery stopped: " +
+					targets + ". Delivery is pending; ask the user for direction.";
 			}
 			case DeliveryResult.ConcurrentEdit edit -> "A file changed while CAT delivered the candidate, so the " +
 				"delivery stopped after " + edit.applied() + " changes: " + edit.change().target();

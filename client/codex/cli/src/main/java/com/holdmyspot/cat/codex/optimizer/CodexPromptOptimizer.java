@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import tools.jackson.databind.json.JsonMapper;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 
@@ -23,6 +25,13 @@ public final class CodexPromptOptimizer
 	 */
 	public static void main(String[] args)
 	{
+		if (args.length > 0 && args[0].equals("contract") && CodexOptimizerBoundary.outside(
+			PluginDirectory.of(CodexPromptOptimizer.class)))
+		{
+			System.exit(PromptOptimizerCli.fail(JsonMapper.builder().build(), System.out,
+				"Contract tools must run inside the contract author's sandbox."));
+			return;
+		}
 		PromptOptimizerCli.main(args, () -> new CodexOptimizerCommandScope(Pause::sleeping));
 	}
 }

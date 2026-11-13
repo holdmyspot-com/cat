@@ -1,5 +1,12 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
+import tools.jackson.databind.node.ObjectNode;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
+import com.holdmyspot.cat.common.optimizer.report.Status;
+import com.holdmyspot.cat.common.optimizer.report.ReportStatus;
+import com.holdmyspot.cat.common.optimizer.execution.SliceReports;
+import com.holdmyspot.cat.common.Platform;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
@@ -123,6 +130,9 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Instant;
+import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
+import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
+import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
@@ -194,6 +204,253 @@ public final class OptimizerCore implements Core
 	private final AbstractOptimizerCommandScope scope;
 	private final ExecutableFiles executables;
 	private final ProposalSchema schema;
+	@Override
+	public void validate(Command command) throws CommandRefusedException, IOException
+	{
+		try
+		{
+			scope.validateLauncher(command);
+		}
+		catch (IOException e)
+		{
+			throw new CommandRefusedException(e.getMessage(), e);
+		}
+	}
+
+	private boolean background;
+	private Instant backgroundStart;
+	private final Map<String, BackgroundRun> backgroundRuns = new HashMap<>();
+	private final Map<String, CampaignLock> backgroundLocks = new HashMap<>();
+	private final Map<String, DeliveryResult> backgroundDeliveries = new HashMap<>();
+
+	@Override
+	public CommandResult background(Core.Operation operation)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		Optional<String> refusal = scope.backgroundRefusal();
+		if (refusal.isPresent())
+			throw new CommandRefusedException(refusal.get());
+		background = true;
+		backgroundStart = scope.clock().instant();
+		try
+		{
+			CommandResult result = operation.run();
+			if (result.status() != null && result.status().status().label().equals("running"))
+				result = new CommandResult(SliceReports.awaiting(
+					result.status(), new ReportStatus.Active(
+						Status.AWAITING_USER),
+					"The background run paused. Use `status` for its reason or `cancel` to stop it."),
+					result.certification(), result.harness(), result.proposalFile(), result.delivery(), result.message(),
+					result.notices());
+			for (String id : backgroundRuns.keySet())
+			{
+				String text = new Commands(this, scope.json(), ZoneOffset.UTC, scope.trialSandbox(),
+					Platform.current()).render(result);
+				BackgroundRun.write(lockFile(id).resolveSibling("background-result.json"), text, scope.fileReplacer());
+				if (Cleanup.isRemovable(require(scope.store(), id, true), backgroundDeliveries.get(id)))
+					BackgroundRun.write(backgroundArchive(id), text, scope.fileReplacer());
+			}
+			closeBackgroundOwners();
+			releaseBackgroundLocks();
+			List<String> notices = new ArrayList<>();
+			for (Map.Entry<String, DeliveryResult> delivery : backgroundDeliveries.entrySet())
+				noticeOf(cleanup().end(require(scope.store(), delivery.getKey(), true), delivery.getValue()), notices);
+			return result.withNotices(notices);
+		}
+		finally
+		{
+			try
+			{
+				closeBackgroundOwners();
+			}
+			finally
+			{
+				releaseBackgroundLocks();
+			}
+			backgroundDeliveries.clear();
+			background = false;
+			for (Map.Entry<String, BackgroundRun> run : backgroundRuns.entrySet())
+			{
+				String id = run.getKey();
+				// State, the final response and delivery are stored, and all campaign locks are released before here.
+				try
+				{
+					scope.backgroundEnded(id);
+				}
+				catch (InterruptedException e)
+				{
+					Thread.currentThread().interrupt();
+					noticeFailed(id, e);
+				}
+				catch (IOException e)
+				{
+					noticeFailed(id, e);
+				}
+			}
+			backgroundRuns.clear();
+		}
+	}
+
+	/**
+	 * Removes driver identities before releasing their locks, so a new driver cannot race their removal.
+	 *
+	 * @throws IOException if an identity cannot be removed
+	 */
+	@SuppressWarnings("PMD.CloseResource")
+	private void closeBackgroundOwners() throws IOException
+	{
+		for (BackgroundRun run : backgroundRuns.values())
+			run.close();
+	}
+
+	/**
+	 * Releases the locks retained through persistence of the final background response.
+	 *
+	 * @throws IOException if a lock cannot be released
+	 */
+	@SuppressWarnings("PMD.CloseResource")
+	private void releaseBackgroundLocks() throws IOException
+	{
+		IOException failure = null;
+		for (CampaignLock lock : backgroundLocks.values())
+		{
+			try
+			{
+				lock.close();
+			}
+			catch (IOException e)
+			{
+				if (failure == null)
+					failure = e;
+				else
+					failure.addSuppressed(e);
+			}
+		}
+		backgroundLocks.clear();
+		if (failure != null)
+			throw failure;
+	}
+
+	/**
+	 * Retains the driver's lock until its final response is stored.
+	 *
+	 * @param id the campaign identifier
+	 * @param lock the acquired lock
+	 * @return the lock to use in the command body
+	 * @throws IOException if the driver identity cannot be stored
+	 */
+	private CampaignLock retainBackgroundLock(String id, CampaignLock lock) throws IOException
+	{
+		try
+		{
+			recordBackground(id);
+			if (!background)
+				return lock;
+			backgroundLocks.put(id, lock);
+			return lock.lend();
+		}
+		catch (IOException failure)
+		{
+			lock.close();
+			throw failure;
+		}
+	}
+
+	/**
+	 * Records notification trouble without replacing a measured outcome.
+	 *
+	 * @param id the campaign identifier
+	 * @param failure the queue failure
+	 */
+	private void noticeFailed(String id, Exception failure)
+	{
+		try
+		{
+			BackgroundRun.write(noticeFailureFile(id), "The background exit notice could not be queued: " +
+				failure.getMessage(), scope.fileReplacer());
+		}
+		catch (IOException storageFailure)
+		{
+			failure.addSuppressed(storageFailure);
+		}
+	}
+
+	/**
+	 * Records a background driver after taking its lock.
+	 *
+	 * @param id the campaign identifier
+	 * @throws IOException if its identity cannot be stored
+	 */
+	private void recordBackground(String id) throws IOException
+	{
+		Files.deleteIfExists(lockFile(id).resolveSibling("background-result.json"));
+		if (background && !backgroundRuns.containsKey(id))
+			backgroundRuns.put(id, new BackgroundRun(lockFile(id), backgroundStart, scope.json(), scope.fileReplacer()));
+	}
+
+	/**
+	 * Returns the mode's admission settings.
+	 *
+	 * @return the settings
+	 */
+	private SliceSettings runSettings()
+	{
+		if (background)
+			return scope.sliceSettings().withoutDeadline();
+		return scope.sliceSettings();
+	}
+
+	/**
+	 * Returns the host interrupt signal for a foreground run, or the cancellation mailbox for a background pilot.
+	 *
+	 * @return the signal
+	 */
+	private HostInterruptSignal runInterrupts()
+	{
+		if (!background)
+			return scope.interrupts();
+		return _ -> stopRequested();
+	}
+
+	/**
+	 * Returns whether this command's driver was asked to stop.
+	 *
+	 * @return whether cancellation was requested
+	 * @throws IOException if a cancellation mailbox cannot be read
+	 */
+	private boolean stopRequested() throws IOException
+	{
+		for (String id : backgroundRuns.keySet())
+			if (BackgroundRun.stopRequested(lockFile(id), scope.json()))
+				return true;
+		return false;
+	}
+
+	/**
+	 * Returns the stored failure of a host exit notice.
+	 *
+	 * @param id the campaign identifier
+	 * @return the failure file
+	 * @throws IOException if the campaign directory cannot be resolved
+	 */
+	private Path noticeFailureFile(String id) throws IOException
+	{
+		return backgroundArchive(id).resolveSibling(id + ".notice-failure.txt");
+	}
+
+	/**
+	 * Returns the final response retained after successful delivery removes the campaign's working files.
+	 *
+	 * @param id the campaign identifier
+	 * @return the response archive file
+	 * @throws IOException if the session state cannot be located
+	 */
+	private Path backgroundArchive(String id) throws IOException
+	{
+		Path directory = campaignsOf(id).resolve(".background-results");
+		return directory.resolve(id + ".json");
+	}
+
 	/**
 	 * The directory that holds each campaign of another session that this command reads, by the campaign's
 	 * identifier. Every other campaign is the host session's.
@@ -865,10 +1122,21 @@ public final class OptimizerCore implements Core
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(id));
 		if (lock.isEmpty())
 		{
+			if (BackgroundRun.owner(lockFile(id), scope.json()).isPresent())
+				throw new CommandRefusedException("A background driver holds campaign " + id +
+					". Use `status` to see progress or `cancel` to stop it.");
 			throw new CommandRefusedException("Campaign " + id + " is running in another process. Wait for its " +
-				"slice to end, then try again.");
+				"slice to end, then try again, or use `status` and `cancel`.");
 		}
-		return lock.get();
+		try
+		{
+			return retainBackgroundLock(id, lock.get());
+		}
+		catch (IOException e)
+		{
+			lock.get().close();
+			throw e;
+		}
 	}
 
 	/**
@@ -1411,27 +1679,57 @@ public final class OptimizerCore implements Core
 			Optional<CampaignLock> held = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(campaign));
 			if (held.isEmpty())
 			{
-				SliceResult busy = Driver.busy(context(root, loaded), campaign);
-				return new CommandResult(busy.status(), scope.harness(), null, null, null);
+				CommandResult snapshot = report(root, loaded, null, null);
+				StatusReport busy = SliceReports.awaiting(snapshot.status(), new ReportStatus.Active(Status.BUSY),
+					snapshot.status().pending());
+				return new CommandResult(busy, scope.harness(), null, null, null).withNotices(snapshot.notices());
 			}
-			SliceResult result;
-			try (CampaignLock lock = held.get())
+			CommandResult result;
+			try (CampaignLock lock = retainBackgroundLock(campaign, held.get()))
 			{
-				loaded = require(scope.store(), campaign, true);
-				if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
-				{
-					Optional<String> unfinished = reviseTests(root, loaded, lock, sliceStart);
-					loaded = require(scope.store(), campaign, true);
-					if (unfinished.isPresent())
-						return report(root, loaded, null, unfinished.get());
-				}
-				result = SliceRunner.run(context(root, loaded), campaign, List.of(), lock.lend(), sliceStart);
+				result = runHeld(root, campaign, lock, sliceStart);
 			}
 			// The cleanup takes the lock itself, so the command releases it first
 			DeliveryResult delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result).orElse(null);
-			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
-			return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
+			if (background)
+				backgroundDeliveries.put(campaign, delivery);
+			else
+				noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
+			return result;
 		});
+	}
+
+	/**
+	 * Advances a held campaign, including automatic test revisions that require another driver pass.
+	 *
+	 * @param root the project root
+	 * @param id the campaign identifier
+	 * @param lock the held campaign lock
+	 * @param started the command start
+	 * @return the result at a decision, outcome or foreground slice boundary
+	 * @throws CommandRefusedException if the campaign cannot advance
+	 * @throws IOException if state cannot be read or written
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	private CommandResult runHeld(Path root, String id, CampaignLock lock, Instant started)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		while (true)
+		{
+			Campaign loaded = require(scope.store(), id, true);
+			if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
+			{
+				Optional<String> unfinished = reviseTests(root, loaded, lock, started);
+				loaded = require(scope.store(), id, true);
+				if (unfinished.isPresent())
+					return report(root, loaded, null, unfinished.get());
+			}
+			SliceResult result = SliceRunner.run(context(root, loaded), id, List.of(), lock.lend(), started);
+			loaded = require(scope.store(), id, true);
+			if (!background || loaded.lifecycle() != Lifecycle.ACTIVE || !loaded.awaitsTestRevision() ||
+				loaded.revisionRequested() || loaded.pending() instanceof PendingDecision.TestRevisionBlocked)
+				return new CommandResult(result.status(), scope.harness(), null, result.delivery(), null);
+		}
 	}
 
 	/**
@@ -1683,7 +1981,9 @@ public final class OptimizerCore implements Core
 			fork = fork.extend(root, participants);
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, revised, plugin,
-			new PilotSlice(scope.clock(), scope.sliceSettings(), scope.interrupts(), sliceStart));
+			new PilotSlice(scope.clock(), runSettings(), runInterrupts(), sliceStart));
+		if (background && stopRequested())
+			return new RevisedContract(List.of(new CampaignEvent.Cancel()), null);
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
 		// The revised contract is not confirmed on a pilot that did not finish. The user chooses to retry or to stop,
 		// and the test revisions run again with the next run.
@@ -1812,6 +2112,15 @@ public final class OptimizerCore implements Core
 			Optional<Campaign> campaign = store.load(subject);
 			if (campaign.isPresent())
 				return report(root, campaign.get(), null, null);
+			Path archived = backgroundArchive(subject);
+			if (Files.isRegularFile(archived))
+			{
+				ObjectNode saved = (ObjectNode) scope.json().readTree(Files.readString(archived));
+				List<String> notices = new ArrayList<>();
+				if (Files.isRegularFile(noticeFailureFile(subject)))
+					notices.add(Files.readString(noticeFailureFile(subject)));
+				return new CommandResult(null, null, null, null, null, null, notices, saved);
+			}
 			Optional<SessionCampaign> other = loadFromOtherSession(subject);
 			if (other.isPresent())
 				return reportOtherSession(root, other.get());
@@ -2300,7 +2609,13 @@ public final class OptimizerCore implements Core
 				// revision pilot runs again with its test revision, when the user runs the campaign.
 				if (retriesPilot && !(chosen.isConfirmed() && !chosen.revisionRequested()))
 					return resumeHeld(root, scope.store(), chosen, sliceStart);
-				if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
+				if (background && chosen.lifecycle() == Lifecycle.ACTIVE && chosen.isConfirmed())
+				{
+					refuseUnlaunchable();
+					result = runHeld(root, campaign, lock, sliceStart);
+					delivery = Optional.ofNullable(result.delivery()).map(DeliveryReport::result).orElse(null);
+				}
+				else if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
 				{
 					// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
 					SliceResult slice = SliceRunner.run(context(root, chosen), campaign, List.of(), lock.lend());
@@ -2309,7 +2624,10 @@ public final class OptimizerCore implements Core
 				}
 			}
 			// The cleanup takes the lock itself, so the command releases it first
-			noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
+			if (background)
+				backgroundDeliveries.put(campaign, delivery);
+			else
+				noticeOf(cleanup().end(require(scope.store(), campaign, true), delivery), notices);
 			return result;
 		});
 	}
@@ -2374,6 +2692,30 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			require(scope.store(), campaign, true);
+			Optional<BackgroundRun.Owner> owner = BackgroundRun.owner(lockFile(campaign), scope.json());
+			if (owner.isPresent())
+			{
+				BackgroundRun.requestStop(lockFile(campaign), owner.get(), scope.fileReplacer());
+				Instant end = scope.clock().instant().plus(scope.sliceSettings().grace()).plusSeconds(30);
+				while (true)
+				{
+					Optional<CampaignLock> acquired = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(campaign));
+					if (acquired.isPresent())
+					{
+						try (CampaignLock lock = acquired.get())
+						{
+							Campaign loaded = require(scope.store(), campaign, true);
+							if (loaded.lifecycle() != Lifecycle.ACTIVE)
+								return report(root, loaded, null, null);
+							return apply(root, loaded, List.of(new CampaignEvent.Cancel()), lock);
+						}
+					}
+					if (!scope.clock().instant().isBefore(end))
+						return report(root, require(scope.store(), campaign, true), null,
+							"The stop request stands; the background driver has not yet ended. Use `status`.");
+					scope.waiting().every(scope.sliceSettings().pollInterval()).pause();
+				}
+			}
 			try (CampaignLock lock = lock(campaign))
 			{
 				Campaign loaded = require(scope.store(), campaign, true);
@@ -2652,7 +2994,13 @@ public final class OptimizerCore implements Core
 
 		PluginCheck plugin = pluginCheck(root, campaign, fork);
 		Map<String, PilotResult> pilots = pilot(root, campaign, fork, derived, plugin,
-			new PilotSlice(scope.clock(), scope.sliceSettings(), scope.interrupts(), sliceStart));
+			new PilotSlice(scope.clock(), runSettings(), runInterrupts(), sliceStart));
+		if (background && stopRequested())
+		{
+			campaign = Transitions.apply(campaign, new CampaignEvent.Cancel());
+			store.replaceSnapshot(campaign);
+			return report(root, campaign, null, "The background run was cancelled; its completed pilot trials are retained.");
+		}
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
 		campaign = settlePilotPause(store, campaign, pause);
 		// A proposal whose pilot did not finish cannot be confirmed, so the user first chooses to retry or to stop
@@ -3019,11 +3367,31 @@ public final class OptimizerCore implements Core
 	 * @throws IOException if the session fails abnormally
 	 * @throws InterruptedException if the thread is interrupted. The session is interrupted too.
 	 */
-	private static SessionResult await(SessionHandle handle) throws IOException, InterruptedException
+	private SessionResult await(SessionHandle handle) throws IOException, InterruptedException
 	{
 		try
 		{
-			return handle.completion().toCompletableFuture().get();
+			if (!background)
+				return handle.completion().toCompletableFuture().get();
+			Instant stopAt = null;
+			while (true)
+			{
+				try
+				{
+					return handle.completion().toCompletableFuture().get(runSettings().pollInterval().toNanos(),
+						TimeUnit.NANOSECONDS);
+				}
+				catch (TimeoutException _)
+				{
+					if (stopAt == null && stopRequested())
+						stopAt = scope.clock().instant().plus(runSettings().grace());
+					if (stopAt != null && !scope.clock().instant().isBefore(stopAt))
+					{
+						handle.interrupt();
+						return new SessionResult.Interrupted(List.of());
+					}
+				}
+			}
 		}
 		catch (ExecutionException e)
 		{
@@ -3084,8 +3452,32 @@ public final class OptimizerCore implements Core
 		Path proposalFile = null;
 		if (proposal != null)
 			proposalFile = new ProposalTextFile(directory, scope.fileReplacer()).write(proposal);
-		return new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(), proposalFile, null,
-			message);
+		CommandResult result = new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(),
+			proposalFile, null, message);
+		List<String> notices = new ArrayList<>();
+		Optional<BackgroundRun.Owner> owner = BackgroundRun.owner(lockFile(campaign.header().id()), scope.json());
+		if (!background)
+			owner.ifPresent(driver -> notices.add("Background driver " + driver.pid() + " holds the campaign; started " +
+			driver.started() + ". Use `status` for progress or `cancel` to stop it."));
+		if (owner.isEmpty())
+		{
+			Path ended = lockFile(campaign.header().id()).resolveSibling("background-result.json");
+			if (Files.isRegularFile(ended))
+			{
+				ObjectNode saved = (ObjectNode)
+					scope.json().readTree(Files.readString(ended));
+				result = new CommandResult(result.status(), null, result.harness(), result.proposalFile(),
+					result.delivery(), result.message(), result.notices(), saved);
+			}
+		}
+		if (owner.isEmpty() &&
+			Files.isRegularFile(lockFile(campaign.header().id()).resolveSibling("background-driver.json")))
+			notices.add("The recorded background driver is no longer alive. Its lock has no live holder; " +
+				"use `run` to resume.");
+		Path failure = noticeFailureFile(campaign.header().id());
+		if (Files.isRegularFile(failure))
+			notices.add(Files.readString(failure));
+		return result.withNotices(notices);
 	}
 
 	/**
@@ -3206,7 +3598,7 @@ public final class OptimizerCore implements Core
 			Set.copyOf(scope.loaderConfiguration()));
 		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory,
 			new SplittableRandom(scope.random().nextLong()));
-		return new DriverContext(scope.fileLocks(), store, sessions(campaign), fork.workspace(), scope.interrupts(),
+		return new DriverContext(scope.fileLocks(), store, sessions(campaign), fork.workspace(), runInterrupts(),
 			scope.clock(),
 			new FileCandidateOverlays(directory, inventory, fork::version, scope.json(), scope.fileReplacer()), judge, triage,
 			new ApproachRankingPrompt(scope.json(), triageDirectory), promptAuthor,
@@ -3215,7 +3607,7 @@ public final class OptimizerCore implements Core
 			scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverRuns(scope.sessions(), scope.json()), authority,
 			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
-			scope.sliceSettings(), scope.json(), scope.profiles().candidateJudgeProfiles(), scope.judgeRecords(),
+			runSettings(), scope.json(), scope.profiles().candidateJudgeProfiles(), scope.judgeRecords(),
 			scope.temporaryDirectory());
 	}
 

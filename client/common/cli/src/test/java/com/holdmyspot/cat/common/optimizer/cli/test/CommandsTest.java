@@ -951,6 +951,9 @@ public final class CommandsTest
 				{List.of("confirm", "c1", "all_models")},
 				{List.of("confirm", "c1", "latest_versions", "extra")},
 				{List.of("cancel", "-rf")},
+				{List.of("status", "c1", "--background")},
+				{List.of("confirm", "c1", "--background")},
+				{List.of("run", "c1", "--background", "--background")},
 				{List.of("revise", "c1")},
 				{List.of("revise", "c1", "  ")},
 				{List.of("choose", "c1")},
@@ -1169,6 +1172,28 @@ public final class CommandsTest
 			requireThat(exit, "exit").isEqualTo(1);
 			requireThat(project.calls, "calls").isEmpty();
 			requireThat(output.toString(), "output").contains("missing-cat-contract.json");
+		}
+	}
+	/**
+	 * Each campaign step accepts background mode while retaining validation of every other argument.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void parsesBackgroundCampaignSteps() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			for (List<String> arguments : List.of(List.of("start", "CLAUDE.md"), List.of("run", "c1"),
+				List.of("revise", "c1", "feedback"), List.of("choose", "c1", "retry")))
+			{
+				List<String> background = new ArrayList<>(arguments);
+				background.add("--background");
+				Command parsed = project.parse(background);
+				requireThat(parsed instanceof Command.Background, "background").isTrue();
+				requireThat(((Command.Background) parsed).command(), "command").isEqualTo(project.parse(arguments));
+			}
 		}
 	}
 }

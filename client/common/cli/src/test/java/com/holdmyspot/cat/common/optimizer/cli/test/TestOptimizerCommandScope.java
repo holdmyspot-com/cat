@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
+import java.util.function.Consumer;
+import com.holdmyspot.cat.common.Waiting;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ExecutableFiles;
@@ -75,6 +77,25 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
 	private String userLoaderSettings;
 	private String launchRefusal;
+	Consumer<String> backgroundNotice = _ ->
+	{
+	};
+	String backgroundNoticeFailure;
+	Waiting controlledWaiting = Yielding.waiting();
+
+	@Override
+	public Waiting waiting()
+	{
+		return controlledWaiting;
+	}
+
+	@Override
+	protected void backgroundEnded(String campaign) throws IOException
+	{
+		backgroundNotice.accept(campaign);
+		if (backgroundNoticeFailure != null)
+			throw new IOException(backgroundNoticeFailure);
+	}
 	private SymbolicLinkProbe symbolicLinkProbe = () ->
 	{
 	};

@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.Edit;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.ReplaceLinkWithDirectory;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange.WriteLink;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryPlan;
+import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -236,6 +237,15 @@ public final class Delivery
 			// The history is read after the scan: a user's edit in between makes the scanned preimage differ from the
 			// live file, so delivery stops before overwriting that edit instead of dropping the records it added
 			FileInventory current = InventoryScanner.scan(base, externalPaths);
+			if (label != null)
+			{
+				Path target = entry.target();
+				Optional<FileEntry> original = selected.fork().entry(target);
+				Optional<PathState> live = liveState(base.resolve(target));
+				if (!original.equals(live))
+					return new Conflicted(List.of(new DeliveryConflict(DeliveryConflict.Kind.TARGET_CHANGED,
+						target, target, targetHash(original.orElse(null)), targetHash(live.orElse(null)))));
+			}
 			Map<Path, FileContent> additionalFiles = new HashMap<>();
 			Path historyFile = PromptTestLocations.certificationHistory(entry.target());
 			CertificationHistory history = CertificationHistory.EMPTY;
@@ -266,6 +276,21 @@ public final class Delivery
 			store.writeJournal(campaignId, journal);
 		}
 		return verify(label, selected, journal, externalPaths, promptSources);
+	}
+
+	/**
+	 * Describes a target's bytes or its changed identity without reading through links.
+	 *
+	 * @param state the file state, or null when absent
+	 * @return its hash or identity
+	 */
+	private static String targetHash(PathState state)
+	{
+		if (state instanceof RegularFile file)
+			return file.contentHash().hex();
+		if (state == null)
+			return "missing";
+		return state.toString();
 	}
 
 	/**

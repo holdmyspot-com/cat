@@ -23,8 +23,7 @@ supported there.
 
 Trials also need CAT's request server, `bin/request-server` beside the launcher, which starts every trial's session
 outside this session's sandbox, inside that harness's own sandbox. Before step 1's `start`, start it once in the
-background, by its absolute path, as a command of its own with no arguments: in Claude Code as a background command,
-in Codex as a command that keeps running. It serves this session until the session ends. When a result shows a reason
+background, by its absolute path, as a command of its own with no arguments, through the shell tool's own background mode. It serves this session until the session ends. When a result shows a reason
 that says that no request server serves this session, start it that way and run the command again. When the request
 server exits with status `2` because this session runs inside a CAT run, skip the request server: the run's runner
 starts the sessions that this session requests. Continue with step 1. When it exits with status `2` for any other reason
@@ -45,6 +44,23 @@ only from what your reply shows. Any other guidance on how long a reply is or ho
 paragraph of one or two sentences, does not shorten or replace a launcher field or a file that this skill tells you to
 show. Add no statistic, estimate or verdict of your own about the campaign; every such claim the user sees must come
 from a launcher field.
+
+Choose the execution mode for every `start`, `revise`, `choose` and `run` command. If the shell tool can keep a
+command running after your turn ends, append `--background` and use that tool's own background mode. Never use shell
+`&` or `nohup`. Tell the user that the campaign is running in the background, offer `status` and `cancel`, and continue
+other work. A background run has no slice or time cap; `start` and `revise` run the whole guard pilot and must not be
+repeated while their driver holds the campaign. On the command's exit notice, call `status <campaign>` (or
+`status <target>` if `start` has not yet returned its campaign identifier) and follow the result below just as for a
+foreground return. Test nothing at turn starts. When the user asks for progress or a session resumes, call `status`;
+a driver that died abnormally may have sent no notice. Stop a background run with `cancel`, which allows in-flight
+sessions their grace period and waits up to that grace plus 30 seconds. An unrelated host interrupt does not stop it.
+
+If the tool cannot keep a command running, or the launcher refuses `--background`, show its reason and use foreground
+slices without the flag. Give a foreground command a tool timeout of at least 10 minutes and repeat it only as the
+workflow below requires. A foreground result that says a test needs a background run cannot advance that test; show
+that reason to the user. While a background driver holds the lock, `status` reads its snapshot and names the driver
+and start time, a second `run` is `busy`, and a refusal of `revise`, `choose` or `confirm` names `status` and `cancel`.
+A failed exit notice does not change the outcome; the next `status` reports the failure.
 
 1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
 	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
@@ -145,7 +161,7 @@ from a launcher field.
 		`latest_versions` or, for cells that the user described and confirmed, `described`. When the user confirms
 		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
 	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
-3. **Run.** While the `status` of the result of `confirm` or `run` is `running`, run `run <campaign>` again. After each
+3. **Run.** Use the execution mode above. In foreground mode, while the `status` of the result of `confirm` or `run` is `running`, run `run <campaign>` again. After each
 	run, show the user its `summary`, and its `message` when it has one: while a test revision's guard pilot is
 	unfinished, the `message` says how many of its trials are decided. (A `running` result of `start`, `revise` or
 	`choose <campaign> retry` is step 2's guard pilot, which `start` continues.)

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
+import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -7012,6 +7013,57 @@ public final class DriverTest
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 				requireThat(result.status().pending(), "pending").
 					isEqualTo(SliceReports.describe(result.delivery().result()));
+			}
+		}
+	}
+	/**
+	 * A background run admits long trials, ignores unrelated host interrupts, and stops only on its addressed
+	 * cancellation request, retaining the same logical trials for resumption.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void backgroundIgnoresSliceAndInterrupt() throws IOException
+	{
+		Contract fixture = ContractFixtures.contract();
+		List<PromptTest> tests = fixture.tests().stream().map(test -> new PromptTest(test.id(), test.riskRank(),
+			test.requirementIds(), test.absentTriggers(), test.applicability(), test.turns(), Duration.ofMinutes(12),
+			test.expectedBehaviour(), test.uncoveredInteractions(), test.variables(), test.committedTestCases(),
+			test.testCases(), test.assertions(), test.regressionScenarios(), List.of())).toList();
+		Contract contract = new Contract(fixture.requirements(), tests, fixture.profiles(), fixture.judge(),
+			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("background-driver")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().window(2).build());
+			harness.settings(SliceSettings.DEFAULT.withoutDeadline());
+			try (Driver driver = harness.open();
+				BackgroundRun _ =
+					new BackgroundRun(harness.context().lockFile(),
+						harness.clock().instant(), harness.context().json(),
+						Yielding.fileReplacer()))
+			{
+				requireThat(driver.step(), "firststep").isInstanceOf(Step.Continue.class);
+				List<FakeSession> started = harness.sessions().sessions();
+				requireThat(started.size(), "longtrials").isEqualTo(2);
+				harness.clock().advance(Duration.ofDays(2));
+				harness.interrupts().interrupt(harness.clock().instant());
+				requireThat(driver.step(), "unrelatedinterrupt").isInstanceOf(Step.Continue.class);
+				for (FakeSession session : started)
+					requireThat(session.isInterruptRequested(), "stillrunning").isFalse();
+				BackgroundRun.Owner identity = BackgroundRun.owner(
+					harness.context().lockFile(), harness.context().json()).orElseThrow();
+				BackgroundRun.requestStop(harness.context().lockFile(),
+					identity, Yielding.fileReplacer());
+				requireThat(driver.step(), "cancellationgrace").isInstanceOf(Step.Continue.class);
+				harness.clock().advance(SliceSettings.DEFAULT.grace());
+				requireThat(driver.step(), "cancelledstep").isInstanceOf(Step.Stopped.class);
+				requireThat(harness.campaign().header().lifecycle(), "cancelled").
+					isEqualTo(Lifecycle.CANCELLED);
+				requireThat(harness.campaign().header().lifecycle().isResumable(), "resumable").isTrue();
+				requireThat(harness.sessions().sessions().size(), "nomoreadmissions").isEqualTo(2);
+				for (FakeSession session : started)
+					requireThat(session.isInterruptRequested(), "stoppedsession").isTrue();
 			}
 		}
 	}

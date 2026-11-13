@@ -429,7 +429,7 @@ public final class IntegrationTest
 				for (EntryGroup group : provider().describeEntries(added, launcher))
 				{
 					if (group.effect() == EntryEffect.RUNS_WITHOUT_ASKING || group.effect() == EntryEffect.RUNS_OUTSIDE_SANDBOX)
-						requireThat(group.items(), "items").contains("request-server");
+						requireThat(group.items(), "items").contains("request-server").contains("prompt-optimizer");
 				}
 			}
 			requireThat(provider().installPermissions(home, launcher, replacer()), "repeated").isEmpty();
@@ -851,7 +851,9 @@ public final class IntegrationTest
 			return installerRules;
 		return installerRules + """
 			prefix_rule(pattern=[%s], decision="allow")
-			""".formatted(MAPPER.writeValueAsString(launcher.resolveSibling("request-server").toString()));
+			prefix_rule(pattern=[%s], decision="allow")
+			""".formatted(MAPPER.writeValueAsString(launcher.resolveSibling("request-server").toString()),
+				MAPPER.writeValueAsString(launcher.resolveSibling("prompt-optimizer").toString()));
 	}
 
 	/**

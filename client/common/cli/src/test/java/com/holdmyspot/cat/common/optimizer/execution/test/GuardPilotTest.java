@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
+import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -1578,7 +1579,7 @@ public final class GuardPilotTest
 	 */
 	private static Overlay control()
 	{
-		return Overlay.of(fork()).write(PROMPT, new com.holdmyspot.cat.common.optimizer.inventory.FileContent(
+		return Overlay.of(fork()).write(PROMPT, new FileContent(
 			new byte[0]), PosixFilePermissions.fromString("rw-r--r--"));
 	}
 
@@ -1988,6 +1989,35 @@ public final class GuardPilotTest
 			}
 			return new SessionResult.Completed(evidence.resolve("transcript"), List.of(List.of(reply)), effects,
 				initialProject, "model", "reasoning", null, List.of(), "none", List.of());
+		}
+	}
+	/**
+	 * Background pilots finish in one command despite crossing the foreground budget, without reading a host
+	 * interrupt signal. The scripted sessions advance a manual clock instead of waiting.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test
+	public void backgroundPilotHasNoTimeCutoff() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("background-pilot"));
+			ManualClock clock = new ManualClock(Instant.EPOCH);
+			SessionScript script = new SessionScript(directory.resolve("sessions"), _ -> "pass");
+			script.trialsTake(clock, Duration.ofMinutes(12));
+			PilotSlice background = new PilotSlice(clock, SliceSettings.DEFAULT.withoutDeadline(), _ -> false,
+				clock.instant());
+			Map<String, PilotResult> result = pilot(script, workspace(directory), 1).run(contract, List.of(),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(8), _ ->
+				{
+				}, background);
+			requireThat(decided(result), "decided").isEqualTo(GuardPilot.TRIALS * result.size());
+			requireThat(clock.instant().isAfter(Instant.EPOCH.plus(Duration.ofMinutes(9))), "pastslice").isTrue();
+			for (PilotResult pilot : result.values())
+				requireThat(pilot.stopReason(), "stopReason").isNull();
 		}
 	}
 }

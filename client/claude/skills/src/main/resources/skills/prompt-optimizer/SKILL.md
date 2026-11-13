@@ -4,8 +4,8 @@ allowed-tools: [Bash]
 ---
 
 The launcher is `bin/prompt-optimizer` in CAT's installed plugin directory, two levels above this skill's
-directory; run it by its absolute path. Run each `run`, `start`, `revise` and `choose` command with a Bash timeout of
-600000 milliseconds; each `run`, and the guard pilot of `start`, `revise` and `choose`, stops its slice before that
-timeout.
+directory; run it by its absolute path. Use the shell tool's own background mode with `--background` when it can
+keep a command running after your turn ends, never shell `&` or `nohup`. Otherwise use foreground slices with a
+tool timeout of 600000 milliseconds. On the exit notice call `status` and follow its result.
 
 <!-- cat:include ../shared-lazy-body.md -->

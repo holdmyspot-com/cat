@@ -12,10 +12,33 @@ import java.time.Instant;
  *
  * @param budget how long after the slice starts new work may be admitted
  * @param grace how long after the budget running sessions may finish before they are cancelled
+ * @param background whether the run has no time cutoff
  * @param pollInterval the longest time that {@link SliceRunner} waits before it checks for a host interrupt again
  */
-public record SliceSettings(Duration budget, Duration grace, Duration pollInterval)
+public record SliceSettings(Duration budget, Duration grace, Duration pollInterval, boolean background)
 {
+	/**
+	 * Creates foreground settings.
+	 *
+	 * @param budget the admission budget
+	 * @param grace the completion grace period
+	 * @param pollInterval the interrupt polling interval
+	 */
+	public SliceSettings(Duration budget, Duration grace, Duration pollInterval)
+	{
+		this(budget, grace, pollInterval, false);
+	}
+
+	/**
+	 * Returns settings with no time cutoff; grace applies only to an explicit cancellation.
+	 *
+	 * @return the background settings
+	 */
+	public SliceSettings withoutDeadline()
+	{
+		return new SliceSettings(budget, grace, pollInterval, true);
+	}
+
 	/**
 	 * The default settings: an 8-minute budget and a 1-minute grace period, checking for a
 	 * host interrupt every second.
@@ -28,6 +51,7 @@ public record SliceSettings(Duration budget, Duration grace, Duration pollInterv
 	 *
 	 * @param budget how long after the slice starts new work may be admitted
 	 * @param grace how long after the budget running sessions may finish before they are cancelled
+	 * @param background whether the run has no time cutoff
 	 * @param pollInterval the longest time that {@link SliceRunner} waits before it checks for a host interrupt
 	 *   again
 	 * @throws NullPointerException if any of the arguments are null
@@ -54,6 +78,8 @@ public record SliceSettings(Duration budget, Duration grace, Duration pollInterv
 	public Instant deadline(Instant sliceStart)
 	{
 		requireThat(sliceStart, "sliceStart").isNotNull();
+		if (background)
+			return Instant.MAX;
 		return sliceStart.plus(budget);
 	}
 
@@ -66,6 +92,8 @@ public record SliceSettings(Duration budget, Duration grace, Duration pollInterv
 	 */
 	public Instant graceEnd(Instant sliceStart)
 	{
+		if (background)
+			return Instant.MAX;
 		return deadline(sliceStart).plus(grace);
 	}
 }

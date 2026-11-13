@@ -62,6 +62,11 @@ final class DeliveryJson
 					node.put("kind", EnumNames.lowerCase(conflict.kind()));
 					node.put("target", conflict.target().toString());
 					node.put("path", conflict.path().toString());
+					if (conflict.forkHash() != null)
+					{
+						node.put("fork_hash", conflict.forkHash());
+						node.put("base_hash", conflict.baseHash());
+					}
 				}
 			}
 			case DeliveryResult.UnownedChange unowned ->

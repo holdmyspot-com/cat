@@ -1,5 +1,8 @@
 package com.holdmyspot.cat.common.optimizer.cli.test;
 
+import java.util.function.Consumer;
+import java.util.EnumMap;
+import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -865,7 +868,7 @@ public final class OptimizerCoreTest
 		 * The token usage of each role's sessions, by start position among the role's sessions and cycling; a role
 		 * without an entry reports the usage that the script chooses.
 		 */
-		private final Map<SessionRole, List<TokenUsage>> usage = new java.util.EnumMap<>(SessionRole.class);
+		private final Map<SessionRole, List<TokenUsage>> usage = new EnumMap<>(SessionRole.class);
 		/**
 		 * The hooks of each plugin directory that the user has not approved, by the end of the directory's name.
 		 */
@@ -1205,7 +1208,7 @@ public final class OptimizerCoreTest
 	 * @return the output as JSON text
 	 * @throws UncheckedIOException if the fixture cannot be read
 	 */
-	private static String derivation(java.util.function.Consumer<ObjectNode> change)
+	private static String derivation(Consumer<ObjectNode> change)
 	{
 		try (InputStream in = ProposalTest.class.getResourceAsStream("derivation.json"))
 		{
@@ -5332,7 +5335,7 @@ public final class OptimizerCoreTest
 			repository.sessions().usage.put(SessionRole.JUDGE, List.of(judge));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			// The guard pilot's sessions spend no allowance, so their usage is not reported
-			Map<SessionRole, Long> pilotSessions = new java.util.EnumMap<>(SessionRole.class);
+			Map<SessionRole, Long> pilotSessions = new EnumMap<>(SessionRole.class);
 			for (SessionRole role : List.of(SessionRole.TRIAL, SessionRole.JUDGE))
 			{
 				pilotSessions.put(role, repository.sessions().roles().stream().filter(value -> value == role).
@@ -5416,7 +5419,7 @@ public final class OptimizerCoreTest
 	 * @param change edits the revised test
 	 * @return the output as JSON text
 	 */
-	private static String revisedFormatting(java.util.function.Consumer<ObjectNode> change)
+	private static String revisedFormatting(Consumer<ObjectNode> change)
 	{
 		ObjectNode test = (ObjectNode) JSON.readTree(derivation(_ ->
 		{
@@ -6044,7 +6047,7 @@ public final class OptimizerCoreTest
 	 * @throws IOException if the record cannot be written
 	 */
 	private static void writeRecord(Repository repository, String promptText,
-		java.util.function.Consumer<Map<MeasurementCondition, String>> change) throws IOException
+		Consumer<Map<MeasurementCondition, String>> change) throws IOException
 	{
 		writeRecord(repository, promptText, 1, change);
 	}
@@ -6062,9 +6065,9 @@ public final class OptimizerCoreTest
 	 * @throws IOException if the history cannot be read or written
 	 */
 	private static void writeRecord(Repository repository, String promptText, int certificationIndex,
-		java.util.function.Consumer<Map<MeasurementCondition, String>> change) throws IOException
+		Consumer<Map<MeasurementCondition, String>> change) throws IOException
 	{
-		Map<MeasurementCondition, String> values = new java.util.EnumMap<>(MeasurementCondition.class);
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, Harness.CLAUDE.commandName());
 		values.put(MeasurementCondition.HARNESS_VERSION, "1.0");
 		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
@@ -6352,7 +6355,7 @@ public final class OptimizerCoreTest
 	private static void appendDeliveryEntry(Repository repository, String promptText, DeliveryLabel label)
 		throws IOException
 	{
-		Map<MeasurementCondition, String> values = new java.util.EnumMap<>(MeasurementCondition.class);
+		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, Harness.CLAUDE.commandName());
 		values.put(MeasurementCondition.HARNESS_VERSION, "1.0");
 		values.put(MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
@@ -6681,9 +6684,11 @@ public final class OptimizerCoreTest
 	 * then retaining the incumbent delivers those tests and removes the campaign directory. This start and choice can
 	 * take one second or longer during a parallel build. A campaign snapshot alone would omit the draft and overlay
 	 * artifacts needed to reach the asserted removal summary and absent directory.
+	 *
+	 * @param background whether the choice runs in background mode
 	 */
-	@Test
-	public void removalIsReported() throws Exception
+	@Test(dataProvider = "backgroundAdvancingCommands")
+	public void removalIsReported(boolean background) throws Exception
 	{
 		// Requirement: R-W9
 		try (TemporaryDirectories scope = new TemporaryDirectories())
@@ -6705,11 +6710,27 @@ public final class OptimizerCoreTest
 				built.answeredWarnings(), built.testRevisions(), built.plugins());
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).replaceSnapshot(tradeOff);
 
-			ObjectNode chosen = output(repository, List.of("choose", id, "retain_incumbent"));
+			List<String> arguments = List.of("choose", id, "retain_incumbent");
+			if (background)
+			{
+				arguments = List.of("choose", id, "retain_incumbent", "--background");
+				Path directory = repository.directory(id);
+				repository.scope().backgroundNotice = _ ->
+					requireThat(Files.notExists(directory), "deliveryAndCleanupBeforeNotice").isTrue();
+				repository.scope().backgroundNoticeFailure = "queue denied after delivery";
+			}
+			ObjectNode chosen = output(repository, arguments);
 
 			requireThat(chosen.get("summary").asString(), "summary").
 				endsWith("\nRemoved the campaign's files from .cat/sessions/.");
 			requireThat(Files.notExists(repository.directory(id)), "directoryIsAbsent").isTrue();
+			if (background)
+			{
+				ObjectNode status = output(repository, List.of("status", id));
+				requireThat(status.path("status"), "storedStatus").isEqualTo(chosen.path("status"));
+				requireThat(status.path("delivery_result"), "storedDelivery").isEqualTo(chosen.path("delivery_result"));
+				requireThat(status.path("summary").asString(), "noticeFailure").contains("queue denied after delivery");
+			}
 		}
 	}
 
@@ -7114,6 +7135,204 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+	/**
+	 * The background pilot finishes once, stores its proposal and releases its lock before notifying the host.
+	 * A refused notification leaves the proposal and campaign outcome available through status.
+	 *
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test
+	public void backgroundNoticeAfterPilot() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			repository.sessions().sessionDuration = Duration.ofMinutes(12);
+			AtomicInteger notices = new AtomicInteger();
+			repository.scope().backgroundNotice = id ->
+			{
+				try
+				{
+					Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
+					requireThat(BackgroundRun.owner(lockFile, JSON),
+						"driverreleased").isEmpty();
+					try (CampaignLock _ = holdLock(repository, id))
+					{
+						requireThat(Files.isRegularFile(lockFile.resolveSibling("background-result.json")),
+							"storedresponse").isTrue();
+					}
+					requireThat(repository.core().status(id).status().status().label(), "readyproposal").
+						isEqualTo("awaiting_user");
+					notices.incrementAndGet();
+				}
+				catch (Exception failure)
+				{
+					throw new AssertionError(failure);
+				}
+			};
+			repository.scope().backgroundNoticeFailure = "queue denied";
+			CommandResult result = repository.core().background(() -> repository.core().start(Path.of("CLAUDE.md")));
+			requireThat(result.status().status().label(), "status").isEqualTo("awaiting_user");
+			requireThat(result.proposalFile(), "proposal").isNotNull();
+			requireThat(notices.get(), "onenotice").isEqualTo(1);
+			CommandResult status = repository.core().status(result.status().campaignId());
+			requireThat(status.summary(ZoneOffset.UTC), "queuefailure").contains("queue denied");
+			requireThat(status.backgroundResult().path("proposal_file").asString(), "savedproposal").
+				isEqualTo(result.proposalFile().toString());
+			requireThat(status.status().status().label(), "unchangedoutcome").isEqualTo("awaiting_user");
+			ObjectNode rendered = output(repository, List.of("status", result.status().campaignId()));
+			requireThat(rendered.path("message").asString(), "visibleWithProposal").contains("queue denied");
+		}
+	}
+
+	/**
+	 * A held background campaign exposes its snapshot and driver start, refuses competing changes with useful
+	 * commands, and reports a second run as busy. Cancellation writes a request before waiting for the lock.
+	 *
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test
+	@SuppressWarnings("try")
+	public void backgroundLockAndCancellation() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
+			try (CampaignLock held = holdLock(repository, id);
+				BackgroundRun _ =
+					new BackgroundRun(lockFile,
+						repository.scope().clock().instant(), JSON, Yielding.fileReplacer()))
+			{
+				Map<String, String> before = contentsWhileHeld(repository, id);
+				String summary = repository.core().status(id).summary(ZoneOffset.UTC);
+				requireThat(summary, "snapshotdriver").contains("Background driver").contains("started");
+				requireThat(repository.core().run(id).status().status().label(), "secondrun").isEqualTo("busy");
+				for (ThrowingCall call : List.<ThrowingCall>of(
+					() -> repository.core().revise(id, "feedback"),
+					() -> repository.core().confirm(id, CertificationScope.WEAKEST_CELL),
+					() -> repository.core().choose(id, Choice.STOP, 0, 0)))
+					requireThat(refusal(call), "refusal").contains("status").contains("cancel").doesNotContain("slice");
+				requireThat(contentsWhileHeld(repository, id), "read-onlystatusandrefusals").isEqualTo(before);
+				repository.scope().controlledWaiting = interval -> () ->
+				{
+					requireThat(BackgroundRun.stopRequested(lockFile, JSON),
+						"requestbeforewaiting").isTrue();
+					held.close();
+				};
+				CommandResult cancelled = repository.core().cancel(id);
+				requireThat(cancelled.status().lifecycle(), "cancelled").isEqualTo(Lifecycle.CANCELLED);
+				requireThat(cancelled.status().lifecycle().isResumable(), "resumable").isTrue();
+			}
+		}
+	}
+
+	/**
+	 * Cancellation has a bounded wait and leaves its request standing when the driver cannot end yet.
+	 *
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test
+	public void backgroundCancelWaitIsBounded() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
+			try (CampaignLock _ = holdLock(repository, id);
+				BackgroundRun _ =
+					new BackgroundRun(lockFile,
+						repository.scope().clock().instant(), JSON, Yielding.fileReplacer()))
+			{
+				repository.scope().controlledWaiting = interval -> () -> repository.scope().clock().advance(interval);
+				Instant began = repository.scope().clock().instant();
+				CommandResult pending = repository.core().cancel(id);
+				requireThat(pending.message(), "pending").contains("request stands").contains("not yet ended");
+				requireThat(Duration.between(began, repository.scope().clock().instant()), "boundedwait").
+					isEqualTo(Duration.ofSeconds(90));
+				requireThat(BackgroundRun.stopRequested(lockFile, JSON),
+					"standingrequest").isTrue();
+			}
+		}
+	}
+	/**
+	 * A revision runs its changed test's entire pilot in one background command and retains unchanged pilots.
+	 *
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test
+	public void backgroundRevisionCompletesPilot() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, count -> derivation(output ->
+			{
+				if (count > 0)
+					((ObjectNode) output.get("tests").get(2).get("assertions").get(0)).put("statement",
+						"The assistant confirms before deleting the {{target}} directory.");
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			int before = repository.sessions().requests(SessionRole.TRIAL).size();
+			repository.sessions().sessionDuration(Duration.ofMinutes(12));
+			ObjectNode result = output(repository, List.of("revise", id, "say confirms", "--background"));
+			requireThat(result.path("status").asString(), "status").isEqualTo("awaiting_user");
+			requireThat(proposalText(result), "proposal").contains("confirms before deleting");
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trials").
+				isEqualTo(before + GuardPilot.TRIALS);
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
+		}
+	}
+
+	/**
+	 * Background run and resume advance through long scripted sessions until the campaign needs a decision.
+	 *
+	 * @return whether the command resumes a cancelled campaign
+	 */
+	@DataProvider
+	public Object[][] backgroundAdvancingCommands()
+	{
+		return new Object[][] {{false}, {true}};
+	}
+
+	/**
+	 * Background commands cannot return a foreground continuation after an arbitrary amount of elapsed time.
+	 *
+	 * @param resume whether to resume a cancelled campaign through choose
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test(dataProvider = "backgroundAdvancingCommands")
+	public void backgroundRunsUntilDecision(boolean resume) throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(output -> output.putArray("scope_conditions")));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			repository.sessions().sessionDuration(Duration.ofMinutes(12));
+			List<String> arguments = List.of("run", id, "--background");
+			if (resume)
+			{
+				repository.core().cancel(id);
+				arguments = List.of("choose", id, "resume", "--background");
+			}
+			Instant began = repository.scope().clock().instant();
+			ObjectNode result = output(repository, arguments);
+			requireThat(result.path("status").asString(), "status").isNotEqualTo("running");
+			requireThat(result.path("campaign").asString(), "campaign").isEqualTo(id);
+			requireThat(repository.sessions().roles(), "roles").contains(SessionRole.JUDGE);
+			requireThat(repository.scope().clock().instant().isAfter(began.plus(Duration.ofMinutes(8))),
+				"elapsed").isTrue();
 		}
 	}
 }

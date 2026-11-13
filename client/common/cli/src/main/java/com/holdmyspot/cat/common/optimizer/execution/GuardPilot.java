@@ -611,6 +611,7 @@ public final class GuardPilot
 		 * The durations of the trials that completed in the slice, which its admission rule uses.
 		 */
 		private final SliceEvidence evidence = new SliceEvidence();
+		private Instant cancellationEnd;
 		private String stopReason;
 		/**
 		 * {@code true} if {@link #stopReason} is a pause for the user's choice to retry or to stop.
@@ -741,9 +742,14 @@ public final class GuardPilot
 		{
 			if (slice == null)
 				return events.take();
-			Instant graceEnd = slice.graceEnd();
 			while (true)
 			{
+				if (slice.settings().background() && cancellationEnd == null &&
+					slice.interrupts().isInterruptedAfter(slice.start()))
+					cancellationEnd = slice.clock().instant().plus(slice.settings().grace());
+				Instant graceEnd = slice.graceEnd();
+				if (cancellationEnd != null)
+					graceEnd = cancellationEnd;
 				Duration untilGraceEnd = Duration.between(slice.clock().instant(), graceEnd);
 				Duration wait = slice.settings().pollInterval();
 				if (untilGraceEnd.compareTo(wait) < 0)
@@ -753,14 +759,17 @@ public final class GuardPilot
 				Ended ended = events.poll(wait.toNanos(), TimeUnit.NANOSECONDS);
 				if (ended != null)
 					return ended;
-				if (slice.interrupts().isInterruptedAfter(slice.start()))
+				if (!slice.settings().background() && slice.interrupts().isInterruptedAfter(slice.start()))
 				{
 					cancel(HOST_INTERRUPTED);
 					return null;
 				}
 				if (!slice.clock().instant().isBefore(graceEnd))
 				{
-					cancel(SLICE_ENDED);
+					String reason = SLICE_ENDED;
+					if (slice.settings().background())
+						reason = "The user cancelled the background run";
+					cancel(reason);
 					return null;
 				}
 			}
@@ -838,8 +847,11 @@ public final class GuardPilot
 		 * Starts queued sessions while capacity is free and the pilot has not stopped. In a slice, a trial starts only if
 		 * the slice's admission rule admits it, and a judge starts until the grace period ends.
 		 */
-		private void startSessions()
+		private void startSessions() throws IOException
 		{
+			if (slice != null && slice.settings().background() && cancellationEnd == null &&
+				slice.interrupts().isInterruptedAfter(slice.start()))
+				cancellationEnd = slice.clock().instant().plus(slice.settings().grace());
 			while (stopReason == null && inFlight.size() < ceiling)
 			{
 				Job job = nextAdmitted();
@@ -904,6 +916,8 @@ public final class GuardPilot
 		 */
 		private boolean isAdmitted(TrialJob trial)
 		{
+			if (slice.settings().background())
+				return cancellationEnd == null;
 			return evidence.admits(slice.clock().instant(), slice.deadline(), trial.pilot().test.timeLimit());
 		}
 

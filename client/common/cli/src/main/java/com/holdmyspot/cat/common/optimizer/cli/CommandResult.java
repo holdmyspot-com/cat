@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
+import tools.jackson.databind.node.ObjectNode;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
@@ -26,12 +27,31 @@ import java.util.List;
  *   command presents none
  * @param delivery the delivery that the command attempted, or {@code null} if it attempted none
  * @param message a notice for the user that the status does not carry, or {@code null} if there is none
+ * @param backgroundResult the durable final background response, or null for a live report
  * @param notices the lines that follow the status's summary, such as the removal of a campaign's files or a warning
  *   that a removal failed
  */
 public record CommandResult(StatusReport status, CertificationStatus certification, Harness harness,
-	Path proposalFile, DeliveryReport delivery, String message, List<String> notices)
+	Path proposalFile, DeliveryReport delivery, String message, List<String> notices,
+	ObjectNode backgroundResult)
 {
+	/**
+	 * Creates a result without a saved background response.
+	 *
+	 * @param status the campaign status
+	 * @param certification the target's history when no campaign is reported
+	 * @param harness the campaign harness
+	 * @param proposalFile the proposal to present
+	 * @param delivery the delivery result
+	 * @param message the command message
+	 * @param notices the command notices
+	 */
+	public CommandResult(StatusReport status, CertificationStatus certification, Harness harness,
+		Path proposalFile, DeliveryReport delivery, String message, List<String> notices)
+	{
+		this(status, certification, harness, proposalFile, delivery, message, notices, null);
+	}
+
 	/**
 	 * Creates a result.
 	 *
@@ -42,19 +62,22 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	 * @param harness the harness that started the campaign, or {@code null} if the result reports a certification
 	 *   record
 	 * @param proposalFile the file that holds the rendered proposal that the user must review, or {@code null} if the
- *   command presents none
+	 *   command presents none
 	 * @param delivery the delivery that the command attempted, or {@code null} if it attempted none
 	 * @param message a notice for the user that the status does not carry, or {@code null} if there is none
+	 * @param backgroundResult the durable final background response, or null for a live report
 	 * @param notices the lines that follow the status's summary
 	 * @throws NullPointerException if {@code notices} is null or contains null, or if {@code status} is present and
 	 *   {@code harness} is null
-	 * @throws IllegalArgumentException if {@code status} and {@code certification} are both present or both null; if a
+	 * @throws IllegalArgumentException if {@code status} and {@code certification} are both present, or both are null
+	 *   without a saved background response; if a
 	 *   certification record comes with a harness, a proposal file or a delivery; or if {@code message} or a notice is
 	 *   blank
 	 */
 	public CommandResult
 	{
-		if ((status == null) == (certification == null))
+		if (status != null && certification != null ||
+			status == null && certification == null && backgroundResult == null)
 		{
 			throw new IllegalArgumentException("A result reports either a campaign's status or a certification " +
 				"record. status: " + status + ", certification: " + certification);
@@ -81,7 +104,7 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	 * @param status the campaign's status after the command
 	 * @param harness the harness that started the campaign
 	 * @param proposalFile the file that holds the rendered proposal that the user must review, or {@code null} if the
- *   command presents none
+	 *   command presents none
 	 * @param delivery the delivery that the command attempted, or {@code null} if it attempted none
 	 * @param message a notice for the user that the status does not carry, or {@code null} if there is none
 	 * @throws NullPointerException if {@code status} or {@code harness} are null
@@ -157,7 +180,8 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 			else
 				combinedMessage += "\n" + lines;
 		}
-		return new CommandResult(status, certification, harness, proposalFile, delivery, combinedMessage, combined);
+		return new CommandResult(status, certification, harness, proposalFile, delivery, combinedMessage, combined,
+			backgroundResult);
 	}
 
 	/**
@@ -171,7 +195,9 @@ public record CommandResult(StatusReport status, CertificationStatus certificati
 	{
 		requireThat(zone, "zone").isNotNull();
 		String summary;
-		if (status != null)
+		if (backgroundResult != null)
+			summary = backgroundResult.path("summary").asString();
+		else if (status != null)
 			summary = status.summary(zone);
 		else
 			summary = certification.summary();

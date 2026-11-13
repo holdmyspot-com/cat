@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
+import java.util.List;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -9,11 +10,32 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import java.nio.file.Path;
 
 /**
- * One command that the {@code prompt-optimizer} launcher accepts, after {@link Commands#parse(java.util.List)} has
+ * One command that the {@code prompt-optimizer} launcher accepts, after {@link Commands#parse(List)} has
  * validated its arguments.
  */
 public sealed interface Command
 {
+	/**
+	 * Runs a validated command without a foreground slice.
+	 *
+	 * @param command the command to run
+	 */
+	record Background(Command command) implements Command
+	{
+		/**
+		 * Creates the command.
+		 *
+		 * @param command the validated command
+		 */
+		public Background
+		{
+			requireThat(command, "command").isNotNull();
+			if (!(command instanceof Start || command instanceof Run || command instanceof Revise ||
+				command instanceof Choose || command instanceof ResolveConflict))
+				throw new IllegalArgumentException("This command cannot run in the background");
+		}
+	}
+
 	/**
 	 * Starts the campaign for a target, or resumes the target's resumable campaign.
 	 * <p>

@@ -238,6 +238,40 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract CapCalibrator calibrator();
 
 	/**
+	 * Validates the inputs of a launcher that runs outside its host sandbox.
+	 *
+	 * @param command the parsed command
+	 * @throws IOException if its environment or paths cannot be trusted
+	 */
+	protected void validateLauncher(Command command) throws IOException
+	{
+		java.util.Objects.requireNonNull(command, "command");
+	}
+
+	/**
+	 * Returns why a background launcher cannot run safely, or empty when it can.
+	 *
+	 * @return the refusal reason
+	 * @throws IOException if the host cannot be identified
+	 */
+	protected Optional<String> backgroundRefusal() throws IOException
+	{
+		return Optional.empty();
+	}
+
+	/**
+	 * Sends the host's exit notice after all state and delivery writes and lock releases.
+	 *
+	 * @param campaign the campaign identifier
+	 * @throws IOException if the host refuses the notice
+	 * @throws InterruptedException if the notice wait is interrupted
+	 */
+	protected void backgroundEnded(String campaign) throws IOException, InterruptedException
+	{
+		java.util.Objects.requireNonNull(campaign, "campaign");
+	}
+
+	/**
 	 * Returns the slice's time budget: the 8-minute budget plus the 1-minute grace period that fits the skill's
 	 * 10-minute tool timeout.
 	 *

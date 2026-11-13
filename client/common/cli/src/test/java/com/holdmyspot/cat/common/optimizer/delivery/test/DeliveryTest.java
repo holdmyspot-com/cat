@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.delivery.test;
 
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -243,8 +244,9 @@ public final class DeliveryTest
 
 			requireThat(result, "result").isInstanceOf(Conflicted.class);
 			requireThat(((Conflicted) result).conflicts(), "conflicts").isEqualTo(List.of(
-				new DeliveryConflict(DeliveryConflict.Kind.BOTH_CHANGED, Path.of("rules/main.md"),
-					Path.of("rules/main.md"))));
+				new DeliveryConflict(DeliveryConflict.Kind.TARGET_CHANGED, Path.of("rules/main.md"),
+					Path.of("rules/main.md"), content("main v1\n").hash().hex(),
+					content("main edited by the user\n").hash().hex())));
 			requireThat(writes, "writes").isEmpty();
 			requireThat(store.loadJournal(CAMPAIGN), "journal").isEmpty();
 			requireThat(read(fixture.base().resolve("rules/main.md")), "main.md").isEqualTo("main edited by the user\n");
@@ -543,7 +545,7 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
-			Map<Path, com.holdmyspot.cat.common.optimizer.inventory.FileEntry> files =
+			Map<Path, FileEntry> files =
 				new HashMap<>(candidate.snapshot().entries());
 			RegularFile stray = new RegularFile(content("stray\n").hash(), READ_WRITE);
 			files.put(Path.of("rules/stray.md"), stray);
@@ -1892,6 +1894,35 @@ public final class DeliveryTest
 		SimulatedCrash(DeliveryChange change)
 		{
 			super("Crashed after writing " + change.target());
+		}
+	}
+	/**
+	 * Even a candidate that leaves the target untouched cannot deliver measurements of an earlier target over a
+	 * base edit. Refusal occurs before any base write or journal and names both target hashes.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void targetEditRefusesSupportingCandidate() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(template, cleanup);
+			Overlay candidate = Overlay.of(fixture.fork()).write(Path.of("rules/new.md"), content("new rule\n"), READ_WRITE);
+			Files.writeString(fixture.base().resolve("rules/main.md"), "changed target\n", UTF_8);
+			CampaignStore store = fixture.store();
+			List<DeliveryChange> writes = new ArrayList<>();
+			DeliveryResult result = fixture.delivery(store, candidate, writes::add).deliver(CAMPAIGN,
+				request(candidate, Outcome.IMPROVED_NOT_CERTIFIED), candidate, candidate, fixture.promptSources(),
+				entry(DeliveryLabel.IMPROVED_NOT_CERTIFIED), List.of());
+			requireThat(result, "result").isInstanceOf(Conflicted.class);
+			DeliveryConflict conflict = ((Conflicted) result).conflicts().getFirst();
+			requireThat(conflict.kind(), "kind").isEqualTo(DeliveryConflict.Kind.TARGET_CHANGED);
+			requireThat(conflict.target(), "target").isEqualTo(Path.of("rules/main.md"));
+			requireThat(conflict.baseHash(), "basehash").isEqualTo(Sha256.of("changed target\n".getBytes(UTF_8)).hex());
+			requireThat(conflict.forkHash(), "forkhash").isNotEqualTo(conflict.baseHash());
+			requireThat(writes, "writes").isEmpty();
+			requireThat(store.loadJournal(CAMPAIGN), "journal").isEmpty();
 		}
 	}
 }

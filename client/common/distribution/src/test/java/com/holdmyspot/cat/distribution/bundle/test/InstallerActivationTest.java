@@ -225,7 +225,11 @@ public final class InstallerActivationTest
 			// The request server runs outside the sandbox where the harnesses sandbox commands
 			String server = "";
 			if (!platform.isWindows())
+			{
 				server = ", request-server";
+				if (harness.equals("codex"))
+					server = ", prompt-optimizer, request-server";
+			}
 			requireThat(installed, "installed").
 				contains("CAT 1.0 is installed for " + integration.productName() + ". Restart " +
 					integration.productName() + " for the changes to take effect.").

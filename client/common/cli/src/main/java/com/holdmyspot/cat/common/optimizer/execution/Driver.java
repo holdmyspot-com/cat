@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution;
 
+import java.nio.file.NoSuchFileException;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
@@ -198,6 +199,7 @@ public final class Driver implements AutoCloseable
 	private final Map<String, SessionRequest> rankingRequests = new HashMap<>();
 	private final Map<String, Integer> rankingFailures = new HashMap<>();
 	private boolean interrupted;
+	private Instant cancellationEnd;
 	private String infrastructureFailure;
 	private DeliveryReport delivery;
 	private boolean stopped;
@@ -403,11 +405,23 @@ public final class Driver implements AutoCloseable
 		for (Event event : events.drain())
 			handle(event, now);
 		discardRemovedTrials();
-		if (context.interrupts().isInterruptedAfter(sliceStart))
+		if (!context.settings().background() && context.interrupts().isInterruptedAfter(sliceStart))
 		{
 			interrupted = true;
 			cancel("The host interrupted the run", now);
 			return stop();
+		}
+		if (context.settings().background())
+		{
+			if (cancellationEnd == null && BackgroundRun.stopRequested(context.lockFile(), context.json()))
+				cancellationEnd = now.plus(context.settings().grace());
+			if (cancellationEnd != null && (isDrained() || !now.isBefore(cancellationEnd)))
+			{
+				cancel("The user cancelled the background run", now);
+				if (campaign.lifecycle() == Lifecycle.ACTIVE)
+					apply(new CampaignEvent.Cancel());
+				return stop();
+			}
 		}
 		if (!now.isBefore(graceEnd))
 		{
@@ -425,7 +439,7 @@ public final class Driver implements AutoCloseable
 		boolean started = startTriages(now);
 		started |= startJudges(now);
 		discardRemovedTrials();
-		if (now.isBefore(deadline))
+		if (cancellationEnd == null && now.isBefore(deadline))
 		{
 			started |= advanceMinimality();
 			started |= startValues(now);
@@ -2397,7 +2411,7 @@ public final class Driver implements AutoCloseable
 					yield next.trials().getLast();
 				}
 			};
-			if (!evidence.admits(now, deadline, findTimeLimit(trial.testCase())))
+			if (!context.settings().background() && !evidence.admits(now, deadline, findTimeLimit(trial.testCase())))
 				break;
 			context.store().writeAssignment(campaignId, trial);
 			campaign = Transitions.apply(next, new CampaignEvent.Start(trial.key()));
@@ -2772,13 +2786,29 @@ public final class Driver implements AutoCloseable
 			delivered = delivery.result();
 		boolean revisionPending = campaign.lifecycle() == Lifecycle.ACTIVE && campaign.revisionRequested() &&
 			isDrained();
-		return new SliceResult(SliceReports.ofSlice(report, delivered, revisionPending), delivery);
+		report = SliceReports.ofSlice(report, delivered, revisionPending);
+		if (context.settings().background() && report.status().label().equals("running"))
+		{
+			String reason = infrastructureFailure;
+			if (reason == null)
+				reason = "The background run paused because no work could be admitted. Use `status` or `cancel`.";
+			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER), reason);
+		}
+		if (!context.settings().background() && report.status().label().equals("running"))
+		{
+			List<String> longTests = campaign.contract().tests().stream().
+				filter(test -> test.timeLimit().compareTo(context.settings().budget()) > 0).map(PromptTest::id).toList();
+			if (!longTests.isEmpty())
+				report = SliceReports.awaiting(report, report.status(),
+					"These tests need a background run because their time limits exceed the foreground slice: " + longTests);
+		}
+		return new SliceResult(report, delivery);
 	}
 
 	/**
 	 * Describes an exception. A message that CAT wrote, which an {@link IOException} of CAT's or an exception of
 	 * CAT's own types carries, says what went wrong and stands alone. The message of any other exception, such as a
-	 * {@link java.nio.file.NoSuchFileException}, which carries only the name of the file, does not, so its type's name
+	 * {@link NoSuchFileException}, which carries only the name of the file, does not, so its type's name
 	 * comes first.
 	 *
 	 * @param failure the exception

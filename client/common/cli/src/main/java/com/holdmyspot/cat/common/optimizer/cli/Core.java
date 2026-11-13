@@ -15,6 +15,49 @@ import java.nio.file.Path;
 public interface Core
 {
 	/**
+	 * Validates launcher inputs before the core performs any campaign work.
+	 *
+	 * @param command the parsed command
+	 * @throws CommandRefusedException if its environment or paths cannot be trusted
+	 * @throws IOException if validation cannot read its sources
+	 */
+	default void validate(Command command) throws CommandRefusedException, IOException
+	{
+	}
+
+	/**
+	 * A validated command whose result is stored before the background exit notice.
+	 */
+	@FunctionalInterface
+	interface Operation
+	{
+		/**
+		 * Executes the command.
+		 *
+		 * @return the command's result
+		 * @throws CommandRefusedException if the command is refused
+		 * @throws IOException if storage fails
+		 * @throws InterruptedException if waiting is interrupted
+		 */
+		CommandResult run() throws CommandRefusedException, IOException, InterruptedException;
+	}
+
+	/**
+	 * Runs a command without a slice budget.
+	 *
+	 * @param operation the command
+	 * @return the command's result
+	 * @throws CommandRefusedException if background execution is unavailable
+	 * @throws IOException if storage fails
+	 * @throws InterruptedException if waiting is interrupted
+	 */
+	default CommandResult background(Operation operation)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		throw new CommandRefusedException("Background execution is unavailable. Use foreground slices.");
+	}
+
+	/**
 	 * Starts a campaign with the default ceiling of 8, or resumes the target's resumable campaign.
 	 *
 	 * @param target the prompt file or prompt system

@@ -1,5 +1,7 @@
 package com.holdmyspot.cat.codex.optimizer;
 
+import com.holdmyspot.cat.common.optimizer.cli.Command;
+import com.holdmyspot.cat.codex.runner.CodexServedSession;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.common.JvmScope;
 
@@ -61,6 +63,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		});
 	}
 
+	static final String HOME_VARIABLE = "HOME";
 	private static final String EXECUTABLE = "codex";
 	private static final String SESSION_ID = "CODEX_THREAD_ID";
 	private static final List<Path> LOADER_CONFIGURATION = List.of(CodexInstallation.defaultConfiguration());
@@ -71,6 +74,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	private final ProfileInventory profiles;
 	private final Path home;
 	private SessionPort sessions;
+	private final CodexOptimizerBoundary boundary;
 
 	/**
 	 * Creates the scope of the running process: its environment, its home directory, its working directory and the
@@ -111,6 +115,11 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		this.artifact = artifact;
 		this.configurationDirectory = configurationDirectory;
 		this.home = home;
+		this.boundary = new CodexOptimizerBoundary(artifact, directory,
+			CodexServedSession.sessions(environment),
+			() -> CodexServedSession.sandboxed(
+				artifact.resolve("bin/prompt-optimizer"), environment).replace("request server", "prompt optimizer"),
+			environment);
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
 		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process());
 	}
@@ -125,6 +134,24 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	private static Path home(Map<String, String> environment) throws IOException
 	{
 		return Platform.current().homeDirectory(environment);
+	}
+
+	@Override
+	protected void validateLauncher(Command command) throws IOException
+	{
+		boundary.validate(command);
+	}
+
+	@Override
+	protected Optional<String> backgroundRefusal()
+	{
+		return boundary.backgroundRefusal();
+	}
+
+	@Override
+	protected void backgroundEnded(String campaign) throws IOException, InterruptedException
+	{
+		CodexExitNotice.send(boundary.session(), environment, campaign);
 	}
 
 	@Override
