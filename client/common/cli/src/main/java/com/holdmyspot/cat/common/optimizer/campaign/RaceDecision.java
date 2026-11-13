@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.statistics.ExploratoryBounds;
+import com.holdmyspot.cat.common.optimizer.statistics.Interval;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -92,9 +93,11 @@ public final class RaceDecision
 			int m = Math.min(base.size(), current.outcomes());
 			CellCounts basePrefix = counts(base.subList(0, m));
 			CellCounts racerPrefix = candidate.prefix(cell, m);
-			if (ExploratoryBounds.wilson(racerPrefix.passes(), m).upper() <
-				ExploratoryBounds.wilson(basePrefix.passes(), m).lower())
-				return "below working candidate in " + cell + " at m=" + m;
+			Interval racerBounds = ExploratoryBounds.wilson(racerPrefix.passes(), m);
+			Interval predecessorBounds = ExploratoryBounds.wilson(basePrefix.passes(), m);
+			if (racerBounds.upper() < predecessorBounds.lower())
+				return "below working candidate in " + cell + " at m=" + m + ": upper " + racerBounds.upper() +
+					" < predecessor lower " + predecessorBounds.lower();
 		}
 		return null;
 	}
@@ -123,6 +126,10 @@ public final class RaceDecision
 	{
 		boolean aBetter = false;
 		boolean bBetter = false;
+		String decisiveCell = null;
+		int decisiveM = 0;
+		double decisiveLower = 0;
+		double decisiveUpper = 1;
 		for (String cell : cells)
 		{
 			CellCounts ac = competitor.count(cell);
@@ -132,15 +139,22 @@ public final class RaceDecision
 				continue;
 			CellCounts ap = competitor.prefix(cell, m);
 			CellCounts bp = candidate.prefix(cell, m);
-			if (ExploratoryBounds.wilson(ap.passes(), m).lower() >
-				ExploratoryBounds.wilson(bp.passes(), m).upper())
+			Interval aBounds = ExploratoryBounds.wilson(ap.passes(), m);
+			Interval bBounds = ExploratoryBounds.wilson(bp.passes(), m);
+			if (aBounds.lower() > bBounds.upper())
+			{
 				aBetter = true;
-			if (ExploratoryBounds.wilson(bp.passes(), m).lower() >
-				ExploratoryBounds.wilson(ap.passes(), m).upper())
+				decisiveCell = cell;
+				decisiveM = m;
+				decisiveLower = aBounds.lower();
+				decisiveUpper = bBounds.upper();
+			}
+			if (bBounds.lower() > aBounds.upper())
 				bBetter = true;
 		}
 		if (aBetter && !bBetter)
-			return "dominated by attempt " + competitor.attempt();
+			return "dominated by attempt " + competitor.attempt() + " in " + decisiveCell + " at m=" + decisiveM +
+				": lower " + decisiveLower + " > upper " + decisiveUpper + "; no cell favoured this racer";
 		return null;
 	}
 

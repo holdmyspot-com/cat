@@ -70,11 +70,12 @@ public final class StalledDevelopmentTest
 	 */
 	private static Campaign unproductiveRound(Campaign campaign)
 	{
-		campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The reply stopped."));
+		if (campaign.development().round() == null)
+			campaign = TransitionSteps.fail(campaign, "safety", new Triage(Impact.BLOCKING, "The reply stopped."));
 		requireThat(campaign.development().round(), "round").isNotNull();
-		campaign = rejectAttempt(campaign);
-		requireThat(campaign.development().round(), "roundAfterFirstAttempt").isNotNull();
-		return rejectAttempt(campaign);
+		while (campaign.development().round() != null && campaign.pending() == null)
+			campaign = rejectAttempt(campaign);
+		return campaign;
 	}
 
 	/**
@@ -85,8 +86,8 @@ public final class StalledDevelopmentTest
 	 */
 	private static Campaign rejectAttempt(Campaign campaign)
 	{
-		// Each attempt authors a different snapshot, so that none repeats an earlier one
-		Sha256 snapshot = Builder.snapshot("attempt" + campaign.optimization().attempts().size());
+		// An unchanged prompt is the simplest unproductive attempt and cannot enter the candidate race.
+		Sha256 snapshot = campaign.development().working().snapshot();
 		Campaign result = TransitionSteps.submit(campaign, "safety", snapshot, List.of());
 		while (result.development().promptAuthor() != null)
 		{

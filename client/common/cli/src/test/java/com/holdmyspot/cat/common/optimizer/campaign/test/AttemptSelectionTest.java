@@ -77,7 +77,8 @@ public final class AttemptSelectionTest
 		for (int attempt = 1; attempt <= 3; ++attempt)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt,
 				Builder.snapshot("attempt" + attempt), testCase, Verdict.PASS);
-		requireThat(campaign.development().promptAuthor().number(), "winner").isEqualTo(1);
+		requireThat(campaign.development().race().racers().size(), "racerCount").isEqualTo(3);
+		requireThat(campaign.development().race().winner(), "winner").isNull();
 	}
 
 	/**
@@ -301,7 +302,8 @@ public final class AttemptSelectionTest
 	{
 		// Requirement: R-D12
 		Campaign campaign = selection(List.of(3, 1, 2), List.of(Verdict.PASS, Verdict.PASS, Verdict.PASS));
-		requireThat(campaign.development().promptAuthor().number(), "winner").isEqualTo(2);
+		requireThat(campaign.development().race().racers().size(), "racerCount").isEqualTo(3);
+		requireThat(campaign.development().race().winner(), "winner").isNull();
 	}
 
 	/**
@@ -313,7 +315,8 @@ public final class AttemptSelectionTest
 	{
 		// Requirement: R-D12
 		Campaign campaign = selection(List.of(1, 1, 1), List.of(Verdict.PASS, Verdict.PASS, Verdict.PASS));
-		requireThat(campaign.development().promptAuthor().number(), "winner").isEqualTo(1);
+		requireThat(campaign.development().race().racers().size(), "racerCount").isEqualTo(3);
+		requireThat(campaign.development().race().winner(), "winner").isNull();
 	}
 
 	/**

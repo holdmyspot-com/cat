@@ -79,6 +79,20 @@ public final class AttemptSelection
 	}
 
 	/**
+	 * Returns whether at least two accepted attempts tie for the leading promotion score.
+	 *
+	 * @param accepted the accepted attempts
+	 * @return whether the best score is tied
+	 */
+	static boolean hasTiedLeaders(List<PromptAuthorAttempt> accepted)
+	{
+		if (accepted.size() < 2)
+			return false;
+		long best = accepted.stream().mapToLong(attempt -> rankedPassingRuns(attempt.runs())).max().orElseThrow();
+		return accepted.stream().filter(attempt -> rankedPassingRuns(attempt.runs()) == best).count() > 1;
+	}
+
+	/**
 	 * Counts the passing runs that rank a weak round's winner: the attempt's triggering runs and first-pass regression
 	 * runs.
 	 *

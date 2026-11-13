@@ -83,6 +83,8 @@ public final class Scheduler
 			Optional<CertificationAttempt> reproducing = campaign.reproducing();
 			if (reproducing.isPresent())
 				planReproduction(campaign, reproducing.get(), plan, freeCapacity, allocations);
+			else if (campaign.development().race() != null && !campaign.development().race().isComplete())
+				planRace(campaign, plan, freeCapacity, allocations);
 			else if (!campaign.development().isPaused())
 				planDevelopment(campaign, plan, freeCapacity, allocations);
 			planBaseline(campaign, plan, freeCapacity, allocations);
@@ -90,6 +92,82 @@ public final class Scheduler
 		if (plan.size() > freeCapacity)
 			return plan.subList(0, freeCapacity);
 		return plan;
+	}
+
+	/**
+	 * Admits racers in the least-sampled cell prefixes while respecting each racer's window and the campaign ceiling.
+	 *
+	 * @param campaign the campaign
+	 * @param plan the admissions already planned
+	 * @param freeCapacity the remaining campaign capacity
+	 * @param allocations the allocation revisions
+	 */
+	private static void planRace(Campaign campaign, List<Admission> plan, int freeCapacity, Allocations allocations)
+	{
+		RaceState race = campaign.development().race();
+		if (race.isComplete())
+			return;
+		Map<Integer, Map<String, Integer>> inFlight = new HashMap<>();
+		for (LogicalTrial trial : campaign.trials())
+		{
+			if (trial.key().purpose() == Purpose.RACE)
+				inFlight.computeIfAbsent(trial.key().series(), _ -> new HashMap<>()).
+					merge(trial.key().cell(), 1, Integer::sum);
+		}
+		Map<Integer, Integer> started = new HashMap<>();
+		while (plan.size() < freeCapacity)
+		{
+			RaceDecision.Racer selectedRacer = null;
+			String selectedCell = null;
+			int least = Integer.MAX_VALUE;
+			for (RaceDecision.Racer racer : race.racers())
+			{
+				if (racer.dropped())
+					continue;
+				int active = inFlight.getOrDefault(racer.attempt(), Map.of()).values().stream().
+					mapToInt(Integer::intValue).sum();
+				if (active + started.getOrDefault(racer.attempt(), 0) >=
+					ConcurrencyPolicy.limit(campaign, WorkUnit.racer(racer.attempt())))
+					continue;
+				for (String cell : race.cells())
+				{
+					int assigned = racer.count(cell).outcomes() +
+						inFlight.getOrDefault(racer.attempt(), Map.of()).getOrDefault(cell, 0) +
+						plannedInCell(plan, racer.attempt(), cell);
+					if (assigned >= RaceDecision.CELL_LIMIT)
+						continue;
+					if (assigned < least)
+					{
+						least = assigned;
+						selectedRacer = racer;
+						selectedCell = cell;
+					}
+				}
+			}
+			if (selectedRacer == null)
+				return;
+			int attemptNumber = selectedRacer.attempt();
+			String cell = selectedCell;
+			PromptAuthorAttempt attempt = campaign.development().round().validationAttempts().stream().
+				filter(candidate -> candidate.number() == attemptNumber).findFirst().orElseThrow();
+			plan.add(new Admission.Assign(Purpose.RACE, attemptNumber, attempt.snapshot(), cell,
+				null, allocations.of(AllocationRule.RACER)));
+			started.merge(attemptNumber, 1, Integer::sum);
+		}
+	}
+
+	/**
+	 * Counts race admissions already added to this plan for one racer and cell.
+	 *
+	 * @param plan the planned admissions
+	 * @param attempt the racer attempt number
+	 * @param cell the cell identifier
+	 * @return the number of planned admissions
+	 */
+	private static int plannedInCell(List<Admission> plan, int attempt, String cell)
+	{
+		return (int) plan.stream().filter(admission -> admission instanceof Admission.Assign assign &&
+			assign.purpose() == Purpose.RACE && assign.series() == attempt && assign.cell().equals(cell)).count();
 	}
 
 	/**

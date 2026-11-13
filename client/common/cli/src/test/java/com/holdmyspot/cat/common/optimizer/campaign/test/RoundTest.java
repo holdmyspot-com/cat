@@ -135,6 +135,24 @@ public final class RoundTest
 		requireThat(allReserved.nextCell(), "allReserved").isEqualTo(Optional.empty());
 	}
 
+	/** A tool-only race round allows six independent author attempts for that cell. */
+	// Requirement: G1
+	@Test
+	public void toolDecidedRaceAllowsSixAttempts()
+	{
+		Round round = new Round(Map.of("safety", 0)).asRaceRound(Map.of("safety", 6));
+		Map<Integer, String> reservations = new LinkedHashMap<>();
+		for (int attempt = 1; attempt <= 6; ++attempt)
+		{
+			requireThat(round.nextCell(), "nextCell").isEqualTo(Optional.of("safety"));
+			reservations.put(attempt, "safety");
+			round = new Round(Map.of("safety", 0), true, reservations, List.of(), Map.of(), false,
+				PromptAuthorApproach.values().length, true, Map.of("safety", 6));
+		}
+		requireThat(round.nextCell(), "exhausted").isEqualTo(Optional.empty());
+		requireThat(round.maxAttempts("safety"), "attemptLimit").isEqualTo(6);
+	}
+
 	/**
 	 * A round offers the first addressed cell that still has an attempt slot, skipping a cell whose slots are used.
 	 */

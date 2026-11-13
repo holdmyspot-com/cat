@@ -49,6 +49,12 @@ public record WorkUnit(Purpose purpose, int series, int stage, String part)
 		return new WorkUnit(Purpose.DEVELOPMENT, series, 0, "");
 	}
 
+	/** Returns a racer candidate's representative development series. */
+	public static WorkUnit racer(int attempt)
+	{
+		return new WorkUnit(Purpose.RACE, attempt, 0, "");
+	}
+
 	/**
 	 * Returns one cell's part of a certification attempt.
 	 *

@@ -106,6 +106,15 @@ public final class ConcurrencyPolicy
 			return units;
 		}
 		Development development = campaign.development();
+		if (development.race() != null && !development.race().isComplete())
+		{
+			for (RaceDecision.Racer racer : development.race().racers())
+			{
+				if (!racer.dropped())
+					units.add(WorkUnit.racer(racer.attempt()));
+			}
+			return units;
+		}
 		if (!development.isPaused())
 		{
 			units.add(WorkUnit.development(development.series()));
@@ -179,6 +188,8 @@ public final class ConcurrencyPolicy
 		return switch (unit.purpose())
 		{
 			case DEVELOPMENT -> unit.series() == campaign.development().series();
+			case RACE -> campaign.development().race() != null &&
+				campaign.development().race().isRacing(unit.series());
 			case FORMAL ->
 			{
 				Optional<CertificationAttempt> running = campaign.runningAttempt();
@@ -251,6 +262,7 @@ public final class ConcurrencyPolicy
 	{
 		return switch (unit.purpose())
 		{
+			case RACE -> 0;
 			case FORMAL ->
 			{
 				if (unit.series() < 1 || unit.series() > campaign.attempts().size())

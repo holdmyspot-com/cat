@@ -23,11 +23,15 @@ import java.util.Map;
  * @param reverts the withdrawn candidates and their retained evidence, in withdrawal order
  * @param stalls each prompt test's progress through the completed rounds that CAT counts to detect stalled
  *   development, by test identifier
+ * @param raceNext indicates that the next authoring round follows a revert and must be a race round
+ * @param race the active race, or null when no racer is sampling
+ * @param outcomes the working candidate's ordered representative verdicts by cell
  */
 public record Development(Candidate working, int series, Map<String, CellCounts> counts,
 	List<Failure> failures, Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor,
 	Map<String, Integer> reviewPoints, List<TestCaseOutcomes> testCaseOutcomes,
-	Predecessor predecessor, List<Revert> reverts, Map<String, StallProgress> stalls)
+	Predecessor predecessor, List<Revert> reverts, Map<String, StallProgress> stalls, boolean raceNext,
+	RaceState race, Map<String, List<Verdict>> outcomes)
 {
 	/**
 	 * The adopted-outcome count that triggers a cell's review unless the user extends it.
@@ -66,12 +70,17 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 		requireThat(reviewPoints, "reviewPoints").isNotNull();
 		if (promptAuthor != null)
 			requireThat(round, "round").isNotNull();
+		if (race != null && !race.isComplete())
+			requireThat(round, "round").isNotNull();
 		counts = Map.copyOf(counts);
 		failures = List.copyOf(failures);
 		reviewPoints = Map.copyOf(reviewPoints);
 		testCaseOutcomes = List.copyOf(testCaseOutcomes);
 		reverts = List.copyOf(reverts);
 		stalls = Map.copyOf(stalls);
+		Map<String, List<Verdict>> copiedOutcomes = new java.util.LinkedHashMap<>();
+		outcomes.forEach((cell, verdicts) -> copiedOutcomes.put(cell, List.copyOf(verdicts)));
+		outcomes = Map.copyOf(copiedOutcomes);
 	}
 
 	/**
@@ -92,7 +101,37 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 		Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor, Map<String, Integer> reviewPoints)
 	{
 		this(working, series, counts, failures, diagnosis, round, promptAuthor, reviewPoints,
-			TestCaseOutcomes.fromFailures(failures), null, List.of(), Map.of());
+			TestCaseOutcomes.fromFailures(failures), null, List.of(), Map.of(), false, null, Map.of());
+	}
+
+	/** Creates a development state in the prior persisted format. */
+	public Development(Candidate working, int series, Map<String, CellCounts> counts, List<Failure> failures,
+		Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor, Map<String, Integer> reviewPoints,
+		List<TestCaseOutcomes> testCaseOutcomes, Predecessor predecessor, List<Revert> reverts,
+		Map<String, StallProgress> stalls)
+	{
+		this(working, series, counts, failures, diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes,
+			predecessor, reverts, stalls, false, null, Map.of());
+	}
+
+	/** Creates state using the race trigger but without an active race. */
+	public Development(Candidate working, int series, Map<String, CellCounts> counts, List<Failure> failures,
+		Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor, Map<String, Integer> reviewPoints,
+		List<TestCaseOutcomes> testCaseOutcomes, Predecessor predecessor, List<Revert> reverts,
+		Map<String, StallProgress> stalls, boolean raceNext)
+	{
+		this(working, series, counts, failures, diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes,
+			predecessor, reverts, stalls, raceNext, null, Map.of());
+	}
+
+	/** Creates a complete development snapshot with persisted race evidence. */
+	public Development(Candidate working, int series, Map<String, CellCounts> counts, List<Failure> failures,
+		Diagnosis diagnosis, Round round, PromptAuthorAttempt promptAuthor, Map<String, Integer> reviewPoints,
+		List<TestCaseOutcomes> testCaseOutcomes, Predecessor predecessor, List<Revert> reverts,
+		Map<String, StallProgress> stalls, boolean raceNext, RaceState race)
+	{
+		this(working, series, counts, failures, diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes,
+			predecessor, reverts, stalls, raceNext, race, Map.of());
 	}
 
 	/**
@@ -142,6 +181,6 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 */
 	public boolean isPaused()
 	{
-		return diagnosis != null || round != null || promptAuthor != null;
+		return diagnosis != null || round != null || promptAuthor != null || (race != null && !race.isComplete());
 	}
 }

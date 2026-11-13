@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.TreeMap;
 
 /**
  * Renders a {@link StatusReport} as text for the user.
@@ -556,6 +557,24 @@ final class ReportSummary
 				"; accepted: " + accepted + "; winner: " + attempt.winner() + "; approach: " +
 				EnumNames.lowerCase(attempt.assignment().approach()) + "; approach order: " +
 				EnumNames.lowerCase(attempt.assignment().source()));
+		}
+		for (OptimizationReport.RacerProgress racer : report.racers())
+		{
+			StringBuilder cells = new StringBuilder();
+			for (Map.Entry<String, com.holdmyspot.cat.common.optimizer.campaign.CellCounts> entry :
+				new TreeMap<>(racer.counts()).entrySet())
+			{
+				if (!cells.isEmpty())
+					cells.append(", ");
+				cells.append(entry.getKey()).append(' ').append(entry.getValue().passes()).append('/').
+					append(entry.getValue().outcomes());
+			}
+			String reason = "";
+			if (racer.dropReason() != null)
+				reason = "; reason: " + racer.dropReason();
+			lines.add("Racer attempt " + racer.attempt() + "; approach " +
+				EnumNames.lowerCase(racer.assignment().approach()) + "; cells " + cells + "; dropped: " +
+				racer.dropped() + reason + "; winner: " + racer.winner());
 		}
 		testRevisions(lines, report.testRevisions());
 	}

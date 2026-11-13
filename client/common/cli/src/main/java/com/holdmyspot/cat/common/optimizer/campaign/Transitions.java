@@ -429,6 +429,7 @@ public final class Transitions
 				draft.developmentStream = stream.state();
 				yield drawn;
 			}
+			case RACE -> assignRace(draft, admission, key);
 			case BASELINE ->
 			{
 				requireSeriesAndSnapshot(admission, draft.baselineIndex, draft.incumbent);
@@ -445,6 +446,32 @@ public final class Transitions
 			case REPRODUCTION -> assignReproduction(draft, admission);
 		};
 		draft.trials.add(LogicalTrial.assigned(key, testCase, draft.identity, admission.allocation()));
+	}
+
+	/**
+	 * Assigns one racer trial, reusing the race's draw at this position across candidates.
+	 *
+	 * @param draft the campaign state
+	 * @param admission the admission
+	 * @param key the assigned trial key
+	 * @return the shared test-case draw
+	 */
+	private static DrawnTestCase assignRace(Draft draft, Admission.Assign admission, TrialKey key)
+	{
+		if (draft.race == null || !draft.race.isRacing(admission.series()))
+			throw new IllegalArgumentException("No active racer for " + admission);
+		PromptAuthorAttempt attempt = draft.round.validationAttempts().stream().
+			filter(candidate -> candidate.number() == admission.series()).findFirst().orElseThrow();
+		if (!attempt.snapshot().equals(admission.snapshot()) || !draft.race.cells().contains(admission.cell()))
+			throw new IllegalArgumentException("The active race does not offer " + admission);
+		DrawnTestCase existing = draft.race.draw(admission.cell(), key.sequence());
+		if (existing != null)
+			return existing;
+		DrawStream stream = DrawStream.resume(draft.developmentStream);
+		DrawnTestCase drawn = draft.generator().draw(admission.cell(), stream);
+		draft.developmentStream = stream.state();
+		draft.race = draft.race.withDraw(admission.cell(), drawn);
+		return drawn;
 	}
 
 	/**

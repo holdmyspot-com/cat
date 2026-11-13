@@ -102,7 +102,8 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 		if (triage != null)
 		{
 			requireThat(verdict, "verdict").isEqualTo(Verdict.FAIL);
-			requireThat(key.purpose(), "key.purpose()").isEqualTo(Purpose.DEVELOPMENT);
+			requireThat(key.purpose() == Purpose.DEVELOPMENT || key.purpose() == Purpose.RACE,
+				"developmentTrial").isTrue();
 		}
 		failedAssertions = List.copyOf(failedAssertions);
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);

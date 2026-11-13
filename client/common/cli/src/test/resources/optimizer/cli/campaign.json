@@ -343,7 +343,10 @@
 		"review_points" : { },
 		"test_case_outcomes" : [ ],
 		"predecessor" : null,
-		"reverts" : [ ]
+		"reverts" : [ ],
+		"race_next" : false,
+		"race" : null,
+		"outcomes" : { }
 	},
 	"optimization" : {
 		"approaches" : { },

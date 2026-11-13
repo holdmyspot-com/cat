@@ -4833,7 +4833,7 @@ public final class DriverTest
 			{
 				Part expected = switch (entry.getKey())
 				{
-					case DEVELOPMENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> Part.DEVELOPMENT;
+					case DEVELOPMENT, RACE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> Part.DEVELOPMENT;
 					case BASELINE, FORMAL, CONTROL, INCUMBENT -> Part.HELD_OUT;
 				};
 				for (DrawnTestCase testCase : entry.getValue())

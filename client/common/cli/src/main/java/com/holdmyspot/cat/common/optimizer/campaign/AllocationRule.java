@@ -20,6 +20,8 @@ public enum AllocationRule
 	 * Rule 3: choose the development cell with the lowest Wilson 95% lower bound for the working candidate.
 	 */
 	LOWEST_EXPLORATORY_BOUND,
+	/** Chooses a racer with the shortest representative prefix. */
+	RACER,
 	/**
 	 * Rule 4: choose a certification cell with no trial yet, otherwise the cell furthest from certifying.
 	 */
@@ -47,6 +49,7 @@ public enum AllocationRule
 		{
 			case DIAGNOSTIC, PROMOTION, REPRODUCTION -> this == TARGETED;
 			case DEVELOPMENT -> this == COVERAGE_FLOOR || this == LOWEST_EXPLORATORY_BOUND;
+			case RACE -> this == RACER;
 			case FORMAL -> this == FORMAL || this == PAIRED;
 			case CONTROL, INCUMBENT -> this == PAIRED;
 			case BASELINE -> this == BASELINE;

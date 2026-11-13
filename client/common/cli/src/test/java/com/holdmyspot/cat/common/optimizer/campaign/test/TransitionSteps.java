@@ -69,7 +69,7 @@ final class TransitionSteps
 	{
 		AllocationRule rule = switch (purpose)
 		{
-			case DEVELOPMENT -> AllocationRule.LOWEST_EXPLORATORY_BOUND;
+			case DEVELOPMENT, RACE -> AllocationRule.LOWEST_EXPLORATORY_BOUND;
 			case BASELINE -> AllocationRule.BASELINE;
 			case FORMAL -> AllocationRule.FORMAL;
 			case CONTROL, INCUMBENT -> AllocationRule.PAIRED;
@@ -101,7 +101,7 @@ final class TransitionSteps
 				yield new Admission.Assign(purpose, attempt.index(), attempt.candidate().snapshot(), cell, null,
 					allocation);
 			}
-			case CONTROL, INCUMBENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> throw new IllegalArgumentException(
+			case RACE, CONTROL, INCUMBENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> throw new IllegalArgumentException(
 				"Purpose that replays a test case: " + purpose);
 		};
 	}

@@ -237,11 +237,15 @@ public abstract class CampaignStoreContract
 			requireThat(loaded.development().stalls().get("safety").rounds(), "rounds").isEqualTo(counted);
 			requireThat(loaded.pending(), "pendingBefore").isNull();
 			// An attempt that leaves the prompt unchanged ends the sequential round without a promotion
-			Campaign reserved = Transitions.apply(loaded, new CampaignEvent.StartPromptAuthorAttempt("safety"));
-			int number = reserved.development().round().reservations().keySet().stream().mapToInt(Integer::intValue).
-				max().orElseThrow();
-			Campaign ended = Transitions.apply(reserved, new CampaignEvent.SubmitPromptAuthorAttempt(number, "safety",
-				loaded.development().working().snapshot(), List.of()));
+			Campaign ended = loaded;
+			while (ended.development().round() != null && ended.pending() == null)
+			{
+				ended = Transitions.apply(ended, new CampaignEvent.StartPromptAuthorAttempt("safety"));
+				int number = ended.development().round().reservations().keySet().stream().
+					mapToInt(Integer::intValue).max().orElseThrow();
+				ended = Transitions.apply(ended, new CampaignEvent.SubmitPromptAuthorAttempt(number, "safety",
+					loaded.development().working().snapshot(), List.of()));
+			}
 
 			requireThat(ended.development().round(), "round").isNull();
 			requireThat(ended.pending(), "pendingAfter").isEqualTo(new PendingDecision.DevelopmentStalled(List.of("safety")));

@@ -761,7 +761,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			boolean certification = switch (entry.getKey())
 			{
 				case FORMAL, CONTROL, INCUMBENT -> true;
-				case DEVELOPMENT, BASELINE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> false;
+				case DEVELOPMENT, RACE, BASELINE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> false;
 			};
 			if (certification != (phase == Phase.FORMAL))
 				continue;

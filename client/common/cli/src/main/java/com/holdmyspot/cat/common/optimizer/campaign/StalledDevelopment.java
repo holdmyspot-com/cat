@@ -63,7 +63,18 @@ final class StalledDevelopment
 				stalled.add(test);
 		}
 		if (!stalled.isEmpty() && draft.header.lifecycle() == Lifecycle.ACTIVE)
-			raise(draft, stalled);
+		{
+			if (!round.raceRound())
+			{
+				String required = draft.developmentCells().stream().filter(cell -> stalled.contains(cell.testId())).
+					map(Cell::id).findFirst().orElseThrow();
+				Round raceRound = TrialAdoption.failingRound(draft.developmentCounts, draft.developmentCells(), required);
+				draft.round = raceRound.asRaceRound(TrialAdoption.raceAttemptLimits(draft, raceRound));
+				roundStarted(draft);
+			}
+			else
+				raise(draft, stalled);
+		}
 	}
 
 	/**

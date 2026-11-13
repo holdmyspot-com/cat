@@ -304,7 +304,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		return switch (key.purpose())
 		{
 			case FORMAL, CONTROL, INCUMBENT -> key.series();
-			case DEVELOPMENT, BASELINE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> 0;
+			case DEVELOPMENT, RACE, BASELINE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> 0;
 		};
 	}
 }

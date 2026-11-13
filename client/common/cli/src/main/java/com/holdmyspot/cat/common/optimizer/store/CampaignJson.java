@@ -18,6 +18,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
 import com.holdmyspot.cat.common.optimizer.campaign.AllocationRule;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
+import com.holdmyspot.cat.common.optimizer.campaign.RaceDecision;
+import com.holdmyspot.cat.common.optimizer.campaign.RaceState;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
@@ -1697,6 +1699,13 @@ final class CampaignJson
 		}
 		if (!development.stalls().isEmpty())
 			node.set("stalls", writeStalls(development.stalls()));
+		node.put("race_next", development.raceNext());
+		RaceState race = development.race();
+		if (race == null)
+			node.putNull("race");
+		else
+			node.set("race", writeRace(race));
+		writeVerdictLists(node.putObject("outcomes"), development.outcomes());
 		return node;
 	}
 
@@ -1723,6 +1732,110 @@ final class CampaignJson
 	}
 
 	/**
+	 * Writes an active race's racers, shared draws and predecessor evidence.
+	 *
+	 * @param race the race
+	 * @return the serialized race
+	 */
+	private ObjectNode writeRace(RaceState race)
+	{
+		ObjectNode node = json.createObjectNode();
+		ArrayNode cells = node.putArray("cells");
+		race.cells().forEach(cells::add);
+		ArrayNode racers = node.putArray("racers");
+		for (RaceDecision.Racer racer : race.racers())
+		{
+			ObjectNode element = racers.addObject();
+			element.put("attempt", racer.attempt());
+			element.put("changed_lines", racer.changedLines());
+			element.put("dropped", racer.dropped());
+			if (racer.dropReason() == null)
+				element.putNull("drop_reason");
+			else
+				element.put("drop_reason", racer.dropReason());
+			writeVerdictLists(element.putObject("outcomes"), racer.outcomes());
+		}
+		ObjectNode draws = node.putObject("draws");
+		for (Entry<String, List<DrawnTestCase>> entry : new TreeMap<>(race.draws()).entrySet())
+			draws.set(entry.getKey(), writeTestCases(entry.getValue()));
+		writeVerdictLists(node.putObject("predecessor"), race.predecessor());
+		if (race.winner() == null)
+			node.putNull("winner");
+		else
+			node.put("winner", race.winner());
+		node.put("no_winner", race.noWinner());
+		return node;
+	}
+
+	/**
+	 * Writes per-cell verdict lists.
+	 *
+	 * @param node the destination object
+	 * @param verdicts the verdicts by cell
+	 */
+	private static void writeVerdictLists(ObjectNode node, Map<String, List<Verdict>> verdicts)
+	{
+		for (Entry<String, List<Verdict>> entry : new TreeMap<>(verdicts).entrySet())
+		{
+			ArrayNode cell = node.putArray(entry.getKey());
+			entry.getValue().forEach(verdict -> cell.add(EnumNames.lowerCase(verdict)));
+		}
+	}
+
+	/**
+	 * Reads an active race.
+	 *
+	 * @param node the serialized race
+	 * @return the race
+	 */
+	private static RaceState readRace(JsonNode node)
+	{
+		List<String> cells = new ArrayList<>();
+		for (JsonNode cell : elements(node, "cells"))
+			cells.add(cell.stringValue());
+		List<RaceDecision.Racer> racers = new ArrayList<>();
+		for (JsonNode element : elements(node, "racers"))
+		{
+			Integer attempt = integer(element, "attempt");
+			racers.add(new RaceDecision.Racer(attempt, readVerdictLists(field(element, "outcomes")),
+				integer(element, "changed_lines"), bool(element, "dropped"), nullableText(element, "drop_reason")));
+		}
+		Map<String, List<DrawnTestCase>> draws = new LinkedHashMap<>();
+		for (Entry<String, JsonNode> entry : object(node, "draws").properties())
+		{
+			List<DrawnTestCase> cases = new ArrayList<>();
+			for (int index = 0; index < entry.getValue().size(); ++index)
+				cases.add(readTestCase(entry.getValue().get(index)));
+			draws.put(entry.getKey(), cases);
+		}
+		JsonNode winner = nullable(node, "winner");
+		Integer winnerNumber = null;
+		if (winner != null)
+			winnerNumber = intValue(winner, "winner");
+		return new RaceState(racers, cells, draws, readVerdictLists(field(node, "predecessor")),
+			winnerNumber, bool(node, "no_winner"));
+	}
+
+	/**
+	 * Reads per-cell verdict lists.
+	 *
+	 * @param node the serialized outcomes
+	 * @return the verdicts by cell
+	 */
+	private static Map<String, List<Verdict>> readVerdictLists(JsonNode node)
+	{
+		Map<String, List<Verdict>> result = new LinkedHashMap<>();
+		for (Entry<String, JsonNode> entry : node.properties())
+		{
+			List<Verdict> verdicts = new ArrayList<>();
+			for (int index = 0; index < entry.getValue().size(); ++index)
+				verdicts.add(EnumNames.parse(entry.getValue().get(index).stringValue(), Verdict.class));
+			result.put(entry.getKey(), verdicts);
+		}
+		return result;
+	}
+
+	/**
 	 * Converts development estimates to a document.
 	 *
 	 * @param estimates the estimates by cell identifier
@@ -1746,6 +1859,9 @@ final class CampaignJson
 	{
 		ObjectNode node = json.createObjectNode();
 		node.put("weak", round.weak());
+		node.put("race_round", round.raceRound());
+		ObjectNode attemptLimits = node.putObject("attempt_limits");
+		new TreeMap<>(round.attemptLimits()).forEach(attemptLimits::put);
 		node.put("rank_approaches", round.rankApproaches());
 		node.put("rotation_size", round.rotationSize());
 		ObjectNode orders = node.putObject("approach_orders");
@@ -1994,9 +2110,17 @@ final class CampaignJson
 				floating(revert, "upper_bound"), floating(revert, "predecessor_lower_bound"),
 				readDevelopment(field(revert, "development"))));
 		}
+		RaceState race = null;
+		if (node.has("race") && nullable(node, "race") != null)
+			race = readRace(field(node, "race"));
+		Map<String, List<Verdict>> rawOutcomes = Map.of();
+		if (node.has("outcomes"))
+			rawOutcomes = readVerdictLists(field(node, "outcomes"));
 		return new Development(readCandidate(field(node, "working")), integer(node, "series"),
 			readCounts(field(node, "counts")), failures, diagnosis, round, promptAuthor,
-			reviewPoints, outcomes, predecessor, reverts, readStalls(node));
+			reviewPoints, outcomes, predecessor, reverts,
+			readStalls(node), node.has("race_next") && bool(node, "race_next"), race,
+			rawOutcomes);
 	}
 
 	/**
@@ -2075,8 +2199,13 @@ final class CampaignJson
 			}
 			orders.put(entry.getKey(), new ApproachOrder(approaches, reasons, bool(entry.getValue(), "fallback")));
 		}
+		Map<String, Integer> attemptLimits = new LinkedHashMap<>();
+		if (node.has("attempt_limits"))
+			for (Entry<String, JsonNode> entry : object(node, "attempt_limits").properties())
+				attemptLimits.put(entry.getKey(), intValue(entry.getValue(), entry.getKey()));
 		return new Round(attempts, bool(node, "weak"), reservations, contenders, orders,
-			bool(node, "rank_approaches"), integer(node, "rotation_size"));
+			bool(node, "rank_approaches"), integer(node, "rotation_size"), node.has("race_round") &&
+				bool(node, "race_round"), attemptLimits);
 	}
 
 	/**

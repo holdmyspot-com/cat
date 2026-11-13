@@ -4,12 +4,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.ApproachAssignment;
 import com.holdmyspot.cat.common.optimizer.campaign.Comparability;
+import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
+import com.holdmyspot.cat.common.optimizer.campaign.RaceDecision;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
@@ -30,11 +33,36 @@ import java.util.Map;
  * @param attempts original promotion results and unfinished prompt author reservations
  * @param testRevisions the campaign's test revisions: the pending requests, the revised tests and the tests found
  *   sound
+ * @param racers the active or most recently completed race
  */
 public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapshot, PromptSize working,
 	PromptSize incumbent, List<InputComparison> inputs, List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
-	List<AttemptProgress> attempts, TestRevisions testRevisions)
+	List<AttemptProgress> attempts, TestRevisions testRevisions, List<RacerProgress> racers)
 {
+	/**
+	 * The retained status of one prompt-author racer.
+	 *
+	 * @param attempt the prompt author attempt number
+	 * @param assignment the independent approach assigned to the attempt
+	 * @param counts the representative counts per development cell
+	 * @param dropped whether the racer was dropped
+	 * @param dropReason the reason for dropping, or null
+	 * @param winner whether this racer won
+	 */
+	public record RacerProgress(int attempt, ApproachAssignment assignment, Map<String, CellCounts> counts,
+		boolean dropped, String dropReason, boolean winner)
+	{
+		/** Creates a racer status row. */
+		public RacerProgress
+		{
+			requireThat(attempt, "attempt").isPositive();
+			requireThat(assignment, "assignment").isNotNull();
+			counts = Map.copyOf(counts);
+			if (dropped)
+				requireThat(dropReason, "dropReason").isNotBlank();
+		}
+	}
+
 	/**
 	 * A cell's descriptive medians of completed trial sessions that reported usage.
 	 *
@@ -107,6 +135,7 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 		promptAuthors = List.copyOf(promptAuthors);
 		removed = List.copyOf(removed);
 		attempts = List.copyOf(attempts);
+		racers = List.copyOf(racers);
 	}
 
 	/**
@@ -138,9 +167,28 @@ public record OptimizationReport(Sha256 workingSnapshot, Sha256 incumbentSnapsho
 					incumbentInputs.tokens().size(), unavailable));
 			}
 		}
+		List<AttemptProgress> attemptProgress = AttemptProgress.of(campaign);
+		List<RacerProgress> racerProgress = List.of();
+		if (campaign.development().race() != null)
+			racerProgress = campaign.development().race().racers().stream().
+				map(racer -> racerProgress(campaign, racer, attemptProgress)).toList();
 		return new OptimizationReport(working, incumbent, evidence.promptSizes().getOrDefault(working, PromptSize.UNKNOWN),
 			evidence.promptSizes().getOrDefault(incumbent, PromptSize.UNKNOWN), comparisons, evidence.promptAuthors(),
-			evidence.removed(), AttemptProgress.of(campaign), campaign.testRevisions());
+			evidence.removed(), attemptProgress, campaign.testRevisions(), racerProgress);
+	}
+
+	/** Builds a race status row from durable race outcomes and attempt approach records. */
+	private static RacerProgress racerProgress(Campaign campaign, RaceDecision.Racer racer,
+		List<AttemptProgress> attempts)
+	{
+		AttemptProgress attempt = attempts.stream().filter(progress -> progress.number() == racer.attempt()).
+			findFirst().orElseThrow();
+		Map<String, CellCounts> counts = new java.util.LinkedHashMap<>();
+		for (String cell : campaign.development().race().cells())
+			counts.put(cell, racer.count(cell));
+		return new RacerProgress(racer.attempt(), attempt.assignment(), counts, racer.dropped(), racer.dropReason(),
+			campaign.development().race().winner() != null &&
+				campaign.development().race().winner() == racer.attempt());
 	}
 
 	/**

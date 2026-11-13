@@ -15,6 +15,8 @@ public enum Purpose
 	 * A representative trial of the working candidate, counted in its development counts.
 	 */
 	DEVELOPMENT,
+	/** A representative trial of one accepted prompt-author candidate while a race is active. */
+	RACE,
 	/**
 	 * A sampled trial of the original prompt system, counted in its baseline measurement.
 	 */
@@ -57,7 +59,7 @@ public enum Purpose
 	{
 		return switch (this)
 		{
-			case DEVELOPMENT, BASELINE, FORMAL -> true;
+			case DEVELOPMENT, RACE, BASELINE, FORMAL -> true;
 			case DIAGNOSTIC, PROMOTION, REPRODUCTION, CONTROL, INCUMBENT -> false;
 		};
 	}
@@ -72,7 +74,7 @@ public enum Purpose
 	{
 		return switch (this)
 		{
-			case DEVELOPMENT, BASELINE, FORMAL, REPRODUCTION -> true;
+			case DEVELOPMENT, RACE, BASELINE, FORMAL, REPRODUCTION -> true;
 			case DIAGNOSTIC, PROMOTION, CONTROL, INCUMBENT -> false;
 		};
 	}
@@ -89,7 +91,7 @@ public enum Purpose
 	{
 		return switch (this)
 		{
-			case DEVELOPMENT, BASELINE, FORMAL, REPRODUCTION, CONTROL, INCUMBENT -> true;
+			case DEVELOPMENT, RACE, BASELINE, FORMAL, REPRODUCTION, CONTROL, INCUMBENT -> true;
 			case DIAGNOSTIC, PROMOTION -> false;
 		};
 	}
@@ -105,7 +107,7 @@ public enum Purpose
 		return switch (this)
 		{
 			case BASELINE, FORMAL, CONTROL, INCUMBENT -> Part.HELD_OUT;
-			case DEVELOPMENT, DIAGNOSTIC, PROMOTION, REPRODUCTION -> Part.DEVELOPMENT;
+			case DEVELOPMENT, RACE, DIAGNOSTIC, PROMOTION, REPRODUCTION -> Part.DEVELOPMENT;
 		};
 	}
 }

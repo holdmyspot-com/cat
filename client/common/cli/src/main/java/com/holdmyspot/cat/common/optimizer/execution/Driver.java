@@ -823,7 +823,7 @@ public final class Driver implements AutoCloseable
 			List<FailedAssertion> failures = failed.stream().
 				map(result -> new FailedAssertion(result.assertion().id(), result.behavior())).
 				toList();
-			if (trial.key().purpose() != Purpose.DEVELOPMENT)
+			if (trial.key().purpose() != Purpose.DEVELOPMENT && trial.key().purpose() != Purpose.RACE)
 			{
 				complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
 				return;
@@ -875,7 +875,8 @@ public final class Driver implements AutoCloseable
 		JudgeProfile frozen = campaign.contract().judge();
 		String test = trial.testCase().testId();
 		DevelopmentJudge state = campaign.judges().get(test);
-		boolean development = trial.key().purpose() == Purpose.DEVELOPMENT;
+		boolean development = trial.key().purpose() == Purpose.DEVELOPMENT ||
+			trial.key().purpose() == Purpose.RACE;
 		JudgeProfile decider = frozen;
 		Judging.Seat seat = Judging.Seat.FROZEN_ALONE;
 		ShadowGroup group = null;
@@ -1176,7 +1177,8 @@ public final class Driver implements AutoCloseable
 	private void judged(Judging judging, Judgment judgment, TrialProfile judge, List<ShadowResult> shadows,
 		Instant now) throws IOException
 	{
-		if (judgment.verdict() != Verdict.FAIL || judging.key().purpose() != Purpose.DEVELOPMENT)
+		if (judgment.verdict() != Verdict.FAIL || (judging.key().purpose() != Purpose.DEVELOPMENT &&
+			judging.key().purpose() != Purpose.RACE))
 		{
 			complete(judging.key(), judging.testCase(), judging.concurrency(), judging.evidence(), judgment.verdict(),
 				judgment.rationale(), judgment.failures(), null, Optional.of(judge), shadows);

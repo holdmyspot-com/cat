@@ -191,6 +191,12 @@ final class Draft
 	 * How each prompt test chooses the profile that judges its development trials, by test identifier.
 	 */
 	Map<String, DevelopmentJudge> judges;
+	/** Indicates that the next prompt-author round follows a revert. */
+	boolean raceNext;
+	/** The active racer series. */
+	RaceState race;
+	/** Ordered working-candidate representative verdicts by cell. */
+	Map<String, List<Verdict>> developmentOutcomes;
 
 	/**
 	 * Copies a campaign.
@@ -218,6 +224,10 @@ final class Draft
 		reverts = new ArrayList<>(development.reverts());
 		diagnosis = development.diagnosis();
 		stalls = new LinkedHashMap<>(development.stalls());
+		raceNext = development.raceNext();
+		race = development.race();
+		developmentOutcomes = new LinkedHashMap<>();
+		development.outcomes().forEach((cell, outcomes) -> developmentOutcomes.put(cell, new ArrayList<>(outcomes)));
 		round = development.round();
 		promptAuthor = development.promptAuthor();
 		optimization = campaign.optimization();
@@ -443,6 +453,7 @@ final class Draft
 		working = candidate;
 		++series;
 		developmentCounts = new LinkedHashMap<>();
+		developmentOutcomes = new LinkedHashMap<>();
 		developmentFailures = new ArrayList<>();
 		testCaseOutcomes = List.of();
 		predecessor = null;
@@ -461,6 +472,7 @@ final class Draft
 	{
 		++series;
 		developmentCounts = new LinkedHashMap<>();
+		developmentOutcomes = new LinkedHashMap<>();
 		reviewPoints = new LinkedHashMap<>();
 		predecessor = null;
 		stalls.clear();
@@ -646,7 +658,8 @@ final class Draft
 			baseline = new IncumbentBaseline(baselineIndex, baselineIdentity, baselineCounts);
 		}
 		Development development = new Development(working, series, developmentCounts, developmentFailures,
-			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts, stalls);
+			diagnosis, round, promptAuthor, reviewPoints, testCaseOutcomes, predecessor, reverts, stalls, raceNext, race,
+			developmentOutcomes);
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,

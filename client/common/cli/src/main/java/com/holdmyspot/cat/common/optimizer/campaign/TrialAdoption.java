@@ -68,6 +68,7 @@ public final class TrialAdoption
 		return switch (key.purpose())
 		{
 			case DEVELOPMENT -> key.series() != draft.series || !key.snapshot().equals(draft.working.snapshot());
+			case RACE -> !isActiveRacerTrial(draft, key);
 			case BASELINE -> key.series() != draft.baselineIndex;
 			case FORMAL -> isStaleFormal(draft, key);
 			case CONTROL -> isStaleReference(draft, key, Reference.CONTROL);
@@ -85,6 +86,20 @@ public final class TrialAdoption
 				yield promptAuthor.runs().stream().noneMatch(run -> key.equals(run.trial()));
 			}
 		};
+	}
+
+	/**
+	 * Indicates whether an assigned racer trial still belongs to an active racer snapshot.
+	 *
+	 * @param draft the state
+	 * @param key the trial key
+	 * @return whether the racer is still active
+	 */
+	private static boolean isActiveRacerTrial(Draft draft, TrialKey key)
+	{
+		return draft.race != null && !draft.race.isComplete() && draft.race.isRacing(key.series()) &&
+			draft.round.validationAttempts().stream().
+			anyMatch(attempt -> attempt.number() == key.series() && attempt.snapshot().equals(key.snapshot()));
 	}
 
 	/**
@@ -343,6 +358,7 @@ public final class TrialAdoption
 		switch (purpose)
 		{
 			case DEVELOPMENT -> adoptDevelopment(draft, trial);
+			case RACE -> adoptRace(draft, trial);
 			case BASELINE -> adoptBaseline(draft, trial);
 			case FORMAL -> adoptFormal(draft, trial);
 			case CONTROL -> adoptReference(draft, trial, Reference.CONTROL);
@@ -419,7 +435,8 @@ public final class TrialAdoption
 	{
 		String cell = trial.key().cell();
 		Verdict verdict = trial.verdict();
-		draft.developmentCounts.put(cell, draft.developmentCount(cell).add(verdict));
+			draft.developmentCounts.put(cell, draft.developmentCount(cell).add(verdict));
+			draft.developmentOutcomes.computeIfAbsent(cell, _ -> new ArrayList<>()).add(verdict);
 		WorkUnit unit = WorkUnit.development(trial.key().series());
 		if (verdict == Verdict.PASS)
 			draft.recordPass(unit, 0);
@@ -472,6 +489,40 @@ public final class TrialAdoption
 	}
 
 	/**
+	 * Adopts a racer outcome while leaving the working candidate's counts unchanged.
+	 *
+	 * @param draft the state
+	 * @param trial the completed trial
+	 */
+	private static void adoptRace(Draft draft, LogicalTrial trial)
+	{
+		int attemptNumber = trial.key().series();
+		WorkUnit unit = WorkUnit.racer(attemptNumber);
+		if (trial.verdict() == Verdict.PASS)
+			draft.recordPass(unit, 0);
+		else
+			draft.recordFailure(unit, 0, isBlocking(trial), 0);
+		draft.race = draft.race.withOutcome(attemptNumber, trial.key().cell(), trial.verdict());
+		if (!draft.race.isComplete())
+			return;
+		RaceState result = draft.race;
+		if (result.noWinner())
+		{
+			endUnproductiveRound(draft);
+			return;
+		}
+		int winner = result.winner();
+		PromptAuthorAttempt selected = draft.round.validationAttempts().stream().
+			filter(attempt -> attempt.number() == winner).findFirst().orElseThrow();
+		draft.promptAuthor = selected;
+		for (PromptAuthorAttempt attempt : draft.round.validationAttempts())
+		{
+			boolean accepted = decision(draft, attempt) == Promotion.Decision.PROMOTE;
+			retainAttempt(draft, attempt, accepted, attempt.number() == winner);
+		}
+	}
+
+	/**
 	 * Edits at once after a blocking failure. Discards the working candidate's development trials that have no adopted
 	 * outcome, whatever their state, and ends any diagnosis together with its rerun, so the decision depends only on
 	 * adopted outcomes. Starts a round over the failing cells unless a round or prompt author attempt is in progress.
@@ -489,7 +540,7 @@ public final class TrialAdoption
 			{
 				case DEVELOPMENT -> key.snapshot().equals(draft.working.snapshot());
 				case DIAGNOSTIC -> true;
-				case BASELINE, FORMAL, CONTROL, INCUMBENT, PROMOTION, REPRODUCTION -> false;
+				case BASELINE, FORMAL, CONTROL, INCUMBENT, PROMOTION, REPRODUCTION, RACE -> false;
 			};
 		});
 		draft.diagnosis = null;
@@ -532,15 +583,29 @@ public final class TrialAdoption
 		draft.stalls.clear();
 		draft.stalls.putAll(restored.stalls());
 		draft.developmentCounts = new LinkedHashMap<>(restored.counts());
+		draft.developmentOutcomes = copyOutcomes(restored.outcomes());
 		draft.developmentFailures = new ArrayList<>(restored.failures());
 		draft.testCaseOutcomes = restored.testCaseOutcomes();
 		draft.reviewPoints = new LinkedHashMap<>(restored.reviewPoints());
 		restoreRegressionVerdicts(draft, predecessor.regressionSet());
 		draft.round = predecessor.round();
+		draft.raceNext = true;
 		if (draft.round.weak())
 		{
 			if (isWeakRoundDecided(draft))
-				endUnproductiveRound(draft);
+			{
+				Sha256 withdrawn = draft.reverts.getLast().withdrawn().snapshot();
+				List<PromptAuthorAttempt> alternatives = draft.round.validationAttempts().stream().
+					filter(attempt -> !attempt.snapshot().equals(withdrawn)).
+					filter(attempt -> decision(draft, attempt) == Promotion.Decision.PROMOTE).toList();
+				if (alternatives.isEmpty())
+					endUnproductiveRound(draft);
+				else
+				{
+					draft.round = draft.round.asRaceRound(raceAttemptLimits(draft, draft.round));
+					startRace(draft, alternatives);
+				}
+			}
 		}
 		else
 			rejectPromptAuthorAttempt(draft, predecessor.cell());
@@ -576,7 +641,21 @@ public final class TrialAdoption
 	private static Development snapshotDevelopment(Draft draft, Map<String, StallProgress> stalls)
 	{
 		return new Development(draft.working, draft.series, draft.developmentCounts, draft.developmentFailures,
-			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of(), stalls);
+			null, null, null, draft.reviewPoints, draft.testCaseOutcomes, null, List.of(), stalls, draft.raceNext,
+			draft.race, draft.developmentOutcomes);
+	}
+
+	/**
+	 * Copies the working candidate's ordered outcomes by cell.
+	 *
+	 * @param outcomes the verdicts by cell
+	 * @return a mutable copy of the cell outcome lists
+	 */
+	private static Map<String, List<Verdict>> copyOutcomes(Map<String, List<Verdict>> outcomes)
+	{
+		Map<String, List<Verdict>> copy = new LinkedHashMap<>();
+		outcomes.forEach((cell, verdicts) -> copy.put(cell, new ArrayList<>(verdicts)));
+		return copy;
 	}
 
 	/**
@@ -689,7 +768,35 @@ public final class TrialAdoption
 	static void startRound(Draft draft, String required)
 	{
 		draft.round = failingRound(draft.developmentCounts, draft.developmentCells(), required);
+		if (draft.raceNext)
+		{
+			draft.round = draft.round.asRaceRound(raceAttemptLimits(draft, draft.round));
+			draft.raceNext = false;
+		}
 		StalledDevelopment.roundStarted(draft);
+	}
+
+	/**
+	 * Returns the six-attempt limits for addressed tests decided entirely by built-in tools.
+	 *
+	 * @param draft the campaign state
+	 * @param round the race round
+	 * @return the six-attempt limits by cell
+	 */
+	static Map<String, Integer> raceAttemptLimits(Draft draft, Round round)
+	{
+		Map<String, Integer> limits = new LinkedHashMap<>();
+		for (String cell : round.attempts().keySet())
+		{
+			String testId = draft.contract().findCell(cell).orElseThrow().testId();
+			PromptTest test = draft.contract().findTest(testId).orElseThrow();
+			boolean allToolDecided = test.expectedOutcomeTool().isPresent() && test.assertions().stream().
+				allMatch(mapped -> mapped.assertion().tool() != null &&
+					mapped.assertion().onToolFailure() == com.holdmyspot.cat.common.optimizer.contract.OnToolFailure.FAIL);
+			if (allToolDecided)
+				limits.put(cell, 6);
+		}
+		return Map.copyOf(limits);
 	}
 
 	/**
@@ -911,6 +1018,8 @@ public final class TrialAdoption
 	 */
 	static void decideWeakRound(Draft draft)
 	{
+		if (draft.race != null && !draft.race.isComplete())
+			return;
 		for (PromptAuthorAttempt attempt : draft.round.validationAttempts())
 		{
 			if (decision(draft, attempt) == Promotion.Decision.PENDING)
@@ -931,6 +1040,12 @@ public final class TrialAdoption
 		}
 		if (!isWeakRoundDecided(draft))
 			return;
+		if (accepted.size() > 1 && (round.raceRound() || AttemptSelection.hasTiedLeaders(accepted) ||
+			classificationsDisagree(draft, accepted)))
+		{
+			startRace(draft, accepted);
+			return;
+		}
 		Optional<PromptAuthorAttempt> winner = AttemptSelection.select(accepted);
 		if (winner.isPresent())
 		{
@@ -939,6 +1054,53 @@ public final class TrialAdoption
 			return;
 		}
 		endUnproductiveRound(draft);
+	}
+
+	/**
+	 * Starts independent representative series for the accepted attempts.
+	 *
+	 * @param draft the campaign state
+	 * @param accepted the accepted prompt-author attempts
+	 */
+	private static void startRace(Draft draft, List<PromptAuthorAttempt> accepted)
+	{
+		Set<String> tests = new LinkedHashSet<>();
+		for (String addressed : draft.round.attempts().keySet())
+			tests.add(draft.contract().findCell(addressed).orElseThrow().testId());
+		List<String> cells = draft.developmentCells().stream().filter(cell -> tests.contains(cell.testId())).
+			map(Cell::id).toList();
+		List<RaceDecision.Racer> racers = accepted.stream().map(attempt -> new RaceDecision.Racer(attempt.number(),
+			Map.of(), AttemptSelection.changedLines(attempt), false, null)).toList();
+		draft.race = new RaceState(racers, cells, Map.of(), draft.developmentOutcomes, null, false);
+	}
+
+	/**
+	 * Detects when accepted attempts classify a shared failing case differently.
+	 *
+	 * @param draft the campaign state
+	 * @param accepted the accepted attempts
+	 * @return whether any failure receives different classifications
+	 */
+	private static boolean classificationsDisagree(Draft draft, List<PromptAuthorAttempt> accepted)
+	{
+		Map<String, FailureKind> classifications = new LinkedHashMap<>();
+		for (PromptAuthorAttempt attempt : accepted)
+		{
+			PromptAuthorDiagnosis diagnosis = draft.optimization.promptAuthors().stream().
+				filter(item -> item.number() == attempt.number()).findFirst().orElse(null);
+			if (diagnosis == null)
+				continue;
+			for (PromptAuthorKind kind : diagnosis.kinds())
+			{
+				for (String failure : kind.failures())
+				{
+					FailureKind previous = classifications.putIfAbsent(failure, kind.classification());
+					if (previous != null && previous != kind.classification())
+						return true;
+				}
+			}
+		}
+		return false;
 	}
 
 	/**
@@ -1022,6 +1184,12 @@ public final class TrialAdoption
 	 */
 	static void promote(Draft draft, PromptAuthorAttempt promptAuthor)
 	{
+		RaceState race = draft.race;
+		Sha256 racedSnapshot = null;
+		if (race != null && race.winner() != null)
+			racedSnapshot = draft.round.validationAttempts().stream().
+				filter(attempt -> attempt.number() == race.winner()).map(PromptAuthorAttempt::snapshot).
+				findFirst().orElse(null);
 		Round completed = draft.round;
 		Predecessor predecessor = new Predecessor(snapshotDevelopment(draft, draft.stalls), draft.round,
 			promptAuthor.cell(), draft.regressionSet);
@@ -1033,6 +1201,27 @@ public final class TrialAdoption
 		}
 		++draft.candidates;
 		draft.startDevelopment(new Candidate(draft.candidates, promptAuthor.snapshot()));
+		if (race != null && race.winner() != null && race.winner() == promptAuthor.number())
+		{
+			RaceDecision.Racer winner = race.racers().stream().filter(racer -> racer.attempt() == promptAuthor.number()).
+				findFirst().orElseThrow();
+			if (promptAuthor.snapshot().equals(racedSnapshot))
+			{
+				for (String cell : race.cells())
+				{
+					CellCounts counts = winner.count(cell);
+					if (counts.outcomes() > 0)
+						draft.developmentCounts.put(cell, counts);
+					draft.developmentOutcomes.put(cell,
+						new ArrayList<>(winner.outcomes().getOrDefault(cell, List.of())));
+					List<DrawnTestCase> cases = race.draws().getOrDefault(cell, List.of());
+					List<Verdict> verdicts = winner.outcomes().getOrDefault(cell, List.of());
+					for (int index = 0; index < verdicts.size(); ++index)
+						draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, cases.get(index),
+							verdicts.get(index));
+				}
+			}
+		}
 		draft.predecessor = predecessor;
 		for (PromotionRun run : promptAuthor.runs())
 		{
@@ -1078,7 +1267,7 @@ public final class TrialAdoption
 		attempts.put(cell, attempts.get(cell) + 1);
 		draft.round = new Round(attempts, draft.round.weak(), draft.round.reservations(),
 			draft.round.validationAttempts(), draft.round.approachOrders(), draft.round.rankApproaches(),
-			draft.round.rotationSize());
+			draft.round.rotationSize(), draft.round.raceRound(), draft.round.attemptLimits());
 		if (draft.round.isComplete())
 			endUnproductiveRound(draft);
 	}

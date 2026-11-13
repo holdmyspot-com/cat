@@ -11,6 +11,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
+import java.util.Map;
+
 /**
  * Writes the descriptive optimization measurements and diagnoses in status JSON.
  */
@@ -99,6 +101,27 @@ final class OptimizationJson
 			attempt.put("accepted", progress.accepted());
 			attempt.put("rejected_early", progress.rejectedEarly());
 			attempt.put("winner", progress.winner());
+		}
+		ArrayNode racers = root.putArray("racers");
+		for (OptimizationReport.RacerProgress progress : report.racers())
+		{
+			ObjectNode racer = racers.addObject();
+			racer.put("attempt", progress.attempt());
+			racer.put("approach", EnumNames.lowerCase(progress.assignment().approach()));
+			racer.put("approach_order_source", EnumNames.lowerCase(progress.assignment().source()));
+			racer.put("dropped", progress.dropped());
+			racer.put("drop_reason", progress.dropReason());
+			racer.put("winner", progress.winner());
+			ArrayNode cells = racer.putArray("cells");
+			for (Map.Entry<String, com.holdmyspot.cat.common.optimizer.campaign.CellCounts> entry :
+				new java.util.TreeMap<>(progress.counts()).entrySet())
+			{
+				ObjectNode cell = cells.addObject();
+				cell.put("cell", entry.getKey());
+				cell.put("passes", entry.getValue().passes());
+				cell.put("failures", entry.getValue().failures());
+				cell.put("outcomes", entry.getValue().outcomes());
+			}
 		}
 		writeTestRevisions(root.putObject("test_revisions"), report.testRevisions());
 	}
