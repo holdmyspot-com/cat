@@ -92,6 +92,8 @@ final class Session implements SessionHandle
 	private String runId;
 	private Message.Ended ended;
 	private boolean timedOut;
+	private boolean endedEarly;
+	private Map<String, Integer> settledAssertions = Map.of();
 	private boolean timedOutWithoutOutput;
 	private int timedOutTurn;
 	private boolean interruptSent;
@@ -208,6 +210,13 @@ final class Session implements SessionHandle
 				outcome = sendTurn(turn, prompt);
 				if (outcome != Outcome.TURN_COMPLETED)
 					break;
+				if (turn < request.turns().size() && request.turnObserver().isPresent() &&
+					request.turnObserver().get().endAfter(turn, completed()))
+				{
+					endedEarly = true;
+					settledAssertions = request.turnObserver().get().settledAssertions();
+					break;
+				}
 			}
 			if (outcome == Outcome.TURN_COMPLETED && !isStopping() && isTurnClean() &&
 				request.followUp().isPresent())
@@ -363,8 +372,10 @@ final class Session implements SessionHandle
 	{
 		if (ended == null && outcome != Outcome.STUCK && outcome != Outcome.STARTUP_TIMEOUT)
 		{
-			// Asking for completion also makes the runner report a turn that failed without a result.
-			feed.send("{\"type\":\"complete\"}");
+			// A normal finish asks the runner to report a turn that failed without a result. On an early end, just
+			// close input and let the harness flush its completed-turn events.
+			if (!endedEarly)
+				feed.send("{\"type\":\"complete\"}");
 			feed.end();
 			graceDeadline = clock.instant().plus(GRACE);
 			while (ended == null && !clock.instant().isAfter(graceDeadline))
@@ -543,7 +554,7 @@ final class Session implements SessionHandle
 		{
 			if (failure == null && events.error() != null)
 				failure = events.error();
-			if (failure == null && responses.size() < request.turns().size())
+			if (failure == null && responses.size() < request.turns().size() && !endedEarly)
 				failure = "The session ended before every turn had a reply";
 			if (failure != null)
 				return new SessionResult.Failed(failure, windows);
@@ -562,7 +573,7 @@ final class Session implements SessionHandle
 		return new SessionResult.Completed(artifacts.resolve(EventSink.TRANSCRIPT), responses,
 			runDirectory().resolve("project"), runDirectory().resolve("initial-project"), events.model(),
 			events.reasoning(), events.usage(), events.windows(), sink.promptSources(),
-			events.toolCalls());
+			events.toolCalls(), Math.max(request.turns().size(), responses.size()), endedEarly, settledAssertions);
 	}
 
 	/**

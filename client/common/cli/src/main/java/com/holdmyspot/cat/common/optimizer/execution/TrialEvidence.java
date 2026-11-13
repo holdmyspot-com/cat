@@ -75,7 +75,16 @@ public final class TrialEvidence implements TrialRecord
 	 */
 	public String render() throws IOException
 	{
-		return EvidenceSection.render(activity, trial.transcript(), trial.effects(), trial.initialProject());
+		String rendered = EvidenceSection.render(activity, trial.transcript(), trial.effects(), trial.initialProject());
+		if (!trial.endedEarly())
+			return rendered;
+		StringBuilder note = new StringBuilder(rendered + "\n\nTrial session: ended after turn " +
+			trial.responses().size() + " of " +
+			trial.requestedTurns() + ", every assertion settled. Turns not run: " +
+			String.join(", ", trial.turnsNotRun().stream().map(String::valueOf).toList()) +
+			". Assertion settlement turns:");
+		trial.settledAssertions().forEach((id, turn) -> note.append("\n- ").append(id).append(": turn ").append(turn));
+		return note.toString();
 	}
 
 	@Override

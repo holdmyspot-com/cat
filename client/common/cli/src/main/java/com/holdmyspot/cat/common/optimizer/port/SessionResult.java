@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 
 /**
  * How a nested session ended.
@@ -47,7 +48,8 @@ public sealed interface SessionResult
 	 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
 	 */
 	record Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject, String model,
-		String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
+		String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls,
+		int requestedTurns, boolean endedEarly, Map<String, Integer> settledAssertions)
 		implements SessionResult
 	{
 		/**
@@ -81,6 +83,25 @@ public sealed interface SessionResult
 			responses = responses.stream().map(List::copyOf).toList();
 			windows = List.copyOf(windows);
 			toolCalls = List.copyOf(toolCalls);
+			requireThat(requestedTurns, "requestedTurns").isGreaterThanOrEqualTo(responses.size());
+			requireThat(settledAssertions, "settledAssertions").isNotNull();
+			settledAssertions = Map.copyOf(settledAssertions);
+			if (endedEarly && requestedTurns == responses.size())
+				throw new IllegalArgumentException("An early end must leave at least one turn not run");
+		}
+
+		/** Creates a completed result without early-end metadata. */
+		public Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject, String model,
+			String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
+		{
+			this(transcript, responses, effects, initialProject, model, reasoning, usage, windows, promptSources, toolCalls,
+				responses.size(), false, Map.of());
+		}
+
+		/** Returns the turn numbers that the session did not run. */
+		public List<Integer> turnsNotRun()
+		{
+			return java.util.stream.IntStream.rangeClosed(responses.size() + 1, requestedTurns).boxed().toList();
 		}
 	}
 

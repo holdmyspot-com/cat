@@ -43,7 +43,8 @@ import java.util.Optional;
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
-	Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions)
+	Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
+	Optional<TurnObserver> turnObserver)
 {
 	/**
 	 * Creates a request whose workspace receives no files.
@@ -161,7 +162,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		Optional<FollowUp> followUp, boolean controlSource)
 	{
 		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp, controlSource,
-			ExtraPermissions.NONE);
+			ExtraPermissions.NONE, Optional.empty());
 	}
 
 	/**
@@ -209,6 +210,9 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(plugins, "plugins").isNotNull();
 		requireThat(followUp, "followUp").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
+		requireThat(turnObserver, "turnObserver").isNotNull();
+		if (turnObserver.isPresent() && role != SessionRole.TRIAL)
+			throw new IllegalArgumentException("Only a trial session may end early");
 		if (role != SessionRole.TRIAL && role != SessionRole.CONTRACT_AUTHOR && !files.isEmpty())
 			throw new IllegalArgumentException("A " + role + " session receives no files");
 		if (role != SessionRole.TRIAL && !plugins.isEmpty())
@@ -218,6 +222,15 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		turns = List.copyOf(turns);
 		plugins = List.copyOf(plugins);
 		readOnly = List.copyOf(readOnly);
+	}
+
+	/** Creates a request without a completed-turn observer. */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+		Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp, controlSource,
+			extraPermissions, Optional.empty());
 	}
 
 	/**
@@ -230,6 +243,13 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	public SessionRequest withExtraPermissions(ExtraPermissions permissions)
 	{
 		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
-			controlSource, permissions);
+			controlSource, permissions, turnObserver);
+	}
+
+	/** Returns this request with a completed-turn observer. */
+	public SessionRequest withTurnObserver(TurnObserver observer)
+	{
+		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
+			controlSource, extraPermissions, Optional.of(observer));
 	}
 }

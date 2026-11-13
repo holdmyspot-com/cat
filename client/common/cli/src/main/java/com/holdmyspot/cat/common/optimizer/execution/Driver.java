@@ -819,7 +819,7 @@ public final class Driver implements AutoCloseable
 		List<BuiltInToolResult> failed = results.stream().filter(BuiltInToolResult::failsTrial).toList();
 		if (!failed.isEmpty())
 		{
-			String record = toolRecord("Failed built-in tools:", failed);
+			String record = turnEndNote(toolRecord("Failed built-in tools:", failed), completed);
 			List<FailedAssertion> failures = failed.stream().
 				map(result -> new FailedAssertion(result.assertion().id(), result.behavior())).
 				toList();
@@ -840,7 +840,7 @@ public final class Driver implements AutoCloseable
 		if (judged.isEmpty())
 		{
 			complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.PASS,
-				toolRecord("Passed built-in tools:", results), List.of(), null);
+				turnEndNote(toolRecord("Passed built-in tools:", results), completed), List.of(), null);
 			return;
 		}
 		String section = "";
@@ -1008,6 +1008,18 @@ public final class Driver implements AutoCloseable
 		for (BuiltInToolResult result : results)
 			record.append("\n- ").append(result.describe());
 		return record.toString();
+	}
+
+	private static String turnEndNote(String record, SessionResult.Completed completed)
+	{
+		if (!completed.endedEarly())
+			return record;
+		StringBuilder note = new StringBuilder(record + "\n- Trial ended after turn " + completed.responses().size() + " of " +
+			completed.requestedTurns() + "; turns not run: " +
+			String.join(", ", completed.turnsNotRun().stream().map(String::valueOf).toList()) +
+			"; assertion settlement turns:");
+		completed.settledAssertions().forEach((id, turn) -> note.append(" ").append(id).append("=turn ").append(turn));
+		return note.toString();
 	}
 
 	/**
@@ -2462,7 +2474,8 @@ public final class Driver implements AutoCloseable
 				context.workspace(), source, control, context.json());
 			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
-				TestWorkspace.of(test, trial.testCase().testCase()), plugins, Optional.empty(), control));
+				TestWorkspace.of(test, trial.testCase().testCase()), plugins, Optional.empty(), control).
+				withTurnObserver(EarlyTrialEnd.forTest(test, trial.testCase().testCase(), context.sessions())));
 		}
 		catch (IOException e)
 		{
