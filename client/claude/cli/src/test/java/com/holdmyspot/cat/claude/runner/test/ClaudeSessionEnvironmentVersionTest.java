@@ -111,12 +111,12 @@ public final class ClaudeSessionEnvironmentVersionTest
 				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
 				promptCacheTtl);
 
-			// A judge runs with the prompt cache lifetime of its role and a sandbox that lists no write root
+			// A judge runs with the prompt cache lifetime and the tools of its role, and without a sandbox
 			Path judgeDestination = root.resolve("isolated/judge-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, judgeDestination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "",
 				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
-				ClaudeSessionRole.JUDGE.promptCacheTtl(), ClaudeSessionRole.JUDGE.writes());
+				ClaudeSessionRole.JUDGE.promptCacheTtl(), ClaudeSessionRole.JUDGE.sandboxed(), ClaudeSessionRole.JUDGE.tools());
 
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
 				normalize(scope.json(), controlDestination, root, run) + "\n" +

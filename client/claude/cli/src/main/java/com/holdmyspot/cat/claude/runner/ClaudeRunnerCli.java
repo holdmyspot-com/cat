@@ -390,7 +390,8 @@ public final class ClaudeRunnerCli
 	/**
 	 * Refuses a launch that would start a session, but must not. That is a launch that names {@code --artifact}, as
 	 * {@link #refusesOverride} refuses it, any launch on a platform where Claude Code cannot confine the session in a
-	 * sandbox, as {@link ClaudeSessionSandbox} decides, and any launch whose project is the user's home folder or
+	 * sandbox, as {@link ClaudeSessionSandbox} decides, unless the launch's role runs without a sandbox, and any launch
+	 * whose project is the user's home folder or
 	 * contains it, as {@link HarnessRunnerOptions#refusesHomeProject} decides. Printing the usage and verifying an
 	 * artifact start no session, so they are never refused for the platform or the project.
 	 *
@@ -413,11 +414,14 @@ public final class ClaudeRunnerCli
 			args.length == 2 && args[0].equals("--verify-artifact");
 		if (startsNothing)
 			return false;
-		Optional<String> refusal = ClaudeSessionSandbox.refusal(platform);
-		if (refusal.isPresent())
+		if (needsSandbox(args))
 		{
-			errors.println(refusal.get());
-			return true;
+			Optional<String> refusal = ClaudeSessionSandbox.refusal(platform);
+			if (refusal.isPresent())
+			{
+				errors.println(refusal.get());
+				return true;
+			}
 		}
 		return HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors);
 	}
@@ -715,6 +719,27 @@ public final class ClaudeRunnerCli
 			return args[index + 1];
 		}
 		return "";
+	}
+
+	/**
+	 * Returns whether a launch starts a session that Claude Code must confine in a sandbox. Only a launch that names a
+	 * role that runs without one does not; a launch with a missing role, or one that this launcher does not know, is
+	 * checked as a sandboxed session and fails later when the launch's options are parsed.
+	 *
+	 * @param args the launch's options
+	 * @return {@code true} if the session needs the sandbox
+	 */
+	private static boolean needsSandbox(String[] args)
+	{
+		assert args != null;
+		try
+		{
+			return sessionRole(args).map(ClaudeSessionRole::sandboxed).orElse(true);
+		}
+		catch (InvalidArgumentsException _)
+		{
+			return true;
+		}
 	}
 
 	/**

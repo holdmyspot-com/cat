@@ -470,6 +470,36 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
+	 * Verifies that on native Windows, where Claude Code has no sandbox, the launcher starts a judge, which runs without
+	 * one, and still refuses a trial and a session with no role, which need one.
+	 *
+	 * @param platform the native Windows platform
+	 */
+	@Test(dataProvider = "nativeWindows")
+	public void startsJudgeOnNativeWindows(Platform platform)
+	{
+		StringWriter judgeErrors = new StringWriter();
+
+		boolean judgeRefused = ClaudeRunnerCli.refusesLaunch(new String[]{"--project", "project", "--model", "sonnet",
+			"--effort", "low", "--session-role", "judge"}, WORKING_DIRECTORY, Map.of(), platform,
+			new PrintWriter(judgeErrors, true));
+
+		requireThat(judgeRefused, "judgeRefused").isFalse();
+		requireThat(judgeErrors.toString(), "judgeErrors").isEmpty();
+		for (String role : List.of("trial", "unknown"))
+		{
+			StringWriter errors = new StringWriter();
+
+			boolean refused = ClaudeRunnerCli.refusesLaunch(new String[]{"--project", "project", "--model", "sonnet",
+				"--effort", "low", "--session-role", role}, WORKING_DIRECTORY, Map.of(), platform,
+				new PrintWriter(errors, true));
+
+			requireThat(refused, "refused" + role).isTrue();
+			requireThat(errors.toString(), "errors" + role).contains("Claude Code has no sandbox on native Windows");
+		}
+	}
+
+	/**
 	 * Verifies that on native Windows the launcher still answers {@code --help} and verifies an artifact, since
 	 * neither starts a session.
 	 *

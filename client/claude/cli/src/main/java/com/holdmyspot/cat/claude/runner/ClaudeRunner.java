@@ -163,12 +163,13 @@ public final class ClaudeRunner
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
-	 * @param role the session's role, which decides its tools and its prompt cache's lifetime, or {@code null} to keep
-	 *   Claude Code's defaults
+	 * @param role the session's role, which decides its tools, its prompt cache's lifetime and whether it runs inside a
+	 *   sandbox, or {@code null} to keep Claude Code's defaults
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes outside the session's run folder, which the bound always
-	 *   lets it write, or a settings file that Claude Code also loads would widen it
+	 *   lets it write, or a settings file that Claude Code also loads would widen it; or if the session runs without a
+	 *   sandbox and its tools include one beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}
 	 * @throws IOException if startup fails
 	 */
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
@@ -198,7 +199,9 @@ public final class ClaudeRunner
 		ExecutableFiles executables = scope.executableFiles();
 		try
 		{
-			ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
+			// The empty files keep Claude Code's sandbox from mounting a file that the session's tools could not find
+			if (sandboxed(role))
+				ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
 			manager.copyProject(project, run);
 			if (workspace != null)
 				manager.copyWorkspace(workspace, run);
@@ -207,7 +210,8 @@ public final class ClaudeRunner
 				executables, gitName, gitEmail);
 			Path hostConfiguration = claudeConfigDirectory(environment, Platform.current());
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
-			ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
+			if (sandboxed(role))
+				ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
 			// The run manager places every project, home, and Claude temporary directory beneath CAT's isolated work root.
 			// This keeps concurrent runs separate without diverting CAT-owned state to the shared system temporary directory.
 			Path isolatedProcessHome = run.directory().resolve("home");
@@ -227,7 +231,7 @@ public final class ClaudeRunner
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
 				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
 				instructionFilesMode, requestAccess, worktree, run.directory(), bound, extraPermissions,
-				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role), writes(role));
+				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role), sandboxed(role), tools(role));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
@@ -259,12 +263,25 @@ public final class ClaudeRunner
 				transcripts = new HarnessSessionTranscripts(hookResults, run.sessionTranscripts(),
 					name -> name.endsWith(".jsonl"));
 			}
-			SandboxWatch watch = new SandboxWatch(HarnessProcessStarter.start(command, worktree, isolatedEnvironment,
-				executables), scope.json());
-			ClaudeProcess process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);
+			// A session without a sandbox has none whose failure to confine the watch could report
+			SandboxWatch watch = null;
+			ClaudeProcess process;
+			if (sandboxed(role))
+			{
+				watch = new SandboxWatch(HarnessProcessStarter.start(command, worktree, isolatedEnvironment, executables),
+					scope.json());
+				process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);
+			}
+			else
+			{
+				process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree, isolatedEnvironment,
+					executables), projectDirectory, transcripts);
+			}
 			try
 			{
 				manager.recordHarnessProcess(run, process.pid(), process.processStart());
+				if (watch == null)
+					return new HarnessRunSession(run, process, scope, lock);
 				return new HarnessRunSession(run, watch.guard(process), scope, lock);
 			}
 			catch (IOException e)
@@ -1179,14 +1196,14 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Indicates whether a session's sandbox lists the write roots of its policy.
+	 * Indicates whether Claude Code confines a session's commands in a sandbox.
 	 *
 	 * @param role the session's role, or {@code null} if it has none
 	 * @return {@code true} if it does, which is also the case for a session with no role
 	 */
-	private static boolean writes(ClaudeSessionRole role)
+	private static boolean sandboxed(ClaudeSessionRole role)
 	{
-		return role == null || role.writes();
+		return role == null || role.sandboxed();
 	}
 
 	/**

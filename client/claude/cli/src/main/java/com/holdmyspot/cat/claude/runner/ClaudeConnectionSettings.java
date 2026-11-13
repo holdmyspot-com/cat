@@ -104,19 +104,33 @@ public final class ClaudeConnectionSettings
 	 */
 	private static final List<String> PERMISSION_RESTRICTIONS = List.of("deny", "ask");
 	/**
-	 * The permission rules that the isolated settings allow, whatever the parent's settings say. Claude Code asks the
-	 * user before using the {@code Skill} tool, and a nested instance has no user to answer, so without this rule a
-	 * trial could use none of the skills of the prompt system it measures. The rule for editing tools grants edits
-	 * inside the project, and nowhere else.
+	 * The permission rules that the isolated settings of a sandboxed session allow, whatever the parent's settings say.
+	 * Claude Code asks the user before using the {@code Skill} tool, and a nested instance has no user to answer, so
+	 * without this rule a trial could use none of the skills of the prompt system it measures. The rule for editing
+	 * tools grants edits inside the project, and nowhere else. A session without a sandbox is offered neither tool.
 	 */
 	private static final List<String> PERMISSION_GRANTS = List.of("Skill", "Edit(./**)");
 	/**
 	 * The permission rule that lets the isolated instance run every Bash command without asking the user, which a
 	 * nested instance has no user to answer. The rule does not depend on Claude Code's
 	 * {@code sandbox.autoAllowBashIfSandboxed}, and the settings require the sandbox that confines the commands. The
-	 * parent's rules that deny a command or ask before running it still take precedence over it.
+	 * parent's rules that deny a command or ask before running it still take precedence over it. A session without a
+	 * sandbox is offered no tool that runs a command, so its settings omit the rule.
 	 */
 	private static final String SANDBOXED_COMMAND_GRANT = "Bash";
+	/**
+	 * The permission rule that denies every tool that an MCP server provides, including the tools of the claude.ai
+	 * connectors that Claude Code announces to a session from the user's account. Claude Code runs an MCP tool outside
+	 * any sandbox, so the isolated settings of a session without a sandbox deny them by this rule, which matches the
+	 * full name of each tool of every server.
+	 */
+	private static final String MCP_TOOLS_DENIAL = "mcp__*";
+	/**
+	 * The characters that a gitignore pattern treats as syntax and that can appear in a path: the escape character and
+	 * the characters of a character class, a wildcard and a negation. A permission rule's path is a gitignore pattern,
+	 * so a path that holds one matches the path itself only if the rule escapes the character with a backslash.
+	 */
+	private static final String RULE_PATH_SYNTAX = "\\[]*?!";
 	/**
 	 * The variables that a nested Claude process takes from its parent: the connection variables, and the variables
 	 * that decide whether and how a session starts subagents, such as how many run at once, how deeply they nest,
@@ -341,8 +355,8 @@ public final class ClaudeConnectionSettings
 	/**
 	 * Writes settings for an isolated Claude instance, as
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
-	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String, String, boolean)} does, for an instance
-	 * whose commands may write the roots of its policy.
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String, String, boolean, List)} does, for an
+	 * instance that runs inside a sandbox and is offered every tool.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -381,7 +395,7 @@ public final class ClaudeConnectionSettings
 	{
 		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
 			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, runFolder, bound, extraPermissions,
-			modelHost, promptCacheTtl, true);
+			modelHost, promptCacheTtl, true, List.of());
 	}
 
 	/**
@@ -390,9 +404,16 @@ public final class ClaudeConnectionSettings
 	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
 	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
 	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
-	 * environment variable for it. When {@code writes} is {@code false}, the settings list none of the policy's write
-	 * roots for the sandbox, so that the instance's commands write only what Claude Code itself lets them write. The
-	 * returned policy and the read denials are the same either way.
+	 * environment variable for it.
+	 * <p>
+	 * When {@code sandboxed} is {@code false}, the instance runs without a sandbox, because the {@code tools} that its
+	 * model is offered include no command and no tool that writes. The settings then have no {@code sandbox} section, do
+	 * not allow the {@code Skill} and editing tools, commands, or requested sessions' responses that a sandboxed
+	 * session needs, and do not require Claude Code to start a sandbox. Its file tools stay out of the paths that
+	 * {@code deniedReads} names through the same {@code Read} rules in {@code permissions.deny} as a sandboxed session's,
+	 * and every MCP tool is denied, because such a tool runs outside any sandbox. The returned policy and its read
+	 * denials are the same either way. The session is refused when {@code tools} is empty, which offers every tool, or
+	 * names a tool that {@link ClaudeSessionSandbox#READ_ONLY_TOOLS} does not list.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -415,21 +436,26 @@ public final class ClaudeConnectionSettings
 	 * @param modelHost                the host of the instance's model provider
 	 * @param promptCacheTtl           the lifetime of the instance's prompt cache, such as {@code 5m}, or an empty
 	 *                                 string to keep Claude Code's default
-	 * @param writes                   {@code true} if the sandbox lets the instance's commands write the roots of its
-	 *                                 policy, {@code false} if it lists none of them
+	 * @param sandboxed                {@code true} if Claude Code confines the instance's commands in a sandbox,
+	 *                                 {@code false} if the instance runs without one
+	 * @param tools                    the only tools that the instance's model is offered, or none if it is offered
+	 *                                 every tool
 	 * @return the instance's sandbox policy
 	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions},
-	 *                                  {@code modelHost} or {@code promptCacheTtl} are null
+	 *                                  {@code modelHost}, {@code promptCacheTtl} or {@code tools} are null
 	 * @throws IllegalArgumentException if {@code modelHost} is blank
-	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write what Claude Code
-	 *                                  writes, or lacks a write or host that the instance needs
+	 * @throws SessionRefusedException  if {@code sandboxed} is {@code false} and {@code tools} is empty or names a tool
+	 *                                  beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}; or if {@code bound} does not
+	 *                                  let the instance's commands write what Claude Code writes, or lacks a write or
+	 *                                  host that the instance needs; or if {@code sandboxed} is {@code true} and the
+	 *                                  read denials are too many for Claude Code to sandbox the instance's commands
 	 * @throws IOException              if settings I/O fails
 	 */
 	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
 		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl,
-		boolean writes)
+		boolean sandboxed, List<String> tools)
 		throws IOException
 	{
 		requireThat(promptCacheTtl, "promptCacheTtl").isNotNull();
@@ -437,6 +463,13 @@ public final class ClaudeConnectionSettings
 		requireThat(runFolder, "runFolder").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(modelHost, "modelHost").isNotBlank();
+		requireThat(tools, "tools").isNotNull();
+		if (!sandboxed)
+		{
+			Optional<String> refusal = ClaudeSessionSandbox.unsandboxedRefusal(tools);
+			if (refusal.isPresent())
+				throw new SessionRefusedException(refusal.get());
+		}
 		Path worktreeRegistrations = null;
 		if (project != null)
 		{
@@ -466,7 +499,8 @@ public final class ClaudeConnectionSettings
 			parentSettings = mapper.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
 				"Claude settings"));
 		}
-		putSandbox(settings, policy, implicitWrites, writes);
+		if (sandboxed)
+			putSandbox(settings, policy, implicitWrites);
 		if (!promptCacheTtl.isEmpty())
 			settings.put("promptCacheTtl", promptCacheTtl);
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
@@ -475,22 +509,31 @@ public final class ClaudeConnectionSettings
 		else
 			putInstructionFilesMode(settings, instructionFilesMode);
 		ArrayNode grants = permissions(settings).putArray("allow");
-		for (String grant : PERMISSION_GRANTS)
-			grants.add(grant);
+		if (sandboxed)
+		{
+			for (String grant : PERMISSION_GRANTS)
+				grants.add(grant);
+		}
 		// The project's links to targets outside it lead to the copies in the run's link-targets directory, which the
 		// file tools read through the links; no rule or sandbox path lets the session write there
-		grants.add("Read(/" + rulePath(HarnessRunManager.linkTargets(runFolder)) + "/**)");
-		if (requestAccess != null)
+		grants.add("Read(" + rulePattern(HarnessRunManager.linkTargets(runFolder)) + "/**)");
+		// A session without a sandbox has no command to run and requests no session
+		if (sandboxed && requestAccess != null)
 		{
 			grants.add("Bash(" + requestAccess.launcher() + ":*)");
 			for (Path runner : requestAccess.runners())
 				grants.add("Bash(" + runner + ":*)");
-			grants.add("Read(/" + rulePath(requestAccess.responses()) + "/**)");
+			grants.add("Read(" + rulePattern(requestAccess.responses()) + "/**)");
 		}
-		grants.add(SANDBOXED_COMMAND_GRANT);
+		if (sandboxed)
+			grants.add(SANDBOXED_COMMAND_GRANT);
 		denyReadRules(settings, policy.readDenials(), policy.writeRoots());
+		if (!sandboxed)
+			denyMcpTools(settings);
 		excludeInstructionsAbove(settings, isolationRoot);
-		requireApplicableDenials(settings);
+		// The limit is on the command line that starts a sandboxed command, and a session without a sandbox has none
+		if (sandboxed)
+			requireApplicableDenials(settings);
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
@@ -597,10 +640,9 @@ public final class ClaudeConnectionSettings
 	 * @param policy         the session's sandbox policy
 	 * @param implicitWrites the paths that Claude Code lets the commands write without a setting, which the settings
 	 *                       therefore do not list
-	 * @param writes         {@code true} to list the policy's write roots, {@code false} to list none
 	 * @throws IOException if a symbolic link in a path cannot be read
 	 */
-	private static void putSandbox(ObjectNode settings, ChildPolicy policy, List<Path> implicitWrites, boolean writes)
+	private static void putSandbox(ObjectNode settings, ChildPolicy policy, List<Path> implicitWrites)
 		throws IOException
 	{
 		assert settings != null;
@@ -616,9 +658,7 @@ public final class ClaudeConnectionSettings
 		ArrayNode allowWrite = filesystem.putArray("allowWrite");
 		for (Path root : policy.writeRoots())
 		{
-			// Claude Code generates a protected-path denial for every write root that the settings list, so an instance
-			// that writes nothing lists none
-			if (writes && !implicit.contains(root))
+			if (!implicit.contains(root))
 				allowWrite.add(root.toString());
 		}
 		putPaths(filesystem, "denyWrite", policy.writeDenials());
@@ -1225,7 +1265,8 @@ public final class ClaudeConnectionSettings
 
 	/**
 	 * Denies the isolated instance's file tools reading files and directories, in addition to any rule that the
-	 * parent's settings deny. Does nothing if {@code deniedReads} is empty.
+	 * parent's settings deny, with each rule naming its path as {@link #rulePattern(Path)} gives it. Does nothing if
+	 * {@code deniedReads} is empty.
 	 * <p>
 	 * A directory that holds one of {@code writeRoots}, such as the project that holds the run folder of a session that
 	 * runs in place, is denied as every file and directory in it except the write roots and the directories that lead
@@ -1269,8 +1310,48 @@ public final class ClaudeConnectionSettings
 				descendants = "/**";
 			else
 				descendants = "";
-			permissionDenials.add("Read(/" + rulePath(deniedRead) + descendants + ")");
+			permissionDenials.add("Read(" + rulePattern(deniedRead) + descendants + ")");
 		}
+	}
+
+	/**
+	 * Denies the isolated instance every tool that an MCP server provides, unless the parent's rules that deny a tool
+	 * already do.
+	 *
+	 * @param settings the isolated settings
+	 */
+	private static void denyMcpTools(ObjectNode settings)
+	{
+		assert settings != null;
+		ArrayNode permissionDenials = array(permissions(settings), "deny");
+		for (JsonNode denial : permissionDenials)
+		{
+			if (denial.asString().equals(MCP_TOOLS_DENIAL))
+				return;
+		}
+		permissionDenials.add(MCP_TOOLS_DENIAL);
+	}
+
+	/**
+	 * Returns the absolute path that a permission rule names, as a gitignore pattern that matches that path alone: the
+	 * path as {@link #rulePath(Path)} gives it, behind the extra {@code /} that marks it absolute, with each character
+	 * that a gitignore pattern treats as syntax escaped.
+	 *
+	 * @param path an absolute path
+	 * @return the pattern, which starts with {@code //}, or with {@code /} followed by a drive on Windows
+	 * @throws IllegalArgumentException if {@code path} is relative
+	 */
+	private static String rulePattern(Path path)
+	{
+		String names = rulePath(path);
+		StringBuilder pattern = new StringBuilder(names.length() + 1).append('/');
+		for (char character : names.toCharArray())
+		{
+			if (RULE_PATH_SYNTAX.indexOf(character) >= 0)
+				pattern.append('\\');
+			pattern.append(character);
+		}
+		return pattern.toString();
 	}
 
 	/**

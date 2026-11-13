@@ -9,20 +9,22 @@ import java.util.Locale;
 
 /**
  * The roles of the sessions that CAT starts for its measurements, which decide how the session's Claude Code process is
- * launched beyond the sandbox: the tools it offers its model and the lifetime of its prompt cache. A session that names
- * no role keeps Claude Code's defaults for both.
+ * launched: whether it runs inside a sandbox, the tools it offers its model and the lifetime of its prompt cache. A
+ * session that names no role runs inside a sandbox and keeps Claude Code's defaults for the other two.
  */
 public enum ClaudeSessionRole
 {
 	/**
-	 * A session that runs a test's turns. It keeps every tool, and its prompt cache lives five minutes.
+	 * A session that runs a test's turns. It runs inside a sandbox, keeps every tool, and its prompt cache lives five
+	 * minutes.
 	 */
 	TRIAL(List.of(), "5m", true),
 	/**
 	 * A session that reads one trial's evidence and returns a verdict. It reads files and searches them, and nothing
-	 * else, so its sandbox lists no write root, and its prompt cache lives five minutes.
+	 * else, so it has no command for a sandbox to confine and runs without one; permission rules alone keep its
+	 * tools out of the paths that it must not read. Its prompt cache lives five minutes.
 	 */
-	JUDGE(List.of("Read", "Grep", "Glob"), "5m", false);
+	JUDGE(ClaudeSessionSandbox.READ_ONLY_TOOLS, "5m", false);
 
 	/**
 	 * The runner option whose value is a role's {@link #optionValue() option value}.
@@ -31,21 +33,21 @@ public enum ClaudeSessionRole
 
 	private final List<String> tools;
 	private final String promptCacheTtl;
-	private final boolean writes;
+	private final boolean sandboxed;
 
 	/**
 	 * Creates a role.
 	 *
 	 * @param tools          the only tools that the session's model is offered, or none to keep every tool
 	 * @param promptCacheTtl the lifetime of the session's prompt cache, in Claude Code's notation
-	 * @param writes         {@code true} if the session's sandbox lets its commands write the roots of its policy,
-	 *                       {@code false} if the sandbox lists none
+	 * @param sandboxed      {@code true} if Claude Code confines the session's commands in a sandbox, {@code false}
+	 *                       if the session runs without one
 	 */
-	ClaudeSessionRole(List<String> tools, String promptCacheTtl, boolean writes)
+	ClaudeSessionRole(List<String> tools, String promptCacheTtl, boolean sandboxed)
 	{
 		this.tools = tools;
 		this.promptCacheTtl = promptCacheTtl;
-		this.writes = writes;
+		this.sandboxed = sandboxed;
 	}
 
 	/**
@@ -69,15 +71,15 @@ public enum ClaudeSessionRole
 	}
 
 	/**
-	 * Indicates whether the session's sandbox lists the write roots of its policy. A session that has no tool that
-	 * writes, and no command, needs none, and the protected-path denials that Claude Code generates for each root
-	 * would only lengthen its prompt.
+	 * Indicates whether Claude Code confines the session's commands in a sandbox. A role that is not sandboxed is
+	 * offered only the tools that {@link ClaudeSessionSandbox#READ_ONLY_TOOLS} lists, and the runner refuses to start
+	 * a session that runs without a sandbox and is offered any other.
 	 *
-	 * @return {@code true} if the sandbox lets the session's commands write the roots of its policy
+	 * @return {@code true} if the session runs inside a sandbox, {@code false} if it runs without one
 	 */
-	public boolean writes()
+	public boolean sandboxed()
 	{
-		return writes;
+		return sandboxed;
 	}
 
 	/**
