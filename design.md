@@ -3000,7 +3000,10 @@ launchers, and the runner passes it as the harness's explicit setting for it, ne
 artifact, which supplies the session's model and effort, in the Claude runner's bridge and the Codex runner's `serve`
 and `run`. A launch that names `--agent` together with `--model` or `--effort` is refused, and so is an agent definition
 that does not name both a model and an effort. Inside a run, a session request cannot name `--agent`. `claude-runner
---resolve-profile --artifact <path> --agent <name>` prints the agent's model and effort.
+--resolve-profile --artifact <path> --agent <name>` prints the agent's model and effort. User ruling, 2026-11-13: an
+agent that launches a runner always passes `--model` and `--effort` itself, never an agent name in their place, because
+a name such as `cat-optimize-xhigh` bundles a role and a tier. The request server refuses a launch outside a run that
+names `--agent` without `--model` and `--effort`, and the runner rule does not offer `--agent`.
 
 **Remote-runner testing (user rulings, 2026-10-27):** the plugin's common rules include
 `rules/include/common/remote-runner-testing.md`, which the default rules load lazily, beside the CI-debugging route,
