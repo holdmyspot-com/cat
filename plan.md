@@ -30,6 +30,45 @@ It is complete only when all of the following hold:
 This section supersedes the release facts of the earlier handoff below. That handoff's remaining items still apply
 where this section does not replace them.
 
+### Update (2026-11-13, morning Toronto): queued optimizer changes merged; racing build unverified
+
+The user stopped all background work so another agent can resume from here. Nothing is running: the build, the Codex
+runs and this session's request server are stopped. Start a request server of your own before any runner launch (see
+the cwd note below).
+
+- **Pushed to `origin/v1.0` at `b82728f2a`** (full `clean verify` green, 158 s, 0 failures, 6 skips): background
+	campaign runs with exit notices and the changed-target delivery refusal (D142), early trial end with the share of
+	completed trials that ended early (D145), code checks in place of judge sessions (D144), plus:
+	- `6e0aa4293` reverts `065a34955`. User ruling, 2026-11-13: an agent launching a runner always passes `--model` and
+		`--effort`, never `--agent cat-<role>-<tier>` in their place; the request server's refusal of a bare `--agent`
+		launch is correct. `935bce852` removes `--agent` from the runner rule; `0ee0816c9` records the ruling in
+		`design.md` under "Agent profile".
+- **Local only, not pushed:** racing (D143) at `74c14cad6`, `3091cb9bb`, `b4d9e2cc8` (cherry-picked onto `b82728f2a`
+	without conflicts). Its own run passed `clean verify` (5,606 tests), but the full build on the merged tree was
+	stopped before it finished. Next: run the full build (`client/mvnw -f client/pom.xml
+	-Dmaven.repo.local=/home/gili/cat/home/.m2/repository "-DargLine=-Djava.io.tmpdir=$T" clean verify` with T from
+	`mktemp -d` under `.cat-tmp`), fix any merge breakage, then push.
+- **Then the approved release:** push; Build green on all 5 platforms; `gh release delete v1.0 --repo
+	holdmyspot-com/cat --yes`; `git tag -f v1.0 <sha>`; `git push --force origin refs/tags/v1.0`; `git tag -d v1.0`;
+	wait for the Release workflow; install bare in both harnesses; restart the request server. Leave out the untracked
+	files (`goal.md`, `ci-watch-scenario/`, `.gitmodules`, `.mcp.json`, `.vscode`, sandbox placeholder dotfiles).
+- **After the release:** confirm live that a background run's exit notice wakes the session in both harnesses (no
+	live check ran) and that Codex's `prefix_rule` for the `prompt-optimizer` launcher matches it with arguments;
+	measure the first role judge on the installed build; run the installer `--json` live checks in both harnesses;
+	then the approved comparison rerun against E1 r9 (cost per trial across frozen-only, shadowing and qualified
+	phases). Batched judging is decided after that rerun.
+- **Follow-ups found:** `OptimizerCoreTest.backgroundRunsUntilDecision` takes 13.7 s and 11.9 s per case; make it
+	faster. A launcher bug: a runner launch is refused ("No request server serves this session") when the shell's cwd
+	differs from the folder where the request server started; until fixed, `cd` to that folder in a separate command
+	first. Smaller items: E3 `no_boilerplate` wording; `first-use.md` step 6 lacks `resume`; a route to the skill for
+	campaign questions; `design.md` prose near "judge" sandboxing still describes sandboxed judges (judges now run
+	unsandboxed, `a86e561e2`).
+- **Delegation (user ruling, 2026-11-12):** delegate to Codex through `codex-runner` with explicit `--model` and
+	`--effort`; Claude agents only as fallback, the narrowest `cat:claude:*` type, never the catch-all agent.
+- **Cleanup:** branches and worktrees `bg-runs`, `early-end`, `code-checks`, `racing`, `runner-model-effort` and their
+	`*-run` folders under `/home/gili/cat/worktrees/` can go once racing is pushed; earlier ones are listed in the
+	user's pending `worktree prune` command.
+
 ### Update (2026-11-12): known changes merged, release pending
 
 - Merged onto v1.0 and pushed at `aee7caff8` (full build 5,546 tests, 0 failures; Build green on all 5 platforms):
