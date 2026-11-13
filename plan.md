@@ -63,6 +63,12 @@ where this section does not replace them.
 		check at the first tool call (such as whether a rule or skill loads) may race more candidates, since their trials
 		are cheap; a triggering change still has to pass the compliance tests. Development pauses for the user only if a
 		race also finds no winner.
+	- Code checks (user ruling, 2026-11-12, before the comparison rerun): an assertion whose outcome is visible in the
+		transcript or the trial's effects (a tool called, a file read in full, only allowed files changed, the right
+		answer given) is decided by a deterministic check instead of a judge session; a judge remains only for outcomes
+		that need judgment.
+	- Early trial end (user ruling, 2026-11-12, before the comparison rerun): a trial ends as soon as every assertion's
+		outcome is decided, instead of running its remaining turns.
 	- Batched judging (development only, shadowed against the frozen single-reply judge, certification unchanged):
 		decide after the token comparison shows how much of the cost judge start-up still is.
 	- Code checks wherever the outcome is visible in the transcript (a file read in full, a tool or skill invoked, only
