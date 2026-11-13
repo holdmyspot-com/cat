@@ -68,7 +68,13 @@ final class ToolRecords
 	 */
 	static Optional<Tool> firstCall(TrialRecord record, String tool)
 	{
-		return record.tools().stream().filter(call -> call.tool().equals(tool)).findFirst();
+		return firstCall(record, tool, null);
+	}
+
+	static Optional<Tool> firstCall(TrialRecord record, String tool, Pattern inputRegex)
+	{
+		return record.tools().stream().filter(call -> call.tool().equals(tool)).
+			filter(call -> inputRegex == null || inputRegex.matcher(call.input()).find()).findFirst();
 	}
 
 	/**

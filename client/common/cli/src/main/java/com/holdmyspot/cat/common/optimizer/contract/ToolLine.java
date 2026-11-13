@@ -39,8 +39,9 @@ final class ToolLine
 			line -> new BuiltInTool.FileContent(line.text(0), line.text(1)))),
 		Map.entry("exit-status", new Parser(false, 2,
 			line -> new BuiltInTool.ExitStatus(line.text(0), line.wholeNumber(1, "status")))),
-		Map.entry("tool-used", new Parser(false, 1, line -> new BuiltInTool.ToolUsed(line.text(0)))),
-		Map.entry("tool-unused", new Parser(false, 1, line -> new BuiltInTool.ToolUnused(line.text(0)))),
+		Map.entry("tool-used", new Parser(false, 2, line -> new BuiltInTool.ToolUsed(line.text(0), line.optionalText(1)))),
+		Map.entry("tool-unused", new Parser(false, 2, line -> new BuiltInTool.ToolUnused(line.text(0), line.optionalText(1)))),
+		Map.entry("changed-only", new Parser(false, -1, line -> new BuiltInTool.ChangedOnly(line.allArguments()))),
 		Map.entry("no-tool-call", new Parser(false, 0, _ -> new BuiltInTool.NoToolCall())),
 		Map.entry("read-in-full", new Parser(false, 1, line -> new BuiltInTool.ReadInFull(line.text(0)))),
 		Map.entry("read-at-most", new Parser(false, 2, ToolLine::readAtMost)));
@@ -84,6 +85,16 @@ final class ToolLine
 		String text(int index)
 		{
 			return arguments.get(index);
+		}
+
+		String optionalText(int index)
+		{
+			return arguments.size() > index ? arguments.get(index) : null;
+		}
+
+		List<String> allArguments()
+		{
+			return arguments;
 		}
 
 		/**
@@ -156,7 +167,9 @@ final class ToolLine
 			turn = turn(remaining.getFirst().text());
 			remaining = remaining.subList(1, remaining.size());
 		}
-		if (remaining.size() != parser.arguments())
+		boolean optionalInput = name.equals("tool-used") || name.equals("tool-unused");
+		if (parser.arguments() < 0 ? remaining.isEmpty() : optionalInput ?
+			remaining.size() < 1 || remaining.size() > 2 : remaining.size() != parser.arguments())
 		{
 			String noun = "arguments";
 			if (parser.arguments() == 1)

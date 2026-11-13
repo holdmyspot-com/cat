@@ -648,8 +648,9 @@ public sealed interface BuiltInTool
 	 * The trial called a tool.
 	 *
 	 * @param tool the tool's name
+	 * @param inputRegex optional expression matched against a call's input
 	 */
-	record ToolUsed(String tool) implements BuiltInTool
+	record ToolUsed(String tool, String inputRegex) implements BuiltInTool
 	{
 		/**
 		 * Creates the tool.
@@ -661,6 +662,8 @@ public sealed interface BuiltInTool
 		public ToolUsed
 		{
 			ToolSupport.requireText(tool, "tool-used's tool");
+			if (inputRegex != null)
+				Pattern.compile(inputRegex);
 		}
 
 		@Override
@@ -678,14 +681,15 @@ public sealed interface BuiltInTool
 		@Override
 		public List<String> templates()
 		{
-			return List.of(tool);
+			return inputRegex == null ? List.of(tool) : List.of(tool, inputRegex);
 		}
 
 		@Override
 		public Decision decide(TrialRecord record, Map<String, String> textByName)
 		{
 			String filled = Placeholders.fillScenario(tool, textByName);
-			Optional<Tool> call = ToolRecords.firstCall(record, filled);
+			Optional<Tool> call = ToolRecords.firstCall(record, filled, inputRegex == null ? null :
+				Pattern.compile(Placeholders.fillScenarioLiterally(inputRegex, textByName)));
 			if (call.isPresent())
 				return new Decision(true, ToolRecords.describeCall(call.get()));
 			return new Decision(false, "the trial never called " + filled + "; " + ToolRecords.describeTools(record));
@@ -696,8 +700,9 @@ public sealed interface BuiltInTool
 	 * The trial never called a tool.
 	 *
 	 * @param tool the tool's name
+	 * @param inputRegex optional expression matched against a call's input
 	 */
-	record ToolUnused(String tool) implements BuiltInTool
+	record ToolUnused(String tool, String inputRegex) implements BuiltInTool
 	{
 		/**
 		 * Creates the tool.
@@ -709,6 +714,8 @@ public sealed interface BuiltInTool
 		public ToolUnused
 		{
 			ToolSupport.requireText(tool, "tool-unused's tool");
+			if (inputRegex != null)
+				Pattern.compile(inputRegex);
 		}
 
 		@Override
@@ -726,17 +733,50 @@ public sealed interface BuiltInTool
 		@Override
 		public List<String> templates()
 		{
-			return List.of(tool);
+			return inputRegex == null ? List.of(tool) : List.of(tool, inputRegex);
 		}
 
 		@Override
 		public Decision decide(TrialRecord record, Map<String, String> textByName)
 		{
 			String filled = Placeholders.fillScenario(tool, textByName);
-			Optional<Tool> call = ToolRecords.firstCall(record, filled);
+			Optional<Tool> call = ToolRecords.firstCall(record, filled, inputRegex == null ? null :
+				Pattern.compile(Placeholders.fillScenarioLiterally(inputRegex, textByName)));
 			if (call.isPresent())
 				return new Decision(false, ToolRecords.describeCall(call.get()));
 			return new Decision(true, "the trial never called " + filled);
+		}
+	}
+
+	/** The trial changed files only within the listed paths. */
+	record ChangedOnly(List<String> paths) implements BuiltInTool
+	{
+		public ChangedOnly
+		{
+			paths = List.copyOf(paths);
+			if (paths.isEmpty())
+				throw new IllegalArgumentException("changed-only needs at least one path");
+			for (String path : paths)
+			{
+				ToolSupport.requireText(path, "changed-only path");
+				if (path.startsWith("/") || path.contains("\\") || path.equals("..") || path.startsWith("../") ||
+					path.contains("/../") || path.equals(".") || path.startsWith("./"))
+					throw new IllegalArgumentException("changed-only path must be project-relative: " + path);
+			}
+		}
+
+		@Override public String name() { return "changed-only"; }
+		@Override public String behavior() { return "changed_outside_allowed_paths"; }
+		@Override public List<String> templates() { return paths; }
+
+		@Override
+		public Decision decide(TrialRecord record, Map<String, String> textByName) throws IOException
+		{
+			List<String> allowed = paths.stream().map(path -> Placeholders.fillScenario(path, textByName)).toList();
+			List<String> outside = record.changedPaths().stream().filter(changed -> allowed.stream().noneMatch(path ->
+				changed.equals(path) || path.endsWith("/") && changed.startsWith(path))).toList();
+			return outside.isEmpty() ? new Decision(true, "all changed files are within " + allowed) :
+				new Decision(false, "files changed outside the allowed paths: " + outside);
 		}
 	}
 

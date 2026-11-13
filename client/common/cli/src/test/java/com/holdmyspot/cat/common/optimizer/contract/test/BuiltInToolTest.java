@@ -52,6 +52,11 @@ public final class BuiltInToolTest
 		Map<String, String> initial, List<String> received) implements TrialRecord
 	{
 		@Override
+		public List<String> changedPaths()
+		{
+			return List.of();
+		}
+		@Override
 		public boolean exists(String path)
 		{
 			return after.containsKey(path);

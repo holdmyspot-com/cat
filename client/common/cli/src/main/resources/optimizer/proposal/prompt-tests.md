@@ -171,6 +171,7 @@ a trial whose tools decide every assertion needs no judge session. Every other a
 - `on_tool_failure`, only with `tool`: what a failure of the tool means: `fail` when the failure fails the trial,
 	which is the meaning when the pair is absent; `judge` when the judge then decides the assertion from its description;
 - `description`: what the assertion requires, in words that the judge can decide from the trial's record.
+- `judge_reason`, for an assertion without a `tool`: one sentence explaining why no built-in tool can decide it.
 
 `tool` names one of CAT's built-in tools, never a tool of the agent under test: `tool-used Read` is CAT's built-in tool
 that passes when the agent called its Read tool. The description may still describe the agent's tools, such as "the
@@ -198,8 +199,9 @@ only the reply to turn n, counted from 1.
 | `file-absent <path>` | the project-relative path does not exist after the trial | `file_present` |
 | `file-content <path> <text>` | the file holds the text after the trial, ignoring carriage returns before line feeds and trailing whitespace | `file_content_differs` |
 | `exit-status <regex> <status>` | the last command whose command line matches the Java regular expression exited with the status | `wrong_exit_status` |
-| `tool-used <tool>` | the trial called the tool | `tool_not_called` |
-| `tool-unused <tool>` | the trial never called the tool | `tool_called` |
+| `tool-used <tool> [<input-regex>]` | the trial called the tool, optionally with matching input | `tool_not_called` |
+| `tool-unused <tool> [<input-regex>]` | the trial never called the tool, optionally with matching input | `tool_called` |
+| `changed-only <path>...` | every changed file is a listed path or below a listed path ending in `/` | `changed_outside_allowed_paths` |
 | `no-tool-call` | the trial called no tool | `unneeded_tool_call` |
 | `read-in-full <path>` | every non-blank line of the file as staged appeared in the tool output that the trial's agents received | `file_not_read_in_full` |
 | `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the tool output that the trial's agents received | `file_read_beyond_limit` |

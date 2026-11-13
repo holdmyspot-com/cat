@@ -7,6 +7,9 @@ import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryDiff;
+import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 
@@ -17,6 +20,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * The record of a completed trial that its built-in tools and its judge decide from: every turn's ordered assistant
@@ -109,6 +113,15 @@ public final class TrialEvidence implements TrialRecord
 	public List<String> received()
 	{
 		return activity.received();
+	}
+
+	@Override
+	public List<String> changedPaths() throws IOException
+	{
+		FileInventory before = InventoryScanner.scan(trial.initialProject(), Set.of());
+		FileInventory after = InventoryScanner.scan(trial.effects(), Set.of());
+		return InventoryDiff.between(before, after).changes().stream().map(change ->
+			com.holdmyspot.cat.common.PortablePaths.text(change.path())).toList();
 	}
 
 	@Override
