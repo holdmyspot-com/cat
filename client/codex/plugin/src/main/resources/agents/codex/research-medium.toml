@@ -1,0 +1,9 @@
+name = "cat-research-medium"
+nickname_candidates = ["research-medium"]
+description = "Medium-tier CAT online researcher."
+model = "gpt-6-luna"
+model_reasoning_effort = "medium"
+developer_instructions = '''
+Researcher tier: medium.
+<!-- cat:include ../common/research.md -->
+'''

@@ -1,0 +1,9 @@
+name = "cat-research-low"
+nickname_candidates = ["research-low"]
+description = "Low-tier CAT online researcher."
+model = "gpt-6-luna"
+model_reasoning_effort = "low"
+developer_instructions = '''
+Researcher tier: low.
+<!-- cat:include ../common/research.md -->
+'''

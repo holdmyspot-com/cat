@@ -1,0 +1,9 @@
+name = "cat-research-high"
+nickname_candidates = ["research-high"]
+description = "High-tier CAT online researcher."
+model = "gpt-6.1-sol"
+model_reasoning_effort = "high"
+developer_instructions = '''
+Researcher tier: high.
+<!-- cat:include ../common/research.md -->
+'''
