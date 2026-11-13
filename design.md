@@ -189,7 +189,12 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Trial plugin | A harness plugin that the prompt test configuration lists, which every trial installs. A plugin that the project builds is installed from a build of the fork commit, with the snapshot's prompt files in place of the build's copies ([§4.4](#44-trial-staging)). |
 | Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`); inside a run that may request sessions, its launchers forward a launch to the run's runner. |
 | Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
-| Slice | One time-bounded run of the driver inside a foreground command. |
+| Slice | One time-bounded run of the driver inside a foreground command ([§3.7](#37-process-model)). |
+| Background run | A driver run that `--background` starts as a command that the host's shell tool keeps running after the agent's turn ends. It has no slice budget, and ends only when the campaign needs the user, reaches an outcome or is stopped ([§3.7](#37-process-model)). |
+| Exit notice | How the agent learns that a background run ended without being asked: the host's notice that its background command exited, or, where the host gives none, a message that the driver queues to its own session just before it exits ([§3.7](#37-process-model)). |
+| Race | A development round whose accepted prompt author attempts all receive representative development trials in parallel, instead of one attempt winning from its targeted runs alone ([§2.7](#27-development-commit-gate-and-edit-or-continue)). |
+| Racer | An attempt that promotion accepted and that a race is running. It leaves the race when it is dropped, or becomes the working candidate when it wins ([§2.7](#27-development-commit-gate-and-edit-or-continue)). |
+| Settled assertion | An assertion of a running trial whose outcome no later turn can change. A trial ends early when every assertion is settled ([§3.2](#32-logical-trials)). |
 
 ## 2. Statistical design
 
@@ -463,6 +468,7 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 | Formal outcomes tuning the same candidate | Editing a candidate in response to its formal results. | A formal outcome may inform development, but any edit creates a new candidate and needs a new attempt. |
 | Certifying on the test cases that shaped the candidate | A candidate tuned on the test cases that then certify it is measured on its own training data, so the claim overstates how it does on cases it was not tuned for. | CAT splits every prompt test's test cases by expected outcome before any trial. Development, prompt authors and diagnosis see only development test cases; formal trials and baseline trials draw only held-out test cases, and a formal failure reaches development without its test case ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Control trials chosen by the candidate's outcomes | A control or incumbent comparison that paired its trials with chosen candidate trials, or stopped on the candidate's outcomes, could favour the candidate. | Each control or incumbent trial runs the test case of the candidate formal trial it pairs with, pairs follow assignment order, and the comparison decides only from its own pairs, up to the frozen cap ([§2.3](#23-sequential-tests)). Running the comparison only in certified cells cannot raise the false-certification probability, because a false certification still needs a false part to pass. |
+| Ending a trial early | A trial that stops once its outcome looks settled could stop on a guess, and a stop that depends on the trial's own results could bias what is counted. | A trial ends early only when every assertion is settled, meaning no later turn can change its verdict, and the verdicts it records are the ones the whole trial would have recorded, so the pass probability given earlier outcomes is unchanged. The decision reads only the trial's own record, never another trial's outcome, and applies alike to candidate, control, incumbent and baseline trials ([§3.2](#32-logical-trials)). |
 | Generated workspace-file text deciding the outcome | Filler that happened to contain the answer would make two answers correct. | Only values that the contract author writes decide a test case's expected outcome, and the contract author's instructions list each value generator's words and date range ([§6.3](#63-prompt-tests-and-test-cases)). |
 
 CAT rules dependence out through the isolation mechanisms in the table rather than by inspecting what trials
@@ -627,7 +633,9 @@ stalls: 5 consecutive completed development rounds of a prompt test raise neithe
 estimate in any of that test's development cells above the best value it had before those rounds, nor the number of
 its development cells that meet the commit gate's count conditions. Stopping development spends no error budget, so
 the pause cannot cause a wrong certification; it trades rounds that are unlikely to succeed for the user's decision. Unlike the plateau outcome that D53 removed, the pause ends nothing: development continues when the user chooses to, because later rounds can still fix failures with new evidence.
-The pause schedules no new rounds and lets in-flight work finish. The status shows, for each stalled test, each
+Before it pauses, CAT runs one race round (Racing candidates, below); the pause starts only if that race
+ends with no winner, and a winner that raises an estimate or a count ends the stall. The pause schedules no new rounds
+and lets in-flight work finish. The status shows, for each stalled test, each
 cell's development estimate after each of those rounds. The choices are: continue for 5 more rounds before CAT asks
 again; revise the contract with a change that the user describes, which becomes revision feedback; keep the best
 proven candidate when the keep-improvement conditions hold ([§2.10](#210-keeping-a-proven-improvement)); and stop
@@ -688,7 +696,7 @@ predecessor's observed pass rate instead withdrew a candidate as good as its pre
 that rate carries the predecessor's own sampling error; with non-overlapping intervals and a predecessor of 50 trials,
 2–6% of the time. A candidate at 70% against a predecessor at 90% is then withdrawn within 50 trials 58% of the time
 rather than 99%. A predecessor with no representative outcome in the cell gives no basis and is never reverted to there.
-A revert goes back one promotion: the restored predecessor is not checked against its own predecessor, because its check
+A revert makes the next round a race round (Racing candidates, below). A revert goes back one promotion: the restored predecessor is not checked against its own predecessor, because its check
 ended when it was edited (user ruling, 2026-10-02). The working candidate's result on a test case is its latest outcome
 there. When it has none, the promotion runs also run the working candidate on that test case once, at the same time as
 the attempt's regression runs.
@@ -704,9 +712,10 @@ decision. A working-candidate reference run that another attempt of the round st
 selects its winner only after every attempt is decided. Among the attempts that the promotion rule accepts, the winner
 has the most passing triggering runs and first-pass regression runs; its paired reruns are excluded (user ruling,
 2026-10-27) because only an attempt that failed a regression run receives them, starting with the test cases it
-failed, so counting them would favour that attempt. A tie goes to the attempt that changes fewer lines, then to the
-earlier attempt. Only the winner goes through the minimality pass and can become the working candidate; the others are
-retained with their evidence. The status records each attempt's promotion results, the runs it actually ran, paired
+failed, so counting them would favour that attempt. Accepted attempts that tie on that score for the lead, or that
+classify one failing kind differently, race instead of being separated by size (see Racing candidates below), whose
+last tie-break is the attempt that changes fewer lines, then the earlier attempt. Only the winner, or the race's winner,
+goes through the minimality pass and can become the working candidate; the others are retained with their evidence. The status records each attempt's promotion results, the runs it actually ran, paired
 reruns included, and whether it was rejected early, so the benefit of several attempts can be measured. All of these
 runs are targeted and never counted.
 
@@ -788,6 +797,72 @@ fewer. Each reduction run repeats the promotion runs. Because the promotion rule
 most 4 times, a needed hunk can be removed by chance. The representative trials that follow catch that, as they catch
 any other weak candidate.
 
+**Racing candidates (user ruling, 2026-11-12: racing with confidence-bound dropping).** Choosing one attempt by a few
+targeted runs is noisy exactly when the candidate is stuck: the promotion runs sample a triggering test case at most a
+handful of times, so two attempts that both look fixed, or a promoted attempt that a revert withdraws, say little
+about which edit is better. A **race** lets every accepted
+attempt of a round collect representative development trials in parallel and drops attempts by confidence bounds until
+one is left, instead of letting the targeted runs choose.
+
+**When a race runs.** A race runs in three cases. (1) The previous candidate was rejected against its parent: the round
+after a revert is a race round. (2) The prompt authors cannot settle on one diagnosis: a round's promotion rule accepts 2
+or more attempts and either they tie on the winner score above or they classify the same failing test case's kind
+differently (one calls it *routing*, another *guidance*, step 1 of Candidate generation and promotion): the tied
+attempts race, or all accepted attempts when they disagree, and no tie-break or targeted score picks one. (3) Development has stalled: the round that
+precedes a stalled-development pause is a race round.
+
+A race round makes 3 prompt author attempts for each failing prompt test, which is the ruling's 2 to 3 alternatives
+with the third as margin, or up to 6 when every assertion of that test is decided by a built-in tool
+([§6.4](#64-judge)), because such a trial starts no judge and, when its assertions settle before its last turn, ends
+early ([§3.2](#32-logical-trials)), so it costs little. The ruling has the author write the alternatives, each from a
+different diagnosis. CAT draws them instead from independent attempts, each following a different approach in
+ranking order exactly as in a weak round, because an approach is a hypothesis about why the instruction failed and where
+to correct it: the same promotion runs, regression check and early rejection apply, and no new author protocol exists.
+One session that wrote several alternatives would share its own bias across them, while one attempt is one overlay and
+one candidate. In the round after a revert, the accepted attempts of the withdrawn candidate's round that did not win
+also race, since they edit the same predecessor and need no new authoring. An attempt that broadens a requirement's
+trigger still has to pass its dissimilar-case check and the regression check before it races.
+
+**Racers.** Each accepted attempt becomes a **racer**, a development series of its own snapshot with its own counts and
+window ([§3.3](#33-allocation-and-concurrency)). The working candidate, the predecessor, stops sampling while the
+race lasts and keeps its counts. A racer is not committed and cannot be certified, and neither can the working candidate
+during the race, so the commit gate cannot pass. The racers' windows sum to at most the campaign ceiling; when there are
+more racers than the ceiling allows at 1 each, the racer with the fewest outcomes is admitted first, which keeps the
+prefixes level. A racer's trials are representative development trials of its own snapshot and use none of the
+allowance, because development consumes none. In each development cell of the failing prompt tests, the k-th trial of
+every racer runs the same draw from the cell's development stream, so racers meet the same test cases and variable
+values at the same position and differ only in the prompt. Draws stay independent of candidate identity and outcomes
+([§6.3](#63-prompt-tests-and-test-cases)). Edit-or-continue and fail-fast are suspended for racers: an adopted failure
+changes a racer's counts and its window as in [§3.3](#33-allocation-and-concurrency) and edits nothing.
+
+**Dropping rule.** The bounds are exploratory 95% Wilson bounds, as for the revert rule; they are labelled
+`development estimate` and `not certified`. A comparison of two series uses the first `m` adopted outcomes of each in
+the cell, where `m` is the smaller of the two adopted counts, so completion order cannot change a decision (G4). A
+racer B is dropped when:
+
+1. in some development cell of the failing prompt tests, another racer A's lower bound exceeds B's upper bound, and in
+	no cell of those prompt tests B's lower bound exceeds A's upper bound; or
+2. in some such cell, B's upper bound falls below the working candidate's retained lower bound. The comparison with the
+	predecessor is the revert rule's, applied to a racer before it is ever promoted. A cell where the working candidate
+	has no representative outcome gives no basis there, and neither does a cell where a racer has none.
+
+A dropped racer samples no more and its evidence stays available for diagnosis. The race ends in one of three ways:
+
+- one racer remains, and it wins;
+- every racer is dropped, and the race ends with no winner: the working candidate stays, and the round counts as having
+	produced no promotable attempt;
+- every development cell of the failing prompt tests holds at least 100 representative outcomes for each remaining
+	racer and no further racer can be dropped, and the winner is the racer with the fewest failed outcomes over those
+	cells, then the one that changes fewer lines, then the earlier attempt. 100 is the commit gate's minimum count, so
+	the winner's trials already count toward the gate.
+
+**After the race.** The winner goes through the minimality pass and becomes the working candidate. It keeps its race
+counts only when the pass leaves its snapshot unchanged; a pass that removes a hunk makes a new snapshot, which starts
+from zero as any promoted candidate does. The revert check applies to the winner as to any promoted candidate, against
+the predecessor's retained counts. The remaining attempts are retained with their evidence. Certification, the commit
+gate and claims are unchanged, and no development outcome of a racer counts as evidence ([§2.10](#210-keeping-a-proven-improvement), Certification evidence only). The status shows each racer's attempt, approach, counts per cell, the bounds that dropped
+it and the comparison's `m`.
+
 **Review checkpoint.** At 200 representative trials in a development cell for an unchanged candidate with that cell
 still unresolved, CAT stops scheduling that cell. When no test revision has examined the cell's prompt test since the
 test last changed, CAT first starts one with the cell's failure kinds; if it revises the test, the cell continues under
@@ -795,7 +870,8 @@ the new lineage instead of stopping. Otherwise CAT shows the evidence and offers
 or stopping. An authorized extension names its next review point.
 
 **Rounds.** In a development round, every currently failing prompt test receives a bounded diagnosis and up to 2 prompt
-author attempts made one at a time, or 3 concurrent attempts while the working candidate is weak. A round that promotes
+author attempts made one at a time, or 3 concurrent attempts while the working candidate is weak, or the race round's
+attempts in the cases above. A round that promotes
 a stronger candidate still short of the commit gate starts the next round automatically. A complete round that produced
 no promotable attempt keeps the working candidate and resumes its representative trials; a later failure makes it edit
 again under edit-or-continue, so each new round has new failure evidence. Development ends only when the candidate
@@ -1003,6 +1079,32 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 	does not report its state fails the turn at its first `init`, naming its version, because the stream alone cannot
 	tell when a completion notice reaches the root (H24). While a turn produces no output, the runner tells its caller
 	every 30 seconds that the turn is still running.
+- **Early end (user ruling, 2026-11-12).** After each completed turn, CAT evaluates every assertion on the record so far.
+	An assertion is **settled** when no later turn can change its verdict. A trial ends early, and CAT stops its session
+	between turns, when every assertion is settled and turns remain. The unit is the turn: CAT does not end a turn that is
+	running, because a partial turn would need a partial record and the Codex runner refused a mid-turn interrupt (H19). An
+	assertion is settled as follows, where "examined" means the replies the tool examines ([§6.4](#64-judge)):
+	- a reply tool, `exact-text`, `forbidden-text`, `pattern` or `count`, with `turn=<n>` is settled when turn `n` is
+		complete, with either verdict. Without `turn=` it examines every turn: a completed turn's reply that violates the
+		tool settles a failure (for `count`, matches above the maximum), and a pass settles only when the last turn is
+		complete;
+	- `tool-used` is settled as passed at the first matching call, and as failed only at the trial's end; `tool-unused` and
+		`no-tool-call` are settled as failed at the first matching call, and as passed only at the end;
+	- `read-in-full` is settled as passed when every line has appeared, and `read-at-most` as failed when the percentage
+		is exceeded, each other verdict only at the end;
+	- `file-exists`, `file-absent`, `file-content`, `exit-status` and `changed-only` read the end state and are settled
+		only at the trial's end, since a later turn can create, change or remove a file or run another command;
+	- an assertion the judge decides, whether it has no tool or its tool failed under `on_tool_failure: judge`, is settled
+		only at the end, because the judge reads the whole record. A test whose `expected_outcome` has no tool therefore
+		never ends early, and a contract author who wants early end gives every assertion a tool and scopes reply tools to a
+		turn where the requirement is about one turn.
+	A settled verdict is the one the finished trial would record, so no verdict changes, and a trial with a failed
+	assertion keeps running while any other assertion is unsettled, because the per-assertion rates that the control and
+	incumbent comparisons use need every verdict. Early end applies equally to development, formal, control, incumbent,
+	baseline and pilot trials. The trial record lists each turn that did not run as "not run" and notes "ended after turn
+	`k` of `n`, every assertion settled" with the turn at which each assertion settled; a prompt author's or triage's
+	evidence shows that note, so nobody reads a missing turn as a failure. CAT's own stop is not an infrastructure attempt
+	and is not an interruption. The status shows the share of completed trials that ended early.
 - A run that ends without a pass or fail outcome (provider error, rate-limit rejection, interruption, crash) is an
 	infrastructure attempt. The same logical trial runs again with the same test case. After 3 infrastructure failures
 	of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections and
@@ -1055,7 +1157,9 @@ trials are not ordered: they measure the incumbent, whose trials a candidate's f
 spends the expensive work:
 
 1. CAT runs the built-in tools on each finished trial at once, and the failure of a built-in tool whose
-	`on_tool_failure` is `fail` is a definitive trial failure, adopted without a judge;
+	`on_tool_failure` is `fail` is a definitive trial failure, adopted without a judge. A trial that every tool decides
+	starts no judge ([§6.4](#64-judge)), and a trial whose assertions are all settled before its last turn ends there
+	([§3.2](#32-logical-trials));
 2. a judge decides the remaining assertions of every trial while the attempt is alive;
 3. control and incumbent trials run only in cells that steps 1 and 2 certified (rule 5), because a cell below the
 	minimum pass rate ends the attempt whatever those comparisons would show, and not at all when `p_min ≥ 0.95`;
@@ -1065,7 +1169,7 @@ spends the expensive work:
 **Concurrency (how many trials run at once).** Concurrency limits the trials that a failure wastes. A trial is
 **wasted** when its outcome is discarded or cancelled, or can no longer change any decision: a formal trial that
 finishes after its cell is decided, or a further promotion run of a test case that has already failed. Each **unit of
-work** has its own window `w`: a working candidate's development series, a failure group's reproduction round, a formal
+work** has its own window `w`: a working candidate's development series, a racer's development series, a failure group's reproduction round, a formal
 cell's minimum-pass-rate part, the same cell's paired comparisons, and a prompt author attempt under validation. A
 **consuming failure** is an adopted failure that moves its unit toward the point where one more failure ends the work,
 and so wastes the trials in flight. A unit's **spare failures** are the further consuming failures it absorbs before
@@ -1074,6 +1178,7 @@ the next one does that:
 | Unit | Consuming failures | Spare failures |
 |---|---|---|
 | Development | Blocking failures only ([§2.7](#27-development-commit-gate-and-edit-or-continue)); a self-recovering failure never lowers concurrency | 0: the first blocking failure fails fast |
+| Racer | Blocking failures only, as in development; fail-fast is suspended during a race, so a failure changes the racer's window and nothing else ([§2.7](#27-development-commit-gate-and-edit-or-continue)) | 0 |
 | Reproduction round | Failures that match the group's assertion and behavior ([§6.3](#63-prompt-tests-and-test-cases)) | 1 at 0 matched failures, 0 at 1 |
 | Formal, minimum pass rate | Candidate failures of the cell | One less than the fewest further failures that make the cell clearly below, put certification out of reach, or reach the cap |
 | Formal, paired comparisons | Pairs that only the control or incumbent trial passes | One less than the fewest further such pairs that put a comparison below its reference, beyond passing within the cap, or at the cap, the smallest over the cell's comparisons |
@@ -1183,22 +1288,81 @@ optimizer starts many nested sessions, and this bound is the only limit on their
 
 ### 3.7 Process model
 
-The probes in [§11](#11-harness-evidence) rule out a detached background worker. The sandboxed Claude host kills every
+The probes in [§11](#11-harness-evidence) rule out a **detached** background worker: the sandboxed Claude host kills every
 descendant of a tool command when the command ends or the user presses ESC, including `setsid` and `nohup` children.
-The driver therefore runs as a foreground command in time-bounded **slices**:
+A command that the host's own shell tool runs in the background is different: the host tracks it and keeps it alive
+after the agent's turn ends (H36, H37). The driver therefore runs in one of two modes, and the first command of every
+campaign step chooses the mode.
+
+**Foreground slices (the fallback).** The driver runs as a foreground command in time-bounded **slices**:
 
 - Each `prompt-optimizer run` reconciles state, advances the campaign, and returns a status within its slice. The
 	default slice budget is 8 minutes, and the skill invokes it with a tool timeout longer than the slice (10 minutes in
 	Claude; a Codex host command ran 662 seconds with no limit, premise P10 and H22).
 - Admission stops when the current time plus the 90th-percentile trial duration in this campaign would pass the slice
-	deadline. Before 5 trials have completed, CAT uses the prompt test's time limit instead.
+	deadline. Before 5 trials have completed, CAT uses the prompt test's time limit instead. A test whose time limit
+	exceeds the slice budget is never admitted in a foreground slice, so a campaign holding such a test cannot advance
+	there. Its status says that the test needs a background run.
 - In-flight trials may finish within a 1-minute grace period. CAT then cancels the remainder, which rerun later as the
 	same logical trials, and exits.
 - Statuses are `running` (call again), `awaiting-user` (a decision with concrete choices), `busy` (another driver holds
 	the campaign) or a terminal outcome. The skill loops on `running` and shows progress after each slice.
 - One driver writes to a campaign at a time. A second `run` returns `busy` immediately instead of waiting.
 
+**Background run.** `run`, `start`, `revise` and `choose` accept `--background`. The option removes the slice: no slice
+budget, no grace period and no admission stop on time, so the time-limit gap above does not exist. Everything else
+about the driver is unchanged: no time cap applies to the run, and the campaign's own limits do (the caps, the review checkpoint, the allowance and the failure pauses); the same reconciliation, admission, adoption and write-ahead order. The command ends
+only when the campaign reaches a terminal outcome, needs the user (`awaiting-user`), pauses for a stated reason, fails,
+or is stopped by `cancel` or by the session's end. It never returns `running`. `start` and `revise` run their guard pilot
+([§6.1](#61-derivation-and-confirmation)) in the same command and write their status object when the pilot ends, so
+the skill does not repeat them.
+
+- **The skill chooses the mode without naming a harness.** If the shell tool can keep a command running after the
+	agent's turn ends, the skill runs the `--background` form through the shell tool's own background mode, never a
+	shell `&` or `nohup` (a Codex host kills those when the tool call returns, H38), tells the user that the run is in
+	the background and continues other work. If it cannot, or the launcher refuses `--background` (below), the skill
+	uses the foreground form and its loop.
+- **Exit notice.** The agent learns that the run ended without testing anything at turn starts. Claude notifies the
+	agent when a command that its shell tool ran in the background exits, waking an idle session (H37, H38). Codex does
+	not (H36), so on Codex the driver, just before it exits, queues one message to its own session with
+	`codex queue --thread <session> --message <text>`, the session being `CODEX_THREAD_ID` from its environment; an
+	idle session starts a turn on it within one poll interval of about 10 seconds, and one queued during a turn starts a
+	turn as that turn ends (H39). The message is a plain note naming the campaign and saying that its run ended and
+	`status` reports the result. A queue write is refused inside Codex's sandbox (H39), so on Codex the `prompt-optimizer`
+	launcher runs outside the session's sandbox through a sandbox exception (D142). The
+	driver queues the message after it has released the lock and after the final state and any delivery are stored, so
+	the turn it starts finds a campaign that `status` and any other command can act on. A queue failure is recorded in
+	the campaign's state and reported by the next `status`; it never changes the run's outcome. On either notice the
+	skill calls `status` and acts on its status object as it would on a foreground return. A driver that dies abnormally
+	sends no Codex message; the skill finds a lock with no live holder through `status`, which it consults when the user
+	asks how the run is going and when a session resumes. A heartbeat would protect only that case, which no
+	requirement names.
+- **Where the exception does not apply,** the launcher refuses `--background`. A Codex session whose permissions deny
+	any read keeps an allowed command inside its sandbox (openai/codex#38318), and there the driver could neither stay
+	running nor queue its message. The launcher already confirms that it runs outside the sandbox (D133); when it does
+	not, `--background` returns a status that names the reason, and the skill falls back to foreground slices.
+- **Driver lock.** The background driver holds the campaign lock for the whole run.
+	- `status` stays read-only. It reports from the latest snapshot and says that a driver holds the campaign, with the
+		driver's start time.
+	- A second `run` returns `busy` immediately, as in a foreground slice.
+	- `cancel` writes a stop request file in the campaign directory and waits. The driver sees it within one poll
+		interval, stops admitting, lets in-flight sessions finish for the grace period, applies the cancellation itself,
+		releases the lock and ends. `cancel` waits for that, at most the grace period plus 30 seconds, then reports the
+		cancelled campaign. If the wait ends first, it says that the request stands and the driver has not yet ended. A
+		cancelled campaign stays resumable ([§7](#7-campaign-lifecycle)).
+	- `revise`, `choose` and `confirm` meanwhile are refused with a message that names `status` and `cancel`. The
+		refusal replaces the foreground message "Wait for its slice to end", which is wrong for a run with no slice.
+- A background run ignores host interrupts ([§3.8](#38-interruption-and-crash-consistency)). The user stops it with
+	`cancel`, which the skill offers whenever it reports a background run, or by ending the session.
+- **Delivery** ([§4.7](#47-delivery)) is part of the run. A finished campaign whose delivery is refused leaves the
+	flag with the refusal, the campaign finished and the delivery pending, as in a foreground run.
+
 ### 3.8 Interruption and crash consistency
+
+These rules apply to a foreground slice. A background run starts no host-interrupt watcher on either host: its command
+outlives the turn, so a later ESC or `turn_aborted` belongs to some other turn and must not stop it ([§3.7](#37-process-model)).
+Its stop paths are `cancel`, a crash, and the session's end, and all three leave the state that the write-ahead order
+below describes.
 
 - **Claude:** ESC kills the command and every descendant (observed in the sandbox). The next `run` reconciles. As a
 	backstop for hosts that let the command survive (premise P2), the driver tails the host session transcript for a
@@ -1236,6 +1400,11 @@ the **minimum remaining trials**: the number still required if every remaining t
 The status also shows, for each purpose of the reported phase, the share of completed trials whose longest command ran
 for 10 seconds or more and the share whose agents received an empty result from a command that was still running,
 each out of the trials whose records show it (D121). These are descriptive, like the pass rate by concurrency level.
+
+While a driver holds the campaign in the background, `status` reports from the latest snapshot and names the driver's
+start time ([§3.7](#37-process-model)). During a race it shows each racer's counts and why a dropped racer was dropped
+([§2.7](#27-development-commit-gate-and-edit-or-continue)), and it shows the share of completed trials that ended early
+([§3.2](#32-logical-trials)).
 
 The status also shows each nested-session kind's observed token usage per session (median and 90th percentile) when
 the harness reports it. CAT does not show a token total, a time estimate or a completion probability. Any of those
@@ -1718,7 +1887,14 @@ certified one, a kept improvement, or an explicitly accepted uncertified one:
 	from its overlay first, so the user can inspect exactly what will be delivered.
 2. Preflight the complete combined change set against the fork baseline and the current base. Changes to the same file
 	on both sides, structural collisions, changed link destinations and target identity mismatches stop delivery before
-	any write and ask the user for direction.
+	any write and ask the user for direction. So does a changed target: when the target prompt file in the base differs
+	from the fork's record, delivery of a candidate stops before any write even if the candidate does not edit that
+	file, because the candidate's measurements, and any claim they support, describe the target as it stood at the
+	fork. This is the base edit that a campaign's duration makes likely, since a campaign runs with no time cap
+	([§3.7](#37-process-model)). The refusal names the target, the fork's hash and the base's hash, and asks the user
+	for direction as for any other conflict. A delivery that writes only test files (`incumbent kept`) is not refused
+	for it. Base-only edits to the other prompt sources still survive, as below. The campaign stays finished with its
+	delivery pending.
 3. Journal the delivery, then apply each change after validating its live preimage. A concurrent edit stops further
 	writes without overwriting it. Restart resumes the same journaled delivery and applies each change at most once.
 4. Verify the combined result, then report the Git diff and certification applicability.
@@ -2087,7 +2263,10 @@ repeat, `start`, which continues the stored proposal's pilot. Cancelled pilot tr
 and rerun as the same logical trials. The skill repeats `start` while it returns `running`, showing the progress after
 each slice, as it does for `run`. The pilot of a test revision
 that `run` makes shares `run`'s slice: unfinished, it returns `running`, and the next `run` continues it from the
-stored revised contract, without a contract author session, before any further round. No call holds a whole pilot, so the agent sees its progress after each slice and a host's tool timeout never moves one to the background. A trial whose
+stored revised contract, without a contract author session, before any further round. In a foreground call no call holds a whole pilot, so the agent sees its progress after each slice and a host's tool
+timeout never moves one to the background. With `--background` ([§3.7](#37-process-model)) the command runs the whole
+pilot with no slice, gives the exit notice when the pilot ends or pauses, and returns no `running`; the skill
+does not repeat `start`. A trial whose
 built-in tool cannot be decided is not an infrastructure attempt: the proposal causes it, and the pilot shows it as a
 failed run (D136).
 
@@ -2156,7 +2335,8 @@ has these sections:
 	proposal shows the addition as an edit. These belong to the test, not to one contract, so they live in the scenario
 	(user ruling, 2026-10-15);
 - `## Assertions`, one `### <id>` subsection per assertion, with a snake_case id. Its keys are `kind`, which is `effect`
-	or `guard`; optionally `tool`, a code span holding `<name> <arguments>` ([§6.4](#64-judge)); optionally
+	or `guard`; optionally `tool`, a code span holding `<name> <arguments>`, given to every assertion that a built-in tool
+	can decide ([§6.4](#64-judge)); optionally
 	`on_tool_failure`, which is `fail`, the default, or `judge` and requires a `tool`; and `description`, which states
 	the assertion.
 
@@ -2464,7 +2644,8 @@ is `turn=<n>`.
 | `file-exists <path>`, `file-absent <path>` | the path exists, or does not exist, in the workspace after the trial |
 | `file-content <path> <text>` | the file after the trial equals the text, with CRLF line endings read as `\n` |
 | `exit-status <regex> <status>` | the last recorded command that matches the expression exited with the status |
-| `tool-used <tool>`, `tool-unused <tool>` | the trial called, or never called, the tool |
+| `tool-used <tool> [<input-regex>]`, `tool-unused <tool> [<input-regex>]` | the trial called, or never called, the tool; with the regular expression, only a call whose input contains a match counts, so one assertion can name a command, a skill invocation or a read of one path |
+| `changed-only <path>...` | every file the trial created, modified or deleted is a listed path or below a listed directory, a path that ends in `/`; a trial that changed no file passes |
 | `no-tool-call` | the trial made no tool call |
 | `read-in-full <path>` | every non-blank line of the file in the initial project appeared in the trial's tool output, as a whole output line or after a line-number prefix |
 | `read-at-most <path> <percent>` | at most that percentage of the file's non-blank lines appeared in the trial's tool output |
@@ -2481,6 +2662,37 @@ everything that their assertion requires, such as `read-in-full`, and no judge s
 A trial needs the judge for the expected outcome anyway, so `judge` adds no judge session; it lets the common replies
 pass whatever the judge would say, while an unusual wording still gets the judge's reading.
 
+**Code checks in place of judge sessions (user ruling, 2026-11-12).** A judge session is the dearest part of a trial
+and the least certain, so an assertion is decided by a built-in tool whenever a tool can decide it from the trial
+record. The declaration stays the scenario's `tool` key: CAT does not recognise a mechanical assertion in its prose,
+because that would need a model or a heuristic that no unit test could verify. The contract author does the recognising
+under three duties.
+
+- It gives an assertion a tool when one decides it. The assertions a built-in tool can decide are the ones whose truth is
+	visible in the record: the reply says exactly, or matches, or counts the right answer (`exact-text`, `pattern`,
+	`count`, with the test case's `{{answer}}`); an action was or was not taken (`tool-used` or `tool-unused` with an input
+	expression, `no-tool-call`, `exit-status`); a file was read in full or in part (`read-in-full`, `read-at-most`); a
+	file exists, is absent or has given content (`file-exists`, `file-absent`, `file-content`); and no file outside a
+	set changed (`changed-only`). Whether a reply is correct in a way no text match states, relevant, complete or
+	appropriate is not visible in the record and stays with the judge.
+- It lists, for each assertion left without a tool, one sentence saying why no built-in tool decides it. The proposal
+	shows the list under "Judged assertions", so the user sees where a judge session is spent and can ask for a tool
+	through `revise`. CAT does not check the sentence's truth; it makes the choice visible.
+- It chooses `on_tool_failure: judge` for a check that passes the common outcomes and fails some valid ones, such as a
+	word match that rejects a hyphenated name (H34), and `fail` for a check whose pass condition is the assertion.
+
+A check that cannot decide falls back in a fixed way. A tool that passes decides the assertion; a tool that fails
+under `fail` fails the trial; a tool that fails under `judge` hands the assertion to the judge with the observed value; a
+tool whose evidence the record lacks is an infrastructure failure, and a proposal that names it for a harness that cannot
+supply that evidence is refused. A judge reads the same record, so it cannot supply the evidence the tool lacks.
+
+Certification stays sound without a qualification for a code check. A tool's verdict is exact and final, a function of
+the record that a CAT unit test verifies, so it contributes no judge error. The near misses and the development judge's
+shadowing apply only to judged assertions, and a trial that every tool decides starts no judge session, whatever the
+cell. The frozen judge's identity, rules and version are unchanged by this: the new tool forms are additions, a contract
+that names none behaves as before, and a tool's added form gets its own name or version when its behaviour changes, as for
+any tool.
+
 A built-in tool decides only what it can observe. Whether a reply is correct, relevant, complete or appropriate stays
 with the judge. A built-in tool that examines reply text reads the whole reply: every assistant message of the turn, in
 order, ending with the final response. A built-in tool whose evidence the trial record lacks, such as an exit status
@@ -2496,8 +2708,9 @@ hook's outcome by status only. Where the harness records an assignment or a mess
 read, as Codex encrypts every assignment, the record says so rather than leave the judge to infer it. Where an agent
 received a command's output before the command ended, as when Codex returns from a command after its yield time, the
 tool call shows what the agent received and that the command was still running, then the command's end with its exit
-status and complete output (D115). After the turns, it lists every file the trial changed with its difference from
-the initial project. The record is complete, so a built-in tool or the judge can establish that something did not happen,
+status and complete output (D115). When a trial ended early ([§3.2](#32-logical-trials)), it lists each turn that did not run as "not run", the turn
+after which it ended, and the turn at which each assertion settled. After the turns, it lists every file the trial
+changed with its difference from the initial project. The record is complete, so a built-in tool or the judge can establish that something did not happen,
 and it is de-duplicated: streaming fragments, telemetry and the prompt text injected at session start are left out,
 because the judge decides the trial's behaviour, not the prompt system that the candidate snapshot already identifies
 (H32).
@@ -2523,7 +2736,8 @@ how assertions are decided, so it gets a new tool name or version in the same wa
 
 CAT runs the built-in tools first. When one fails under `on_tool_failure: fail`, or when they decide every assertion,
 CAT records the outcome without a judge session. Every prompt test has the expected-outcome assertion, which the judge
-decides, so a trial whose built-in tools all pass still needs a judge.
+decides unless the scenario gives it a tool (mechanical expected outcome, above), so a trial whose built-in tools all
+pass still needs a judge unless every assertion, `expected_outcome` included, has one.
 
 A trial that fails a built-in tool under `on_tool_failure: fail` records which tool failed, its observed value and
 its behavior. The prompt author
@@ -2680,7 +2894,7 @@ that the candidate and both references pass in every trial needs 105 pairs ([§2
 - **Measurement change during formal testing:** starting a new measurement identity ends the running attempt
 	`not certified: testing environment changed` ([§5](#5-measurement-identity-and-applicability)). In-flight work is
 	reconciled as for a contract revision.
-- **Cancel and resume:** cancelling schedules no further calls and keeps all history and the spent allowance. Resuming
+- **Cancel and resume:** cancelling a campaign that a background driver holds first stops that driver ([§3.7](#37-process-model)); it then schedules no further calls and keeps all history and the spent allowance. Resuming
 	continues from the retained state. Only an explicit new campaign gets a fresh budget.
 - **State distinctions:** the persisted state always distinguishes:
 	- confirmed from unconfirmed contracts;
@@ -2707,7 +2921,12 @@ wants a prompt file improved until it is certified. The host agent:
 	to resolve each conflict with its resolutions and the recommended one, explains the three
 	certification scope choices and their tradeoffs ([§6.6](#66-trial-profiles)), saying that the weakest cell only
 	applies unless the user chooses another, and relays feedback until the user confirms;
-3. calls `run` while the status is `running`, showing the progress summary after each slice;
+3. runs the campaign. When its shell tool can keep a command running after the agent's turn ends, the skill calls
+	`run --background` through that tool's own background mode, tells the user that the run is in the background,
+	continues other work, and on the run's exit notice ([§3.7](#37-process-model)) calls `status` and acts on it as it
+	would on a return from a foreground call; it offers `cancel` and `status` meanwhile.
+	When the tool cannot, the skill calls `run` while the status is `running`, showing the progress summary after each
+	slice. The skill names no harness in either case;
 4. presents each `awaiting-user` decision's concrete choices and passes the selected choice back;
 5. reports the terminal outcome with its four outputs, the certified environment
 	([§5](#5-measurement-identity-and-applicability)), applicability and limitations.
@@ -2980,7 +3199,12 @@ removes it. The entry names the request server by its absolute path, and the ser
   `Bash(<request-server>)`, so that the command leaves the sandbox and runs without a prompt.
 - **Codex:** `prefix_rule(pattern = ["<request-server>"], decision = "allow")` in the installer's rules file.
 
-No runner launcher and no other CAT command has an exception: each runs inside the session's sandbox.
+The other exception is Codex's `prompt-optimizer` launcher, so that a background campaign run can outlive its tool call
+and queue its exit notice ([§3.7](#37-process-model), D142): `prefix_rule(pattern = ["<prompt-optimizer>"], decision =
+"allow")` in the same rules file, reported with the same effect. Unlike the request server it takes arguments, so it
+validates every argument and environment variable as untrusted input, as D133 requires of the launchers. Claude Code's
+`prompt-optimizer` has no exception, because Claude's exit notice needs none. No runner launcher and no other CAT command
+has an exception: each runs inside the session's sandbox.
 
 Claude Code matches the entry after it drops some `env` prefixes from the command (observed 2026-11-09 on Claude Code's
 sandbox): a bare `env` in front of the request server, and `env -u <name>` in front of it, leave the sandbox, while a
@@ -3345,6 +3569,11 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 | H33 | Replaying recorded Codex prompt author and judge sessions: prompt authors read a lazily loaded rule twice in 2 of 2 runs, each time after its first read was truncated, sometimes in one script result that joined several files. A rule requiring each whole-file read to be its tool result's only content reduced judge repeats to 0 of 3, but prompt authors still joined four rules in one result in 2 of 3 runs, and one prompt author never recovered the missing text. | 2026-10-02 replay probe, Codex 0.159.1, `gpt-6.1-sol`. The runner delivers role rules in the brief (§3.1). |
 | H34 | In P15's read-file commit-gate runs under `gpt-6.1-sol` at low effort, the lazy-load task's answer check, a word-boundary match of a component that the asked release changed, passed 91 of 100 replies with the candidate prompt and 99 of 100 without it. Seven of the candidate's failures named the component with a hyphen, such as "session-store"; matching a hyphen as a space passed 98 and 100. | 2026-10-11 probe, Codex. A mechanical check of a semantic assertion fails replies that satisfy it, so `on_tool_failure: judge` lets the judge decide a failed check (D68). |
 | H35 | Codex writes a session's denied reads into the model's instructions under "Denied filesystem reads". A trial denied 402 paths, 399 of them directories under its run root, was shown the first 212, then "Additional permission paths/globs are omitted". In the read-file guard pilot, 11 of 20 such control trials answered that a file in their own project was outside the permitted paths, without a tool call; the file was readable. On `gpt-6-luna` at low effort, 3 of 30 trials refused with 300 named run directories denied and 0 of 30 with only the run root denied. With a session-like parent denied, 20 of 20 trials read their writable project, 3 of 3 could not read a denied file, and 0 of 10 could read a read-only allowance inside the denied parent. The run-root deny did not stop the pilot's refusals: after it, 11 of 20 control trials still answered that their project lay under a denied path. A probe reproduced this only with the control trials' plugin, whose read-file guidance is empty: with the run root denied, 9 of 20 such trials gave that answer without a tool call; with no deny, 0 of 10; with the run root hidden by an empty bubblewrap mount and the session's own run bound back, 0 of 21. With CAT's read-file guidance, which starts the session with a command, 0 of 20 did. Without the deny, control trials still answered 8 of 31 times that the file was unavailable, without a tool call. A developer instruction saying that the project and home stay readable inside the denied run root did not help: 10 of 21 control trials still refused without a tool call. With no deny and the run root made traversable but not listable (mode 0311), 16 of 21 named the component; none of the 5 refusals cited a denied path. On 2026-10-17, with the run root denied, eight developer-note wordings were tried on control trials: seven gave 10 to 12 of 20 named components; the note that the denial protects other sessions' projects and does not apply to the project or home, plus that project files are read with a shell command, gave 64 of 80, the rate of control trials with no deny. Reaching the project and home through links outside the run root, with no note, gave 29 of 41, and trials still cited the denied path. Codex 0.160's Seatbelt and Windows ACL code keep a more specific readable or writable entry readable inside a denied directory. | 2026-10-17 pilot and probes, Codex 0.160.0 on Linux. The refusal's cause is inferred from the replies and the absent tool calls; 3 of 30 against 0 of 30 is not significant alone. macOS and Windows were not probed. |
+| H36 | On Codex 0.160.0+41, a command that the shell tool ran in the background survived the end of the agent's turn and could be polled afterwards. The agent was not told when it exited. The session's end stopped it. | 2026-11-12 probe, recorded in the handoff; no event log is kept in this design. Codex gives no exit notice of its own, so the driver queues one (H39, [§3.7](#37-process-model)). |
+| H37 | On Claude, the exit of a command that the shell tool runs in the background notifies the agent. | 2026-11-12, recorded in the handoff; confirmed with an idle session in H38. |
+| H38 | ESC during a later, unrelated turn did not stop a command that the shell tool ran in the background: Claude Code 2.1.323 (Bash `run_in_background`) and Codex 0.160.0+41 (`exec_command` with `yield_time_ms`, `--no-daemon`) each kept writing heartbeats after the interrupt, which each harness recorded as one. Claude's exit notice woke the idle session; Codex gave none. A shell `&` inside a Codex tool call died when the call returned. `/exit` in Claude offers to stop the tasks or move them to the background, and stopping them killed the command; `/quit` in Codex stopped it. Unprompted, the model chose a shell `&` in both harnesses. | 2026-11-13 probe, haiku and luna at low effort, one run per case. Codex with its shared app-server daemon was not tested. Premise P16 passes. |
+| H39 | On Codex 0.160.0+41 (`--no-daemon`), `codex queue --thread "$CODEX_THREAD_ID" --message <text>` from a background command woke the idle interactive session 3.0 to 4.1 seconds after the call (a poll about every 10 seconds), and the agent acted on the note; a message queued during a turn started a turn as that turn ended. Inside the workspace-write sandbox the queue write failed (`Read-only file system`) and a `nohup … &` job died with its command; a command that an allow `prefix_rule` named by its absolute path ran outside the sandbox, survived the turn and queued in about 0.45 seconds. The command has no `--resume` in this build. | 2026-11-13 probe, three luna/low sessions. Codex's shared daemon and a session whose permissions deny reads were not tested. |
+| H40 | Closing a session's input after a completed turn ended it cleanly. Claude Code exited with status 0 within about 6 seconds, after writing its final events and killing its own background tasks, a child agent's background command included; Codex's app-server exited at once and its sandbox removed live children. Both left complete records and unchanged files. A Codex command still running at the stop added one complete `item_completed` line (status `failed`) after `task_complete`. A daemon that Claude Code's sandbox-off session detached to PID 1 survived the stop. | 2026-11-13 probe, four sessions per harness; the Claude sessions ran without the sandbox. The Claude runner now closes input and waits up to 10 seconds before it terminates the process; no CAT reader takes a rollout's last line as a turn's end. Premise P17 passes. |
 
 ## 12. Premise gates
 
@@ -3368,6 +3597,8 @@ records with the evidence.
 | P13 | Each runner can start a session under a requested model and effort, and the harness events report the model and effort that ran. | A runner that cannot select a profile tests only its default profile, and the proposal says so. | Open. Codex `codex debug models` lists each model's supported reasoning levels (0.159.1, 2026-10-01). |
 | P14 | Reasoning effort changes compliance with the same prompt on the same model, so effort must stay a dimension of the profile set (§6.6). | If no difference is detected, effort stays in the profile set: a test that fails to reject equal rates does not show that they are equal. Only an equivalence test with a stated margin could support testing fewer efforts, and only for the kind of rule tested. | Holds (H27, H28). H27: a fixture with conflicting rules on `gpt-6.1-sol`, passing 25% of trials at low and 95% at xhigh (p ≈ 2.2 × 10^-6). H28: a rule without a conflict on `gpt-6-luna`, 20% at low and 75% at xhigh (p ≈ 0.0006), mostly through whether the model read the docs. H26, at a floor and a ceiling, was inconclusive. Effort stays in the profile set. |
 | P15 | A candidate developed only in one cell, the weakest model at its lowest effort, once it passes the commit gate there (§2.7), also has a high rate under stronger models and higher efforts. Development samples only that cell (§6.6, user ruling, 2026-10-04); the user chooses whether certification covers only that cell or more cells. The weakest model is the least capable by advertised capability. | Certifying every cell (§6.6) finds a cell where it fails, which then becomes a development cell. | Holds for the read-file rule (plan §4): P15 chose gpt-6-luna by the fewest incumbent baseline passes, and Codex advertises it as its model for easier tasks; a candidate (p15-28) that passed the commit gate under gpt-6-luna at low effort then passed 148 of 148 trials in each of the 14 other Codex cells, but later failed certification on held-out test cases. Its successor p15-60 passed the commit gate in the same cell and then certified in all 15 cells and tasks by the optimizer's own rule (§2.3, §2.4; attempt 1, α 2%, 1,729 runs, 4 failures, none leaving a category below); no 14-cell benchmark was run for p15-60. One prompt file does not show it for every prompt file, which is why weakest-only certification claims nothing about the other cells. |
+| P16 | A command that the host's shell tool runs in the background keeps running when the user presses ESC during a later turn, so the background driver can ignore host interrupts and only `cancel` or the session's end stops it. | If ESC kills a background command in some host, the skill uses the foreground slices on that host and says why. | Passes (H38), with one run per harness; Codex's shared daemon untested. |
+| P17 | A fully tool-decided trial that ends between turns leaves a complete trial record in both harnesses: the runner stops the session after a completed turn with no partial turn, no orphaned child and no change to the files that the settled assertions read. | If a harness leaves a child or a half-written record, the trial ends early only after that harness's session has ended on its own, and the saving falls to nothing there. | Passes (H40): closing a session's input after the turn is the clean stop in both harnesses. A detached daemon outside the runner's sandbox would survive, which the trial's sandbox and process group must prevent. |
 
 ## 13. Decision records
 
@@ -3379,7 +3610,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D2 | Bet on a mixture weighted toward 99% (`0.1/0.2/0.5/0.2` on 97/98/99/100%). | At `α = 2%`: a single 99% bet has cap 255, an all-pass minimum of 95, and probability 0.775 of certifying a 98% candidate within 600 trials. An equal-weight mixture has cap 301, minimum 95 and probability 0.868. | Cap 262, all-pass minimum 93, and probability 0.854. That is close to the single bet's cap with most of the equal mixture's robustness. |
 | D3 | Keep the commit gate of 100 trials with, for the minimum pass rate `p_min`, a failure rate of at most `(1 − p_min)/5` and two batches of 50 at most `2(1 − p_min)/5`: 99% and 98% at `p_min = 0.95` (user ruling, 2026-10-10, generalizing the 99% ruling to any minimum pass rate). | A 10-consecutive-pass gate commits a true 97% candidate about 74% of the time, which then certifies only about 17% of the time (§2.7). A 30-trial screen fares little better: P15 committed two candidates after clean screens, and both certifications failed on a failure kind that development had already shown at about 1 in 40 trials. Every failed commit permanently spends allowance and raises later caps. | At least 100 development trials per development cell, which also feed concurrency and diagnosis. |
 | D4 | Edit-or-continue with 3 reproduction reruns. | Editing on every failure resets counts on noise: a 99% candidate fails at least once in 100 trials 63% of the time. Never editing mid-batch wastes trials on reproducible defects. | Up to 3 targeted trials per failure. A defect that fails half the time is caught with probability 0.875, and a random 1% failure is treated as a defect only about 3% of the time. |
-| D5 | Foreground driver in time-bounded slices. | A detached worker is killed by the Claude sandbox (H6). One long command hits the tool timeout and hides progress. | A snapshot reload per slice, and trials cut off at slice ends, limited by the admission cutoff. |
+| D5 | Foreground driver in time-bounded slices, which stay the fallback where the host cannot keep a command running in the background (D142). | A detached worker is killed by the Claude sandbox (H6). One long command hits the tool timeout and hides progress. | A snapshot reload per slice, and trials cut off at slice ends, limited by the admission cutoff. |
 | D6 | Compact snapshot plus one record file per trial. | Event-log replay costs more as trials accumulate. SQLite adds a native dependency to the runtime image and is not needed beyond atomic renames. | CAT keeps the snapshot consistent with the records through write-ahead ordering and reconciliation. |
 | D7 | Keep the cross-process capacity bound, injected and per harness. | Removing it leaves sessions unbounded across processes. A static global causes test contention and couples the harnesses. | Constructor changes in both runner CLIs and in the optimizer wiring. |
 | D8 | Concurrency per unit of work from its spare failures: each unit starts at `min(ceiling, spare + 1)`, a consuming failure sets `w = min(w, spare + 1)`, `w` doubles after each full window of passes up to the ceiling, and other failures leave it unchanged; the risk ceiling and the reset to 1 after every failure are removed (user rulings, 2026-10-31). | Concurrency only needs to bound the trials that the next failure would waste, and only a failure that ends work wastes any. The earlier risk ceiling (at most ½ expected failure in flight, from all of the candidate's outcomes) plus a slow-start reset after every adopted failure held work at 1 because of failures that ended nothing: in the live Codex campaign E5, reproduction ran 1,537 of its 1,827 trials alone, although a round with no matched failure can absorb one. A fixed level wastes trials after failures or runs slowly, and a predictive cost model has no calibrated predictor. | Development starts each working candidate at 1 and reaches 8 after 7 straight passes (1 + 2 + 4). A reproduction round starts at 2, reaches 8 after 6 straight passes (2 + 4) and drops to 1 at its first matched failure. An E5-like round with no matched failure, after many earlier adopted failures, is not held at 1 by them. A formal cell runs at most its spare failures plus one trials at once after a failure, so a cell that one failure would decide runs alone. Each unit's window is persisted. |
@@ -3515,7 +3746,11 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D138 | Never add guidance to a session's instructions; a session that may request sessions learns how from CAT's lazy-loaded rules and its run's files, and the run enforces its limits by refusal (user rulings, 2026-11-09: "never eagerly inject this prompt into a session"). | Injected request instructions reached optimizer trials, which a user's own sessions never see, so tests and production ran different prompts. | A session without CAT installed has no rules telling it how to request a session; its caller passes `--install-cat` or explains it in its own prompt. Whether a session finds the launcher from the rules alone needs a live check. |
 | D139 | The contract declares the files that its target refers to in its text; CAT copies each into every trial unchanged, never optimizes it, and shows its authority warning in the proposal; undeclared references in prose stay absent (user ruling, 2026-11-10: option A). | The end-to-end E7 run's target referred to `docs/reply-rules.md`, a link to a file outside the project, which no trial held, and the status text hid why; reading prose for references would make the staged files depend on guesses. | A referenced file that the contract author does not declare is absent from trials until a revision declares it; a declared file that the campaign cannot edit limits what it can repair; contracts that declare files change identity. |
 | D140 | Every nested session of the optimizer runs in a reusable slot, a run directory at a fixed path that CAT empties and rebuilds after the previous session's processes end (user rulings, 2026-11-12). | Each session's own home and project put different paths into the system prompt, so both harnesses' prompt caches reused only the shared prefix; an E1 campaign wrote about 88 million of its 91 million cache-write tokens on first calls. Options that move parts of the system prompt would change what sessions receive, and mount namespaces work only on Linux. | A slot's reuse depends on emptying it completely; a session may wait for a slot; paths that sessions see change once, which no identity includes. |
-| D141 | `start`, `revise` and `retry` run the guard pilot in slices and return `running` until it ends; repeating `start` continues it (user ruling, 2026-11-12: option B). | One call ran a pilot for 81 minutes in E5 r2; past Claude's 10-minute tool timeout the command moves to the background (H7), so the agent waits with no status or progress, and anything that ends the command, such as the session ending or the user pressing ESC (H6), loses the trials in flight; a detached worker is ruled out (H6). | More calls and agent turns per pilot; a pilot's last slice may run past the budget by the grace period. |
+| D141 | `start` and `revise` run the guard pilot in slices and return `running` until it ends; repeating `start` continues it, and `run` continues the pilot of a test revision (user ruling, 2026-11-12: option B). | One call ran a pilot for 81 minutes in E5 r2; past Claude's 10-minute tool timeout the command moves to the background (H7), so the agent waits with no status or progress, and anything that ends the command, such as the session ending or the user pressing ESC (H6), loses the trials in flight; a detached worker is ruled out (H6). A background command run through the host's shell tool is not detached, and `--background` runs the whole pilot in one command with no slice (D142). | More calls and agent turns per pilot; a pilot's last slice may run past the budget by the grace period. |
+| D142 | Run the driver as a background command where the host's shell tool keeps one running after the agent's turn, with no slice and no time cap, and keep foreground slices as the fallback. The agent learns of the end from the host's exit notice where there is one and otherwise from a message that the driver queues to its own session, and on Codex the `prompt-optimizer` launcher runs outside the session's sandbox so that it can (user ruling, 2026-11-13: "yes, run driver outside of sandbox"). Delivery also refuses a target that changed in the base during the campaign (user rulings, 2026-11-12). | A detached worker is killed by the Claude sandbox (H6), which D5 and D141 rely on, but a command the host itself runs in the background is tracked and survives the turn and an unrelated ESC (H36, H38). A flag file that the skill tests at every turn start would still leave an idle Codex agent waiting for the user's next message; a queued message wakes it (H39), and Claude's own notice already does (H38), so no flag is kept. Inside Codex's sandbox the queue write is refused (H39). A heartbeat that detects a dead driver protects only the abnormal-death case, which no requirement names. Ending a run on a host interrupt would let an unrelated ESC stop it. Delivering over a base edit would apply a candidate that was measured against a different target. | The agent learns of a dead driver only when the user asks or the session resumes. `cancel` takes up to the grace period plus 30 seconds. The Codex `prompt-optimizer` launcher joins the request server among the commands that run outside the session's sandbox, so every argument and environment variable it accepts is untrusted input that it validates (D133); where Codex keeps an allowed command sandboxed (openai/codex#38318), `--background` is refused and foreground slices remain. A queued message appears to the agent as a user message. A foreground host keeps the 480-second gap, and a long campaign needs a harness that supports background commands. |
+| D143 | Race the accepted prompt author attempts after a revert, when the attempts cannot settle on one diagnosis, and before a stalled-development pause: each racer is a development series, drops by exploratory Wilson bounds on equal prefixes, and the winner is minimised and promoted (user ruling, 2026-11-12). | Choosing by the promotion runs alone picks a winner from a handful of runs, which is noise where development is stuck. One session that writes the alternatives shares its bias, so the alternatives are independent attempts under different approaches. Dropping on observed rates instead of bounds drops a racer as good as its rival by chance, the failure that revert's bounds avoid. Racing every round multiplies development trials for no gain where one attempt already wins clearly. | A race spends development trials on attempts that lose, up to 100 per cell for each remaining racer; the working candidate stops sampling while it runs; the winner's counts restart if the minimality pass changes it. |
+| D144 | Decide an assertion with a built-in tool whenever a tool can, extend `tool-used`, `tool-unused` with an input expression, add `changed-only`, and make the contract author list why each remaining assertion needs the judge (user ruling, 2026-11-12). | Recognising a mechanical assertion in its prose would need a model or heuristic with no unit test. A tool verdict is exact, so no judge qualification applies and the frozen judge is unchanged. | More tool forms for CAT to maintain, and a judge session still runs for every assertion no tool decides, including `expected_outcome` without a tool. |
+| D145 | End a trial after a completed turn when every assertion is settled, never inside a turn (user ruling, 2026-11-12). | A mid-turn end needs a partial record and the Codex runner refuses a mid-turn interrupt (H19). A trial with a failed assertion cannot end while another is unsettled, because the control and incumbent comparisons use per-assertion rates. | A trial whose `expected_outcome` or another assertion is judged never ends early, and a passing guard such as `tool-unused` settles only at the end, so the saving is limited to fully tool-decided tests whose assertions settle early. The plan's example, ending at the first tool call, is met only at a turn's end. |
 
 ## 14. Acceptance evidence
 
@@ -3527,13 +3762,13 @@ behavior that depends on a third-party tool, such as Git, by a unit test that ru
 
 | Goal | Required evidence |
 |---|---|
-| G1 | **End-to-end in both harnesses:** a deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/sessions/`. **Real Git:** a base with staged, unstaged or untracked changes, an empty untracked regular file included, is refused before any fork, and a base whose only untracked entries are character devices forks without them. **Removal:** keeping the incumbent instead of a regressing certified candidate also removes the campaign's files, an uncertified campaign keeps its files, and an interrupted removal completes on the next command (driver and delivery tests, because a regressing certified candidate costs hundreds of trials end to end). **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
-| G2 | **Proposal content:** every file that trials receive from the base source, every hook whose output differs in a trial's workspace, every workspace file and its source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a target that trials would not load is refused, a participating prompt file that does not load from the project and has no mapping is listed, and a mapped file that differs from the base is a warning. A prompt file may map into several plugins, and each receives it. `start` refuses a missing or external import and a hook that fails only in a trial's workspace, and a candidate that loads or runs a project file its trials do not receive contributes no candidate. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key or section, a workspace link that is absolute, is missing, leaves the project, forms a cycle, holds itself or reaches a prompt test directory, a link that copies a prompt file, a link that Git records where the checkout holds another kind of file, a malformed variable, an undeclared or generated placeholder outside workspace-file contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** workspace files are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation defaults to the weakest cell unless the user chooses another certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
+| G1 | **End-to-end in both harnesses:** a deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/sessions/`. **Real Git:** a base with staged, unstaged or untracked changes, an empty untracked regular file included, is refused before any fork, and a base whose only untracked entries are character devices forks without them. **Removal:** keeping the incumbent instead of a regressing certified candidate also removes the campaign's files, an uncertified campaign keeps its files, and an interrupted removal completes on the next command (driver and delivery tests, because a regressing certified candidate costs hundreds of trials end to end). **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a target prompt file that differs in the base from the fork's record stops delivery before any write even when the candidate does not edit it, while a delivery of test files alone is not stopped by it; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion runs do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one, unless the accepted attempts tie or classify one failing kind differently, when they race; the round after a revert and the round before a stalled-development pause are race rounds of 3 attempts per failing prompt test (6 where every assertion has a tool); a racer is dropped when another racer's lower 95% Wilson bound exceeds its upper bound in a development cell and no cell favours it, or when its upper bound falls below the working candidate's retained lower bound, always on equal prefixes; racers meet the same draw at the same position; the race ends with one racer, none, or 100 outcomes per cell and the fewest failures; the winner is minimised and promoted with its counts only if the pass leaves it unchanged; no racer is committed or certified, and the commit gate cannot pass during a race; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
+| G2 | **Proposal content:** every file that trials receive from the base source, every hook whose output differs in a trial's workspace, every workspace file and its source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per prompt test in the weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns it only for changed prompt tests, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a target that trials would not load is refused, a participating prompt file that does not load from the project and has no mapping is listed, and a mapped file that differs from the base is a warning. A prompt file may map into several plugins, and each receives it. `start` refuses a missing or external import and a hook that fails only in a trial's workspace, and a candidate that loads or runs a project file its trials do not receive contributes no candidate. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** the proposal lists, for each assertion that has no tool, why no built-in tool decides it; every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key or section, a workspace link that is absolute, is missing, leaves the project, forms a cycle, holds itself or reaches a prompt test directory, a link that copies a prompt file, a link that Git records where the checkout holds another kind of file, a malformed variable, an undeclared or generated placeholder outside workspace-file contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** workspace files are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation defaults to the weakest cell unless the user chooses another certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the commit gate and the baseline at minimum pass rates other than 0.95; the control and incumbent e-values on fixed pair paths, including `not certified: below control`, `not certified: below incumbent` and certification held back until both comparisons are decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim names the frozen judge, the benchmark, the held-out part and the conditions, and a weakest-only claim names its one profile per prompt test and says that no other profile was certified. |
-| G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes never enter formal counts. **Staging:** it excludes optimizer state. **Dependence:** each trial has its own isolated project and harness home, staging excludes optimizer state, and a fresh judge receives only that trial's evidence, as required by [§2.6](#26-validity-conditions-and-assumption-review). The invalid-assumptions outcome is reserved for a future detector. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
+| G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted runs and development outcomes, racers' included, never enter formal counts, and a race's drop decisions use equal prefixes so completion order cannot change them. **Staging:** it excludes optimizer state. **Dependence:** each trial has its own isolated project and harness home, staging excludes optimizer state, and a fresh judge receives only that trial's evidence, as required by [§2.6](#26-validity-conditions-and-assumption-review). The invalid-assumptions outcome is reserved for a future detector. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out run root. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each unaccepted material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; an unaccepted judge version makes it historical; accepting a non-loader change retains evidence, attempts and allowances across restart and discloses the acceptance in reports; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the size of the candidate's target prompt file, and no other file of the prompt system, and median trial input tokens against the incumbent's; a change to a derived source or a project rule alone leaves the size unchanged. |
-| G6 | **End-to-end in both harnesses, recorded once:** a real ESC during a slice is recorded with its harness events, and Codex ESC stops admissions within 15 seconds. **Replay:** unit tests replay each harness's recorded interrupted turn and show that `run` then retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. |
-| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners, and a prompt test runs through them; a trial uses a host tool. **Replay:** a text-output case and a file-effect case, each recorded once from a real trial with its judge session, are judged from the recording. **Unit:** a prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool decides its trial without a judge session unless its `on_tool_failure` is `judge`, when the judge decides its assertion; control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Delivery:** every delivery (certified, improved but not certified, an accepted uncertified candidate, and keeping the incumbent) writes each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Trial plugins:** a trial installs exactly the plugins that the prompt test configuration lists for its harness, and a campaign whose configuration lists two plugins installs both; a project-built plugin comes from the build that `start` ran on the fork commit, not from the user's installed copy; a candidate's edit to a target that a project-built plugin ships, and a control's emptied copy, reach the plugin that the trial loads; a configuration without CAT runs trials without CAT; and `start` refuses a target without a configuration. |
-| G8 | **Unit:** representative development trials go only to development cells; the weakest cell is the lowest effort of the least capable model in the scope by the proposal's capability ranking, and no trial runs to find it; a cell with a formal failure becomes a development cell; formal trials go to a prompt test's development cells first and to another scope cell only after every development cell and every cell below it are certified; allocation picks the riskiest prompt test first; control trials run only in cells certified by their built-in tools and judge, and extra formal trials run only to complete pairs; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including each unit's starting window, its drop at a consuming failure, its unchanged window at other failures, the halving after infrastructure attempts, the cell limit and the ceilings. **Throttling:** it responds to utilization, rejections and provider refusals, and a hold set by one process delays every other process's acquisition. **Volume warning:** the authentication warning appears for a subscription login. |
+| G6 | **End-to-end in both harnesses, recorded once:** a real ESC during a slice is recorded with its harness events, and Codex ESC stops admissions within 15 seconds. **Replay:** unit tests replay each harness's recorded interrupted turn and show that `run` then retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** the other harness cannot advance the campaign. **Background run:** an end-to-end `--background` run in each harness that supports one wakes an idle session when it ends, through the host's exit notice in Claude and through the queued message in Codex, sent only after the lock is released and the state and delivery are stored, and a refused queue write is reported by the next `status`; a Codex session whose sandbox keeps the launcher inside it has `--background` refused with the reason; while the run is in progress `status` reports from the snapshot and names the driver, a second `run` returns `busy`, `cancel` stops the driver within the grace period plus 30 seconds and leaves the campaign cancelled and resumable, and `revise`, `choose` and `confirm` are refused with a message naming `status` and `cancel`; a host interrupt during the run does not stop it, and no foreground slice limit applies, so a test whose time limit exceeds 8 minutes is admitted; the skill uses the shell tool's own background mode, never `&`, tests nothing at turn starts and names no harness (driver, launcher and skill tests; one recorded end-to-end run). |
+| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners, and a prompt test runs through them; a trial uses a host tool. **Replay:** a text-output case and a file-effect case, each recorded once from a real trial with its judge session, are judged from the recording. **Unit:** a prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool decides its trial without a judge session unless its `on_tool_failure` is `judge`, when the judge decides its assertion; `tool-used` and `tool-unused` with an input expression, and `changed-only`, decide from the record, and a trial that every tool decides starts no judge session and needs no judge qualification; a trial ends after a completed turn exactly when every assertion is settled, settled verdicts equal those of the whole trial, a judged assertion blocks early end, the record shows the turns not run and where each assertion settled, and the share ended early is reported (recorded-trial tests and a fake `SessionPort`); control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Delivery:** every delivery (certified, improved but not certified, an accepted uncertified candidate, and keeping the incumbent) writes each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Trial plugins:** a trial installs exactly the plugins that the prompt test configuration lists for its harness, and a campaign whose configuration lists two plugins installs both; a project-built plugin comes from the build that `start` ran on the fork commit, not from the user's installed copy; a candidate's edit to a target that a project-built plugin ships, and a control's emptied copy, reach the plugin that the trial loads; a configuration without CAT runs trials without CAT; and `start` refuses a target without a configuration. |
+| G8 | **Unit:** representative development trials go only to development cells; the weakest cell is the lowest effort of the least capable model in the scope by the proposal's capability ranking, and no trial runs to find it; a cell with a formal failure becomes a development cell; formal trials go to a prompt test's development cells first and to another scope cell only after every development cell and every cell below it are certified; allocation picks the riskiest prompt test first; control trials run only in cells certified by their built-in tools and judge, and extra formal trials run only to complete pairs; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including each unit's starting window, its drop at a consuming failure, its unchanged window at other failures, the halving after infrastructure attempts, the cell limit and the ceilings, and a racer's window within the same ceiling. **Throttling:** it responds to utilization, rejections and provider refusals, and a hold set by one process delays every other process's acquisition. **Volume warning:** the authentication warning appears for a subscription login. |
 | G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration and each Git operation have exactly one owning test, and no Java test starts a runner, a harness process or a model. |
 | G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, every recorded regression scenario is a prompt test directory in the format and location that [§6.3](#63-prompt-tests-and-test-cases) and §8 name, and a proposal that omits one is refused. |

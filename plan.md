@@ -50,32 +50,11 @@ where this section does not replace them.
 	Build green, republish, install bare in both harnesses, restart the request server, then resume the token
 	comparison campaign `20261112T165928Z-45bdf9` (`/home/gili/cat/worktrees/token-compare-claude/`, no time limit,
 	user ruling 2026-11-12), which compares cache use per session against E1 r9.
-- **Queued, to implement together (user rulings, 2026-11-12):**
-	- Background campaign runs where the harness supports them, the 8-minute foreground slices as the fallback; no time
-		cap (the campaign's own limits apply). Probes on Codex 0.160.0+41: a background command survives the turn's end
-		and can be polled, the agent is not told when it exits, and the session's end stops it. Codex: the skill ends its
-		turn and checks at the start of the next user turn. Claude: the background command's exit notifies the agent.
-		The driver keeps one flag file, set when the campaign ends or needs the user (a pause or a failure); the skill
-		checks only that flag at each turn start. Delivery must refuse a target that changed during the campaign.
-	- Racing candidates: when the previous candidate was rejected against its parent, or the author cannot settle on one
-		diagnosis, the author writes 2–3 alternative edits, each from a different diagnosis, whose development trials run
-		in parallel; a candidate is dropped as soon as its confidence bound shows it cannot win. Tests decided by a code
-		check at the first tool call (such as whether a rule or skill loads) may race more candidates, since their trials
-		are cheap; a triggering change still has to pass the compliance tests. Development pauses for the user only if a
-		race also finds no winner.
-	- Code checks (user ruling, 2026-11-12, before the comparison rerun): an assertion whose outcome is visible in the
-		transcript or the trial's effects (a tool called, a file read in full, only allowed files changed, the right
-		answer given) is decided by a deterministic check instead of a judge session; a judge remains only for outcomes
-		that need judgment.
-	- Early trial end (user ruling, 2026-11-12, before the comparison rerun): a trial ends as soon as every assertion's
-		outcome is decided, instead of running its remaining turns.
-	- Batched judging (development only, shadowed against the frozen single-reply judge, certification unchanged):
-		decide after the token comparison shows how much of the cost judge start-up still is.
-	- Code checks wherever the outcome is visible in the transcript (a file read in full, a tool or skill invoked, only
-		allowed files changed, the right answer given): such a test's verdict comes from a deterministic check with no
-		judge session; a judge decides only outcomes that need judgment.
-	- End a trial once its outcome is decided, such as at the first tool call for a test of whether a rule or skill
-		loads, instead of running the remaining turns.
+- **Queued, to implement together (user rulings, 2026-11-12), now designed in `design.md`:** background campaign runs
+	with exit notices (Codex's launcher outside the sandbox queues one, user ruling 2026-11-13) and the delivery refusal of a changed target (§3.7, §3.8, §4.7, §6.1, §8, D142); racing
+	candidates (§2.7, §3.3, D143); code checks in place of judge sessions (§6.4, D144); early trial end (§3.2, §2.6,
+	D145). Implement from those sections; premises P16 and P17 pass (H38, H40). First confirm that Codex's `prefix_rule` for the launcher's absolute path also matches it with arguments (H39 tested the path alone). Batched judging stays deferred:
+	decide after the token comparison shows how much of the cost judge start-up still is, and design it then.
 - **Development judge, accepted (user ruling, 2026-11-12, evening):** the token comparison (report
 	`/home/gili/cat/worktrees/token-compare-claude/report.md`) certified with no candidate qualified: each test reached
 	only 144–152 of the 299 shadowed trials needed, and the candidates cost about $30 for nothing. Implement the design's
