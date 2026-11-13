@@ -333,6 +333,55 @@ public final class ClaudeConnectionSettings
 		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost)
 		throws IOException
 	{
+		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, runFolder, bound, extraPermissions,
+			modelHost, "");
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
+	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
+	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
+	 * environment variable for it.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param instructionFilesMode     the choice of which instruction files load, or an empty string to keep the
+	 *                                 parent's choice
+	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
+	 *                                 none
+	 * @param project                  the instance's Git repository, or {@code null} if the instance may register no
+	 *                                 linked worktree
+	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
+	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
+	 *                                 needs
+	 * @param modelHost                the host of the instance's model provider
+	 * @param promptCacheTtl           the lifetime of the instance's prompt cache, such as {@code 5m}, or an empty
+	 *                                 string to keep Claude Code's default
+	 * @return the instance's sandbox policy
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions},
+	 *                                  {@code modelHost} or {@code promptCacheTtl} are null
+	 * @throws IllegalArgumentException if {@code modelHost} is blank
+	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write what Claude Code
+	 *                                  writes, or lacks a write or host that the instance needs
+	 * @throws IOException              if settings I/O fails
+	 */
+	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
+		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl)
+		throws IOException
+	{
+		requireThat(promptCacheTtl, "promptCacheTtl").isNotNull();
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		requireThat(runFolder, "runFolder").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
@@ -367,6 +416,8 @@ public final class ClaudeConnectionSettings
 				"Claude settings"));
 		}
 		putSandbox(settings, policy, implicitWrites);
+		if (!promptCacheTtl.isEmpty())
+			settings.put("promptCacheTtl", promptCacheTtl);
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
 		if (instructionFilesMode.isEmpty())
 			copyInstructionFilesMode(parentSettings, settings);

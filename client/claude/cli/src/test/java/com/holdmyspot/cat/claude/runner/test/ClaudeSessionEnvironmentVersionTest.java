@@ -7,6 +7,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.claude.optimizer.ClaudeSessions;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
+import com.holdmyspot.cat.claude.runner.ClaudeSessionRole;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
@@ -17,6 +18,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -98,13 +100,16 @@ public final class ClaudeSessionEnvironmentVersionTest
 				List.of(deniedFile, deniedDirectory, hostProject), Map.of(), requestAccess);
 			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
 			Path project = run.directory().resolve("project");
+			// A trial and a control trial run with the prompt cache lifetime of their role
+			String promptCacheTtl = ClaudeSessionRole.TRIAL.promptCacheTtl();
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "", requestAccess,
-				project);
+				project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com", promptCacheTtl);
 			Path controlDestination = root.resolve("isolated/control-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, controlDestination, claudeTemporaryDirectory,
 				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "claude-md",
-				requestAccess, project);
+				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
+				promptCacheTtl);
 
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
 				normalize(scope.json(), controlDestination, root, run);

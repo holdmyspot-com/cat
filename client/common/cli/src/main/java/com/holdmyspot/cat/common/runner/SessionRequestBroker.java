@@ -361,6 +361,7 @@ public final class SessionRequestBroker implements Closeable
 		for (Path evidence : request.readOnlyEvidence())
 			arguments.addAll(List.of("--read-only-evidence", evidence.toString()));
 		request.instructionFiles().ifPresent(files -> arguments.addAll(List.of("--instruction-files", files)));
+		request.sessionRole().ifPresent(role -> arguments.addAll(List.of("--session-role", role)));
 		request.toolOutputTokenLimit().ifPresent(limit ->
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(limit))));
 		for (Path plugin : request.plugins())

@@ -100,7 +100,8 @@ public final class SessionRequestForwarder
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
 		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION,
-		"--deny-read", "--workspace", "--read-only-evidence", "--instruction-files", "--tool-output-token-limit");
+		"--deny-read", "--workspace", "--read-only-evidence", "--instruction-files", "--session-role",
+		"--tool-output-token-limit");
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
@@ -485,6 +486,7 @@ public final class SessionRequestForwarder
 					request.withArray("read_only_evidence").add(Path.of(value).toAbsolutePath().toString());
 				case "--workspace" -> request.put("workspace", Path.of(value).toAbsolutePath().toString());
 				case "--instruction-files" -> request.put("instruction_files", value);
+				case "--session-role" -> request.put("session_role", value);
 				case "--tool-output-token-limit" -> request.put("tool_output_token_limit", tokenLimit(value));
 				case ExtraPermissions.OPTION ->
 				{

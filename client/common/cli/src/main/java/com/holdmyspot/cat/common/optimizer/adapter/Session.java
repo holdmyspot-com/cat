@@ -627,6 +627,7 @@ final class Session implements SessionHandle
 		if (permissions != null)
 			arguments.addAll(List.of(ExtraPermissions.OPTION, permissions.toString()));
 		arguments.addAll(sessions.readOnlyArguments(request.readOnly()));
+		arguments.addAll(sessions.roleArguments(request.role()));
 		List<Path> heldOut = sessions.heldOutLocations();
 		if (request.part() == Part.DEVELOPMENT)
 		{

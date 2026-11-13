@@ -163,6 +163,8 @@ public final class ClaudeRunner
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
+	 * @param role the session's role, which decides its tools and its prompt cache's lifetime, or {@code null} to keep
+	 *   Claude Code's defaults
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes outside the session's run folder, which the bound always
@@ -174,7 +176,7 @@ public final class ClaudeRunner
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
 		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
-		ExtraPermissions extraPermissions) throws IOException
+		ExtraPermissions extraPermissions, ClaudeSessionRole role) throws IOException
 	{
 		requireThat(policyListener, "policyListener").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
@@ -225,7 +227,7 @@ public final class ClaudeRunner
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
 				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
 				instructionFilesMode, requestAccess, worktree, run.directory(), bound, extraPermissions,
-				ClaudeConnectionSettings.modelHost(isolatedEnvironment));
+				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
@@ -245,7 +247,7 @@ public final class ClaudeRunner
 				selectedAgent = agent.name();
 			}
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
-				readOnlyEvidence, sessionTranscripts, sessionRequests);
+				readOnlyEvidence, sessionTranscripts, sessionRequests, tools(role));
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			Path projectDirectory = null;
@@ -1073,6 +1075,37 @@ public final class ClaudeRunner
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
 		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests)
 	{
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts,
+			sessionRequests, List.of());
+	}
+
+	/**
+	 * Builds a Claude command as
+	 * {@link #command(String, String, String, String, List, Path, List, boolean, int)} does, except that the session's
+	 * model is offered only {@code tools}.
+	 *
+	 * @param executable         the Claude executable
+	 * @param model              the requested model
+	 * @param effort             the requested reasoning effort
+	 * @param agent              the optional direct CAT agent name
+	 * @param plugins            the directories of the plugins installed in the isolated home
+	 * @param hookResults        the hook context directory
+	 * @param readOnlyEvidence   executor evidence exposed through added directories
+	 * @param sessionTranscripts whether Claude persists its session
+	 * @param sessionRequests    how many sessions the session may request
+	 * @param tools              the only tools that the session's model is offered, or none to keep every tool. The
+	 *   option {@code --tools} removes the other tools' definitions from the model's requests, which
+	 *   {@code --allowedTools} does not
+	 * @return the complete harness command
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
+	 *   or {@code sessionRequests} is negative
+	 */
+	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
+		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests,
+		List<String> tools)
+	{
+		requireThat(tools, "tools").isNotNull();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotBlank();
@@ -1108,6 +1141,11 @@ public final class ClaudeRunner
 		}
 		command.add("--model");
 		command.add(model);
+		if (!tools.isEmpty())
+		{
+			command.add("--tools");
+			command.add(String.join(",", tools));
+		}
 		if (effort.equals(HarnessRunnerOptions.NO_REASONING))
 		{
 			command.add("--thinking");
@@ -1126,6 +1164,33 @@ public final class ClaudeRunner
 		return command;
 	}
 
+
+	/**
+	 * Returns the tools that a session's model is offered.
+	 *
+	 * @param role the session's role, or {@code null} if it has none
+	 * @return the tool names, empty to keep every tool
+	 */
+	private static List<String> tools(ClaudeSessionRole role)
+	{
+		if (role == null)
+			return List.of();
+		return role.tools();
+	}
+
+	/**
+	 * Returns the lifetime of a session's prompt cache in the notation of Claude Code's {@code promptCacheTtl}
+	 * setting.
+	 *
+	 * @param role the session's role, or {@code null} if it has none
+	 * @return the lifetime, or an empty string to keep Claude Code's default
+	 */
+	private static String promptCacheTtl(ClaudeSessionRole role)
+	{
+		if (role == null)
+			return "";
+		return role.promptCacheTtl();
+	}
 
 	/**
 	 * Converts immutable evidence files to the narrowest directory accepted by Claude's {@code --add-dir} option.

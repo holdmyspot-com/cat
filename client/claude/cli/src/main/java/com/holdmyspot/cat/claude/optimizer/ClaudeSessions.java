@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
+import com.holdmyspot.cat.claude.runner.ClaudeSessionRole;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.adapter.PluginFiles;
@@ -13,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
@@ -74,7 +76,7 @@ public final class ClaudeSessions extends RunnerSessions
 	 * session's model receives or how its actions take effect, and register the new version with the hash of the
 	 * settings that the runner generates.
 	 */
-	private static final int SESSION_ENVIRONMENT_VERSION = 21;
+	private static final int SESSION_ENVIRONMENT_VERSION = 22;
 	/**
 	 * The CAT release that introduced {@link #SESSION_ENVIRONMENT_VERSION}. Set it to the release that ships a new
 	 * version whenever the version changes.
@@ -708,6 +710,24 @@ public final class ClaudeSessions extends RunnerSessions
 		for (Path path : evidence)
 			arguments.addAll(List.of("--read-only-evidence", path.toString()));
 		return arguments;
+	}
+
+	/**
+	 * {@inheritDoc}
+	 * <p>
+	 * A trial and a judge start with the launch settings of {@link ClaudeSessionRole}: both get a five-minute prompt
+	 * cache, and the judge, which only reads evidence, is offered only the tools that read and search files. The other
+	 * roles keep Claude Code's defaults.
+	 */
+	@Override
+	protected List<String> roleArguments(SessionRole role)
+	{
+		return switch (role)
+		{
+			case TRIAL -> List.of(ClaudeSessionRole.OPTION, ClaudeSessionRole.TRIAL.optionValue());
+			case JUDGE -> List.of(ClaudeSessionRole.OPTION, ClaudeSessionRole.JUDGE.optionValue());
+			default -> List.of();
+		};
 	}
 
 	/**

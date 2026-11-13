@@ -46,9 +46,10 @@ public final class ServedSessionTest
 
 	/**
 	 * Verifies that a served session gets, as copies inside the request, the workspace files and read-only evidence
-	 * that the command names, together with its further denied reads, instruction files, tool-output token limit and
-	 * the command's CAT candidate as a plugin; that the command receives the session's records; and that the session's
-	 * kept run, without its home, lands in the command's run root, whose run has its artifacts directory.
+	 * that the command names, together with its further denied reads, instruction files, session role,
+	 * tool-output token limit and the command's CAT candidate as a plugin; that the command receives the session's
+	 * records; and that the session's kept run, without its home, lands in the command's run root, whose run has its
+	 * artifacts directory.
 	 *
 	 * @throws IOException if fixture or session I/O fails
 	 */
@@ -66,7 +67,8 @@ public final class ServedSessionTest
 				List<String> arguments = new ArrayList<>(inputs.arguments());
 				arguments.addAll(List.of("--workspace", inputs.workspace.toString(), "--read-only-evidence",
 					inputs.evidence.toString(), "--deny-read", denied.toString(), "--instruction-files", "claude-md",
-					"--tool-output-token-limit", "4000", "--artifact", inputs.candidate.toString(), "--install-cat"));
+					"--tool-output-token-limit", "4000", "--session-role", "judge", "--artifact", inputs.candidate.toString(),
+					"--install-cat"));
 				StringWriter output = new StringWriter();
 
 				SessionRequestForwarder.serve(COMMAND, "claude", inputs.ownArtifact, arguments,
@@ -89,7 +91,7 @@ public final class ServedSessionTest
 				requireThat(Files.readString(Path.of(value(launch, "--read-only-evidence"))), "evidence").
 					isEqualTo("evidence");
 				requireThat(launch, "launch").contains(denied.toString()).containsAll(List.of("--install-cat",
-					"--instruction-files", "claude-md", "--tool-output-token-limit", "4000"));
+					"--instruction-files", "claude-md", "--tool-output-token-limit", "4000", "--session-role", "judge"));
 				requireThat(Files.readString(Path.of(value(launch, "--plugin")).resolve("marker")), "plugin").
 					isEqualTo("candidate");
 				JsonNode response = onlyResponse(parent);

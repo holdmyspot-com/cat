@@ -997,6 +997,52 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that only a trial and a judge are launched with a session role, which gives them their tools and prompt
+	 * cache lifetime, and that every author role keeps Claude Code's defaults.
+	 *
+	 * @param role the session's role
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "sessionRoles", timeOut = 120_000)
+	public void launchesOnlyTrialAndJudgeWithTheirRole(SessionRole role)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				Path artifact = plugin(RoleRuleFixtures.write(root.resolve("artifact")), "cat");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
+					true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().
+					newClaudeSessions(settings, (options, input, output) ->
+				{
+					arguments.add(options);
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+						List.of(Turn.replies("ok")), input, output);
+				});
+
+				await(sessions.start(new SessionRequest(role, partOf(role), source, List.of("go"), List.of(), LIMIT,
+					SESSION_PROFILE, TestWorkspace.NONE, List.of())));
+
+				List<String> options = arguments.getFirst();
+				if (role == SessionRole.TRIAL)
+					requireThat(ScriptedHarness.optionValue(options, "--session-role"), "trial").isEqualTo("trial");
+				else if (role == SessionRole.JUDGE)
+					requireThat(ScriptedHarness.optionValue(options, "--session-role"), "judge").isEqualTo("judge");
+				else
+					requireThat(options, "options").doesNotContain("--session-role");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a trial on the control source loads only {@code CLAUDE.md} files, so that Claude Code does not load
 	 * {@code AGENTS.md} in place of the emptied target, and that another trial keeps the user's choice.
 	 *

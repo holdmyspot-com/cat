@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.port.PluginBase;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
@@ -935,6 +936,18 @@ public abstract class RunnerSessions implements SessionPort
 	 *   empty if the harness loads none
 	 */
 	protected abstract List<String> controlSourceArguments();
+
+	/**
+	 * Returns the runner options that launch a session of a role with the settings that suit the role, such as the
+	 * tools that the role needs.
+	 *
+	 * @param role the session's role
+	 * @return the options, empty if the harness launches every role alike
+	 */
+	protected List<String> roleArguments(SessionRole role)
+	{
+		return List.of();
+	}
 
 	/**
 	 * {@inheritDoc}

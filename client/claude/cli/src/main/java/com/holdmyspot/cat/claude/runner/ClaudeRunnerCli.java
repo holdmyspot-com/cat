@@ -463,6 +463,7 @@ public final class ClaudeRunnerCli
 			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
 			String instructionFilesMode = instructionFilesMode(args);
+			Optional<ClaudeSessionRole> role = sessionRole(args);
 			ChildPolicy bound = policyBound(scope.json(), options);
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
@@ -475,7 +476,7 @@ public final class ClaudeRunnerCli
 			HarnessCapacity capacity = null;
 			if (!options.capacityHeld())
 				capacity = capacityForMaximum.apply(options.maximumConcurrency());
-			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, bound, extraPermissions, manager,
+			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, role, bound, extraPermissions, manager,
 				input, output, environment, replacer, capacity);
 		}
 	}
@@ -503,6 +504,7 @@ public final class ClaudeRunnerCli
 	 * @param readOnlyEvidence completed executor evidence visible without write authority
 	 * @param instructionFilesMode the choice of which instruction files load, or an empty string to keep the parent's
 	 *   choice
+	 * @param role the session's role, or empty for Claude Code's defaults
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @param manager owned-run lifecycle manager
@@ -515,7 +517,8 @@ public final class ClaudeRunnerCli
 	 */
 	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
 		List<Path> readOnlyEvidence,
-		String instructionFilesMode, ChildPolicy bound, ExtraPermissions extraPermissions, HarnessRunManager manager,
+		String instructionFilesMode, Optional<ClaudeSessionRole> role, ChildPolicy bound,
+		ExtraPermissions extraPermissions, HarnessRunManager manager,
 		Reader input, Writer output,
 		Map<String, String> environment, FileReplacer replacer,
 		HarnessCapacity capacity) throws IOException
@@ -537,7 +540,7 @@ public final class ClaudeRunnerCli
 				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
 				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
 				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
-				options.gitEmail(), extraPermissions);
+				options.gitEmail(), extraPermissions, role.orElse(null));
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) -> requestedRunner(scope, options.artifact(), harness, environment).
 					start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()), directory,
@@ -715,6 +718,27 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
+	 * Extracts the optional role of the session.
+	 *
+	 * @param args the command-line arguments
+	 * @return the role, or empty to keep Claude Code's defaults
+	 * @throws InvalidArgumentsException if {@value ClaudeSessionRole#OPTION} has no value or an unknown one
+	 */
+	private static Optional<ClaudeSessionRole> sessionRole(String[] args)
+	{
+		assert args != null;
+		for (int index = 0; index < args.length; ++index)
+		{
+			if (!args[index].equals(ClaudeSessionRole.OPTION))
+				continue;
+			if (index + 1 == args.length || args[index + 1].startsWith("--"))
+				throw new InvalidArgumentsException("Missing value for " + ClaudeSessionRole.OPTION);
+			return Optional.of(ClaudeSessionRole.parse(args[index + 1]));
+		}
+		return Optional.empty();
+	}
+
+	/**
 	 * Removes Claude-specific options before shared option parsing.
 	 *
 	 * @param args the command-line arguments
@@ -726,7 +750,8 @@ public final class ClaudeRunnerCli
 		for (int index = 0; index < args.length; ++index)
 		{
 			if (args[index].equals("--read-only-evidence") || args[index].equals("--agent") ||
-				args[index].equals("--instruction-files"))
+				args[index].equals("--instruction-files") ||
+				args[index].equals(ClaudeSessionRole.OPTION))
 			{
 				index += 1;
 				continue;
