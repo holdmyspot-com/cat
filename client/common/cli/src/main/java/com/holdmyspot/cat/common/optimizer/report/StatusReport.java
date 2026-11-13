@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
+import com.holdmyspot.cat.common.optimizer.campaign.EarlyEndCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.ImprovementOffer;
 import com.holdmyspot.cat.common.optimizer.campaign.KeepImprovement;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
@@ -93,6 +94,7 @@ import tools.jackson.databind.node.ObjectNode;
  * @param remaining the minimum remaining trials
  * @param tokens the token statistics
  * @param concurrency the concurrency state
+ * @param earlyEndShare the share of completed trials in the reported phase that ended early
  * @param assumptions the descriptive check by concurrency level
  * @param attempts every certification attempt
  * @param keepOffers each {@code keep improvement} choice with its evidence
@@ -116,6 +118,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	Benchmark benchmark, TrialProfiles trialProfiles, CellTierReport cellTier, RemainingWork remaining,
 	TokenStatistics tokens,
 	Concurrency concurrency,
+	EarlyEndShare earlyEndShare,
 	AssumptionReport assumptions, List<AttemptSummary> attempts, List<KeepOffer> keepOffers, String claim,
 	List<String> limitations, Map<String, String> conditions, OptimizationReport optimization, List<Revert> reverts,
 	List<AddedTestCaseReport> addedTestCases, CertifiedEnvironment certifiedEnvironment,
@@ -194,6 +197,23 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			Map<Purpose, CommandCounts> ordered = new EnumMap<>(Purpose.class);
 			ordered.putAll(commands);
 			commands = Collections.unmodifiableMap(ordered);
+		}
+	}
+
+	/**
+	 * The number of completed trials in the reported phase that ended early.
+	 *
+	 * @param endedEarly the completed trials that ended early
+	 * @param completed the completed trials in the reported phase
+	 */
+	public record EarlyEndShare(int endedEarly, int completed)
+	{
+		/** Creates the counts. */
+		public EarlyEndShare
+		{
+			requireThat(endedEarly, "endedEarly").isNotNegative();
+			requireThat(completed, "completed").isNotNegative();
+			requireThat(endedEarly, "endedEarly").isLessThanOrEqualTo(completed, "completed");
 		}
 	}
 
@@ -379,10 +399,45 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 			describe(campaign), choices(campaign), authorityWarnings(campaign), cells, allocation,
 			benchmark, trialProfiles, CellTierReport.of(campaign), RemainingWork.of(campaign),
 			TokenStatistics.of(campaign.optimization().tokenUsage()),
-			concurrency(campaign, evidence.sharedHoldUntil(), commands(campaign, phase, attemptIndex)), assumptions,
+			concurrency(campaign, evidence.sharedHoldUntil(), commands(campaign, phase, attemptIndex)),
+			earlyEndShare(campaign, phase, attemptIndex), assumptions,
 			attempts, keepOffers, claim, limitations, conditions,
 			OptimizationReport.of(campaign), campaign.development().reverts(), AddedTestCaseReport.of(campaign),
 			evidence.certifiedEnvironment(), DevelopmentJudgeReport.of(campaign));
+	}
+
+	/**
+	 * Counts completed trials in the phase that the report describes.
+	 *
+	 * @param campaign the campaign
+	 * @param phase the reported phase
+	 * @param attempt the reported certification attempt, or 0 for development
+	 * @return the share counts
+	 */
+	private static EarlyEndShare earlyEndShare(Campaign campaign, Phase phase, int attempt)
+	{
+		long endedEarly = 0;
+		long completed = 0;
+		for (Map.Entry<Purpose, Map<Integer, EarlyEndCounts>> entry :
+			campaign.optimization().earlyEnds().entrySet())
+		{
+			boolean formal = switch (entry.getKey())
+			{
+				case FORMAL, CONTROL, INCUMBENT -> true;
+				default -> false;
+			};
+			if (formal != (phase == Phase.FORMAL))
+				continue;
+			int attemptIndex = 0;
+			if (phase == Phase.FORMAL)
+				attemptIndex = attempt;
+			EarlyEndCounts counts = entry.getValue().get(attemptIndex);
+			if (counts == null)
+				continue;
+			completed += counts.completed();
+			endedEarly += counts.endedEarly();
+		}
+		return new EarlyEndShare(Math.toIntExact(endedEarly), Math.toIntExact(completed));
 	}
 
 	/**

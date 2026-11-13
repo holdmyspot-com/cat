@@ -35,11 +35,12 @@ import java.util.Optional;
  *   is not judged
  * @param judge the profile whose verdict counted, or empty if the trial is not judged, no judge ran, or an earlier
  *   build recorded it
+ * @param endedEarly whether the trial ended before all requested turns because every assertion was settled
  */
 public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIdentity identity, Allocation allocation,
 	TrialState state, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions, Triage triage,
 	int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts, int observations,
-	List<List<String>> responses, TrialFiles files, Optional<TrialProfile> judge)
+	List<List<String>> responses, TrialFiles files, Optional<TrialProfile> judge, boolean endedEarly)
 {
 	/**
 	 * Creates a trial.
@@ -139,7 +140,17 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 		List<List<String>> responses, TrialFiles files)
 	{
 		this(key, testCase, identity, allocation, state, verdict, rationale, failedAssertions, triage,
-			infrastructureFailures, infrastructureAttempts, observations, responses, files, Optional.empty());
+			infrastructureFailures, infrastructureAttempts, observations, responses, files, Optional.empty(), false);
+	}
+
+	/** Creates a trial without an early-end record or judge profile. */
+	public LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIdentity identity, Allocation allocation,
+		TrialState state, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions, Triage triage,
+		int infrastructureFailures, List<InfrastructureAttempt> infrastructureAttempts, int observations,
+		List<List<String>> responses, TrialFiles files, Optional<TrialProfile> judge)
+	{
+		this(key, testCase, identity, allocation, state, verdict, rationale, failedAssertions, triage,
+			infrastructureFailures, infrastructureAttempts, observations, responses, files, judge, false);
 	}
 
 	/**
@@ -158,7 +169,7 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 		Allocation allocation)
 	{
 		return new LogicalTrial(key, testCase, identity, allocation, TrialState.ASSIGNED, null, null, List.of(), null,
-			0, List.of(), 0, List.of(), null);
+			0, List.of(), 0, List.of(), null, Optional.empty(), false);
 	}
 
 	/**
@@ -172,6 +183,6 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	LogicalTrial withState(TrialState newState)
 	{
 		return new LogicalTrial(key, testCase, identity, allocation, newState, null, null, List.of(), null,
-			infrastructureFailures, infrastructureAttempts, observations, List.of(), null);
+			infrastructureFailures, infrastructureAttempts, observations, List.of(), null, Optional.empty(), false);
 	}
 }

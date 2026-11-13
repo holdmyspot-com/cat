@@ -975,7 +975,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				addCommands(new TrialKey(Purpose.FORMAL, 2, Builder.INCUMBENT, "safety", 1),
 					new CommandSummary(Duration.ofSeconds(11), null)).
 				addCommands(new TrialKey(Purpose.DEVELOPMENT, 1, Builder.INCUMBENT, "safety", 1),
-					new CommandSummary(Duration.ofSeconds(1), 0));
+					new CommandSummary(Duration.ofSeconds(1), 0)).
+				addEarlyEnd(new TrialKey(Purpose.DEVELOPMENT, 1, Builder.INCUMBENT, "safety", 1), true);
 			Campaign campaign = new Builder().confirmed().optimization(evidence).build();
 			store.replaceSnapshot(campaign);
 			requireThat(store.load(campaign.header().id()).orElseThrow().optimization(), "measurements").

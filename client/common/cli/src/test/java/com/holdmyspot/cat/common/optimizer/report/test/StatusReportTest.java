@@ -339,6 +339,36 @@ public final class StatusReportTest
 			contains("throttle hold until 2026-01-15T00:00:00-05:00 ");
 	}
 
+	/** The status counts only completed trials in the reported phase and shows the early-end share in JSON and text. */
+	// Requirement: R-E6
+	@Test
+	public void reportsEarlyEndShare()
+	{
+		Campaign campaign = confirmed().build();
+		Sha256 snapshot = campaign.development().working().snapshot();
+		for (int sequence = 0; sequence < 2; sequence += 1)
+		{
+			Allocation allocation = new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND,
+				campaign.evidenceRevision(), Instant.EPOCH);
+			CampaignEvent.Assign assigned = new CampaignEvent.Assign(new Admission.Assign(Purpose.DEVELOPMENT,
+				campaign.development().series(), snapshot, "safety", null, allocation));
+			campaign = Transitions.apply(campaign, assigned);
+			TrialKey key = campaign.trials().getLast().key();
+			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+			CampaignEvent.Complete complete = new CampaignEvent.Complete(key, Verdict.PASS, "", List.of(), null,
+				campaign.identity(), null, List.of(List.of("done")), Builder.FILES, Optional.empty(),
+				List.of(), sequence == 0);
+			requireThat(complete.endedEarly(), "completionEndedEarly").isEqualTo(sequence == 0);
+			campaign = Transitions.apply(campaign, complete);
+		}
+
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode share = report.toJson(JsonMapper.builder().build()).path("early_end_share");
+		requireThat(share.path("ended_early").asInt(), "endedEarly").isEqualTo(1);
+		requireThat(share.path("completed").asInt(), "completed").isEqualTo(2);
+		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Completed trials ended early: 1/2");
+	}
+
 	/**
 	 * A development report shows, for each purpose of the development phase, how many trials ran a command of 10
 	 * seconds or more and how many received an empty result from a command that was still running, each out of the

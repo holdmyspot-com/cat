@@ -247,6 +247,8 @@ final class ReportSummary
 					counts.emptyRunningKnown() + ", of " + counts.sessions() + " trials");
 			}
 		}
+		StatusReport.EarlyEndShare earlyEnds = report.earlyEndShare();
+		lines.add("Completed trials ended early: " + earlyEnds.endedEarly() + "/" + earlyEnds.completed());
 		if (!report.assumptions().passRatesByConcurrency().isEmpty())
 		{
 			lines.add("Pass rate by concurrency level (descriptive only):");

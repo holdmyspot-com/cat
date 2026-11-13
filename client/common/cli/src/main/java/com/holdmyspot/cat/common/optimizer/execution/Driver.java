@@ -1626,7 +1626,7 @@ public final class Driver implements AutoCloseable
 		MeasurementIdentity observed = observedIdentity(testCase, trial);
 		TrialFiles files = new TrialFiles(trial.transcript(), trial.effects(), trial.initialProject());
 		CampaignEvent.Complete complete = new CampaignEvent.Complete(key, verdict, rationale, failures,
-			triage, observed, trialInputTokens(trial), trial.responses(), files, judge, shadows);
+			triage, observed, trialInputTokens(trial), trial.responses(), files, judge, shadows, trial.endedEarly());
 		boolean recorded = campaign.identity().differences(observed).isEmpty();
 		if (recorded)
 		{

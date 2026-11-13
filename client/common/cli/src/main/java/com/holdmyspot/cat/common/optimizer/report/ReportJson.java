@@ -90,6 +90,9 @@ final class ReportJson
 			concurrencyNode.put("shared_hold_until", concurrency.sharedHoldUntil().toString());
 		concurrencyNode.put("window_cap", concurrency.windowCap());
 		concurrencyNode.put("backoffs", concurrency.backoffs());
+		ObjectNode earlyEndShare = root.putObject("early_end_share");
+		earlyEndShare.put("ended_early", report.earlyEndShare().endedEarly());
+		earlyEndShare.put("completed", report.earlyEndShare().completed());
 		ObjectNode commands = concurrencyNode.putObject("commands");
 		for (Map.Entry<Purpose, CommandCounts> entry : concurrency.commands().entrySet())
 		{

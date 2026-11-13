@@ -88,7 +88,8 @@ public final class Transitions
 				sizes.put(measured.snapshot(), measured.size());
 				draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 					sizes, draft.optimization.trialInputs(), draft.optimization.attempts(),
-					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
+					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands(),
+					draft.optimization.earlyEnds());
 			}
 			case CampaignEvent.RetainPromptAuthorDiagnosis retain ->
 			{
@@ -96,7 +97,8 @@ public final class Transitions
 				promptAuthors.add(retain.diagnosis());
 				draft.optimization = new OptimizationEvidence(promptAuthors, draft.optimization.removed(),
 					draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
-					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
+					draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands(),
+					draft.optimization.earlyEnds());
 			}
 			case CampaignEvent.ReproductionValues values -> reproductionValues(draft, values);
 			case CampaignEvent.ExhaustReproductionValues exhausted -> exhaustReproductionValues(draft, exhausted);
@@ -686,6 +688,7 @@ public final class Transitions
 		MeasurementIdentity measured = trial.identity().replaceWith(observed);
 		draft.optimization = draft.optimization.addTrial(measured,
 			complete.key().snapshot(), complete.key().cell(), complete.inputTokens());
+		draft.optimization = draft.optimization.addEarlyEnd(complete.key(), complete.endedEarly());
 		boolean measuresIncumbent = switch (trial.key().purpose())
 		{
 			case BASELINE -> true;
@@ -699,7 +702,7 @@ public final class Transitions
 		draft.trials.set(index, new LogicalTrial(trial.key(), trial.testCase(), measured,
 			trial.allocation(), TrialState.JUDGED, complete.verdict(), complete.rationale(), complete.failedAssertions(),
 			complete.triage(), trial.infrastructureFailures(), trial.infrastructureAttempts(), trial.observations(),
-			complete.responses(), complete.files(), complete.judge()));
+			complete.responses(), complete.files(), complete.judge(), complete.endedEarly()));
 		String test = trial.testCase().testId();
 		if (trial.key().purpose() == Purpose.DEVELOPMENT)
 			draft.judges.computeIfPresent(test, (_, judge) -> judge.developmentTrialJudged());
@@ -873,7 +876,8 @@ public final class Transitions
 			removed.addAll(next.removed());
 			draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), removed,
 				draft.optimization.promptSizes(), draft.optimization.trialInputs(), draft.optimization.attempts(),
-				draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands());
+				draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands(),
+				draft.optimization.earlyEnds());
 			TrialAdoption.promote(draft, new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
 				next.accepted(), next.acceptedRuns(), next));
 			return;

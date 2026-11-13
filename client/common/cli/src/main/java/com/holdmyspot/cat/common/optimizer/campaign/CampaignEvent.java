@@ -196,10 +196,11 @@ public sealed interface CampaignEvent
 	 * @param judge the profile whose verdict counted, or empty if no judge ran
 	 * @param shadows how each candidate development judge that judged the trial next to the frozen judge compared
 	 *   with it, in the order the candidates started; empty if no candidate judged the trial
+	 * @param endedEarly whether the trial ended before all requested turns because every assertion was settled
 	 */
 	record Complete(TrialKey key, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions,
 		Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files,
-		Optional<TrialProfile> judge, List<ShadowResult> shadows) implements CampaignEvent
+		Optional<TrialProfile> judge, List<ShadowResult> shadows, boolean endedEarly) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -217,6 +218,7 @@ public sealed interface CampaignEvent
 		 * @param files where the trial session's harness events and file changes were retained
 		 * @param judge the profile whose verdict counted, or empty if no judge ran
 		 * @param shadows how each candidate development judge compared with the frozen judge
+		 * @param endedEarly whether the trial ended before all requested turns because every assertion was settled
 		 * @throws NullPointerException if any of {@code key}, {@code verdict}, {@code rationale},
 		 *   {@code failedAssertions}, {@code observed}, {@code responses}, {@code files}, {@code judge},
 		 *   {@code shadows}, a comparison, a failed assertion, a turn's messages or an assistant message are null
@@ -250,6 +252,29 @@ public sealed interface CampaignEvent
 		}
 
 		/**
+		 * Creates a completion record without early-end evidence.
+		 *
+		 * @param key the trial
+		 * @param verdict the trial's label
+		 * @param rationale the judge's explanation of the label
+		 * @param failedAssertions the assertions that a failed trial failed
+		 * @param triage the impact of a failed development trial, or {@code null}
+		 * @param observed the conditions that the trial session observed
+		 * @param inputTokens the trial session's input tokens, or {@code null}
+		 * @param responses each completed turn's assistant messages
+		 * @param files the trial's retained files
+		 * @param judge the profile whose verdict counted, or empty if none
+		 * @param shadows comparisons of candidate judges, empty if none
+		 */
+		public Complete(TrialKey key, Verdict verdict, String rationale, List<FailedAssertion> failedAssertions,
+			Triage triage, MeasurementIdentity observed, Long inputTokens, List<List<String>> responses, TrialFiles files,
+			Optional<TrialProfile> judge, List<ShadowResult> shadows)
+		{
+			this(key, verdict, rationale, failedAssertions, triage, observed, inputTokens, responses, files, judge,
+				shadows, false);
+		}
+
+		/**
 		 * Creates the event of a trial that no model judged next to another.
 		 *
 		 * @param key the trial
@@ -270,7 +295,7 @@ public sealed interface CampaignEvent
 			TrialFiles files)
 		{
 			this(key, verdict, rationale, failedAssertions, triage, observed, inputTokens, responses, files,
-				Optional.empty(), List.of());
+				Optional.empty(), List.of(), false);
 		}
 	}
 

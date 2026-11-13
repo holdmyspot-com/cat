@@ -29,12 +29,14 @@ import java.util.Set;
  * @param approaches the editing approach and order origin of each reserved prompt author attempt
  * @param commands how the shell commands of completed trial sessions ran, by the sessions' purpose and then by the
  *   certification attempt that they belong to, which is 0 for a purpose outside certification attempts
+ * @param earlyEnds completed trial counts by purpose and certification attempt
  */
 public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
 	Map<Sha256, PromptSize> promptSizes,
 	Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
 	List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage,
-	Map<Integer, ApproachAssignment> approaches, Map<Purpose, Map<Integer, CommandCounts>> commands)
+	Map<Integer, ApproachAssignment> approaches, Map<Purpose, Map<Integer, CommandCounts>> commands,
+	Map<Purpose, Map<Integer, EarlyEndCounts>> earlyEnds)
 {
 	/**
 	 * No descriptive evidence has been recorded.
@@ -61,6 +63,10 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		for (Map.Entry<Purpose, Map<Integer, CommandCounts>> entry : commands.entrySet())
 			copiedCommands.put(entry.getKey(), Map.copyOf(entry.getValue()));
 		commands = Map.copyOf(copiedCommands);
+		Map<Purpose, Map<Integer, EarlyEndCounts>> copiedEarlyEnds = new EnumMap<>(Purpose.class);
+		for (Map.Entry<Purpose, Map<Integer, EarlyEndCounts>> entry : earlyEnds.entrySet())
+			copiedEarlyEnds.put(entry.getKey(), Map.copyOf(entry.getValue()));
+		earlyEnds = Map.copyOf(copiedEarlyEnds);
 		promptAuthors = List.copyOf(promptAuthors);
 		removed = List.copyOf(removed);
 		promptSizes = Map.copyOf(promptSizes);
@@ -78,6 +84,16 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		for (Map.Entry<SessionRole, List<TokenUsage>> entry : tokenUsage.entrySet())
 			sessions.put(entry.getKey(), List.copyOf(entry.getValue()));
 		tokenUsage = Map.copyOf(sessions);
+	}
+
+	/** Creates evidence without early-end counts. */
+	public OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, List<String> removed,
+		Map<Sha256, PromptSize> promptSizes,
+		Map<MeasurementIdentity, Map<Sha256, Map<String, TrialInputs>>> trialInputs,
+		List<AttemptResult> attempts, Map<SessionRole, List<TokenUsage>> tokenUsage,
+		Map<Integer, ApproachAssignment> approaches, Map<Purpose, Map<Integer, CommandCounts>> commands)
+	{
+		this(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, approaches, commands, Map.of());
 	}
 
 	/**
@@ -162,7 +178,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		Map<Integer, ApproachAssignment> updated = new HashMap<>(approaches);
 		updated.put(number, assignment);
 		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage, updated,
-			commands);
+			commands, earlyEnds);
 	}
 
 	/**
@@ -212,7 +228,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		snapshots.put(snapshot, cells);
 		updated.put(identity, snapshots);
 		return new OptimizationEvidence(promptAuthors, removed, promptSizes, updated, attempts, tokenUsage, approaches,
-			commands);
+			commands, earlyEnds);
 	}
 
 	/**
@@ -233,7 +249,7 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		sessions.add(usage);
 		updated.put(role, sessions);
 		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, updated, approaches,
-			commands);
+			commands, earlyEnds);
 	}
 
 	/**
@@ -255,7 +271,26 @@ public record OptimizationEvidence(List<PromptAuthorDiagnosis> promptAuthors, Li
 		byAttempt.put(attempt, byAttempt.getOrDefault(attempt, CommandCounts.EMPTY).add(observed));
 		updated.put(key.purpose(), byAttempt);
 		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage,
-			approaches, updated);
+			approaches, updated, earlyEnds);
+	}
+
+	/**
+	 * Counts one completed trial by its purpose and certification attempt.
+	 *
+	 * @param key the trial
+	 * @param endedEarly whether its session ended early
+	 * @return updated evidence
+	 */
+	public OptimizationEvidence addEarlyEnd(TrialKey key, boolean endedEarly)
+	{
+		int attempt = commandAttempt(key);
+		Map<Purpose, Map<Integer, EarlyEndCounts>> updated = new EnumMap<>(Purpose.class);
+		updated.putAll(earlyEnds);
+		Map<Integer, EarlyEndCounts> byAttempt = new HashMap<>(updated.getOrDefault(key.purpose(), Map.of()));
+		byAttempt.put(attempt, byAttempt.getOrDefault(attempt, EarlyEndCounts.EMPTY).add(endedEarly));
+		updated.put(key.purpose(), byAttempt);
+		return new OptimizationEvidence(promptAuthors, removed, promptSizes, trialInputs, attempts, tokenUsage,
+			approaches, commands, updated);
 	}
 
 	/**

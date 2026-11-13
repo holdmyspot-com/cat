@@ -38,6 +38,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.EarlyEndCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
@@ -130,6 +131,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
@@ -509,6 +511,20 @@ final class CampaignJson
 				counts.put("empty_running", entry.getValue().emptyRunning());
 			}
 		}
+		ObjectNode earlyEnds = node.putObject("early_ends");
+		for (Purpose purpose : Purpose.values())
+		{
+			Map<Integer, EarlyEndCounts> byAttempt = evidence.earlyEnds().get(purpose);
+			if (byAttempt == null)
+				continue;
+			ObjectNode purposeNode = earlyEnds.putObject(EnumNames.lowerCase(purpose));
+			for (Entry<Integer, EarlyEndCounts> entry : new TreeMap<>(byAttempt).entrySet())
+			{
+				ObjectNode counts = purposeNode.putObject(entry.getKey().toString());
+				counts.put("completed", entry.getValue().completed());
+				counts.put("ended_early", entry.getValue().endedEarly());
+			}
+		}
 		ObjectNode usage = node.putObject(TOKEN_USAGE);
 		for (SessionRole role : SessionRole.values())
 		{
@@ -775,7 +791,30 @@ final class CampaignJson
 				constant(entry.getValue(), "source", ApproachAssignment.Source.class)));
 		}
 		return new OptimizationEvidence(promptAuthors, readStrings(node, "removed"), sizes, inputs, results,
-			readRoleUsage(node), approaches, readCommandCounts(node));
+			readRoleUsage(node), approaches, readCommandCounts(node), readEarlyEndCounts(node));
+	}
+
+	/**
+	 * Reads completed trial counts by purpose and attempt.
+	 *
+	 * @param node the optimization evidence
+	 * @return the counts, or empty for an older campaign record
+	 */
+	private static Map<Purpose, Map<Integer, EarlyEndCounts>> readEarlyEndCounts(JsonNode node)
+	{
+		Map<Purpose, Map<Integer, EarlyEndCounts>> result = new EnumMap<>(Purpose.class);
+		if (!node.has("early_ends"))
+			return result;
+		for (Entry<String, JsonNode> purpose : object(node, "early_ends").properties())
+		{
+			Map<Integer, EarlyEndCounts> byAttempt = new TreeMap<>();
+			requireThat(purpose.getValue().isObject(), "early_ends.purpose").isTrue();
+			for (Entry<String, JsonNode> attempt : purpose.getValue().properties())
+				byAttempt.put(Integer.parseInt(attempt.getKey()), new EarlyEndCounts(
+					longInteger(attempt.getValue(), "completed"), longInteger(attempt.getValue(), "ended_early")));
+			result.put(Purpose.valueOf(purpose.getKey().toUpperCase(Locale.ROOT)), byAttempt);
+		}
+		return result;
 	}
 
 	/**
@@ -987,6 +1026,7 @@ final class CampaignJson
 				for (ShadowResult shadow : outcome.shadows())
 					DevelopmentJudgeJson.writeShadow(shadows.addObject(), shadow);
 			}
+			node.put("ended_early", outcome.endedEarly());
 		}
 		return root;
 	}
@@ -1024,7 +1064,8 @@ final class CampaignJson
 			outcome = new CampaignEvent.Complete(key, constant(outcomeNode, "verdict", Verdict.class),
 				text(outcomeNode, "rationale"), readFailedAssertions(outcomeNode), readTriage(outcomeNode),
 				readIdentity(field(outcomeNode, "observed")), nullableLong(outcomeNode, "input_tokens"),
-				readResponses(outcomeNode), readFiles(outcomeNode), judge, shadows);
+				readResponses(outcomeNode), readFiles(outcomeNode), judge, shadows,
+				outcomeNode.has("ended_early") && bool(outcomeNode, "ended_early"));
 		}
 		List<TrialSession> sessions = new ArrayList<>();
 		for (JsonNode session : elements(root, "sessions"))
@@ -2170,6 +2211,7 @@ final class CampaignJson
 		node.put("observations", trial.observations());
 		node.set("responses", writeResponses(trial.responses()));
 		node.set("files", writeFiles(trial.files()));
+		node.put("ended_early", trial.endedEarly());
 		if (trial.judge().isPresent())
 			DevelopmentJudgeJson.writeProfile(node.putObject("judge"), trial.judge().get());
 		return node;
@@ -2193,7 +2235,7 @@ final class CampaignJson
 			constant(node, "state", TrialState.class), verdict, rationale, readFailedAssertions(node),
 			readTriage(node),
 			integer(node, "infrastructure_failures"), readInfrastructureAttempts(node), integer(node, "observations"),
-			readResponses(node), readFiles(node), judge);
+			readResponses(node), readFiles(node), judge, node.has("ended_early") && bool(node, "ended_early"));
 	}
 
 	/**
