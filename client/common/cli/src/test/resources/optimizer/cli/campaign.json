@@ -348,6 +348,7 @@
 	"optimization" : {
 		"approaches" : { },
 		"commands" : { },
+		"early_ends" : { },
 		"token_usage" : { },
 		"prompt_authors" : [ ],
 		"removed" : [ ],

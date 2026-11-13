@@ -3379,7 +3379,7 @@ public final class DriverTest
 				requireThat(Reconciler.find(resumed, limited.key()).orElseThrow().state(), "state").
 					isEqualTo(TrialState.RUNNING);
 				FakeSession rerun = harness.runningTrials().getLast();
-				requireThat(rerun.request(), "rerun").isEqualTo(limitedRequest);
+				assertSameTrialRequest(rerun.request(), limitedRequest);
 			}
 		}
 	}
@@ -3564,7 +3564,7 @@ public final class DriverTest
 					driver.step();
 					List<FakeSession> rerun = harness.runningTrials();
 					requireThat(rerun.size(), "rerun").isEqualTo(1);
-					requireThat(rerun.getFirst().request(), "rerunRequest").isEqualTo(refusedRequest);
+					assertSameTrialRequest(rerun.getFirst().request(), refusedRequest);
 				}
 			}
 		}
@@ -3689,7 +3689,7 @@ public final class DriverTest
 					filter(session -> session.request().role() == SessionRole.TRIAL).toList();
 				requireThat(trials.size(), "trials").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
 				for (FakeSession trial : trials)
-					requireThat(trial.request(), "request").isEqualTo(trials.getFirst().request());
+					assertSameTrialRequest(trial.request(), trials.getFirst().request());
 				requireThat(campaign.trials().getFirst().infrastructureFailures(), "infrastructureFailures").
 					isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1);
 			}
@@ -6771,7 +6771,7 @@ public final class DriverTest
 				List<FakeSession> runs = harness.sessions().sessions();
 				requireThat(runs.size(), "runs").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
 				for (FakeSession run : runs)
-					requireThat(run.request(), "request").isEqualTo(runs.getFirst().request());
+					assertSameTrialRequest(run.request(), runs.getFirst().request());
 				List<LogicalTrial> records = harness.crashingStore().assignments();
 				requireThat(records.size(), "records").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
 				for (LogicalTrial trial : records)
@@ -6913,6 +6913,28 @@ public final class DriverTest
 	{
 		return harness.sessions().sessions().stream().map(FakeSession::request).
 			filter(request -> request.role() == SessionRole.TRIAGE).toList();
+	}
+
+	/**
+	 * Verifies that two trial requests carry the same session inputs and have turn observers.
+	 *
+	 * @param actual the later request
+	 * @param expected the earlier request
+	 */
+	private static void assertSameTrialRequest(SessionRequest actual, SessionRequest expected)
+	{
+		requireThat(actual.turnObserver().isPresent(), "actualObserver").isTrue();
+		requireThat(expected.turnObserver().isPresent(), "expectedObserver").isTrue();
+		if (actual != expected)
+			requireThat(actual.turnObserver().orElseThrow() != expected.turnObserver().orElseThrow(), "freshObserver").
+				isTrue();
+		SessionRequest actualInputs = new SessionRequest(actual.role(), actual.part(), actual.source(), actual.turns(),
+			actual.readOnly(), actual.timeLimit(), actual.profile(), actual.files(), actual.plugins(), actual.followUp(),
+			actual.controlSource(), actual.extraPermissions());
+		SessionRequest expectedInputs = new SessionRequest(expected.role(), expected.part(), expected.source(),
+			expected.turns(), expected.readOnly(), expected.timeLimit(), expected.profile(), expected.files(),
+			expected.plugins(), expected.followUp(), expected.controlSource(), expected.extraPermissions());
+		requireThat(actualInputs, "request").isEqualTo(expectedInputs);
 	}
 
 	/**
