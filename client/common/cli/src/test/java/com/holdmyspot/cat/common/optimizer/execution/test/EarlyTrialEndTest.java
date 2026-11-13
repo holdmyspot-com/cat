@@ -32,8 +32,8 @@ public final class EarlyTrialEndTest
 	@Test
 	public void effectChecksSettleOnFixedEvidence()
 	{
-		BuiltInTool used = new BuiltInTool.ToolUsed("Bash");
-		BuiltInTool unused = new BuiltInTool.ToolUnused("Bash");
+		BuiltInTool used = new BuiltInTool.ToolUsed("Bash", null);
+		BuiltInTool unused = new BuiltInTool.ToolUnused("Bash", null);
 		BuiltInTool readFull = new BuiltInTool.ReadInFull("notes.md");
 		BuiltInTool readAtMost = new BuiltInTool.ReadAtMost("notes.md",
 			new java.math.BigDecimal("50"));
