@@ -96,6 +96,10 @@ task to the least costly available agent whose result a build, a test or a check
 the higher-level model the high-judgment work listed near the end of this rule. When choosing which of CAT's implementer
 agents runs a delegated task, lazy load `delegation/implementer-agents.md`.
 
+Run every delegated task on a CAT agent, and use the harness's catch-all agent only when no CAT agent has the tools the
+task needs, naming the missing tool when you do. Send online research to the CAT agents whose names start with
+`research`, in the lowest tier whose answer you can accept.
+
 Decompose and choose an agent this way for every piece of delegated work, including more work for a delegate that is
 running or has returned: that work is a new task, so split it and choose its agent as for a new launch, and send it to
 that delegate only when its contract selects that delegate's agent and the work needs that delegate's context. A task
