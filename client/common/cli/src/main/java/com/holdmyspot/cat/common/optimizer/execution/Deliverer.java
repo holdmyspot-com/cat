@@ -33,8 +33,7 @@ public interface Deliverer
 	 * @param entry the entry to append to the target's certification history: the certification record of a certified
 	 *   request, or a delivery entry with the request's label, or labelled {@code incumbent kept} if the user kept the
 	 *   incumbent
-	 * @param tests the confirmed prompt tests to write, empty unless {@code request} is labelled {@code certified} or
-	 *   the user kept the incumbent
+	 * @param tests the confirmed prompt tests to write, which every delivery writes whatever its label
 	 * @return the result
 	 * @throws NullPointerException if {@code campaignId}, {@code selected}, {@code working}, {@code promptSources},
 	 *   {@code entry} or {@code tests} are null

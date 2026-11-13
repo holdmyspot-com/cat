@@ -6270,6 +6270,64 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code status} of a target whose certification a later {@code incumbent kept} entry followed, with
+	 * every source that the certification certified unchanged, reports the earlier certification as current, and
+	 * that the entry itself is still not a certification.
+	 */
+	@Test
+	public void statusKeepsCertificationCurrent() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Files.writeString(repository.root().resolve("CLAUDE.md"), "Be brief.\n");
+			writeRecord(repository, "Be brief.\n", _ ->
+			{
+			});
+			appendDeliveryEntry(repository, "Be brief.\n", DeliveryLabel.INCUMBENT_KEPT);
+
+			ObjectNode status = output(repository, List.of("status", "CLAUDE.md"));
+
+			JsonNode superseded = status.get("latest").get(0).get("superseded_certification");
+			requireThat(superseded.get("label").asString(), "supersededLabel").isEqualTo("certified");
+			requireThat(superseded.get("applicability").asString(), "supersededApplicability").isEqualTo("current");
+			requireThat(superseded.get("changed_sources").size(), "changedSources").isEqualTo(0);
+			requireThat(status.get("summary").asString(), "summary").
+				contains("This delivery is not a certification.").
+				contains("Earlier certification, attempt 1 (scope latest_versions): current").
+				doesNotContain("historical");
+		}
+	}
+
+	/**
+	 * Verifies that a new campaign's proposal reports the earlier certification as current after an
+	 * {@code incumbent kept} entry whose sources match the certification's.
+	 */
+	@Test
+	public void proposalKeepsCertificationCurrent() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			Files.writeString(repository.root().resolve("CLAUDE.md"), "Be brief.\n");
+			writeRecord(repository, "Be brief.\n", _ ->
+			{
+			});
+			appendDeliveryEntry(repository, "Be brief.\n", DeliveryLabel.INCUMBENT_KEPT);
+
+			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(proposalText(started), "proposal").
+				contains("Earlier certification, attempt 1 (scope latest_versions): current").
+				doesNotContain("historical, followed by this delivery");
+		}
+	}
+
+	/**
 	 * Appends the entry of an improvement of {@code CLAUDE.md} that was kept without certification to the target's
 	 * history, as such a delivery would, under the conditions that {@link #writeRecord} records by default.
 	 *
@@ -6279,6 +6337,21 @@ public final class OptimizerCoreTest
 	 */
 	private static void appendDeliveryEntry(Repository repository, String promptText) throws IOException
 	{
+		appendDeliveryEntry(repository, promptText, DeliveryLabel.IMPROVED_NOT_CERTIFIED);
+	}
+
+	/**
+	 * Appends the entry of a delivery of {@code CLAUDE.md} that was not certified to the target's history, under the
+	 * conditions that {@link #writeRecord} records by default.
+	 *
+	 * @param repository the test project
+	 * @param promptText the text whose hash the entry holds for {@code CLAUDE.md}
+	 * @param label the delivery's label, which is {@code improved, not certified} or {@code incumbent kept}
+	 * @throws IOException if the history cannot be read or written
+	 */
+	private static void appendDeliveryEntry(Repository repository, String promptText, DeliveryLabel label)
+		throws IOException
+	{
 		Map<MeasurementCondition, String> values = new java.util.EnumMap<>(MeasurementCondition.class);
 		values.put(MeasurementCondition.PROVIDER, Harness.CLAUDE.commandName());
 		values.put(MeasurementCondition.HARNESS_VERSION, "1.0");
@@ -6286,8 +6359,15 @@ public final class OptimizerCoreTest
 			String.valueOf(FakeSessionPort.SESSION_ENVIRONMENT_VERSION));
 		values.put(MeasurementCondition.JUDGE, String.valueOf(FakeSessionPort.JUDGE_VERSION));
 		values.put(MeasurementCondition.MODEL, "model-a");
-		DeliveryEntry entry = new DeliveryEntry(Path.of("CLAUDE.md"), DeliveryLabel.IMPROVED_NOT_CERTIFIED, 1,
-			List.of("formatting"), Sha256.of("Be brief.\n".getBytes(StandardCharsets.UTF_8)),
+		int attempt = 0;
+		List<String> provenBetter = List.of();
+		if (label == DeliveryLabel.IMPROVED_NOT_CERTIFIED)
+		{
+			attempt = 1;
+			provenBetter = List.of("formatting");
+		}
+		DeliveryEntry entry = new DeliveryEntry(Path.of("CLAUDE.md"), label, attempt,
+			provenBetter, Sha256.of("Be brief.\n".getBytes(StandardCharsets.UTF_8)),
 			Map.of(Path.of("CLAUDE.md"), Sha256.of(promptText.getBytes(StandardCharsets.UTF_8))),
 			new MeasurementIdentity(values));
 		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);

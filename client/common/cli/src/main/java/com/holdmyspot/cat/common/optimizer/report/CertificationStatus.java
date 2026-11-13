@@ -194,18 +194,17 @@ public record CertificationStatus(List<Latest> latest, List<HistoryEntry> earlie
 		{
 			CertificationRecord record = superseded.get().record();
 			StringBuilder text = new StringBuilder(200).append("  Earlier certification, attempt ").
-				append(record.certificationIndex()).append(" (scope ").append(record.scope().id()).
-				append("): historical, followed by this delivery; changed sources: ");
-			List<Path> changed = superseded.get().changedSources();
-			if (changed.isEmpty())
-				text.append("none");
-			else
+				append(record.certificationIndex()).append(" (scope ").append(record.scope().id()).append("): ");
+			if (superseded.get().isHistorical())
 			{
+				text.append("historical, followed by this delivery; changed sources: ");
 				List<String> names = new ArrayList<>();
-				for (Path path : changed)
+				for (Path path : superseded.get().changedSources())
 					names.add(path.toString());
 				text.append(String.join(", ", names));
 			}
+			else
+				text.append("current, because none of the sources that it certified has changed");
 			lines.add(text.toString());
 		}
 	}
@@ -290,8 +289,8 @@ public record CertificationStatus(List<Latest> latest, List<HistoryEntry> earlie
 	}
 
 	/**
-	 * A harness's latest certification, which a later delivery of another label followed. It is historical: it no
-	 * longer describes the delivered prompt.
+	 * A harness's latest certification, which a later delivery of another label followed. It is historical if a source
+	 * that it certified has changed, and current otherwise.
 	 *
 	 * @param record the certification record
 	 * @param changedSources the prompt files whose content hash differs between the certification and the later
@@ -311,6 +310,16 @@ public record CertificationStatus(List<Latest> latest, List<HistoryEntry> earlie
 		{
 			requireThat(record, "record").isNotNull();
 			changedSources = List.copyOf(changedSources);
+		}
+
+		/**
+		 * Indicates whether a source that the certification certified has changed.
+		 *
+		 * @return {@code true} if the certification no longer describes the delivered prompt
+		 */
+		public boolean isHistorical()
+		{
+			return !changedSources.isEmpty();
 		}
 
 		/**

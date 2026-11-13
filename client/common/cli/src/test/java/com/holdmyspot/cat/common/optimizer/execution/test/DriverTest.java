@@ -2617,9 +2617,10 @@ public final class DriverTest
 	 * holds the campaign's conditions and the delivered prompt file's hash.
 	 *
 	 * @throws IOException if the test directory cannot be used
+	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
 	 */
 	@Test
-	public void acceptedUncertifiedAppendsEntry() throws IOException
+	public void acceptedUncertifiedAppendsEntry() throws IOException, ScenarioFormatException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -2644,6 +2645,7 @@ public final class DriverTest
 			}
 			Campaign campaign = harness.campaign();
 			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "deliveredPrompt").isEqualTo("accepted");
+			requirePromptTestsDelivered(harness, campaign);
 			CertificationHistory history = harness.deliveredHistory();
 			requireThat(history.records(), "records").isEmpty();
 			requireThat(history.entries().size(), "entries").isEqualTo(1);
@@ -3941,9 +3943,10 @@ public final class DriverTest
 	 * choice flow; their filesystem work can exceed one second during a parallel build.
 	 *
 	 * @throws IOException if the test directory cannot be used
+	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
 	 */
 	@Test
-	public void keepImprovement() throws IOException
+	public void keepImprovement() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -3987,6 +3990,7 @@ public final class DriverTest
 					isEqualTo(Outcome.IMPROVED_NOT_CERTIFIED);
 				requireThat(Files.readString(base.resolve(DriverHarness.PROMPT)), "deliveredPrompt").
 					isEqualTo("kept improvement");
+				requirePromptTestsDelivered(harness, campaign);
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Ended(Outcome.IMPROVED_NOT_CERTIFIED));
 				CertificationHistory history = harness.deliveredHistory();
@@ -4012,9 +4016,10 @@ public final class DriverTest
 	 * offers the first candidate, and keeping it delivers that candidate rather than the working one.
 	 *
 	 * @throws IOException if the test directory cannot be used
+	 * @throws ScenarioFormatException if a delivered scenario cannot be parsed
 	 */
 	@Test
-	public void bestCandidateSoFar() throws IOException
+	public void bestCandidateSoFar() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-F6
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -4087,6 +4092,16 @@ public final class DriverTest
 				// The history's directory exists only to hold it
 				for (Path parent = history.getParent(); parent != null; parent = parent.getParent())
 					delivered.remove(parent);
+				// An improvement that is not certified delivers the prompt tests too
+				requirePromptTestsDelivered(harness, campaign);
+				for (DeliveredTest test : DeliveredTest.of(campaign.contract(), campaign.developmentTestCases(),
+					DriverHarness.PROMPT))
+				{
+					Path directory = test.location().directory();
+					delivered.keySet().removeIf(path -> path.startsWith(directory));
+					for (Path parent = directory.getParent(); parent != null; parent = parent.getParent())
+						delivered.remove(parent);
+				}
 				requireThat(delivered, "deliveredInventory").isEqualTo(earlier.snapshot().entries());
 			}
 		}

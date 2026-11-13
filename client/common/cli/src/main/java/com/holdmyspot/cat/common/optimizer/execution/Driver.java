@@ -2481,7 +2481,7 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Indicates whether delivery was attempted. Delivers the candidate that a finished campaign selected, or the prompt
 	 * tests of an incumbent that the user kept, once per slice. Every delivery appends its labelled entry to the
-	 * target's certification history. A certified delivery and a kept incumbent write the confirmed prompt tests.
+	 * target's certification history and writes the confirmed prompt tests, whatever its label.
 	 *
 	 * @return {@code true} if a delivery was attempted
 	 * @throws IOException if the store, the overlays or a file cannot be read or written
@@ -2507,12 +2507,8 @@ public final class Driver implements AutoCloseable
 		}
 		CertificationRecord record = null;
 		HistoryEntry entry;
-		List<DeliveredTest> tests = List.of();
-		if (incumbentKept || request.label() == Outcome.CERTIFIED)
-		{
-			Path target = campaign.header().root().relativize(campaign.header().target());
-			tests = DeliveredTest.of(campaign.contract(), campaign.developmentTestCases(), target);
-		}
+		Path target = campaign.header().root().relativize(campaign.header().target());
+		List<DeliveredTest> tests = DeliveredTest.of(campaign.contract(), campaign.developmentTestCases(), target);
 		if (!incumbentKept && request.label() == Outcome.CERTIFIED)
 		{
 			record = CertificationRecord.of(campaign, campaign.attempt(request.attempt()), selected.snapshot(),

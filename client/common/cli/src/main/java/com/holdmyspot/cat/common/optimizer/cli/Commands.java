@@ -723,7 +723,10 @@ public final class Commands
 				CertificationStatus.Superseded superseded = entry.superseded().get();
 				ObjectNode certificationNode = entryNode(node.putObject("superseded_certification"),
 					superseded.record());
-				certificationNode.put("applicability", "historical");
+				if (superseded.isHistorical())
+					certificationNode.put("applicability", "historical");
+				else
+					certificationNode.put("applicability", "current");
 				ArrayNode changed = certificationNode.putArray("changed_sources");
 				for (Path path : superseded.changedSources())
 					changed.add(PortablePaths.text(path));

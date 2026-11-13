@@ -176,16 +176,14 @@ public final class Delivery
 	 * @param entry the entry to append to the target's certification history in the base worktree: the certification
 	 *   record of a certified request, or a delivery entry with the request's label, or labelled
 	 *   {@code incumbent kept} if the user kept the incumbent
-	 * @param tests the confirmed prompt tests to write, empty unless the request is labelled {@code certified} or the
-	 *   user kept the incumbent
+	 * @param tests the confirmed prompt tests to write, which every delivery writes whatever its label
 	 * @return the result; a {@link Delivered} result carries no label when the user kept the incumbent
 	 * @throws NullPointerException if {@code campaignId}, {@code selected}, {@code working}, {@code promptSources},
 	 *   {@code entry} or {@code tests} are null
 	 * @throws IllegalArgumentException if the request's label never delivers a candidate, if {@code selected} changes
 	 *   an external file, if the request names a different candidate than {@code selected}, if {@code selected} and
-	 *   {@code working} have different forks, if {@code entry}'s label differs from the delivery's, if {@code tests}
-	 *   accompany a request that is not labelled {@code certified}, if a kept incumbent changes a file, or if a prompt
-	 *   test cannot be written as a regression scenario
+	 *   {@code working} have different forks, if {@code entry}'s label differs from the delivery's, if a kept
+	 *   incumbent changes a file, or if a prompt test cannot be written as a regression scenario
 	 * @throws IllegalStateException if the campaign already journals the delivery of another candidate
 	 * @throws IOException if a file cannot be read or written, if Git fails, or if the target's certification history
 	 *   does not describe a valid history
@@ -207,11 +205,6 @@ public final class Delivery
 			requireDeliverable(label);
 			requireThat(request.candidate().snapshot(), "request.candidate().snapshot()").
 				isEqualTo(selected.identity(), "selected.identity()");
-			if (label != Outcome.CERTIFIED && !tests.isEmpty())
-			{
-				throw new IllegalArgumentException("A delivery labelled \"" + label.label() + "\" may not write " +
-					"prompt tests.");
-			}
 		}
 		else if (!selected.entries().isEmpty())
 		{

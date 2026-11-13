@@ -1379,36 +1379,57 @@ public final class DeliveryTest
 	}
 
 	/**
-	 * Only a certified delivery or a kept incumbent writes prompt tests: a delivery under another label that carries
-	 * prompt tests is rejected before anything changes, as is a kept incumbent that changes a file.
+	 * Every delivery writes the prompt tests that it carries, whatever its label: an improved but uncertified delivery
+	 * and an accepted uncertified one each write the values file, the scenario and the fixtures of a created prompt
+	 * test and of an edited one. A kept incumbent that changes a file is still rejected before anything changes.
 	 *
-	 * @throws IOException if the fixture or delivery fails
+	 * @throws IOException             if the fixture or delivery fails
+	 * @throws ScenarioFormatException if a written file cannot be read back
 	 */
 	@Test
-	public void promptTestsAccompanyOnlyCertifiedOrKept() throws IOException
+	public void everyLabelWritesPromptTests() throws IOException, ScenarioFormatException
 	{
 		// Requirement: R-W11
+		for (Outcome label : List.of(Outcome.IMPROVED_NOT_CERTIFIED, Outcome.NOT_CERTIFIED))
+		{
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Fixture fixture = Fixture.create(template, cleanup).
+					recordFile(EDITED_SCENARIO, RECORDED_SCENARIO.getBytes(UTF_8));
+				Overlay candidate = fixture.candidate();
+				Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK, recordedScenario());
+				DeliveredTest created = promptTest("created_summary", true);
+				DeliveredTest edited = promptTest("release_notes", false);
+				DeliveryRequest request;
+				DeliveryLabel entryLabel;
+				if (label == Outcome.IMPROVED_NOT_CERTIFIED)
+				{
+					request = request(candidate, Outcome.IMPROVED_NOT_CERTIFIED);
+					entryLabel = DeliveryLabel.IMPROVED_NOT_CERTIFIED;
+				}
+				else
+				{
+					request = new DeliveryRequest(new Candidate(2, candidate.identity()), 0, Outcome.NOT_CERTIFIED);
+					entryLabel = DeliveryLabel.NOT_CERTIFIED;
+				}
+
+				DeliveryResult result = delivery.deliver(CAMPAIGN, request, candidate, candidate,
+					fixture.promptSources(), entry(entryLabel), List.of(created, edited));
+
+				requireThat(requireDelivered(result).label(), "label").isEqualTo(label);
+				requirePromptTestDelivered(fixture, created);
+				requirePromptTestDelivered(fixture, edited);
+			}
+		}
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
 			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
-			List<DeliveredTest> tests = List.of(promptTest("created_summary", true));
-
-			try
-			{
-				delivery.deliver(CAMPAIGN, request(candidate, Outcome.IMPROVED_NOT_CERTIFIED), candidate, candidate,
-					fixture.promptSources(), entry(DeliveryLabel.IMPROVED_NOT_CERTIFIED), tests);
-				throw new AssertionError("An uncertified delivery with prompt tests was accepted");
-			}
-			catch (IllegalArgumentException e)
-			{
-				requireThat(e.getMessage(), "message").contains("prompt tests");
-			}
 			try
 			{
 				delivery.deliver(CAMPAIGN, null, candidate, candidate, fixture.promptSources(),
-					entry(DeliveryLabel.INCUMBENT_KEPT), tests);
+					entry(DeliveryLabel.INCUMBENT_KEPT), List.of(promptTest("created_summary", true)));
 				throw new AssertionError("A kept incumbent that changes files was accepted");
 			}
 			catch (IllegalArgumentException e)
