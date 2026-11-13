@@ -5,15 +5,23 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.claude.runner.ClaudeSessionRole;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 
@@ -73,6 +81,75 @@ public final class ClaudeSessionRoleTest
 			JsonNode author = write(scope, root.resolve("author"), "");
 			requireThat(author.has("promptCacheTtl"), "authorHasTtl").isFalse();
 			requireThat(author.path("sandbox").path("enabled").asBoolean(false), "authorSandbox").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a judge's settings let its commands write none of CAT's write roots, that a trial's settings are
+	 * what they are for a session with no role, and that the judge keeps every read and write denial that a session
+	 * has, so that the section that Claude Code renders for a judge holds no protected-path entry for those roots.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 */
+	@Test
+	public void judgeSandboxListsNoWriteRoot() throws IOException
+	{
+		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-judge-sandbox-")).toRealPath();
+			Path hostProject = Files.createDirectories(root.resolve("project"));
+			HarnessRunManager manager = new HarnessRunManager(scope.fileLocks(), hostProject.resolve("runs"),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun run = manager.create("claude");
+			manager.snapshotProject(run);
+			Files.createDirectories(run.directory().resolve("home/.claude"));
+			Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
+			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
+			Path evidence = Files.createDirectory(root.resolve("evidence"));
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidence),
+				List.of(deniedFile, deniedDirectory, hostProject), Map.of(), requestAccess);
+			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
+			Path project = run.directory().resolve("project");
+			Path home = run.directory().resolve("home");
+			Path claudeTemporaryDirectory = run.directory().resolve("claude");
+
+			Path previous = root.resolve("isolated/previous.json");
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), previous,
+				claudeTemporaryDirectory, home, dependencyCaches, run.directory(), deniedReads, "", requestAccess,
+				project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
+				ClaudeSessionRole.JUDGE.promptCacheTtl());
+			for (ClaudeSessionRole role : ClaudeSessionRole.values())
+			{
+				Path destination = root.resolve("isolated/" + role.name() + ".json");
+				ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
+					claudeTemporaryDirectory, home, dependencyCaches, run.directory(), deniedReads, "", requestAccess,
+					project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com", role.promptCacheTtl(),
+					role.writes());
+			}
+			JsonNode before = scope.json().readTree(Files.readString(previous));
+			JsonNode trial = scope.json().readTree(Files.readString(root.resolve("isolated/TRIAL.json")));
+			JsonNode judge = scope.json().readTree(Files.readString(root.resolve("isolated/JUDGE.json")));
+
+			// The fixture has the roots that CAT adds to a session's sandbox, and a trial lists them
+			List<String> roots = new ArrayList<>();
+			for (JsonNode entry : before.path("sandbox").path("filesystem").path("allowWrite"))
+				roots.add(entry.asString());
+			requireThat(roots, "roots").contains(home.toString()).contains(dependencyCaches.get(0).toString()).
+				contains(dependencyCaches.get(1).toString()).contains(requestAccess.requests().toString()).
+				contains(project.resolve(".git/worktrees").toString());
+			requireThat(trial, "trial").isEqualTo(before);
+
+			JsonNode judgeFilesystem = judge.path("sandbox").path("filesystem");
+			requireThat(judgeFilesystem.path("allowWrite").size(), "judgeAllowWrite").isEqualTo(0);
+			JsonNode previousFilesystem = before.path("sandbox").path("filesystem");
+			requireThat(previousFilesystem.path("denyRead").size(), "denyReadCount").isGreaterThan(0);
+			for (String name : List.of("denyRead", "denyWrite", "allowRead"))
+				requireThat(judgeFilesystem.path(name), name).isEqualTo(previousFilesystem.path(name));
+			requireThat(judge.path("sandbox").path("network"), "network").isEqualTo(before.path("sandbox").path("network"));
+			requireThat(judge.path("permissions"), "permissions").isEqualTo(before.path("permissions"));
 		}
 	}
 

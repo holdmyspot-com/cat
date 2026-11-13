@@ -227,7 +227,7 @@ public final class ClaudeRunner
 				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
 				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
 				instructionFilesMode, requestAccess, worktree, run.directory(), bound, extraPermissions,
-				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role));
+				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role), writes(role));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
@@ -1176,6 +1176,17 @@ public final class ClaudeRunner
 		if (role == null)
 			return List.of();
 		return role.tools();
+	}
+
+	/**
+	 * Indicates whether a session's sandbox lists the write roots of its policy.
+	 *
+	 * @param role the session's role, or {@code null} if it has none
+	 * @return {@code true} if it does, which is also the case for a session with no role
+	 */
+	private static boolean writes(ClaudeSessionRole role)
+	{
+		return role == null || role.writes();
 	}
 
 	/**

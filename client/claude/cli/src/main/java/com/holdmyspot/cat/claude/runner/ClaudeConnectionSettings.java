@@ -341,10 +341,8 @@ public final class ClaudeConnectionSettings
 	/**
 	 * Writes settings for an isolated Claude instance, as
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
-	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
-	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
-	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
-	 * environment variable for it.
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String, String, boolean)} does, for an instance
+	 * whose commands may write the roots of its policy.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -381,6 +379,59 @@ public final class ClaudeConnectionSettings
 		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl)
 		throws IOException
 	{
+		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, runFolder, bound, extraPermissions,
+			modelHost, promptCacheTtl, true);
+	}
+
+	/**
+	 * Writes settings for an isolated Claude instance, as
+	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String,
+	 * SessionRequestAccess, Path, Path, ChildPolicy, ExtraPermissions, String)} does, except that the settings also set
+	 * the lifetime of the instance's prompt cache when {@code promptCacheTtl} is not empty. Claude Code's
+	 * {@code promptCacheTtl} setting alone switches every cache write to that lifetime, so the settings set no
+	 * environment variable for it. When {@code writes} is {@code false}, the settings list none of the policy's write
+	 * roots for the sandbox, so that the instance's commands write only what Claude Code itself lets them write. The
+	 * returned policy and the read denials are the same either way.
+	 *
+	 * @param scope                    services shared for the runner process lifetime
+	 * @param source                   the host Claude settings file
+	 * @param destination              the isolated Claude settings file
+	 * @param claudeTemporaryDirectory the CAT-owned directory for Claude temporary files
+	 * @param claudeHome               the CAT-owned home directory for the isolated Claude process
+	 * @param dependencyCaches         the parent's shared dependency caches that the isolated instance may write
+	 * @param isolationRoot            the directory above which the isolated instance loads no instruction file
+	 * @param deniedReads              the existing files and directories that the isolated instance must not read
+	 * @param instructionFilesMode     the choice of which instruction files load, or an empty string to keep the
+	 *                                 parent's choice
+	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
+	 *                                 none
+	 * @param project                  the instance's Git repository, or {@code null} if the instance may register no
+	 *                                 linked worktree
+	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
+	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
+	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
+	 *                                 needs
+	 * @param modelHost                the host of the instance's model provider
+	 * @param promptCacheTtl           the lifetime of the instance's prompt cache, such as {@code 5m}, or an empty
+	 *                                 string to keep Claude Code's default
+	 * @param writes                   {@code true} if the sandbox lets the instance's commands write the roots of its
+	 *                                 policy, {@code false} if it lists none of them
+	 * @return the instance's sandbox policy
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions},
+	 *                                  {@code modelHost} or {@code promptCacheTtl} are null
+	 * @throws IllegalArgumentException if {@code modelHost} is blank
+	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write what Claude Code
+	 *                                  writes, or lacks a write or host that the instance needs
+	 * @throws IOException              if settings I/O fails
+	 */
+	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
+		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
+		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
+		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl,
+		boolean writes)
+		throws IOException
+	{
 		requireThat(promptCacheTtl, "promptCacheTtl").isNotNull();
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
 		requireThat(runFolder, "runFolder").isNotNull();
@@ -415,7 +466,7 @@ public final class ClaudeConnectionSettings
 			parentSettings = mapper.readTree(BoundedInput.readUtf8(source, MAXIMUM_SETTINGS_BYTES,
 				"Claude settings"));
 		}
-		putSandbox(settings, policy, implicitWrites);
+		putSandbox(settings, policy, implicitWrites, writes);
 		if (!promptCacheTtl.isEmpty())
 			settings.put("promptCacheTtl", promptCacheTtl);
 		copyPermissionRestrictions(parentSettings.path("permissions"), settings);
@@ -546,9 +597,10 @@ public final class ClaudeConnectionSettings
 	 * @param policy         the session's sandbox policy
 	 * @param implicitWrites the paths that Claude Code lets the commands write without a setting, which the settings
 	 *                       therefore do not list
+	 * @param writes         {@code true} to list the policy's write roots, {@code false} to list none
 	 * @throws IOException if a symbolic link in a path cannot be read
 	 */
-	private static void putSandbox(ObjectNode settings, ChildPolicy policy, List<Path> implicitWrites)
+	private static void putSandbox(ObjectNode settings, ChildPolicy policy, List<Path> implicitWrites, boolean writes)
 		throws IOException
 	{
 		assert settings != null;
@@ -564,7 +616,9 @@ public final class ClaudeConnectionSettings
 		ArrayNode allowWrite = filesystem.putArray("allowWrite");
 		for (Path root : policy.writeRoots())
 		{
-			if (!implicit.contains(root))
+			// Claude Code generates a protected-path denial for every write root that the settings list, so an instance
+			// that writes nothing lists none
+			if (writes && !implicit.contains(root))
 				allowWrite.add(root.toString());
 		}
 		putPaths(filesystem, "denyWrite", policy.writeDenials());

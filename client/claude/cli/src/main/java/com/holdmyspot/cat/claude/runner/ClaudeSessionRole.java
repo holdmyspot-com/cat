@@ -17,12 +17,12 @@ public enum ClaudeSessionRole
 	/**
 	 * A session that runs a test's turns. It keeps every tool, and its prompt cache lives five minutes.
 	 */
-	TRIAL(List.of(), "5m"),
+	TRIAL(List.of(), "5m", true),
 	/**
 	 * A session that reads one trial's evidence and returns a verdict. It reads files and searches them, and nothing
-	 * else, and its prompt cache lives five minutes.
+	 * else, so its sandbox lists no write root, and its prompt cache lives five minutes.
 	 */
-	JUDGE(List.of("Read", "Grep", "Glob"), "5m");
+	JUDGE(List.of("Read", "Grep", "Glob"), "5m", false);
 
 	/**
 	 * The runner option whose value is a role's {@link #optionValue() option value}.
@@ -31,17 +31,21 @@ public enum ClaudeSessionRole
 
 	private final List<String> tools;
 	private final String promptCacheTtl;
+	private final boolean writes;
 
 	/**
 	 * Creates a role.
 	 *
 	 * @param tools          the only tools that the session's model is offered, or none to keep every tool
 	 * @param promptCacheTtl the lifetime of the session's prompt cache, in Claude Code's notation
+	 * @param writes         {@code true} if the session's sandbox lets its commands write the roots of its policy,
+	 *                       {@code false} if the sandbox lists none
 	 */
-	ClaudeSessionRole(List<String> tools, String promptCacheTtl)
+	ClaudeSessionRole(List<String> tools, String promptCacheTtl, boolean writes)
 	{
 		this.tools = tools;
 		this.promptCacheTtl = promptCacheTtl;
+		this.writes = writes;
 	}
 
 	/**
@@ -62,6 +66,18 @@ public enum ClaudeSessionRole
 	public String promptCacheTtl()
 	{
 		return promptCacheTtl;
+	}
+
+	/**
+	 * Indicates whether the session's sandbox lists the write roots of its policy. A session that has no tool that
+	 * writes, and no command, needs none, and the protected-path denials that Claude Code generates for each root
+	 * would only lengthen its prompt.
+	 *
+	 * @return {@code true} if the sandbox lets the session's commands write the roots of its policy
+	 */
+	public boolean writes()
+	{
+		return writes;
 	}
 
 	/**

@@ -53,7 +53,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 
 	/**
 	 * Verifies that the declared session environment version is registered with the hash of the isolated settings
-	 * that the runner writes for a fixed host configuration, for a trial and for a control trial, so that changing
+	 * that the runner writes for a fixed host configuration, for a trial, a control trial and a judge, so that changing
 	 * those settings requires a decision about the version.
 	 *
 	 * @throws IOException if the settings or the registry cannot be read or written
@@ -111,8 +111,16 @@ public final class ClaudeSessionEnvironmentVersionTest
 				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
 				promptCacheTtl);
 
+			// A judge runs with the prompt cache lifetime of its role and a sandbox that lists no write root
+			Path judgeDestination = root.resolve("isolated/judge-settings.json");
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, judgeDestination, claudeTemporaryDirectory,
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "",
+				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
+				ClaudeSessionRole.JUDGE.promptCacheTtl(), ClaudeSessionRole.JUDGE.writes());
+
 			String settings = normalize(scope.json(), destination, root, run) + "\n" +
-				normalize(scope.json(), controlDestination, root, run);
+				normalize(scope.json(), controlDestination, root, run) + "\n" +
+				normalize(scope.json(), judgeDestination, root, run);
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(scope, root, root, List::of, false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
