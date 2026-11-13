@@ -64,8 +64,8 @@ with `--input <file>`. `--input` takes only that records file, never a prompt fi
 records, which it repeats every 30 seconds while a turn writes nothing else. When a turn's prompt depends on the reply
 to the turn before it, hold a conversation instead, as "Conversations" describes.
 
-Every run and every session request takes `--model <model>` and `--effort <effort>`, or for a run outside a run
-`--agent <name>` instead, and the launcher refuses a run or request without them. Always pass them yourself; never ask
+Every run and every session request takes `--model <model>` and `--effort <effort>`, and the launcher refuses a run or
+request without them. Always pass them yourself; never ask
 the user for them and never stop the run for want of them. Pass the model and the effort that your task or instructions
 name. When they name no model or no effort, choose it yourself from the values that the harness lists: for Claude Code,
 the values that `claude --help` lists under `--model` and `--effort`; for Codex, the models and efforts that
@@ -168,11 +168,6 @@ takes this argument list, wrapped here to fit:
 --project <project> --run-root <run-root> --input <records> --install-cat --keep-run
 --model <model> --effort <effort> --output <transcript> --receipt <receipt>
 ```
-
-When your task or instructions name a CAT agent to run instead of a model and an effort, pass `--agent <name>` with
-`--install-cat` and without `--model` and `--effort`. The launcher selects the CAT agent definition of that name in
-the artifact, and the session runs under the model and the effort that the definition names. The launcher refuses
-`--agent` together with `--model` or `--effort`, and a definition that does not name both a model and an effort.
 
 Pass `--session-transcripts` with `--keep-run` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in the run
