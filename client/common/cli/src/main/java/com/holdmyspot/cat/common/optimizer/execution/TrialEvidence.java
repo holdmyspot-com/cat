@@ -78,11 +78,11 @@ public final class TrialEvidence implements TrialRecord
 		String rendered = EvidenceSection.render(activity, trial.transcript(), trial.effects(), trial.initialProject());
 		if (!trial.endedEarly())
 			return rendered;
-		StringBuilder note = new StringBuilder(rendered + "\n\nTrial session: ended after turn " +
-			trial.responses().size() + " of " +
-			trial.requestedTurns() + ", every assertion settled. Turns not run: " +
-			String.join(", ", trial.turnsNotRun().stream().map(String::valueOf).toList()) +
-			". Assertion settlement turns:");
+		StringBuilder note = new StringBuilder(rendered).append("\n\nTrial session: ended after turn ").
+			append(trial.responses().size()).append(" of ").append(trial.requestedTurns()).
+			append(", every assertion settled. Turns not run: ").
+			append(String.join(", ", trial.turnsNotRun().stream().map(String::valueOf).toList())).
+			append(". Assertion settlement turns:");
 		trial.settledAssertions().forEach((id, turn) -> note.append("\n- ").append(id).append(": turn ").append(turn));
 		return note.toString();
 	}

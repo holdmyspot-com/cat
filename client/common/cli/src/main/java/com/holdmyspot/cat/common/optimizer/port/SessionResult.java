@@ -46,6 +46,9 @@ public sealed interface SessionResult
 	 *   normalized so that staged paths do not appear in it, or {@code none} if the events showed nothing
 	 *   loading
 	 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
+	 * @param requestedTurns the number of turns requested for the session
+	 * @param endedEarly whether the session ended before all requested turns
+	 * @param settledAssertions the first completed turn at which each assertion became settled
 	 */
 	record Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject, String model,
 		String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls,
@@ -67,6 +70,9 @@ public sealed interface SessionResult
 		 * @param windows the rate-limit windows that the harness reported during the session
 		 * @param promptSources the {@code PROMPT_SOURCES} measurement value that the harness was observed loading
 		 * @param toolCalls the root agent's calls in invocation order, with absent commands and exit statuses left null
+		 * @param requestedTurns the number of turns requested for the session
+		 * @param endedEarly whether the session ended before all requested turns
+		 * @param settledAssertions the first completed turn at which each assertion became settled
 		 * @throws NullPointerException if {@code transcript}, {@code responses}, {@code effects},
 		 *   {@code initialProject}, {@code windows}, {@code promptSources} or {@code toolCalls} are null, or a response
 		 *   list, message or {@code toolCalls} element is null
@@ -90,7 +96,20 @@ public sealed interface SessionResult
 				throw new IllegalArgumentException("An early end must leave at least one turn not run");
 		}
 
-		/** Creates a completed result without early-end metadata. */
+		/**
+		 * Creates a completed result without early-end metadata.
+		 *
+		 * @param transcript the retained harness event archive
+		 * @param responses each turn's assistant messages in order, ending with its final response
+		 * @param effects the directory that holds the session's project effects
+		 * @param initialProject a copy of the session's project as it was before the first turn
+		 * @param model the model observed in harness events, or {@code null} if the events did not name one
+		 * @param reasoning the reasoning configuration observed in harness events, or {@code null} if not reported
+		 * @param usage the reported token usage, or {@code null} if the harness did not report it
+		 * @param windows the rate-limit windows reported during the session
+		 * @param promptSources the normalized prompt-source measurement
+		 * @param toolCalls the root agent's calls in invocation order
+		 */
 		public Completed(Path transcript, List<List<String>> responses, Path effects, Path initialProject, String model,
 			String reasoning, TokenUsage usage, List<RateLimitWindow> windows, String promptSources, List<ToolCall> toolCalls)
 		{
@@ -98,7 +117,11 @@ public sealed interface SessionResult
 				responses.size(), false, Map.of());
 		}
 
-		/** Returns the turn numbers that the session did not run. */
+		/**
+		 * Returns the turn numbers that the session did not run.
+		 *
+		 * @return the unrun turn numbers, in order
+		 */
 		public List<Integer> turnsNotRun()
 		{
 			return java.util.stream.IntStream.rangeClosed(responses.size() + 1, requestedTurns).boxed().toList();

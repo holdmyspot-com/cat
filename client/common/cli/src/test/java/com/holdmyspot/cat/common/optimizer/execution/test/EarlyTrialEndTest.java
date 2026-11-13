@@ -13,8 +13,9 @@ import org.testng.annotations.Test;
 /** Checks when built-in assertion verdicts can no longer change. */
 public final class EarlyTrialEndTest
 {
+	/** Checks scoped reply assertions and contradictions that settle an unscoped assertion. */
 	@Test
-	public void replyChecksSettleAtTheirScopeOrOnAContradiction()
+	public void replyChecksSettleByScopeOrContradiction()
 	{
 		BuiltInTool scoped = new BuiltInTool.ExactText(2, "answer");
 		BuiltInTool unscoped = new BuiltInTool.ExactText(null, "answer");
@@ -27,21 +28,31 @@ public final class EarlyTrialEndTest
 		requireThat(EarlyTrialEnd.isSettled(unscoped, judgeFallback, 1), "judge_fallback_unsettled").isFalse();
 	}
 
+	/** Checks that effect assertions settle only when later turns cannot change their evidence. */
 	@Test
-	public void effectChecksSettleOnlyOnIrreversibleEvidence()
+	public void effectChecksSettleOnFixedEvidence()
 	{
 		BuiltInTool used = new BuiltInTool.ToolUsed("Bash");
 		BuiltInTool unused = new BuiltInTool.ToolUnused("Bash");
 		BuiltInTool readFull = new BuiltInTool.ReadInFull("notes.md");
-		BuiltInTool readAtMost = new BuiltInTool.ReadAtMost("notes.md", new java.math.BigDecimal("50"));
+		BuiltInTool readAtMost = new BuiltInTool.ReadAtMost("notes.md",
+			new java.math.BigDecimal("50"));
 		BuiltInTool file = new BuiltInTool.FileExists("answer.txt");
 		requireThat(EarlyTrialEnd.isSettled(used, result(used, true), 1), "tool_use_pass_settled").isTrue();
 		requireThat(EarlyTrialEnd.isSettled(unused, result(unused, false), 1), "tool_use_failure_settled").isTrue();
 		requireThat(EarlyTrialEnd.isSettled(readFull, result(readFull, true), 1), "full_read_pass_settled").isTrue();
-		requireThat(EarlyTrialEnd.isSettled(readAtMost, result(readAtMost, false), 1), "read_limit_failure_settled").isTrue();
+		requireThat(EarlyTrialEnd.isSettled(readAtMost, result(readAtMost, false), 1),
+			"read_limit_failure_settled").isTrue();
 		requireThat(EarlyTrialEnd.isSettled(file, result(file, true), 1), "file_state_may_change").isFalse();
 	}
 
+	/**
+	 * Creates a representative result for a built-in tool.
+	 *
+	 * @param tool the tool being evaluated
+	 * @param passed whether its assertion passed
+	 * @return the representative tool result
+	 */
 	private static BuiltInToolResult result(BuiltInTool tool, boolean passed)
 	{
 		String line = switch (tool)

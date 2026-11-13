@@ -40,6 +40,7 @@ import java.util.Optional;
  * @param extraPermissions the writes and hosts that the session's commands need beyond what its harness needs, which
  *   the session gets when its parent's sandbox allows them and otherwise cannot start; {@link ExtraPermissions#NONE}
  *   if the session needs none
+ * @param turnObserver observes completed turns and may end a trial before its remaining turns
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,

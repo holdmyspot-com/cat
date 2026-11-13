@@ -1010,15 +1010,23 @@ public final class Driver implements AutoCloseable
 		return record.toString();
 	}
 
+	/**
+	 * Adds early-end details to a trial's record when the session ended before its requested turns.
+	 *
+	 * @param record the existing trial record
+	 * @param completed the completed trial session
+	 * @return the record with early-end details, or the original record when the session used every turn
+	 */
 	private static String turnEndNote(String record, SessionResult.Completed completed)
 	{
 		if (!completed.endedEarly())
 			return record;
-		StringBuilder note = new StringBuilder(record + "\n- Trial ended after turn " + completed.responses().size() + " of " +
-			completed.requestedTurns() + "; turns not run: " +
-			String.join(", ", completed.turnsNotRun().stream().map(String::valueOf).toList()) +
-			"; assertion settlement turns:");
-		completed.settledAssertions().forEach((id, turn) -> note.append(" ").append(id).append("=turn ").append(turn));
+		StringBuilder note = new StringBuilder(record).append("\n- Trial ended after turn ").
+			append(completed.responses().size()).append(" of ").append(completed.requestedTurns()).
+			append("; turns not run: ").
+			append(String.join(", ", completed.turnsNotRun().stream().map(String::valueOf).toList())).
+			append("; assertion settlement turns:");
+		completed.settledAssertions().forEach((id, turn) -> note.append(' ').append(id).append("=turn ").append(turn));
 		return note.toString();
 	}
 
