@@ -1,0 +1,19 @@
+name: Windows appended-argv probe
+on:
+  push:
+    branches: [probe/windows-appended-argv]
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run probe
+        shell: pwsh
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File probe/windows-appended-argv-probe.ps1 -Out "$env:RUNNER_TEMP\windows-probe-result.json"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-probe-result
+          path: ${{ runner.temp }}/windows-probe-result.json
