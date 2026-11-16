@@ -2022,7 +2022,12 @@ certified one, a kept improvement, or an explicitly accepted uncertified one:
 	delivery pending.
 3. Journal the delivery, then apply each change after validating its live preimage. A concurrent edit stops further
 	writes without overwriting it. Restart resumes the same journaled delivery and applies each change at most once.
-4. Verify the combined result, then report the Git diff and certification applicability.
+4. Verify the combined result, then report the Git diff, certification applicability and the paths in three separate
+	lists: the paths the delivery wrote, each with its kind (created, edited, deleted, linked or a link replaced by a directory), the base-only changes
+	that it left in place, and the participating prompt sources among those base-only changes. A path that the delivery
+	wrote is never a base-only change, so a candidate's edit to a prompt source appears in the first list and not in the
+	third; the report names each list for what it holds, so that a reader cannot take "no changed prompt sources" to
+	mean that the delivery left every prompt source as it was (end-to-end finding, 2026-11-16).
 
 **Delivery entries (user ruling, 2026-11-12).** Every delivery appends an entry to the certification history, labelled
 with its outcome: `certified`, `improved, not certified`, `not certified` (an explicitly accepted uncertified

@@ -672,20 +672,21 @@ public final class Delivery
 			return new VerificationFailed(mismatched);
 
 		FileInventory current = InventoryScanner.scan(base, externalPaths);
-		// The journal's targets hold the delivered state, which includes files written beside the candidate
+		// The journal's targets hold the delivered state, which includes files written beside the candidate. A prompt
+		// source that the candidate edited is therefore not a base-only change; the delivered changes report it.
 		Set<Path> delivered = new HashSet<>();
 		for (DeliveryChange change : journal.changes())
 			delivered.add(change.target());
 		List<Path> baseOnlyChanges = InventoryDiff.between(selected.snapshot(), current).changes().stream().
 			map(PathChange::path).filter(path -> !delivered.contains(path)).sorted().toList();
-		List<Path> changedPromptSources = baseOnlyChanges.stream().
+		List<Path> baseOnlyPromptSourceChanges = baseOnlyChanges.stream().
 			filter(path -> promptSources.stream().anyMatch(path::startsWith)).toList();
 		Applicability applicability;
-		if (changedPromptSources.isEmpty())
+		if (baseOnlyPromptSourceChanges.isEmpty())
 			applicability = new Applicability(Applicability.Status.CURRENT, false, List.of());
 		else
 			applicability = new Applicability(Applicability.Status.HISTORICAL, true, List.of());
-		return new Delivered(label, applicability, changedPromptSources, baseOnlyChanges, journal.changes(),
+		return new Delivered(label, applicability, baseOnlyPromptSourceChanges, baseOnlyChanges, journal.changes(),
 			forks.diff(base, journal.changes().stream().map(DeliveryChange::target).toList()));
 	}
 }

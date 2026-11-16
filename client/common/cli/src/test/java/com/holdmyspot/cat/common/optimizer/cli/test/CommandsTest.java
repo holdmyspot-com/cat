@@ -752,7 +752,8 @@ public final class CommandsTest
 	}
 
 	/**
-	 * Verifies that a delivery appears with its diff, base-only changes and applicability, and with no other field.
+	 * Verifies that a delivery appears with its diff, the paths it wrote, base-only changes and applicability, and with
+	 * no other field.
 	 */
 	@Test
 	public void printsDelivery() throws IOException
@@ -774,15 +775,18 @@ public final class CommandsTest
 			requireThat(delivery.get("label").asString(), "label").isEqualTo("certified");
 			requireThat(delivery.get("diff").asString(), "diff").isEqualTo("diff --git a/prompts/a.md b/prompts/a.md");
 			requireThat(delivery.get("base_only_changes").get(0).asString(), "baseOnly").isEqualTo("notes.md");
-			requireThat(delivery.get("changed_prompt_sources").get(0).asString(), "sources").
+			requireThat(delivery.get("base_only_prompt_source_changes").get(0).asString(), "sources").
 				isEqualTo(Path.of("prompts/a.md").toString());
+			JsonNode written = delivery.get("delivered_changes").get(0);
+			requireThat(written.get("path").asString(), "writtenPath").isEqualTo(Path.of("prompts/a.md").toString());
+			requireThat(written.get("kind").asString(), "writtenKind").isEqualTo("created");
 			JsonNode applicability = delivery.get("applicability");
 			requireThat(applicability.get("status").asString(), "applicability").isEqualTo("historical");
 			requireThat(applicability.get("prompt_content_changed").asBoolean(), "promptContentChanged").isTrue();
 			requireThat(applicability.get("changed").get(0).asString(), "changed").isEqualTo("model");
 			requireThat(applicability.get("unchecked").get(0).asString(), "unchecked").isEqualTo("prompt_sources");
 			requireThat(new HashSet<>(delivery.propertyNames()), "fields").isEqualTo(Set.of("result", "label",
-				"applicability", "changed_prompt_sources", "base_only_changes", "diff"));
+				"applicability", "delivered_changes", "base_only_prompt_source_changes", "base_only_changes", "diff"));
 		}
 	}
 

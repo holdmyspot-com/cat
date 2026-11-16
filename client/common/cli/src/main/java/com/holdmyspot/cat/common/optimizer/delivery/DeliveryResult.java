@@ -28,14 +28,14 @@ public sealed interface DeliveryResult
 	 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork, in the base worktree
 	 *                      or to a read-only external participant, changed a prompt source, so that the merged prompt
 	 *                      system is a different snapshot than the one measured; otherwise {@code CURRENT}
-	 * @param changedPromptSources the prompt-source paths that changed outside the candidate since the fork, in path
-	 *                             order
+	 * @param baseOnlyPromptSourceChanges the prompt-source paths among {@code baseOnlyChanges}, in path order; a prompt
+	 *                                    source that the candidate edited is in {@code changes}, not here
 	 * @param baseOnlyChanges every path that changed outside the candidate since the fork; delivery left them unchanged
 	 * @param changes the changes that delivered the candidate, in the order they were applied
 	 * @param diff the Git diff of the delivered paths in the base worktree against its {@code HEAD}, including created
 	 *             files
 	 */
-	record Delivered(Outcome label, Applicability applicability, List<Path> changedPromptSources,
+	record Delivered(Outcome label, Applicability applicability, List<Path> baseOnlyPromptSourceChanges,
 		List<Path> baseOnlyChanges, List<DeliveryChange> changes, String diff) implements DeliveryResult
 	{
 		/**
@@ -45,7 +45,7 @@ public sealed interface DeliveryResult
 		 *              incumbent and only its prompt tests were delivered
 		 * @param applicability {@code HISTORICAL} if a change made outside the candidate since the fork changed a prompt
 		 *                      source; otherwise {@code CURRENT}
-		 * @param changedPromptSources the prompt-source paths that changed outside the candidate since the fork
+		 * @param baseOnlyPromptSourceChanges the prompt-source paths among {@code baseOnlyChanges}
 		 * @param baseOnlyChanges every path that changed outside the candidate since the fork
 		 * @param changes the changes that delivered the candidate, in the order they were applied
 		 * @param diff the Git diff of the delivered paths in the base worktree against its {@code HEAD}
@@ -54,7 +54,7 @@ public sealed interface DeliveryResult
 		public Delivered
 		{
 			requireThat(applicability, "applicability").isNotNull();
-			changedPromptSources = List.copyOf(changedPromptSources);
+			baseOnlyPromptSourceChanges = List.copyOf(baseOnlyPromptSourceChanges);
 			baseOnlyChanges = List.copyOf(baseOnlyChanges);
 			changes = List.copyOf(changes);
 			requireThat(diff, "diff").isNotNull();

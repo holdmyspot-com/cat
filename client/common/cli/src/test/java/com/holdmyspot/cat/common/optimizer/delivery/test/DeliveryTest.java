@@ -215,7 +215,7 @@ public final class DeliveryTest
 			requireThat(delivered.label(), "label").isEqualTo(Outcome.CERTIFIED);
 			requireThat(delivered.applicability().status(), "status").isEqualTo(Applicability.Status.CURRENT);
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEqualTo(List.of(Path.of("README.md")));
-			requireThat(delivered.changedPromptSources(), "changedPromptSources").isEmpty();
+			requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").isEmpty();
 			requireThat(read(fixture.base().resolve("README.md")), "README.md").
 				isEqualTo("readme edited by the user\n");
 			requireCandidateDelivered(fixture);
@@ -397,7 +397,7 @@ public final class DeliveryTest
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.applicability(), "applicability").
 				isEqualTo(new Applicability(Applicability.Status.HISTORICAL, true, List.of()));
-			requireThat(delivered.changedPromptSources(), "changedPromptSources").
+			requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").
 				isEqualTo(List.of(Path.of("rules/style.md")));
 			requireThat(delivered.label(), "label").isEqualTo(Outcome.CERTIFIED);
 			requireThat(read(fixture.base().resolve("rules/style.md")), "style.md").
@@ -429,7 +429,7 @@ public final class DeliveryTest
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.applicability(), "applicability").
 				isEqualTo(new Applicability(Applicability.Status.HISTORICAL, true, List.of()));
-			requireThat(delivered.changedPromptSources(), "changedPromptSources").
+			requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").
 				isEqualTo(List.of(fixture.shared()));
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEqualTo(List.of(fixture.shared()));
 			requireThat(read(fixture.shared()), "shared.md").isEqualTo("shared edited by the user\n");
@@ -1237,7 +1237,7 @@ public final class DeliveryTest
 			Delivered delivered = requireDelivered(result);
 			requireThat(delivered.label(), "label").isNull();
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
-			requireThat(delivered.changedPromptSources(), "changedPromptSources").isEmpty();
+			requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").isEmpty();
 			requirePromptTestDelivered(fixture, created);
 			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 			requireThat(fixture.resolve(Path.of("rules/old.md")), "old.md").isRegularFile();

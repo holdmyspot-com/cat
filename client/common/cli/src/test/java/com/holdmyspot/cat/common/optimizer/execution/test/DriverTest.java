@@ -7149,7 +7149,7 @@ public final class DriverTest
 			{
 				SliceResult result = harness.runSlice(driver);
 				DeliveryResult.Delivered delivered = (DeliveryResult.Delivered) result.delivery().result();
-				requireThat(delivered.changedPromptSources(), "changedPromptSources").isEqualTo(List.of(target));
+				requireThat(delivered.baseOnlyPromptSourceChanges(), "baseOnlyPromptSourceChanges").isEqualTo(List.of(target));
 			}
 			requireThat(Files.readString(base.resolve(DriverHarness.PROMPT), UTF_8), "deliveredPrompt").
 				isEqualTo("candidate-1");

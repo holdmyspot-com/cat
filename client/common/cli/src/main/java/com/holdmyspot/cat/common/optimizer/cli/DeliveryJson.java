@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameter;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.DeliveryReport;
+import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryConflict;
 import com.holdmyspot.cat.common.optimizer.inventory.PathChange;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
@@ -48,7 +49,8 @@ final class DeliveryJson
 				// Only a delivered certification has an environment that it was measured in
 				if (report.environment() != null)
 					root.put("environment", String.join("\n", report.environment().lines()));
-				paths(root.putArray("changed_prompt_sources"), delivered.changedPromptSources());
+				writtenChanges(root.putArray("delivered_changes"), delivered.changes());
+				paths(root.putArray("base_only_prompt_source_changes"), delivered.baseOnlyPromptSourceChanges());
 				paths(root.putArray("base_only_changes"), delivered.baseOnlyChanges());
 				root.put("diff", delivered.diff());
 			}
@@ -118,6 +120,29 @@ final class DeliveryJson
 		ArrayNode unchecked = node.putArray("unchecked");
 		for (MeasurementCondition condition : applicability.unchecked())
 			unchecked.add(EnumNames.lowerCase(condition));
+	}
+
+	/**
+	 * Renders the changes that delivered the candidate, each with the kind of change it made to its path.
+	 *
+	 * @param array the array to fill
+	 * @param changes the changes, in the order they were applied
+	 */
+	private static void writtenChanges(ArrayNode array, Iterable<DeliveryChange> changes)
+	{
+		for (DeliveryChange change : changes)
+		{
+			ObjectNode node = array.addObject();
+			node.put("path", change.target().toString());
+			node.put("kind", switch (change)
+			{
+				case DeliveryChange.Create _ -> "created";
+				case DeliveryChange.Edit _ -> "edited";
+				case DeliveryChange.Delete _ -> "deleted";
+				case DeliveryChange.WriteLink _ -> "linked";
+				case DeliveryChange.ReplaceLinkWithDirectory _ -> "replaced_link_with_directory";
+			});
+		}
 	}
 
 	/**
