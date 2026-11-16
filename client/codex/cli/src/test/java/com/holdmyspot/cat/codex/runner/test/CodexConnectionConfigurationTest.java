@@ -26,6 +26,7 @@ import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
@@ -817,6 +818,47 @@ public final class CodexConnectionConfigurationTest
 			requireThat(permissions.path("filesystem").path(registry.toString()).asString(), "registry").
 				isEqualTo("write");
 			requireThat(Files.readString(destination), "configuration").contains("registry.example");
+		}
+	}
+
+	/**
+	 * Verifies that a prepared isolated home that had no {@code hooks.json} holds one that defines no hooks, because
+	 * the sandbox's read entry for a missing path puts an empty file there, which a configuration reader rejects, and
+	 * that the read entry stays so that a command cannot replace the file. A {@code hooks.json} already in the home is
+	 * left as it is.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void isolatedHomeHoldsHooksFileWithoutHooks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-empty-hooks-")).toRealPath();
+			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path home = runFolder.resolve("home");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(runFolder, List.of(),
+				List.of(), Set.of()));
+			Path destination = home.resolve("config.toml");
+
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy);
+
+			JsonNode hooks = JsonMapper.builder().build().readTree(Files.readString(home.resolve("hooks.json")));
+			requireThat(hooks.path("hooks").isObject(), "hooksIsObject").isTrue();
+			requireThat(hooks.path("hooks").size(), "hookCount").isEqualTo(0);
+			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
+				path("permissions").path("cat-runner").path("filesystem");
+			requireThat(filesystem.path(home.resolve("hooks.json").toString()).asString(), "hooksAccess").
+				isEqualTo("read");
+
+			String existing = "{\"hooks\": {\"Stop\": []}}";
+			Files.writeString(home.resolve("hooks.json"), existing);
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
+				CodexParentMultiAgentState.NONE, policy);
+			requireThat(Files.readString(home.resolve("hooks.json")), "existingHooks").isEqualTo(existing);
 		}
 	}
 

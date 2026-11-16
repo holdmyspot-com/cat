@@ -943,12 +943,24 @@ public final class CodexConnectionConfiguration
 	 * before the session starts, from outside the command sandbox, so making them read-only to the commands leaves the
 	 * run's setup unaffected. A read entry also forbids creating the path, so a command cannot plant a user-level
 	 * {@code hooks.json} that Codex would trust without an approval.
+	 * <p>
+	 * The sandbox puts an empty regular file at a read entry's path when nothing exists there, and a configuration
+	 * reader rejects an empty file. The method therefore first writes a {@code hooks.json} that defines no hooks when
+	 * the home has none, and leaves an existing one as it is.
 	 *
 	 * @param filesystem   the runner profile's filesystem entries, by TOML-escaped path
 	 * @param isolatedHome the fresh runtime home that the runner owns
+	 * @throws IOException if the hooks file cannot be written
 	 */
 	private static void addIsolatedHomeProtections(Map<String, String> filesystem, Path isolatedHome)
+		throws IOException
 	{
+		Path hooks = isolatedHome.resolve("hooks.json");
+		if (!Files.exists(hooks, LinkOption.NOFOLLOW_LINKS))
+		{
+			Files.createDirectories(isolatedHome);
+			Files.writeString(hooks, "{\"hooks\":{}}" + System.lineSeparator());
+		}
 		for (String trusted : List.of("config.toml", "hooks.json", "plugins"))
 			filesystem.put(toml(isolatedHome.resolve(trusted)), "read");
 	}
