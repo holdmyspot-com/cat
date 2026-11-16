@@ -233,6 +233,43 @@ public final class HarnessRunReceiptTest
 	}
 
 	/**
+	 * Verifies a run whose session asked for a worktree still gets a receipt that lists only its requested sessions.
+	 * The response to a worktree request names no harness and no child run, because no session served it, so the
+	 * receipt must not take it for a requested session. A run that failed this way ended its runner with status 1 after
+	 * its last turn had completed.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void ignoresWorktreeResponseAmongResponses() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
+			HarnessRun run = new HarnessRunManager(fileLocks, root,
+				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
+			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
+			Path responses = Files.createDirectories(run.directory().resolve("responses"));
+			Path worktree = Files.createDirectories(responses.resolve("worktree-62099d29-79f4-49d7-be67-142b73709c53"));
+			ObjectNode done = scope.json().createObjectNode().put("format_version", 1).
+				put("id", "worktree-62099d29-79f4-49d7-be67-142b73709c53").put("status", "done").put("reason", "");
+			scope.json().writeValue(worktree.resolve("response.json").toFile(), done);
+			Path child = Files.createDirectories(responses.resolve("first")).resolve("response.json");
+			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
+				put("status", "completed").put("child_run_id", "child-run");
+			scope.json().writeValue(child.toFile(), result);
+			Path receipt = root.resolve("receipt.json");
+
+			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+
+			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
+			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
+			requireThat(written.path("requested_sessions").get(0).path("id").asString(), "id").isEqualTo("first");
+		}
+	}
+
+	/**
 	 * Verifies an evaluator can validate a receipt it has already parsed without duplicating the receipt schema.
 	 *
 	 * @throws IOException if fixture I/O fails

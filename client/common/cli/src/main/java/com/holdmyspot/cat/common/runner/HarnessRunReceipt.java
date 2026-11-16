@@ -114,7 +114,9 @@ public final class HarnessRunReceipt
 			{
 				for (Path directory : directories)
 				{
-					if (!Files.isDirectory(directory))
+					// A worktree request's response names no harness and no child run, because no session served it
+					boolean isWorktreeResponse = directory.getFileName().toString().startsWith(WorktreeRequest.PREFIX);
+					if (!Files.isDirectory(directory) || isWorktreeResponse)
 						continue;
 					Path responsePath = directory.resolve("response.json").toAbsolutePath().normalize();
 					if (!responsePath.startsWith(base) || !Files.isRegularFile(responsePath))
