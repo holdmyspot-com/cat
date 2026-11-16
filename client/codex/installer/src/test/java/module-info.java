@@ -12,6 +12,8 @@ module com.holdmyspot.cat.codex.installer.test
 
 	uses com.holdmyspot.cat.common.installer.activation.PluginActivation;
 	uses com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+	provides com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram.Factory with
+		com.holdmyspot.cat.codex.installer.test.CodexProgramFactory;
 
 	exports com.holdmyspot.cat.codex.installer.test to org.testng;
 }

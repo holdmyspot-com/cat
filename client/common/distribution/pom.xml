@@ -55,6 +55,20 @@
 		</dependency>
 		<dependency>
 			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-claude-installer</artifactId>
+			<version>${project.version}</version>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
+			<artifactId>client-codex-installer</artifactId>
+			<version>${project.version}</version>
+			<type>test-jar</type>
+			<scope>test</scope>
+		</dependency>
+		<dependency>
+			<groupId>com.holdmyspot.cat</groupId>
 			<artifactId>client-common-plugin</artifactId>
 		</dependency>
 		<dependency>

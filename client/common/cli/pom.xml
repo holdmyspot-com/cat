@@ -18,6 +18,10 @@
 
 	<dependencies>
 		<dependency>
+			<groupId>com.github.oshi</groupId>
+			<artifactId>oshi-common</artifactId>
+		</dependency>
+		<dependency>
 			<groupId>org.apache.commons</groupId>
 			<artifactId>commons-compress</artifactId>
 		</dependency>

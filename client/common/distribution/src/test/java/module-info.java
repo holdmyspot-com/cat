@@ -5,6 +5,8 @@ module com.holdmyspot.cat.distribution.test
 	requires com.holdmyspot.cat.common.installer;
 	requires com.holdmyspot.cat.claude.installer;
 	requires com.holdmyspot.cat.codex.installer;
+	requires com.holdmyspot.cat.claude.installer.test;
+	requires com.holdmyspot.cat.codex.installer.test;
 	requires com.holdmyspot.cat.common.cli.test;
 	requires com.holdmyspot.cat.common.installer.test;
 	requires io.github.cowwoc.requirements13.java;
@@ -14,6 +16,7 @@ module com.holdmyspot.cat.distribution.test
 
 	uses com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 	uses com.holdmyspot.cat.common.installer.activation.PluginActivation;
+	uses com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram.Factory;
 
 	exports com.holdmyspot.cat.distribution.bundle.test to org.testng;
 	exports com.holdmyspot.cat.distribution.license.test to org.testng;

@@ -1,6 +1,6 @@
 module com.holdmyspot.cat.common.cli.test
 {
-	requires com.holdmyspot.cat.common.cli;
+	requires transitive com.holdmyspot.cat.common.cli;
 	requires io.github.cowwoc.pouch10.core;
 	requires io.github.cowwoc.requirements13.java;
 	requires tools.jackson.databind;
@@ -12,6 +12,8 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.fakes.test to org.testng, com.holdmyspot.cat.claude.cli.test,
 		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test;
 	exports com.holdmyspot.cat.common.git.test to org.testng;
+	exports com.holdmyspot.cat.common.delegation.test to org.testng;
+	exports com.holdmyspot.cat.common.build.test to org.testng;
 	exports com.holdmyspot.cat.common.history.test to org.testng;
 	exports com.holdmyspot.cat.common.installation.contract.test to com.holdmyspot.cat.claude.layout.test,
 		com.holdmyspot.cat.codex.layout.test, com.holdmyspot.cat.common.installer.test;
@@ -28,6 +30,7 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.optimizer.evidence.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.execution.prompt.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.execution.test to org.testng;
+	exports com.holdmyspot.cat.common.optimizer.execution.contract.test to com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.hooks.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.inventory.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.port.contract.test to org.testng, com.holdmyspot.cat.claude.cli.test,
@@ -49,5 +52,6 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.runner.launcher.test to org.testng;
 	exports com.holdmyspot.cat.common.runner.policy.test to org.testng;
 	exports com.holdmyspot.cat.common.runner.test to org.testng;
-	exports com.holdmyspot.cat.common.test to org.testng, com.holdmyspot.cat.claude.cli.test;
+	exports com.holdmyspot.cat.common.test to org.testng, com.holdmyspot.cat.claude.cli.test,
+		com.holdmyspot.cat.codex.cli.test;
 }
