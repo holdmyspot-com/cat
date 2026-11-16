@@ -70,10 +70,11 @@ text alone; add any missing instruction to the guidance rather than relying on t
 Before creating or accepting a prompt file as a companion, classify it separately from its parent. A companion that a
 reader can load directly and that supplies an independent procedure, constraint, or decision is substantive even when a
 parent prompt links to it; give that companion its own `## Design Goals` and map its guidance to them. A wrapper that
-only supplies harness metadata or routes to another file remains non-substantive. Verify this distinction by checking
-the assembled artifact: every independently readable substantive file has `## Design Goals`, while each exempt wrapper
-contains no independent guidance. Do not infer a companion's goals from its parent or treat the parent's section as
-coverage for a separately readable file.
+only supplies harness metadata or routes to another file remains non-substantive. Verify this distinction in the source:
+every independently readable substantive file has `## Design Goals`, while each exempt wrapper contains no independent
+guidance. Then check that the assembled artifact retains the substantive file's executable guidance after its goals
+are removed. Do not infer a companion's goals from its parent or treat the parent's section as coverage for a separately
+readable file.
 
 Before accepting a Design Goal, derive one direct passing case and one direct failing case from its wording. The goal
 must identify the affected actor or artifact, the input, decision, or state that makes it apply, and the promised

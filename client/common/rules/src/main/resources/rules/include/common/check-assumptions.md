@@ -112,11 +112,17 @@ insufficient, inventory its supported calls and sequences, then execute the smal
 satisfy the acceptance evidence. Add the new boundary only when that probe demonstrates the specific missing operation,
 result, or control; do not infer a gap because a more direct design seems preferable.
 
+Before classifying an artifact as incompatible with a platform because of authoring documentation, an example, or a
+validator's result, distinguish documented authoring conformance from consumer acceptance, including supported defaults
+for omitted fields. Establish the claimed incompatibility from the applicable consumer implementation or its ingestion
+result, matching the version and scope to the artifact's intended consumer. If documentation and consumer behavior
+differ, report that discrepancy. Preserve input that the consumer accepts unless the task requires stricter documented
+conformance; satisfying that stricter contract does not establish that the consumer rejected the original input.
+
 When a validator, generator, or helper bundled with a platform rejects an artifact, do not infer that it defines the
-platform's artifact contract merely because it ships with that platform. Identify the platform's documented contract and
-the installed consumer that parses or executes the artifact. Treat the helper as authoritative only when those sources
-establish that role. If its result conflicts with either source, preserve the working artifact, report the mismatch, and
-use the platform's ingestion or runtime boundary for validation. For the Codex plugin-creator validator, see
+platform's artifact contract merely because it ships with that platform. Treat the helper as authoritative only when
+the documented contract and applicable consumer establish that role. If they conflict, report the mismatch and use the
+platform's ingestion boundary to establish consumer acceptance. For the Codex plugin-creator validator, see
 [openai/codex#34334](https://github.com/openai/codex/issues/34334).
 
 Before claiming that a tool, skill, subagent, command, test, or investigation has run or is unavailable—or that an

@@ -7,9 +7,9 @@
 
 ## Guidance
 
-Read environment variables only at a production process boundary, then delegate to the same operation with the resolved
-values as explicit parameters. Tests must invoke that operation with values they supply; do not set or read the real
-process environment.
+Read environment-dependent process state, including environment variables, system properties and default locale, only
+at a production process boundary, then delegate to the same operation with the resolved values as explicit parameters.
+Tests must invoke that operation with values they supply; do not set or read the real process state.
 
 Do not embed a developer-specific absolute home directory in active code, configuration, tests, or documentation. For a
 file in the checkout, resolve the project root at its established boundary and use a path relative to it. For a

@@ -147,7 +147,8 @@ requesting a new agent session yourself, for example to test a plugin or a fresh
 including from inside a CAT run, or sending information to another agent, when you receive the path of an artifact that
 another agent wrote and that is too large to read in one tool output, and when designing, updating, or
 executing a workflow that delegates work, exchanges information between agents, or hands off, retries, or resumes
-progress; when executing a multi-step plan or goal; when dispatching independent work units to run concurrently; when
+progress; before installing, updating or uninstalling CAT or any plugin, including repair or reinstall; when
+executing a multi-step plan or goal; when dispatching independent work units to run concurrently; when
 applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
 diverge from the user's intent; when creating, using, or handing off temporary files or directories; or when a task
 needs a state change that something else produces, lazy load `../include/common/rule-routing/workflows.md`.

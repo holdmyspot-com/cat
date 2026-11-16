@@ -4,30 +4,34 @@
 		{
 			"values": {
 				"old_name": "calc_total",
-				"new_name": "compute_total"
+				"new_name": "compute_total",
+				"progress_style": "a statement"
 			},
-			"expected_outcome": "Every use of calc_total under src/ is renamed to compute_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step statement appears in response text before editing; every use of calc_total under src/ is renamed to compute_total and the changed files are listed, without a user-input tool call that carries progress"
 		},
 		{
 			"values": {
 				"old_name": "get_sum",
-				"new_name": "line_total"
+				"new_name": "line_total",
+				"progress_style": "a rhetorical question that needs no reply"
 			},
-			"expected_outcome": "Every use of get_sum under src/ is renamed to line_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step rhetorical question needing no reply appears in response text before editing; every use of get_sum under src/ is renamed to line_total and the changed files are listed, without a user-input tool call that carries progress"
 		},
 		{
 			"values": {
 				"old_name": "price_with_tax",
-				"new_name": "taxed_total"
+				"new_name": "taxed_total",
+				"progress_style": "a statement"
 			},
-			"expected_outcome": "Every use of price_with_tax under src/ is renamed to taxed_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step statement appears in response text before editing; every use of price_with_tax under src/ is renamed to taxed_total and the changed files are listed, without a user-input tool call that carries progress"
 		},
 		{
 			"values": {
 				"old_name": "total_amount",
-				"new_name": "order_total"
+				"new_name": "order_total",
+				"progress_style": "a rhetorical question that needs no reply"
 			},
-			"expected_outcome": "Every use of total_amount under src/ is renamed to order_total and the changed files are listed, without a user-input tool call that carries progress"
+			"expected_outcome": "A next-step rhetorical question needing no reply appears in response text before editing; every use of total_amount under src/ is renamed to order_total and the changed files are listed, without a user-input tool call that carries progress"
 		}
 	]
 }

@@ -2,9 +2,9 @@
 
 ## Design Goals
 
-- A failure that a run of changed code shows is attributed to the change, or to the unchanged base, only on evidence
-	from a run of the unchanged base in the same environment, so that a failure the base already had is not fixed as if the
-	change introduced it and a failure the change introduced is not dismissed as one the base already had.
+- When a changed run's failure has unresolved attribution and its check has an unchanged-base counterpart, attribute it
+	only using evidence from that base in the same environment. A cause already directly established in the change, or a
+	new test with no base counterpart, needs no baseline run. This keeps existing base failures separate from new failures.
 - A baseline that is expensive to produce is recorded once where later sessions and other agents can read it and is reused
 	by every later comparison, and the base is run again only when a determining input changes or a failure cannot be
 	explained by the record.

@@ -5,10 +5,12 @@
 <!-- A hosted build failed on every job that refreshed its package index while the provider's servers were unreachable,
      and the agent only waited for the provider to recover. -->
 - A build or job step that downloads from a single upstream server, such as a package index, an artifact repository or
-	a release host, still completes while that server is unreachable, by falling back, only after the primary fails, to
-	an equivalent source whose content passes the checks that the primary's content passes.
-- When an unreachable upstream server broke a run, the agent adds that fallback to the failing step instead of only
-	waiting for the provider to recover, and no change disables or relaxes a signature, checksum or other integrity check.
+	a release host, still completes while that server is unreachable when an equivalent source is available whose content
+	passes the primary's integrity checks, selecting that source only after the primary fails. Otherwise download
+	acceptance remains unmet and the absence of a valid source is reported.
+- When an unreachable upstream server broke a run, the agent adds an available equivalent fallback to the failing step
+	instead of only waiting for recovery; when none exists, it reports that unmet condition. No change disables or relaxes
+	a signature, checksum or other integrity check.
 
 <!-- A fallback passed its stubbed tests but failed on the real runner, whose package sources pointed to a server-list
      file that the stubs never modelled. -->
@@ -22,8 +24,8 @@ upstream server, and when a job failed because such a server could not be reache
 refused or timed-out connection, or an error response during the provider's outage. It does not apply to a step that
 already falls back to a verified equivalent source, or to a failure with another cause.
 
-Keep the step's download and add a fallback to it; do not drop or replace the dependency, even when the job's tools
-could be supplied another way. The fallback is an equivalent source: a mirror or archive that serves the same packages
+Keep the step's download and add a fallback when an equivalent source is available; do not drop or replace the
+dependency, even when the job's tools could be supplied another way. The fallback is an equivalent source: a mirror or archive that serves the same packages
 and that the same signature keys verify, such as the official archive that the distribution itself publishes, or a
 release download pinned to a version with a checksum that the step compares. The project need not name that source: take
 the distribution and release from the job's log and workflow, not from your local machine. The fallback runs only when
@@ -36,10 +38,10 @@ applies those checks itself when it runs: the signing keys that the environment 
 official archive, and the step's own comparison verifies a pinned download, so you need not fetch the candidate to
 confirm it. Never disable or relax a check to make a fallback work, such as turning off signature verification, trusting
 unsigned packages or skipping a checksum. When a candidate's content cannot pass those checks, it is not a fallback:
-choose another or report that none exists.
+choose another or report that none exists and download acceptance remains unmet.
 
-When an outage of such a server broke a run, add the fallback to the failing step instead of only waiting for the
-provider to recover or rerunning until it does. Waiting for recovery may continue as a parallel track; it does not
+When an outage of such a server broke a run and an equivalent source is available, add the fallback to the failing step
+instead of only waiting for the provider to recover or rerunning until it does. Waiting for recovery may continue as a parallel track; it does not
 replace the fallback.
 
 A fallback counts as verified only after it has run once in the real environment where the step runs, such as the same

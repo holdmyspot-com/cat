@@ -16,6 +16,7 @@
 	installer's own consent command as printed.
 - Tell the user what the installer did using only what it reported: which release is active or replaced, when it takes
 	effect, and what the user must do next.
+- Preserve the installer's returned latest-update invocation so the harness can apply its installer-specific permission.
 
 ## Guidance
 
@@ -28,7 +29,8 @@
 		double quotes.
 
 	Resolve the version folder to its absolute path first, then write the launcher's absolute path literally in every
-	command that runs it, because the user's permission entries match that exact text. Write each such command as the
+	command that runs it, because the user's permission entries match that exact text. Except for a complete command
+	returned by the installer, write each such command as the
 	launcher followed by its arguments only: no variable, `cd`, environment assignment, redirection, pipe or chain of
 	commands. End each such command with `--json`, after the operation and its arguments, never before the operation:
 	the launcher prints a report for a person unless the command asks for JSON, and the permission entries match
@@ -85,8 +87,12 @@
 		install below, which installs the latest approved release when it is newer. When its `installed` field is
 		false, CAT's plugin is absent: say so, and offer to install it.
 	- Otherwise, including when the user asks to install or update CAT without naming a release, or when CAT's plugin
-		was removed by other means, run `<launcher> install --harness <h> --json`. It installs the latest release that the
-		user's policy approves, or repairs the active one when that is the latest.
+		was removed by other means, first run `<launcher> status --harness <h> --json`. When its successful installed
+		status supplies `update_command`, execute that complete shell text character for character, without adding
+		another output wrapper, arguments or commands. It installs the latest approved release or repairs the active one.
+		When status reports `installed` as false, run `<launcher> install --harness <h> --json` through the harness's
+		normal authorization. A named-release install uses the named-release command above and its normal authorization;
+		do not modify `update_command` to select a release. Handle a failed status as step 4 directs.
 4. Because the command ends with `--json`, the launcher prints one line of JSON. Act on its `result` field:
 	- `installed`: tell the user that the release that `version` names is installed and registered, and that it takes
 		effect once they restart or resume the session. In Codex, also say that Codex asks them to review a new or

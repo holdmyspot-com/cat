@@ -4,7 +4,7 @@
 
 - A change that is meant to improve the performance of a program or build is applied only when a minimal benchmark,
 	which compares the program or build before and after the change on the same machine and input, shows that the
-	improvement is meaningful.
+	improvement is meaningful, or the user explicitly approves a small improvement after reviewing the measurements.
 - The cause of a slow build or workflow is located in its own timing output before a change is chosen, so that the
 	change targets where the time goes and not an assumed cause.
 - When the benchmark shows only a small improvement, the user decides whether the change proceeds, with the measured

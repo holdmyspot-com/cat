@@ -21,7 +21,7 @@
 	and hosts, transcript retention, and the sessions it may start, and report each refused launch, including one on
 	native Windows, with its reason instead of changing sandbox settings or starting the session another way.
 - Let the new session commit, branch, and merge in its copied project, within its writable workspace, under the user's
-	Git identity.
+	resolved Git identity when both identity fields exist, or the documented fixture identity when either is missing.
 
 ## Guidance
 

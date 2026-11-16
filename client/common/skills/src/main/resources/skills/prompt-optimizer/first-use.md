@@ -38,6 +38,9 @@ Run the launcher that this skill's `SKILL.md` names. Each command prints one JSO
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
 and stop, unless step 1 says how to continue.
 
+For requests about an existing campaign, use the status, cancellation or acceptance procedure below as the request
+requires. Do not start another campaign to answer such a request.
+
 To show the user a launcher field, or the file that a field names, means to put its text in your reply verbatim,
 however long it is. A summary, an excerpt, a copy, a path or a link does not show it: the user confirms and chooses
 only from what your reply shows. Any other guidance on how long a reply is or how it is written, such as writing one
@@ -117,11 +120,11 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 2. **Confirm the contract.** While the result's `proposal_file` names a file, that file holds the proposal. Each
 	result that names a proposal file replaces that file's text, so read the file again for every such result, even when
 	its path is the one that an earlier result named. Read all of the file, including every part that arrives
-	separately, before anything else. Then your first message holds the file's text exactly as the file has it, from its
-	first line to its last, section by section, and nothing else: no introduction, summary, comment or question. Read no
-	other file or rule and run no other command between reading the proposal file and that message. After that message,
-	ask the question that this step asks, in a message of its own. The proposal holds the contract, the warnings and
-	each certification scope choice, and the user confirms only what your messages show. Its length, tens of thousands
+	separately, before anything else. Then begin your first message with the file's text exactly as the file has it,
+	from its first line to its last, section by section, with no introduction, summary or comment before it. End that
+	same message with the question that this step asks. Read no other file or rule and run no other command between
+	reading the proposal file and that message. The proposal holds the contract, the warnings and each certification
+	scope choice, and the user confirms only what your message shows. Its length, tens of thousands
 	of characters, is expected, and no guidance to keep a message short, to report an interruption briefly or to write a
 	one-paragraph update shortens the proposal or comes before it. Asking the question is this skill's own procedure,
 	not an escalation of a choice and not an interruption of the skill, even when the proposal lists conflicts or says
@@ -191,7 +194,8 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 5. **Busy.** When `status` is `busy`, another process is running the campaign. Show the `summary` and stop.
 6. **Report.** For any other `status`, the campaign has reached an outcome. Show the `summary` in full, including its
 	outcome, claim and limitations, and any `delivery_result`. The user reviews delivered changes with Git; never commit
-	them.
+	them. If `choices` lists `resume`, show that choice too; when the user selects it or has already asked to resume,
+	run `choose <campaign> resume` in the execution mode above and follow the new result's `status`.
 
 To stop a campaign that the user asks to stop, run `cancel <campaign>`. When the user asks to accept or apply the
 campaign's improved prompt without waiting for certification, that request is the user's choice of

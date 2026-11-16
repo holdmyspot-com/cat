@@ -14,4 +14,4 @@ Correct only the spelling error in this sentence and return the corrected senten
 ### observable_decisions
 
 - **kind**: guard
-- **description**: Returns the corrected sentence and does not select or read the implementation-planning rule.
+- **description**: Returns the corrected sentence and does not select or read the implementation-planning or TDD rule.

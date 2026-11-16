@@ -21,9 +21,9 @@ Use the prompt-optimizer skill to optimize and certify the compliance of {{targe
 ### proposal_in_reply
 
 - **kind**: effect
-- **description**: The agent reads the file that `proposal_file` names, and the reply contains its text verbatim and
-	unabridged, including its warnings and minimum session count, in a message that holds nothing else, before the
-	message that asks the user to confirm.
+- **description**: The agent reads the file that `proposal_file` names, and the reply begins with its text verbatim and
+	unabridged, including its warnings and minimum session count, with nothing before it. That same message ends with
+	the question asking the user to confirm or give feedback.
 
 ### no_substitute_for_showing
 

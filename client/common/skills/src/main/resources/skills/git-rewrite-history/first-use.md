@@ -14,7 +14,7 @@
 	another broader selector for that list.
 2. Require explicit approval when rewriting shared history. Create a named backup branch and record the pre-rewrite refs
 	and tree IDs. Before filtering, create a private temporary backup of every local `remote.*` configuration entry with
-	`git config --null --get-regexp '^remote\\.'`; treat its no-match exit status as an empty remote list. This
+	`git config --null --get-regexp '^remote\.'`; treat its no-match exit status as an empty remote list. This
 	NUL-delimited output stores each configuration key, a newline, and its value. Keep the backup until the remote
 	configuration is restored and remove it on both success and failure.
 3. Run the narrowest `git filter-repo` command that satisfies the approved scope and frozen refs. Do not use

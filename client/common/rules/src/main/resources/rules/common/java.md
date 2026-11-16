@@ -5,12 +5,16 @@ paths:
   - "pom.xml"
   - "**/pom.xml"
   - "**/.mvn/**"
+  - "logback.xml"
+  - "**/logback.xml"
+  - "logback-test.xml"
+  - "**/logback-test.xml"
 ---
 # Java Rule Routing
 
 ## Design Goals
 
-- Route Java-specific guidance after a task enters a Java project or source file, and load each focused rule only when
+- Route Java-specific guidance for Java source and project configuration, and load each focused rule only when
 	its decision arises.
 
 ## Guidance

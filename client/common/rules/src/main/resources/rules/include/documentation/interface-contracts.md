@@ -17,6 +17,8 @@ depends-on:
 - Let a caller find the failures that its own invalid input causes before the failures that valid input can still meet.
 - Document existing code by describing it, without adding an executable declaration merely to have a documentation
 	target.
+- Place a guarantee under a specialized documentation note only when its full scope satisfies that note's governing
+	inclusion and exclusion rules, preserving legitimate guarantees that those rules permit.
 
 ## Guidance
 
@@ -29,6 +31,15 @@ when it is not obvious. Describe values by their domain meaning rather than thei
 type, or implementation role. Keep method-level behavior separate from one input's description. When asked only to
 document existing code, do not add a constructor, method, field, or other executable declaration merely to create
 another documentation target.
+
+Before placing or approving a guarantee under a labeled note, establish which actors, state and resources it covers,
+then apply the governing convention's inclusion and exclusion rules. An observable result or matching keyword alone
+does not establish placement. When a guarantee spans categories that the convention separates, put it where that
+convention permits its full scope; do not silently narrow its meaning to fit the note. For example, when a project's
+Thread Safety convention excludes guarantees covering other processes, a shared-file guarantee covering threads and
+separate processes belongs in the ordinary description, while a permitted guarantee about calls within one process
+may remain in the note. If the convention or guarantee's scope is unresolved, inspect the authoritative guidance or
+callable contract before approving placement; do not invent a restriction from the label alone.
 
 Describe each result a caller can receive that has a different meaning, such as an empty, null, sentinel, or boundary
 value besides the ordinary result, with the condition that produces it. Write each result's description for a caller

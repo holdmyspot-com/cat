@@ -28,14 +28,18 @@ depends-on:
 This rule governs only calls to a user-input tool, such as `request_user_input` or `request_user_input_async`. A
 user-input tool reaches only the user. In each situation below, take the action that it names.
 
-Apply Request Execution's question eligibility before selecting a user-input tool. For an eligible unresolved decision,
-call the tool with one complete question naming the missing input and the action that depends on it. An answer changing
-your next action is not sufficient eligibility: implementation alternatives also change actions and remain yours to
-resolve.
+Before selecting a user-input tool or constructing its payload, identify the unresolved decision or missing information
+that requires the user's answer, and the concrete action that depends on that answer. Apply Request Execution's
+question eligibility to that decision. An answer changing your next action is not sufficient eligibility:
+implementation alternatives also change actions and remain yours to resolve.
 
-When you have a status update, progress report or other note that needs no answer, such as what you are doing, what
-you have finished, or that work is continuing, put it in your response text and keep working. Such a note needs no
-answer even when it is worded as a question.
+If there is no eligible question to ask, put any status update, progress report or other note in your response text and
+keep working, even when the note is worded as a question. Otherwise, call the tool with one complete question naming the
+missing input and the action that depends on it. Immediately before sending, inspect the actual selected tool's
+recipient and the actual question item, rather than the operation you intended to invoke. Both must match the eligible
+user decision: the tool reaches the user, and the item requests the missing answer. If either check fails, discard the
+pending call and select the proper response or collaboration channel. Do not send a placeholder or status note to test
+the tool or repair a selection mistake.
 
 When the user has already given information or authorization in this conversation, such as the option to use, the
 scope of a change, or permission to go ahead, act on it as given.
@@ -58,5 +62,6 @@ agent. If it needs a reply, send the reply to that agent with `send_message` or 
 decision that only the user can make, ask the user as described above. Otherwise, continue with your next work step.
 
 A user-input call only asks the user a question, and it leaves earlier calls and work in progress as they are. After a
-mistaken user-input call, state that it was a mistake in one sentence of your response and continue your work; that
-sentence is the whole correction.
+mistaken user-input call, put one sentence stating the mistake directly in your response text; that sentence is the
+whole correction. Then resume the original action through its proper channel. Do not invoke a user-input tool to send
+the correction, ask the user to ignore the call, or announce that no answer is needed.

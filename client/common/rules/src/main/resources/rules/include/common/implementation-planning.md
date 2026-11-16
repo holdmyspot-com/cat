@@ -24,11 +24,7 @@ artifact that no step of the plan names.
 When creating, reviewing, or revising a plan, complete these entry reads in order before inspecting the project or
 making planning decisions; skip a read only when its full text is already available:
 
-1. If the plan includes work that changes observable behavior, read TDD first:
-
-	```bash
-	cat "$CAT_PLUGIN_ROOT/rules/include/common/tdd.md"
-	```
+1. If the plan includes work that changes observable behavior, lazy load `./tdd.md` first.
 
 	This applies when your own task is read-only: the trigger is the behavior the plan assigns. TDD owns when test-first
 	is required, what establishes a behavioral red result, how unresolved contracts or unavailable test boundaries affect

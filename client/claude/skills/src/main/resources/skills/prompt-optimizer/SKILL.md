@@ -1,5 +1,5 @@
 ---
-description: Use when the user asks to improve, optimize or certify the compliance of a prompt file or prompt system through a measured campaign.
+description: Use when the user asks to improve, optimize or certify the compliance of a prompt file or prompt system through a measured campaign, or to check, resume, stop or accept results from an existing prompt optimization campaign.
 allowed-tools: [Bash]
 ---
 
