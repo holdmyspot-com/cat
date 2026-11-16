@@ -982,6 +982,17 @@ CAT runs six kinds of work in nested sessions, each started through the current 
 | Approach ranker | The cell’s failure records without evidence sections, compact earlier-attempt table, every approach’s name and full instruction, and per-approach promotion counts | Every approach exactly once in fit order, with fit groups and one-sentence reasons, in a strict schema |
 | Prompt author | Copy of the working candidate and the failure evidence, including each failing trial's evidence section | Edited prompt files in its copy, and the evidence manifest ([§2.7](#27-development-commit-gate-and-edit-or-continue)) |
 
+When a nested Codex session supplies a parent thread, startup must reconstruct its required multi-agent state from
+the included lineage before starting the child. Missing or unreadable required records, malformed included records,
+unsupported present state and unfinished included records refuse startup with the affected thread and source
+location. Standalone operation and a fully readable lineage that omits this optional state retain ordinary defaults.
+Partial history retrieval remains a separate operation and does not establish successful required reconstruction.
+
+CAT's preflight distinguishes absent optional configuration from present invalid configuration. Missing hook, MCP or
+harness configuration may use defaults; present unreadable, nonregular or malformed configuration reports its path
+and parser location when available and prevents session admission. This is CAT's preflight policy, including where
+a native harness mode would skip an invalid file.
+
 Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profiles)). The contract author, judge, triage, approach ranker
 and prompt author sessions run under the harness's **role profile**: the model and effort that the agent definition of
 `optimize-xhigh`, the most capable of CAT's implementation agents, binds in that harness. The contract records the role
@@ -1011,9 +1022,11 @@ slot's previous session of the same model cached (measured per model request, 20
 block that follows the request (sandbox lists, environment, deferred tools, skills) cannot be shared between sessions,
 because the request comes before it. Codex sessions reused about 10,000 of 15,000 to 19,000 tokens before slots and
 have not been measured in slots. For trials the content that the harness sends is otherwise unchanged: CAT adds no
-option that moves or removes parts of the system prompt and appends nothing to it. Judge sessions, which are not
-measured, start with only the read tools a judge needs and a 5-minute cache lifetime, as do trials for the cache
-lifetime alone (user rulings, 2026-11-12). Paths are not part of any measurement identity, and every trial, of the
+option that moves or removes parts of the system prompt and appends nothing to it. Claude judge sessions, which are
+not measured, are offered only Read, Grep and Glob and run without a sandbox: they have no command or writing tool to
+confine. Their permission rules retain the session's read denials and deny every MCP tool. Claude trials remain
+sandboxed; both roles use a 5-minute prompt cache (user rulings, 2026-11-12). Codex judges retain the runner's sandbox
+and read-only evidence profile. Paths are not part of any measurement identity, and every trial, of the
 baseline, the control and every candidate, runs in a slot, so comparisons stay fair. The slots work the same on every platform;
 they need no mount namespace or other facility of one operating system.
 
@@ -1105,6 +1118,14 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 	`k` of `n`, every assertion settled" with the turn at which each assertion settled; a prompt author's or triage's
 	evidence shows that note, so nobody reads a missing turn as a failure. CAT's own stop is not an infrastructure attempt
 	and is not an interruption. The status shows the share of completed trials that ended early.
+	Before a between-turn observer runs, Codex publishes retained transcript prefixes containing only records terminated
+	by a newline, and both bridge and forwarded-session handoffs copy those prefixes before notifying the observer.
+	An incomplete final record stays unavailable until complete; the snapshot covers records present when copied and
+	does not promise that the native harness has flushed every event. Insufficient evidence keeps the trial running.
+	Final retained copies preserve all bytes for strict parsing, including an unterminated final record.
+- Malformed retained trial evidence reports its filename and physical line as an infrastructure failure. It cannot
+	be omitted from the normalized record, converted into a correctness verdict or sent to a judge through
+	`on_tool_failure: judge`. Well-formed unrelated events remain ignorable; arbitrary tool-output text remains content.
 - A run that ends without a pass or fail outcome (provider error, rate-limit rejection, interruption, crash) is an
 	infrastructure attempt. The same logical trial runs again with the same test case. After 3 infrastructure failures
 	of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections and
@@ -1381,6 +1402,13 @@ below describes.
 	([§4.6](#46-inventory-validation)). It also terminates the processes recorded in the run manifest (`ownerPid`,
 	`harnessPid`) of every run left by an earlier driver, since Codex runner processes outlive a killed driver (H20). The
 	runner's stale-run maintenance deletes orphaned run directories.
+- **Process ownership during recovery:** A recorded PID is actionable only with its recorded process start identity.
+	Confirmed exit or replacement permits reuse; unavailable identity for a live PID reports an `IOException` and
+	preserves the affected run and slot. Malformed or unreadable lifecycle records likewise refuse destructive cleanup.
+	Each launch records that a child may exist before spawning it, then records its complete identity. Only a proven
+	failed start or confirmed child exit can clear that uncertainty. A historical record without child identity does
+	not prove that no child exists. Historical complete identities remain usable for the same identity checks.
+	Validate every affected record before deleting slot contents, and never signal a PID whose identity is uncertain.
 
 ### 3.9 Progress and remaining work
 
@@ -1511,10 +1539,13 @@ creating anything and tells the user to commit, stash or remove the changes. An 
 character device counts as absent: it is no change, and CAT neither copies nor records it, so the fork never holds it.
 Inside a sandboxed Claude Code session, Claude Code lays a `/dev/null` character device over each path that it protects,
 such as `.bashrc`, `.gitconfig`, `.mcp.json` or `.vscode`, and Git lists each one as untracked. An empty regular file is
-still an untracked change (user ruling, 2026-10-30). CAT records the prompt system's paths, bytes, modes and symbolic
+still an untracked change (user ruling, 2026-10-30). For the same reason, wherever CAT reads an optional configuration
+file, such as a project's or a harness home's settings, hooks or MCP server file, the null device at that path counts as
+an absent file; any other path that is not a regular file is refused. CAT records the prompt system's paths, bytes, modes and symbolic
 links. It copies participating files that are ignored by Git, or that lie outside the project, into campaign storage.
 It then adds a detached optimization worktree at the base `HEAD`, which always holds the current working candidate for
-the user to inspect.
+the user to inspect. Git's registration of that worktree is written outside the session's sandbox, as the paragraph
+"Registration outside the session's sandbox" below says.
 
 **Moved project (user ruling, 2026-11-12).** Git links a worktree to its repository by absolute paths, so moving or
 copying the project during a campaign leaves the optimization worktree pointing at the old location, where Git reports
@@ -1526,6 +1557,53 @@ original project's, and so points the original at the copy (Git 2.43). A registr
 that is missing, fails the repair; CAT then deletes the worktree, prunes Git's registrations and recreates it at the
 working candidate's recorded content. Removal relinks the same way first, since Git refuses to remove a worktree whose
 links name another place. The inventory check then runs as usual.
+
+**Registration outside the session's sandbox (user ruling, 2026-11-16).** Claude Code 2.1.323 mounts the project's
+`.git/worktrees` read-only in its sandbox, over any write grant and with or without `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`
+(probed 2026-11-16 against a worktree that a process outside the sandbox had created). A sandboxed command therefore
+cannot add, remove or prune a worktree, or write a registration's `gitdir` link: `git worktree add` fails with a
+read-only file system, and a prune prints a failure, reports success and leaves the registration, which makes a later
+add fail with "missing but already registered worktree". Every other Git operation of the optimizer still works in the
+sandbox, because each runs against the base with the project root as its working directory: reads, the temporary-index
+diff, the `.gitignore` append, and writes of the index, refs and objects. Only the operations on the optimization
+worktree's registration move to a process outside the sandbox, and the optimizer asks for each by naming the campaign:
+
+- **add** prunes the registrations of worktrees that are gone, then adds the detached worktree at the project's `HEAD`,
+	creating the registrations directory when the repository has none. A start that fails after adding is undone with
+	remove.
+- **remove** relinks the worktree as above when its `.git` file exists, force-removes it, deletes its directory and
+	prunes. It serves every removal of a campaign's worktree ([§4.1](#41-storage)): a cancelled, delivered or
+	incumbent-keeping campaign's, the cleanup of a finished one, and the undo of a failed start. A worktree that no longer
+	exists leaves only the prune.
+- **recreate** deletes the worktree's directory, prunes and adds as above. It serves a worktree whose links cannot be
+	repaired and one that sandboxed code deleted, which leaves a stale registration that only a prune clears. The optimizer
+	then writes the working candidate's files into the new worktree itself, inside the sandbox.
+- **repair** writes the worktree's `.git` file and the registration's `gitdir` link, as above, and answers `repaired` or
+	`unrepairable`; the optimizer asks for recreate after `unrepairable`.
+
+The optimizer sends each request by the route that decides a session launch ([§8](#8-skill-and-command-interface),
+"Worktree requests"): a command that a harness's session runs sends it to the session's request server, and a command
+inside a CAT run sends it to that run's runner, for either harness. A process that no harness's command sandbox
+confines runs the operations itself, in place: the session-start sweep of the CAT session directories of ended sessions
+([§4.1](#41-storage)), which a hook runs, removes campaigns that belong to other sessions, which a request could not
+name. The optimizer refuses a command that no harness runs ([§4.1](#41-storage)), so the sweep is the only process that
+reaches the operations in place. The server, the runner and the sweep run one implementation of the operations.
+
+A command that has to send a request when no server serves the session refuses with status 2 before it changes
+anything, and names the command that starts a server in the background, as a session launch does. This replaces the
+check that the optimizer's process can write `.git/worktrees`, which no session needs to pass any more. A command whose
+worktree links are intact and that removes nothing sends no request and needs no server for the worktree. A command
+that can end by removing the campaign checks for the server before its first change, so that a delivery never writes the
+base and then cannot remove the campaign; if the server ends after that check, the removal fails, and the next command
+completes it, as for any interrupted removal ([§4.1](#41-storage)).
+
+**Known limit.** A command that runs in the optimization worktree and writes the worktree's own Git state, its index or
+`HEAD`, fails in the sandbox with a read-only file system, because that state lies in the registration that the sandbox
+protects. A trial plugin's `build.command` ([§4.4](#44-trial-staging)) that runs `git add`, `git commit` or `git
+checkout` there is such a command. The optimizer's own Git operations never write that state. CAT does not work around
+the limit: making the worktree the command's working directory would make the project root read-only and place
+the sandbox's placeholder files in the worktree (probed 2026-11-16), which breaks more than it repairs. A prompt system
+whose build needs such a command cannot be optimized in a sandboxed session.
 
 When CAT presents a proposal, it records and copies the proposal's prompt tests, with their scenarios, `workspace/`
 directories and the shared files that their links reach, and the derived prompt sources that the fork does not yet hold
@@ -1575,6 +1653,12 @@ author's list of editable paths names only in-project prompt files: a link to an
 links, as read-only.
 
 ### 4.4 Trial staging
+
+Before every trial admission, including guard-pilot trials, CAT verifies that the staged target is a regular file
+whose bytes match the selected frozen snapshot. A missing, replaced or altered target stops admission and cancels
+in-flight work through the driver's failure path; it cannot become an unavailable size metric or an ordinary trial
+retry. Guard-pilot checks use the control snapshot, including a legitimate empty control target. Optional word-count
+failures remain nonfatal when the target bytes are intact.
 
 The runner copies a project's symbolic link whose target stays inside the project as a link with the same target. For
 any other link, it places a read-only copy of the file or directory tree that the link leads to in its own folder of the
@@ -1736,7 +1820,8 @@ harness records which sources an installed plugin came from, so CAT installs suc
 it runs itself, never from the user's installed copy. When `start` checks the configuration, it refuses a listed plugin
 without `build` whose name matches a plugin manifest (`.claude-plugin/plugin.json` or `.codex-plugin/plugin.json`)
 tracked in the project, because the project builds that plugin. After adding the optimization worktree
-([§4.2](#42-fork-and-optimization-worktree)), CAT runs each `build.command` there. The base worktree has no uncommitted
+([§4.2](#42-fork-and-optimization-worktree), which also states the limit on a build command that writes Git state),
+CAT runs each `build.command` there. The base worktree has no uncommitted
 changes when a campaign starts, so the build output reflects the user's current sources exactly, and the user's own
 build output is never read or changed. Running the project's own build command makes this independent of the project's
 language and build tool. `start` stops, showing the command's exit status and the end of its output, when a command
@@ -2556,7 +2641,8 @@ A trial's pass label comes from one frozen decision procedure in two parts. A tr
 prompt test passes, including the expected-outcome assertion.
 
 **Expected-outcome assertion (user ruling, 2026-10-10).** CAT adds to every prompt test the assertion
-`expected_outcome`: "the reply's result matches this test case's expected outcome". The judge decides it. It is a
+`expected_outcome`: "the reply's result matches this test case's expected outcome". The judge decides it unless a
+built-in tool does, as described below. It is a
 guard when every other assertion of the test is a guard, and an effect otherwise, because a result that needs the
 prompt's behaviour, such as an answer found only by reading a long file whole, depends on the prompt. It replaces the
 general requirement that each reply correctly and completely does what the turn asked: a judge disagrees less often on a
@@ -2722,8 +2808,9 @@ section**, with the test case's values and expected outcome. It receives each tu
 order, so an interim message is judged like the final response. It sees the built-in tool results as evidence but cannot
 override a result that decided its assertion. It may read its trial's evidence, the trial's project and, when its
 prompt names the transcript, the transcript's directory, and no other file of the host project (D87, D112). Codex
-grants that evidence read-only; Claude's grant is advisory (H23). It returns `pass` or `fail` with a rationale for each
-assertion it decides.
+grants that evidence read-only through its sandbox permission profile. A Claude judge runs without a sandbox and is
+offered only Read, Grep and Glob; its permission rules retain the denied paths and deny every MCP tool, so it has no
+command or writing tool. It returns `pass` or `fail` with a rationale for each assertion it decides.
 
 The judge is identified by its **judge version**, a number that CAT declares per harness and increments in every
 release that changes a property that can change a verdict: the role profile, the prompt, the rubric, the decision rule,
@@ -2948,7 +3035,8 @@ and any choices. A command that presents a proposal also holds `proposal_file`, 
 the campaign's directory, which holds the proposal's text; each presentation replaces that file, and the field is null
 when the command presents no proposal. The status object never carries the proposal's text, because a proposal of tens
 of kilobytes inside a command's output was cut off by one harness and summarized by agents; the skill reads the file
-whole, shows its text exactly in a message of its own and then asks its question. The skill never interprets
+whole, begins one message with its text exactly, with nothing before it, and ends that same message with its question.
+The skill never interprets
 statistics itself. The launcher also provides the contract tools,
 `contract check` and `contract workspace`, for contract author sessions ([§6.1](#61-derivation-and-confirmation)); the
 skill does not use them.
@@ -3052,7 +3140,7 @@ receive Claude's connection credentials, which the session's parent has too, bec
 parent has and is kept only from what could let it cheat during prompt optimization (user ruling, 2026-11-02).
 The user's harness directories stay readable otherwise,
 because a session's installed plugins link to files there. On native Windows, where Claude Code runs commands without
-its sandbox, Claude sessions are refused instead, and the refusal tells the user to run Claude Code and CAT inside WSL2
+its sandbox, sandboxed Claude sessions are refused instead, and the refusal tells the user to run Claude Code and CAT inside WSL2
 (user ruling, 2026-11-01). A session that needs another session requests one instead of starting a harness directly (D98).
 
 **Claude login of a run (user rulings, 2026-11-08):** a subscription login rotates its refresh token, so a copy of the
@@ -3082,11 +3170,15 @@ it), the runner refuses the run before the harness starts, with status 2, and th
 user to log in to Claude Code.
 
 No one can answer a nested session's approval prompt, so a session's own commands run without one. The
-Claude runner allows Bash for the session and relies on the sandbox it requires, which forbids unsandboxed commands,
-and grants edits inside the project by rule, so neither depends on Claude Code's own `sandbox.autoAllowBashIfSandboxed`
-or its `acceptEdits` mode. The runner does not set Claude Code's `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`: in that mode
-Claude Code also forbids writing the project's `.git/worktrees`, overriding the runner's grant, so the prompt optimizer
-could not create its worktree in a session. The user's deny and ask rules still apply first.
+Claude runner allows Bash for sessions offered commands or writing tools, requires a sandbox that forbids unsandboxed
+commands, and grants edits inside the project by rule, so neither depends on Claude Code's own
+`sandbox.autoAllowBashIfSandboxed` or its `acceptEdits` mode. Claude judges are the read-only exception described in
+[§6.4](#64-judge). The runner does not set Claude Code's `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`, so Claude Code passes its
+credentials and its configuration directory's variable to the commands and hooks that it starts. Claude Code 2.1.323
+mounts the project's `.git/worktrees` read-only in its sandbox whether or not that mode is set, and over any write
+grant, so the runner grants no write there and a session's commands cannot register a worktree; the prompt optimizer's
+registration operations are served outside the sandbox instead ([§4.2](#42-fork-and-optimization-worktree), D148). The
+user's deny and ask rules still apply first.
 Claude Code applies its sandbox only while the paths it denies fit on one command line; past that it asks for approval
 of every command that is not read-only. The runner therefore refuses a session whose denied and asked paths total more
 than 1,500,000 bytes, rather than start one whose commands would wait for an approval no one can give.
@@ -3298,12 +3390,13 @@ refuses with status `2` and the reason when a check fails:
   `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_*`, `BASH_ENV`, `ENV` and the Java option variables: the launcher scripts remove
   them before they start the JVM, and the JVM removes them again from the environment of every process it starts.
 
-For each request, the new session's sandbox is the intersection of that policy and the new session's needs (its run
+For each request, the new session's permissions are the intersection of that policy and the new session's needs (its run
 folder, the denied reads, the writes and hosts that its harness's runner reports, and any `--extra-permissions`), and
 the request never supplies it: the server refuses a request that carries a bound or any other option that only CAT's
 own starters pass, such as `--capacity-held`, `--child-needs`, `--continue-after-failed-turn` and the `--git-*` options, and passes the new session no
 harness option that the request named. A need that the policy lacks is refused with the message and settings entries
-given above. The server starts the session inside its harness's own sandbox, as its own descendant, in a run of its
+given above. The server starts the session inside its harness's own sandbox, with the read-only Claude judge exception
+described in [§6.4](#64-judge), as its own descendant, in a run of its
 own whose runner applies the request's `--session-requests` and `--request-depth` to that session's own requests, so
 the top-level session's requests have no caller limit and every deeper one does. A request for either harness is
 served, so a Claude Code session's server also starts Codex sessions, and the reverse. The server ends, and stops every
@@ -3316,6 +3409,57 @@ runner launchers refuse every launch on native Windows.
 Another session whose sandbox lets it write this session's CAT session directory can put a request there, and the
 server serves it within this session's bound, not its own: it reaches no further than that session already does by
 writing this session's files.
+
+**Worktree requests (user ruling, 2026-11-16).** The prompt optimizer's registration operations on its optimization
+worktree (add, recreate, remove and repair, [§4.2](#42-fork-and-optimization-worktree)) are requests of another kind,
+because Claude Code's sandbox forbids a session's commands the writes that they need. A client sends one by the route
+that decides a launch: outside a run to the session's request server, and inside a run to the run's runner. A process
+that no sandbox confines runs the operations itself instead, as [§4.2](#42-fork-and-optimization-worktree) says. The
+request is written into the same `requests/` directory, in the
+same archive format and read under the archive's rules (no link followed, no file with more than one hard link, bounded
+size), and answered by a `response.json` in the same `responses/` directory. Its one document holds an operation and a
+campaign identifier and nothing else: it names no path, option or Git argument, and the server refuses a document with
+another field, an operation other than the four, or an identifier that is not shaped like a campaign identifier. The
+server takes the rest from what the session's commands cannot change: the project from the session's transcript, as for
+a launch, and the worktree as `<project>/.cat/sessions/<session-id>/optimizer/<campaign-id>/worktree`, with the session
+ID that it identified itself. A request can therefore name only a campaign of its own session. A worktree request is not
+a requested session: it takes no slot, no capacity and no count of the run's `--session-requests` limit, and the broker
+serves it on a thread of its own, so that it never delays a launch.
+
+The server serves a worktree request only after the checks above, and refuses it with status `2` and the reason, having
+changed nothing, when:
+
+- the campaign is not a directory in this session's `optimizer/` directory, or the worktree or a directory between the
+	project and the worktree is a link, since the session's commands can write those entries and could point a link at a
+	folder that a removal would delete; the reason says that the campaign is not this session's;
+- the operation is add and the worktree already exists;
+- the session's sandbox lets its commands write the repository's `.git/config` or `.git/hooks`, which Git reads on every
+	operation and which can name a program to run (`core.fsmonitor`, a hook), so that Git outside the sandbox would run
+	what the session chose; the reason names the path, as the policy check names a path that it cannot read safely.
+
+A failure of Git itself is not a refusal: the response is `failed` with Git's message, and the optimizer reports it as a
+workspace failure. A request that succeeds is `done`, and a repair's answer adds `repaired` or `unrepairable`. A repair
+acts only on the registration that the worktree's `.git` file names, and only when that registration's `gitdir` records
+the path of this session's and this campaign's worktree, `.cat/sessions/<session-id>/optimizer/<campaign-id>/worktree/.git`,
+in whichever project location it was made. The `.git` file is one that the session can write, and it could otherwise
+point a repair at another worktree's registration; any other registration is `unrepairable`.
+
+Inside a run, the run's runner serves the request the same way, with the run's project in place of the session's
+project. The run's project is its own copy, which its one session can write entirely, so the runner finds the campaign by
+its identifier among the `optimizer/` directories of that project's session directories, and refuses when it finds none
+or more than one. A run whose caller allows no requested sessions gives its session no requests directory, so its
+optimizer is refused as its launches are, with status `2` and the reason that names the runner options that allow
+requested sessions. A client that finds no server serving the session refuses as a launch does,
+with status `2` and the command that starts one.
+
+**Codex.** Codex sessions use the same request. Codex's sandbox did not hit the read-only mount, but nothing in this
+design gives a reason for a second route. The optimizer already needs the request server on Codex for
+every session that it starts, so the request adds no new requirement: the one reason that a Codex server refuses, a
+session whose permissions deny reads, leaves the optimizer unable to start any trial session, so that no optimizer
+command loses anything to it. The client chooses its route by who runs the command, not by whether a sandbox confines
+it, so Codex's `prompt-optimizer` launcher, which runs outside the sandbox (D142), sends the same request to the server
+that runs beside it. A second route that depended on what the user's permission profile lets Codex's commands write
+under `.git` would fail only in some profiles. A Codex run's session has its runner serve the request, as above.
 
 The session launcher that CAT's SessionStart hook started for each harness process up to this ruling is gone, with its
 inbox, holder and `~/.cat/sessions` state folder; `install` removes that folder and its write denial. A session that
@@ -3448,7 +3592,7 @@ and launchers live in `client/claude/cli` and `client/codex/cli`.
 | `optimizer.campaign` | Immutable campaign model and its transitions. Commit gate, edit-or-continue, prompt-author-manifest validation, promotion rule, the choice among concurrent attempts, minimality reduction steps, decision table, and the `Scheduler` that makes allocation and concurrency decisions | pure |
 | `optimizer.inventory` | Inventory model, edit authority, delivery conflict planning; one scanner reads the file system without following links | pure, plus one I/O adapter |
 | `optimizer.store` | Campaign snapshot and trial records, written atomically | I/O |
-| `optimizer.workspace` | Fork and optimization worktree, the session directories' `.gitignore` check, staged sources with link dereferencing and exclusions, authoring copies and delta capture, the symbolic-link report | I/O |
+| `optimizer.workspace` | Fork and optimization worktree with its registration operations (served outside the sandbox, §4.2), the session directories' `.gitignore` check, staged sources with link dereferencing and exclusions, authoring copies and delta capture, the symbolic-link report | I/O |
 | `optimizer.execution` | The slice driver: reconciliation, admission, in-flight tracking, ordered adoption, interrupts, throttling | orchestration over ports |
 | `optimizer.delivery` | Journaled delivery | I/O |
 | `optimizer.report` | Status object, four outputs, minimum remaining trials | pure |
@@ -3591,7 +3735,7 @@ records with the evidence.
 | P4 | Both harnesses expose rate-limit utilization and reset times through the runner's harness events. | React only to rate-limit rejections, and say so in the volume warning. | Passed (H14). |
 | P5 | Both harnesses expose per-session token usage. | Omit token statistics. | Passed (H15). |
 | P6 | CAT can tell a subscription login from an API key in each harness's credentials. | Show the authentication warning unconditionally. | Passed on the documented fields; one login kind per harness observed (H16). Inside a Claude run the class comes from the runner's `CAT_HOST_LOGIN`; a macOS Keychain login without a readable store file is `unknown` unless an API-key variable is set. |
-| P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. | Partly passed (H17–H19): completion and parallelism are observable once the runner waits for children (§3.2); no Claude grandchild was observed (H17). Codex trials could not create child worktrees under the runner's sandbox (H18); since `d97383fb6b` they can except on Windows, which stays a limit recorded in §3.2. |
+| P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. | Partly passed (H17–H19): completion and parallelism are observable once the runner waits for children (§3.2); H24 later observed Claude grandchildren. Codex trials could not create child worktrees under the runner's sandbox (H18); since `d97383fb6b` they can except on Windows, which stays a limit recorded in §3.2. H18's Linux check of 2026-10-26 established Codex child-worktree creation and merging; the unverified interruption and reconciliation clauses remain, so the later observations do not establish every P7 clause. |
 | P8 | Runner harness processes are descendants of the driver, so killing the driver leaves no live harness session. | Reconciliation terminates orphans recorded through `HarnessRunManager.recordHarnessProcess`. | Passed for Claude, failed for Codex (H20). Fallback applied in §3.8. |
 | P9 | CAT can observe which prompt sources a nested session loaded. | Derive loading from documented rules, and record the limit. | Failed for instruction files (H21). Fallback applied in §6.1. |
 | P10 | Codex lets a command run for the slice budget, and reports what happens when a command exceeds its limit. | Shorten Codex slices to fit the observed limit. | Passed for the 8-minute slice; no limit was reached in 662 seconds, so the over-limit behaviour is unobserved (H22). |
@@ -3618,7 +3762,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D7 | Keep the cross-process capacity bound, injected and per harness. | Removing it leaves sessions unbounded across processes. A static global causes test contention and couples the harnesses. | Constructor changes in both runner CLIs and in the optimizer wiring. |
 | D8 | Concurrency per unit of work from its spare failures: each unit starts at `min(ceiling, spare + 1)`, a consuming failure sets `w = min(w, spare + 1)`, `w` doubles after each full window of passes up to the ceiling, and other failures leave it unchanged; the risk ceiling and the reset to 1 after every failure are removed (user rulings, 2026-10-31). | Concurrency only needs to bound the trials that the next failure would waste, and only a failure that ends work wastes any. The earlier risk ceiling (at most ½ expected failure in flight, from all of the candidate's outcomes) plus a slow-start reset after every adopted failure held work at 1 because of failures that ended nothing: in the live Codex campaign E5, reproduction ran 1,537 of its 1,827 trials alone, although a round with no matched failure can absorb one. A fixed level wastes trials after failures or runs slowly, and a predictive cost model has no calibrated predictor. | Development starts each working candidate at 1 and reaches 8 after 7 straight passes (1 + 2 + 4). A reproduction round starts at 2, reaches 8 after 6 straight passes (2 + 4) and drops to 1 at its first matched failure. An E5-like round with no matched failure, after many earlier adopted failures, is not held at 1 by them. A formal cell runs at most its spare failures plus one trials at once after a failure, so a cell that one failure would decide runs alone. Each unit's window is persisted. |
 | D9 | Adopt outcomes in assignment order. | Completion order biases decisions when duration correlates with the outcome. | A slow trial delays later decisions by up to its duration. |
-| D10 | Replace links with copies of their targets in staged sources. | Teaching the runner to copy links breaks relative external links, and absolute links would let trials write live targets. | Trials cannot observe link metadata. This is warned before confirmation and recorded as a limitation. |
+| D10 | Replace prompt-system links with copies of their targets in staged sources. | Dereferencing freezes the prompt-system content without letting staged links reach live targets. The runner's project-copy links follow the separate policy in D105. | Trials cannot observe the original staged prompt-system links' metadata. This is warned before confirmation and recorded as a limitation; it does not describe workspace or runner project-copy links. |
 | D11 | Report the exact minimum remaining trials, plus observed tokens per session and the size of the candidate's target prompt file and median trial input tokens against the incumbent's; the size counts the target prompt file alone, not derived sources, project rules or the rest of the prompt system (user ruling, 2026-10-21). | Token totals, time estimates and completion probabilities would be forecasts with no calibrated predictor. The target file is the text the prompt author edits and the user reads, and a family total would move with files that the optimization did not choose. | Users estimate cost from the reported facts themselves. The size does not show growth in a derived source or a project rule. |
 | D12 | Nested sessions for the contract author, prompt authors and judges. | The host agent cannot work while a slice runs, differs per harness, and cannot be tested with fakes. | Extra sessions, which count toward capacity and the volume warning. |
 | D13 | When an agent misapplies user-owned guidance, `failure-regression-promotion` corrects the guidance and records its regression scenarios itself instead of invoking the optimizer, and may suggest a campaign. The scenarios become prompt tests of the next campaign that covers the guidance (user ruling, 2026-10-02). | Invoking the optimizer for every such failure would halt the user's task: a campaign needs a clean worktree, a confirmed contract and hundreds of trials. Asking the user each time interrupts every incident with the same question. The scenario runner of the retired prompt-evaluation workflow is gone, so a campaign is the only executor. | A correction made this way is recorded but neither tested nor certified until the user starts a campaign. |
@@ -3737,8 +3881,8 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D126 | Rules reach agents by two audiences, primary sessions and subagents, set by each rule's `agents` key. Only guidance about the user, the user's requests and files shown to the user is primary-only: asking the user a question, answering about content shown in the conversation, reusing earlier answers instead of repeating them and continuing an active goal move out of Request Execution and Intermediate versus Terminal Goals into primary-only rules, and Codex subagents keep the question guidance because they can ask the user (user rulings, 2026-11-06: "Split the files"). | Each subagent re-reads its injected rules, so a rule that its work never uses costs tokens in every subagent. Measured on 2026-11-06 with the built hooks, the split cut a Claude subagent's rules file from 32,581 to 30,221 bytes and a Codex subagent's from 38,885 to 37,028, with the plugin and session directories counted as fixed names; a primary session's file grew by 212 bytes, the new rules' headings. | A per-agent-type audience was rejected: it would drop the request-execution and goal rules from the agents that write code, and common rules must stay harness-neutral. Keeping the whole of Request Execution and Intermediate versus Terminal Goals in subagents was rejected because those paragraphs govern only the exchange with the user. |
 | D127 | Never let the user's home folder, or any folder that contains it, be a CAT project: the session hooks, the runner launchers, the optimizer and the tools refuse a project folder that, after resolving real paths, is the native home folder or contains it, and tell the user to open a folder below the home folder; folders below it, and folders that neither are it nor contain it, stay allowed (user rulings, 2026-11-06: "The project should never be allowed to be ~" and "CAT should reject project directories bring located at the home directory or its ancestors"). | Allowing the home folder would put the project's CAT session directories in `~/.cat/sessions/`, beside the session launcher's state, which sandboxed commands may not write (user ruling, 2026-11-06), so the session's files would mix with the launcher's and its sandboxed commands could not write its CAT session directory. A folder that contains the home folder would hold the home folder, and the launcher's state with it, inside the project. A tool takes the nearest folder that holds `.cat` as its project, and the home folder always holds one, so without its own refusal a tool run below the home folder with no closer `.cat` would use the home folder. Moving the launcher's state elsewhere would keep the collision with every other CAT folder under `~/.cat/`. Refusing only in the optimizer would leave the hooks, launchers and tools to fail later on a denied write, with a message that does not name the cause. | A user who opens a session in the home folder or a folder above it gets no CAT rules and must reopen it in a folder below the home folder. In Claude Code, whose SessionStart hook cannot stop a session, the session continues without CAT; the hook shows the user the reason and tells the agent that CAT is not active. A tool run below the home folder outside any closer CAT project cannot open a CAT session directory. |
 | D128 | Rule out dependence between trials by isolation and keep no detector of accessed paths: each trial has its own workspace, sessions and judge evidence, and the outcome `certification unavailable: invalid statistical assumptions` is reserved for assumptions the optimizer records as invalid, never for a detected dependence (user ruling, 2026-10-24; `706416b739`, `e350b01cde`, `40f6656b7e`). | A detector of accessed paths with protected roots was built first, but no production component supplied it accessed paths or protected roots, so reports claimed a dependence check that never ran, and a fixture campaign certified despite detected dependence. Keeping an unfed detector was rejected because it gives false assurance. | Isolation is proven by tests and documented (§2.6), not measured per trial, so a leak that no test models stays undetected. |
-| D130 | A launch waits for the channel's response or acceptance while it cannot read the file yet and reports a failure only after reads keep failing for a bounded time; the launcher leaves a request or turn file it cannot copy for its next poll instead of declining it (`7dc5b4d271`, 2026-11-07, found by a Windows Build run). | Calling an unreadable response malformed turned a Windows sharing violation into a failed launch, and declining an uncopyable request left the client waiting for an acceptance that never came. Retrying without a bound was rejected: a file that never becomes readable must still fail the launch. | A file that stays unreadable delays the failure by the bounded wait. |
 | D129 | The user-run entry command adds the release's signing key to an existing installation trust policy that lists none, once its install succeeds, and keeps the policy's release source, version limits and harness entry; a policy that lists a key keeps it, and the installed installer never changes a policy (fix `4250ead480`, 2026-11-07, under the user ruling of 2026-11-04 that only setup changes trusted keys or policy). | Leaving an existing policy untouched kept a policy written by an earlier build keyless, so the installed installer refused every release and an agent could not install or update the plugin. Letting the installed installer add the key was rejected: it runs without a prompt and must not widen what it trusts. Replacing the whole policy was rejected: it would drop the user's release source and version limits. | A keyless policy is repaired only when the user reruns the entry command, and the entry command both installs and edits trust; its result names the added key. |
+| D130 | A launch waits for the channel's response or acceptance while it cannot read the file yet and reports a failure only after reads keep failing for a bounded time; the launcher leaves a request or turn file it cannot copy for its next poll instead of declining it (`7dc5b4d271`, 2026-11-07, found by a Windows Build run). | Calling an unreadable response malformed turned a Windows sharing violation into a failed launch, and declining an uncopyable request left the client waiting for an acceptance that never came. Retrying without a bound was rejected: a file that never becomes readable must still fail the launch. | A file that stays unreadable delays the failure by the bounded wait. |
 | D131 | A harness's CAT plugin is one bundle of its Java runtime, its installer and its harness integration, installed, updated and removed together in the plugin's versioned folder of that harness's plugin cache; nothing is shared between harnesses. An update is prompt-free and never changes trusted keys or policy; only setup does. Uninstall goes through the harness's approval prompt, removes the whole installation and keeps plugin data unless the user chooses to remove it. Rollback is removed: an older release installs only when the active release's migration registry has no data migration after it (user rulings, 2026-11-04). | One managed Java installation per machine shared by both harnesses, with a separate updater, was the earlier requirement; the user replaced it. Rollback was removed because going back past a data migration would lose data. | Each harness carries its own Java runtime and installer, so a machine with both harnesses holds two copies and updates each separately; a plugin removed by other means is not recovered, and the user reruns the setup command. |
 | D132 | Let a runner launcher hold a conversation with its requested session through `--conversation <folder>`, with the asking session's messages and the child's output in appended JSON-line files, and let every CAT command inside a run that allows requested sessions, the prompt optimizer included, send its launches to the run's runner (user rulings, 2026-11-07: "Continue with the stream because it is a better, more flexible model"). | Turns fixed before the start kept a session from answering what its child asked, so an end-to-end check whose child runs the optimizer skill could not confirm a proposal or choose a resolution in the same child; restarting the child for each turn repeats its start and loses its process state. A named pipe works across both sandboxes but blocks until both ends open, and Claude Code gives a background command no writable standard input, so appended files are the one channel that works in both harnesses. The optimizer refused inside a run because it found no session launcher, although the run's runner already starts forwarded launches outside the child's sandbox. | Supersedes D107's rule that a forwarded launch carries only turns. A caller that lets a child run a campaign must allow enough requested sessions for it, and each of them counts against the caller's limits. The asking session must keep the conversation command running; ending it ends the child. |
 | D133 | Run the runner launchers outside the sandbox of the harness session that runs them, through a sandbox exception that `install` adds for each launcher by its absolute path and reports (Claude Code: `sandbox.excludedCommands` plus `permissions.allow`; Codex: an `allow` prefix rule), make the harness home's shell startup files read-only to sessions, and have the launcher confirm that it runs outside the sandbox, identify the session, read its policy and start the session inside its harness's own sandbox with the intersection; refuse at once a Codex session whose permissions deny any read (user rulings, 2026-11-08: "investigate how we could use sandbox exclusion safely and migrate to it", "make the startup files read only", "lets fail fast if denied reads is detected and explain why"). | The session launcher that the SessionStart hook started outside the sandbox needed an inbox, a holder process and a state folder per harness process, and it ran whether or not the session ever started a session. Both harnesses can run one exact command outside their sandbox: an absolute path matches only its own spelling, cannot be shadowed by a function or alias, and a variable assignment or second command in front of it keeps the command sandboxed. Claude Code strips a few wrapper names before it matches and its shell loads the startup files, so a function planted there under a wrapper's name would run unsandboxed unless sessions cannot write those files. Codex keeps an allowed command sandboxed while its filesystem permissions deny any read (openai/codex#38318, open and unanswered as of 2026-11-08), so a launch from such a session would fail later with a sandbox error that does not name the cause. | Supersedes D107's 2026-11-06 revision: the top-level session now needs a sandbox exception, and the session launcher, its inbox, holder and `~/.cat/sessions` state folder are removed. D127's reason about the launcher's state no longer applies; its other reasons stand. The launcher's checks become the boundary, so every option, path and environment variable it accepts from a session is untrusted input. A Codex user whose profile denies reads cannot start a session from a Codex session until the upstream fix, and must remove the denied reads or start from a terminal. A session that started before the update must be restarted. The user's shell startup files cannot be edited from a session. |
@@ -3754,6 +3898,10 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D143 | Race the accepted prompt author attempts after a revert, when the attempts cannot settle on one diagnosis, and before a stalled-development pause: each racer is a development series, drops by exploratory Wilson bounds on equal prefixes, and the winner is minimised and promoted (user ruling, 2026-11-12). | Choosing by the promotion runs alone picks a winner from a handful of runs, which is noise where development is stuck. One session that writes the alternatives shares its bias, so the alternatives are independent attempts under different approaches. Dropping on observed rates instead of bounds drops a racer as good as its rival by chance, the failure that revert's bounds avoid. Racing every round multiplies development trials for no gain where one attempt already wins clearly. | A race spends development trials on attempts that lose, up to 100 per cell for each remaining racer; the working candidate stops sampling while it runs; the winner's counts restart if the minimality pass changes it. |
 | D144 | Decide an assertion with a built-in tool whenever a tool can, extend `tool-used`, `tool-unused` with an input expression, add `changed-only`, and make the contract author list why each remaining assertion needs the judge (user ruling, 2026-11-12). | Recognising a mechanical assertion in its prose would need a model or heuristic with no unit test. A tool verdict is exact, so no judge qualification applies and the frozen judge is unchanged. | More tool forms for CAT to maintain, and a judge session still runs for every assertion no tool decides, including `expected_outcome` without a tool. |
 | D145 | End a trial after a completed turn when every assertion is settled, never inside a turn (user ruling, 2026-11-12). | A mid-turn end needs a partial record and the Codex runner refuses a mid-turn interrupt (H19). A trial with a failed assertion cannot end while another is unsettled, because the control and incumbent comparisons use per-assertion rates. | A trial whose `expected_outcome` or another assertion is judged never ends early, and a passing guard such as `tool-unused` settles only at the end, so the saving is limited to fully tool-decided tests whose assertions settle early. The plan's example, ending at the first tool call, is met only at a turn's end. |
+| D146 | The development judge compares its verdicts with the frozen judge's stored verdicts (the held-out trials that the frozen judge judges anyway), runs overlapping candidates, shadows live only when the shadowed trials can reach qualification before the next certification attempt, and carries a qualification into a later campaign on the same target (§6.4); a campaign whose project was moved or copied repairs or recreates its optimization worktree (§4.2) (user rulings, 2026-11-12, evening). | The token comparison certified with no candidate qualified: each test reached only 144–152 of the 299 shadowed trials needed, and the candidates cost about $30 for nothing. | Shadowing every trial until qualification was rejected, and batched judging stays deferred until the comparison shows how much of the cost judge start-up still is. |
+
+| D147 | Show the proposal and ask the applicable question in one message: begin with the proposal file's complete text verbatim, with nothing before it, and end with the question (user ruling recorded in the implementation handoff). | The user selected variant s6 after comparing one-message and two-message presentation. The user must see every proposed term before deciding. | The full proposal remains required even when long; conflicts and unranked models still require resolution before confirmation. |
+| D148 | The request server, outside the session's sandbox, adds, recreates, removes and repairs the registration of the prompt optimizer's optimization worktree, the run's runner does the same inside a CAT run, and a process that no sandbox confines does it in place; the request names an operation and a campaign and no path or Git argument, and Codex uses the same request (user ruling, 2026-11-16: the request server, which runs outside the session's sandbox, creates and deletes the optimizer's worktrees). | Claude Code 2.1.323 mounts `.git/worktrees` read-only in its sandbox over any write grant, with or without the environment scrub (probed 2026-11-16), so the optimizer's sandboxed commands cannot register their worktree, while every other Git operation of the optimizer still works there. The server already runs outside the sandbox and already identifies the session, its project and its CAT session directory, so a request that carries no path leaves the session no way to choose what is created or deleted; a second server or an exception for the optimizer would give a second way to leave the sandbox, which D134 declined. One request for both harnesses needs no test of what a Codex profile lets its commands write. | A start, a recreate and a removal need a request server serving the session (or a run that allows requested sessions), and a command whose worktree links are intact and that removes nothing works without one. The server refuses when the session's sandbox lets its commands write `.git/config` or `.git/hooks`, because Git outside the sandbox would run what they name. A build command that writes the worktree's index or `HEAD` still fails in the sandbox. The runner's grant of `.git/worktrees` is removed. |
 
 ## 14. Acceptance evidence
 

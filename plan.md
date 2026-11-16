@@ -4,6 +4,511 @@ This plan turns `design.md` into code and acceptance evidence. It is written for
 `design.md` is the product and technical authority; this plan is the execution and acceptance authority. If they
 disagree, fix `design.md` first, then this plan, before dependent work continues.
 
+## Current transfer handoff (2026-11-16)
+
+The user requested that this agent wind down and transfer the work. Resume the full goal, **implement
+`design.md` and `plan.md`**; it is not complete. This handoff supersedes older statements of current
+ownership, next action and build currency below, without removing any product requirement or final gate.
+Preserve the dirty worktree and its untracked sources. Do not reset, clean, stash, merge or publish the
+whole checkout to make transfer easier. No new implementation or verification run was started during
+wind-down, and the known formatting failure below has deliberately been left for the receiver.
+
+### Receiving session `990cbfa9` (2026-11-16)
+
+Session `990cbfa9-12a1-4fa6-9a10-7c8990b17f8e` adopted the goal, the cleanup ownership above and the installer
+two-file claim. It snapshotted the dirty tree as unreferenced commit `6bf11020b` (tracked changes plus untracked
+`client/` sources) and runs all 15 open frontier nodes (13, 27, 35–48) as seven delegates, each in its own
+`git clone --shared` under `~/cat/worktrees/rw-g1`…`rw-g7`, with briefs and group contracts in that session's
+`temp/repair-wave-IsEzin/`. Accepted results are replayed onto this tree as validated patches. macOS job
+`133165146571` was still holding at 13:13Z; its 360-minute job limit ends it at about 13:58Z.
+
+Result (13:35Z): all 16 open nodes were repaired, accepted from their focused gates and replayed; both repair records
+now say 55 verified, 0 open. Node 37 deleted `SessionDirectoryAuditTest`. The first full build then failed one
+pre-existing audit, `TestabilityAuditTest.sourcesDoNotSleep`, on the untracked fixture `WaitUntilCommandProcess`
+(`Thread.sleep` in `main`); it now polls through `Pause.sleeping`. The full uncached clean verify with an absent home
+(`temp/repair-wave-IsEzin/build-6/terminal.json`) passed: 454 reports, 6,025 tests, 0 failures, 0 errors, 6 skipped
+(five Windows-only `CatPs1Test` cases and one `CodexRunPartTest` case). 21 tests took at least 1 s; the slowest is
+`DelegationTest.dirtySourceIsFrozen` at 4.86 s. Gate 1 passes for this tree. Nothing is committed: §2 makes commits wait
+for the Windows exemption decision, and the wave's test edits depend on uncommitted production sources. Focused gates
+must not set `JAVA_TOOL_OPTIONS`: the JVM prints its "Picked up" notice on stdout, and
+`WaitUntilTest.shellStarterRunsLiveProcessContract` reads that line as the fixture's readiness line.
+
+macOS ARM job `133165146571` reached its job limit and ended `cancelled` at 14:03:52Z. Its hold, receipt-upload and
+cleanup steps did not run, so no terminal receipt exists beyond the client evidence already retained. Run
+`43827636415` is now terminal. The `CAT_RELEASE_SESSION_PUBLIC_KEY` variable and the branches
+`release/v1.0-republish-session` and `release/v1.0-bootstrap-diagnostic` stay in place: their recorded last consumer is
+the unrun v1.0 republication. The seven repair clones are removed.
+
+User rulings (2026-11-16, 09:10 Toronto):
+- Keep the Windows installer exemption and verify it on CI: one Windows job delivers the real installer through the
+  generated exemption script. Commits of the dirty tree follow that result.
+- Live E1–E8 acceptance and the failure-reporting optimizer runs are authorized in both harnesses, Claude Code
+  included (luna/low screening first). This supersedes the Codex-only live authorization.
+
+Session `990cbfa9` also added WI-145 (user ruling, 2026-11-16): Claude Code 2.1.323 mounts `.git/worktrees` read-only in
+its sandbox over any write grant, so the prompt optimizer's worktree registration (add, recreate, remove, repair) is
+served by the session's request server, by the run's runner inside a CAT run, and in place by the SessionStart sweep.
+`design.md` §4.2, §8 "Worktree requests" and D148 carry the design; WI-145 and R-W17 carry the steps and tests. Nothing
+of WI-145 is implemented. Until it is, a Claude Code 2.1.323 session's `start` cannot create its worktree; Codex sessions are
+unaffected. Probe evidence is in
+`~/cat/worktrees/gitwt-probe4/` (report in the session's `temp/worktree-server/probe4-report.md`) and `gitwt-probe3/`.
+
+### First actions for the receiving agent
+
+1. Read the current session rules and query the harness's current goal status. The outgoing session is
+   `01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4`; its complete rules are in that session's `rules.md`.
+2. Resolve the retained macOS worker before other implementation. Run `43827636415`, job
+   `133165146571` (macos-arm64), was still `in_progress` in the provider API during wind-down.
+   Its owner is `/root/native_client_macos_arm64`; the current collaboration inventory reports
+   `pending_init`, which does not prove a live client or completed remote work. A wind-down message
+   was sent. Recheck provider state and the owner's latest report before reconnecting or releasing
+   it. The SSH client handle `68336` is unavailable from the outgoing root (`Unknown process id`);
+   this does not establish that the remote worker has ended. Connection/evidence locations are below.
+3. Take over the two-file installer repair claim explicitly, fix the single Checkstyle violation,
+   then run its focused gate. Accept it only after inspecting the terminal receipt, named test XML
+   and configured quality results. Do not count it as verified merely because its edits exist.
+4. Continue only the remaining settled findings in the repair frontier, preserving accepted receipts.
+   After integration, run the complete required verification and reconcile all eight final gates.
+   A focused pass or completion of this repair queue does not complete the goal.
+
+### Checkout, ownership and authoritative records
+
+The transfer checkout is branch `v1.0`, HEAD `5f4792eb2ce3ef9396c5b6643ecc37e65be4f5bb`, four
+commits ahead of `origin/v1.0` at wind-down. It contains extensive uncommitted implementation,
+tests, rules and documentation from the existing goal. The source state, rather than that HEAD
+alone, is the work being transferred. The outgoing root has stopped editing implementation files.
+
+These paths are relative to the project root. Keep them available in this checkout for the receiver:
+
+- **repair_dispatch**: `.cat/sessions/01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4/temp/remaining_review_dispatch-xoHXXb/dispatch.json`
+  records accepted writers and the outstanding exclusive two-file claim.
+- **repair_frontier**: `repair_frontier.json` beside that dispatch contains each finding's settled
+  contract, exact write allowlist, focused gate and source review. Its node indices are zero-based.
+- **review_report**: `.cat/sessions/01a1e0af-7bbc-7ef0-8b55-b1279bb0a3aa/temp/assertion_contract-87D1vF/report.json`
+  records the complete indexed review population and finding dispositions. Its
+  `root_repair_transition.counts` currently says **39 verified, 16 open**, out of 55 findings.
+- **native_controller**: `.cat/sessions/01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4/temp/v1_native_preflight-sOMWbB/controller.json`
+  identifies native runs, the isolated release candidate, contracts, access files and cleanup owners.
+  Some nested status fields and the active-gate pointer are stale. Read actual reports and provider
+  state; do not treat a retained `running` field or expired liveness deadline as a live process.
+
+These ignored session artifacts are a same-checkout handoff, not committed inputs guaranteed to
+exist in a clean clone. Root retains ownership of their cleanup through final goal acceptance;
+the receiving coordinator must adopt that ownership. Do not delete evidence, keys or candidate
+repositories while an outstanding consumer or remote client still needs them. If transferring to
+another machine, explicitly preserve these directories before ending this session.
+
+### Latest accepted work
+
+The following evidence directories are below the outgoing session's `temp/`. Their `report.json`,
+terminal receipts and frozen reports record accepted focused checks, not current whole-tree acceptance:
+
+| Evidence directory | Accepted outcome | Focused result |
+| --- | --- | --- |
+| `held_capacity_parent_repair-QMLf1Y` | Held-capacity assertion observes the capacity branch | 1 test passed; quality checks clean |
+| `curated_cache_parent_repair-jiKCHc` | Curated-cache tests observe immutable Git requests; successful fake responses do not manufacture effects | 7 tests passed; quality checks clean |
+| `manifest_launcher_refusals-fSfw3F` | Oversized manifest and missing Windows launcher tests identify the intended refusals | 54 HarnessRunManagerTest and 15 HarnessArtifactTest cases passed |
+| `live_policy_plugin_requests-iIi7m5` | Live-only policy arguments affect roots; two-plugin installation checks exact marketplace commands | 24 CodexServerPolicyTest and 40 CodexRunnerTest cases passed |
+
+The last pair is already accepted in both repair records. Native-controller references to tool
+session `45636` as running are stale; its successful terminal receipt is in the last directory above.
+Reuse accepted results unless a determining input changes; do not restart the completed review.
+
+### Incomplete installer repair: exact resume point
+
+The dispatch still assigns the outgoing `/root` exclusive ownership of these files in the dirty
+shared tree. Treat that as an outstanding handoff claim, not a live source writer. The receiver
+must record reassignment before editing; the findings remain open:
+
+- `q1_changed_hook_replacement_unobserved`, node 35:
+  `client/codex/installer/src/test/java/com/holdmyspot/cat/codex/installer/test/HookTrustTest.java`,
+  `changedHookGetsAnotherHash`. The edit requires exactly one recorded replacement hash, validates
+  its SHA-256 form and difference from the previous value, and observes that value in configuration.
+- `q1_changed_profile_startup_removal_unobserved`, node 36:
+  `client/codex/installer/src/test/java/com/holdmyspot/cat/codex/installer/test/SandboxModeProfileTest.java`,
+  `leavesProfileThatUserChanged`. The edit observes recorded startup read entries before removal
+  and their absence afterwards while preserving the user-modified profile.
+
+The invocation directory is
+`.cat/sessions/01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4/temp/changed_hook_profile_cleanup-glb2X6/`.
+It holds ownership, pre-edit copies, `gate-input.json`, `focused_verify.log` and
+`terminal_receipt.json`. The exact Maven invocation is in the receipt. Its terminal exit is **1**;
+tool session `16417` has been reaped. The only reported diagnostic is
+`HookTrustTest.java:233`: LineLength 121 exceeds 120. Wrap the `requireThat(...).contains(...)`
+chain after the dot, following surrounding style. Do not relax Checkstyle. Recompute the changed
+source input identity for the rerun and retain the failed receipt separately.
+
+The focused gate, from the project root, is:
+
+```bash
+client/mvnw -q -f client/pom.xml -pl codex/installer -am \
+  -Dtest=HookTrustTest,SandboxModeProfileTest -Dsurefire.failIfNoSpecifiedTests=false verify
+```
+
+Use the project-required output wrapper and isolated temporary/home settings from the existing
+invocation. Do not copy a developer-specific local-repository path into portable build policy.
+After a pass, archive the two named XML reports and quality reports, record acceptance in both
+repair records, and release the claim. Expected disposition then is 41 verified and 14 open;
+that is a proposed next state, not the state at transfer.
+
+The other open frontier nodes are 13 (checksum claim wording), 27 (Windows waiter deletion
+request), 37 (session-directory source audit), 38–39 (duplicate requirement and obsolete empty-values
+target), 40–42 (overlay/store refusal state and effort migration), 43 (report token assertions),
+44–45 (owning-harness refusal and staged-prompt result), 46 (reopen without originals), and 47–48
+(proposal findings B30R-F1/F2). Their decision-free contracts and gates are already in the frontier;
+consult those exact records instead of inventing another review campaign.
+
+### Native/republication branch and remote cleanup
+
+The separate authorized publication request is to **republish v1.0**, containing only the sandbox-update
+fix and related run-part guidance. A new version and publication of the entire dirty goal checkout
+were not authorized. The isolated candidate repository is under
+`.cat/sessions/01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4/temp/v1_caller_closed_build-RiCLEg/repository/`.
+Do not conflate its source, diagnostic workflow commits or receipts with the goal checkout.
+Publication remains unrun; the inspected diagnostic runs skipped their Publish release jobs.
+
+- macOS connection details, transcripts, native API/checksum evidence and marker-reader reports:
+  `.cat/sessions/01a1e356-3f1d-7ef0-94a8-b56ac94d22b3/temp/macos-arm64-client-MvKYn6/`.
+  The published connection artifact is `connection-artifact/ssh-command`. Read it as arguments,
+  not executable shell text. Use the existing pinned relay and private key identified by the native
+  controller; never print private material. The latest reconnect transcript shows an interrupt-path
+  child attempt, not a terminal lifecycle receipt. Inspect it before deciding what can safely exit.
+- Run `43827636415`: macos-x64 job `133165146294` and Windows job `133165146601` are completed
+  failures; ARM job `133165146571` remains the outstanding remote owner described above. The
+  dispatch's conservative job deadline is `2026-11-16T13:58:37Z`; consult actual provider deadlines.
+- Native marker-reader behavior was accepted on both Macs for the scratch Bash 3.2-compatible
+  reader, including rejection/retention of wrong commit, empty marker and extra-line cases.
+  That does not prove production lifecycle acceptance. The candidate release-session script also
+  contains pathname checksum comparison and first-guest timeout changes; its local syntax checks
+  do not establish native outcome gates.
+- The root's ARM production-client transcript is retained in outgoing-session
+  `temp/native_arm_production_client-hIwN1N/`. It observes readonly TMOUT, an unexported value in
+  nested Bash, a completed foreground 75-second command and prompt logout. Independent idle
+  duration and the complete lifecycle/failure/cleanup matrix remain unproven.
+- Windows run `43843186645`, job `133216703714`, is now completed failure. The owner stopped
+  keepalive, observed its exit acknowledgement, sent normal shell `exit` and observed SSH close.
+  The provider's Hold, terminal upload and owned-directory cleanup steps succeeded. Do not try to
+  recover or cancel that terminal worker. The report and transcripts are in
+  `.cat/sessions/01a1e3a8-87d8-72a2-8779-e7c4f03bb8cb/temp/windows-native-verify-Y25E3I/`.
+  Native ACL negative fixtures passed 12/12 and positive ACL evidence exists; the production attempt
+  stopped at `mkdir -m 700` permission failure before production host creation. Production lifecycle
+  gates remain unrun. The uploaded artifact is
+  `diagnostic-session-terminal-43843186645-1-windows-x64` (artifact ID `14227158329`).
+
+Follow the remote-runner-session shutdown procedure: preserve required outputs, exit the hosted
+shell normally, reap the client, and observe provider cleanup. Do not kill SSH or cancel a live job
+as a substitute. Retain local keys and the `CAT_RELEASE_SESSION_PUBLIC_KEY` repository variable
+until every dependent client/run is terminal, then restore the variable's recorded previous state
+(absent) and clean only owned resources. The controller lists diagnostic branches and their last
+consumers; branch cleanup is still part of the handoff, not proof of completed publication.
+
+### Remaining terminal acceptance
+
+All eight §9 gates still require final reconciliation on the resulting source and installed artifacts:
+the current full build; requirement execution/semantic/native traceability; no models in Java tests;
+installed E1–E8; design G1–G10 mappings; testability including absent-home execution; documentation;
+and the final standalone-codebase transition. Earlier whole-client passes cover their captured inputs,
+not all later uncommitted repairs. Keep their accepted unchanged subclaims, but do not report the
+current tree as fully verified. Do not remove Requirement tags or perform the final standalone
+transition before gates 1–7 pass. Current live acceptance authorization is Codex-only; Claude is
+authorized for the separately requested usage comparison. Preserve explicit user exclusions/deferred
+cases from the governing design and plan; do not silently expand or narrow those decisions.
+
+## Immediate handoff: installer sandbox exemption
+
+The user requested a handoff after the active subagent finished. The exclusive installer writer has
+finished and released ownership. Root has stopped implementation for that handoff; no build, install,
+model run, commit or publication is pending in this work unit. Preserve the dirty worktree, including
+unrelated predecessor changes. The overall goal remains incomplete. This section supersedes earlier
+next-action instructions only for the installer exemption and its immediate prerequisites; the other
+requirements and final gates below remain in force.
+
+### Settled user requirements
+
+- Codex automatically exempts only the exact latest-update installer script run through `run-part`.
+  Unrelated `run-part` commands must retain their normal sandbox behavior.
+- Latest-only restricts the exemption, not the installer's supported versions. Explicitly named versions
+  remain supported with ordinary authorization.
+- Claude retains its existing installer permission behavior. Preserve Codex status/uninstall and sibling
+  launcher rules. Migrate only recognized complete CAT-owned historical rule renderings; refuse foreign files.
+- Refresh the plugin before the prompt-optimizer usage comparison. Live acceptance uses Codex only;
+  Claude is authorized exclusively for that measurement. No measurement was run during this work.
+
+### Implementation and accepted evidence
+
+The machine-readable report, exact changed-path list, source hashes, commands, diagnostics and native
+checker receipts are retained at
+`.cat/sessions/01a1d517-3e11-7cf2-b4a8-5b441203bcae/temp/installer-exemption-hlWkmD/implementation_evidence/handoff.json`.
+Root inspected its terminal receipts and confirmed every listed source hash still matches. The report's
+local E1–E7 identifiers concern this exemption only; they are separate from the plan's campaign E1–E8.
+
+The implementation passes the protected installation environment through `HarnessIntegration` into
+permission generation and status. `InstallerRules.latestUpdateCommand` is the single Codex serializer;
+successful installed status emits `update_command`, and the shared update skill consumes that command
+unchanged for latest updates. The Codex output-reading rule now permits that complete frozen command.
+The changed skill and rule have not yet passed assembled-artifact acceptance.
+
+POSIX scripts bind `PATH=/usr/bin:/bin`, quote the absolute wrapper and installer paths, and use a literal
+heredoc containing only `install --harness codex --json`. Outer-shell rules use absolute `/bin` or
+`/usr/bin` bash/sh/zsh paths with `-c` or `-lc`. Basename shell rules were removed because Codex can
+otherwise match an arbitrary executable with that basename. Windows scripts bind the recorded
+SystemRoot/PATH/PATHEXT, derive system executable paths, set UTF-8 output, and end in a terminated
+`exit $LASTEXITCODE;`. Missing Windows metadata is treated as foreign ownership. Current and known
+historical ownership checks compare complete regenerated files.
+
+The focused command `client/mvnw -q -f client/pom.xml -pl codex/installer,claude/installer -am verify`
+exited zero. The installer reports contain 491 common, 187 Codex and 114 Claude tests: 792 tests with
+zero failures, errors or skips. Scoped whitespace verification passed. The production-generated POSIX
+rules also passed nine raw-argv cases through native `codex execpolicy check --resolve-host-executables`
+on `0.160.0+41`: the exact command was allowed; changing the version, harness or body, appending another
+outer command, using a bare wrapper/installer, or using a fake/basename shell received no allow match.
+These observations establish raw policy matching, not the runtime shell-lowering path.
+
+| Exemption acceptance boundary | State at handoff |
+| --- | --- |
+| Exact POSIX script, named-version restriction, trusted outer shell | Focused tests and native raw-argv matching passed; runtime lowering unrun |
+| Unrelated/modified command exclusion | POSIX raw-argv cases passed; Windows appended-argv security remains unaccepted |
+| Claude behavior and exact ownership/migration | Focused module verification passed |
+| Status command and update-skill consumption | Status tests passed; assembled skill and agent execution unrun |
+| Recorded bootstrap environment | Serializer tests passed; Windows/macOS execution unrun |
+| Full build and distribution assembly on these changes | Unrun; earlier full-build receipts cover predecessor source only |
+| Real plugin refresh and installed behavior | Unrun on this change; previous host-context/install failures remain unresolved |
+
+### Continuation (2026-11-15, session `ef24aa34`)
+
+- Windows check still unrun: `powershell.exe` exists through WSL interop, but the Claude sandbox refuses its vsock
+  (`UtilBindVsockAnyPort: socket failed 1`), so no PowerShell boundary is reachable from this session. The user was
+  asked whether to ship the exemption POSIX-only (Windows keeps ordinary authorization) or hold for a Windows probe.
+- The first uncached whole-client `clean verify` on these changes failed at compilation: `ClaudeRunner.java:1149`
+  still called the three-argument `installPermissions`; `CodexRunner.java:925` and `LifecycleSkillsTest.java:221`
+  have the same stale form. The focused installer-only reactor could not see these callers. Receipt and log:
+  this session's `temp/exemption-clean-build-SCiryU/terminal.json` and `build.log`. A delegate is updating the
+  callers to pass the isolated harness environment (brief beside the log); the clean gate reruns after integration.
+- Integrated: both runners pass their isolated harness environment to `installPermissions`; the runner tests pass
+  the same environment to `permissions(...)`; `LifecycleSkillsTest` now requires a Codex skill `install` command
+  (bare or named version) to match no automatic permission, per the latest-only requirement. Focused gate
+  `verify4.log` exit 0 (ClaudeRunnerTest 86, CodexRunnerTest 40, LifecycleSkillsTest 5).
+- Whole-client uncached `clean verify` then passed: `terminal.json` exit 0 in 152 s, 453 reports, 6,001 tests, zero
+  failures/errors, six skips, absent home preserved (earlier failed attempt kept as `build-1-compile-failure.log`).
+  This passes final gate 1 on the current tree with the exemption. Twenty cases took ≥1 s (DelegationTest, build
+  process contracts, BuildAdmissionCli, PluginLaunchers and others); their dispositions belong to gate 6.
+- Windows probe prepared, unrun: `windows-appended-argv-probe.ps1` beside the build log replays the mirrored
+  generated script through `powershell.exe` with both frozen shell prefixes, run-part present and missing, and 15
+  appended-argv attacks (statements, trap, typed trap, `#requires`, class static, `using`, `param`, named block,
+  newline/here-string breaks, split argv, comment reopen), quoted by Rust's MSVC rules. Acceptance: zero
+  `attacks_that_ran` and the baseline installer ran; any attack that ran rejects the Windows exemption design.
+- Not committed: the exemption is not accepted while the Windows question is open, and these caller fixes depend
+  on it. Still unrun: Windows appended-argument proof, Codex runtime lowering, plugin refresh.
+- Gate 6 slow-case dispositions for that run: eight of the twenty already carried a timing reason. Eleven more now
+  document an inherent boundary in their Javadoc (real filesystem capability probes in four DelegationTest cases;
+  real fixture JVMs in the two stop-contract cases, BuildAdmissionCli modular main, BuildWorker tree reaping and three
+  executable process-lifecycle contract cases; the reasons sit on the shared contract declarations). Focused
+  common/cli verify exit 0, zero quality findings: `temp/exemption-clean-build-SCiryU/slow-tests/verify.log`.
+  `ProjectRuleLoaderTest.loadsRuleRoutingFirst` (1.11 s) is not inherent: it is the class's first-use initialization
+  (0.19 s alone; siblings 0.006 s) inflated by full-build load, so root disposes it as load-dependent, not a 1 s
+  case. A delegate observed that `Files.getFileStore` per path rereads the mount table in delegation snapshots; that
+  production optimization is optional and unscheduled.
+
+### Handoff (2026-11-15, end of session `ef24aa34`)
+
+The user transferred control to another agent. State at hand-off:
+
+- **Windows probe running remotely.** The user said that a remote runner can test it. A standalone commit
+  `de874d793` holds only `.github/workflows/windows-probe.yml` and `probe/windows-appended-argv-probe.ps1`, so no other
+  workflow triggers. It was pushed as branch `probe/windows-appended-argv`. Run:
+  https://github.com/holdmyspot-com/cat/actions/runs/43744652448 (windows-latest; uploads artifact
+  `windows-probe-result`). Fetch it with `gh run download 43744652448 -n windows-probe-result -D <session temp>`.
+  - Acceptance: `attacks_that_ran` is empty and `baseline_installer_ran` is all true. Then keep the Windows exemption.
+  - Otherwise, the Windows exemption is rejected. Ask the user, or take the POSIX-only option: remove the Windows
+    exemption rules, keep normal authorization on Windows Codex, and rebuild.
+  - If the job errors before it produces a result, fix the probe and push again to the same branch.
+  - Delete the branch after the result is retained.
+- **Still open from the first-work list above:** Codex runtime lowering (item 2), refresh of the build and artifact/skill
+  assembly after any correction (3), plugin refresh from a supported host context (4), and the usage comparison (5).
+- **Uncommitted, all in the worktree:**
+  - the installer exemption with its caller fixes;
+  - this session's Javadoc timing reasons in five common/cli test sources (untracked files from predecessor work);
+  - four gate-7 documentation edits: design D146 (development judge plus moved-project worktree repair), the P7
+    result qualified by H24, D129 moved before D130, and plan §4 extended to P12-P17 with the range H11-H40.
+
+  Commit per topic once the exemption is accepted. Use `.cat/rules/include/commit-messages.md`.
+- **Decisions waiting for the user:**
+  - P15 single-cell row wording (§2 line ~3132 still says In progress; design records p15-60 certified).
+  - Whether the §2 rows marked "uncommitted" or "not integrated" count toward gate 7.
+- **Decided (user ruling, 2026-11-15): show the proposal in one message.** The agent's message holds the proposal
+  file's text verbatim, first line to last, with nothing before it, and ends with the step's question. There is no
+  separate question message (variant s6; on gpt-6.1-sol at medium it passed 4/5 against 2/5 for two messages, and on
+  luna/low 7/10 against 8/10). Not implemented yet. The next agent:
+  - rewrites step 2 of `client/common/skills/src/main/resources/skills/prompt-optimizer/first-use.md` (it now says "ask
+    the question that this step asks, in a message of its own");
+  - updates design.md's sentence near line 2987 ("shows its text exactly in a message of its own and then asks its
+    question");
+  - adds a §13 decision row after D146;
+  - adjusts any skill test that asserts the two-message wording.
+
+  The `pif-screen*` screening directories are gone, so write s6's wording from this description. This supersedes the
+  open "Showing the proposal" item under "Decisions waiting for the user" further down.
+- **Closed this session:**
+  - Slice-budget question: a background run admits the test. The entry above is updated.
+  - Gate-6 slow-case dispositions (above).
+- **Gate status:**
+  - Gate 1 passes on the current tree.
+  - Gates 2, 4, 5, 7 and 8 and the final gate-6 reconciliation remain open.
+  - P12 and P13 wait on E1 receipts in both harnesses.
+- Evidence directory: this session's `temp/exemption-clean-build-SCiryU/`, which holds the briefs, build receipts,
+  `slow-tests/`, the probe script and the workflow.
+
+### First work for the receiving agent
+
+Current continuation evidence is retained under
+`.cat/sessions/01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4/temp/continuation-0gLMT8/`.
+Root owns cleanup after installer security acceptance and final skill review.
+
+- The remote Windows run completed successfully as a probe, but its result **rejects the Windows exemption**:
+  `windows/windows-probe-result.json` records 60 cases, both baseline wrapper markers appeared, and four appended attacks ran.
+  They are `trap` and `typed-trap` with the wrapper missing under both `-Command` and `-NoProfile -Command`.
+  A successful CI job does not pass this security gate. Keep installation/refresh pending a corrected command boundary
+  and adversarial execution proof. The original probe's wrapper only records stdin: its baseline does not establish
+  actual installer execution. Independent read-only review by `windows_exemption_review` selected an inner script block
+  with `trap { exit 1 }`, `$ErrorActionPreference = 'Stop'`, and an outer `exit 1` fallback as a candidate correction.
+  That candidate is now in `InstallerRules.latestUpdateCommand`; neither review nor serializer tests pass its runtime gate.
+- The approved single-message proposal presentation is implemented in the common `first-use.md`, the long-proposal
+  scenario, and design D147. The full current proposal begins the message, with no preceding text, and the applicable
+  question ends that same message. The clean build assembled this wording into both harness distributions, and the
+  Codex update skill consumes `update_command` unchanged. Agent execution remains unrun on this edit. Its
+  design/preservation record is `proposal-display-review.md` in the evidence directory.
+  This supersedes the handoff's "Not implemented yet" statement for this presentation change only.
+- Clean verification first failed in `CodexSessionsTest.completeForwardedReadEndsBeforeTurnTwo`: the fixture signalled
+  a read before `TurnFeed` queued it, letting the forwarding thread wait for a record that its next poll must publish.
+  `SignallingReader` now signals at its next read, after the previous complete lines have been queued. Preserve the
+  original failure in `build/terminal.json` and `build/build.log`; it is not an installer or Windows security result.
+- The corrected whole-client uncached `clean verify` passed in `build-2/terminal.json`: exit 0, 453 reports, 6,001
+  tests, zero failures/errors, six skips; all 2,713 client input hashes remained unchanged, and the absent home remained
+  absent. This passes gate 1 on these source bytes. Gate 6 still needs reconciliation against this run's timings.
+- The user-requested general output-rule restoration is complete: `codex/read-file.md` again requires run-part and
+  no longer tells agents to invoke sandbox-exempt commands directly. Its diff against HEAD is empty. The wrapped
+  update exception remains implemented in source; installation is pending. The restoration mapping is retained in
+  `run-part-restoration-review.md`. Whole-client routine verification in `build-3/terminal.json` failed in
+  `ProcessElevationTest.reportsIdWhileProcessesStart` with Linux error 26, `Text file busy`, while launching a fixture
+  executable. Diagnosis is assigned to `slow_test_reconciliation`; do not attribute it to the prose change or retry
+  the full build without the resulting evidence and correction.
+  The agent's `elevation_failure-YVMKxM/diagnosis.md` traced the failure to fixture readiness before the elevation
+  check, with the actual descriptor holder unknown. Root accepted the child-writer repair in the two test sources:
+  completed executables are now written and closed by a child JVM before the stress check receives them. Counts,
+  concurrency, the two-second exercise and assertions are retained; production behavior and retry limits are unchanged.
+  `elevation_repair-WpS7RH/report.json` retains the failed lint attempt and passing focused verification: 24 cases,
+  zero failures/errors/skips and zero quality findings. Root owns this evidence through final build acceptance.
+  The replacement full uncached clean verification passed in `build-4/terminal.json`: exit 0, 453 reports,
+  6,001 tests, zero failures/errors, six skips, 2,714 unchanged client inputs and the absent home preserved.
+  This refreshes gate 1 on the restored output rule and child-writer source bytes. Installation, Windows runtime
+  safety and remaining final gates are still open; the earlier build-3 failure remains retained separately.
+- The current clean-run timing population has a retained 18-case disposition in the slow-test agent's
+  `slow_test_reconciliation-LHe5vz/report.md`. Four newly surfaced cases executed below one second in the focused
+  diagnostic; their exact clean-run delay remains unknown. Broader gate-6 reconciliation remains open.
+  Root accepted `gate6_reconciliation-3a390i92/report.json` as the bounded reconciliation against build 4,
+  with cleanup owned through gate 6 and goal acceptance. It preserves absent-home and structural-check passes
+  and prior build/delegation closures. Six remaining checks are explicit: qualitative assertion/boundary coverage,
+  fake/shared-contract pairing, the process-launch delta, the Git allowlist delta, indirect calibration seams and
+  three newly slow cases. Those cases are `SourceSnapshotTest.safeLeafLinkAndUnicodePath`,
+  `SourceSnapshotTest.unrelatedFilesAreExcluded` and `TestJvmScopeTest.createsTestTemporaryDirectory`.
+  No new tests, source repairs or whole-suite qualitative pass are claimed by this reconciliation.
+- The subsequent gate-6 process review passed its finite static delta: 587 compiled Java test/support sources and
+  28 reactor POMs, with 47 changed/added entries and 568 reused entries. Its decisive launch traces resolve to
+  injected boundaries, refusal paths or controlled non-harness children. Evidence is retained in
+  `.cat/sessions/01a1e0af-a792-7100-8a55-3a1a19985a09/temp/process_delta-MdvVV0/report.json`.
+  Root's later `HarnessProjectRepositoryTest` consolidation introduces no new launch target: it moves the existing
+  determinism assertions into the sole allowlisted real-Git method and reduces repository initialization from four
+  copies to three. The preceding source equality to build 4 is historical; gate 1 needs another clean run after
+  this edit and the pending fake-contract repairs.
+- The Git allowlist discrepancy is repaired: `commitsBaselineAsHostIdentity` now includes equal-fixture hash,
+  changed-content hash and fixed-date assertions alongside the original identity, copied-file and maintenance checks.
+  `temp/git_boundary_repair-5oChsZ/` preserves the initial Checkstyle failure. Its old XML cases are explicitly
+  rejected as stale because tests did not run. After extracting the Git date result into a local variable,
+  `temp/git_boundary_retry-4jH9hw/terminal.json` records fresh focused verification: exit 0, seven cases, no
+  failures/errors/skips, source unchanged and absent home preserved. Root owns both directories through gate 6
+  and goal acceptance. The real-Git review is retained under
+  `.cat/sessions/01a1e0af-ca77-7fb1-9d45-40bc221440c8/temp/git_allowlist_delta-yu9kxE/`.
+- Indirect calibration source reachability is verified in `temp/calibration_seam-bw9zJv/report.json`:
+  production calibration is reached only by its dedicated test; driver/proposal flows supply controlled calibrators,
+  while real-scope CLI cases stop in status/help/invalid/refusal paths before calibration. This is bounded source
+  evidence, without another runtime or platform claim. Root owns cleanup through gate 6 and goal acceptance.
+- All three newly slow cases passed one fresh focused timing run in `temp/focused_timing-didLiw/terminal.json`:
+  `createsTestTemporaryDirectory` took 0.055 seconds, `unrelatedFilesAreExcluded` 0.153 seconds and
+  `safeLeafLinkAndUnicodePath` 0.204 seconds. Their fixtures are minimal and assertions and parallelism are preserved;
+  the earlier delay's cause remains unknown. All 453 build-4 reports were preserved in that directory's
+  `baseline_reports/` before focused runs replaced target reports. Root owns cleanup through gate 6 and goal
+  acceptance. Static assertion and boundary review is complete for all 4,633 direct-annotation indexed methods
+  across 587 test/support sources. This index does not establish runtime parameter-provider or inherited-test
+  execution coverage. The review records 55 findings: six have accepted focused repairs and 49 remain open.
+  The process-completion repair passed 73 tests; the rule-presence repairs passed 75 tests, both with zero
+  failures, errors or skips. The accepted review and repair states are in
+  [assertion_contract report.json](.cat/sessions/01a1e0af-7bbc-7ef0-8b55-b1279bb0a3aa/temp/assertion_contract-87D1vF/report.json).
+  Root owns the retained evidence through gate 6 and goal acceptance. EOF-versus-exit fixture repair is the
+  current exclusive writer assignment; later repairs retain exact source allowlists and focused gates in
+  [repair_frontier.json](.cat/sessions/01a1e064-a8d1-7e23-b0d3-98f4ba9fddd4/temp/remaining_review_dispatch-xoHXXb/repair_frontier.json).
+  Gate 6 remains open, and gate 1 requires fresh full verification after the repairs are integrated.
+- Native Codex runtime policy matching passed for the historical production-generated POSIX script under
+  `/bin/bash -lc`: exact allow reached the absent wrapper (exit 127), while exact forbidden rejected before launch.
+  The native agent's `native-runtime-yFzkFD/handoff.md` retains the receipts. Root accepted current-source
+  correspondence from `posix-current-generator-82ueqV/comparison.json`: the current built public SPI produced the
+  identical 332-byte script for the historical inputs, without access overrides. This reuses the accepted native
+  observation for those current bytes; other shell forms, installer execution and other platforms remain separate
+  gates. Root owns the new generator evidence through final installer acceptance.
+- Remote Windows access integration ran under `remote/`: run 43747599417 on isolated commit
+  `5a98a22a8e830c5b53930c969ce289aceeb6ab97` deliberately ended with shell exit 37, preserving that failure in CI.
+  Its task-key-only client connected, verified workspace state, retained failure/retry state, and explicitly exited.
+  Separate short sessions exercised no-join expiry and prompt-idle expiry after a longer foreground command.
+  Root accepted the integration terminal receipts and the agent's transcript review, retained under
+  `windows-integration-YRG377/handoff.md`; root owns cleanup through final installer acceptance. No security probe
+  ran in this session. The original finite 60-case probe with only the candidate inner-block correction is prepared
+  as `windows/candidate-original-cases.ps1`; it is not execution evidence. Expanded preparation by the other agent
+  was refused by its safety classifier and remains unrun.
+  All SSH clients and the worker ended; keys remain owned by root for the next required probe, with cleanup after
+  their last client. Local Windows interop again failed with `UtilBindVsockAnyPort`.
+  Run 43747599417 attempt 2 completed on the same isolated integration revision with the original finite probe and
+  candidate inner-block correction. All 60 cases finished, no attack marker appeared, and both baseline wrapper
+  markers appeared. Missing-wrapper cases, including the previously failing trap cases, exited with status 1.
+  Root retrieved the result, log and exit receipt through the live SSH session and verified their remote sizes and
+  hashes before explicitly exiting. The remote terminal reports `ended`, `exited`, status 0; SSH and the workflow
+  also ended with status 0, and `CAT_REMOTE_CLEANUP_FINISHED` was observed. Its controller, result, retrieval receipt,
+  terminal artifact and job log are retained under this session's `temp/windows-candidate-UQM4Dn/`, owned by root
+  through final installer acceptance. This passes the existing finite regression only. No expanded refused
+  preparation is included. The wrapper still records stdin only; actual installer delivery and complete Windows
+  security acceptance remain open.
+
+1. Resolve Windows appended-argument safety before accepting or deploying its exemption. Codex
+   `prefix_rule` accepts extra argv after the frozen `powershell.exe -Command <script>` prefix.
+   PowerShell may combine them into command text. The terminal exit has not been shown to prevent an
+   appended `trap` declaration from handling an earlier error and running extra code. No PowerShell host
+   was available to the writer. Obtain a real supported PowerShell boundary, prove the exclusion or
+   correct the design, and retain the adversarial execution receipt. Do not infer safety from the POSIX
+   checker, serializer assertions or the exit statement alone.
+2. Verify the exact generated script through native Codex runtime policy lowering, preserving the full
+   script argument. The inspected upstream source suggests that the assignment/quoted-wrapper prelude
+   prevents heredoc extraction, but the raw checker does not execute that lowering and the installed
+   binary's correspondence to the inspected source was not established. Keep Windows/macOS execution
+   qualifications separate from the Linux result.
+3. After any necessary corrections and focused checks, follow the project's build rules for the complete
+   verification and artifact/skill assembly gate. Inspect delivery of `update_command` and consumption
+   of its exact script. The partial reactor result above does not refresh final gate 1.
+4. Refresh the real plugin through its supported installer lifecycle only after the security and build
+   gates pass, then verify installed bytes and permissions. The prior real-home write failed on the
+   marketplace `.agents/plugins` read-only mount. The request server also refused this tool shell's
+   ancestry, which contains the sandbox helper without a session-owner process. Use a supported host
+   execution context; do not relax discovery or sandbox checks or patch installed cache files directly.
+5. Resume the already prepared matched usage comparison after artifact/host readiness. The retained
+   `temp/fixed_trial_probe-NJrxdP/live_preparation/` controller has 200 paired inputs and 400 unclaimed
+   measurement units; reuse its accepted construction/accounting evidence and the baseline recovery
+   below. Do not report optimizer savings before completing the actual matched measurement.
+
+Root retains the evidence directory above until the receiving agent accepts cleanup ownership and the
+final exemption/comparison consumers finish. Read it in place or move it under the receiving session's
+CAT temporary root before the originating session can be pruned. Some receipt command/path strings
+refer to the writer's original `installer_exemption-Dqtdyr` directory: they are historical invocation
+evidence. Read the corresponding files from `implementation_evidence`; do not rerun stale command paths
+or rewrite the frozen script's paths without regenerating its matching rules. The receiving agent also
+inherits cleanup of `temp/installer-exemption-hlWkmD/progress.md` after final feature acceptance.
+
 ## Design Goals
 
 - **Complete coverage:** Every obligation in `design.md` has a requirement ID in
@@ -30,7 +535,1742 @@ It is complete only when all of the following hold:
 This section supersedes the release facts of the earlier handoff below. That handoff's remaining items still apply
 where this section does not replace them.
 
-### Update (2026-11-13, morning Toronto): queued optimizer changes merged; racing build unverified
+### Current continuation (2026-11-13): local build verified; live launches need a compatible host session
+
+The user lifted the live-optimization pause. Live acceptance checks use Codex only for now; Claude is authorized
+exclusively for the usage-per-trial comparison against E1 r9. That comparison must use corrected per-request usage
+accounting from `../token-compare-claude/cache-investigation.md`, not the earlier report's `usage.iterations` token totals.
+The earlier report's dollar figures remain valid. The approved usage reductions are implemented locally; their combined
+effect and qualified-cheap-judge steady state remain unmeasured. Batched judging remains deferred until that measurement.
+
+The parent located and read the retained baseline investigation and `../token-compare-claude/report.md` through the
+session history's exact worktree locator. The corrected accounting sums assistant-message usage once per message ID;
+the turn's `usage.iterations` omits earlier requests. The old report compares different prompt-test categories and
+campaign lengths, so its campaign totals cannot establish the effect of the current combined changes. Before counting
+a new before/after conclusion, recover each run's determining inputs from its own evidence: starting project and
+prompt, contract and test-case population, models/efforts, harness version and settings, phase/role, and relevant
+cache conditions. Changes made by the optimization are the treatment, not a reason to hold those changes fixed. Reuse
+E1 r9 only where its recorded fixed inputs match; otherwise retain it as descriptive historical evidence and obtain
+a matched pair. Keep trial usage, judging overhead and campaign/authoring overhead separate, and distinguish cold,
+shadowing and qualified-judge results. The retained `analysis/cache/true_usage.py` and `an2.py` explain the correction,
+but need explicit current inputs/output locations before reuse; do not run their old fixed-path analysis unchanged.
+The latest-source live measurement remains unrun and belongs after the verified artifact is available, before any
+claim that the combined optimizations reduced usage. The user's limited Claude authorization already covers it.
+The current `claude --version` observation is `2.1.323 (Claude Code)`, whereas the historical trial receipts
+record `2.1.322`. Therefore a latest-source run on the current harness cannot form a valid matched comparison
+with those historical receipts. Retain the historical totals as descriptive baseline evidence; prepare a fresh
+before/after pair with one harness version and matching fixed inputs, or establish an explicitly pinned old
+harness before reusing the historical run. No model session was started by this version check. Artifact readiness
+and complete input matching remain prerequisites; the observed version change does not justify attributing a
+token difference to the optimizer.
+For a fresh pair, the historical build's commit locator resolves locally to
+`520d3dab3eb64387f3369b131c774fe11f5e92e5` (`git rev-parse --verify '520d3dab3eb6^{commit}'`, exit zero).
+This establishes an available source input, not a rebuilt or verified historical runtime. A bounded inventory
+of the current Claude CAT cache found `1.0`, `1.0-baee7caff86ad` and `1.0-bda10dac7a9a2`; the `1.0` plugin
+manifest and client VERSION say only `1.0`, so do not assume that directory supplies the historical build.
+The before runtime still needs an authoritative artifact locator or isolated reconstruction from the resolved
+commit, with its original build contract and retained runtime identity. Do not mutate this dirty worktree or
+substitute the later token-compare runtime for the before treatment. Reuse the recovered trial population and
+corrected accounting rather than redoing the historical transcript analysis.
+The resolved historical commit contains both its Maven Wrapper and its own build instructions. A read-only
+`git show` of `.cat/rules/include/build.md` confirms that reconstruction must use the full enabled
+`client/mvnw -q -f client/pom.xml verify` command. Merely compiling optimizer classes would not establish the
+historical runtime. The isolated reconstruction described below supplies that prerequisite; model measurement
+remains unrun.
+
+The historical reconstruction is now claimed by root in this session's
+`temp/usage-baseline-runtime-2SHjO9/`. A separate repository with a shared read-only object store was
+cloned there and checked out detached at `520d3dab3eb64387f3369b131c774fe11f5e92e5`; its working files
+and repository references are independent of the dirty parent. The original build and Maven instructions
+were read from that checkout. Root took the single build slot for its original full verification, with
+native and JVM temporary state in that invocation directory and no JAVA_TOOL_OPTIONS injection. Cache
+reuse is disabled only for this fresh historical verification, whose full output and terminal result must
+establish the before runtime. Root retains
+the checkout and receipts for matched before/after measurement and owns cleanup after its final comparison
+consumer; the source object's owner must not prune shared Git objects before that cleanup.
+
+That historical checkout's full `clean verify` completed with exit zero, 5,425 tests in 416 Surefire
+reports, zero failures or errors, six skips, and zero findings across 20 Checkstyle/PMD reports. Its
+command.json, terminal.json, build.log and report-summary.json remain in the reconstruction invocation;
+the original reports and both generated runtime trees remain under its isolated source directory.
+No historical source was edited, no plugin was installed and no model session started. This establishes
+a verified historical runtime producer, not a measured optimization result. The next comparison work
+must retain that runtime identity, match the before/after experiment inputs and harness version, then
+execute the authorized measurement with corrected per-request accounting. Current-source testability
+follow-ups remain separate and do not invalidate the immutable before build. The historical build has
+terminated and root releases the build slot.
+
+Comparison input recovery has advanced independently of the live launch prerequisite. The retained
+`../token-compare-claude/report.md` and `cache-investigation.md` were read completely. E1's recorded
+baseline overlay has no entries, and its staged baseline contains the original conflicting motto
+instructions plus the `CLAUDE.md` reference to `AGENTS.md`. The frozen population is retained under
+`../E1-claude-r9/receipts/campaigns/20261111T235223Z-b602c8/held_out/drafts/2/.cat/tests/CLAUDE/`:
+`single_question` has 14 value cases, `follow_up_question` has 13, and `several_item_question` has 13.
+All three scenario bodies were inspected; they include the assertions, handbook fixture and one-turn
+or two-turn requests that the fresh pair must preserve. This recovers 40 authored value cases.
+The same recovery directory's `baseline-sampled-inputs.jsonl` now projects the key, identity and
+rendered test case from each original baseline receipt, retaining its absolute receipt locator.
+It contains exactly 200 records: 100 `single_question@haiku/low`, 50
+`follow_up_question@haiku/low`, and 50 `several_item_question@haiku/low`. These are sampled inputs,
+not 200 distinct authored cases. Each retained key and stream position supplies the original
+ordering information; file order in this projection is receipt filename order and must not be
+treated as launch order. Runtime consumption and matched cache scheduling remain unverified.
+
+Root retains the recovery evidence in this session's `temp/comparison-inputs-29Utvw/` until the final
+comparison consumer records its result, then owns cleanup. Its `input-sha256.txt` records the staged
+AGENTS.md and CLAUDE.md, the project handbook, and all three scenarios, value files and scenario
+handbooks; all 12 entries passed `sha256sum --check`. The manifest identifies recovered input bytes;
+it does not prove that a new runner consumed them or that the project handbook still matches its
+historical receipt. The comparison remains unrun and no model was launched during this recovery.
+
+Baseline recovery is now verified for all 200 `baseline` receipts in
+`../E1-claude-r9/receipts/campaigns/20261111T235223Z-b602c8/held_out/trials/`.
+Their recorded identity is identical: Claude Code `2.1.322`, model `claude-haiku-5-5`, low effort,
+contract `95f259fd5875a1255a334cff41f4fdbf287c258d2c9568eb56980ae4bfb76d75`, generator
+`contract-generator/4`, judge `11`, no trial plugins, and baseline snapshot
+`08976817fa2095f385b1a3bc22dde926c7aa26e38048b972cfcf9db8d3c159d6`.
+Every baseline transcript named by its receipt still exists. Reading those transcripts one line at a time,
+deduplicating assistant messages by message ID, and taking completed output usage from each matching
+`stream_event` / `message_delta` produces the following per-trial means. All four token totals match the
+sum of the transcript's aggregate `result.usage` fields for each of the 200 trials; there are no incomplete
+baseline outcomes or mismatches.
+
+| Baseline trial cell | Trials | Requests per trial | Uncached input | Cache writes | Cache reads | Output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `follow_up_question@haiku/low` | 50 | 4.02 | 8.04 | 28302.88 | 129690.02 | 863.88 |
+| `several_item_question@haiku/low` | 50 | 3.06 | 6.12 | 28373.18 | 91342.52 | 791.62 |
+| `single_question@haiku/low` | 100 | 3.00 | 6.00 | 28408.27 | 88594.78 | 802.81 |
+
+Do not sum the initial assistant event's `output_tokens` as completed output: in the inspected
+`single_question` receipt `e1a2539ea4fc19d8cd957c477aa2606e832fe634c5604a91be72e38878f014c0.json`,
+the three distinct assistant messages initially report 6, 4 and 1 output tokens, while their completed
+streaming deltas report 514, 223 and 146, totaling the aggregate's 883. Input accounting remains one
+assistant-message usage per message ID. These baseline means cover trial sessions only; judging and
+authoring overhead need separate records. They establish the historical baseline, not a before/after
+savings claim. Next recover the exact baseline project/test population and launch/cache settings,
+then use matching fixed inputs for the latest verified artifact or a fresh matched pair.
+
+Further baseline input recovery found seven retained initial projects (193 were cleaned up), covering all
+three baseline cells. Each contains only `AGENTS.md`, `CLAUDE.md` and `docs/handbook.md`; the first two
+files have SHA-256 `2e2c173e28dd3a28d77db2b1fc70b910999004e30808254304308bcfb4e446af` and
+`336cc4fbf19beaada7ccf9986414fa91851a8d7a07dfb3ccbe800a69eed0ab49` respectively in all seven.
+The handbook motto is replaced with the trial receipt's `motto` variable, so copying the campaign's base
+handbook unchanged would not recreate a trial. The base prompt-test configuration explicitly selects no
+CAT trial plugin. The 250 harness initialization records across those 200 trials consistently record the
+same model/version, `acceptEdits`, default output style, active per-turn effort and disabled fast mode;
+their 250 aggregate usage records report standard service, global inference and one-hour cache writes,
+with no five-minute cache writes. Built-in harness plugins are present despite the empty CAT plugin list.
+The built-in skill inventory has two distinct sets and 33 distinct orders, and auto-memory paths vary
+by session. These observations do not establish equivalent delivered guidance or cache state for a new
+run. Preserve that limitation when selecting the matched measurement; do not treat the campaign identity's
+empty trial-plugin list as evidence that the harness supplied no built-in guidance.
+
+The frozen-judge baseline is also recovered separately. The historical
+`../token-compare-claude/analysis/e1.json` evidence-to-session mapping was used only to locate candidates;
+each of the 200 judge run directories still exists under the original campaign's `optimizer-runs` tree.
+For every candidate, its own `run.json` records `--model opus --effort high` and release
+`1.0+b520d3dab3eb6`; its actual harness initialization records `claude-opus-5-5`. The transcript copied
+into its `--add-dir` evidence directory names exactly the matching baseline trial's harness session ID.
+All 200 baseline trial IDs have one matching judge. Deduplicated request inputs and completed streaming
+output totals match each judge transcript's aggregate usage without mismatch. Per-trial means for these
+baseline frozen judges are:
+
+| Baseline trial cell | Judges | Judge requests per trial | Uncached input | Cache writes | Cache reads | Output |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| `follow_up_question@haiku/low` | 50 | 1.02 | 2.04 | 30873.82 | 12523.32 | 910.46 |
+| `several_item_question@haiku/low` | 50 | 1.00 | 2.00 | 30308.24 | 11663.00 | 967.28 |
+| `single_question@haiku/low` | 100 | 1.00 | 2.00 | 30396.24 | 11663.00 | 810.37 |
+
+This is baseline judging overhead only; development shadowing, qualified judging and authoring remain
+separate populations. The retained trial receipts locate the original run tree through
+`outcome.files.transcript`; judge `run.json` files locate their own read-only evidence directories through
+`harness_command`. Reuse that retrieval path instead of relying on the empty copied campaign `judge/`
+directory or the empty `../E1-claude-r9/runs/.claude/.cc-writes/` directory. The latest-source measurement
+remains unrun.
+
+The bounded execution-readiness review now identifies an existing supported path for a narrower fresh
+trial-session comparison: replay the recovered 200 rendered turn lists through the historical and
+current `claude-runner` runtimes, using identical rendered three-file projects and one common harness.
+The current arm must request the production trial role. The report and exact argument lists are retained
+in this session's `temp/guidance-review-capture-ZjCWI1/measurement_readiness_report.json`.
+This direct replay does not exercise the optimizer's early-stop observer, judging, qualification or
+authoring, so its eventual result cannot establish their savings or the combined campaign result.
+Root has assigned paired-input materialization to `trial_input_materialization` and corrected-accounting
+integration to `trial_usage_accounting`, each as an exclusive scratch writer with its own focused gate.
+The accounting slice is now accepted: root inspected its nine passing focused fixtures and the gate
+that reconciles all 200 original baseline transcripts and reproduces all three recorded cell means.
+It retains separate cache-write lifetimes and sums completed per-turn result aggregates. Its explicit-path
+CLI, manifest, full output and terminal report remain in `temp/trial_usage_accounting-GTbqzL/`;
+root owns cleanup after the final comparison consumer. This accepts accounting integration only;
+the after arm remains unrun. Paired-input materialization is also accepted: root inspected the CLI's
+200-pair result, the independent complete-population verification, and both expected rejection checks
+(bad hash creates no output; existing output is preserved). The paired projects, ordered input JSONL,
+manifest and full gate output remain in `temp/trial_pair_inputs-XNK33X/`; root owns cleanup after the
+final usage-comparison consumer. Neither accepted preparation step ran a model or measured savings.
+The paired comparison CLI is accepted separately on synthetic evidence: root inspected all 19 passing
+accounting/comparison fixtures and the standalone 200-key comparison against hand-calculated means
+and differences after row reordering. Unequal or duplicated keys, changed cell assignment, invalid
+metrics, inconsistent means and existing output are rejected. This verifies the comparison operation,
+not an actual after-arm result. Its receipts remain in
+`temp/trial_usage_accounting-GTbqzL/compare_terminal_report.json` and the named full-output logs.
+The separate source inspection found
+that neither campaign CLI exposes its randomly chosen draw seed; outcome-dependent admission also
+prevents a seed alone from fixing the paired case order. Their underlying generator implementations
+are identical, so replacing the generator is unnecessary. The next bounded construction check asks
+whether an existing permitted test module can drive production execution with fixed cases before
+deciding that a shipped execution entry point is needed. Live measurement remains unrun; the
+request-server execution-context prerequisite remains unchanged.
+The source inspection identifies an existing composition candidate: an already assigned logical
+trial can enter each arm's production Driver without drawing another case, and the existing common
+and Claude test modules provide access without widening production exports. Root has assigned a
+scratch-only, no-model construction probe for both arms under `temp/fixed_trial_probe-NJrxdP/`.
+Its gate must prove the production session, observer and frozen-judge path records the requested
+outcome and closes admission without extra work. Source inspection alone does not pass that gate.
+The assigned writer may compile scratch module patches against the immutable existing builds;
+it may not edit either build or run a model. Root retains cleanup after the final comparison consumer.
+The operative construction handoff, governing plan/design ranges, exact accepted source-snapshot
+locators and focused probe contract are recorded in
+`temp/guidance-review-capture-ZjCWI1/fixed_trial_composition_contract.md`. Root has delivered that
+metadata through the direct agent message operation; the no-model probe is now accepted below. The writer
+may use the recorded full Java 27 toolchain with each arm's frozen modules because the packaged
+runtime lacks `jdk.httpserver`, required by the test module. That tooling distinction cannot establish
+live artifact consumption. A separate read-only context investigation now checks the request-server
+discovery contract and retained refusal before selecting a supported recovery; no launch is authorized
+by that investigation.
+The context investigation is complete: the inspected request-server contract deliberately requires
+an actual Codex session owner among the launch process's ancestors and excludes the sandbox helper.
+Root's own read-only ancestry probe now confirms the missing condition in this tool shell: its
+ancestry ends at PID 1 with a Codex executable whose argv[0] is `codex-linux-sandbox`, without a
+session-owner process. The exact observation remains in
+`temp/guidance-review-capture-ZjCWI1/root_request_server_ancestry.txt`. This explains why this shell
+does not satisfy the server's discovery precondition; it does not establish an inherent inability
+to launch through every other supported context. No discovery-source repair or relaxed check is
+justified by that evidence. The next recovery decision must select a documented outside-sandbox
+launch with the session-owner visibility intact. The no-model production-path probe remains
+independent of this live-launch condition.
+Root accepted both no-model production compositions after inspecting the terminal report, final
+invocation receipts, execution output, prepared-project byte checks and exit-check output in
+`temp/fixed_trial_probe-NJrxdP/`. Each arm completed the same recovered two-turn case through its
+production Driver and RunnerSessions/Session, rendered and parsed its frozen judge request, and
+adopted exactly one persisted passing baseline outcome with no remaining assignment or authoring.
+The current production observer returned `1:false`, correctly allowing the second turn. Final
+probe commands and the exit check returned zero; all 578 before-arm and 593 current-arm pinned
+module/runtime files remained unchanged. The scratch bridge required production project/workspace
+and snapshot preparation around ScriptedProcess; earlier failed attempts remain in the report.
+This passes the construction prerequisite only. Live measurement, production Git staging,
+consumption through the packaged runtime, qualification and authoring remain unrun. Root retains
+the scratch directory until the final usage-comparison consumer. The next measurement work must
+connect this proven composition to a supported live Claude host without substituting scripted
+responses or relaxing the host's session-discovery requirements.
+Root assigned the same exclusive scratch writer the measurement consumer preparation in
+`temp/fixed_trial_probe-NJrxdP/live_preparation/`, with its contract in
+`temp/guidance-review-capture-ZjCWI1/live_measurement_preparation.md`. It must consume the accepted
+200-pair manifest, prepare real-port execution and accounting linkage, and verify controller
+selection/resumption locally without launching a model, runner or server. Root accepted that gate
+after inspecting its four zero-exit compiler receipts, complete controller/exit-check output and
+accounting-consumer receipts in `live_preparation/terminal_report.json`. All 200 paired keys retain
+the accepted 100/50/50 counts; compatible completed work is reused, changed inputs/mixed arms and
+incompatible output are rejected, and unresolved/failed work is preserved without automatic replay.
+Fixture transcripts passed through the unchanged accounting and trial-comparison consumers, with
+judge absence explicit. All 400 actual measurement units remain unclaimed. Real-port construction
+has compiled but not executed; the accepted one-case scripted composition remains unchanged.
+
+The supported-host review identifies two concrete recovery paths in docs/security-model.md: a
+fresh ordinary Codex session may launch the newly installed request-server absolute path alone,
+or a runner launched from a native terminal outside any harness may start its own sandboxed
+session without a request server. This root's mandatory run-part wrapping cannot match the
+documented bare-path exception, and its observed process ancestry lacks a real session owner.
+That establishes a current invocation mismatch, not a product discovery defect or proof that the
+wrapper is its sole cause. Do not retry the same server launch or weaken owner checks.
+The current built Codex installer supports refresh from its own image through the native-terminal
+command `HOME=/home/gili/cat/home /home/gili/cat/worktrees/v1.0/client/common/distribution/target/runtime/codex/bin/installer --home /home/gili/cat/home/.codex install --harness codex --json`.
+Root checked the launcher and current environment; HOME differs from the account home and explicit
+--home fixes the target. Successful native refresh and installed identity still require observation;
+native mount writability is unknown. After refresh, a new session must have an execution boundary
+that allows the bare server command. Live Claude measurement may instead consume the prepared
+controller from a supported native terminal after host/authentication/capacity are established.
+
+The current Codex artifact (`1.0+b5f4792eb2ce3`, with the uncommitted changes verified below) installs successfully through
+the documented lifecycle into an isolated harness home under this session's `temp/codex-live-DG8FTp/`. The installer
+returned `installed`, `consistent: true`, and JSON including its hook hashes and permission entries. The normal-home
+install first copied the version but stopped with status 10 because the marketplace's `.agents` directory is mounted
+read-only; that install is incomplete. Do not treat its copied version directory as an active installation. The existing
+artifact selector still selects `1.0+bda10dac7a9a2`.
+
+Current-state recheck after the combined clean build: the normal installed `1.0+b5f4792eb2ce3` installer's
+`status --harness codex --json` now returns `installed: true`, `consistent: true`. This supersedes the earlier
+incomplete-install observation above; it does not establish that the installed bytes contain the later uncommitted
+repairs. No live dependent sessions or subagents remain bound to an older version folder.
+
+Starting the existing installed request server returned status 2: CAT's policy reader attributed `--sandbox-policy-cwd`
+to the host session and refused it. Subsequent investigation below identifies a process-role error in that attribution.
+No runner or model session was started. The user was initially directed to start a compatible Codex session. Do
+not change sandbox settings or bypass the launcher refusal. The isolated installation establishes installation only,
+not any live acceptance behavior. The current orchestrator owns the isolated home until its evidence is reconciled,
+then removes it using the installer lifecycle before deleting the temporary directory.
+
+The local acceptance reconciliation found runtime documentation gaps; the latest clean build has thirteen cases at or
+over one second, listed in the integrated-build evidence below. Gate 6 remains unmet. G7's prior delivery-values mapping omission is
+closed locally by the passing `DeliveryTest.certifiedDeliveryWritesPromptTests`, `everyLabelWritesPromptTests` and
+`keptIncumbentDeliversPromptTestsAlone`; installed behavior remains a separate gate. Predicate tests alone are not
+accepted as proof of full driver-level racing or early trial termination. `DriverTest.heldOutTestCasesStayOutOfDevelopment`
+already proves real driver admission, execution and development routing of RACE trials. `RaceDriverTest` now proves
+equal-position draws, confidence-bound dropping and winner promotion. Early-end session and driver evidence also
+passes as recorded below. These local checks do not replace installed live acceptance.
+
+The runtime follow-up removes unrelated predecessor work from two `OptimizerCoreTest` fixtures: the finished-campaign
+environment check starts from a persisted finished snapshot, and the first-command ignore notice still invokes `start`
+but rejects its contract response before pilot work. Their existing assertions pass in six focused invocations.
+The before/after receipts under this session's `temp/final-runtime-review-lPAs9M/` retain matching commands, platform,
+toolchain and dependency paths, but machine load differed between runs; they are not accepted as a causal timing
+comparison. Five other methods retain their distinct lifecycle/assembly checks and now document the work their
+assertions need. The affected four-class verification is recorded there as `focused-receipt.json`; the next clean
+whole-reactor gate must include these changes. That focused verification passed 356 tests with zero failures,
+errors or skips (`focused-summary.json`); it is diagnostic evidence, not a replacement for the whole-reactor gate.
+
+The historical Violation 9 exemption question below is superseded by the current unconditional §8/T3 contract.
+`ScriptedProcess` has `HarnessProcessContract` counterparts in both real harness adapters. Installer integration,
+activation and migration doubles now have shared contracts, as do `FakeStarter` and `FakeProcessTable`.
+The lower-level process lifecycle repair now shares the exit latch between `FakeProcessLauncher` and its returned
+`FakeProcessHandle`. `ProcessLifecycleContract` checks initial liveness and unavailable exit status, destruction through
+the process and handle (normal and forcible), and exit-future completion. Its six cases pass against both process
+fakes and the real executable launcher: 18 tests, zero failures, errors or skips. The real boundary starts only the
+Java fixture child. Evidence: this session's `temp/process-lifecycle-3x7B1d/green-4-receipt.json` and
+`green-4-reports/`; the behavioral red showed a live handle after process destruction. An earlier diagnostic contract
+incorrectly assumed `Process.close()` always terminates a child; that run was cancelled and is not passing evidence.
+Fixture owners now terminate their children before resource closure. The subsequent shared EOF contract verifies input
+closure that ends a child, input closure that leaves it running, and output EOF before process exit against
+`FakeHarnessCli` and the real fixture child. Both adapters pass all nine inherited/shared cases; the launcher fake
+passes its six lifecycle cases and `TestabilityAuditTest` passes 22 cases (46 total, zero failures, errors or skips).
+Evidence: session `01a1d5e6-f075-7e70-99d4-7c60b398fc80`,
+`temp/process-eof-contract-final-1zbzCr/terminal-receipt.txt`, `report-summary.txt` and `case-summary.txt`.
+This closes those EOF assumptions, not the entire qualitative §8/T3 review. The parent owns retained evidence cleanup
+after final reconciliation. The next whole-reactor gate must include these later test-support changes.
+
+The fresh whole-reactor uncached absent-home `clean verify` includes the runtime fixtures and lifecycle repair:
+5,672 tests in 432 reports, zero failures and errors, six skips. All reports record the requested isolated temporary
+directory and nonexistent home, which remains absent. Evidence: this session's `temp/final-integrated-WqhkBE/`, with
+`command.json`, `receipt.json`, `report-summary.json`, `build.log` and retained `reports/`. This supersedes the
+5,654-test build for gate 1. Nine cases take at least one second; their exact population is retained in
+`report-summary.json` for the remaining gate 6 review. Gate 1 passes on this source tree; gates 2, 4, 5, 6, 7 and 8
+remain unmet, and gate 3 retains its narrower accepted source-audit result. The orchestrator owns this evidence until
+final acceptance reconciliation consumes it, then removes it when no retained references need it.
+
+The user approved applying the fallback review's recommendations. The following additions remain in the goal; none is
+passed by the earlier build. Each behavior change needs its focused behavioral red, implementation and green quality
+gate, followed by combined whole-reactor verification. Optional performance fallbacks remain supported.
+
+| Approved outcome | Current state | Required acceptance |
+|---|---|---|
+| Slot reuse preserves a slot when existing lifecycle records are unreadable, malformed or insufficient to establish safe cleanup. | Locally verified with process identity: 480 focused tests pass. Schema-4 launch state is persisted before spawn; historical null identity remains uncertain, while complete historical identities retain exact checks. | Corrupt/uncertain recorded state refuses reuse without deleting the slot; explicitly safe states remain reusable. |
+| Process identity distinguishes confirmed exit/replacement from unavailable identity. | Locally verified with slot reuse: unknown live identity throws IOException rather than returning false. Both runner launch producers retain raw-child ownership until durable recording or confirmed termination. | Unknown identity never authorizes signaling an unverified PID or destructive reuse; confirmed exit/replacement still permits cleanup. |
+| Codex evidence ingestion reports malformed records with filename/physical line. | Accepted locally: 125 retained-parser cases and the 287-test composed refusal gate pass; malformed/inaccessible evidence escapes before judging and triggers cleanup. Integrated acceptance remains pending. Existing live LineTail withholding remains separate. | Corrupt completed evidence fails rather than omitting activity; a supported incomplete live tail is handled explicitly. |
+| Prompt staging integrity failures stop consumption rather than becoming an unavailable size metric. | Accepted locally: 483 selected tests pass with clean Checkstyle/PMD; each Driver/GuardPilot admission validates its supplied snapshot independently of optional measurement. Integrated acceptance remains pending. | A frozen-snapshot mismatch stops subsequent trials; unavailable optional word counts remain nonfatal. |
+| Required parent multi-agent behavior cannot silently become child defaults when reconstruction fails. | Accepted locally: 143 tests pass with clean Checkstyle/PMD; strict required lineage remains separate from partial get-history. Integrated acceptance remains pending. | A supplied parent with unreconstructable required state refuses startup; genuine standalone/supported absence retains ordinary configuration. |
+| Present malformed hook/MCP/harness configuration remains distinct from absent optional configuration. | Accepted locally: 156 tests pass with clean Checkstyle/PMD, including an actual unreadable-file refusal. Integrated acceptance remains pending. | Invalid present files refuse preflight with actionable location diagnostics; optional absence continues. |
+| Curated-plugin cache recovery reports failed cleanup. | Locally verified: 47 focused cases pass, including cleanup propagation and preservation of preexisting child temporary contents. | Harmless seed/cache misses still synchronize normally; incomplete cleanup refuses the affected child startup. |
+| Cross-harness build selection and optional startup-cache diagnostics preserve their intended contracts. | Build-selection review closed without changes: R-I6 explicitly allows another build of the same release; optimizer sessions already pass an explicit artifact. Startup-cache correction verified locally below. | Latest-build acceptance must identify its actual artifact. Retain cold startup for harmless training misses; malformed metadata and failed cleanup propagate. |
+
+The startup-cache cluster is accepted locally: six new behavioral tests first failed because IOException was swallowed;
+the final installer-consumer gate passes 53 tests with zero failures, errors or skips. Its four paths are
+`StartupCacheTrainer`, its typed shared-secrets access pair and `StartupCacheTrainerTest`. Evidence: session
+`01a1d621-66af-7603-b82c-81c012b638b2`, `temp/startup-cache-fallback-bp3vwn/red.receipt` and `red.log`, and
+`temp/startup-cache-consumer-cKLaG6/consumer.receipt` and `reports/summary.txt`. All final report JVM temporary paths
+point to the invocation-owned directory. The orchestrator owns cleanup after integrated acceptance. The earlier full
+build remains valid for its recorded source, but gate 1 requires a fresh complete build after these production changes.
+
+The curated-cache cluster is accepted locally: the existing-test seam gate passed before the behavioral tests, and
+the red gate demonstrated that an unowned child temporary directory was accepted. Cleanup failure also failed to
+produce the expected exception; its assertion helper's null failure is not counted as an independent behavioral red.
+The final compiler, Checkstyle, PMD and two-class gate passes 47 tests with zero failures, errors or skips.
+Evidence: session `01a1d65e-cba1-7990-bf1a-ab08eec8af63`, `temp/curated-cleanup-ZhrlrL/`, with
+`consumer-final-receipt.json`, `reports-final/summary.txt`, `red3-receipt.json` and `red3.log`.
+The parent owns evidence cleanup after integrated acceptance. The five changed paths include the narrowly qualified
+common-test package export needed to reuse `ExitedProcess` in Codex tests.
+
+The process-identity/launch-state/slot-reuse cluster is accepted locally. Its final compiler, Checkstyle, PMD and
+thirteen-suite gate passes 480 tests with zero failures, errors or skips. The parent inspected the decisive receipt
+and the selected Surefire XML reports. Evidence: session `01a1d66d-5aa4-7902-8f7f-b8a431c3e102`,
+`temp/process-identity-slots-37cLhF/final-receipt.txt`, `focused-command.txt`, `focused-output.log`, and the
+thirteen named suites in the common, Claude and Codex CLI Surefire reports. The implementation writer has released
+its assignment. The parent retains evidence until integrated acceptance.
+
+Before concurrent source implementation, implement the verified dirty-source capture and replay prerequisite from
+session `01a1d695-0ee7-7592-8720-ea0175ff25cd`, `temp/delegation-contract-iq4rnb/contract.md`. Existing optimizer
+forks require a clean parent and share repository state; the reviewed tooling provides no complete dirty-parent
+transaction. The prerequisite has seventeen exact paths and its own seven-class compile/static/test gate. Its
+prepare operation must produce gate-scope evidence and separate repositories from one immutable dirty-source
+snapshot; audit and integrate must reject stale or out-of-scope results and preserve conflicting parent changes.
+Cooperative parent exclusivity remains required during capture, replay, combined verification and rollback.
+The parent owns the contract evidence and the resulting cohort until its last integration/recovery consumer.
+
+Until that prerequisite passes, keep one exclusive shared-worktree writer. Then assign required parent
+reconstruction, staged-target admission, strict configuration preflight and the runtime fixture amendments to separate
+repositories and separate build outputs. Each keeps its own behavioral red where applicable and focused green gate.
+Keep the live-copy cluster after strict configuration because their tests overlap in `CodexSessionsTest`; keep the
+composed refusal/no-judge check after staged admission because they share `DriverTest` and `DriverHarness`.
+Integrate accepted results one at a time and prepare a new integrated snapshot before launching a dependent cluster.
+The parent then verifies composed refusal/no-judge outcomes and performs the complete clean acceptance build once.
+The retained-parser assignment also owns `CodexReceivedResultsTest.readsEachOutputShape`: separate valid output-shape
+coverage from its former malformed-record ignore expectation. Its focused gate includes `CodexReceivedResultsTest`;
+the changed refusal expectation must first fail against the current parser, then pass with the source location.
+The retained-parser cluster now has a behavioral red for six cases that accepted malformed metadata, message, command,
+tool-result and final/second-file records; an additional received-results case failed in its assertion helper because
+no exception existed. The six direct behavioral failures establish the gate. The final eight-class focused verify
+passes 125 tests with zero failures, errors or skips, including existing live interrupt-tail contracts. Evidence:
+session `01a1d63c-76e2-7891-897c-2707444a012d`, `temp/rollout-red-9l2Bof/red.log`, and
+`temp/rollout-green-EddWLb/terminal-receipt.txt` and `report-summary.txt`. `RolloutRecords` centralizes source-located
+parsing for the three retained readers; malformed-looking tool-result content remains ordinary content. The parent
+accepts the parser boundary and retains ownership of the later composed Driver refusal/no-judge test and cleanup.
+
+The evidence review also found a prerequisite for the existing between-turn early-end outcome: native transcript
+copies currently become available only after process closure. Publish complete-line snapshots before turn completion,
+then carry those retained prefixes through both bridge/forwarder copy boundaries before observer notification. Keep
+final copies strict, including malformed unterminated final records; never overwrite the open CAT transcript.
+Snapshots promise only complete records present at capture, not a native flush barrier. A controlled two-turn bridge
+and forwarded-session check must prove evidence is available before closure and that sufficient evidence can prevent
+the next turn. This lifecycle cluster follows strict retained parsing and remains unimplemented.
+
+The configuration cluster must preserve valid empty and comment-only TOML configuration: the
+[TOML specification](https://toml.io/en/v1.0.0#table) permits an empty root table. Its refusal tests pair malformed
+TOML with those valid inputs, and pair empty JSON with a valid empty JSON object; a blanket empty-file rejection
+would incorrectly broaden the approved malformed-configuration policy. Use the existing parser's result for each
+format rather than a shared raw-text emptiness check.
+
+The runtime fixture amendments are accepted locally: the three-class compiler, Checkstyle, PMD and test gate passes
+34 tests with zero failures, errors or skips. `ApplicabilityTest` now constructs its certified attempt directly;
+`TurnCopyServedSessionTest.followUpReadsOutputWrittenInFirstTurn` explains the two-turn file-copy behavior it verifies.
+`AdoptionTest.postDecisionOutcomeIsIgnored` already had the required two pending control trials and six initial pairs,
+with seven pairs asserted afterward, so it needed no change. Evidence: session
+`01a1d7b5-fe58-7a93-8b63-4dfc669b697a`, `temp/runtime-fixture-amendments-90Q49N/terminal-report.json`,
+`command.txt`, `final.log` and its selected Surefire reports. The parent inspected the decisive report and the three
+XML suites. The parent owns evidence cleanup after integrated acceptance. No runtime speedup is claimed.
+
+The accepted staged-admission assignment is recorded in this session's
+`temp/staged-admission-contract-AkXoYJ/contract.md`. Its eleven-path closure validates each target against its own
+overlay snapshot, preserving the intentionally empty control target. It supplies the target to GuardPilot at
+construction and retains the control inventory for checks between trial admissions. The behavioral reds and focused
+green passed. The parent inspected the seven exact selected Surefire suites: 483 tests, zero failures, errors or
+skips, and no Checkstyle/PMD findings. Evidence: session `01a1d817-c72f-71f0-86b0-bf467e90e3b9`,
+`temp/staged-admission-Yu9DCs/final-retry.log` and `final.cmd`; the initial measurement red is in this session's
+`temp/staged-admission-0MoelH/measurement-red.log`. The existing linked-prompt refusal still passes. The writer
+released the shared worktree; the parent owns retained evidence through integrated acceptance.
+
+Required-parent reconstruction is also accepted locally. The four selected suites passed 143 tests, zero failures,
+errors or skips, with clean Checkstyle/PMD. The parent inspected the exact inheritance, get-history, connection and
+runner XML reports and the final receipt. Evidence: this session's `temp/required-parent-state-wtCGli/evidence/`,
+including `required-parent-state-report.json`, `focused-acceptance-final.log` and its receipt. Platform/public-operation
+proofs passed separately; the earlier JShell probe was terminated and replaced by the accepted plain-Java probe.
+The parent owns evidence cleanup after final acceptance.
+
+Strict configuration is accepted under this session's
+`temp/strict_configuration_contract-XQt4ZG/contract.md`. The focused four-suite gate passed 156 tests with zero
+failures, errors or skips and clean compiler, Checkstyle and PMD. The conditional POSIX test exercised an actual
+unreadable-file refusal, preserved its cause and restored permissions. Evidence: session
+`01a1d839-efd5-74b0-a6dc-9399e6e608c0`, `temp/strict-config-impl-ZqDOVt/task-report.json`,
+`permission-final2.receipt` and `permission-final2/output.log`. The parent inspected the receipt and exact XML reports.
+
+The composed retained-evidence refusal is accepted under this session's
+`temp/composed-refusal-contract-GuavNJ/contract.md`. Required read failures now escape all three Driver boundaries
+without starting a judge or recording a correctness outcome; cleanup interrupts the other live trial and releases
+the campaign lock. The five-suite focused gate passed 287 tests with zero failures, errors or skips and clean
+Checkstyle/PMD. Evidence: session `01a1d868-e3f1-7261-b41c-f296469c7941`,
+`temp/composed-refusal-cT2cBL/final-focused.receipt`, `final-focused.log` and `red-final.log`.
+The parent inspected the behavioral red, final receipt and exact XML reports. PMD rejected overly long test names
+before the behavioral gate; shorter names preserve the assertions and all quality checks.
+
+The live-copy contract is accepted locally: native complete-line copies are published before between-turn observers,
+and observer failures close runners while preserving the original failure. Direct and forwarded Codex session cases
+verify complete reads ending before turn two, incomplete reads continuing, and malformed retained records reporting
+their filename and line. The final eleven-suite focused gate passed 266 tests with zero failures, errors or skips;
+Checkstyle and PMD report zero findings. The parent inspected its terminal receipt, exact suite XMLs and lint reports.
+Evidence: session `01a1d8a9-f1ed-7570-ac9a-55e005319bae`, `temp/live_copy_impl-uSfpzh/task-report.json`,
+`final-focused3.receipt`, `final-acceptance.txt` and the separate CodexProcess red/green receipts. Keep the shared-worktree
+writer/build chain exclusive. The parent owns retained contracts and evidence through final integrated acceptance.
+These local results do not pass the remaining global acceptance gates.
+
+The Maven-native transport amendment is accepted locally. Its four-suite source gate passed 31 tests with zero
+failures, errors or skips and clean Checkstyle/PMD. The eight-class distribution gate passed, and a fresh rebuilt
+DelegationCli preparation returned prepared/0 with scope_result passed and Maven exit zero. Its owned --settings
+argument, fresh regular Maven-created log and 1897 changed paths under the reviewed common CLI target root establish
+the real preparation boundary. Quiet successful Maven output left its log empty. This resolves the earlier failed
+Enforcer transfer for this invocation; it does not complete audit/integration or authorize concurrent shared builds.
+Evidence: this session's `temp/maven-transport-consumer-P0P23m/` and cohort
+`temp/delegation-bootstrap-qKRgXf/native-tmp/delegation-11439236121580560423/receipts/prepare-bootstrap-smoke.json`.
+The current 1093-path preparation plan includes the three accepted staging additions and records review identity
+`root-bootstrap-complete-reactor-proxy-staged`. The parent retains this evidence through the remaining isolation and
+integration checks and final acceptance. Live copying is accepted locally; global acceptance remains unrun.
+
+The real candidate-audit follow-up exposed and repaired a snapshot symlink timestamp mismatch. SourceSnapshot now
+restores and verifies no-follow link metadata; fixed-time tests preserve target bytes/time, accept an untouched link,
+and reject a later changed link timestamp. Its focused gate passed 67 tests with zero failures/errors/skips and clean
+linters. After distribution refresh, a fresh 1094-source preparation and untouched real audit both returned zero;
+the candidate is verified with no changed/conflicting paths. Evidence: this session's
+`temp/symlink-consumer-tl1j7h/` and session `01a1d929-6662-77a1-822d-15228fe57e27`,
+`temp/delegation-symlink-metadata-9O1td5/task-report.json`.
+
+Session transaction storage is accepted locally. Replay and recovery admit reviewed excluded session storage while
+rejecting source, replay, Git-administration, candidate and all-work gate-output overlap. The four-path repair passed
+72 focused tests with zero failures/errors/skips and clean compiler, Checkstyle and PMD. Evidence: session
+`01a1d96a-4346-7d42-a006-0079618336b2`, `temp/replay-storage-vdNqvp/task-report.json`.
+The parent inspected the terminal receipt, exact nine XML reports and lint outputs. After refreshing the copied module,
+supported re-audit of the retained invalidated cohort returned audited/0. Real integration returned integrated/0 at
+generation 7 with a terminal integrated journal, combined and actual parent verification exits zero, passed scope and
+no conflicts. All 1094 selected source paths retained their bytes and metadata. This was an empty-delta real consumer;
+nonempty replay, interrupted recovery and conditional rollback are covered by the focused application tests.
+Evidence: this session's `temp/replay-storage-consumer-mgQdsc/acceptance.json`, command receipts and logs. The parent
+retains both cohorts, pre-retry receipts and repair evidence through the last integration/recovery consumer. Concurrent
+build admission, the complete clean build and global acceptance remain unrun. The storage repair preserves Replay's
+existing journal parser; the bounded-memory refactor below is designed and awaits implementation.
+
+The journal-reader repair is a behavior-preserving two-path refactor of `Replay.java` and `ReplayTest.java`.
+Read the header and subsequent records through a buffered reader, validate every record before any recovery mutation,
+and discard each event after updating the last terminal state. Do not return on an early terminal record: a later
+record may change that state or invalidate the journal. Close the reader before recovery appends more records.
+Preserve empty, blank, malformed and unterminated-final-record behavior and all existing error semantics. The directory
+preimage map/set and allowed replay paths remain necessary global recovery state; memory then depends on that state
+and the largest single record, rather than the number of journal events. Repeated writes for one path and repeated
+recovery attempts both grow the event stream without requiring retained event history; the header's ancestor metadata
+is the case that still requires retained state. Run the existing ReplayTest and DelegationTest focused verify baseline
+before edits, then the same gate afterward with all quality checks. No structural test or memory-stress subprocess is
+needed for this refactor. The controller writer has released ownership after its accepted 69-test gate.
+`replay_bounded_reader_impl` now owns exactly these two source paths and the focused baseline/final Maven checks
+as the exclusive shared source/configuration/Maven writer; root retains plan/evidence ownership until terminal
+handoff. Preserve all accepted storage and controller changes. The delegate must return the decisive baseline
+and final receipts, configured quality results, changed paths and explicit writer release. This refactor remains
+unverified until that handoff is accepted; the complete clean-build gate remains root-owned.
+The journal-reader handoff is now accepted and its writer released. The parent inspected the baseline/final
+exit files and complete logs in session `01a1dace-d0db-7d73-bd92-889b80929732`,
+`temp/replay-reader-1PWtD7/`: both focused verify commands exited zero. The final XML reports contain
+ReplayTest 7 and DelegationTest 13, with zero failures/errors/skips; Checkstyle and PMD have no findings.
+The reader scope closes before recovery mutates or appends, and retains only the latest terminal state plus
+necessary recovery metadata. The existing interrupted-recovery test now exercises a later terminal state
+and malformed content after a terminal record, asserting rejection before project/journal mutation. No
+whole-client or installed behavior is established by this focused receipt. Root retains its evidence through
+final integration/report reconciliation and then owns cleanup.
+
+The next build-admission work uses the closed twenty-one-path contract in session
+`01a1d6af-0446-7022-b286-2efff7224882`, `temp/build-admission-9iPaux/contract.md`.
+The final BuildObservations recreation is accepted: named-module source and driver compilation and the public-operation
+gate exited zero. The parent inspected the recorded commands and complete operation log, including strict MemAvailable
+and VmRSS fixtures, root identity reuse and child/grandchild retention. Reuse the final source in session
+`01a1d74d-d014-7823-b4aa-1b58d7e9b57a`, `temp/build_observations_recreation-y6sWrZ`; its injected synthetic identities
+do not establish authentic HarnessProcesses compatibility or host observation authority. The parent retains this
+evidence through adapter adoption and final admission acceptance, then owns cleanup.
+`/root/build_admission_impl` now owns the twenty-one-path implementation and combined focused quality gate as the
+exclusive shared source/configuration/Maven writer. Its predecessor includes the accepted storage repair above;
+preserve those source, scope and metadata decisions. The parent keeps source/configuration/build output untouched
+until its terminal handoff. An independent journal-reader contract delegation was not started: both followup and
+direct spawn returned `agent thread limit reached`; the parent completed the local reader review and selected the
+refactor above without changing source files.
+The initial five-selector component gate passed 21 tests and configured compiler/Checkstyle/PMD checks, but this does
+not accept the controller. Its eight-selector integration gate exposed two parent session-storage failures: the Job
+constructor rejected invocation directories nested below the repository even inside reviewed excluded workflow state.
+The root's `temp/build_invocation_storage-q8xrKk/amendment.md` supersedes the original contract's non-overlap and affected
+API/schema clauses. Job and Verification receive explicit reviewed exclusions/output roots; nested invocation storage
+requires a containing exclusion and separation from source, Git administration and all reviewed outputs. Disjoint
+storage remains valid. The implementation agent owns its focused negative cases and combined gate; that correction is
+unverified. Retain `integration10.log` in session `01a1d9da-b686-7f51-833b-f8ce406c0c93` as the behavioral red evidence.
+The controller returned a terminal report and released ownership, naming an enabled eight-selector `verify` pass
+with 50 selected tests and real separate-process lock and child/grandchild checks. The parent inspected
+`temp/build-admission-final-GBW26v/eight-selector-final2.exit` in that agent's session: zero; its quiet log is empty.
+The report also identifies an unmet contract clause: interruption throws before the terminal receipt and reservation
+release. The parent confirmed those early throws in `BuildWorker`, so the cluster is not accepted. A readable direct
+follow-up returns the same original assignment and exclusive twenty-one-path source/configuration/Maven ownership
+to `/root/build_admission_impl`: add the behavior-specific interruption regression and repair, close launch-failure
+terminalization and terminal-pending-release recovery, and prove strict serialized CLI schema/exit mapping and an
+actual controller CLI invocation. The original contract supplies the required semantics. Rerun the exact enabled
+eight-selector gate after final edits, return decisive evidence and release ownership again. Root-owned host,
+calibration, overlap, distribution and full-build gates remain separate. Preserve the reported source-invalidation
+and structured-CLI behavior reds in the same scratch directory. An earlier opaque message authorizes nothing; the
+readable follow-up is authoritative. Several older parent waits incorrectly invoked exec wait with cell `0`; each
+returned `exec cell 0 not found` and established nothing about the delegate. No live exec cell exists; use direct
+collaboration waits. A prior deliberately disabled validator with PMD skipped establishes only mutation evidence,
+not a TDD red against the original source. Preserve the original integration red and keep every quality gate enabled.
+The same agent has now returned its corrected terminal handoff and released source/configuration/Maven ownership
+again. The parent inspected its named `eight-selector-final6.exit`, complete quiet log, focused test summary,
+`BuildWorkerTest`, `BuildReservationsTest` and `BuildAdmissionCliTest` XML reports, plus the named lifecycle assertions:
+55 selected tests pass with no failures/errors/skips; the retained Checkstyle and PMD XML have zero findings.
+The interruption regression demonstrates the original held-reservation leak, and the corrected tests assert release
+and restored interrupt status for root-wait and retained-child interruption. Launch failure records `not_started` and
+releases its reservation; terminal-pending recovery releases a verified receipt and retains a malformed one. These
+focused outcomes are accepted. The modular CLI check patches compiled classes into a staged module and adds module
+reads, so it does not establish production distribution closure. The parent also found test-suite-rule violations in
+the returned worker tests: direct `Thread.sleep` polling and a fixture launch through the class path. Before accepting
+the whole cluster, replace fake-observation polling with explicit sample barriers, use filesystem/event synchronization
+for the real fixture, and launch project-owned fixture code through its named module. Preserve the lifecycle and
+whole-tree assertions, then rerun the affected focused gate. Root now owns those repairs and the remaining gates;
+no delegate remains the shared writer. The serialized-version red's production preimage also remains unverified;
+do not count it as TDD evidence until the recorded check establishes that it tested the original coercive behavior.
+The prepared correction assignment selects `build_admission_impl` for its existing fixture context and confirmed
+injected `optimize-high` tier. Its exact write scope is the four test files
+`BuildChild.java`, `BuildWorkerTest.java`, `BuildReservationsTest.java` and `BuildAdmissionCliTest.java` in
+`client/common/cli/src/test/java/com/holdmyspot/cat/common/build/test/`. A follow-up task was issued after the
+role inquiry. Its preliminary role response said it awaited a writer grant, but root incorrectly treated that
+response as the later task's execution state. The subsequent source changes contradict that assumption.
+Treat the delegate as the exclusive source/configuration/Maven writer until its terminal handoff and release;
+root retains plan/evidence ownership only. Several parent calls incorrectly used exec wait with nonexistent
+cell `0`; these are parent tool-selection failures and establish no delegate execution state. Acceptance is the same
+enabled eight-selector verify gate, preserved lifecycle,
+tree and lock assertions, no fixture sleeps, and named-module launches using current compiled modules. This is
+test-fixture quality repair, not production-distribution acceptance or a new production behavior change.
+Root has replaced the two fake child-sample sleep loops in `BuildWorkerTest` with per-run three-sample
+`CountDownLatch` barriers; all lifecycle assertions remain. Its focused verification is now claimed by root,
+using `BuildWorkerTest#terminalWaitIncludesRetainedChild` with enabled compiler, Checkstyle and PMD gates.
+Evidence is retained beneath this session's `temp/worker-sample-barriers-YIfGot/`; root owns cleanup after
+the final integration/report reconciliation consumes it. That invocation is terminal with exit 1: Checkstyle
+found missing Javadocs on `BuildChild.awaitCondition`, `ledgerBindsPid` and `CheckedCondition.test`, plus an
+unused catch parameter. Those declarations were absent from the parent's preceding source read and were not
+created by the parent; the earlier inference that the delegate had not started is therefore unsafe. Root has
+stopped source/configuration edits and Maven execution pending the delegate's terminal handoff and ownership
+release. Preserve the parent's latch edits when reconciling the completed four-file result. The full quiet
+diagnostic is `temp/worker-sample-barriers-YIfGot/verify.log`, with its status in `verify.exit`; it does not
+establish a failure of the latch behavior because Checkstyle stopped before that test ran.
+The four-file fixture repair has now terminalized and released source/build ownership. Its decisive report is
+`temp/controller-fixture-repair-ldsua8/terminal-report.json` in session
+`01a1d9da-b686-7f51-833b-f8ce406c0c93`. The enabled eight-selector gate ran 55 tests with clean Checkstyle/PMD;
+both worker cases passed, but the CLI child-failure case returned infrastructure failure for missing VmRSS rather
+than its required failed result and exit-code-7 receipt. The complete output is `eight-selector-terminal3.log`,
+with frozen reports in `failed-terminal3/` beside that report. This fails the whole cluster's acceptance; retain
+the completed fixture changes and their individual passing evidence. No sleep polling or classpath fixture launch
+remains in the four assigned files. The parent has consumed the decisive report once; no broad repeat is required.
+
+The read-only `exited_process_observation_contract` review identified the missing distinction: a stable PID/start
+identity can remain present after execution ends and before reaping. The failed PID's actual execution state was
+not captured, so its historical state remains unknown. The selected repair adds explicit `LIVE`, `EXITED` and
+`UNKNOWN` state to `BuildObservations.RawProcess`, supplied by OSHI's fresh process record. Only positive exited
+state or confirmed identity disappearance/reuse discards an RSS row; an unknown state, unavailable metric record,
+or missing/invalid RSS for a still-live identity continues to fail closed. A failed RSS read permits one fresh
+state observation, not an RSS retry. Exited roots must not remove surviving retained children.
+
+A readable follow-up assigns `build_admission_impl` exclusive source/configuration/Maven ownership for that repair.
+Its exact project allowlist is `BuildObservations.java`, `BuildObservationsTest.java`, `BuildWorkerTest.java` and
+`delegation/test/DelegationTest.java` under their existing common CLI source roots. Root owns plan/evidence only
+until its terminal release. Before project production edits, the delegate must prove the exact OSHI state API on
+live, exited-unreaped and reaped actors, then recreate the final public process/tree operations in a fresh empty
+folder using the retained named-module dependency procedure. Paired controlled tests retain strict live-process
+RSS rejection, identity reuse, unknown-state failure, valid live zero RSS, wrong-PID rejection and surviving-child
+tracking. Acceptance is the enabled observation-only verify followed by the same eight-selector verify gate,
+including the unchanged real CLI exit-7 receipt assertion and both worker cases. The existing CLI failure is
+behavioral red; an API migration compile failure is not. The delegate owns routine in-scope repairs and returns
+decisive proof/build receipts and explicit writer release. Root retains evidence through final integration.
+That assignment has now completed and released ownership. The parent inspected its decisive report at
+`temp/build_observations_exited_state-Cxz6Nb/terminal-report.json` in session
+`01a1d9da-b686-7f51-833b-f8ce406c0c93`, the complete API probe and final public-operation output, and all eight
+frozen selected XML reports plus Checkstyle/PMD. The probe observed an exited unreaped actor as OSHI `ZOMBIE`
+while the JDK still reported it alive, followed by an absent record after reaping. The final-source public
+operations preserve strict live RSS failures and omit positively exited rows, including the paired state and
+identity cases. The enabled eight-selector verify passes 69 tests with zero failures/errors/skips and no
+Checkstyle/PMD findings. The real CLI child-failure case now passes its unchanged exit-1/failed/receipt-exit-7
+assertions; both worker cases pass. This accepts the component and fixture repair, not the root-owned host,
+calibration, overlapping-build, distribution or complete clean-build gates.
+
+The next ready §8/T3 unit is the Workspace test-double exclusion contract. The parent confirmed that
+`FakeWorkspacePort.stage` filters exclusions only when first copying but omits exclusions from its cache identity;
+production `StagedSources` includes them. `workspace_exclusion_contract_impl` owns the fake, shared
+`WorkspaceContract` and its `FakeWorkspaceContractTest`/`WorkspaceStagingContractTest` wrappers as the exclusive
+shared source/configuration/Maven writer. The assignment requires shared full/filtered and selected/filtered
+staging cases, independent bytes/paths, deterministic reuse and deletion of every candidate variant, with a
+behavioral fake failure before its fix. Its focused final verify includes those wrappers, StagedSourceTest,
+DriverTest and OptimizerCoreTest with every quality gate enabled. Root retains plan/evidence only until the
+terminal receipt releases ownership. Production Workspace and StagedSources remain read-only.
+That assignment is now accepted and ownership released. The parent inspected the decisive handoff,
+`final.command`, exit-zero receipt, complete quiet log and frozen selected XML/static reports under session
+`01a1dad9-75be-7cd2-8b51-bab92279333c`, `temp/workspace-exclusion-contract-qKaaAw/`.
+The retained red shows only the fake aliasing full/filtered directories while the real implementation passes.
+The final enabled gate passes 396 tests with zero failures/errors/skips and clean Checkstyle/PMD. Shared
+contract cases cover distinct bytes/paths for excluded variants, reuse despite exclusion-set iteration order,
+explicit selection and deletion of all four variants. The fake preserves the previous empty-exclusion names;
+production behavior is unchanged. Root retains the evidence through final integration, then owns cleanup.
+The initial reported missing rule was an invocation error: the failed command inserted `common/` before
+`class-design.md`, although the route names `rules/include/class-design.md`. Reading the exact routed path
+succeeded before project work resumed; no rule replacement, alternate guidance or relaxed gate was used.
+The evidence-copy failure for narrow-green XML leaves that XML unavailable; the final gate retains its own
+complete reports and does not depend on it.
+
+Controller implementation, host observation authority,
+equivalent whole-process-tree calibration, second-scheduler ledger visibility and eligible overlapping builds remain
+required subsequent gates. Keep shared Maven builds sequential until those admission conditions are established.
+
+The shared heartbeat-handle coverage is now accepted. Root inspected the decisive final quiet log, both selected
+TestNG cases and the configured quality reports from `heartbeat_handle_contract`: 2 tests passed with zero
+failures/errors/skips and no Checkstyle/PMD findings. The two-file test change starts the same Runnable twice,
+proves one handle can close while the other keeps producing callbacks, then closes the final handle and checks
+that callbacks stop while a separate registration supplies periods. Both ManualTicker and the production ticker
+run that shared check. The writer released source/Maven ownership. Evidence remains in session
+`01a1daea-4e3a-7062-a32c-145e63cc0c00`, `temp/heartbeat-contract-rOmqPs/terminal-report.md` and its named
+outputs; root retains it through final integration, then owns cleanup.
+
+One remaining controller implementation gap is confirmed by the current `BuildWorker.run` and
+`awaitOwnedTermination`: both unconditionally call the RSS-reading `BuildObservations.tree`, although the closed
+controller contract requires memory sampling only during calibration. Ordinary admitted jobs need identity/state
+and descendant tracking, including retained children after root exit; they must not require VmRSS. This is a
+product implementation gap under an explicit existing contract, not evidence that the plugin needs another rule.
+
+The next four-file repair owns `BuildObservations.java`, `BuildWorker.java`, `BuildObservationsTest.java` and
+`BuildWorkerTest.java` under their current common CLI roots. Add `BuildObservations.alive(root, retained)`, returning
+an immutable set of current live stable identities through the same root/descendant/retained traversal, without
+reading RSS. Identity reuse must not adopt the replacement; positively exited actors are omitted; unknown state,
+wrong-PID observations and missing identity for a still-live actor fail closed. Bracket state observations with
+stable identity reads and retain the existing disappearance/reuse decisions. Keep `process` and `tree` as strict
+memory operations. The worker selects `tree` and accumulates memory data only for calibration claims; ordinary
+claims use `alive`. Cleanup after interruption uses lifecycle tracking for either claim kind, so an unavailable
+RSS value cannot prevent reaping. No public bypass, fabricated zero RSS, changed admission policy or relaxed
+calibration is permitted.
+
+Before production edits, extend the existing controlled worker fixture to finish a valid calibration, then run
+an equivalent ordinary job with live process identities/states and absent or malformed VmRSS. The ordinary job
+must remain owned until its retained child ends and then persist its terminal result and release its reservation.
+The narrow red gate is `client/mvnw -q -f client/pom.xml -pl common/cli -am
+-Dtest=BuildWorkerTest#terminalWaitIncludesRetainedChild -Dsurefire.failIfNoSpecifiedTests=false verify`.
+Add paired direct lifecycle checks for retained descendants, identity reuse, exited actors, unknown state and
+wrong PID, retaining strict missing/malformed calibration RSS checks. Preserve existing interruption and real
+child/grandchild tests. The final enabled gate is the existing eight-selector controller/delegation `verify`
+command recorded above; compilation, Checkstyle and PMD remain required. The new lifecycle API also needs a
+fresh-folder named-module public-operation proof using the accepted dependency/source procedure before adoption.
+This repair and its evidence precede distribution bootstrap, host authority, calibration and overlap acceptance;
+the complete clean build remains the root integration gate. Root owns plan/evidence until the next explicit
+exclusive source/Maven writer assignment and retains the resulting receipts through final integration.
+`maven_transport_impl` now holds that exclusive four-file source/Maven assignment; root performs only plan/evidence
+work until its terminal release. Its prior transport context must preserve the worker's settings and diagnostics
+behavior while the new lifecycle operation removes ordinary-job RSS dependency.
+
+The parent also inspected `BuildAdmission.run(List<Job>, Path)`: it synchronously executes each worker before
+considering the next job, and an IOException ends that loop. The closed controller contract requires eligible
+overlap and ownership through every launched worker's terminal result. `composed_refusal_contract` has a read-only
+assignment to settle the smallest batch admission/failure/interruption repair using that existing authority.
+Its amendment must give the next writer exact source/test closure and deterministic overlap/cleanup gates.
+It owns no shared source or build state and does not reopen accepted Driver work. No batch-scheduling implementation
+may overlap the current four-file writer; root accepts the amendment and predecessor result before assignment.
+The read-only reviewer has identified worker exception ownership as a prerequisite to batch scheduling: a
+worker observation or receipt IOException can escape before child cleanup, so joining its Java thread alone
+cannot establish terminal process ownership. The reviewer will return two ordered verification-closed
+contracts, first worker failure cleanup, then batch scheduling. Neither expands the live four-file writer's
+assignment. These are remaining implementation obligations under the original controller contract.
+During that wait root again incorrectly invoked exec wait with nonexistent cell `0`; it returned an error,
+started no work and supplied no delegate status. Root corrected the operation to direct
+`collaboration.wait_agent`, which delivered the reviewer's actual update. The existing operation-identity rule
+already forbids that substitution; record this as an application failure, with no invented exec identity and
+no inference about delegate failure.
+Two additional calls with nonexistent exec cell `0` later failed without starting or observing work.
+The subsequent direct `collaboration.wait_agent` call returned the actual reviewer update. This remains
+failure to apply the adequate operation-identity contract; use that direct namespace for subsequent agent waits.
+
+The RSS/lifecycle repair is now accepted and its writer released ownership. Root inspected the terminal report,
+the retained behavioral-red assertion, final quiet log, eight frozen test reports and all twenty quality reports
+in session `01a1d882-f4b6-7a13-b531-c053c2239f55`, `temp/build-observations-YoQToV/`.
+The enabled focused gate passes 81 tests with zero failures/errors/skips and zero Checkstyle/PMD findings.
+The separate named-module public-operation output in `temp/build_observations_recreation-aVv661/` establishes
+that lifecycle tracking accepts absent/malformed RSS while strict memory operations still reject it, preserves
+identity/state decisions and retains children after root exit. This does not establish production host authority.
+Root retains both evidence directories through final integration and owns their subsequent cleanup.
+
+The read-only review has completed the remaining controller amendment. Its dependency order is the accepted
+RSS repair, worker failure ownership, batch scheduling, then production boundary acceptance. The latter two
+implementation clusters remain unrun. Their source/build slots are exclusive and must not overlap.
+
+The worker cluster owns exactly `BuildWorker.java`, `BuildReservations.java`, `BuildWorkerTest.java` and
+`BuildReservationsTest.java` under the current common CLI main/test roots. Keep public signatures unchanged;
+the private terminal writer may accept a nullable exit. A claim transfers preparation, launch, stream, discovered
+process and publication ownership to the worker. Every failure must pass through cleanup. Ordinary observed
+nonzero Maven exits remain `failed` results; preparation/launch failures are `infrastructure_failed` with
+`not_started` and null exit; interruption is `interrupted` with an actually observed exit or null. Other
+infrastructure failures remain failures even when the root exits zero. Never manufacture exit 127 or 130.
+Retain discovered identities before persistence, signal only the same stable identities, use lifecycle rather
+than RSS observation for cleanup, join the output consumer and establish whole-tree termination before `reaped`.
+Repeated interruption cannot abandon cleanup; restore interruption after all reporting obligations.
+
+If terminal publication fails, preserve the last valid reservation and report job/reservation/path context;
+do not rewrite a differently classified receipt. If release fails after publication, preserve that immutable
+receipt and the last valid ledger. If termination cannot be established, retain ownership, record no `reaped`
+proof, release nothing and return an explicit recovery-required failure for root reconciliation.
+Receipt validation must bind context, boot, reservation, job, assignment and family. Passed requires observed
+exit zero and reaped; ordinary failed requires observed nonzero exit and reaped. Not-started requires no
+recorded/spawned root or owned entries; reaped proof must cover the recorded tree. Null exit is limited to
+infrastructure/interruption outcomes without an observed exit. Incomplete or mismatched proof cannot release.
+
+Use deterministic existing process/observation seams for `preparationFailureRecordsNoStart`,
+`observationFailureReapsBeforeReporting`, `terminalReceiptFailureRetainsReservation`,
+`cleanupObservationFailureRetainsReservation`, `interruptionRecordsActualExit`,
+`infrastructureReceiptAllowsReleaseAfterProof` and `mismatchedTerminalReceiptRetainsReservation`.
+The observation failure follows discovery of a live retained child. Publication failure changes test-owned
+destination shape at a controlled completion event rather than relying on permissions. Fixtures always reap
+their controller threads. Reuse the just-accepted unchanged eight-selector result as baseline; obtain behavioral
+red from the named new cases before production edits, then run that exact eight-selector enabled verify gate.
+
+The subsequent batch cluster owns exactly `BuildAdmission.java`, `BuildAdmissionCli.java`,
+`BuildAdmissionTest.java` and `BuildAdmissionCliTest.java`. Before any state, copy and validate the whole finite
+list, reject null/duplicate IDs, resolve paths without symlink traversal and enforce fresh invocation roots and
+pairwise project/invocation/writable/output isolation under the existing storage amendment. Create run evidence
+only after validation, preserving successful empty-plan directory creation. Scan pending jobs in input order
+through independent ledger claims so a deferred calibration cannot block an eligible later job. Start admitted
+workers outside the ledger lock, preserve calibration exclusion and existing resource thresholds, consume
+completed outcomes before further admission and wait on completion or bounded fresh observations without spinning.
+Keep results immutable and in input order; ordinary nonzero results do not stop other required jobs.
+
+On infrastructure failure stop admission and join all owned workers, preserving the first observed failure and
+attaching subsequent failures in input order. On caller interruption stop admission, interrupt all workers,
+join through their cleanup boundaries despite repeated interrupts, restore the flag and throw. Do not fabricate
+unstarted results or release reservations from the scheduler. Controlled event tests cover validation before
+state, real executable-launch overlap, deferred calibration, input ordering/nonzero results, infrastructure
+failure, interruption, shared controllers and changed-source exclusive recalibration. Seed calibration through
+the supported controller rather than fabricated ledger rows. This cluster's accepted predecessor gate supplies
+its baseline; test-only behavioral red precedes its edits and the same eight-selector gate closes integration.
+
+`maven_transport_impl` is assigned the next worker-failure cluster as the exclusive four-file source/Maven writer.
+Its accepted RSS/lifecycle receipt is the predecessor. Root owns only plan/evidence until its terminal release;
+the batch cluster cannot start before this worker cluster is accepted. Complete clean build, distribution,
+host-view proof, required equivalent calibration, ledger sharing, eligible overlap and live measurements remain
+root-owned terminal gates.
+The live worker reports that three required cases are still absent: post-discovery observation failure with
+retained-child/output barriers, terminal-publication failure and cleanup-observation failure. Its broad verify
+run cannot close those claims. Root has required completion within the existing assignment and retained source/
+Maven ownership with that worker. Production edits already exist, so later passing cases cannot be labeled
+test-first red; the worker must identify any preserved predecessor input and report the actual red evidence
+without rolling back shared source or inventing an earlier implementation. This cluster remains unaccepted.
+
+The worker has now completed the seven required scenarios and released its four-file source/Maven slot.
+Root inspected the decisive eight-selector Surefire reports: 87 tests, zero failures/errors/skips; the common
+Checkstyle and PMD reports contain zero findings. Both `scenarios-final2.log` and `final5.log` are complete
+quiet successful outputs. The terminal report and logs are retained in session
+`01a1d882-f4b6-7a13-b531-c053c2239f55`, `temp/worker-failure-h46DzY/`, with root responsible for cleanup
+after final integration and the last consumer. These checks establish current green behavior, not a historical
+behavioral red. The worker confirms no untouched predecessor source, excerpt or diff is retained for this cluster.
+Root has assigned `composed_refusal_contract` an inspect-only recovery amendment: settle whether an isolated,
+faithful controlled reproduction can demonstrate the checks' sensitivity without changing shared source or
+inventing a predecessor, and preserve the missed test-first ordering as a process deviation. Its write allowlist
+is empty and all proposed recovery commands remain unrun. Batch implementation waits for that evidence decision;
+the existing worker cluster remains unaccepted pending reconciliation of this required verification gap.
+The recovery reviewer settled a single-hunk isolated reproduction of omitted terminal publication/release,
+using the existing observation-failure check. Its proposed copy-creation step still assumes an unestablished
+snapshot operation, so root returned only that prerequisite for a bounded inspect-only amendment; the reproduction
+and all diagnostic builds remain unrun. The reviewer acknowledged that premise gap and continues examining the
+supported creation boundary. Three further invalid exec waits with invented cell `0` observed no work; they are
+root operation-selection failures and supply no evidence about the delegate. No replacement investigation started.
+
+In parallel, `composed_refusal_contract` has a read-only continuation of the remaining Workspace §8/T3 review:
+plugin content/removal, captured immutable reads, symbolic links and reconnects. The accepted exclusion/selection
+repair is its predecessor and stays accepted. It owns no source/build state. Its bounded source observation
+finds that the fake stages a recorded link from the live project rather than the candidate target bytes,
+whereas production dereferences the candidate snapshot; the shared fixture contains no link to distinguish
+these outcomes. The reviewer is authorized to inspect the existing `Dereferenced` API used by `StagedSources`
+and must return a minimal reuse-based implementation/test contract before another writer receives this work.
+No Workspace edit or new test has run for this remaining review.
+The reviewer subsequently identified a production-side obligation as well: `WorkspacePort.pluginCopy` documents
+refusal when a stored base inventory differs from its digest, while `PluginCopies.copy` checks existence without
+that comparison. Keep this obligation open separately from the fake byte/removal repair. Missing-base or
+missing-dependent tests establish only those refusals; they cannot close changed-base refusal. Do not weaken
+the documented contract to match the current implementation or count this family complete until that mismatch
+has its own settled repair and decisive behavioral evidence.
+The reviewer has now returned the complete four-cluster amendment. Root preserved its exact settled interfaces,
+failure semantics, ownership and literal gates in this session's
+`temp/workspace_contract_closure-Z7XBeZ/contract.md`: recorded-link staging, fake plugin-copy delegation,
+captured-read/intact-reconnect coverage, then changed-base refusal. The production resolver and plugin copier
+stay authoritative, exposed only through the existing typed SharedSecrets pattern. Changed-base refusal must
+run before cached-copy reuse as well as installed/uncached returns. Root corrected the proposed 41-character
+missing-target test name to the 39-character `rejectsMissingLinksWithoutCachingSource` in the artifact and its
+commands; the other proposed names fit the configured limit. This is implementation readiness, not passing
+behavior evidence. Each cluster remains unrun and shares mutable test paths, so assign writers sequentially
+after the controller chain releases. Root retains this amendment through all four consumers and final integration,
+then owns its cleanup.
+
+The controller worker released the source/Maven slot. Rechecking the dependency frontier shows that the
+Workspace checks consume neither the pending diagnostic reproduction nor the unstarted batch scheduler.
+The earlier ordering after that entire chain was a scheduling preference, not an acceptance prerequisite.
+Root has removed that artificial dependency from the Workspace amendment. The four Workspace clusters still
+serialize their shared test paths, and diagnostic/controller Maven work must wait for the same exclusive slot.
+`workspace_recorded_links` now holds that exclusive source/Maven assignment for cluster 1 only, under the
+amendment's exact ten-path allowlist. Root owns plan/evidence only. The task explicitly separates baseline,
+behavior-preserving seam verification, test-only behavioral red and fake behavior edits. The recovery reviewer
+continues read-only; its diagnostic build and the batch scheduler wait for this writer's terminal release.
+The Workspace writer's unchanged two-wrapper baseline passed. Its full output is retained in session
+`01a1db42-b1b8-7182-afd6-e9b84f3e5fcf`, `temp/workspace-recorded-links-T2Pe0c/baseline/output.log`.
+This is predecessor confirmation only; seam verification, behavioral red, repair and final acceptance remain
+with that live writer. The diagnostic reviewer found the existing enumerated-file SourceSnapshot API, but no
+standalone verified bulk-copy invocation has yet been established. It is completing the bounded consumer review;
+no snapshot, diagnostic build or source mutation has been authorized by those candidate API declarations.
+
+Cluster 1, recorded links, is now accepted and its writer released. Root inspected the decisive retained
+`red4/output.log` and frozen reports: the three real-adapter cases passed while the five fake executions failed
+on accepted unresolved links, raw filesystem errors or absent alias content. The focused repaired gate passed
+all eight executions. Root also inspected `final2/output.log` and frozen reports: the five-selector component
+gate passed 404 tests with zero failures/errors/skips and zero Checkstyle/PMD findings. These receipts remain in
+session `01a1db42-b1b8-7182-afd6-e9b84f3e5fcf`, `temp/workspace-recorded-links-T2Pe0c/`; root retains them
+through final integration and owns cleanup. This establishes the fake's recorded-link staging behavior, including
+candidate bytes and repeated contextual refusal, rather than completion of all Workspace obligations.
+
+`workspace_plugin_copy` now owns the exclusive source/Maven slot for cluster 2 under the amendment's exact
+nine-path allowlist. Its baseline is the accepted unchanged component result. The assignment requires separate
+access-seam verification, actual behavioral red before fake delegation changes, and the full five-selector
+component gate; production PluginCopies remains read-only. Clusters 3 and 4 remain unrun. Root owns plan/evidence
+only while this writer runs; the worker diagnostic and batch scheduler consume no Workspace output but still
+wait for the same Maven slot.
+
+Cluster 2's initial terminal receipt did not pass its broader gate: the five selected classes contain 419 tests,
+two failures and one error, all three in DriverTest. Root inspected its report and the selected frozen XMLs.
+The new shared plugin-copy cases pass in both fake modes and the real adapter, and the retained red demonstrates
+the fake's former missing-content/refusal gaps. The corrected fake exposes three Driver fixtures that reference
+plugin bases without preparing them. Root has assigned `workspace_plugin_copy` the missing consumer closure,
+restricted to DriverHarness.java and DriverTest.java under optimizer/execution/test. Prepare owned valid bases
+through copyPluginBase and use its returned identities; preserve each original assertion and the real copier's
+missing-base/dependent refusal. No fake fallback or production change is authorized. Reuse the existing failure
+as the starting evidence, then pass the three-case Driver gate and the same five-selector gate. The writer again
+owns the exclusive source/Maven slot; cluster 2 remains unaccepted until that terminal result. Its initial report,
+logs and reports remain in session `01a1db5b-a1a9-7c90-afff-2ae33c31434f`, `temp/plugin-copy-VVLUdr/`, with
+root cleanup after final integration. Frozen report directories contain unrelated old XMLs; count only the
+classes selected by each recorded command.
+
+Cluster 2 and its Driver consumer closure are now accepted. Root inspected the final focused output and selected
+Driver XML (three passing cases), then the broader output, five selected XMLs and quality reports: 419 tests,
+zero failures/errors/skips and zero Checkstyle/PMD findings. Only DriverTest changed in the fixture closure;
+the already-dirty DriverHarness was preserved. Receipts are in the same session under
+`temp/driver-plugin-fixtures-pT1tbb/`, retained by root through final integration with the original plugin-copy
+evidence. The writer released. `workspace_plugin_copy` now has the sole source/Maven assignment for cluster 3,
+coverage-only captured reads and intact reconnects, under the amendment's exact four-test-path allowlist.
+The 419-test result is its unchanged baseline. No artificial red or production/fake implementation edit is
+authorized; the exact two-case focused command and two-wrapper gate close this cluster. Cluster 4 and the ready
+FakeRunner lifecycle repair still await a writer slot.
+
+Cluster 3 is now accepted. Root inspected its focused output and selected reports (six passing invocations),
+then its shared output and reports (44 fake cases and 25 real-adapter cases), with no failures/errors/skips or
+quality findings. Evidence is retained in session `01a1db5b-a1a9-7c90-afff-2ae33c31434f`,
+`temp/workspace-captured-reconnect-WNv3va/`; root owns cleanup after final integration. The initial shared-gate
+logging pipeline could not create its output file; the writer recorded that workflow failure and obtained the
+successful retained gate with direct redirection. The failed pipeline is not passing evidence. Its cause beyond
+the observed missing log destination is unestablished and no product-test failure is claimed from it.
+After release, `workspace_plugin_copy` received the exclusive cluster 4 source/Maven assignment under the
+amendment's exact PluginCopies/shared-test closure. Preserve accepted predecessors, obtain real-adapter
+behavioral red for installed/uncached/cached changed-base acceptance before production edits, and close with
+the broader five-selector gate.
+
+Cluster 4 is accepted after root inspected the decisive retained logs and selected reports. The test-only
+real-adapter run failed on changed installed-base acceptance (one assertion failure, no errors/skips or quality
+findings). Because its sequential method stopped there, that red run did not separately observe uncached or
+cached built-base acceptance; no three-case historical-red claim is made. The minimum observable behavioral
+red preceded the shared guard change. The final focused method exercised all three cases successfully, and
+the broader five-selector gate passed 428 tests with no failures/errors/skips or quality findings. Evidence is
+in session `01a1db5b-a1a9-7c90-afff-2ae33c31434f`, `temp/plugin-base-refusal-87MpQJ/`:
+`behavioral-red2.log`, `red-reports/`, `focused-green-final.log`, `focused-green-final-reports/`,
+`broader-gate.log` and `final-reports/`. Root owns cleanup after final integration. The writer released the
+source/Maven slot; accepted predecessor evidence remains valid.
+
+The recovery reviewer has finished its inspect-only producer assessment. The checked delegation preparation
+route proves selected dirty-byte materialization and failure cleanup, but does not establish the complete scoped
+physical-tree transaction proposed for the diagnostic. Its returned candidate adds a standalone snapshot command,
+complete inventory verification and transaction receipts. No implementation, snapshot or diagnostic command has
+run. Root has not accepted that new public capability: reconcile its cost and guarantees with the existing
+safe-parallel-work and diagnostic requirements before assigning it. The controlled reproduction remains an open
+verification proposal; it cannot restore or erase the worker cluster's missed historical test-first ordering.
+
+The follow-up source review establishes that the existing SourceSnapshot API accepts an explicit physical-path
+list, can read its retained manifest and can materialize independent entries. Selecting every required descendant
+remains a viable existing sequence; the earlier selected-path review did not prove otherwise. A new public
+snapshot command is therefore not justified. The next bounded probe will exercise that existing sequence on a
+fresh disposable destination, then run the unchanged eight-selector controller gate from the copy before the
+single-hunk diagnostic. Required evidence is copy/input identity, supported metadata and source preservation,
+plus the copy's usable build inputs; atomic tree publication and restoration of pre-existing destinations are
+outside this disposable-copy need. No probe has run. The same inspect-only reviewer is settling the exact
+exclusions and test-module parameter wiring before the source/Maven slot can be assigned.
+
+The current requirement inventory contains 139 distinct IDs and no duplicate rows. Earlier counts of 138 describe
+older trees and must not become the denominator of the final audit. The retained platform-Java AST auditor is available
+in session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/tagged-method-audit-xkl06G/`: `AuditAst.java`, `reconcile.py`,
+its probe fixtures and reconciliation variants remain there. The old `temp/final-gates-lLlQqp/reconcile.py` locator is
+absent. The recovered script has an old hardcoded worktree and consumes saved AST nodes; do not run it unchanged or
+reuse those nodes as evidence for the current source. After the writer releases and the final build completes, reuse
+the established AST extraction with current source paths and final reports, preserving the controlled probe checks.
+Method execution inventory still does not establish assertion adequacy or installed-harness E receipts. The parent
+retains the recovered audit tools through final gate 2 and owns their eventual cleanup after the last evidence consumer.
+The parent has now adapted that auditor in this session's `temp/trace-audit-adaptation-ZGdhby/audit.py`. It takes
+explicit absolute `--project`, `--reports`, `--output` and `--tools` paths, refuses an existing output directory,
+regenerates AST nodes through a named Java module, includes untracked test sources and rejects duplicate requirement
+rows. Supply a frozen directory containing only the final build's selected Surefire XML reports; do not point it at a
+mixed source/evidence tree. The original script incorrectly credited a child override as execution of a tagged base
+method. The retained `override_red` result demonstrates that false attribution; the adapter now excludes overriding or
+name-ambiguous methods while retaining genuine inheritance. `verify.py` passed seven controlled source/report cases:
+base attribution (including literal, annotation, UTF-16, unrelated-field and unknown/missing-ID cases), override,
+inheritance, failed/skipped cases, unrun cases, malformed source and duplicate requirement rows. Decisive receipt:
+`temp/trace-audit-adaptation-ZGdhby/verification.json`; per-operation commands, diagnostics and receipts remain beside
+each case. This accepts temporary audit tooling only. Final-tree extraction, final-report reconciliation, semantic
+assertion review and E receipts remain unrun. The parent owns this directory through final gate 2 and the last consumer.
+
+The bounded §8/T3 review of `ProfileInventory` confirms that all eight shared-contract checks have `@Test` callers
+for `FakeProfileInventory`, `ClaudeProfileInventory` and `CodexProfileInventory`; the real subjects use local agent
+fixtures and, for Codex, an injected launcher. Their different binding-file formats are deliberate subject inputs,
+not evidence of a contract mismatch. This is a source-wiring observation, not a final-report execution receipt or
+acceptance of the whole qualitative audit. The root-path boundary is now repaired: the shared `bindsOnlyBindingFiles`
+check includes a filesystem root and a binding-like filename at the root and under an unrelated directory. The narrow
+fake check exited 1 with a `NullPointerException` at `FakeProfileInventory.canBind` before the fake edit; guarding absent
+filename and parent components makes those inputs return false. The enabled common/Claude/Codex three-class `verify`
+then exited zero: 8 fake, 22 Claude and 24 Codex tests, all passing with no skips. Each report confirms execution of the
+extended shared check. Evidence and frozen XML reports are in this session's
+`temp/profile-binding-boundary-24lwZc/`; root owns cleanup after final-report reconciliation and the last consumer.
+This repair adds no harness launch and changes neither real adapter's supported binding formats. The remaining family
+review, other fake contracts and final-report reconciliation stay open.
+
+The bounded §8/T3 source review of `FakeHostInterruptSignal` found no additional behavior needing a contract check:
+the shared `HostInterruptSignalContract` covers an absent record, strict comparison (before/equal/after), repeated
+polls, preservation of the latest timestamp before and after polling, and null-start refusal. All four checks have
+`@Test` callers for the fake and for the real `TranscriptInterruptSignal` and `RolloutInterruptSignal` adapters.
+The real subjects append interrupt records to test-owned logs and inject fixed clocks; the real public polling
+operation parses and classifies those records through `LogInterruptSignal`. The fake controls the timestamp input
+directly, without asserting a harness-produced event. This closes this family's source review only; execution on the
+final tree still requires the final reports, and the wider qualitative audit remains open.
+
+The bounded §8/T3 source review of `FakeParentPolicySource` maps its observable behavior to the ten inherited
+`ParentPolicySourceContract` tests: harness naming, permission instructions for writes/hosts/both and empty refusal,
+main and unknown-thread policy, narrowed and widened settings, a thread's own policy, unreadable settings, unparsable
+settings and an ended session. `FakeParentPolicySourceTest`, `ClaudeServerPolicyTest` and `CodexServerPolicyTest`
+extend that same contract. The real subjects obtain production policy sources through their request-server
+composition boundaries, edit isolated settings/rollout fixtures and inject process liveness; no real harness is
+needed for these policy decisions. The fake models the Codex widening variant, while the shared contract explicitly
+requires Claude's later reading to retain its initial write bound. No new fake behavior gap was found in this bounded
+review. This closes this family's source review only; final-report execution reconciliation and the remaining
+families stay open.
+
+The bounded §8/T3 source review of `ManualTicker` confirms that `HeartbeatTickerTest` runs both methods of
+`HeartbeatTickerContract` against the manual ticker and the production ticker created by
+`MainHarnessRunnerScope.heartbeatEvery`. These checks cover repeated periods and closing one of two distinct actions
+while the other continues. One documented fake behavior remains unchecked: two starts of the same `Runnable` have
+independent handles. `ManualTicker.start` deliberately wraps each start in a distinct action, but the shared closing
+check starts different method references and would not expose an implementation that removed both equal actions.
+After the exclusive writer releases, add a shared same-action check: start the identical action twice, close one
+handle, observe that the other continues, then close the remaining handle. Run that check against both subjects through
+`HeartbeatTickerTest` with enabled quality gates. Keep the real subject's semaphore-based synchronization; a clock does
+not advance its scheduler. This is a coverage repair, not an observed production defect; do not alter behavior unless
+the new check demonstrates a behavioral failure. Final-report reconciliation and the remaining families stay open.
+
+The bounded §8/T3 workspace source review read `FakeWorkspacePort`, `WorkspacePort`, `WorkspaceContract`,
+`ContractWorkspace`, `Workspace`, and both contract callers. All fourteen shared checks have callers in
+`FakeWorkspaceContractTest` and `WorkspaceStagingContractTest`; the fake also runs its applicable virtual-directory
+cases in both staged-file modes. This does not close the family. The shared checks never stage the same candidate
+with different exclusions: the fake's cache name omits exclusions, whereas production `StagedSources` names and
+filters each variant by exclusions plus selection. Consequently a previously staged full source is reused by the
+fake for an excluded variant. After the writer releases, first add a shared check that stages full and excluded
+variants of one candidate, observes different paths and omitted bytes, repeats the excluded variant, and deletes
+both through the candidate identity; run both subjects and both applicable fake modes. Demonstrate the behavioral
+red before fixing the fake's identity. Also extend shared validation checks for absolute exclusions and candidates
+whose fork entries disagree: the real adapter rejects them, while the fake currently lacks those guards. Match
+`ForkTree.requireSameFork`'s compatible earlier-fork subset rule, rather than requiring equal roots or whole
+inventories. Keep plugin content/removal semantics, captured immutable reads, symbolic-link handling and reconnect
+behavior open for the remainder of this family's review; virtual-copy identity checks alone do not establish those
+outcomes. This is source evidence only; no new workspace test or build was run.
+
+Gate 3 passes the current static Java-source and Maven-profile boundary audit: direct process tests execute fixture
+programs; runner launch tests refuse before a harness starts; requested-session and harness starter tests inject their
+process launchers; no native test group or profile remains. This is a source audit, not a fresh operating-system trace.
+The §8 launcher paragraph now names the current request-server and injected process boundaries. The twenty-two
+`TestabilityAuditTest` checks and the recorded absent-home build pass their narrower clauses; qualitative fake-contract
+coverage and the remaining §8 review are still open.
+
+The bounded §8/T3 continuation inspected `FakeRelease`, `FakeRunner`, `FakeStarter`, their existing starter
+contract and the accepted `ProcessLifecycleContract`. `FakeRelease` builds test input files rather than replacing
+a callable production adapter; its name alone does not require a separate port contract. `FakeStarter` has the
+two shared requested-starter checks, but those establish launch argument/refusal behavior only. Its returned
+`FakeRunner.RunnerProcess` creates a fresh running `FakeProcessHandle` from every `toHandle()` call, using a
+different completion latch from the process. Thus process destruction cannot complete a previously returned
+handle, and handle destruction cannot complete the process. This is a source-confirmed contradiction to the
+already accepted lifecycle contract, not a new behavioral test receipt. Add a separate verification-closed
+test-support repair after the exclusive writer releases: run the existing six lifecycle cases against a
+FakeRunner process, demonstrate the narrow behavioral failure before changing it, then reuse the existing
+shared completion mechanism while preserving configured exit, protocol, descendant and cleanup behavior.
+The fixture must own and terminate both fake root and descendant; it starts no real runner, harness or model.
+Do not reopen the accepted launcher/EOF repairs. The broader FakeRunner protocol-contract mapping remains
+unreviewed; the requested-starter checks alone cannot establish it. Root owns this remaining review and its
+eventual repair assignment; no source or Maven task was launched for this new gap.
+
+The inspect-only readiness review has now settled the lifecycle repair in
+`temp/fake-runner-lifecycle-Sft0eZ/contract.md` under this session. It owns exactly FakeRunner and a new
+FakeRunnerLifecycleTest. Reuse the existing shared-latch FakeProcessHandle constructor and six-case lifecycle
+contract, with four termination variants and two configured-exit variants preserving descendant ownership.
+The contract requires actual test-only behavioral red before the fake edit, focused wrapper verification and
+the affected common-module gate. Root retains the amendment through implementation and final integration,
+then owns cleanup. This is readiness evidence only; no implementation or gate has run and no source/Maven slot
+is assigned until the current writer releases.
+
+The follow-up bounded protocol mapping is complete. The Java-source reference inventory found FakeStarter
+used only by FakeStarterContractTest; WaitUntilTest's same-named nested type is unrelated. Its two cases exercise
+launch arguments/directory and unsupported-harness refusal. Neither consumes FakeRunner's turn/completion events,
+transcript, result or run files. RequestServerTest injects a different starter/child fixture and has its own
+consumer-decision checks. No additional protocol implementation cluster follows from unused fake conveniences,
+and no real runner/harness protocol result is claimed. The confirmed stale claim is FakeStarterContractTest's
+class Javadoc saying request-server children use the fake. The lifecycle amendment now includes that one
+documentation-only correction, adds the existing two-case starter wrapper to its focused gate, and otherwise
+preserves its settled repair and behavioral-red gate. Its exact allowlist is now three paths; it remains unrun.
+
+Root subsequently checked the original design §10 T3 and this section's requirement that a fake contain only
+behavior checked by its shared contract. The preceding no-additional-cluster conclusion is provisional for that
+clause: no current consumer establishes that unused protocol/file simulation may remain unchecked. Root returned
+only this discrepancy to the same inspect-only reviewer to settle minimal removal/reuse or identify an explicit
+contract exemption. No new protocol/model runs or source changes are authorized, and the lifecycle writer has
+not started. Preserve the established consumer mapping and settled lifecycle behavior while reconciling this
+remaining T3 obligation; the broader qualitative fake-contract gate remains open.
+
+The targeted reviewer correction confirms T3 governs that unused simulation. Root accepts the smaller reuse
+amendment in `temp/fake-runner-lifecycle-Sft0eZ/replacement.md`, which supersedes that directory's older
+contract before any lifecycle writer starts. Delete FakeRunner, have FakeStarter reuse the accepted
+FakeProcessLauncher, update its sole launch/refusal wrapper and add FakeStarterLifecycleTest sharing the six
+lifecycle checks. The exact four-path closure preserves actual launch/refusal and process lifecycle observables;
+unused protocol/files/configured-completion/descendant simulation and their proposed preservation tests are
+removed from the assignment. The real executable fixture already shares the lifecycle contract. Require the
+two focused behavioral failures through FakeStarter before replacement, then the three-wrapper and affected
+module gates. No real runner/harness protocol evidence is claimed. This supersedes the earlier three-path
+readiness only. After the Workspace writer released, root assigned this exact replacement to
+`fake_starter_replacement` as the sole source/Maven writer in the shared dirty worktree. The successful launch
+returned `/root/fake_starter_replacement`; its implementation and test results await that executor's receipt.
+Root remains limited to plan/evidence edits and read-only review while it runs. The separate inspect-only
+review of FakeSessionPort, FakeProcessTable and FakeHarnessCli remains active; it does not hold a build slot.
+
+The FakeStarter executor has now released. Root inspected its terminal report, decisive red/focused logs and
+frozen selected reports once: the two lifecycle red cases produced the required handle/process contradictions;
+the final lifecycle/starter/launcher gate passed 6+2+6 cases, with no failures/errors/skips or quality findings.
+FakeRunner was deleted within the four-path closure. The assignment's affected-module gate remains failed:
+3,636 tests reported six errors. One was caused by the executor's injected JAVA_TOOL_OPTIONS banner; its
+corrected single-case HarnessCapacity rerun passed after using TMPDIR and the existing Surefire argLine
+mechanism instead. Five integration errors remain: two GuardPilot plugin-base fixtures, the production-sleep
+and test-host-location audits, and the session-directory spelling audit. They are not proven pre-existing or
+attributable to this replacement. Preserve the verified focused behavior, but do not accept the complete
+assignment or module gate until integration closes. Evidence and root's cleanup ownership are in session
+`01a1db8e-4a86-7280-a426-743ee0269e9c`, `temp/fake-starter-replacement-x4ESFA/terminal-report.md`
+and its named frozen reports. The inspect-only reviewer is preparing exact repair closures; the separate
+comment-correction writer now holds the only source/Maven slot. Its initial unreadable delegation authorized
+no writes and was replaced by a readable follow-up contract.
+
+Integration repair order now preserves one source/Maven writer. The value-identical SessionDirectory reuse
+cluster is assigned to `session_root_reuse`: only Delegation.java and Plan.java may replace their repeated
+session-root strings with the existing public constant and imports. Its enabled-quality focused gate selects
+SessionDirectoryAuditTest, DelegationTest and DelegationCliTest. Independently settled successors are the
+two GuardPilot physical plugin-base fixtures (GuardPilotTest only), then test-owned project/POM inputs in
+BuildAdmissionTest and BuildReservationsTest. Their focused gates respectively select the two failing plugin
+cases then GuardPilotTest, and the two build test classes plus testsReadNoHostLocation. Existing fixture/static
+errors are retained evidence, not invented behavioral-red results. The reviewer is still settling production
+wait interruption/cleanup semantics; no sleep replacement is assigned until that contract is complete.
+
+The session-root repair is accepted: root inspected its quiet successful log and frozen selected reports,
+which show 18 passing cases (one ownership audit, 13 Delegation and four DelegationCli), no skips and no
+Checkstyle/PMD findings. Evidence is session `01a1dbaf-e5da-7901-94e3-fdce2daafdcc`,
+`temp/session-root-reuse-YyRAMr/`; root removes it after final integration. Only the two assigned production
+files changed. Its initial unmatched patch, mistaken rule-path lookup and two invalid shell invocations are
+recorded executor workflow errors, not accepted verification. The released slot is now assigned exclusively
+to `guard_pilot_bases` for its one-file fixture correction and focused/full-class gates.
+
+That GuardPilot assignment stopped before any edits or Maven run: its specified physical path repeated a
+concrete harness name in a common-module fixture, conflicting with the project architecture rule. The writer
+released; this is a contract-reconciliation result, not implementation failure. The same reviewer is settling
+generic mapping/dependent paths within the one-file closure and checking the directly analogous changed Driver
+fixture. Root assigned the independent `owned_gate_inputs` two-test-file cluster to the free source/Maven slot
+instead. It preserves the gate assertions while giving them owned project/POM inputs, with the already recorded
+focused audit gate. GuardPilot implementation remains unrun until its neutral fixture amendment is returned.
+
+The owned-gate-input repair is accepted. Root inspected its successful quiet log and selected frozen XML:
+three BuildAdmission cases, four BuildReservations cases and the one host-location audit pass, with no
+failures/errors/skips or quality findings. Evidence is session `01a1dbb9-002f-7f53-b9aa-6c8a5c0e00e4`,
+`temp/owned-gate-inputs-9tVDyg/final-reports/`; root owns cleanup after final integration. The executor's
+overbroad output search and mistaken optional rule lookup were narrowed/corrected; neither is verification.
+It released the slot. GuardPilot now has the sole writer assignment with the accepted neutral amendment:
+mapping/base paths use rules/harness-a, PROMPT uses prompt.md with its corresponding diagnostic expectation,
+and the synthetic manifest uses runs/harness-a. Physical plugin-base copies still supply actual identities.
+The four-case focused gate and complete GuardPilot class must pass before acceptance.
+
+GuardPilot is accepted after root inspected both named quiet logs and frozen selected/quality reports:
+four focused cases and all 36 class cases pass, with no failures/errors/skips or quality findings. Evidence is
+session `01a1dbb5-dd44-72d0-aee0-02bd101a11e0`, `temp/guard-pilot-llbqpk/focused-evidence/` and
+`temp/guard-pilot-final-XbwBXe/final-evidence/`; root owns cleanup after final integration. A masked incidental
+XML-parser probe is not evidence; the decisive XML results were read successfully. The writer released and
+root assigned the exact three-file scoped-wait cluster to `scoped_build_waits`, including baseline, test-only
+red, focused green and the nine-selector enabled-quality gate. No other actor holds source/Maven authority.
+
+The directly analogous Driver fixture neutrality review found additional concrete supplied filenames/events
+and one actual Codex policy selection. The returned candidate neutralizes the supplied values and relocates
+the policy scenario behind a narrow shared test contract with a Codex-owned wrapper, preserving its five
+outcome assertions. This is not yet assigned: root returned only the candidate's primitive string parameter
+for correction to the existing constrained Harness domain type before accepting that test-support boundary.
+Its settled four-path closure remains DriverTest, the new common DriverReproductionContract, common test
+module-info and the new CodexReproductionTest. The scenario proves Driver policy over supplied results, not
+native Codex execution or real output-limit enforcement. No production Driver/Workspace behavior is reopened.
+
+Root accepts the corrected typed test-support handoff: DriverReproductionContract exposes only
+reproducesWithOutputLimit(Harness), validates non-null before fixtures and uses that supplied value directly;
+the Codex wrapper alone selects Harness.CODEX. The exact closure gains common production module-info to
+qualify its existing campaign-package export to the Codex test module. Common test module-info makes its
+existing common-CLI dependency transitive for that exported signature and exports only the new contract package
+to the Codex test module. No fixture package, mutable internals or reflection access is exposed. This is a
+five-path ready assignment after the scoped-wait writer releases, with the DriverTest/CodexReproductionTest
+focused enabled-quality gate; the common/Codex module gate belongs to subsequent combined integration.
+
+The reviewer has settled the scoped-wait repair under existing JvmScope.waiting and Pause APIs, preserving all
+public signatures. Its exact source closure is BuildAdmission.java, BuildWorker.java and BuildWorkerTest.java.
+The three sleeps become scoped pauses; IOException with an immediate InterruptedException cause must enter
+the worker interruption/cleanup path, while ordinary pause IO failures retain infrastructure/recovery-required
+semantics and conservative reservation ownership. Eight controlled-wait scenarios establish admission,
+retained-child and forced-cleanup behavior before production changes, then the nine-selector controller/audit
+gate closes the repair. This cluster is assigned and in progress after the owned-gate-input fixture correction.
+All integration repair gates precede the next affected-module acceptance attempt and the frozen-tree snapshot
+probe. No new public snapshot capability is required unless that existing-operation probe proves a specific gap.
+
+The scoped-wait executor reports a frozen behavior-specific red for all eight controlled-wait cases and a
+passing focused green, but its required consumer gate has 13 BuildWorkerTest errors and one
+BuildAdmissionCliTest failure. Root has not accepted the repair: the executor retains the exclusive three-file
+source/Maven assignment to resolve fixture calibration, lifecycle-cleanup timeouts and the child-failure result
+before returning frozen evidence. The existing lifecycle cases' historical origin does not establish that these
+failures preceded the change. Driver relocation and the snapshot probe remain pending; root will inspect the
+decisive red, green and final consumer-gate evidence before releasing dependent work.
+
+The scoped-wait repair is now accepted. Root inspected the frozen red XML: all eight cases failed because
+their required scoped-pause entry was not observed. The focused green log is quiet and the final frozen
+nine-selector reports show 117 tests, zero failures/errors/skips, including all 22 TestabilityAudit cases;
+Checkstyle and PMD contain zero findings. The executor resolved the broader-gate regression by handling a
+pause that returns with its interrupt flag set, recording interruption locally, completing tree/drain cleanup
+and restoring the flag at the reporting boundary. Evidence is session
+`01a1dbc6-2258-7e01-a972-adb8f33a3339`, `temp/scoped-build-waits-ED9kZA/`, including
+`behavioral-red-reports/`, `focused-green-4.log`, `final-quality-gate-2.log` and `final-reports/`.
+The failed broader attempt remains retained; root owns cleanup after final integration. Only the three
+assigned paths changed, and the executor released source/Maven ownership. Driver fixture neutrality and
+Codex reproduction relocation are the next ready five-path cluster; combined module acceptance remains unrun.
+
+Root assigned that five-path cluster to `driver_neutrality_relocation` as the sole source/Maven writer.
+The readable contract is root session `01a1d517-3e11-7cf2-b4a8-5b441203bcae`,
+`temp/driver-neutrality-N9V21F/contract.md`; root removes it after final integration and its last consumer.
+The task preserves existing Driver outcomes, moves the supplied-result Codex policy scenario exactly once into
+the Codex test module and closes with the DriverTest/CodexReproductionTest enabled-quality gate. Its result
+and the subsequent combined affected-module gate are unrun, not implied by the accepted scoped-wait check.
+
+That executor's first attempt stopped without source edits or Maven because it looked up class-design.md
+under an extra common/ segment. Root checked the rendered interface route and successfully read its exact
+rules/include/class-design.md target. The route is correct; the failed speculative lookup does not show that
+the required dependency is unavailable. Existing Check Assumptions guidance already distinguishes these
+cases. Root resumes the same accepted contract with the same writer after directing it to read the exact
+required target before source work; no acceptance gate or source scope is changed.
+
+Driver neutrality and reproduction relocation are accepted. Root inspected the named quiet final log and
+frozen selected reports: DriverTest passes 159 cases and CodexReproductionTest passes its one
+reproducesWithOutputLimit case, with zero failures/errors/skips and zero common/Codex Checkstyle or PMD
+findings. The executor reports the exact five-path closure, the typed non-null Harness boundary, preserved
+five reproduction assertions and one Codex-owned TestNG invocation. Evidence is session
+`01a1dbf6-e673-75d2-8b73-918ccefb332e`, `temp/driver-neutrality-evidence-DRFh9z/`, final attempt 06
+and `reports/common/` plus `reports/codex/`. Earlier import, local-declaration distance and unnamed-catch
+findings were corrected before that final pass; all failed attempts remain retained. Root owns cleanup after
+final integration. The writer released source/Maven work; root now owns the combined common/Codex gate.
+One erroneous root exec-wait call used a nonexistent cell while awaiting the delegate; it started no work and
+was corrected to the delegate's collaboration wait. Existing operation-selection guidance already covers it.
+
+The combined common/Codex integration gate passes with the normal cache and every configured quality check
+enabled. Root's command was `client/mvnw -q -f client/pom.xml -pl common/cli,codex/cli -am verify`, with
+owned native/Maven/Surefire temporary directories through existing settings. Frozen reports contain 3,643
+common cases and 734 Codex cases, zero failures/errors and one Codex platform skip: the PowerShell search
+case delegates the POSIX-shell behavior to Bats. Common/Codex Checkstyle and PMD have zero findings. The log
+retains the ArchiveSource native-access runtime warning; it is not a compiler/linter finding. This accepts the
+previously pending FakeStarter assignment at its affected-module boundary, including the six lifecycle cases,
+and confirms the session-root, owned-input, GuardPilot, scoped-wait and Driver repairs together. It does not
+pass the whole-client clean build or installed behavior gates. Evidence is root session
+`temp/combined-integration-MUlsrt/`, with the terminal receipt, command, log and frozen `reports/`; root
+owns cleanup after final acceptance and dependent diagnostics finish.
+
+The existing-API source snapshot probe is now the next ready assignment. Its single temporary diagnostic
+test, exact exclusions, copy/source identity checks and unchanged-copy gate remain as settled below. Root
+freezes all selected source inputs, including this plan, during capture; session temporary evidence and the
+listed build outputs are excluded. The successful delegate launch and exclusive assignment will be retained
+in the root-owned temporary contract/operation record without changing selected inputs during that freeze.
+
+The source-copy prerequisite and controlled worker-failure reproduction are now accepted. The snapshot
+executor released source/Maven ownership and removed its temporary shared-source diagnostic. Root inspected
+the receipt's manifest identity and all four preserved worker-input hashes. Capture passed one diagnostic;
+the unchanged copy passed 95 tests in eight selected suites with zero failures/errors/skips and no quality
+findings. The first frozen report set omitted the already-passing four-case DelegationCliTest report; the
+same executor retained it and corrected the count from 91 to 95 without rerunning Maven. The original report
+is retained alongside the correction in session `01a1dc13-c816-7022-a1a6-8555ab20636f`,
+`temp/mutation-transaction-cXYYtQ/evidence/`. The selected-source freeze has ended.
+
+In that unchanged copy, the focused observationFailureReapsBeforeReporting control passed. Removing only
+the observation-failure catch's terminal publication/release block made the same check fail at
+observationFailureReleased: expected zero held reservations, observed one. Child reaping and reporting after
+cleanup had already passed; later receipt assertions were unreachable. Root inspected both selected XMLs,
+exit records, the single-hunk diff and quality reports: the control exited zero, the reproduction exited one,
+and both had zero Checkstyle/PMD findings. Both used the same copy, selector, cache-disabled profile and Maven
+settings; each owned its native temporary directory. The executor restored BuildWorker exactly and released
+the copy. This establishes sensitivity to the omitted publication/release behavior, not an authentic
+historical predecessor or historical test-first execution. The permanent deviation that production preceded
+three required tests remains. Evidence is session `01a1dc2f-0f1a-7451-8f7a-0b0530e1b70a`,
+`temp/worker-release-reproduction-fhxCQr/report.json` and its named reports. Root retains both transactions
+through final integration, then owns cleanup. This accepts the worker cluster's remaining evidence condition;
+batch scheduling is the next ready implementation cluster.
+
+The reproduction executor initially substituted plugin common/data.md for the rendered project data-rule
+path and stopped before edits. Root inspected the literal route and directed the same executor to the exact
+project rule, which it read successfully before proceeding. Existing exact-target routing is adequate; this
+was an application error, not an absent dependency. Root also mistakenly sent a status notice through the
+user-input tool, immediately corrected it in response text, and requested no answer. Existing user-input
+guidance already requires an eligible unresolved decision and prohibits notices through that tool.
+
+The batch test-name amendment is root session `temp/batch-readiness-goaWUK/amendment.md`. Its static-safe
+aliases preserve the settled ten scenarios and four-path closure. The predecessor conditions that it records
+as pending are superseded by the acceptance above; all other behavior and verification remain unchanged.
+Batch implementation, production host/calibration/overlap acceptance, the whole-client clean build, installed
+Codex gates and the matched token-usage comparison remain unrun. Root owns amendment cleanup after its batch
+and final-integration consumers finish.
+
+Root assigned the four-path scheduler cluster to batch_scheduler_impl as the exclusive source/Maven writer.
+Its initial test-only preparation stopped before behavioral red: after its owned compilation and Checkstyle
+repairs, the only remaining finding was SourceSnapshotTest.java:258, a blank line at the end of a block
+left after the temporary snapshot diagnostic's removal. Thus the prior normalization comparison did not
+establish quality closure of restored source; the accepted copy and controlled reproduction remain valid.
+No batch production edit occurred. The test-only fixture and failed enabled-gate evidence remain in session
+`01a1dc37-09fd-7010-b03b-dc9d841e91f8`, `temp/build-admission-batch-RbeciH/report.json`.
+Root authorizes that same writer to remove only the diagnosed blank line as a separate formatting repair,
+then resume the original test-first scheduler contract and its unchanged final gate. That one additional
+path authority permits no behavioral, API or other fixture changes in SourceSnapshotTest. Ownership remains
+exclusive; no full build or installed/model check is delegated.
+
+After the executor's terminal release, root removed that single blank line directly. The enabled focused
+command selected SourceSnapshotTest and BuildAdmissionTest#batchOverlapsAdmittedWorkers. Checkstyle now
+reports zero errors, but PMD stopped execution with fifteen findings, all in the new BuildAdmissionTest
+fixture: unused imports/local, unnecessary qualifiers, concrete collection declarations and three resource
+ownership findings. No behavioral red or batch production edit is established. Root retained the exact
+command, terminal exit one, complete log and frozen Checkstyle/PMD reports in its
+`temp/batch-red-recovery-1VA3cn/`; root owns cleanup after resumed batch implementation and final integration.
+The original four-path batch assignment remains the next work; its owner must repair all fixture findings,
+use plus-separated methods for a multi-method Surefire selector, obtain actual behavior-specific red, then
+implement the settled scheduler and complete the unchanged eight-selector enabled-quality gate. The extra
+SourceSnapshotTest authority is exhausted by the formatting-only correction. No writer is currently running.
+
+Root resumed batch_scheduler_impl with the unchanged four-path source/Maven assignment. That exclusive
+writer reports the fixture's fifteen PMD findings corrected and a valid plus-separated three-method
+Surefire selector reaching behavioral red: duplicate/isolation validation returned without the required
+exception, and overlap observed only one of two eligible launches. Its decisive output is
+`temp/build-admission-batch-RbeciH/resume/red-final.log` in session
+`01a1dc37-09fd-7010-b03b-dc9d841e91f8`. Production implementation is now assigned there; no terminal
+handoff or passing final gate has been received. The prior no-running-writer sentence is historical.
+Root must preserve its exclusive source/Maven ownership until its terminal result and release.
+
+The batch scheduler assignment subsequently completed and released its four source paths and Maven ownership
+to root. Root accepted the named final receipts: eight suites, 105 tests, no failures/errors/skips and zero
+Checkstyle/PMD findings. All ten focused scenarios ran successfully; behavioral red is established for the
+three validation/overlap cases and the separate CLI invalid-batch case, not for all ten. Evidence remains in
+session `01a1dc37-09fd-7010-b03b-dc9d841e91f8`, `temp/build-admission-batch-RbeciH/resume/`.
+The first handoff omitted the frozen DelegationCliTest report; the same executor retained its existing
+four-test passing report without rerunning Maven, and root inspected it. The original failed broad-gate log
+was overwritten by the final successful run; its original detailed output is not retained and must not be
+claimed as available. This evidence limitation does not alter the inspected final green receipts. The
+single-job scoped-wait path remains synchronous; batch controller tests do not prove live Maven overlap.
+
+Root then ran the planned enabled-cache common/distribution reactor with the eight controller/delegation
+selectors. It returned exit one before assembly: 105 tests ran with one failure in
+BuildWorkerTest.terminalReceiptFailureRetainsReservation. BuildObservations.alive called liveIdentity,
+which raised IOException because OSHI returned no process record for PID 51002; the test then reported
+an ordinary worker failure without calibration RSS. This result invalidates current integration readiness,
+not the unaffected accepted batch scenarios. Distribution resolution remains untested. Root retained the
+command, terminal receipt, complete log and all eight frozen suite reports in this session's
+`temp/production-distribution-LkDsOQ/`, and owns cleanup after final integration. The inspect-only
+host_acceptance_readiness agent now owns a bounded source investigation to settle the responsible
+component, deterministic regression and correction contract before a source writer or retry is assigned.
+No host, installed-harness or measurement acceptance is implied.
+
+The bounded investigation settled the responsible component: in both BuildObservations.process and
+liveIdentity, a retained candidate can disappear before the first identity sample. The fixture's shared
+live-set removal supplies absent identity, empty metrics and absent final identity, but the existing
+recovery requires the initial identity to have been present. Treat this as a current observation defect;
+no historical attribution to batch scheduling is established. BuildWorker's infrastructure-failure
+handling remains correct and unchanged.
+
+Root assigned vanished_observation_impl as the exclusive source/Maven writer for exactly
+BuildObservations.java and BuildObservationsTest.java. Its settled correction omits a candidate only for
+successful absent identity observations bracketing successful empty metrics. A caught exception's empty
+fallback cannot establish absence. Matching live identity with missing metrics, UNKNOWN, LIVE without
+identity, wrong PID, malformed live RSS and provider/identity exceptions remain failures; existing
+identity-change and confirmed-EXITED handling remain. The deterministic test-first case
+vanishedCandidateIsOmitted covers process/tree/alive; negative cases retain those failure distinctions.
+The final focused gate selects BuildObservationsTest and BuildWorkerTest with all quality checks and
+normal caching. Root will inspect its retained red/final output and both frozen suite reports once, then
+resume the existing common/distribution eight-selector reactor without another duplicate CLI gate.
+The worker fixture and scheduler are outside this assignment. Root owns plan/evidence writes only while
+that source writer runs; no distribution build runs concurrently.
+
+The confirmed-absence correction is accepted. Root inspected the named behavioral red log (all three
+parameterized operations throw the missing-record IOException), final exit-zero receipt, both frozen
+suite reports (49 observation cases and 15 worker cases), the new branch's negative cases and zero-error
+Checkstyle/PMD reports. Evidence is in session `01a1dc71-e787-7563-bcc6-677ec3de302d`,
+`temp/vanished-observation-YIMqbG/`; root owns cleanup after final integration. The writer released.
+Root then resumed the unchanged distribution command in `temp/production-distribution-2GN4N7/`.
+Its eight controller/delegation suites passed all 111 tests with no failures/errors/skips, and root froze
+and inspected all eight reports. Assembly then failed at build-native-distributions: module resolution
+could not find com.github.oshi.common, required by com.holdmyspot.cat.common.cli. This confirms the
+previously predicted runtime-closure omission. The earlier test failure is closed; assembly remains failed,
+and generated-wrapper, real host/resource and installed acceptance remain unrun. Root retains the two
+separate failed distribution logs and terminal receipts; neither replaces the other.
+
+The closure investigation is complete and its amendment is accepted as the next implementation contract.
+Maven already supplies oshi-common 7.7.3 in target/modules; DistributionMain omits it from the staged
+sharedRuntimeModules list. Exactly one source path is assigned to exclusive writer
+oshi_distribution_closure: DistributionMain.java. Discover com.github.oshi/oshi-common through existing
+findThirdParty, copy its path into sharedRuntimeModules and register OSHI Common under existing MIT.txt
+legal materials with no embedded notice entries. Its SLF4J dependency is already staged; java.desktop
+and java.management are resolved by existing JDK closure; static org.jspecify requires no runtime copy.
+The nativefree implementation is inside the OSHI module, so no JNA/FFM provider, module descriptor, POM,
+resolver or launcher edit is authorized. The actual assembly failure is behavioral red; existing supplied-
+graph and stand-in-runtime tests cannot establish production candidate coverage.
+
+The assigned focused gate is the normal cached common/distribution reactor with ApplicationModulesTest
+and LegalMaterialsBuilderTest, followed by generated runtime/codex/bin/java invoking BuildAdmissionCli
+help through its ordinary named module. Both must return zero; help must report outcome passed with null
+result_path and error. This distribution-only correction does not rerun the already-passed eight
+controller suites. Root will inspect named command/receipt/log and frozen selected reports once at the
+handoff. The delegate owns source/Maven until terminal release; root owns plan/evidence only and final
+integration cleanup. Full-project, host/resource, installed behavior and usage comparison remain open.
+
+The OSHI closure correction is accepted: root inspected the one-file diff and the named focused Maven
+command/log/exit-zero receipt, five passing resolver/legal cases and zero Checkstyle/PMD findings.
+The exact generated Codex Java wrapper also returned exit zero, expected passed JSON and empty stderr.
+Evidence remains in session `01a1dc85-27a1-7720-953b-a219109b8681`, `temp/oshi-distribution-550g9x/`.
+The delegate's terminal JSON omits completion-time metadata; its exit status, named command/log and
+wrapper result are retained, but do not claim a recorded completion instant. Source/Maven ownership
+released to root. Both production plugin assemblies completed; no installed artifact was refreshed.
+
+Root additionally recorded the generated wrapper's successful --list-modules observation and exact
+modular JAR identities/sizes in `temp/production-distribution-2GN4N7/accepted-artifact-inventory.json`
+and `accepted-runtime-modules.txt`. OSHI Common 7.7.3, java.desktop and java.management resolve normally.
+The generated Codex runtime contains 24 modular JARs and 165083294 file bytes. Release archive sizes are
+56604809 bytes for Codex and 56486376 for Claude; these are observations, with no acceptance size limit.
+The Claude artifact was assembled but no Claude harness/model ran.
+
+Root assigned authentic_process_adapter a temporary-only diagnostic: unchanged assembled module, ordinary
+named-module compilation/launch, existing qualified test exports and authentic event-synchronized child/
+grandchild processes. Its decisive checks cover production process/tree/alive and HarnessProcesses
+identity, retention after root exit and omission after reaping, plus a supplied stale-token mismatch.
+This establishes local process-boundary behavior only; outer-host authority, real calibration, shared-
+ledger overlap, final full clean build, installed acceptance and usage comparison remain open. No source
+or Maven writer is active, and the observer diagnostic owns/reaps its children. Root owns retained
+evidence cleanup after final integration.
+
+Authentic local observer acceptance is now passed. Root inspected the named complete driver.stdout,
+empty stderr, ordinary named-module compile/launch argv and cleanup receipt from session
+`01a1dc89-af01-7e60-8c9f-99e0c64b0ef4`, `temp/authentic-process-adapter-D8eCbZ/report.json`.
+Actual kernel start tokens matched HarnessProcesses and production process observations for a child and
+its grandchild. Production tree/alive covered both; after the child root exited the exact grandchild
+identity remained; after both exit observations the process/tree/alive outputs omitted both. A supplied
+valid-shape wrong token was rejected, which proves mismatch handling and not actual PID reuse. All
+owned diagnostic processes reached terminal cleanup. No production source changed. Root owns retained
+driver/evidence cleanup after final integration.
+
+Three diagnostic attempts failed before that pass: a helper's terminal ProcessHandle assumption and
+invalid supplied token syntax, then an absent-handle-after-wait assumption. Their outputs are retained;
+these were corrected diagnostic inputs/helpers, not production defects. Offline javap used classpath
+for signature inspection only; compile/launch used ordinary named modules without access overrides.
+The delegated task incorrectly named root's session rules as the delegate's entry read. Its injected
+session authority explicitly prohibited that path; it correctly followed its own session rules.
+Future contracts must say to follow the recipient's own injected session rules, rather than prescribe
+root's session rules. This corrects parent delivery/application; no new plugin rule is needed for the
+already adequate recipient-boundary rule. Host authority and real resource/overlap acceptance remain
+unknown/unrun; this local process proof does not establish outer-host visibility.
+
+Root now owns one sequential whole-reactor clean acceptance run on the current working tree, after the
+observation and distribution writers released and the local process diagnostic terminated. Its invocation
+is `temp/final-clean-ywAjuX/`; no source writer or other Maven build runs concurrently. This is the
+required final gate 1 and absent-home testability observation, not host-wide calibration or overlap proof.
+It uses the supported whole-client clean verify, every configured quality gate and cache disabled only
+because the required clean evidence must execute fresh. TMPDIR/TMP/TEMP and JVM temporary storage use
+its build-temp child. HOME and test-JVM user.home name its nonexistent absent-home child, while Maven
+uses the existing explicit dependency repository and wrapper cache. Root retains command, terminal
+receipt, diagnostics and frozen final Surefire reports for the AST audit, then owns final cleanup.
+Acceptance remains unrun until the command and full report population establish their result.
+
+The first new clean gate failed before completing the reactor: common CLI ran 3659 cases with one
+HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry error. Root's JAVA_TOOL_OPTIONS injection wrote its
+startup banner into the fixture's merged stream, so recordedHold no longer equalled the expected timestamp.
+The absent-home child remained absent. Exact command/log/terminal receipt and the frozen failing suite
+are retained in `temp/final-clean-ywAjuX/`. This repeats the already diagnosed setup error recorded for
+fake_starter_replacement; the existing TMPDIR plus Surefire argLine solution was adequate and root failed
+to apply it. No production or fixture change is justified by this output. The next command producer must
+reject a nonblank inherited JAVA_TOOL_OPTIONS before launch, configure Maven JVM scratch through
+MAVEN_OPTS and test JVM scratch/home through argLine, then run the one affected test before the clean gate.
+Keep its native TMPDIR/TMP/TEMP isolation. That concrete invocation preflight is the application correction;
+no plugin rule change or passing full-build claim follows from this failure.
+
+The corrected whole-reactor clean gate passed in `temp/final-clean-rD5G2z/`: 450 frozen Surefire
+reports contain 5,941 tests, zero failures or errors, and six PowerShell-related skips. Its 20 frozen
+Checkstyle/PMD reports contain zero findings. The preflight rejected inherited JAVA_TOOL_OPTIONS;
+MAVEN_OPTS configured Maven scratch and argLine configured test-JVM scratch and user.home. Every test
+report names the owned build-temp directory and nonexistent absent-home directory, which remained
+absent. The exact command, terminal exit-zero receipt, full diagnostics, frozen reports and parsed
+report-summary.json are retained there. Final gate 1 passes for this source tree; the absent-home
+execution portion of gate 6 passes, while the remaining testability audit is still open. Native-access
+warnings remain in the build log; no access grant or warning suppression was added. This ordinary
+Maven execution is not host-wide calibration or concurrency evidence. Root owns cleanup after the
+traceability, testability and final integration consumers finish.
+
+The temporary AST auditor initially selected Java templates beneath resource directories and failed
+on their placeholders rather than completing its test-source inventory. The repair excludes candidates
+with any src/main/resources or src/test/resources ancestor and preserves actual src/test/java inputs,
+including untracked sources. Its public-CLI regression first reproduced the placeholder parse failure;
+all eight controlled cases then passed their expected outcomes, including rejection of malformed real
+Java and duplicate requirement rows, and correct overridden/inherited method attribution. The original
+failed extraction remains in the clean run's trace-audit directory. Accepted repair evidence is in
+session 01a1dca5-710c-7e01-9f72-60e086508404's temp/trace-audit-fix-hK2ktP/task-report.json.
+
+The repaired final-tree audit completed against the same 450 frozen reports. Its output is
+`temp/final-clean-rD5G2z/trace-audit-resources-fixed-hK2ktP/`: 580 source files, 139 requirement IDs,
+2,473 passing tagged-method mappings and no unknown tags. R-I1 has no passing tagged-method mapping;
+its declared proof is E in both harnesses, so Java method inventory cannot substitute for that proof.
+Gate 2 remains open for assertion adequacy, proof-tier reconciliation and required end-to-end receipts.
+Root retains the temporary audit tools and both repair/output directories until those consumers finish.
+
+The final reports list 23 cases at or above one second. A read-only Javadoc review found five adequate
+retained-work explanations, two additional real-process integrations outside the unit-only explanation
+requirement, and 16 unit cases with missing explanations across five test files and one shared contract
+helper. The source-specific inventory and bounded follow-ups are in session
+01a1dca6-00a9-7753-bb9a-9b24313e528e's temp/slow-test-reason-ggId9A/report.md. Several parameterized
+families have one approximately two-second case among otherwise fast siblings; the timing cause remains
+unknown. Do not invent a necessary-cost explanation or infer a production regression from these totals.
+Gate 6 stays open pending disposition of those cases. Root owns report cleanup after that disposition
+and final testability acceptance.
+
+The broker follow-up traced the three refusal families to synchronous rejection before child submission;
+the conversation uses two controlled fake turns and explicit completion. No fixed two-second wait was
+found in those paths or their cleanup. A single direct TestNG/JFR diagnostic then reused the frozen
+run's JDK and named-module path without compiling or changing source. Its exact inventory is 45 hostile
+input cases, three missing-profile cases, three unsupported-field cases and one conversation: all 52
+passed, the longest recorded method took 380 ms, and none took at least one second. Evidence is in
+`temp/broker-cost-probe-VWE2k1/`, including command.json, terminal.json, inventory-summary.json,
+TestNG reports, JFR and decoded events. This narrower JFR-enabled invocation differs from the complete
+Surefire run and does not establish a timing improvement or explain that run's outliers. Retain their
+cause as unknown; do not repeat the probe for reassurance or invent a necessary-delay Javadoc. No
+source repair is selected from this diagnostic. Root owns cleanup after the testability disposition
+consumes its evidence. The Codex and delegation follow-ups separately delivered source-specific phase
+measurement prerequisites; those measurements remain unrun.
+
+An independent inspect-only readiness pass mapped the next production acceptance boundary. It identified
+a concrete distribution-resolution risk: the common CLI module requires com.github.oshi.common while
+DistributionMain's staged sharedRuntimeModules list omits it. This predicts a failure, not a failed build;
+the normal common/distribution reactor with the existing eight controller/delegation selectors must
+discriminate it after the batch writer releases. Do not add patched modules or reads to substitute for
+production distribution closure. Then exercise the generated production Java wrapper with BuildAdmissionCli
+help, retain exact module identities and distribution/archive size, and keep startup evidence separate
+from host/resource evidence.
+
+Host authority remains unknown. The readiness pass found no arbitrary host-build operation in the
+request-server/request-session contracts: they serve harness sessions with model/effort/prompt inputs.
+Their installation exception and successful startup would not prove that this observer has the intended
+outer-host resource/process view. Obtain provenance from the machine-owning execution boundary and compare
+boot identity, PID/mount/user namespaces, process namespace IDs, CPU/memory constraints and proc mount
+visibility with the observer boundary. Current proc observations alone cannot supply that provenance.
+At an established boundary, prove authentic child/grandchild identity and lifecycle through the unchanged
+production BuildObservations.system and HarnessProcesses.system adapter, using an ordinary named-module
+diagnostic and event-synchronized children. Retain child identities across root exit and verify omission
+after reaping; supplied stale-token rejection is not actual PID-reuse evidence.
+
+Only then create the reviewed shared host context and real outstanding immutable job population through
+the accepted snapshot workflow. Run each new resource family's genuinely required first gate as exclusive
+calibration, then eligible remaining required gates through the production controller and shared ledger.
+Prove overlap with simultaneous live owned identities, matching held reservations and threshold receipts;
+pressure deferrals leave overlap unrun. Reconcile after every owned terminal result and prove no leaked
+reservation. This is an acceptance outline, not a decision-free executor handoff: exact job population,
+definition closures, authoritative host receipt and assembled module paths must be supplied before those
+operations. The existing final whole-client clean gate remains required; no extra clean build was added.
+The read-only plan-builder could not write an artifact under its injected restriction; root retained this
+inline result here instead. It ran no build, server, harness or model.
+
+That three-family source review is now accepted as bounded mapping evidence. ProcessTable's three shared
+identity/liveness cases cover its derived decision; SessionPort's ten shared cases cover its adapter decisions
+against recorded transports; HarnessCli's shared lifecycle/EOF cases cover its automatic process transitions.
+Caller-supplied typed values, recorded bytes and explicit completion events are fixture inputs, not evidence of
+actual discovery, parsing, provider failures or live harness reactions. No additional unchecked automatic
+reaction was identified. Two comment-only corrections remain after the current writer releases: replace
+FakeSessionPort's unsupported claim that real contract cases cannot induce supplied responses with the explicit
+typed-input limitation, and describe both FakeHarnessCli completion methods' constructor-selected exit status
+instead of promising zero. Preserve executable statements and APIs. Accept those corrections through their
+five-selector focused quality gate and the affected-module gate before closing this bounded qualitative review;
+full-project and installed behavior gates remain open. The reviewer now has only an inspect-only follow-up to
+identify the smallest existing snapshot sequence and its probe, before any new snapshot API is considered.
+
+The two comment corrections are accepted. Root inspected the named focused log and frozen reports once:
+39 cases passed (10 SessionPort, three fake ProcessTable, eight actual ProcessHandleTable and nine each fake
+and executable EOF/lifecycle cases), with no failures/errors/skips or Checkstyle/PMD findings. Evidence is in
+session `01a1dba8-88a1-72a3-a1d2-8ef3a2658175`, `temp/fake-comment-corrections-BjDsG5/`; root owns
+cleanup after final integration. The initial overlong Javadoc line failed Checkstyle and was wrapped before
+the passing gate. The writer released. The combined module gate remains failed pending the already recorded
+integration repairs; no unchanged broad rerun was substituted for those repairs.
+
+The server investigation corrected the earlier diagnostic: the visible process is `codex-linux-sandbox` at namespace
+PID 1, using the Codex executable via argv0 dispatch. CAT discards argv0 and mistakes this helper for a session host.
+`--sandbox-policy-cwd` is a helper option, not evidence that the actual host was launched with an unsupported session
+option. No actual session host is visible in this namespace. Do not whitelist the helper options or use its lifetime
+as the session's identity. The current session has no `request-server.lock`; no existing outside server is established.
+
+The local process-role repair now preserves Linux argv0 separately from the executable and remaining arguments.
+Both policy inspection and served-session host discovery select the nearest Codex process after excluding only the
+exact `codex-linux-sandbox` argv0 basename. Unknown host options still fail closed. The new behavioral check first
+selected helper PID 102 instead of host PID 103; after the repair, the six focused suites pass 77 tests with zero
+failures, errors or skips. Evidence: this session's `temp/process-role-u4tN2c/final-focused-verify-r2.log` and
+`final-test-counts.txt`. The orchestrator owns cleanup after integration. The repair does not establish that a real
+host is visible in this namespace or that the installed request server can launch here; those checks remain open.
+
+The freshly built request server was then invoked at the generated runtime boundary. It returned status 2 with
+`CAT cannot find the Codex process that runs this session among the processes that run the request server`, rather
+than interpreting the sandbox helper's flags as host options. No model was started. The repaired code therefore
+reaches the correct host-discovery refusal here; an actual visible Codex host or an already serving outside server
+remains required before installed live acceptance can run. The project helper-path rule named an obsolete `target/jlink`
+directory; its reference now names the produced `target/runtime` directory, where the installer invocation resolves.
+
+The requested SessionHistory diagnostic repair is integrated locally. Each input record retains its source path and
+one-based physical line number before blank filtering or Codex ancestry combination. Malformed JSON now becomes an
+IOException with that location, parser detail and the original Jackson cause. Behavioral red checks reproduced the
+old location-free exception through all five history operations and through parent and child Codex rollouts. The
+focused gate passes 26 tests across SessionHistoryTest, CodexGetHistoryTest and ClaudeGetHistoryTest, with zero
+failures, errors or skips. Evidence: this session's `temp/session-history-location-zkW90y/`, including `red.log`,
+`codex-red.log` and `focused-green.log`. The orchestrator owns the isolated clone and evidence until final integration
+consumes them. The combined uncached absent-home `clean verify` passes: 5,654 tests in 429 reports, zero failures and
+errors, six skips. All reports record the requested absent home and isolated temporary directory, and the home remains
+absent. Evidence: this session's `temp/session-history-integrated-DWEY0x/receipt.json`, `build.log`,
+`report-summary.json` and retained `reports/`. This supersedes the older build below for the local build gate.
+Thirteen cases take at least one second; the exact current population is in `report-summary.json`. Runtime/testability
+review and installed Codex live acceptance remain open.
+
+The user requested prevention of overlooking the outside update path. The existing installation rule now requires
+selecting the documented authorized execution context before invoking the installer and checking supported outside
+routes before concluding a sandbox-local refusal prevents an update. A service's operation must actually support
+installation: the current request server accepts session requests and confines each child, and has no installer
+operation. A new four-case regression covers a supporting service, a session-only server, direct success and exhausted
+routes. Local structural verification passes in the complete build recorded below; no live behavioral prevention result
+is claimed.
+
+The CMake documentation investigation found that its session had received a project rule permitting observable thread
+guarantees but excluding other-process resource guarantees from the Thread Safety note. The recorded approval used
+observability alone to justify placement of a shared-cache result that covers threads and JVMs, and noticed separately
+that its same-cache condition was missing. This establishes an incomplete scope check, not an absent rule or a verified
+private reasoning cause. The shared Interface Contracts rule now requires establishing a guarantee's actors, state and
+resources and applying a note's inclusion and exclusion rules before approving placement. It preserves permitted
+same-process guarantees and does not impose CMake's project convention on other projects. A five-case regression
+covers that distinction, an analogous recovery note, a broader permitted convention and ordinary spelling-only prose.
+The first installation-rule build failed on a stale title assertion; that assertion is repaired. Complete local
+`verify` passes for both rule changes: 5,631 tests in 427 reports, zero failures/errors and six skips. Both harness
+distributions contain the new placement guidance after goal stripping. Evidence is in this session's
+`temp/implementation-ez3muu/thread-note-build.receipt` and `thread-note-build.log`. These checks establish structural
+validity; live behavioral verification remains unmeasured, and the normal-home installation remains incomplete.
+
+The D145 integration review found two real early-end defects that predicate tests had missed. A settled session closed
+bridge input without the required completion message, producing an infrastructure failure; the adapter now completes
+the protocol before closing. An unscoped count below its minimum was treated as settled even though another reply
+could supply its missing matches; evidence-aware settlement now stops only for an exceeded maximum, using the canonical
+count evaluator and substitutions. A result without evidence remains conservative. Tests failed first at the real
+session boundary, then passed after each correction. The focused `verify` passes 93 tests across
+`TestSessionsContractTest`, `EarlyTrialEndTest`, `EarlyEndDriverTest` and `StatusReportTest`, with no failures/errors.
+The real session tests verify requests, skipped turns and final verdicts; separate driver tests verify ordinary
+adoption, persistence, no retry/judge and the early-end note in triage and prompt-author inputs. These are composed
+local boundaries, not installed-harness receipts. R-E25 now inventories this previously untracked design obligation.
+Evidence: child session `01a1d564-4959-7353-a624-391f996221d2`, `temp/early-end-ktsKcA/`, including the original red,
+protocol-only repair and corrected green receipts/logs. Complete verification now passes as recorded below.
+
+The expanded focused check passes all 94 early-end and status tests, including canonical count substitutions and a
+judged expected outcome that must run the remaining turn. The new real-driver race check exposed a separate product
+defect: `Driver` triages failed race outcomes, but `CampaignEvent.Complete` rejected their nonnull triage. Its
+validation now accepts failed DEVELOPMENT and RACE trials, matching `LogicalTrial`, while retaining the failed-verdict
+guard. The check first failed at that exact constructor; the coordinated focused check now passes all 95 tests,
+including shared draws, ordered adoption, the Wilson drop at equal prefix four, no admissions after dropping, and
+winner-only minimality followed by promotion with all adopted winner evidence retained. The winner can already have
+adopted its fifth outcome when the loser's fourth outcome completes triage; the comparison uses their equal prefix
+without discarding that later winner evidence. Evidence: child session `01a1d56f-4ecb-7723-9fa6-6994509c069f`,
+`temp/race-driver-verify-fWMluN/`, including final `receipt-10.txt`, `build-10.log`, `green-counts-final.txt` and `green-10/` reports.
+The subsequent coordinator rerun used a nonexistent temporary child and failed setup; that child is now created before
+the command starts. Neither that setup failure nor the race test's script correction is product behavior evidence.
+
+Two Driver tests now stop at the observations their assertions require instead of continuing to candidate-2 promotion.
+All original fixtures and assertions remain. Three before/after focused runs passed: median individual runtime
+`failedCheckRunsNoJudge` 2.147 to 0.578 seconds, and `heldOutTestCasesStayOutOfDevelopment` 3.092 to 0.883 seconds.
+No determining production source changed during those measurements; both tests stayed below one second in every
+after run. Evidence: child session `01a1d563-71ab-7b93-bc24-9a9dd08c2e7d`, `temp/driver-timing-W1pLyG/result.md` and
+its raw environment/run records. The current orchestrator owns cleanup of both child evidence directories.
+
+The scoped gate-6 port review maps the shared suites for the driver harness's session, workspace and host-interrupt
+fakes, but finds semantic coverage limits for nonempty extracted evidence and plugin-copy materialization/cleanup.
+Do not count the driver's outgoing plugin-path assertions as copy-content proof. The exact checked scope and next
+decision are recorded in this session's `temp/implementation-ez3muu/testability-port-review.md`; gate 6 remains open.
+
+The workspace-copy follow-up now distinguishes full plugin, source and removal-set values in the fake, preserves
+stable paths across deletion and recreation, and tracks live registrations separately. The shared contract first
+failed because two nonempty removal sets received the same path. It now checks that copies exist before cleanup,
+that candidate cleanup removes its copies, and that another candidate's copies and copied bases survive. Fake checks
+claim virtual identity and lifecycle; `StagedSourceTest` retains physical materialization and removal coverage.
+All 248 focused tests pass. Evidence: child session `01a1d585-c7ef-7641-88c0-8817d0ee7c32`,
+`temp/workspace-copy-contract-KRCAtu/red-contract.log` and final `final-verify.log`. The orchestrator owns cleanup.
+
+The nonempty-evidence review is closed locally by existing producer checks, rather than by the shared session
+contract's empty activity fixture. `CodexEvidenceTest` (11 checks), `StreamJsonEvidenceTest` (13),
+`CodexRunningCommandTest` (5), `CodexTrialRecordTest` (3) and `ClaudeTrialRecordTest` (1) pass in the integrated build
+below. They cover extracted tool activity, command durations and exit-status availability, and its interpretation by
+trial assertions. Driver tests consume scripted nonempty evidence for failed-trial author inputs, judge inputs,
+tool-based verdicts and completed-trial records. These producer and consumer checks establish the fixture assumptions;
+they do not refresh the harness recordings or replace installed acceptance.
+
+Before the process-role and SessionHistory changes, the integrated working tree based on `5f4792eb2ce3` passed
+complete uncached `clean verify`: 5,640 tests in 429 reports,
+zero failures/errors and six skips. Every report records the requested nonexistent home and invocation-local temporary
+directory; the home remains absent. This establishes that revision's local build and absent-home checks, including the
+early-end, race-triage and workspace-copy repairs. Evidence: this session's `temp/optimizer-integration-rUaOnc/`,
+`receipt.txt`, `build.log`, `report-summary.txt` and retained `reports/`. The orchestrator owns cleanup after final
+acceptance reconciliation. Ten cases took at least one second on that revision; the newer build above supersedes its
+runtime population. Live installed
+acceptance, the remaining testability review and final gate reconciliation remain open.
+
+### Earlier local continuation (2026-11-13): racing build verified; live optimization remains paused
+
+The user confirmed that live optimization stays paused while local work continues, and authorized subagents for
+concurrent work. No live campaign, release, installation or push ran in this continuation.
+
+- The complete uncached `clean verify` passed on `5f4792eb2`: 5,631 tests, no failures or errors, six skips.
+- The local background-command test repair seeds development one outcome before a sound-test checkpoint instead of
+  replaying development and certification. Both `run --background` and `choose resume --background` still execute
+  through the public parser, run a trial and a new judge after the simulated foreground deadline, and reach the
+  expected pending checkpoint. The focused check passes, and the final full build passes with the repair.
+- A second uncached `clean verify` also sets `HOME` and the test JVM's `user.home` to one nonexistent directory.
+  All 427 reports record the requested `user.home`; 5,631 tests ran with no failures or errors and six skips, and
+  the home stayed absent. Both repaired background cases took less than one second in that full build.
+- After the skill, rule, regression-fixture and requirement-tag changes, the unrestricted `verify` passes with the
+  normal Maven cache: 5,631 tests in 427 reports, no failures or errors, six skips. The build validates the new scenario
+  through `RegressionScenariosTest`; an earlier attempt caught its missing `Variables` section, now repaired. All 28
+  assembled skill headers match their sources, includes are expanded, and the changed rule guidance remains after
+  goal stripping. Unchanged operations may be reused; this does not claim a fresh execution of every test or a live
+  measurement of model behavior. Fourteen cases at or over one second are listed in `trace-final-report-summary.txt`.
+- The design now describes the implemented judge exception: Claude judges have only Read, Grep and Glob, retain
+  read denials, deny MCP tools and run without a sandbox; Codex judges retain their sandbox and read-only evidence
+  profile. The expected-outcome description also recognizes the existing built-in-tool alternative.
+- Request-server discovery is project-local. The client resolves an ordinary nested cwd to its enclosing CAT project;
+  a cwd in another CAT project selects another endpoint. Existing nested-directory scope and relay tests pass in the
+  full build. The historical refusal below lacks its exact cwd and artifact identity, so it does not yet establish a
+  production bug within the supported project boundary; do not broaden discovery across projects to work around it.
+- Both skill descriptions now cover existing-campaign questions, and the shared workflow relays an offered `resume`
+  choice and executes it when the user selects it or already requested resumption. A progress question uses the
+  existing campaign instead of starting another one. Live routing and resume behavior remain unmeasured.
+- The metadata audit covered all 14 Codex and 14 Claude skill headers. Missing explicit names are supported defaults:
+  Codex's loader derives an absent or blank name from the parent directory, and Claude documents its directory-name
+  default. The initial claim that the Codex omissions were defects was wrong; every name added in this continuation
+  was removed, preserving the original headers. The shared assumption-checking rule now distinguishes authoring
+  documentation from consumer acceptance before prescribing a repair, including supported defaults.
+- A status notice was mistakenly sent through the question tool despite the loaded rule requiring response text.
+  The Codex rule now identifies the unresolved user decision before selecting the tool or constructing its payload,
+  and checks that the question item actually requests the needed answer. The status regression requires delivering a
+  notice in response text and covers statement and rhetorical-question forms. A new assumption-checking regression
+  covers consumer defaults, actual rejection, strict documentation conformance and unknown acceptance. These fixtures
+  are local regression specifications; no live model run has measured the revised instructions.
+- E3's historical `no_boilerplate` wording concern does not establish a current source defect: the contract author's
+  existing revision guidance already requires applying a selected resolution to every affected requirement. A future
+  authorized E3 run must inspect the revised requirement descriptions; do not weaken or duplicate that guidance on the
+  historical note alone.
+- The local traceability audit maps all 2,463 requirement comments to passing methods in 427 reports. Four racing tests
+  incorrectly tagged G1, a design acceptance goal absent from the requirement inventory; they now tag the new R-D20,
+  derived from D143's racing decisions. The source inventory has 138 requirement IDs, 137 tagged, no unknown tags and
+  only the E-only R-I1 missing. R-I1 and the E receipts keep gate 2 unmet; assigning a decorative Java tag would not
+  prove its installed-harness behavior.
+
+Evidence is retained in session `01a1d517-3e11-7cf2-b4a8-5b441203bcae`,
+`temp/implementation-ez3muu/`: `acceptance.txt`, the two clean-build receipts and logs, both sets of complete XML
+reports, `background-focused-report.xml`, `final-report-summary.txt`, `verified-source.patch`, the later
+`local-final-fixed-*` and `trace-final-*` build/report records, and `consumer-defaults-scenario.md`. The current
+orchestrator owns cleanup after the final acceptance audit no longer needs these records. The test, documentation,
+skill and rule edits remain uncommitted. Gates 2, 4, 5, 7 and 8 and the live handoff checks remain open; this local
+result does not complete the implementation goal. Next local work includes reconciling the existing
+design-acceptance method references and gates 3 and 6's source-audit scope to the current tree. The release and live checks below
+still await their respective gates and the live-run pause.
+
+### Earlier update (2026-11-13, morning Toronto): queued optimizer changes merged; racing build unverified
 
 The user stopped all background work so another agent can resume from here. Nothing is running: the build, the Codex
 runs and this session's request server are stopped. Start a request server of your own before any runner launch (see
@@ -78,8 +2318,9 @@ the cwd note below).
 	request server restarted. Stopped there: the user paused all prompt
 	optimization (2026-11-12, usage rate), so no E runs, failure-reporting runs, WI-142 live checks or gates until the
 	user lifts it.
-- Open for the user: a prompt test whose time limit exceeds the slice budget can never be admitted in a slice, in the
-	driver or the pilot; no cap exists today.
+- Closed (2026-11-15): a prompt test whose time limit exceeds the slice budget is admitted by a background run, which
+	has no slice budget; only the foreground fallback refuses it, and its status says the test needs a background run
+	(design §3.7, G6).
 
 ### Update (2026-11-12, afternoon): fixes for the next release, queued optimizer changes
 
@@ -1166,6 +3407,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-140 | `optimize-high` | Changes how many trials run at once for every purpose, the campaign snapshot and the status; an error wastes trials after a failure that ends work, holds work at one trial after failures that end nothing, or makes an existing campaign fail to load. |
 | WI-141 | `optimize-xhigh` | Changes how a runner launcher sends turns to a requested session and how CAT commands inside a run start sessions; an error lets a child outlive the command that holds it, delivers a turn twice or out of order, loses the child's output, or lets a child start more sessions than its caller allowed. |
 | WI-142 | `optimize-xhigh` | Moves the boundary between a sandboxed session and the sessions it starts into the runner launchers and changes what `install` writes to both harnesses' settings; an error lets a session's command run unsandboxed code, start a session wider than its own sandbox, read or write a path its sandbox denies, or leaves a user's settings with an exception that `uninstall` does not remove. |
+| WI-145 | `optimize-xhigh` | Runs Git outside the session's sandbox in a repository that the session's commands can write, on a request that the session's model wrote; an error lets a request choose a path to delete or a registration to rewrite, run a program the session chose outside the sandbox, or leaves a campaign that cannot start or be removed. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -1245,7 +3487,7 @@ Rows marked done keep only their first sentence here. Their full records, unchan
 | WI-12 | Done (commit `28e67b5df`). Record: [history](plan-history.md). |
 | WI-3/WI-4 assignment record | Done (commit `80b532b26`, plus `StatusReportTest` fix). Record: [history](plan-history.md). |
 | WI-11 | Done (commit `cf64d1ce0`). Record: [history](plan-history.md). |
-| WI-9 | Done (commit `0abcd21f0`). Record: [history](plan-history.md). |
+| WI-9 | Original driver done (commit `0abcd21f0`). Record: [history](plan-history.md). D145 follow-up passes composed early-end session, adoption, retained-record and report checks, plus the integrated clean build recorded above. Installed live acceptance remains open. |
 | Candidate overlay store (WI-4/WI-9 follow-up) | Done (commit `c93657464`). Record: [history](plan-history.md). |
 | WI-10 | Done (commit `7e93ca239`). Record: [history](plan-history.md). |
 | Claude follow-up attribution (WI-8 follow-up) | Done (commit `3b3b35b35`; full build passed with 1080 tests, 0 failures). Record: [history](plan-history.md). |
@@ -1270,7 +3512,7 @@ Rows marked done keep only their first sentence here. Their full records, unchan
 | WI-17a | Done 2026-10-01. Record: [history](plan-history.md). |
 | WI-18 | Done 2026-10-01 (Codex xhigh). Record: [history](plan-history.md). |
 | WI-19 | Done 2026-10-01. Record: [history](plan-history.md). |
-| WI-20 | Done 2026-10-02 (Codex xhigh; integrated as `42c763ca9`; full build 1458 tests, 0 failures; bats 32/32). Record: [history](plan-history.md). |
+| WI-20 | Original concurrent-attempt selection done 2026-10-02 (Codex xhigh; integrated as `42c763ca9`; full build 1458 tests, 0 failures; bats 32/32). Record: [history](plan-history.md). D143 racing follow-up passes predicates, development routing and `RaceDriverTest` shared-draw, ordered-adoption, dropping, winner-only minimality and promotion checks, plus the integrated clean build recorded above. Installed live acceptance remains open. |
 | Claude interrupt request (portability follow-up, user request 2026-10-01) | Done. Record: [history](plan-history.md). |
 | Test-double audit (user request 2026-10-01) | Done (`5079b82b0`, `82ee80ec1`; full build 1433 tests, 0 failures; bats 32/32). Record: [history](plan-history.md). |
 | Campaign lock failure masking (convention-pass follow-up) | Done (`e085ec1fa`; full build 1438 tests, 0 failures; bats 32/32). Record: [history](plan-history.md). |
@@ -1421,7 +3663,7 @@ worktrees`, `hooks`, `config`, `config.worktree`, `commondir`, `info/exclude`, `
 others to `denyWrite`, which it mounts after `allowWrite`, so no grant overrides it. A session without scrub mode, such
 as the orchestrator's, protects the Git directory's `worktrees` at a lower priority that its `allowWrite` overrides.
 User ruling (2026-11-02): "Turn off scrub mode. If we trust the parent with this information then we trust the child too. The only thing we want to hide from a child is information that might allow it to cheat during prompt optimization." So hiding the user's credentials from a session's commands is no longer required; `denyRead` of held-out data, other runs and harness login files stays. Implemented (Claude `optimize-medium`): the runner stops setting the scrub (a caller's value is not inherited either), keeps the `.git/worktrees` grant, the Bash grant and every `denyRead`, and moves the Claude session environment to version 14; the shared command-limits test allows Claude's three connection variables and still forbids the rest. Integrated: `1444ed6dff` (runner), `c3cf96de69` (design: trial limits, D98). Clean build 3,483 tests, 0 failures, 18 skipped; no test took 1 s. Rerun (2026-11-02, plugin built from `4900a8a8a4`, `opus`/`high`, `~/cat/worktrees/wi119-vggymD`): failed. The first `start` exited 1 with `AccessDeniedException: <project>/.claude/settings.json`. Without scrub mode, Claude Code no longer makes the project's `.claude` read-only as a whole; it mounts the null device over each protected path that does not exist (`settings.json`, `settings.local.json`, `.mcp.json` and others), and reading one fails on the `nodev` mount. Where the file exists, it mounts the file read-only. The skill reported the error, said it could not continue, and stopped without writing anything, as the last turn asked. Delegated (Claude `optimize-high`): the optimizer treats a character device at a project file whose absence it accepts as absent, in reads, trial copies and the measured loader configuration. User ruling (2026-11-02): ship this together with the E5 fixes in one release. Integrated: `57f6249f86` (`start`'s check for settings that turn off the sandbox skips a project settings file that is not a regular file, as the other reads of those files do; every other read, the trial copies and the measured loader configuration already left placeholders out). Clean build 3,486 tests, 0 failures, 18 skipped; tests ≥1 s: `OptimizerCoreTest.reviseRerunsChangedTestPilot` 1.53 s, `revisesPausedConflicts` 1.52 s, `revisionLeavesOutDroppedDerivedSource` 1.13 s, `runExecutesOneSlice` 1.13 s. Release run 41463900909 on `5b5e6558d5` failed only on Windows: three campaign-lock tests of `OptimizerCoreTest` snapshotted the campaign directory while holding its lock, and Windows refuses to read a locked byte range. Integrated: `42f2593e0c` (the snapshot records the held lock file without reading it; no product path reads it while another process holds it). Clean build 3,486 tests, 0 failures, 18 skipped; no test took 1 s. Rerun (2026-11-02, plugin built from `5b5e6558d5`, `opus`/`high`, `~/cat/worktrees/wi119-OiSMS0`): the skill showed the refusal, asked which plugins, wrote `prompt.json` with `cat@cat`, committed it alone and ran `start` again, which got past the placeholder and worktree steps and created campaign `20261102T143711Z-d4625f`; it stopped before trials as asked. Score: the skill's steps passed. It showed the refusal verbatim, offered `cat@cat` or none without choosing, said a certification holds only for users with the chosen plugins and that no build command was needed, wrote tab-indented `prompt.json` only after the user's answer, and left `CLAUDE.md` unchanged. Two flaws, both in reporting the connection failure: it guessed `api.anthropic.com` as the blocked host and labelled that a guess, and it offered a command path inside the temporary run. The contract author session then failed twice after ten API retries each with `ECONNREFUSED`. Cause: the contract author's Claude Code process starts inside the runner session's command sandbox, and this host's Claude connection uses an API gateway on the loopback (`127.0.0.1:9801`), which the sandbox's network allowlist does not name (it names `127.0.0.1:2455` only); a diagnostic session's commands could reach the gateway neither directly nor through their proxy, and the orchestrator's own commands get 403 from its proxy for it. A user whose Claude connection reaches a host that the sandbox allows is not affected. Open: the release, then a rerun once the gateway is reachable from sandboxed commands, which is the user's sandbox setting. Codex live check (2026-11-02, plugin built from `38e1d1b61b`, `gpt-6-luna`/`low`, `~/cat/worktrees/wi119-codex-swzVfQ`, the same project with `AGENTS.md` in place of `CLAUDE.md`): the skill's steps passed and the campaign stopped before its contract. `start` refused and listed `cat@cat`; the skill asked which plugins without choosing, wrote tab-indented `prompt.json` with `cat@cat` after the answer, committed it alone (`4ca84d3`), left CAT's `.gitignore` uncommitted and ran `start` again, which created campaign `20261102T193202Z-ccdc1f`. Its contract author session then failed twice with "The contract author session did not complete: <run>/home/auth.json", and `cancel` failed with `AccessDeniedException` on the same file: the runner denies the session's commands reading the session home's `auth.json` (`CodexRunner.sessionDeniedReads`), and the Codex sessions that `prompt-optimizer` starts from those commands need it. User ruling (2026-11-02): "Allow session's own login": a session's commands may read the login in the session's isolated home; the user's real login files and the other harness's stay denied. Integrated: `cfb314f3a7` (both runners; Codex session environment 14, Claude 15), `332ba233e0` (design: trial limits, request sessions, D98, D107). Clean build 3,516 tests, 0 failures, 18 skipped; tests ≥1 s: three `KeptRequestStatusTest` cases 1.006–1.008 s and `CodexSubagentStartHookTest.statesProjectDirectoryInSubagentRules` 1.003 s. Claude rerun (2026-11-02, plugin built from `332ba233e0`, `opus`/`high`, `~/cat/worktrees/wi119-XMpV92`): the skill's steps passed again. It showed the refusal verbatim, offered `cat@cat` or none without choosing, said the certification holds only for the chosen setup and no build command was needed, wrote tab-indented `prompt.json` with `cat@cat` after the answer, committed it alone (`e6c987f`) and ran `start` again, which created campaign `20261102T201021Z-2cf626`; it stopped before trials as asked and left `CLAUDE.md` unchanged. Its report labelled the sandbox cause a guess and named no host. The contract author session again failed twice with `ECONNREFUSED`. A diagnostic runner session (`~/cat/worktrees/gw-diag-aixiQQ`) showed why: its `NO_PROXY` lists `127.0.0.1`, so commands connect to `127.0.0.1:9801` directly, which its sandbox refuses; forced through its proxy they get 502. The user has added `127.0.0.1:9801` to the sandbox allowlist, which takes effect when the orchestrating Claude Code restarts; the orchestrator's own commands still get 403 from its proxy for that host. After the restart (2026-11-02), an unauthenticated `POST /v1/messages` to the gateway gets 401 from the orchestrator's commands, and from a nested runner session's commands 401 through their proxy but connection refused directly; the nested sandbox sets `NO_PROXY=localhost,127.0.0.1,::1,...`, so a Claude Code process started from those commands connects to `127.0.0.1:9801` directly and is refused. Codex rerun (2026-11-02, plugin built from `332ba233e0`, `gpt-6-luna`/`low`, `~/cat/worktrees/wi119-codex-3Dxukb`): the skill's steps passed. `start` refused and listed `cat@cat`; the skill asked which plugins without choosing, wrote tab-indented `prompt.json` with `cat@cat` after the answer, committed it alone (`40420f3`), told the user to commit CAT's `.gitignore` themselves and ran `start` again, which created campaign `20261102T201050Z-a9bd22`; the session's own login was readable. The contract author (`gpt-6.1-sol`/`high`) then reached its 30-minute limit: its first check passed on `AGENTS.md`'s four obligations, then it expanded the draft to propose every obligation of the loaded CAT rules as extra requirements, asked (with no one to answer) whether to include them, and was still writing scenarios at the limit, after one write failed with "Argument list too long". The retry ran 5.6 minutes before the orchestrator's restart ended the run. User rulings (2026-11-02): nested loopback route "Drop loopback from NO_PROXY": when every proxy that the parent names is on a loopback address, a nested harness's NO_PROXY loses its loopback entries (`db3e4d2547`, design `15cd4bdf94`; clean build passed). Test scope "Target only": requirements come only from the goal or, without one, the target prompt file; other prompt files are context (D124, design `f66d7465a4`); the contract author's prompt, the proposal and the prompt-optimizer skill drop the extra requirements (`cbc8aa2145`; clean build 2 min 8 s: Common CLI 1:24, Distribution 26 s, Codex CLI 13 s, Claude CLI 11 s; 3,521 tests, 0 failures, 18 skipped; tests ≥1 s: TestabilityAuditTest.onlyMainCreatesSleepingPause 1.26 s, ProposalSchemaTest.rejectsOmittedItem[31] 1.13 s, three ScenarioTest cases 1.13 s each, DriverTest.failedAttemptReproducesBeforeDevelopment 1.09 s, HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry 1.09 s, two MarkdownSectionsTest cases 1.07 s and 1.01 s). User ruling (2026-11-02), multi-agent inheritance (D125): a nested Codex session gets the parent's multi-agent features, `[agents]` limits and readable agent roles, and the starting Codex thread's recorded multi-agent version and mode apply over them (`800c416fa0`; Codex session environment 16; clean build 1 min 45 s: Common CLI 1:11, Distribution 18 s, Codex CLI 12 s, Claude CLI 8 s; 3,543 tests, 0 failures, 18 skipped; tests ≥1 s: HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry 1.16 s and four CodexRunnerCliTest cases 1.13–1.15 s). Against the installed codex-cli 0.160.0: the version comes from the latest `turn_context`, the mode from the latest `world_state` (full records and patches), and a mode in `turn_context`, as older releases wrote it, is also accepted; the proactive text is 0.160's own; `[agents] enabled` and `max_concurrent_threads_per_session` are copied too, because `enabled = false` is the only setting that turns off the multi-agent tools of a model whose catalog picks V2. A model whose catalog picks V2 stays on V2 under a V1 parent, since Codex has no setting that overrides it. The Claude side: a nested Claude session gets the parent's subagent variables, each confirmed in the installed Claude Code 2.1.316 as controlling subagents (concurrency, spawn depth, subagent model and its force, subagent effort, fork, Explore/Plan and SDK built-in agents, agent teams, plan agent counts, workflow model and concurrency), from the parent process or else its settings `env`; `CLAUDE_CODE_DISABLE_PROACTIVITY` (a proactivity selector, not subagents) and `CLAUDE_CODE_MAX_SUBAGENTS_PER_SESSION` (no reading site) are left out (`c5ec68d2e0`; Claude session environment 17; clean build 1 min 57 s: Common CLI 1:22, Distribution 20 s, Codex CLI 10 s, Claude CLI 8 s; 3,546 tests, 0 failures, 18 skipped; tests ≥1 s: DriverTest.failedAttemptReproducesBeforeDevelopment 1.34 s, OptimizerCoreTest.choosesConflictsBeforeRevision 1.07 s, TestabilityAuditTest.onlyMainCreatesSleepingPause 1.06 s). Codex rerun on `d1c8df7924` (wi119-codex-j7Rn6K, gpt-6-luna/low, launched without the NO_PROXY workaround): the skill asked which plugins trials install, wrote `.cat/tests/AGENTS/prompt.json` with `cat@cat` and committed it; the nested sessions reached the load balancer through the sandbox's proxy; the contract author took 12.4 minutes (18:03–18:15 Toronto) where the previous run reached its 30-minute limit, and proposed 6 requirements, all with source `goal`, and 7 prompt tests; the guard pilot then ran 31 minutes and the session canceled the campaign before any trial, as asked. Passed. The Claude rerun (wi119-R1vRBK) ended on the gateway's 503 "All accounts are temporarily unavailable" and is being rerun. Claude rerun on `d1c8df7924` (wi119-G2IGs4, opus/high): the skill asked which plugins trials install, wrote `.cat/tests/CLAUDE/prompt.json` with `cat@cat` and committed it (`7cc1354` in the trial project); the contract author took 5.9 minutes (21:13–21:19 Toronto) and proposed 4 prompt tests, every requirement with source `goal`; the guard pilot ran 10 minutes and the session paused before any trial, as asked. Passed. Both harnesses pass. |
-| WI-120 | In progress (R-I6). **Current (2026-11-06):** `b66d9c0bf9` (2026-11-04) replaced the bundle copy and download below with the installed-plugin lookup that R-I6 now states (`OtherHarnessPlugin`); the `~/.cat/bundles` text below is history. Open: R-I6 tags on the replacement tests and the Codex-side live check on the republished release. History: integrated `14665ac129` (Claude's `codex-runner` skill; `codex-artifact` and `claude-artifact` launchers that select the installed plugin of the same version, a bundle in `~/.cat/bundles`, or a verified download; `codex-runner` in the Codex plugin's `bin/`); full build passes; the built launchers downloaded, verified and reused both archives from a local release directory. Integrated: `c2507ee621` (each uninstaller removes `~/.cat/bundles`) and `61a51d4d06` (download time limits of 30 s to connect, 60 s for the response and 15 minutes for the file; other versions' bundles deleted after a download); full build passes; the built launcher deleted the other version's bundle and kept this version's. The Windows uninstaller test passed on the release workflow's Windows runner (run 39898874571, 2026-10-23). Integrated: `9b50fe0d56` (each check for a bundle deletes the bundles no run has used for more than three calendar months; a download or a run that uses a bundle restarts its age); full build passes. Claude's `codex-runner` skill, live (2026-11-02 UTC, plugin built from `22162b5de7`, `opus`/`high`,
+| WI-120 | In progress (R-I6). **Current (2026-11-06):** `b66d9c0bf9` (2026-11-04) replaced the bundle copy and download below with the installed-plugin lookup that R-I6 now states (`OtherHarnessPlugin`); the `~/.cat/bundles` text below is history. The replacement OtherHarnessPluginTest carries R-I6 tags and its five local checks pass. Open: the Codex-side live check on the republished release. History: integrated `14665ac129` (Claude's `codex-runner` skill; `codex-artifact` and `claude-artifact` launchers that select the installed plugin of the same version, a bundle in `~/.cat/bundles`, or a verified download; `codex-runner` in the Codex plugin's `bin/`); full build passes; the built launchers downloaded, verified and reused both archives from a local release directory. Integrated: `c2507ee621` (each uninstaller removes `~/.cat/bundles`) and `61a51d4d06` (download time limits of 30 s to connect, 60 s for the response and 15 minutes for the file; other versions' bundles deleted after a download); full build passes; the built launcher deleted the other version's bundle and kept this version's. The Windows uninstaller test passed on the release workflow's Windows runner (run 39898874571, 2026-10-23). Integrated: `9b50fe0d56` (each check for a bundle deletes the bundles no run has used for more than three calendar months; a download or a run that uses a bundle restarts its age); full build passes. Claude's `codex-runner` skill, live (2026-11-02 UTC, plugin built from `22162b5de7`, `opus`/`high`,
 `--session-requests 1`, `~/cat/worktrees/wi120-claude-vzbwRx`): passed. Without a named model the skill listed the
 models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, it wrote the records file, ran the
 `codex-runner` launcher that its requests environment names, and the requested Codex session completed (receipt
@@ -1436,8 +3678,8 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-15, Codex E5 takeover (2026-10-24) | Paused for user-requested handoff to Claude Code. Original thread `01a15ed8-fc71-72e1-9eb1-4fa77c43386e`, campaign `20261021T142441Z-30f739`: continue17 ran through supported private `/tmp` isolation and was interrupted with confirmed terminal exit 130 when the user requested background-terminal shutdown. Accumulated files/results retained; no E5 success receipt established. Read the current handoff section and `/home/gili/cat/worktrees/e5-codex3/receipts/authorization.txt` before resuming. Keep identity/results remains approved for the pending non-loader measurement change; reconcile whether the driver applied it before choosing again. |
 | Scoped executable runner (user ruling, 2026-10-24) | Implemented as `b69aceb836`: `JvmScope.executableFiles()` supplies production retries with pauses and test runners that do not sleep; `OptimizerCore`, `RequestedRunner` and both harness runners obtain it from their scope. Existing focused optimizer/runner tests pass; two controlled checks prove service sharing/recovery and refusal after closure. Full build: 3,209 tests, zero failures/errors, 11 skipped, 96 s; absent-home check passed. Evidence: orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/integration-y5REYT/jvm-scope-full-build-result.json`. The user separately chose to retain refusal of symlinks anywhere in request input paths; macOS callers must provide resolved paths. |
 | WI-126 | Installer repair committed and pushed as `361da15fee`. TDD reproduced checksum success followed by missing marketplace metadata; the fixed bootstrap, all 30 bootstrap checks, ShellCheck and the full 3,179-test build pass. Hosted Build `40098509359` passed. Release 40099789260 passed for 361da15fee; all ten archives and the ten-entry checksum manifest are published. The published Linux Codex archive passed its checksum and contains the fixed installer plus required metadata. Follow-up `d8887e449a`: an actual downloaded outer bootstrap exposed a separate two-URL shell wrapping defect in all four install/removal wrappers, plus the same adjacent-metadata bug in Claude. Five new regressions failed first; all 35 bootstrap checks, ShellCheck and the 3,209-test full build pass after the fixes. The public downloaded Codex outer bootstrap subsequently passed archive installation with controlled harness registration in an isolated home (orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/published-bootstrap-fixed-full-rme2yr92/receipt.json`); it changed no real harness or user configuration. Hosted Build `40105368986` for `e525b3ea4b` failed only because its new shared bootstrap test required successful Codex shell installation on Windows, where the installer correctly requires PowerShell. Corrected as `dfe2d5e331`: Windows must refuse with PowerShell directions and leave the marketplace absent; supported systems still install archive metadata. The previous test failed locally with controlled Git Bash platform input; the corrected check passes Linux, Git Bash and MSYS, and all 35 bootstrap checks pass with the parent output-routing context removed. The full 3,216-test build passes. Hosted Build `40109242080` for `c64f57c9b3` passed on all five platforms. The user force-pushed the replacement tag to `c64f57c9b3`; Release `40114796736` passed. All ten published archives match their ten-entry SHA-256 manifest, and their installers, marketplace metadata and standalone wrappers match that commit. Every Claude archive contains `bin/claude-runner`; every Codex archive contains its Claude-runner skill. Both public downloaded shell bootstraps installed metadata and registered the plugin, then removed and unregistered it, using isolated homes and stateful CLI registration fakes with real public HTTP downloads/checksums/scripts. This proves packaging and bootstrap behavior, not native CLI registration. Receipts: orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/published-c64-release-6zx3qhzo/verification.json` and `temp/public-c64-install-remove-2qbw3bia/verification.json`. |
-| WI-127 | Done: integrated into `v1.0` with the clean full build on `f6a60c6051` (final-gate row below). Build-validation repair, committed on `jvm-options-c64` as `66e9059a45` and `311835d141`; replacement release at `c64f57c9b3` verified; integration build pending. Actual fork inspection found that the common module's native-access argument replaced caller `argLine` values, so the earlier check that a nonexistent home stayed absent did not establish that common tests used it. A retained behavioral checker failed against all 219 common reports before the configuration fix. The common test fork now combines caller options with the required native-access flag; an empty default keeps ordinary builds working. A test fixture then exposed an ancestor `.cat` directory and correctly reported itself inside a project; its isolated filesystem now supplies the outside-project condition it asserts. Focused checks pass both with and without caller options. Clean full build: 3,216 tests, zero failures/errors, 11 skipped, 114.265 s. All 297 reports record the requested outside-Git temporary directory and nonexistent `user.home`; `HOME` names the same absent directory, which was never created. Tests at or above one second: optimizer.test.TestabilityAuditTest.coreReferencesNoHarness 1.046 s; optimizer.execution.test.DriverTest.failedAttemptReproducesBeforeDevelopment 1.185 s; optimizer.execution.test.DriverTest.statusOmitsAbsentSessionUsage 1.01 s; optimizer.execution.test.DriverTest.weakRoundSelectsBestThenRunsSequentially 1.04 s; runner.test.SessionRequestBrokerTest.refusesHostileInputs(java.lang.String)[10] 1.997 s; runner.test.SessionRequestBrokerTest.refusesHostileInputs(java.lang.String)[18] 2.623 s; runner.test.SessionRequestBrokerTest.refusesHostileInputs(java.lang.String)[23] 2.562 s; runner.test.SessionRequestCliTest.refusesUnsafeInputs(java.lang.String)[5] 6.799 s; runner.test.SessionRequestCliTest.refusesUnsafeInputs(java.lang.String)[6] 2.254 s. Evidence: orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/forked-jvm-options-m29d94cv/` (red reports/checker, default and focused checks, `isolated-fixture-full-build-result.json` and `isolated-fixture-runtime-property-check.json`). This proves the current G9 execution on that branch; the remaining §8 audit and other final gates remain unmet. |
-| WI-128 | Implemented on branch `recursive-runners` (R-I11, D107; implemented directly by Claude at the user's request, 2026-10-25), not yet merged: `--input` for both runners (`c35e80dd19`), `--request-depth` (`eb73f3c897`), the forwarder (`2dec122395`), the in-run grants, instructions and optional `--artifact` (`1c8a19bca2`), both launchers in both plugins (`2555c24b54`), `request-session --install-cat` (`3cd3374bbf`), both runner skills over one shared body (`f8f70c8c6e`), the usage (`a300e7c78a`) and the top-level sandbox configuration in `docs/installation.md` (`8eb35603bc`). Full clean build: 3,284 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.57 s and `[6]` 1.08 s, `OutputGatesTest` retained and draft worktree lifecycles 2.26 s and 2.25 s, `ReplayExecutionTest.replaysOrderedBatchesWithMatchingTag` 1.35 s, `ReviewEvidenceTest.rejectsMatrixMissingCandidateRow` 1.19 s, none touched. `codex execpolicy check` allows both launchers by absolute path and refuses other commands, a similar name, and the launcher inside `bash -lc`, a chain, a redirection or after `cd`. First live check with the built artifacts (2026-10-25T14:12Z, `/home/gili/cat/worktrees/recursive-live/20261025T141230Z`): all four parent and child pairs answered (3 to 7 s each), and a Claude child started a Codex grandchild and a Codex child a Claude grandchild (100 s and 110 s, each receipt listing one completed requested session, each child relaying the grandchild's answer from the project). Its negative checks proved less: the Claude child's permission prompt blocked all three compound probe commands, and the Codex child showed no secret-like variable name and got `Read-only file system` writing outside the run, but declined the credential read. It also found that CAT's SessionStart hook refused `CAT_REQUEST_SESSION` in a Claude session allowed requested sessions, so that session ran without CAT's rules, a defect that predates this item; fixed in `b620b2d4d9` (full clean build 3,285 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.42 s and `[6]` 1.15 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.20 s). A Claude child's first launch with its own project was refused because Claude's sandbox masks protected files there with character devices; the child sent a subdirectory instead; at the user's ruling the launcher now leaves out entries that are the null device itself and still refuses links and other special files, a named pipe included (`32a4379d5d`); full clean build 3,287 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 6.68 s and `[6]` 1.83 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.48 s and `[18]` 1.17 s, `OptimizerCoreTest` start cases 1.07 to 2.82 s, `CodexConnectionConfigurationTest.deniesListedReads` and `deniesListedReadsToValidators` 1.54 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.44 s, `CodexSessionsTest` two cases 1.07 s, `CodexTrialRecordTest.checksDecideFromRecordedEvents` 1.05 s, only the first two touched). A second live check of both chains, run inside Claude's sandbox on 2026-10-25 (`recursive-live/20261025T184804Z`), failed with 7 failures and proved nothing about recursion: the sandbox refuses the nested bubblewrap namespaces that both harnesses start, so no grandchild started. It exposed two defects, both fixed: runners dropped the proxy variables from a child's environment, so a child behind a proxy could not reach its model service (`0c3a7f9671`); and a failed run, or one kept with `--keep-run`, held the runner's copy of the harness login, which a run now removes when it becomes terminal, skipping a path that a link would lead outside the run (`4567c52f4b`; full build 3,292 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.71 s and `[6]` 1.22 s, `SessionRequestBrokerTest.refusesHostileInputs[18]` 1.41 s and `[10]` 1.40 s, five `StatusReportTest` cases 1.05 to 1.70 s, `RegressionScenariosTest.scenarioIdentifiersAreSnakeCase` 1.21 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.06 s, `HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry` 1.03 s, none touched). Once the user allowed nested namespaces, the live check was repeated twice. At `recursive-live/20261025T193936Z`, with probe turns, both chains passed: each child's receipt listed one completed requested session of the other harness, each child relayed Paris, nothing outside the run was written and no login copy remained; but the probe turns proved little, because Claude's permission layer stopped every Claude probe and the Codex child declined the login read and the outside write. At the user's ruling the probes then ran deterministically, by the check itself, inside each child's own sandbox while the child waited for its first turn (`recursive-live/20261025T195736Z`): both chains passed again; in the Codex child, through `codex sandbox` with the run's home and permission profile, no environment variable had a secret-like name and a command could not read the run's own login copy, which existed while the run was live, nor either user login, and could not write outside the run. The Claude child's harness process holds `ANTHROPIC_AUTH_TOKEN`, which Claude Code removes from the commands that it starts because the runner sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`; its login and outside-write probes were then run in a Claude child allowed one requested session that ended without a turn (`recursive-live/20261025T201014Z`), through Anthropic's sandbox runtime 0.0.81 with the run's own `sandbox.filesystem` settings: a command could read neither user login and could not write outside the run, while it could write its project. Merged into v1.0 by fast-forward from `282bee86bc` at the user's approval (2026-10-25). Remaining: the Claude `excludedCommands` match of an absolute path once the user configures it. |
+| WI-127 | Done: integrated into `v1.0` with the clean full build on `f6a60c6051` (final-gate row below). Build-validation repair, committed on `jvm-options-c64` as `66e9059a45` and `311835d141`; replacement release at `c64f57c9b3` verified. Actual fork inspection found that the common module's native-access argument replaced caller `argLine` values, so the earlier check that a nonexistent home stayed absent did not establish that common tests used it. A retained behavioral checker failed against all 219 common reports before the configuration fix. The common test fork now combines caller options with the required native-access flag; an empty default keeps ordinary builds working. A test fixture then exposed an ancestor `.cat` directory and correctly reported itself inside a project; its isolated filesystem now supplies the outside-project condition it asserts. Focused checks pass both with and without caller options. Clean full build: 3,216 tests, zero failures/errors, 11 skipped, 114.265 s. All 297 reports record the requested outside-Git temporary directory and nonexistent `user.home`; `HOME` names the same absent directory, which was never created. Tests at or above one second: optimizer.test.TestabilityAuditTest.coreReferencesNoHarness 1.046 s; optimizer.execution.test.DriverTest.failedAttemptReproducesBeforeDevelopment 1.185 s; optimizer.execution.test.DriverTest.statusOmitsAbsentSessionUsage 1.01 s; optimizer.execution.test.DriverTest.weakRoundSelectsBestThenRunsSequentially 1.04 s; runner.test.SessionRequestBrokerTest.refusesHostileInputs(java.lang.String)[10] 1.997 s; runner.test.SessionRequestBrokerTest.refusesHostileInputs(java.lang.String)[18] 2.623 s; runner.test.SessionRequestBrokerTest.refusesHostileInputs(java.lang.String)[23] 2.562 s; runner.test.SessionRequestCliTest.refusesUnsafeInputs(java.lang.String)[5] 6.799 s; runner.test.SessionRequestCliTest.refusesUnsafeInputs(java.lang.String)[6] 2.254 s. Evidence: orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/forked-jvm-options-m29d94cv/` (red reports/checker, default and focused checks, `isolated-fixture-full-build-result.json` and `isolated-fixture-runtime-property-check.json`). This proves the current G9 execution on that branch; the remaining §8 audit and other final gates remain unmet. |
+| WI-128 | Merged into `v1.0` from branch `recursive-runners` (R-I11, D107; implemented directly by Claude at the user's request, 2026-10-25): `--input` for both runners (`c35e80dd19`), `--request-depth` (`eb73f3c897`), the forwarder (`2dec122395`), the in-run grants, instructions and optional `--artifact` (`1c8a19bca2`), both launchers in both plugins (`2555c24b54`), `request-session --install-cat` (`3cd3374bbf`), both runner skills over one shared body (`f8f70c8c6e`), the usage (`a300e7c78a`) and the top-level sandbox configuration in `docs/installation.md` (`8eb35603bc`). Full clean build: 3,284 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.57 s and `[6]` 1.08 s, `OutputGatesTest` retained and draft worktree lifecycles 2.26 s and 2.25 s, `ReplayExecutionTest.replaysOrderedBatchesWithMatchingTag` 1.35 s, `ReviewEvidenceTest.rejectsMatrixMissingCandidateRow` 1.19 s, none touched. `codex execpolicy check` allows both launchers by absolute path and refuses other commands, a similar name, and the launcher inside `bash -lc`, a chain, a redirection or after `cd`. First live check with the built artifacts (2026-10-25T14:12Z, `/home/gili/cat/worktrees/recursive-live/20261025T141230Z`): all four parent and child pairs answered (3 to 7 s each), and a Claude child started a Codex grandchild and a Codex child a Claude grandchild (100 s and 110 s, each receipt listing one completed requested session, each child relaying the grandchild's answer from the project). Its negative checks proved less: the Claude child's permission prompt blocked all three compound probe commands, and the Codex child showed no secret-like variable name and got `Read-only file system` writing outside the run, but declined the credential read. It also found that CAT's SessionStart hook refused `CAT_REQUEST_SESSION` in a Claude session allowed requested sessions, so that session ran without CAT's rules, a defect that predates this item; fixed in `b620b2d4d9` (full clean build 3,285 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.42 s and `[6]` 1.15 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.20 s). A Claude child's first launch with its own project was refused because Claude's sandbox masks protected files there with character devices; the child sent a subdirectory instead; at the user's ruling the launcher now leaves out entries that are the null device itself and still refuses links and other special files, a named pipe included (`32a4379d5d`); full clean build 3,287 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 6.68 s and `[6]` 1.83 s, `SessionRequestBrokerTest.refusesHostileInputs[10]` 1.48 s and `[18]` 1.17 s, `OptimizerCoreTest` start cases 1.07 to 2.82 s, `CodexConnectionConfigurationTest.deniesListedReads` and `deniesListedReadsToValidators` 1.54 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.44 s, `CodexSessionsTest` two cases 1.07 s, `CodexTrialRecordTest.checksDecideFromRecordedEvents` 1.05 s, only the first two touched). A second live check of both chains, run inside Claude's sandbox on 2026-10-25 (`recursive-live/20261025T184804Z`), failed with 7 failures and proved nothing about recursion: the sandbox refuses the nested bubblewrap namespaces that both harnesses start, so no grandchild started. It exposed two defects, both fixed: runners dropped the proxy variables from a child's environment, so a child behind a proxy could not reach its model service (`0c3a7f9671`); and a failed run, or one kept with `--keep-run`, held the runner's copy of the harness login, which a run now removes when it becomes terminal, skipping a path that a link would lead outside the run (`4567c52f4b`; full build 3,292 tests, 0 failures; at least 1 s: `SessionRequestCliTest.refusesUnsafeInputs[5]` 5.71 s and `[6]` 1.22 s, `SessionRequestBrokerTest.refusesHostileInputs[18]` 1.41 s and `[10]` 1.40 s, five `StatusReportTest` cases 1.05 to 1.70 s, `RegressionScenariosTest.scenarioIdentifiersAreSnakeCase` 1.21 s, `DriverTest.failedAttemptReproducesBeforeDevelopment` 1.06 s, `HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry` 1.03 s, none touched). Once the user allowed nested namespaces, the live check was repeated twice. At `recursive-live/20261025T193936Z`, with probe turns, both chains passed: each child's receipt listed one completed requested session of the other harness, each child relayed Paris, nothing outside the run was written and no login copy remained; but the probe turns proved little, because Claude's permission layer stopped every Claude probe and the Codex child declined the login read and the outside write. At the user's ruling the probes then ran deterministically, by the check itself, inside each child's own sandbox while the child waited for its first turn (`recursive-live/20261025T195736Z`): both chains passed again; in the Codex child, through `codex sandbox` with the run's home and permission profile, no environment variable had a secret-like name and a command could not read the run's own login copy, which existed while the run was live, nor either user login, and could not write outside the run. The Claude child's harness process holds `ANTHROPIC_AUTH_TOKEN`, which Claude Code removes from the commands that it starts because the runner sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB`; its login and outside-write probes were then run in a Claude child allowed one requested session that ended without a turn (`recursive-live/20261025T201014Z`), through Anthropic's sandbox runtime 0.0.81 with the run's own `sandbox.filesystem` settings: a command could read neither user login and could not write outside the run, while it could write its project. Merged into v1.0 by fast-forward from `282bee86bc` at the user's approval (2026-10-25). Remaining: the Claude `excludedCommands` match of an absolute path once the user configures it. |
 | WI-129 | Done. Record: [history](plan-history.md). |
 | WI-131 | Done 2026-10-27 (Codex; integrated as `86654e5847`, pushed and released in v1.0 at the user's request). Record: [history](plan-history.md). |
 | WI-132 | Done 2026-10-28 (Claude `optimize-high`; integrated as `8354d91120`, released in v1.0). Record: [history](plan-history.md). |
@@ -1451,6 +3693,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-140 | Done 2026-10-31 (Claude `optimize-high`; `9131428c90`). Record: [history](plan-history.md). |
 | WI-141 | Done 2026-11-08 (Claude `optimize-xhigh`; `0f275126f3`..`e42e901aaa`). |
 | WI-142 | In progress: installer exceptions, read-only startup files, direct runner launches, the Codex CAT profile, the session's request server with every client outside a run sending it requests, install's request-server-only exception and the session launcher's removal merged (`ab75964beb`..`d4c0fcefca`; clean full build 5203 tests, 0 failures, 7 skipped); Claude live checks on the installed `1.0+b5e9a6a7a450d` (2026-11-09): the server started in the background runs outside the sandbox; a variable assignment, `env X=1`, a second command and a relative path keep it sandboxed (status 2 with the explanation); a bare `env` in front does not, because Claude Code drops it when matching the exception (the server runs outside the sandbox with the same environment); a run's Claude session appended to `to-child.jsonl` and its requested session answered turn 1 (turn 2 was lost because the session started the conversation with `nohup … &` in a foreground command, not as a background command); D135 accepts the bare `env` case; `env -i` (refused: no session to identify) and `env -C` (sandboxed) pass, and `env -u LANG` left the sandbox, which D135 accepts; remaining: the Codex live checks, and whether the internal options that nothing passes any more (`--capacity-held`, `--git-name`, `--git-email`) leave the design and the code (D133 and D134 already record that D127's launcher-state reason no longer applies and that the exception names only `request-server`). |
+| WI-145 | Designed 2026-11-16 (`design.md` §4.2, §8 "Worktree requests", D148; user ruling that the request server creates and deletes the optimizer's worktrees); not started. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
 | Final gates (§9), interim audit on `c64f57c9b3` | Gate 3: source inventory (374 test sources, 23 POMs) and a process trace found no real Codex/Claude/model launch and no native group/profile; retained processes exercise packaged boundaries or controlled shell, Git and Java fixtures. The traced run is process-audit evidence only: ptrace caused two 30-second request-input tests to time out, while the subsequent untraced focused run passed all nine checks. No timeout or security restriction was relaxed. Audit source hashes and complete execution evidence are retained in orchestrator session `01a16de4-2163-75d0-9e45-481a1850fb3e`, `temp/java-harness-audit-obirnizd/`. Gate 2: class-level inventory has 136 requirements, 134 tagged, with R-I1 and R-I6 untagged and no unknown tags. Passing class reports do not establish exact tagged-method/data-provider execution; live E receipts are not reconciled. Gate 2 remains unmet. Current G9 execution is recorded under WI-127. Gates 4, 5, 7 and 8 remain unmet. |
@@ -1806,24 +4049,25 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | ID | Requirement | Design | Owner | Proof |
 |---|---|---|---|---|
 | R-D1 | Commit gate, in every development cell: at least 100 trials, for the minimum pass rate `p_min` a failure rate of at most `(1 − p_min)/5`, latest two batches of 50 each at most `2·(1 − p_min)/5`, no unresolved defect, baseline met. | §2.7, D76 | WI-3, WI-32, WI-60, WI-80 | U: `CommitGateTest` (each boundary on both sides, at 0.95 and at another `p_min`) |
-| R-D2 | Edit-or-continue: pause admissions, up to 3 reruns, edit if reproduced (a rerun fails, or another adopted trial of the same test case in the same cell fails before the reruns end) or more than 2 failures, otherwise continue with the window reset to 1. | §2.7 | WI-3, WI-9 | U: `EditOrContinueTest` (including a repeated failure of a test case awaiting reruns); U: `DriverTest` (pause and resume) |
+| R-D2 | Edit-or-continue: an adopted blocking failure discards unadopted development trials and edits immediately without diagnostic reruns. A self-recovering failure pauses admissions while running trials finish and receives up to 3 diagnostic reruns; edit if reproduced (a rerun fails, or another adopted trial of the same test case in the same cell fails before reruns end) or the failure count exceeds the 200-trial gate budget. Otherwise continue at the current window; a self-recovering failure never lowers concurrency. Retain diagnosis and impact. | §2.7 | WI-3, WI-9 | U: `EditOrContinueTest` (including a repeated failure of a test case awaiting reruns); U: `DriverTest` (pause and resume) |
 | R-D3 | Prompt author attempts are validated, run twice on triggering test cases and, once a triggering test case has an unfailed streak of 2 passes, once on the regression set, and promoted by the §2.7 rule: the attempt fixes at least one triggering test case (every run passes and the streak is below 10% likely for the working candidate's smoothed pass rate there, with runs extended from 2 until the streak is unlikely) and passes the regression check: per prompt test, the attempt's regression failures are rejected when at least that many would occur less than 5% of the time at the working candidate's smoothed failure rate on the same test cases, computed exactly, looking at the end of the first pass and after every 5 paired reruns of the attempt and the working candidate, up to 15; a group with no failure after the first pass passes at once. A rejected attempt plans no further runs and its queued runs are cancelled. The regression set holds development test cases that failed in representative development trials only. Targeted runs, paired reruns included, never count. | §2.7, D33, D35, D89, D110 | WI-3, WI-9, WI-26, WI-33, WI-110, WI-132 | U: `PromotionTest`; U: `DriverTest` |
 | R-D9 | Prompt authors, triage and diagnosis receive development test cases and outcomes only; from a formal failure they receive its cell, prompt test and failed requirements, never a held-out test case, reply or judge rationale. | §3.1, §6.3 | WI-9, WI-33 | U: `DriverTest` (prompt author input during a formal attempt and after a failed one) |
 | R-D4 | A new candidate starts new counts; earlier outcomes are retained for diagnosis. | §2.7 | WI-3 | U: `TransitionsTest` |
-| R-D5 | Review checkpoint at 200 unresolved trials, or, for the minimum pass rate `p_min`, more than `200·(1 − p_min)/5` failures in a development cell: stop the prompt test, offer choices, record the next review point. | §2.7 | WI-3, WI-60, WI-64 | U: `ReviewCheckpointTest` |
+| R-D5 | At 200 representative trials in an unresolved development cell for an unchanged candidate, stop scheduling that cell. First run a test revision if none has examined its prompt test since the test last changed; a revision continues under the new lineage. Otherwise show evidence and offer more evidence, targeted optimization or stopping, recording the next authorized review point. Separately, more than `200·(1 − p_min)/5` failures triggers editing under edit-or-continue rather than this user checkpoint. | §2.7 | WI-3, WI-60, WI-64 | U: `ReviewCheckpointTest` |
 | R-D6 | Rounds: a round gives each failing prompt test a diagnosis and up to 2 prompt author attempts. A complete round without promotion keeps the working candidate and resumes its representative trials; development has no plateau and ends only at the commit gate, a review checkpoint or a user stop. | §2.7 | WI-3, WI-46, WI-56 | U: `RoundEndTest` |
 | R-D7 | Incumbent baseline trials of held-out test cases: 50 in every certification-scope cell, plus 50 in a scope cell below the minimum pass rate `p_min` not yet proven deficient. The incumbent's development trials never count toward it. A commit requires the baseline. The baseline is reused while measurement identities stay comparable; otherwise the incumbent is measured again as a new baseline with its own share. | §2.5 | WI-3, WI-32, WI-33, WI-60 | U: `BaselineTest`, `AdmissionTest`, `SchedulerTest` |
 | R-D8 | Development results are labelled `development estimate` and `not certified`. | §2.7, §2.9 | WI-12 | U: `StatusReportTest` |
 | R-D10 | Prompt author manifest: the failures grouped into kinds, each kind with its failing test cases, its classification (routing, guidance, test defect, not guidance, conflict) and, for routing and guidance, the hunks that address it, or for a test defect, the test design rule or expected outcome at fault; for each changed hunk, the cited failing test cases and its analogous and dissimilar cases. An attempt with an uncovered hunk, a failure outside every kind, a routing or guidance kind without a hunk, a test defect kind without its rule or outcome, or an unknown citation is rejected and retained; an attempt that edits nothing produces no candidate and its classifications reach the round's diagnosis and the review report. | §2.7, D25, D30, D58 | WI-18, WI-58 | U: `PromptAuthorManifestTest`, `DriverTest`, `StatusReportTest` |
 | R-D11 | Minimality pass: delta debugging over the promoted attempt's hunks, each reduction run through the promotion runs, its regression runs planned at once, and kept when it fixes every triggering test case that the attempt it reduces fixed and passes the R-D3 regression check, paired reruns included, ending when no single hunk can be removed; its runs are targeted and never counted; the minimal attempt is promoted; the report names the removed hunks. | §2.7, D26, D110 | WI-18, WI-132 | U: `MinimalityTest` (removes an unneeded hunk, keeps a needed one, ends at single hunks), `DriverTest` |
-| R-D12 | Concurrent attempts while weak: when any cell of a prompt test the round addresses has a development lower bound below 80% or no development outcome, the round makes 3 independent attempts for that prompt test from the same evidence; each runs the same promotion runs; an attempt is retained as soon as it is rejected, plans no further runs and has its unstarted runs cancelled, while running runs finish without changing its decision; selection waits until every attempt is decided; the accepted attempt with the most passing triggering and first-pass regression runs wins, its paired reruns excluded because only an attempt that failed a regression run receives them, ties to fewer changed lines, then the earlier attempt; only the winner is minimized and promoted; the others are retained; the status records each attempt's promotion results, the runs it ran and whether it was rejected early. | §2.7, D28, D110 | WI-20, WI-132 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, winner ranked without paired reruns, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
+| R-D12 | Concurrent attempts while weak: when any addressed development cell has a lower bound below 80% or no outcome, make 3 independent attempts from the same evidence. Each runs the promotion checks; a rejected attempt plans no further runs and cancels unstarted ones while running runs finish without changing its decision. Wait for all decisions. Rank accepted attempts by passing triggering and first-pass regression runs, excluding paired reruns; accepted score ties race, and all accepted attempts race when their diagnoses disagree. Race rounds also follow a revert and precede a stalled-development pause, with 3 attempts per failing prompt test or up to 6 when every assertion is decided by a built-in tool. Confidence-bound dropping uses equal prefixes; the 100-outcome-per-cell cap selects fewest failures, then fewer changed lines, then earlier attempt. Only the selected winner is minimized and promoted; retain the other attempts and each attempt's actual runs and early-rejection status. | §2.7, D28, D110 | WI-20, WI-132 | U: `AttemptSelectionTest` (weak and not-weak rounds, winner, winner ranked without paired reruns, both tie-breaks, no accepted attempt), `DriverTest` trace 20, `StatusReportTest` |
 | R-D13 | A prompt author conflict report whose quotations the confirmed snapshot holds pauses the campaign with each resolution and `stop`; a report quoting only campaign edits is rejected; a chosen resolution becomes a revision that needs confirmation and starts a new lineage. | §2.7, §7, D32 | WI-25 | U: `PromptAuthorManifestTest`, `ConflictPauseTest`, `TransitionsTest`, `OptimizerCoreTest`, `CommandsTest`, `FileCampaignStoreTest`, `StatusReportTest`, `PromptAuthorTest` |
-| R-D14 | A prompt test's attempts follow the nine §2.7 approaches in order, each round continuing where that prompt test's previous round stopped and wrapping after the last: correct the instruction where it is stated (`AGENTS.md` and `CLAUDE.md` included), rewrite rather than add, add the missing guidance, remove what the failing replies copied, explain the consequence where the decision is made, offer one form of each action, put text to be copied last on its line, define before use and keep definitions in agreement, give the exact text rather than how to build it. The prompt author corrects an instruction in the file that states it and a CAT-shipped target at its module source; when CAT is a trial plugin it puts other new guidance in a project rule, with `paths` frontmatter when the guidance applies only to some files; otherwise it adds new guidance to `AGENTS.md` or `CLAUDE.md` only when it cannot otherwise reach the sessions that need it. | §2.7, §4.3, D30, D34, D59 | WI-26, WI-59, WI-119 | U: `PromptAuthorTest`, `DriverTest` |
+| R-D14 | Before reservations, each new round ranks all eleven approaches for each cell using its failure records, earlier-attempt table and per-approach promotion/attempt counts. Validate the complete ranking, then order adjacent equal-fit groups by exact promotion share, with untried approaches between positive and zero shares. Retry failed rankings up to three times with unchanged input; after that freeze declaration-order rotation for the round/cell. Persist and reuse the order on resume. Existing version-43 rounds retain their original nine-approach rotation; their next new round ranks eleven. The approaches are: correct the owning instruction, rewrite rather than add, add missing guidance, remove copied text, explain consequences at the decision, offer one action form, put copied text last on its line, define before use consistently, provide exact text, state how instructions combine, and fix the trigger. Correct existing instructions in their owning files and CAT-shipped targets at module source; place other new guidance in project rules when CAT is a trial plugin, with matching paths frontmatter where applicable, otherwise use AGENTS.md or CLAUDE.md only when other prompt files cannot reach the required sessions. | §2.7, §4.3, D30, D34, D59 | WI-26, WI-59, WI-119 | U: `PromptAuthorTest`, `DriverTest` |
 | R-D15 | A promoted candidate not yet edited is reverted to its predecessor when its development 95% Wilson upper bound in a cell the promoting round addressed falls below the predecessor's development 95% Wilson lower bound there; the check runs before edit-or-continue, the predecessor's counts return, and the round counts as producing no promotable attempt. | §2.7, D35, D75 | WI-26, WI-79 | U: `RevertTest`, `DriverTest` |
 | R-D16 | Each failed representative development trial has an impact that a triage session decides before the outcome is recorded: blocking (the reply leaves the user without the turn's correct, complete result) or self-recovering (the reply still delivers that result, and the failure cost only extra work); an unclassifiable failure or a third invalid triage output is blocking. A blocking failure discards every unadopted development trial of the working candidate, interrupting those that run, ends any diagnosis in progress, and starts a round without diagnostic reruns; a self-recovering failure takes the R-D2 path. The impact reaches the prompt author brief and changes no count or claim. | §2.6, §2.7, §3.1, D39 | WI-29 | U: `EditOrContinueTest`, `TriagePromptTest`, `DriverTest` (fail-fast trace), `FileCampaignStoreTest` |
 | R-D17 | The proposal states each requirement's trigger or that it always applies; CAT refuses a proposal in which a requirement with a trigger has no test where that trigger is absent. Each manifest hunk names its dissimilar case as a contract test; CAT rejects an attempt that names one the contract lacks. | §2.7, §6.1, D40 | WI-30 | U: `ProposalTest`, `PromptAuthorManifestTest` |
 | R-D18 | In Codex, the inventory holds only listed models of version 6 or later, the number after `gpt-` in the slug, and leaves out a slug without that form; CAT refuses a proposal in which a Codex agent TOML binds a model below version 6, naming the file and the model, and a Codex role profile below version 6. | §6.1, §6.6, D41 | WI-31 | U: `CodexProfileInventoryTest`, `ClaudeProfileInventoryTest`, the core's derivation test |
 | R-D19 | Test revision: each prompt test with a test defect kind gets a contract author session that rewrites it under the test design rules or reports it sound; CAT refuses a revision whose requirements differ from the confirmed ones, gives the revised test new test cases in both parts, reruns its guard pilot and starts a new lineage; a running attempt ends `not certified: stopped for test revision` with the index and spent allowance kept; a sound report returns the kind to the next round as routing or guidance; a report that no test within the rules can prove a requirement, or that a requirement must change, pauses for the user's choice; a review checkpoint first runs one test revision when none has examined the test since it last changed. | §2.7, §7, D70 | WI-75 | U: `OptimizerCoreTest` |
+| R-D20 | Racing decisions use equal adopted prefixes and exploratory 95% Wilson bounds: a rival can eliminate a racer only when its lower bound exceeds that racer's upper bound and no addressed cell clearly favours the racer. At 100 outcomes per addressed cell for every remaining racer, select the fewest failures, then fewer changed lines, then the earlier attempt. A race round allows six independent attempts for a prompt test whose assertions are all tool-decided. Racers use equal-position development draws, preserve the predecessor's evidence and consume no formal allowance; a dropped racer receives no new admissions, and only the winner enters minimality and promotion. | §2.7, §3.3, D143 | WI-20 (racing follow-up) | U: `RaceDecisionTest`, `RoundTest.toolDecidedRaceAllowsSixAttempts`, `RaceDriverTest` (shared draws, ordered adoption, dropping and winner minimality/promotion); installed live evidence remains separate |
 
 ### 3.3 Formal certification
 
@@ -1867,6 +4111,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-E22 | Weakest cell: within the certification scope (for weakest cell only, within the latest versions), the lowest effort of the least capable model by CAT's shipped capability ranking (families ranked from the vendor's published model documentation, with its address and reading date; within a family, older versions below newer), with no trial; a prompt test with one cell uses it; the user may correct or extend the ranking in revision feedback; CAT refuses to confirm while an inventory model's family is unranked. | §6.6, D27 | WI-32 | U: `CapabilityRankingTest` (resource order for both harnesses, version order within a family, an unranked family), `CellTierTest` (weakest cell per scope, one cell, a corrected ranking) |
 | R-E23 | Formal cell order: within a prompt test, formal trials go only to open cells, its development cells and each other scope cell whose development cells and lower cells (model ranked no higher and effort no higher, by the capability ranking) are all certified; among open cells, fewest formal outcomes first. | §3.3, D45 | WI-35 | U: `SchedulerTest` (no formal trial in a stronger cell while a development cell is undecided; incomparable cells open together; a cell opens once every cell below it is certified; a weakest-only scope is unaffected) |
 | R-E24 | Held-out content unreadable: the snapshot, the proposal and the trial records live in the campaign's held-out directory, and formal and baseline trials and judges run under a held-out run root; development trials, targeted runs, triage, diagnosis, prompt authors and the contract author run with their harness sandbox denying reads of both directories for commands and file tools, in both harnesses; formal and baseline trials and judges deny nothing; a host with the sandbox off is refused. | §4.1, §6.3, D46 | WI-36, WI-37, WI-40 | U: `ClaudeSessionsTest`, `CodexSessionsTest` (the deny list per role), store layout and format tests, the refusal; V: one prompt author session per harness asked to print the snapshot by its absolute path gets no content, including after the snapshot is rewritten, and a development trial still passes |
+| R-E25 | Early trial end: evaluate assertion settlement only after a completed turn; when every assertion is settled and turns remain, stop between turns with the same per-assertion verdicts as full execution. A judged or end-state assertion remains unsettled until the end, including a failed tool falling back to a judge. Apply the rule to every trial purpose using only that trial's evidence. Record the skipped turns and each assertion's settlement turn, count the result as an ordinary completed trial rather than an interruption or infrastructure attempt, expose the note to failure consumers and report the completed-trial early-end share. | §3.2, §2.6, D145 | WI-8, WI-9 (early-end follow-up) | U: `EarlyTrialEndTest`, `TestSessionsContractTest`, `EarlyEndDriverTest`, `StatusReportTest`; composed local checks pass, installed live evidence remains separate |
 
 ### 3.5 Workspace
 
@@ -1876,7 +4121,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W2 | Clean-base refusal before anything is created. The fork records paths, bytes, modes and links, copies ignored and external participants, and creates a detached optimization worktree. | §4.2 | WI-7 | U: `ForkTest` (real Git, once per operation) |
 | R-W3 | Candidate identity is the hash of the overlay and the fork. | §4.3 | WI-6 | U: `OverlayTest` |
 | R-W4 | Edit authority rules, including rejection of ambiguous dual-path edits, plus diagnosis warnings. | §4.3 | WI-6 | U: `AuthorityTest` |
-| R-W5 | Staged source: tracked files, recorded participants, fixtures and overlay; links dereferenced; cycles and missing targets block confirmation; `.cat/work/` excluded; caches deleted when unused. | §4.4 | WI-7 | U: `StagedSourceTest`; the runner's project copy accepts the staged source in both harnesses |
+| R-W5 | Staged source: tracked files, recorded participants, fixtures and overlay; links dereferenced; cycles and missing targets block confirmation; `.cat/sessions/` excluded; caches deleted when unused. | §4.4 | WI-7 | U: `StagedSourceTest`; the runner's project copy accepts the staged source in both harnesses |
 | R-W6 | Symbolic-link report contents, and the limitation recorded on results. | §4.5 | WI-7, WI-12 | U: `LinkReportTest`, `StatusReportTest` |
 | R-W7 | Inventory validation of prompt author attempts; unowned-change detection at every `run`, before promotion and before delivery. | §4.6 | WI-6, WI-9 | U: `InventoryDiffTest`, `DriverTest` |
 | R-W8 | Delivery: verify the optimization worktree and materialize a selected candidate that is not the working candidate, preflight, journal, preimage checks, resume applying each change at most once, final verification, historical result after a base-only prompt edit. CAT never commits. | §1, §4.7 | WI-6, WI-11 | U: `DeliveryPlanTest`, `DeliveryTest` (fault between writes, concurrent edit, no commit created) |
@@ -1884,10 +4129,11 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-W10 | Control source: the incumbent's staged source with the target prompt file emptied to zero bytes, each dependent that the contract author lists removed (a file deleted, a hook registration unregistered, or an exact span deleted), and every other prompt file unchanged, the same for every candidate; the proposal lists the target and each dependent with the instruction it serves, and CAT refuses an entry that names the target, a path outside the prompt system and the project-built trial plugins, or a span that does not occur exactly once. | §4.4, §6.1, D71, D72, D78 | WI-65, WI-75, WI-76, WI-81, WI-91 | U: `StagedSourceTest`, `ControlSourceTest`, `ProposalTest`, `OptimizerCoreTest` |
 | R-W11 | Delivery writes each confirmed prompt test's values file with every test case of the campaign, and the scenario and workspace of each created or edited prompt test, on a certified delivery and when the user keeps the incumbent; staging excludes the confirmed prompt test directories; a stopped campaign writes none. | §4.4, §4.7, D60 | WI-67 | U: `DeliveryTest`, `StagedSourceTest`, `DeliveryPlanTest`, `DriverTest`, `OptimizerCoreTest`, `ScenarioTest`, `DeliveredTestTest`, `ProposalSchemaTest`, `PromptTestLocationsTest` |
 | R-W12 | Trial plugins: `prompt.json` in the target's test directory lists, per harness, the plugins that trials install, each by name with an optional `build` (`command`, `output`); `start` refuses, before creating anything, a target without it or without a key for its harness, naming the file, and a listed plugin without `build` whose name matches a plugin manifest tracked in the project; `start` runs each build command in the optimization worktree and stops, with the exit status and the end of the output, on a failed command, a missing manifest or a different manifest name; a plugin the project does not build is copied from the user's single installed copy; each base is copied into campaign storage once; CAT maps prompt-system directories, or else single files, onto each project-built base by comparing files, lists a participating file that no mapping covers, warns on a mapped file that differs, and refuses a target that would not load in trials; each staged source, the control source included, has a copy of each project-built plugin with its mapped files written over the base; every trial installs exactly the listed plugins and reuses the user's approvals of their hooks; each plugin's name, base identity, build command and mappings are measurement conditions. | §3.1, §4.4, §5, §6.1, D69, D78 | WI-73, WI-81 | U: `PromptConfigurationTest`, `InstalledPluginsTest`, `PluginMappingTest`, `StagedSourceTest`, `ProposalTest`, `ProposalSchemaTest`, `OptimizerCoreTest`, `CodexRunnerTest`, `ClaudeRunnerTest`, `RunnerSessionsTest`; E: WI-71's certification campaign |
-| R-W13 | CAT session directories: one component, `SessionDirectory`, is the only code that names `.cat/sessions`, `.cat/work` or a session directory; it creates `.cat/sessions/<session-id>/` and its `temp/` (the session's `CAT_TEMP`) on first use and writes a marker naming the harness and its configuration directory, never overwriting one; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form; the injected rules name the directory that the agent's own commands resolve; SessionStart removes each other session directory whose marker is more than 24 hours old and whose transcript the marker's configuration directory no longer holds (a Codex transcript in `archived_sessions/` counts as held), never one without a marker; SessionStart leaves every `.cat/work/` entry in place (the move to `.cat/sessions/` was removed in `f00804a7a5`); CAT neither writes nor deletes `.cat/work/temp`; the Codex PostToolUse hook deletes a `run-part-*` folder that `run-part` saved once its last part arrives uncut and no cut part awaits a re-read. | D79, D81 | WI-83, WI-87 | U: `SessionDirectoryTest`, `SessionSweepTest`, `SessionDirectoryAuditTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`, `CodexPostToolUseHookTest`; E: WI-83's and WI-87's exit checks in both harnesses |
+| R-W13 | CAT session directories: one component, `SessionDirectory`, is the only code that names `.cat/sessions`, `.cat/work` or a session directory; it creates `.cat/sessions/<session-id>/` and its `temp/` (the session's `CAT_TEMP`) on first use and writes a marker naming the harness and its configuration directory, never overwriting one; the session ID is the hook input's `session_id` or the tool shell's `CLAUDE_CODE_SESSION_ID` or `CODEX_THREAD_ID`, in canonical UUID form; the injected rules name the directory that the agent's own commands resolve; SessionStart removes each other session directory whose marker is more than 24 hours old and whose transcript the marker's configuration directory no longer holds (a Codex transcript in `archived_sessions/` counts as held), never one without a marker; SessionStart leaves every `.cat/work/` entry in place (the move to `.cat/sessions/` was removed in `f00804a7a5`); CAT neither writes nor deletes `.cat/work/temp`; the Codex PostToolUse hook deletes a `run-part-*` folder that `run-part` saved once its last part arrives uncut and no cut part awaits a re-read. | D79, D81 | WI-83, WI-87 | U: `SessionDirectoryTest`, `SessionSweepTest`, `ClaudeSessionStartHookTest`, `CodexSessionStartHookTest`, `CodexRunPartTest`, `HarnessRunnerOptionsTest`, `CodexRunnerCliTest`, `ToolScopeTest`, `CodexPostToolUseHookTest`; E: WI-83's and WI-87's exit checks in both harnesses |
 | R-W14 | Passing trials' project copies: once a trial's passing verdict is recorded, the driver deletes its effects and its initial project; a guard-pilot control trial loses both once its judge passes every assertion; a failed trial, a failed run and a trial whose verdict is not recorded keep them; a failed deletion ends the pilot once its running sessions end. | §4.4, D51 | WI-88 | U: `DriverTest`, `GuardPilotTest` |
 | R-W15 | Trial workspace: each candidate's base source holds only the prompt system (every file at or below an in-project prompt source, every instruction file and harness project directory file, the in-project loader configuration, `.cat/rules/`, every file that a plugin mapping covers and every in-project dependent), with the overlay applied and links dereferenced; a trial's workspace adds its prompt test's `workspace/` at the workspace root, with each link whose target is another entry of `workspace/` kept as a link and each other link replaced by a copy of its target, which CAT reads when it checks the proposal and records in the contract, with placeholders replaced in a target inside a test root; control and candidate trials of a test receive the same workspace files; no trial receives a prompt test directory, a shared file inside a test root or the prompt test configuration; plugin copies and prompt measurement use the base source; the contract author and test revision sessions keep the whole fork; CAT refuses an unknown scenario section, and a link that is absolute, missing, outside the project, cyclic, holds itself, reaches a prompt test directory, copies a prompt file, or that Git records where the checkout holds another kind of file; a draft resolves a link at the prompt test's project path, draft first; delivery replaces the link of a test whose shared file changed with a copy; a stored guard pilot applies only to the base selection it ran on. | §4.4, §6.3, D82 | WI-89 | U: `StagedSourceTest`, `TrialSelectionTest`, `TestWorkspacesTest`, `WorkspaceStagingContractTest`, `FakeWorkspaceContractTest`, `GuardPilotTest`, `DriverTest`; E: WI-71's guard pilots |
 | R-W16 | Without a prompt test configuration, `start`'s refusal lists every plugin installed in the harness home with its version and every plugin manifest tracked in the project; the skill asks which ones the prompt's users have, writes `prompt.json` from the answer, shows it and runs `start` again. When CAT is a trial plugin, `.cat/rules/` is an in-project prompt source that a candidate may create rules in; a trial plugin is CAT when its manifest's `repository` matches CAT's after ignoring scheme and host case, a trailing `/` and a trailing `.git`, whatever its name or marketplace, and the campaign records each trial plugin's repository, a missing one meaning not CAT. Only `https://github.com/holdmyspot-com/cat` is CAT's repository; the former `https://github.com/cowwoc/cat`, which CAT 1.0.x and 1.1 manifests state, is not (user ruling, 2026-10-22). | §4.3, §4.4, §8, D30, D92, D93 | WI-119 | U: `OptimizerCoreTest`, authority test, `InstalledPluginsTest`, `PluginManifestTest`; E: installed skill |
+| R-W17 | The optimization worktree's registration (add, recreate, remove, repair) is served outside the session's sandbox: by the session's request server, in a CAT run by the run's runner, and in place by a process that no sandbox confines, for both harnesses. The request names an operation and a campaign and no path or Git argument. A campaign that is not the session's, a link, an `add` over an existing worktree, a writable `.git/config` or `.git/hooks`, and a missing server are refused with status 2 before anything changes. | §4.2, §8 | WI-145 | U: `WorktreeRequestTest`, `ForkTest`, `RequestServerTest`, `SessionRequestBrokerTest`; live: the WI-145 checks |
 
 ### 3.6 Measurement, contract and lifecycle
 
@@ -1906,7 +4152,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-C3 | Each prompt test is its own claim; within a part its test cases are drawn uniformly, frozen at confirmation; allocation never changes the draw. | §6.2 | WI-2, WI-64 | U: `DistributionTest` |
 | R-C4 | Test case validation; separate durable seeded streams for development, formal and baseline draws, each confined to its part, and control trials that draw nothing; targeted work marked before execution; formal draws after the freeze; repeated draws of a test case within a part allowed, each another trial of that test case. | §6.3 | WI-2, WI-33, WI-62, WI-65 | U: `GeneratorTest` (`repeatedDrawsAreAllowed`), `DrawStreamTest` |
 | R-C5 | A frozen judge profile under the role profile; the judge decides every assertion without a `tool:` line, including `expected_outcome`, and every assertion whose built-in tool failed under `on_tool_failure: judge`, per assertion with a rationale and a behavior, and sees built-in tool results as evidence; it cannot override one that decided its assertion. | §6.4, §3.1 | WI-2, WI-10, WI-17, WI-63 | U: `JudgeTest`, `ContractTest`, `ProposalSchemaTest`, `ProposalTest`, `DriverTest`, `OptimizerCoreTest` (a proposal frozen with an old judge version is refused); E: E1 judge per harness |
-| R-C8 | Every prompt test has the `expected_outcome` assertion that CAT adds, a guard exactly when every other assertion is one; a scenario may not declare it. | §6.4, D62 | WI-63 | U: `ProposalTest`, `ContractTest`, `ProposalSchemaTest`, `JudgePromptTest`, `JudgeTest`, `DriverTest` |
+| R-C8 | Every prompt test has the expected_outcome assertion that CAT adds, a guard exactly when every other assertion is one. A scenario may supply its built-in tool and optional on_tool_failure metadata; CAT still supplies its description and kind. Under fail the tool must decide the complete expected outcome; under judge it must pass no reply the expected outcome rejects. A scenario may not replace CAT's description or kind. | §6.4, D62 | WI-63 | U: `ProposalTest`, `ContractTest`, `ProposalSchemaTest`, `JudgePromptTest`, `JudgeTest`, `DriverTest` |
 | R-C9 | Built-in tools: the closed `tool:` set of §6.4, with its argument syntax and placeholders; a check's verdict is final unless its `on_tool_failure` is `judge`, when a failure leaves the assertion to the judge; a trial passes when every assertion passes; no judge session runs after a failed check under `on_tool_failure: fail`; a failed check's record and behavior reach the prompt author; a check whose evidence the harness cannot supply is refused in the proposal. | §6.4, D63, D68 | WI-17, WI-63, WI-72 | U: `BuiltInToolTest` (each check on both sides), `DriverTest`; E: E7 |
 | R-C10 | Trial profiles: the inventory per harness with its source; bindings from Claude skill and subagent frontmatter and Codex agent TOML only, partial bindings fixing one dimension, `inherit` binding nothing; the profile set per prompt test from the requirements mapped to its assertions, and the resulting cells; a user restriction narrows the set; the proposal lists inventory, bindings, cells and their minimum session count; confirmation freezes the set. | §6.6, §2.1, D22 | WI-16, WI-64 | U: `ProfileSetTest`, `ProposalTest`, per-harness inventory and binding tests over recorded catalog output; E: E1 proposal per harness |
 | R-C11 | Cells are the statistical unit: one prompt test under one profile; every §2 and §3 rule applies per cell, and `K` counts the cells of the certification scope. | §2.1 | WI-16, WI-32, WI-64 | U: `SchedulerTest`, `CommitGateTest`, `CommitTest` (a prompt test with two profiles gives two cells with separate counts, gates and decisions) |
@@ -1950,10 +4196,10 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I5 | Agents locate CAT's installed files without shell variables the harness does not define: the session hooks render the plugin root into the injected skill-environment rule, and Java derives the harness home from `CODEX_HOME` or `CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`. | §8 | WI-15 finding | U: session-start hook tests, `CodexGetHistoryTest`, `ClaudeGetHistoryTest`; E: every E-scenario's events show no exit-127 launcher call |
 | R-I6 | The runner rule (formerly Codex's `claude-runner` and Claude's `codex-runner` skills; D123) runs a task in the other harness with CAT for that harness installed, through that harness's runner launcher. Each uses the CAT plugin that the other harness has installed when it is of the same CAT release, whatever its build (its own version first, otherwise the first installed build of that release). It downloads nothing and keeps no copy; with no CAT in the other harness, or only other releases, it refuses and names the installer command that installs or updates CAT there, for the user to approve before the agent runs it and retries (user rulings, 2026-11-04, replacing the `~/.cat/bundles` copy and download of 2026-10-22 and 2026-10-23). A plugin ships only its own harness's classes and files (user rulings, 2026-10-22). | §8, D96 | WI-120 | U: selection tests with fake installations (same version, another build of the release, other releases only, none, an incomplete plugin), distribution tests (each archive's launchers); E: each runner launcher without the other harness's plugin installed |
 | R-I7 | A run leaves no harness transcript on disk unless its caller passes `--session-transcripts`, which requires `--keep-run`; with it, the runner reports each session's native transcript path in a `session_transcript` record when the session starts, copies every native transcript of the run, subagents' included, into `artifacts/session-transcripts/` at the end of the run and lists them in the receipt. The optimizer passes the option for its trials and reads what a trial's model received from those copies (user rulings, 2026-10-23: "1a, 2a"). | §8, D97 | WI-121 | U: runner option, command and receipt tests in both harnesses; optimizer session tests |
-| R-I8 | In both harnesses and on every platform, a session's commands run with the run's isolated home as their home, receive no harness credential in their environment, and cannot read any harness's login or configuration, in the run's home or the user's, or another run; one harness-neutral definition sets these limits and one conformance test checks both runners against it (user ruling, 2026-10-23). | §8, D98 | WI-122 | U: shared conformance test run against each runner; E: a command in a session of each harness cannot start a harness that reaches the provider |
+| R-I8 | Both harnesses use one harness-neutral definition and shared conformance tests for command limits: the run's isolated home, no reads of the user's real harness logins or configuration, the other harness's files, or other runs. Commands may read the session's own login in its isolated home. Codex commands receive no harness credential in their environment; Claude commands receive the connection credentials their parent has. Native Windows refuses sandboxed Claude sessions and directs the user to WSL2. | §8, D98 | WI-122 | U: shared conformance test run against each runner; E: a command in a session of each harness cannot start a harness that reaches the provider |
 | R-I9 | A caller's `--session-requests <count>` lets a session request up to that many sessions through the `request-session` launcher, passing inputs and results only as file paths through the run's `requests` directory; the launcher packs the inputs into one archive inside the session's sandbox, and the runner opens only that archive. The runner starts each through the requested harness's runner with no more than the requester's permissions and none of its own requests, takes a capacity slot waiting at most 10 minutes, stops requested sessions when the run ends or its turn is interrupted, lists them in the receipt, and tells the session how to request one; the optimizer allows none (user ruling, 2026-10-23: option C, file references between sessions). | §8, D99, D101 | WI-123 | U: request validation (archive opened without links or extra hard links, unsafe entries refused), broker, capacity timeout, stop and receipt tests with fake harnesses; E: a Claude and a Codex session each test a plugin they wrote through a requested session |
 | R-I10 | No model receives a `## Design Goals` section or an HTML comment other than a `cat:` directive, outside fenced code blocks and code spans, from any prompt file: not from either plugin artifact or a prompt-only repackaging (injected and lazily loaded rules, skill bodies and agent bodies), an optimizer role brief or an injected project rule; each prompt file's guidance achieves its design goals without them. | §8, D100 | WI-124 | U: `PluginArtifactBuilderTest`, `SourceOnlyContentTest`, `PromptTemplateTest`, `ProjectRuleLoaderTest`; R: a scan of both built artifacts and the guidance audit |
-| R-I11 | Both plugins hold both runner launchers and the runner rule (formerly both runner skills; D123), so a session in either harness launches either harness through one launcher with the same options and its records in an `--input` file; inside a run that allows requested sessions, the launcher forwards the launch to the run's runner, which starts it outside the session's sandbox within the parent's limits, and `--request-depth` bounds how deep requested sessions may request their own; a requested session that needs a write outside its run folder or a host that the requesting session's sandbox does not allow is refused before it starts, with one message that lists each and the settings entry of the requesting session's harness that grants it (user ruling, 2026-11-06); a launch may name a JSON file of extra writes and hosts with `--extra-permissions <file>` (on either runner launcher and on `request-session`), which join the requested session's needs on every path that starts it and are granted or refused as above, and without which nothing extra is requested; the optimizer's `start` takes the same optional file, records its contents in the campaign's header and applies them to every session of the campaign, and a resume that names a file with other contents, or a goal other than the campaign's, is refused with the differences named (user ruling, 2026-11-06); a launch cannot choose the run root, artifact, denied reads or limits; without `--session-requests` nothing changes; the session's commands stay sandboxed, with no login or credential; outside a run, a launcher that a harness session's command runs asks the session launcher that CAT's SessionStart hook started for that session outside its sandbox, which starts the session inside its harness's own sandbox, bounded by the intersection of the asking session's policy and the session's needs. The policy comes from the asking harness's settings files and its process's command line. It is snapshotted when the session started and intersected with a new reading for each launch, and for Codex it is narrowed by the turn policy of the session's and the asking thread's rollouts. A session whose commands can write a file that the policy is read from and that the harness does not protect, or the launcher's state folder, is refused, and the installer adds a write denial for that folder, `~/.cat/sessions`. A session that no launcher serves is refused and told to start a new session. A command that no harness runs gives the child exactly its needs. A launch inside a run without request access is refused. No sandbox exception is configured (user rulings, 2026-11-06: bring back the launcher; the installer adds the write denial). | §8, D107 | WI-128 | U: `ChildPolicyTest`, `ParentPolicyTest`, `ChildBoundTest`, `LaunchRouteTest`, `ProcessHandleTableTest`, `HarnessProcessesTest`, `RunnerChildNeedsTest`, `ClaudeOptionTableTest`, `ClaudePolicyReaderTest`, `CodexPolicyReaderTest`, `CodexRolloutPolicyTest`, `HarnessEnvironmentTest`, `SessionRequestForwarderTest`, `RunnerRelayTest`, `SessionRequestBrokerTest` (depth), `ClaudeConnectionSettingsTest`, `SessionRequestInstructionsTest`, `HarnessRunnerOptionsTest`, `ExtraPermissionsTest`, `SessionRequestCliTest`, `ClaudeRunnerCliTest`, `CodexRunnerCliTest`, `CodexConnectionConfigurationTest`, `CommandsTest`, `OptimizerCoreTest`, `CampaignStoreContract`, `ExtraPermissionSessionsTest`, `RunnerSessionsTest`, `IntegrationTest`, `SandboxEntriesTest`; E: four parent and child pairs on Linux and macOS, a child-to-grandchild launch each way, negative checks of a child's commands, a refused launch, and a session's end stopping its launcher |
+| R-I11 | Both plugins hold both runner launchers and the bundled runner rule. Agents name model and effort and supply turns through an --input records file. Every session-starting client, including the optimizer, packs requests inside its sandbox; inside a run the run's runner serves them within the caller's request/depth limits, and outside a run an agent-started request server serves them outside the asking sandbox. Only request-server has the installed sandbox exception; shell startup files remain read-only. A client without a server refuses before changes and names its startup command. The server identifies the session and project from protected harness/transcript evidence, reads settings and command-line policy, and for Codex narrows it by the latest recorded turn policy on each request; unsafe or unreadable policy and unknown options refuse. Child permissions are the intersection of the asking policy and child needs, including optional --extra-permissions writes/hosts; refused needs name each missing permission and its settings entry. The optimizer records those extra permissions and its goal in the campaign header and refuses a mismatched resume with named differences. Requests cannot supply CAT-owned bounds, artifacts or starter options. Launches retain the credential qualifications of R-I8 and the read-only Claude judge exception in design §6.4. Inside a run without request access launches refuse. Outside a harness, the launcher starts the child directly with exactly its needs. A request server ends and stops its child process trees when the owning harness ends; native Windows refuses launches. The old SessionStart launcher, inbox, holder and ~/.cat/sessions state folder and write denial are removed; an older session lacking the request-server exception must restart. | §8, D107 | WI-128 | U: `ChildPolicyTest`, `ParentPolicyTest`, `ChildBoundTest`, `LaunchRouteTest`, `ProcessHandleTableTest`, `HarnessProcessesTest`, `RunnerChildNeedsTest`, `ClaudeOptionTableTest`, `ClaudePolicyReaderTest`, `CodexPolicyReaderTest`, `CodexRolloutPolicyTest`, `HarnessEnvironmentTest`, `SessionRequestForwarderTest`, `RunnerRelayTest`, `SessionRequestBrokerTest` (depth), `ClaudeConnectionSettingsTest`, `SessionRequestInstructionsTest`, `HarnessRunnerOptionsTest`, `ExtraPermissionsTest`, `SessionRequestCliTest`, `ClaudeRunnerCliTest`, `CodexRunnerCliTest`, `CodexConnectionConfigurationTest`, `CommandsTest`, `OptimizerCoreTest`, `CampaignStoreContract`, `ExtraPermissionSessionsTest`, `RunnerSessionsTest`, `IntegrationTest`, `SandboxEntriesTest`; E: four parent and child pairs on Linux and macOS, a child-to-grandchild launch each way, negative checks of a child's commands, a refused launch, and a session's end stopping its launcher |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -1981,16 +4227,28 @@ result in `design.md` §11 as a new H-row with its date and versions. If a gate 
 
 Exit check: every gate has a recorded result (pass, or the fallback applied) and `design.md` §11 and §12 are updated.
 
-Results (2026-10-01; facts in `design.md` §11 H11–H23, results in `design.md` §12):
+Results (2026-10-01; facts in `design.md` §11 H11–H40, results in `design.md` §12):
 
 - P1, P2, P3, P4, P5, P10: passed. P10 reached no limit in 662 seconds, so the over-limit behaviour is unobserved.
 - P6: passed on the documented credential fields; only Claude subscription and Codex API-key logins were available.
 - P7: partly passed. Completion and parallelism are observable once the runner fixes in WI-8 land; no Claude grandchild
 	was observed. Fallback applied: Codex trials cannot create child worktrees (H18), recorded as a limit in
 	`design.md` §3.2.
+	Later evidence qualifies this initial result: H24 observed Claude grandchildren, and H18's Linux check on
+	2026-10-26 established Codex child-worktree creation and merging. The Windows limitation and unverified
+	interruption/reconciliation clauses remain; these later observations do not establish every P7 clause.
 - P8: passed for Claude; failed for Codex. Fallback applied: reconciliation terminates recorded processes (WI-9).
 - P9: failed for instruction files. Fallback applied: documented derivation (WI-10).
 - P11: passed with the extraction rule; Claude fenced every judge response, Codex returned bare JSON.
+- P12: open until E1 runs a Claude trial per alias; the aliases ship with every documented effort level, and an
+	unsupported combination fails its first trial as an infrastructure failure. Waits on E1 receipts in both harnesses.
+- P13: open; a runner that cannot select a profile tests only its default profile, and the proposal says so. Waits on
+	E1 receipts in both harnesses.
+- P14: holds (H27, H28); effort stays in the profile set.
+- P15: holds for the read-file rule; p15-60 certified in all 15 cells and tasks by the optimizer's own rule. One prompt
+	file does not show it for every prompt file, so weakest-only certification claims nothing about the other cells.
+- P16: passes (H38), one run per harness; Codex's shared daemon untested.
+- P17: passes (H40); closing a session's input after a completed turn is the clean stop in both harnesses.
 
 Cleanup: the probes create their directories with `workflow-temp create` and delete them once their facts are
 recorded.
@@ -2173,6 +4431,11 @@ The riskiest pure code, built first.
 	- `SliceTest` covers cutoff and grace using the manual clock.
 	- No test sleeps.
 - **Exit:** the focused tests pass, and the `DriverTest` suite stays under 10 seconds in total.
+- **D145 follow-up:** R-E25 adds early settlement after completed turns through the real session adapter, ordinary
+	completion/adoption through the driver, skipped-turn and settlement evidence in retained failure records, and
+	early-end status reporting. Prove a settled two-turn trial stops after turn one with unchanged verdicts and a judged
+	or end-state trial continues through both turns. Predicate tests and fabricated completion events alone do not
+	close this integration requirement.
 
 ### WI-10 — Contract derivation, judging and authoring prompts
 
@@ -2356,6 +4619,13 @@ The riskiest pure code, built first.
 - **Closes:** R-D12.
 - **Tests:** `AttemptSelectionTest`, `StatusReportTest`, `DriverTest` trace 20.
 - **Exit:** unit tests pass; the full build passes.
+- **D143 follow-up:** the representative race specified in §2.7 closes R-D20's decision matrix and its composed
+	behavior: real driver trials use the same development draw at equal positions, out-of-order session completion
+	still adopts in assignment order, confidence-bound elimination stops new admissions for the dropped racer, and
+	only the winner enters minimality and promotion. The predecessor's evidence stays unchanged during racing and
+	race outcomes never become formal evidence. Existing `heldOutTestCasesStayOutOfDevelopment` proves race execution
+	and development-part routing; `RaceDecisionTest` proves the predicate boundaries. A focused active-race fixture
+	near an elimination boundary must prove the composed remaining behavior without replaying authoring/development.
 
 ### WI-21 — Regression scenarios (user rulings, 2026-10-02)
 
@@ -3762,7 +6032,7 @@ including mappings of one source into several plugins; the old two-plugin refusa
 - **Order:** land it before WI-71's revise. The change alters the `CAT_TEMP` path that every trial's rules state, and
 	the revise reruns every pilot anyway (`design.md` D80).
 - **Tests:** `SessionDirectoryTest` (the directory, `temp/` and marker under `.cat/sessions/`), `SessionSweepTest`,
-	`SessionDirectoryAuditTest` (fails when another main source file spells `.cat/sessions` or `.cat/work`),
+	`SessionIgnoreTest` (the structural source-spelling audit was removed: it observed no behavior),
 	`ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` (the rules name `.cat/sessions/<session-id>/temp`), the
 	exclusion tests of `InventoryScanner`, `Fork` and staging, `FileCampaignStoreTest`, and the move: at startup and at
 	resume, every old directory with a marker moved with its campaigns, one whose new path exists left in both places
@@ -4735,6 +7005,75 @@ selection and download it describes are unchanged.
 	infrastructure attempt; `revise` and `retry` behave the same. Then the clean full offline build, reporting every test
 	taking at least one second.
 
+### WI-145 — The optimizer's worktree registration is served outside the session's sandbox (user ruling, 2026-11-16)
+
+- **Problem:** Claude Code 2.1.323 mounts `.git/worktrees` read-only in its sandbox over any write grant (probe 4,
+	2026-11-16), so the prompt optimizer's sandboxed commands cannot add, remove or prune their worktree or write its
+	registration's `gitdir` link. `ClaudeConnectionSettings` grants the path, which has no effect. Every other Git
+	operation of the optimizer passes in the sandbox.
+- **Scope:** `client/common/cli/` (`optimizer.workspace`, `optimizer.execution`, `optimizer.delivery`,
+	`optimizer.cli`, and `common.runner`'s request client, broker and request server), `client/claude/cli/` (the runner's
+	settings and Javadoc), this design and plan. Codex's runner profile keeps its own `.git` grant.
+- **Change:** as `design.md` §4.2 "Registration outside the session's sandbox", §8 "Worktree requests" and D148
+	define it. Steps, each after its tests:
+	1. One implementation of the four operations, `add`, `recreate`, `remove` and `repair`, that runs Git in place with
+		no sandbox in mind: it takes the project and the campaign directory, and holds what `Fork` now does for them
+		(`addWorktree`, the undo steps, `remove` with its relink, the prune, `GitWorktreeLinks.repair` and `recreate`).
+		`add` prunes first. `repair` acts only on a registration whose `gitdir` records the path of this campaign's
+		worktree under the same session and campaign identifiers, and answers `repaired` or `unrepairable`.
+	2. The request: a record of an operation and a campaign identifier, written into the session's or the run's
+		`requests/` directory in the request archive's format and read by the archive's reader, with its answer in
+		`response.json` (`done`, `refused` with the reason, `failed` with Git's message, and `result` for a repair). The
+		reader rejects another field, another operation and a malformed identifier.
+	3. The serving side. The broker serves the new kind on a thread of its own, counting nothing against the run's
+		`--session-requests` limit and taking no slot. Each site resolves the worktree: the request server from its
+		identified session's transcript project and session ID (`<project>/.cat/sessions/<session-id>/optimizer/<id>/
+		worktree`), the run's runner from the run's project by finding the one campaign with that identifier. A site
+		refuses, with status 2 and the reason, a campaign that is not a directory of the session's `optimizer/`, a link
+		at the worktree or between it and the project, an `add` over an existing worktree, and a session whose sandbox
+		lets it write `.git/config` or `.git/hooks` (read from the same policy that the server already reads).
+	4. The client: an implementation of the optimizer's workspace seam (`Forks`, the worktree links behind
+		`Workspace.reconnectWorktree`) that sends the request by the route `LaunchRoute.decide` gives a launch (`Served`
+		to the request server, `Forward` to the run's runner; a run without requests directory refused as its launches
+		are) and waits. Codex takes the same route. A client with no server refuses with status 2 before it changes
+		anything and names the start command (`RequestServer.missingServer`, worded for the worktree).
+	5. The call sites: `Fork.create` (the start; `requireWritable`, `FileSystemWritableDirectories`, `ForkGit
+		.deniedRegistrationWrite` and `unwritableRegistrations` go, with their tests, unless the serving side still
+		needs one to classify Git's failure), `Fork.remove`, `Workspace.reconnectWorktree`, `WorktreeCheck.verify`,
+		`Delivery` (the reconnect before delivery and the removal after it), `OptimizerCore` (the reconnect before a
+		campaign command, and the server check at the entry of every command that can end by removing the campaign),
+		and `Cleanup.remove` (its `WORKTREE` step, after the same check). A command whose worktree links are intact and
+		that removes nothing sends no request. `SessionDirectory.sweep`, which a hook runs outside the command sandbox,
+		keeps its `WorktreeRemoval` on the in-place implementation.
+	6. `ClaudeConnectionSettings` and `ClaudeRunner`: remove the `.git/worktrees` grant and its directory creation, the
+		`project` parameter if nothing else uses it, and the Javadoc that says the grant matters; `ClaudeRunner`'s
+		environment Javadoc says what `design.md` now says about the scrub mode.
+	7. The known limit (a `build.command` that writes the worktree's index or `HEAD` fails in the sandbox) is documented
+		in the prompt-optimizer skill's guidance for the build command (uncertified text, user approval 2026-11-09); no
+		workaround.
+- **Verification:** requirement-level tests, written first, with CAT's real classes and real Git (doubles only for the
+	harness processes, as WI-142's tests use them): in a real repository, each operation through a served request leaves
+	the worktree and `git worktree list` as the operation says (add, recreate after a sandboxed-style delete that left a
+	stale registration, remove of an existing and a missing worktree, repair after a project move and a copy, and a
+	repair that answers `unrepairable` when another worktree owns the registration or the registration names another
+	campaign); a failed start leaves no worktree, registration or campaign directory; each refusal (no server, another
+	session's campaign, an unknown campaign, a link at or above the worktree, an existing worktree on add, a writable
+	`.git/config` or `.git/hooks`, a run that allows no requested sessions) with its message and status 2 and with the
+	project, registrations and campaign unchanged; a document with another field, operation or identifier rejected; the
+	run's runner serving the same four operations over the run's project, refusing a campaign it finds twice; a worktree
+	request counted against no run limit and delaying no launch; a Codex session and a Claude Code session sending the
+	same request; the client running no `worktree` subcommand itself (a launcher that records each Git subcommand);
+	a delivery that finds no server refusing before it writes the base; the hook sweep removing a worktree in place; the
+	client's refusal for `unrepairable` followed by recreate; the settings the Claude runner writes holding no
+	`.git/worktrees` entry. Then the clean full offline build, reporting every test taking at least one second. Then live
+	checks on the installed artifacts, which no Java test may replace: in a Claude Code 2.1.323 session with its server
+	started, `start` creates the worktree and `git worktree list` shows it, and `cancel` removes it and its
+	registration; deleting the worktree directory from a sandboxed command and running `status` recreates it; `start` with
+	no server refuses with the command; the SessionStart sweep removes the worktree of an ended session in Claude Code
+	(a hook is not confined by the command sandbox); one in-run `start` in a copied project is served by the run's runner;
+	the same `start` and `cancel` in Codex.
+- **Exit:** the tests, the clean build and the live checks pass on the committed revision. Closes D148 and R-W17.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -4875,6 +7214,7 @@ blocks only the part of a work item that it names.
 | WI-142 | WI-141 |
 | WI-143 | WI-142 |
 | WI-144 | WI-143 |
+| WI-145 | WI-142 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
@@ -4978,13 +7318,12 @@ These rules restate `design.md` §10 as checks for reviewers:
 	asserts the commands CAT builds or its decisions from captured Git output (user ruling, 2026-10-02: assume Git works
 	as documented).
 - No Java test starts a runner, a harness process or a model. Only the WI-15 end-to-end runs start nested sessions.
-- Of the session launcher's tests, only `SessionLauncherStartTest` (a detached start outlives the hook's JVM),
-	`ProcessHandleTableTest` and `HarnessProcessesTest` (the operating system's process table), and
-	`ClaudeSessionLauncherHookTest` and `CodexSessionLauncherHookTest` (a hook starts a launcher) start real processes.
-	None of them starts a runner, a harness or a model, and each stays under 1 second. Every other launcher test runs
-	the real `SessionLauncher` and `SessionLauncherClient` over real channel files. `FakeProcessTable` plays the
-	operating system's process table, and its contract also runs against `ProcessHandleTable`. `FakeRunner` plays the
-	child's runner together with the harness that it starts, because a real child starts a model.
+- Request-server and runner-launch routing tests inject their process boundaries: requested-session starter tests use
+	`FakeProcessLauncher`, harness-starter tests use `FakeHarnessCli`, and request-server tests use `FakeProcessTable`.
+	`ProcessHandleTableTest` and `HarnessProcessesTest` retain the operating-system process-table boundary.
+	`ClaudeSessionStartHookTest` and `CodexSessionStartHookTest` invoke the hooks directly; the retired session-launcher
+	classes and their detached-start exceptions no longer define this suite. A new process-boundary test must establish
+	that its child is a fixture program, not a runner, harness or model.
 - No test class has a non-`final` field or mutable shared fixture. No test reads `HOME`, `user.home` or the current
 	directory.
 - No production class reachable from a unit test calls `Thread.sleep`.
@@ -4995,8 +7334,249 @@ These rules restate `design.md` §10 as checks for reviewers:
 
 ## 9. Final gates
 
+Root claims the unresolved delegation test phase measurement for gate 6. Its disposable source and
+diagnostic evidence live in this session's `temp/delegation-phase-probe-rAMadO/`; root owns cleanup
+after the final testability disposition consumes the result. The production and checked-in test
+sources remain unchanged. The prior performance reviewers supplied the claim inventories but their
+inspection-only roles do not authorize generating instrumentation. Root prepares and runs the
+diagnostic, preserving assertions, input populations, recovery states and configured parallelism.
+No runtime explanation or performance repair is accepted from the prior whole-case timings alone.
+The first diagnostic compiled its passive test copy with the frozen build's JDK/module path and
+passed all nine selected methods, with methods parallelism and four threads preserved. TestNG's
+13 total entries include four ignored, unselected methods; nine passed, none failed or skipped.
+Dirty-source phase marks measured 712 ms preparation, 321–370 ms for each of three successful
+audits, 748 ms final integration and 12 ms cleanup. Those phases select repeated production work
+for attribution; they do not establish a performance improvement or the earlier build's outlier
+cause. Compiler/run argv, outputs and zero-exit receipts remain in the claimed directory.
+Root also owns `temp/delegation-metadata-probe-QGCbhl/` through that same last consumer, for a
+second disposable copy that attributes the metadata-capability work inside those operations.
+That second diagnostic also compiled and passed all nine selected methods. Its 21 metadata-capability
+calls each took 45–67 ms, so that helper alone does not explain the successful audit durations.
+Root retains both copies and now claims `temp/delegation-jfr-probe-RWkZ9C/` for a profile of the
+same compiled diagnostic classes, with cleanup after the same final testability consumer. This
+profile reuses completed compiler outputs and adds observation; it is not a before/after speed
+comparison and does not narrow the required test parallelism.
+The JFR run passed all nine selected methods. Its retained `mount-attribution.json`, derived from
+the same recording decoded at stack depth 64, identifies 157 of 187 native samples in Linux mount
+enumeration: 133 first reach CAT through `SourceSnapshot.metadataIdentity`, 21 through
+`Delegation.metadataCapabilities`, and three through replay metadata/reconciliation. These are
+sample counts, not exact elapsed-time percentages. Source inspection confirms the first two
+callers obtain a FileStore to determine supported metadata views. This establishes repeated
+filesystem-capability discovery as a measured optimization target. A replacement must preserve
+per-entry metadata, link behavior, different mounted filesystems and failure reporting; no global
+or cross-operation capability cache is authorized merely from this profile.
+
+Root owns `temp/codex-runtime-profile-giD203/` through the final testability disposition,
+then removes it. The unchanged compiled Codex refusal, packaged-role-rules and output-limit
+reproduction cases passed all 15 selected rows under JFR with methods/four-thread scheduling
+preserved; 13 unselected methods were ignored. A disposable helper candidate that creates each
+destination parent once per artifact-copy call remains unapplied. Its six alternating baseline
+and candidate runs each passed all seven role-rule rows, but do not establish an improvement.
+In the last candidate run, TestNG reported 2,484 ms for two methods and 2,973 ms for the suite,
+while the parent's monotonic timer measured only 1,745 ms for the entire JVM process. These report
+durations cannot establish elapsed runtime; their inconsistency's cause remains unknown.
+Do not use them to justify runtime documentation or accept the helper candidate.
+A separate diagnostic compiled copies of the three original Codex test classes with passive
+`System.nanoTime()` wrappers around only the selected methods. Original bodies, assertions,
+inputs, resource cleanup and four-thread scheduling were preserved; production and checked-in
+test sources were unchanged. All 15 rows passed. Method-body timing including resource cleanup
+was approximately 26–264 ms for the eight refusal cells, 104–390 ms for the six role cells,
+and 741 ms for reproduction. Parent monotonic and realtime process durations both measured
+approximately 1,844 ms. Compiler/run commands, zero-exit receipts, reports, timed source copies
+and monotonic observations are retained together. This establishes those focused invocations'
+runtime, not the cause of the earlier full-build outliers or completion of the whole gate.
+
+Root owns `temp/metadata-receipt-probe-vviPYc/` through the final testability disposition,
+then removes it. The performance reviewer narrowed the reuse experiment to the existing private
+`Delegation.metadataCapabilities()` receipt builder: a method-local parent-to-immutable-view-list
+map, retaining per-entry symlink filtering and resetting on every invocation. The earlier proposed
+end revalidation was rejected because it would add a refusal condition absent from the current
+contract. SourceSnapshot identities, capture verification, materialization, restoration and replay
+remain unchanged. Root compiled baseline and candidate copies and one shared passive-timer copy
+of all nine selected test bodies, then ran three alternating pairs with methods/four-thread
+execution. All six runs passed all nine selected methods. Exact wrapper reversal confirmed the
+nine original bodies and the rest of their source were preserved, and checked-in production stayed
+unchanged. Direct baseline JVM times ranged from 5.069 to 5.339 s; candidate times ranged from
+5.086 to 5.129 s. The candidate median reduction falls inside the baseline range of variation;
+this does not establish a performance improvement. The candidate is not accepted or applied.
+Baseline direct method timings confirmed eight cases above one second; the failed-preparation
+case instead took 723–833 ms. Retained `assessment-inputs.json` gives each case's exact timers;
+commands, host/toolchain observations, compiler results and terminal test receipts remain together.
+Gate 6 still needs a justified disposition for the eight remaining delegation cases; no runtime
+explanation is accepted merely from rejecting this one candidate.
+
+The duplicate-test cleanup is accepted. `nonzeroMavenStillPrepares` now changes the candidate
+before the refused audit and checks that no audit was published. After that strengthened check
+passed, its duplicate lifecycle was removed from `probeScopeAndExitAreEnforced`; the remaining
+undeclared-output case is named `undeclaredOutputPreventsPreparation`. The checksum-invalid
+receipt exercise was also removed from `dirtySourceIsFrozen` after
+`preparationReceiptIdentityVariantsReject` passed. All other relocation, extra-file, empty-directory,
+candidate-revalidation, recovery and integration assertions remain. The focused class verification
+passed all 13 methods with zero failures, errors or skips, including with an absent home; root
+accepted the final Surefire report and the zero-finding Checkstyle and PMD reports. Root owns
+the delegated session's `temp/delegation-test-cleanup-tec9ym/` evidence through the final
+testability disposition, then removes it. No timing improvement is claimed from this cleanup.
+The next performance comparison concerns `definitionIdentity`: it currently inventories the
+whole project once for each present definition. A disposable candidate may use one complete
+inventory per invocation, preserving all-absent behavior, unsafe-entry refusals, metadata and link
+handling, and fresh observation on later invocations. Acceptance requires unchanged identities
+and failures on equivalent inputs, detection of changed definition bytes or metadata, passing
+behavioral checks, and an improvement beyond measured variation under unchanged parallelism.
+The disposable comparison completed six runs, each passing all 13 selected methods, in session
+01a1dcff-b3c2-7c11-9e7f-2a478d7b5d6d's
+`temp/definition-inventory-comparison-58HqHr/comparison-summary.json`. Its timing comparison is
+invalid: observed one-minute system load changed from 4.70166015625 to 6.119140625 across the
+runs. The timing values therefore establish no performance result. The candidate remains
+unapplied; a comparison under matching conditions is required before performance acceptance.
+The successful method executions establish only those individual checks, not complete identity
+and failure equivalence. Root owns this evidence through the final testability disposition,
+then removes it. The remaining runtime explanations and gate 6 are still open.
+
 The feature is complete only when every gate below passes on the final tree. Record each gate as passed, failed or
 unrun; an unrun gate is unmet.
+
+The latest whole-client clean verification is retained in this session's
+`temp/final-runtime-gate-RKSNKG/`. Its terminal receipt records exit zero; the 450 frozen Surefire
+reports contain 5,941 tests, zero failures or errors and six PowerShell-related skips. All 20
+frozen Checkstyle/PMD reports have zero findings. The captured source manifest remained unchanged
+through the build. Every report records the invocation's build-temp and absent-home directories,
+and the home remained absent. Cache reuse was disabled only for this required fresh execution;
+the invocation rejected inherited JAVA_TOOL_OPTIONS and used MAVEN_OPTS and argLine for JVM
+scratch configuration. This passes gate 1 and the absent-home execution portion of gate 6 for
+the captured tree. The 16 cases at or above one second are listed in report-summary.json;
+their current documentation and remaining testability obligations still need disposition.
+Root retains this invocation through final traceability and testability acceptance, then removes it.
+The earlier attempted launch left no invocation files or Maven process; root continued the same
+recorded identity and retained its command and terminal receipt rather than treating that attempt
+as a build result. The refreshed AST extraction in its trace-audit directory completed against
+those frozen reports: 580 test sources, 139 requirement IDs and 2,473 passing tagged-method
+mappings, with no unknown tags. R-I1 still has no passing tagged Java method; its declared proof
+requires installed-harness E receipts. This execution inventory leaves gate 2 open for semantic
+assertion adequacy, proof-tier reconciliation and those receipts.
+Gate 3's current static-source audit passes: the review covered all 580 compiled Java test
+sources and 28 reactor POMs. Direct children are fixture programs or controlled packaged-boundary
+checks; requested-session and harness starters inject process launchers; public routes refuse
+before launch or use the test broker. No native test group or Maven profile remains. The decisive
+source observations and scope extraction are in session
+`01a1dd4c-b8e8-7212-9aa4-e39f23170d57`'s
+`temp/final-java-process-audit-j0eFtC/report.md` and `scope-results.txt`. This is static-source
+evidence, not a runtime process trace or acceptance of the other testability clauses. Root retains
+that audit through final gate-3 acceptance and owns cleanup after its last retained consumer.
+
+The bounded 16-row runtime documentation disposition is accepted from session
+`01a1dd4f-fdb8-76f2-bda4-f688037b3f9c`'s
+`temp/current-slow-test-explanations-poJJ6P/report.json`. The current delegation, driver and
+installer cases already explain their retained work; the real process checks are boundary
+integrations. Two method-local paragraphs now explain the large included-history input and
+the complete source population checked by onlyMainCreatesSleepingPause. The working-reference
+driver paragraph now names its required transitions without attributing elapsed time to class
+loading. Current whole-case timings do not establish those timings' causes or a speed improvement.
+`temp/runtime-docs-n6DmvZ/verification.json` proves that these three files changed only in Javadoc;
+all executable statements and requirement tags remain identical. The supported whole-client
+verify then returned zero with normal build-cache reuse enabled and the absent home preserved;
+its command, diagnostics and terminal receipt are retained beside that equality check. This
+closes the current slow-case documentation follow-up, not the remaining qualitative testability
+audit. Root owns both review and edit evidence through final gate 6 disposition, then cleanup.
+
+The remaining gate-6 source review now has two independent read-only owners:
+`build_testability_closure` reviews the six build-test sources, and
+`delegation_testability_closure` reviews the seven delegation-test sources. Their decision is
+whether these added prerequisite families satisfy the §8 claim/boundary, fake-contract and
+isolation requirements, or need a concrete repair. They reuse the completed no-model and runtime
+documentation reviews and frozen passing reports; neither owns source edits or a build slot.
+Root accepts each bounded result, assigns only evidence-backed repairs, and retains their
+reports through final gate 6 disposition before cleanup. These claims do not pass the broader gate.
+
+Both bounded reviews completed with concrete testability gaps. Their repair contracts are
+session `01a1dd59-a3fb-7372-8af4-e3c4156de61d`'s
+`temp/build_testability_closure-vWIp2b/amendment.md` and session
+`01a1dd59-d463-7063-983f-ebc1ff3b0973`'s
+`temp/delegation_testability_closure-khhLSR/amendment.json`. Root accepted their decisive
+observations: receipt cases masked identity guards with invalid checksums or malformed data;
+repository assertions inspected scripted Git answers; candidate verification lacked observed
+input bytes; synthetic process fixtures and CLI directories lacked required isolation or cleanup;
+and worker doubles supplied descendant termination independently of CAT's stop requests.
+The build CLI also used a real child solely to deliver a decided failure-mapping input.
+
+The delegation fixture/receipt/candidate cluster is verified in the shared tree: 23 selected
+tests passed with zero failures, errors or skips, and current common/cli quality reports have
+zero findings. Its decisive terminal and report summary are in session
+`01a1dd6b-6c64-7b80-835a-1ff913e04d99`'s
+`temp/delegation-fixture-repair-final-ogHZFJ/`. The repository request cluster is also verified:
+its selected test passed and configured quality checks passed, recorded in session
+`01a1dd7f-8a6a-76b3-b23f-8d4ea28573ee`'s
+`temp/repository-request-evidence-final-hqfgk6/`. These were exclusive serialized writers;
+root preserved the existing dirty source. The repository test now observes outgoing clone
+requests and their isolated environment, while the other cluster observes candidate bytes,
+re-signs semantic receipt variants and owns process state per fixture. Their combined family
+gate remains unrun. The three build repair clusters remain unimplemented. Root owns these
+artifacts through combined acceptance and final gate 6 disposition, then cleanup. These edits
+invalidate the earlier clean build as final evidence for the changed tests; a fresh whole-client
+gate follows integration of the remaining decided repairs.
+
+Build repair cluster C is verified: terminalPendingRelease now reconciles the unchanged valid
+receipt against the changed ledger reservation identity before separately testing malformed
+receipt rejection. Both refusal/held-reservation outcomes and the matching positive control
+pass in the four-case BuildReservationsTest suite, with no failures, errors or skips and zero
+common/cli Checkstyle or PMD findings. Root retains the command, terminal receipt, frozen XML
+and summary in `temp/reservation-identity-ZHti2Q/` through final gate 6 disposition, then removes
+them. That receipt predates the following completed integration.
+
+Build clusters A and B are now verified and accepted. Cluster B's 20 selected tests pass with
+zero quality findings; its completion report and decisive terminal receipt are in session
+`01a1dd8e-c3a0-7272-a8c6-a660978ae1f7`'s
+`temp/build-cli-testability-1PzFNh/` and `final-focused-2/`. The CLI failure mapping uses a
+controlled batch result, persistence assertions remain in BuildAdmissionTest, and CLI fixtures
+own their directories. Cluster A's seam-only 15-case gate passed before fixture migration;
+its final 19-case gate and quality checks pass in session
+`01a1dda5-8ef3-72d2-9fc5-f1d45fcf8571`'s `temp/build-stop-final-xBwKfv/`.
+The worker retains its identity guard and requests each retained child's stop independently
+of root termination. The shared fake/system request contract observes selected-actor exit
+and unrelated-peer survival; its real children are owned leaf fixture JVMs.
+
+The combined build and delegation gate passes all 143 selected tests, with zero failures,
+errors, skips or common/cli quality findings, in `temp/combined-build-delegation-x7dev18h/`.
+The current whole-client clean gate then passes: 452 suites, 5,945 tests, zero failures or
+errors, six skips, and zero findings in 20 Checkstyle/PMD reports. Its frozen reports,
+source manifest, command and terminal receipt are in `temp/final-isolated-clean-p3iu7k7m/`.
+Both HOME and user.home point at the same nonexistent directory, which remains absent;
+MAVEN_USER_HOME directs the wrapper to its existing cache separately. Source inputs stayed
+unchanged through verification. This supersedes two intermediate clean runs: the first
+omitted HOME isolation, and the second allowed the wrapper to create that home. Neither
+intermediate run proves the home-isolation condition.
+
+Root owns these artifacts through final gate 6 and goal acceptance, then cleanup. Gate 1
+passes on this source tree. The home-isolation clause passes; broader gate 6 and semantic
+traceability still need their final reconciliation. Installed-harness E receipts, remaining
+design mappings, documentation completion and the final standalone-codebase transition
+remain separate required gates.
+
+The final changed-proof reviews close all four original build findings and all four original
+delegation findings, with no new material findings. Their decisive source observations and
+execution reconciliation are session `01a1dd59-a3fb-7372-8af4-e3c4156de61d`'s
+`temp/build-testability-final-g0HuBk/closure-report.json` and session
+`01a1dd59-d463-7063-983f-ebc1ff3b0973`'s
+`temp/delegation_testability_closure-khhLSR/closure.json`. Root accepts these bounded closures
+and reuses the unchanged earlier audit dispositions. The new real stop-contract launches
+preserve gate 3's no-model condition: they are owned BuildChild leaf fixtures. The two real
+adapter cases and retained modular-main case have documented boundary reasons for their
+at-least-one-second final timings. This closes the concrete build/delegation testability
+repair queue; the complete gate-6 disposition must reconcile these receipts with the unchanged
+§8 evidence rather than repeat their source reviews. Root retains both reports through that
+last consumer, then cleanup. The final requirement execution inventory is being refreshed
+against `temp/final-isolated-clean-p3iu7k7m/reports`; it remains separate from semantic adequacy.
+
+That refresh is complete and accepted. Session `01a1ddcf-b2cc-7dc1-b309-8770d8304259`'s
+`temp/trace-refresh-lZCDTr/audit/receipt.json`, `method-traceability.json` and
+`method-issues.json` establish 585 source files, 452 final reports, 139 requirements,
+2,473 passing tagged-method mappings, no unknown tags and no method attribution issues.
+Only R-I1 lacks passing tagged Java evidence; its declared proof is E in both harnesses.
+The original extractor inputs were recovered from session
+`01a16de4-2163-75d0-9e45-481a1850fb3e`'s `temp/tagged-method-audit-xkl06G/`;
+generated namespaced extractors were not substituted for those inputs. Root retains the
+new inventory through final traceability acceptance and owns its cleanup. The next unmet
+acceptance work is the semantic assertion/proof-tier reconciliation and the required native
+receipts, including the still-pending usage measurement. No inventory count passes those gates.
 
 1. **Build:** `./mvnw verify` from `client/` passes.
 2. **Traceability:**
@@ -5019,6 +7599,314 @@ unrun; an unrun gate is unmet.
 
 A mock-only run, a successful contract extraction, a candidate diff or a statistical unit test is intermediate
 evidence. None of them proves the product outcome by itself.
+
+### Current semantic reconciliation and repair frontier
+
+Root accepted the four bounded semantic reviews of all 139 requirement rows against the unchanged
+`final-isolated-clean-p3iu7k7m` source and frozen passing reports. These reviews establish what the
+assertions prove; the earlier 2,473 passing tag mappings alone did not establish semantic adequacy.
+The decisive per-clause observations and frozen-method joins are retained in these session artifacts:
+
+- `01a1dddd-a861-74d3-a835-6ba56a027f2d/temp/semantic_statistics-Cnpoc4/statistics-development-formal-semantic.json`
+  covers 40 statistical, development and formal rows.
+- `01a1dddd-c1df-7f30-9b66-ff0e8629e43e/temp/semantic_execution-EFbHAg/semantic_review.json`
+  covers 29 execution and reporting rows.
+- `01a1dddd-dede-7583-90fd-95eb0ea4dd40/temp/workspace_semantic_review-UImDSU/report.json`
+  covers 29 workspace, measurement and lifecycle rows.
+- `01a1dddd-f322-7a81-a742-93632d7f510f/temp/semantic_contracts-dhXTGc/semantic-review.json`
+  covers 41 contract, interface and testability rows.
+
+All seven local repair outcomes below are accepted. Their focused behavioral receipts and the
+current complete clean run reconcile the affected local semantic clauses; native proof remains.
+
+1. R-D10/R-D17: locally repaired and accepted. Every changed guidance hunk requires a confirmed
+   dissimilar test ID. Missing and unknown IDs reject submission; explicit null remains readable
+   in a rejected diagnosis. The behavioral red demonstrated missing validator violations and
+   erroneous candidate certification. The final five-class gate passed 414 invocations with no
+   failures, errors, skips or quality findings, including actual Driver retention/retry and
+   delivered prompt/schema checks. Evidence: session `01a1de21-4fa9-7bd0-a23a-19b361dc9323`,
+   `temp/s1-missing-dissimilar-keHMnu/completion-report.md` and retained reports.
+2. R-D20: locally repaired and accepted. Nine `RaceDecisionTest` cases establish failure-count
+   priority, edit-size priority, earlier-attempt final ties, and all four racer/cell 99/100
+   boundaries while excluding a predropped racer. The focused verify passed with no failures,
+   errors, skips or quality findings. Evidence: session `01a1de0e-39ab-73c3-87b2-8c308f9b6926`,
+   `temp/race-cap-evidence-jmFxQD/completion-report.md` and retained reports.
+3. R-D20: locally repaired and accepted. `TrialAdoption` now requires the expected-outcome tool's
+   failure policy, as well as every explicit assertion's, to be FAIL before granting six slots.
+   `StalledDevelopmentTest.raceSlotsFollowToolEligibility` derives and consumes the slots through
+   production transitions for five tool configurations. Its behavioral red received six rather
+   than three slots for expected-outcome judgment; all five configurations pass after correction.
+   The focused three-class gate passed 24 tests, with no failures, errors, skips or quality findings.
+   Evidence: session `01a1de03-50e8-7130-b540-e8041e595740`,
+   `temp/race-eligibility-OCYag8/completion.md` and retained red/green reports.
+4. R-E12: locally repaired. `StatusReportTest.jsonStatusHasNoForecast` now checks the actual quoted
+   snake_case JSON keys token_total, time_estimate, completion_probability and remaining_time.
+   Its focused reactor verify exited zero. Evidence: this session's
+   `temp/status-forecast-repair-stkgxF/terminal.txt` and `build.log`.
+5. R-M6/R-M2: locally repaired and accepted. Certification parameters and new history records
+   retain the exact control margin. Format-one absent margins have the defined historical 0.05
+   value; malformed present values reject. Applicability uses the retained claim, and append
+   preserves earlier claims. The missing-field behavioral red preceded production changes.
+   The seven-class verify passed 311 tests with no failures, errors, skips or quality findings.
+   Evidence: session `01a1de42-31ac-7041-9796-5698d5516338`,
+   `temp/margin-claim-zegQKW/completion-report.md` and retained reports.
+6. R-W14: locally repaired and accepted. A behavior-preserving removal seam permits both project
+   deletion failures with another session independently active. Tests prove admission stops,
+   active work drains, the passing checkpoint survives, and the original exception propagates.
+   Both failure rows rejected swallowed-error and immediate-throw mutations; restored verify
+   passed 41 tests with no failures, errors, skips or quality findings. Evidence: session
+   `01a1de58-a5c9-7383-b935-d9cc3c8152b5`,
+   `temp/pilot-deletion-failure-BkyEVH/completion-report.md` and retained reports.
+7. R-C26: locally repaired and accepted. `RunnerSessionsTest.authorTimeoutKeepsPartialDraft`
+   exercises actual timeout/stop/join/bridge cleanup and terminal pruning, with keepRun derived
+   from the real --keep-run argument. Exact captured runner project paths retain seeded and
+   partial author bytes; source stays unchanged and temporary workspace input is removed.
+   The focused gate passed five cases and the whole-class gate passed 40, with no failures,
+   errors, skips or quality findings. Evidence: session `01a1de6e-ba4e-7fd3-937c-e75bcb4c6fca`,
+   `temp/c26-author-timeout-zYrO8s/completion-report.md`; root retained its final XML before clean.
+   The corrected boundary and fixture sequence remain recorded in session
+   `01a1dddd-f322-7a81-a742-93632d7f510f`,
+   `temp/c26-retention-clarification-fdo3pc0w/clarification.json`.
+
+The completed implementations have decision-free amendments in session
+`01a1dddd-a861-74d3-a835-6ba56a027f2d`,
+`temp/statistics-repair-contracts-yey4sx/statistics_repair_amendments.md`, and session
+`01a1dddd-dede-7583-90fd-95eb0ea4dd40`,
+`temp/workspace_repair_contracts-VxDsVD/amendments.json`. These are implementation contracts,
+not passed behavior gates by themselves. The seven accepted outcomes above have their own
+focused receipts, which root accepted at their completed boundaries. All implementation writers
+released their leases. The current complete clean run and execution attribution are recorded below.
+
+The eight stale requirement descriptions are reconciled with the current governing design:
+R-D2 retains concurrency after passing diagnostic reruns; R-D5 separates failure-limit editing
+from the unresolved-200 checkpoint; R-D12 includes accepted ties/disagreement races; R-D14 ranks
+eleven approaches in new rounds and retains saved version-43 rotation; R-W5 excludes .cat/sessions;
+R-C8 permits expected-outcome tool metadata; R-I8 includes the later credential qualifications;
+R-I11 uses the request server rather than the removed SessionStart launcher. Their IDs, work-item
+mappings and proof columns are preserved. This documentation correction does not add native receipts.
+
+After all seven repairs, root's complete clean verification in
+`temp/final-repairs-clean-CJmEwA/` exited zero: 453 suites, 5,991 tests, no failures or errors,
+six PowerShell skips, and 20 Checkstyle/PMD reports with zero findings. Build-result reuse was
+disabled for that invocation only. Both HOME and Surefire user.home pointed to the same absent
+directory, which remained absent; MAVEN_USER_HOME and the local repository stayed outside it.
+The 2,727-file client source manifest stayed unchanged. `terminal.json`, `report-summary.json`,
+`source-before.json`, `source-after.json`, `build.log` and frozen `reports/` retain the evidence.
+This refresh passes gate 1 and the missing-home execution subclaim of gate 6, not its remaining
+qualitative audit. Root owns cleanup after final gate and goal consumers finish.
+
+The refreshed execution inventory in that invocation's `audit/` covers 586 test source files,
+453 reports and all 139 requirements: 2,488 passing tagged-method mappings, no unknown tags,
+and no attribution issues. Only R-I1 lacks passing Java evidence, consistent with its E proof.
+These counts establish execution attribution; affected semantic dispositions and native proof
+receipts remain separate acceptance obligations. The four accepted semantic reviews remain the
+baseline, amended by the seven accepted repair receipts above. Root reconciles the seven local
+clauses through those decisive behavioral checks and their passing execution on the current full
+run; unchanged clauses retain their accepted review disposition. This does not pass a native clause.
+
+### Local same-version installation prerequisite
+
+The documented local installer selected its supplied tree, but its version-only early return
+reported up_to_date while retaining older installed classes. The accepted repair makes
+`UpdateEngine.installFrom` deliver each validated local tree through the existing installation
+lifecycle, including an identical version. Signed-release same-build installs retain their no-op
+behavior. No new flag, version identity, direct cache patch or release publication is introduced.
+
+The exclusive writer changed only UpdateEngine, UpdateTest, InvocationTest and docs/contributing.md.
+Before production changes, `UpdateTest.localSameVersionReplacesPayload` expected UPDATED and
+received UP_TO_DATE. The final nine-class focused verify passed 116 tests, with no failures,
+errors, skips or quality findings. Its cases establish payload replacement, preservation of data
+and completed migrations, retry after registration failure, refusal to overwrite the running
+installer's image, the CLI route, and unchanged signed-release behavior. Root inspected the
+decisive retained reports and accepted the result. Evidence: session
+`01a1de8c-adbd-7930-95e1-a63c573835a9/temp/local-same-version-refresh-final-r5qxpr/`.
+
+After this packaged change, root's complete clean verify in this session's
+`temp/refresh_clean-AHthW2/` exited zero: 453 suites, 5,996 tests, zero failures/errors,
+six PowerShell skips and 20 quality reports with zero findings. Build-result reuse was disabled
+only for this required clean gate; HOME and Surefire user.home remained absent and all 2,727
+client input files stayed unchanged. This supersedes the earlier gate-1 build for current source.
+Its refreshed audit again covers 586 source files, 453 reports, all 139 requirements and 2,488
+passing tagged-method mappings, with no unknown tags or attribution issues. Gate 1 and the
+missing-home subclaim remain passed; broader semantic/native gates keep their independent states.
+
+Root installed the predecessor artifact into an owned disposable Codex home before rebuilding,
+then ran the repaired installer against that same home and full version. Native registration
+reported updated with equal version and previous_version; all 24 installed module jars matched
+the rebuilt artifact, the installer jar changed, and policy and seeded data bytes survived.
+Evidence: `temp/local_refresh_native-nKofbg/seed_terminal.json`, `seed_inputs.json`,
+`refresh_terminal.json`, `replacement_check.json` and logs. Root owns both invocation directories
+until final gate and goal evidence consumers finish, then removes them.
+
+Refreshing the real Codex home remains unmet. The generated installer exited 10 while writing
+`/home/gili/cat/home/.codex/plugins/cat-marketplace/.agents/plugins`, with a read-only-filesystem
+diagnostic and consistent=false. It is not evidence of a completed refresh. The installed request
+server then exited 2 because its old parser rejected --sandbox-policy-cwd. The freshly built
+request server also exited 2: it could not find the session's Codex process among its ancestors
+and therefore could not safely derive sandbox policy. No model session was launched, no sandbox
+setting was weakened, and no real-home install retry followed either refusal. Recovery requires
+the supported request-server execution context outside this sandbox, or the developer installation
+command executed in a writable external terminal. After recovery, verify installed artifact bytes
+before starting fresh acceptance consumers. The disposable-home native result remains accepted.
+
+Gate 2 remains unmet pending the required native receipts; the seven repaired local clauses are reconciled.
+R-I3's remaining retirement/reference audit is accepted. The existing prompt-optimizer skill was
+replaced in place by its campaign body; maintained sources contain no observe-diagnose-retest
+procedure or obsolete prompt-evaluation reference. The reviewer inspected both wrappers, the
+shared body, D13's failure-regression-promotion guidance, its failure route and default-rules.md.
+Its scoped reference audit covered 2,848 maintained paths plus README.md, excluding generated
+outputs, recordings and historical session/plan records. Root repeated the decisive content
+search with no matches and joined current frozen reports: all 13 RegressionScenariosTest cases,
+ProposalTest.refusesMissingRecordedPromptTests, and both scenario-confirmation/start checks
+passed. The accepted prior semantic disposition for R-I3:1 is reused; this audit closes R-I3:2,
+not an E receipt or the separate R-I10 artifact scan.
+R-I10's current two-artifact stripping scan is accepted: the production SourceOnlyContent.remove
+operation found no remaining source-only content or invalid Markdown among 237 Claude and 207
+Codex artifact files. Root also joined the frozen SourceOnlyContentTest, ProjectRuleLoaderTest,
+PromptTemplateTest and PluginArtifactBuilderTest checks. This closes the artifact-scan subclaim;
+it does not establish that the remaining guidance achieves every declared goal. The guidance
+audit owner recovered the earlier WI-124 full-corpus audit's unchanged-file boundary. Root
+inspected plan-history.md:147 and accepts its recorded complete audit at
+72a69508020899882ea7395be8a5d87b837ffc32 for 68 byte-identical goal-bearing sources. Nine
+unchanged stakeholder bodies still need composition checks against the changed review contract.
+The finite frontier has 359 maintained source inputs: 221 goal-bearing files, 136 composition or
+routing inputs, and two non-prompt README exclusions. Of the goal-bearing sources, 92 changed
+and 61 are new, leaving 153 current files assigned to 15 disjoint semantic-review groups.
+The exact roots, partitions, reuse set, exclusions and composition responsibilities are retained
+in this session's `temp/guidance-frontier-FYc9UY/frontier.txt`; root owns its cleanup after final
+gate/goal consumers. These are assigned review work, not passed mappings. Packet preparation
+must capture the source population, production-stripped copies and decisive coverage checks
+before dispatch; then only demonstrated guidance gaps authorize source repairs.
+
+Root completed group 7's four planning/delegation sources and all 21 goals. The current
+delivered support, concrete passing/failing/analogous/dissimilar cases, normative preservation
+map and distinct overlapping decisions are retained in
+`temp/guidance_group_7-Cr3dmb/semantic_review.json` and `preservation.md`. A demonstrated
+planning example expanded an unset shell variable and attempted /rules/include/common/tdd.md.
+The source now uses a relative lazy-load reference; both rebuilt harness artifacts resolve it
+to their packaged TDD rule. The three existing conditional-TDD, incomplete-plan and mechanical
+scenarios were extended; their model execution remains unrun. Probe, checkpoint and reference
+acceptance receipts are in that same directory. Unaffected mappings are preserved. Root owns
+cleanup after combined R-I10 and final goal consumers finish. The immutable audit packet is
+accepted at session `01a1debe-a015-7281-9c68-3452f94a12d7/temp/guidance-audit-packet-Oi2Rb5/`;
+group 7's cluster is integrated into its partial combined ledger. All other review groups have
+returned; their findings and approvals require persistence and reconciliation before acceptance.
+Root is saving their plaintext tool-output records under this session's
+`temp/guidance-review-capture-ZjCWI1/`, with the same final R-I10/goal cleanup boundary.
+All 15 groups are now integrated into the packet's partial combined ledger: 492 individual goal
+records and all 23 assigned compositions, retaining 17 finding records. This does not pass
+unresolved findings. The optimizer schema composition observations are closed as compatible through
+the actual production schema transformations. The original immutable review remains separate from
+subsequent repairs. `temp/guidance-review-capture-ZjCWI1/repair_dispositions.json` tracks every
+finding: 16 have source repairs awaiting verification; the SharedSecrets/test-access conflict
+awaits the user's policy choice. Its repair must preserve the selected test-access boundary.
+
+Root repaired the independent source defects from these reviews: the project documentation index now ends
+its Design Goals before its two executable routes, and contract-design checks source declarations
+separately from delivered executable guidance. Git commit/amend procedures now gate the complete
+proposed input against authorized scope, remote capture uses the corrected regex, Logback-only
+files reach their route, new guidance requires scoped delivery, repeatedly selected skills require
+first-use routing, and Windows batch argument handling depends on literal preservation rather than
+trust. Environment-state guidance covers properties and default locale; goal exceptions retain the
+documented identity, performance, baseline and unavailable-source branches.
+Their design checkpoint and preservation decisions
+are in `temp/guidance-review-capture-ZjCWI1/delivery-repair-checkpoint.md`. Whitespace verification
+passes; production assembly verification and affected review refresh remain unrun. Changed-trigger
+checks must include triggering and absent-trigger cases; the remote fixture must include ordinary,
+repeated-value and truly-empty remote configurations. These changes
+make the prior full-build receipt historical to its unchanged input population. Finish the coherent
+repair batch, refresh affected mappings and assembly evidence, then run the integration build.
+The first integration clean build at `temp/guidance_integration-kNDlhH/` failed at
+PromptAuthorTest.newGuidanceAvoidsAlwaysLoadedFiles: the retained check requires the original
+always-loaded-file restriction's wording. Root preserved that restriction verbatim alongside the
+new delivery requirement. The focused PromptAuthorTest verification passes all 61 tests, with no
+failures, errors or skips; the exact output and frozen XML are in the review-capture directory.
+The first failed reactor's aggregate report inventory can include later modules' older reports;
+use its terminal failure and named failing check, not that aggregate as fresh reactor coverage.
+The replacement integration clean build is assigned exclusively to root at
+`temp/guidance_integration-qLbV7E/`. Its copied accepted controller records the exact command,
+source manifests, missing-home inputs, diagnostics and terminal result. Cached build results are
+disabled for this required clean gate, with the complete reactor, tests and quality checks retained.
+The replacement clean build passes: 453 suites, 5,996 tests, zero failures/errors, six PowerShell
+skips and 20 quality reports with no findings. All 2,727 client inputs stayed unchanged and the
+configured HOME/user.home remained absent. This restores gate 1 and the missing-home subclaim
+for the recorded current client tree. The remote-selector probe
+also passed ordinary, repeated-value and empty configurations through a real POSIX shell and Git;
+it does not establish the full filter/restore transaction or PowerShell behavior.
+The current runtime's production SourceOnlyContent operation captured all 14 repaired Markdown
+sources under `temp/guidance-review-capture-ZjCWI1/delta_review/`, alongside their source snapshots.
+Root inspected the delivered differences: both documentation routes survive, the companion check
+distinguishes source goals from delivered guidance, and the other normative repairs survive stripping.
+Both rebuilt harness path indexes contain the four narrow Logback filename patterns. The current
+PromptTemplate loader also captured all 12 optimizer resources, including the repaired new-guidance
+fragment. These are static delivery observations, not model compliance. Only the explicit
+prompt-author placement composition has a changed listed source input.
+Three bounded reviewers have now reconciled all 16 repaired finding records against the captured
+source and production-stripped guidance, including affected goal ranges, normative preservation
+and the prompt-author placement composition. Root accepted their static closure reports in
+`temp/guidance-review-capture-ZjCWI1/group_02_reconciliation.json`,
+`group_11_reconciliation.json` and `group_15_reconciliation.json`; the additive
+`repair_dispositions.json` preserves the original immutable findings and unaffected judgments.
+No further source repair was required by those reviews. The SharedSecrets policy choice remains
+pending, and applicable behavior/native/model cases remain unrun. Earlier references above to
+pending static reconciliation are superseded by these receipts; R-I10 remains unmet. No client
+source changed after the accepted integration build.
+
+The repaired Java route now also has accepted production delivery evidence: nine generated Codex
+SessionStart wrapper invocations exited zero with empty stderr and delivered the route into each
+fixture's rules file. Root inspected all nine terminal observations and delivered route lines.
+The cases cover root/nested Logback, Java and POM paths plus unrelated XML. SessionStart delivers
+the same guarded directive to every session; it does not evaluate filenames. Recipient path
+evaluation, the unrelated-XML absent-trigger behavior and lazy loading remain unrun, so these
+receipts do not pass native/model acceptance. The complete receipts remain in session
+`01a1dee9-0cde-73b3-8447-52a73724e35e/temp/logback_hook_delivery-auF9N6/`; the compact report is
+this session's `temp/guidance-review-capture-ZjCWI1/logback_delivery_report.json`. File syscall
+traces observed regular-file mutations within the fixtures and process-local virtual/device
+writable opens; they do not establish complete write-syscall confinement. Root owns cleanup after
+final R-I10 and goal evidence consumers. No client source or installed artifact changed.
+
+R-T1's consolidation preserves the accepted bounded T1/T2/T4 dispositions without inferring
+purity, direct construction or isolation from passing tags and static checks alone. The completed
+read-only follow-up supplies their missing qualitative judgment: numeric/campaign policies and
+authority/conflict decisions use immutable values without I/O, ambient clocks or uninjected
+randomness; builders and public state constructors create count/batch/pair and newer lifecycle
+states directly; optimizer scopes, staging and capacity own their copied environment, caches,
+fixture paths and locks. The reviewer inspected the finite declaration matrix and separated I/O
+adapters from pure decisions, then reused the accepted behavioral receipts and current frozen
+execution reports. No additional source defect was found. Root accepts these local qualitative
+T1/T2/T4 dispositions; native qualifications below remain separate.
+T3's current fake/real shared-contract checks pass; installed E1–E8 execution and new native
+recordings remain unrun. T5's accepted clock/completion/blocking-boundary evidence is retained.
+T6's 20 file-store fault points and crash-after-assignment/outcome checks pass, while the required
+real-process-kill receipt remains unrun per harness. These native qualifications remain unmet.
+
+The consolidation identified five additional T7 unit methods needing setup rationale. The
+exclusive repair writer added method-local explanations to four public-confirmation refusal
+checks and childDeniesRequestedRunRootsAsOnePath. The inherited check now creates 100 requested
+roots across the first two groups rather than 300 across four; every denial, single-ancestor and
+own-project/home assertion remains. Root inspected both bounded diffs and the decisive frozen
+report summary: OptimizerCoreTest 172, CodexSessionCommandLimitsTest 10 and
+ClaudeSessionCommandLimitsTest 10 passed, with zero failures/errors/skips and six clean quality
+reports. This repair is accepted; no elapsed-time cause or speedup is inferred. Evidence:
+session `01a1deaf-f9fc-7522-9822-595b26af3cdc/temp/t7-runtime-rationale-Y1Xx38/`.
+Root owns cleanup after final gate/goal consumers. A new complete clean verification after the
+T7 fixture and planning-reference changes passed: 453 suites, 5,996 tests, zero failures/errors,
+six PowerShell skips and 20 quality reports with no findings. All 2,727 client inputs remained
+unchanged during execution, and HOME and user.home stayed absent. Evidence is this session's
+`temp/guidance_clean-ho4q6A/report_summary.json`, `terminal.json`, source manifests, build log
+and frozen reports. This passed gate 1 and the missing-home subclaim on that captured source tree;
+gate 1 needs the integration build after the guidance repairs above. The previous
+execution-attribution and unaffected semantic receipts retain their stated scopes.
+The local qualitative T1/T2/T4 review is complete; the T7 repair retains its focused receipt above.
+The accepted bounded
+build/delegation closures and no-model/slow-case dispositions remain reusable within their scope.
+Native acceptance remains Codex-only under current authorization; Claude is authorized exclusively
+for the before/after usage measurement. No reviewer launched a build, harness or model.
+Root owns all four retained review directories through final gate-2 and goal reconciliation, then
+removes them after their last consumer. Continue the guidance and qualitative testability checks
+while real-home installation and native launches await their supported execution context.
+Reuse accepted local semantic receipts and repeat the full build only after integrating the
+remaining verification-closed source changes.
 
 ### Interim design acceptance mapping
 
