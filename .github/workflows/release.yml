@@ -23,14 +23,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-x64
-            runner: macos-26-intel
-            archive: upterm_darwin_amd64.tar.gz
-            sha256: aaca2b92db585c53ed7d7bff723f40a19d2ae8b0c09fa52689bb077a0f64951b
-          - platform: macos-arm64
-            runner: macos-26
-            archive: upterm_darwin_arm64.tar.gz
-            sha256: 8258498167a8e7671680699f765c4cdf6814fe957256ac3fc7452cbd5ad1366f
           - platform: windows-x64
             runner: windows-2025
             archive: upterm_windows_amd64.tar.gz
@@ -53,6 +45,7 @@ jobs:
           DIAGNOSTIC_SHA256: ${{ matrix.sha256 }}
         run: |
           python3 - <<'PY'
+          import base64
           import hashlib
           import json
           import os
@@ -100,13 +93,42 @@ jobs:
           '''
               acl_environment = dict(os.environ)
               acl_environment["DIAGNOSTIC_ACL_PATH"] = str(directory)
-              acl = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "-"],
-                                   input=acl_script, text=True, capture_output=True, env=acl_environment)
-              (directory / "acl-check.stdout").write_text(acl.stdout, encoding="utf-8")
-              (directory / "acl-check.stderr").write_text(acl.stderr, encoding="utf-8")
+              control_acl = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "-"],
+                                           input=acl_script, text=True, capture_output=True, env=acl_environment)
+              control_stdout = directory / "acl-control.stdout"
+              control_stderr = directory / "acl-control.stderr"
+              control_stdout.write_text(control_acl.stdout, encoding="utf-8")
+              control_stderr.write_text(control_acl.stderr, encoding="utf-8")
+
+              encoded_acl_script = base64.b64encode(acl_script.encode("utf-16le")).decode("ascii")
+              acl = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive",
+                                    "-EncodedCommand", encoded_acl_script], stdin=subprocess.DEVNULL,
+                                   text=True, capture_output=True, env=acl_environment)
+              acl_stdout = directory / "acl-check.stdout"
+              acl_stderr = directory / "acl-check.stderr"
+              acl_stdout.write_text(acl.stdout, encoding="utf-8")
+              acl_stderr.write_text(acl.stderr, encoding="utf-8")
+              observations = []
+              for transport, result, stdout_path, stderr_path in (
+                      ("stdin_statements", control_acl, control_stdout, control_stderr),
+                      ("encoded_whole_script", acl, acl_stdout, acl_stderr)):
+                  observations.append({"transport": transport, "exit_status": result.returncode,
+                                      "stdout_file": stdout_path.name, "stderr_file": stderr_path.name,
+                                      "stdout_bytes": stdout_path.stat().st_size,
+                                      "stderr_bytes": stderr_path.stat().st_size})
+              with (directory / "acl-commands.json").open("x", encoding="utf-8") as stream:
+                  json.dump({"format_version": 1, "run_identity": identity,
+                             "script_sha256": hashlib.sha256(acl_script.encode("utf-8")).hexdigest(),
+                             "observations": observations}, stream, separators=(",", ":"))
+                  stream.write("\n")
               if acl.returncode != 0:
-                  raise SystemExit("Get-Acl failed: " + acl.stderr.strip())
-              access = json.loads(acl.stdout)
+                  raise SystemExit("encoded PowerShell ACL command failed; see acl-commands.json and acl-check.stderr")
+              if not acl.stdout.strip():
+                  raise SystemExit("encoded PowerShell ACL command returned empty output; see acl-commands.json and acl-check.stdout")
+              try:
+                  access = json.loads(acl.stdout)
+              except json.JSONDecodeError as error:
+                  raise SystemExit("encoded PowerShell ACL output is not valid JSON; see acl-commands.json and acl-check.stdout") from error
               with (directory / "acl-observation.json").open("x", encoding="utf-8") as stream:
                   json.dump(access, stream, separators=(",", ":"))
                   stream.write("\n")
