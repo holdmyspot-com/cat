@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex.optimizer.test;
 
 import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.Pause;
 
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
@@ -25,6 +26,16 @@ import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixt
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TestValue;
+import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
+import com.holdmyspot.cat.common.optimizer.execution.EarlyTrialEnd;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
@@ -41,8 +52,19 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessProcess;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
+import com.holdmyspot.cat.common.runner.HarnessRunSession;
+import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.KeptRunCopy;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
@@ -55,6 +77,10 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.FileSystems;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -65,11 +91,14 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -153,6 +182,393 @@ public final class CodexSessionsTest
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex", script, input,
 				output, requests);
 		});
+	}
+
+	/**
+	 * Creates a two-turn test whose retained read and expected reply both settle on turn one.
+	 *
+	 * @return the test
+	 */
+	private static PromptTest retainedReadTest()
+	{
+		TestCase testCase = new TestCase(Map.of("notes", new TestValue.Text("notes.md")), "one");
+		MappedAssertion read = new MappedAssertion(new Assertion("notes_read", AssertionKind.EFFECT,
+			"read-in-full {{notes}}", "The agent reads the notes."), "read_notes");
+		return new PromptTest("retained_notes", new RiskRank(1), List.of("read_notes"), List.of(),
+			"The notes file is available.", List.of("Read {{notes}}.", "Check again."), Duration.ofSeconds(30),
+			"The agent reads the notes and replies one.", List.of(), List.of(new VariableDeclaration("notes",
+				"the notes file")), List.of(), List.of(testCase), List.of(read), List.of(), List.of(), Optional.empty(),
+			Optional.of(new ExpectedOutcomeTool("exact-text turn=1 {{expected_outcome}}")), List.of(), null);
+	}
+
+	/**
+	 * Serves a real runner bridge whose process publishes its native rollout before a turn returns.
+	 *
+	 * @param jvm the borrowed process scope
+	 * @param arguments the runner options
+	 * @param input the bridge input
+	 * @param output the bridge output
+	 * @param received records each turn prompt
+	 * @param notes the complete tool result retained in the child rollout
+	 * @throws IOException if the bridge fixture cannot be created or served
+	 */
+	private static void serveLiveEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
+		java.io.Writer output, List<String> received, String notes) throws IOException
+	{
+		serveLiveEvidence(jvm, arguments, input, output, received, List.of(notes, notes), false);
+	}
+
+	/**
+	 * Serves a real runner bridge whose process publishes the requested rollout contents before each turn returns.
+	 *
+	 * @param jvm the borrowed process scope
+	 * @param arguments the runner options
+	 * @param input the bridge input
+	 * @param output the bridge output
+	 * @param received records each turn prompt
+	 * @param snapshots the child tool result text for each turn
+	 * @param malformedFirst indicates that the first child rollout contains malformed JSON
+	 * @throws IOException if the bridge fixture cannot be created or served
+	 */
+	private static void serveLiveEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
+		java.io.Writer output, List<String> received, List<String> snapshots, boolean malformedFirst) throws IOException
+	{
+		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
+		HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "codex",
+			HarnessTemporaryRoot.of(runRoot));
+		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+			Yielding.fileReplacer());
+		HarnessRun run = manager.create("codex");
+		Path project = run.directory().resolve("project");
+		Path notesFile = project.resolve("notes.md");
+		Files.writeString(notesFile, snapshots.getLast(), UTF_8);
+		manager.snapshotProject(run);
+		manager.initialize(run, options.artifact(), options.project(), "fixture", arguments);
+		HarnessProcess process = new HarnessProcess()
+		{
+			private int turn;
+			private boolean closed;
+
+			@Override
+			public void prepareTurn()
+			{
+			}
+
+			@Override
+			public HarnessProcessResult sendTurn(String request) throws IOException
+			{
+				received.add(request);
+				turn += 1;
+				Path transcripts = Files.createDirectories(run.sessionTranscripts());
+				Files.writeString(transcripts.resolve("rollout-root.jsonl"), "{\"type\":\"session_meta\"}\n",
+					UTF_8);
+				Path child = transcripts.resolve("rollout-child.jsonl");
+				String evidence;
+				if (malformedFirst && turn == 1)
+					evidence = "{malformed";
+				else
+					evidence = RecordedTrial.toolResult(snapshots.get(Math.min(turn - 1, snapshots.size() - 1)));
+				Files.writeString(child, evidence + "\n", UTF_8);
+				String reply;
+				if (turn == 1)
+					reply = "one";
+				else
+					reply = "two";
+				return new HarnessProcessResult(0, "", "", true, reply, List.of(reply));
+			}
+
+			@Override
+			public boolean isAlive()
+			{
+				return !closed;
+			}
+
+			@Override
+			public void close()
+			{
+				closed = true;
+			}
+		};
+		try (process)
+		{
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
+		}
+	}
+
+	/**
+	 * Serves a session through the public forwarder, waiting for each streamed turn before returning its completion.
+	 *
+	 * @param jvm the borrowed process scope
+	 * @param arguments the runner options
+	 * @param input the session's streamed turn records
+	 * @param output receives the forwarded session records
+	 * @param snapshots the child tool result text by turn
+	 * @param malformedFirst indicates that the first child rollout contains malformed JSON
+	 * @param received records each forwarded turn prompt
+	 * @throws IOException if the forwarding fixture cannot be created or served
+	 */
+	private static void serveForwardedEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
+		java.io.Writer output, List<String> snapshots, boolean malformedFirst, List<String> received) throws IOException
+	{
+		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
+		Path requests = Files.createDirectories(runRoot.resolve("requests"));
+		Path artifact = Files.createDirectories(runRoot.resolve("artifact"));
+		Path source = Path.of(ScriptedHarness.optionValue(arguments, "--project"));
+		String initialNotes = Files.readString(source.resolve("notes.md"), UTF_8);
+		Path responses = runRoot.resolve("responses");
+		AtomicInteger pauseCount = new AtomicInteger();
+		String[] requestId = {""};
+		Path[] responseDirectory = {null};
+		JsonMapper json = JsonMapper.builder().build();
+		SignallingReader records = new SignallingReader(input, received);
+		try (WatchService watcher = FileSystems.getDefault().newWatchService())
+		{
+			requests.register(watcher, StandardWatchEventKinds.ENTRY_CREATE);
+			Pause pause = () ->
+			{
+				int current = pauseCount.incrementAndGet();
+				if (current == 1)
+				{
+					Path archive;
+					try (Stream<Path> files = Files.list(requests))
+					{
+						archive = files.filter(path -> path.getFileName().toString().endsWith(".tar")).findFirst().
+							orElseThrow(() -> new IOException("The forwarded request was not published"));
+					}
+					requestId[0] = archive.getFileName().toString().replace(".tar", "");
+					responseDirectory[0] = Files.createDirectories(responses.resolve(requestId[0]));
+					Files.writeString(responseDirectory[0].resolve("transcript.jsonl"), startedRecord(), UTF_8);
+					return;
+				}
+				if (current % 2 == 0)
+				{
+					records.awaitRecord(current / 2);
+					return;
+				}
+				int recordNumber = (current - 1) / 2;
+				Path next = awaitForwardedRecord(requests, requestId[0], recordNumber, watcher);
+				JsonNode record = json.readTree(next.toFile());
+				if (recordNumber == 1)
+				{
+					writeForwardedSnapshot(responseDirectory[0], snapshots.getFirst(), malformedFirst, initialNotes);
+					Files.writeString(responseDirectory[0].resolve("transcript.jsonl"), startedRecord() +
+						completedRecord("one"), UTF_8);
+					return;
+				}
+				if (record.path("type").asString().equals("turn"))
+				{
+					writeForwardedSnapshot(responseDirectory[0], snapshots.getLast(), false, initialNotes);
+					Files.writeString(responseDirectory[0].resolve("transcript.jsonl"), startedRecord() +
+						completedRecord("one") + completedRecord("two"), UTF_8);
+					return;
+				}
+				writeForwardedKeptRun(jvm, json, source, artifact, responseDirectory[0]);
+			};
+			List<String> forwardArguments = List.of("--run-root", runRoot.toString(), "--project", source.toString(),
+				"--artifact", artifact.toString(), "--model", "model-a", "--effort", "low", "--keep-run");
+			SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "codex", artifact,
+				forwardArguments, records, output, requests, pause);
+		}
+	}
+
+	/**
+	 * Signals when the forwarded session writes each input record, allowing the fixture to publish only after it.
+	 */
+	private static final class SignallingReader extends java.io.FilterReader
+	{
+		private final CountDownLatch[] records = {new CountDownLatch(1), new CountDownLatch(1),
+			new CountDownLatch(1)};
+		private final List<String> received;
+		private final StringBuilder line = new StringBuilder();
+		private int record;
+
+		/**
+		 * Creates a reader that observes line boundaries.
+		 *
+		 * @param input the session input
+		 * @param received records each forwarded turn prompt
+		 */
+		private SignallingReader(java.io.Reader input, List<String> received)
+		{
+			super(input);
+			this.received = received;
+		}
+
+		@Override
+		public int read(char[] characters, int offset, int length) throws IOException
+		{
+			// TurnFeed queues the previous complete lines before reading again. Signalling inside the previous
+			// read lets the forwarder's poll miss that queue insertion and then wait for its own unpublished file.
+			for (int index = 0; index < record; index += 1)
+				records[index].countDown();
+			int count = super.read(characters, offset, length);
+			for (int index = offset; index < offset + count; index += 1)
+			{
+				if (characters[index] != '\n')
+				{
+					line.append(characters[index]);
+					continue;
+				}
+				JsonNode value = JsonMapper.builder().build().readTree(line.toString());
+				if (value.path("type").asString().equals("turn"))
+					received.add(value.path("prompt").asString());
+				line.setLength(0);
+				if (record < records.length)
+					record += 1;
+			}
+			return count;
+		}
+
+		/**
+		 * Waits until the requested record has been read.
+		 *
+		 * @param number one-based record number
+		 * @throws IOException if the record is not written in time or waiting is interrupted
+		 */
+		private void awaitRecord(int number) throws IOException
+		{
+			try
+			{
+				if (!records[number - 1].await(5, TimeUnit.SECONDS))
+					throw new IOException("The session did not write record " + number);
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for session record " + number, e);
+			}
+		}
+	}
+
+	/**
+	 * Waits for a particular streamed record and reports its absence with the request files observed.
+	 *
+	 * @param requests the request stream directory
+	 * @param requestId the request identifier
+	 * @param number the record number
+	 * @param watcher observes new request files
+	 * @return the published record
+	 * @throws IOException if the record cannot be observed
+	 */
+	private static Path awaitForwardedRecord(Path requests, String requestId, int number, WatchService watcher)
+		throws IOException
+	{
+		Path record = requests.resolve(requestId + ".turn-" + number + ".json");
+		while (!Files.exists(record))
+		{
+			try
+			{
+				WatchKey key = watcher.poll(5, TimeUnit.SECONDS);
+				if (key == null)
+				{
+					List<String> observed;
+					try (Stream<Path> files = Files.list(requests))
+					{
+						observed = files.map(path -> path.getFileName().toString()).toList();
+					}
+					throw new IOException("No streamed record appeared: " + record + "; request files: " + observed);
+				}
+				key.pollEvents();
+				key.reset();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new IOException("Interrupted while waiting for a forwarded turn", e);
+			}
+		}
+		return record;
+	}
+
+	/**
+	 * Returns the forwarded started record.
+	 *
+	 * @return the record
+	 */
+	private static String startedRecord()
+	{
+		return "{\"type\":\"started\",\"run_id\":\"runa-1\"}\n";
+	}
+
+	/**
+	 * Returns a forwarded completed-turn record.
+	 *
+	 * @param reply the assistant reply
+	 * @return the record
+	 */
+	private static String completedRecord(String reply)
+	{
+		return "{\"type\":\"turn_completed\",\"run_id\":\"runa-1\",\"assistant_response\":\"" + reply +
+			"\",\"assistant_messages\":[\"" + reply + "\"]}\n";
+	}
+
+	/**
+	 * Writes a turn's project and native transcript snapshot into the response.
+	 *
+	 * @param response the response directory
+	 * @param text the child tool result text
+	 * @param malformed indicates whether to write malformed JSON instead
+	 * @param initialNotes the original project file contents
+	 * @throws IOException if the snapshot cannot be written
+	 */
+	private static void writeForwardedSnapshot(Path response, String text, boolean malformed, String initialNotes)
+		throws IOException
+	{
+		Path turnCopy = Files.createDirectories(response.resolve("turn-copy"));
+		Path project = Files.createDirectories(turnCopy.resolve("project"));
+		Path initialProject = Files.createDirectories(turnCopy.resolve("initial-project"));
+		Files.writeString(project.resolve("notes.md"), text, UTF_8);
+		Files.writeString(initialProject.resolve("notes.md"), initialNotes, UTF_8);
+		Path transcripts = Files.createDirectories(turnCopy.resolve("artifacts/session-transcripts"));
+		Files.writeString(transcripts.resolve("rollout-root.jsonl"),
+			"{\"type\":\"session_meta\"}\n", UTF_8);
+		String line = RecordedTrial.toolResult(text);
+		if (malformed)
+			line = "{malformed";
+		Files.writeString(transcripts.resolve("rollout-child.jsonl"), line + "\n", UTF_8);
+	}
+
+	/**
+	 * Writes the valid kept-run response that completes the forwarder protocol.
+	 *
+	 * @param jvm the borrowed process scope
+	 * @param json the response mapper
+	 * @param source the session project
+	 * @param artifact the CAT artifact
+	 * @param response the response directory
+	 * @throws IOException if the kept run or response cannot be written
+	 */
+	private static void writeForwardedKeptRun(JvmScope jvm, JsonMapper json, Path source, Path artifact, Path response)
+		throws IOException
+	{
+		Path childRoot = response.resolve("child-runs");
+		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), childRoot, Clock.systemUTC(),
+			Yielding.fileReplacer());
+		HarnessRun child = manager.create("codex");
+		Files.writeString(child.directory().resolve("project/notes.md"), Files.readString(source.resolve("notes.md")),
+			UTF_8);
+		Files.createDirectories(child.directory().resolve("initial-project"));
+		Files.writeString(child.directory().resolve("initial-project/notes.md"),
+			Files.readString(source.resolve("notes.md")), UTF_8);
+		Path raw = Files.writeString(child.directory().resolve("artifacts/result.jsonl"), "result\n", UTF_8);
+		Path nativeRoot = Files.createDirectories(child.directory().resolve("artifacts/session-transcripts"));
+		Path rootCopy = nativeRoot.resolve("rollout-root.jsonl");
+		Path childCopy = nativeRoot.resolve("rollout-child.jsonl");
+		Files.writeString(rootCopy, "{\"type\":\"session_meta\"}\n", UTF_8);
+		Files.writeString(childCopy, RecordedTrial.toolResult(Files.readString(source.resolve("notes.md"))) + "\n",
+			UTF_8);
+		Path receipt = child.directory().resolve("artifacts/receipt.json");
+		HarnessRunReceipt.write(json, Yielding.fileReplacer(), receipt, child, raw, List.of(rootCopy, childCopy));
+		manager.initialize(child, artifact, source, "fixture", List.of("fixture"));
+		manager.markCompleted(child);
+		Path kept = response.resolve("run");
+		requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+		ObjectNode result = json.createObjectNode().put("format_version", 1).put("id", response.getFileName().toString()).
+			put("harness", "codex").put("status", "completed").put("reason", "").put("child_run_id", "child-run-1").
+			put("transcript", response.resolve("transcript.jsonl").toString()).put("receipt", receipt.toString()).
+			put("run", kept.toString());
+		json.writeValue(response.resolve("response.json").toFile(), result);
 	}
 
 	/**
@@ -716,6 +1132,48 @@ public final class CodexSessionsTest
 	}
 
 	/**
+	 * Verifies that a judge request sends its source as the project and each evidence path as read-only evidence.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesJudgeEvidenceToRunnerReadOnly()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path first = Files.createDirectories(root.resolve("evidence-1"));
+				Path second = Files.createDirectories(root.resolve("evidence-2"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				CodexSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
+				SessionRequest request = new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
+					List.of(first, second), LIMIT, SESSION_PROFILE);
+
+				SessionResult result = await(sessions.start(request));
+
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				List<String> options = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
+				requireThat(options.stream().filter("--read-only-evidence"::equals).count(), "evidenceCount").isEqualTo(2L);
+				int firstEvidence = options.indexOf("--read-only-evidence");
+				requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
+				requireThat(options.subList(firstEvidence, firstEvidence + 4), "evidenceOptions").isEqualTo(List.of(
+					"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a trial asks the runner for session transcripts, so that the tool results its agents received can
 	 * be read, and that a judge does not.
 	 *
@@ -747,6 +1205,330 @@ public final class CodexSessionsTest
 				requireThat(arguments.get(0).contains("--session-transcripts"), "trial").isTrue();
 				requireThat(arguments.get(1).contains("--session-transcripts"), "judge").isFalse();
 			}
+		}
+	}
+
+	/**
+	 * Verifies that real trial evidence settles after one completed turn when the native child rollout has the full read.
+	 *
+	 * @throws IOException if the runner fixture cannot be created or read
+	 * @throws InterruptedException if waiting for the bridge return is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session or runner fixture does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void completeRetainedReadEndsBeforeTurnTwo()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-live-evidence-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			String notes = "These notes are complete and exact.";
+			Files.writeString(source.resolve("notes.md"), notes, UTF_8);
+			Path runRoot = root.resolve("runs");
+			List<String> turns = new CopyOnWriteArrayList<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runRoot, List::of, false, Map.of(),
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				(arguments, input, output) ->
+				{
+					try
+					{
+						serveLiveEvidence(jvm, arguments, input, output, turns, notes);
+					}
+					finally
+					{
+						bridgeReturned.countDown();
+					}
+				});
+			PromptTest test = retainedReadTest();
+			TestCase testCase = test.testCases().getFirst();
+			SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
+				List.of("Read notes.md.", "Check again."), List.of(), LIMIT, SESSION_PROFILE).
+				withTurnObserver(EarlyTrialEnd.forTest(test, testCase, sessions));
+
+			SessionResult result = await(sessions.start(request));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(sessions.readEvidence(completed.transcript()).received(), "receivedEvidence").
+				isEqualTo(List.of(notes));
+			requireThat(completed.endedEarly(), "endedEarly").isTrue();
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("one")));
+			requireThat(completed.requestedTurns(), "requestedTurns").isEqualTo(2);
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
+			requireThat(completed.settledAssertions(), "settledAssertions").
+				isEqualTo(Map.of("notes_read", 1, TestCase.EXPECTED_OUTCOME, 1));
+			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md."));
+			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that an incomplete retained read after turn one does not settle the trial before turn two.
+	 *
+	 * @throws IOException if the runner fixture cannot be created or read
+	 * @throws InterruptedException if waiting for the bridge return is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session or runner fixture does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void incompleteRetainedReadKeepsSecondTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-live-incomplete-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			String notes = "These notes are complete and exact.";
+			Files.writeString(source.resolve("notes.md"), notes, UTF_8);
+			Path runRoot = root.resolve("runs");
+			List<String> turns = new CopyOnWriteArrayList<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runRoot, List::of, false, Map.of(),
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				(arguments, input, output) ->
+				{
+					try
+					{
+						serveLiveEvidence(jvm, arguments, input, output, turns,
+							List.of("These notes are", notes), false);
+					}
+					finally
+					{
+						bridgeReturned.countDown();
+					}
+				});
+			PromptTest test = retainedReadTest();
+			SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
+				List.of("Read notes.md.", "Check again."), List.of(), LIMIT, SESSION_PROFILE).
+				withTurnObserver(EarlyTrialEnd.forTest(test, test.testCases().getFirst(), sessions));
+
+			SessionResult.Completed completed = (SessionResult.Completed) await(sessions.start(request));
+
+			requireThat(completed.endedEarly(), "endedEarly").isFalse();
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("one"), List.of("two")));
+			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md.", "Check again."));
+			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that malformed retained rollout evidence fails the observer with its source line before turn two.
+	 *
+	 * @throws IOException if the runner fixture cannot be created or read
+	 * @throws InterruptedException if waiting for the bridge return is interrupted
+	 * @throws TimeoutException if the session or runner fixture does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void malformedRetainedRecordStopsObserver()
+		throws IOException, InterruptedException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-live-malformed-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Files.writeString(source.resolve("notes.md"), "These notes are complete and exact.", UTF_8);
+			Path runRoot = root.resolve("runs");
+			List<String> turns = new CopyOnWriteArrayList<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runRoot, List::of, false, Map.of(),
+				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				(arguments, input, output) ->
+				{
+					try
+					{
+						serveLiveEvidence(jvm, arguments, input, output, turns, List.of("unused"), true);
+					}
+					finally
+					{
+						bridgeReturned.countDown();
+					}
+				});
+			PromptTest test = retainedReadTest();
+			SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
+				List.of("Read notes.md.", "Check again."), List.of(), LIMIT, SESSION_PROFILE).
+				withTurnObserver(EarlyTrialEnd.forTest(test, test.testCases().getFirst(), sessions));
+
+			ExecutionException failure = null;
+			try
+			{
+				await(sessions.start(request));
+			}
+			catch (ExecutionException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getCause(), "failure.cause").isInstanceOf(IOException.class);
+			requireThat(failure.getCause().getMessage(), "failure.message").contains("rollout-child.jsonl:1");
+			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md."));
+			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a forwarded complete read settles before the second turn is sent.
+	 *
+	 * @throws IOException if the runner fixture cannot be created or read
+	 * @throws InterruptedException if waiting for the forwarder to return is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session or forwarder fixture does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void completeForwardedReadEndsBeforeTurnTwo()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-forwarded-evidence-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			String notes = "These notes are complete and exact.";
+			Files.writeString(source.resolve("notes.md"), notes, UTF_8);
+			List<String> turns = new CopyOnWriteArrayList<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				(arguments, input, output) ->
+				{
+					try
+					{
+						serveForwardedEvidence(jvm, arguments, input, output, List.of(notes, notes), false, turns);
+					}
+					finally
+					{
+						bridgeReturned.countDown();
+					}
+				});
+			PromptTest test = retainedReadTest();
+			TestCase testCase = test.testCases().getFirst();
+			SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
+				List.of("Read notes.md.", "Check again."), List.of(), LIMIT, SESSION_PROFILE).
+				withTurnObserver(EarlyTrialEnd.forTest(test, testCase, sessions));
+
+			SessionResult result = await(sessions.start(request));
+
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(sessions.readEvidence(completed.transcript()).received(), "receivedEvidence").
+				isEqualTo(List.of(notes));
+			requireThat(completed.endedEarly(), "endedEarly").isTrue();
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("one")));
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
+			requireThat(completed.settledAssertions(), "settledAssertions").
+				isEqualTo(Map.of("notes_read", 1, TestCase.EXPECTED_OUTCOME, 1));
+			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md."));
+			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a forwarded incomplete read keeps the second turn available.
+	 *
+	 * @throws IOException if the runner fixture cannot be created or read
+	 * @throws InterruptedException if waiting for the forwarder to return is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session or forwarder fixture does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void incompleteForwardedReadKeepsSecondTurn()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-forwarded-incomplete-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			String notes = "These notes are complete and exact.";
+			Files.writeString(source.resolve("notes.md"), notes, UTF_8);
+			List<String> turns = new CopyOnWriteArrayList<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				(arguments, input, output) ->
+				{
+					try
+					{
+						serveForwardedEvidence(jvm, arguments, input, output, List.of("These notes are", notes), false,
+							turns);
+					}
+					finally
+					{
+						bridgeReturned.countDown();
+					}
+				});
+			PromptTest test = retainedReadTest();
+			SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
+				List.of("Read notes.md.", "Check again."), List.of(), LIMIT, SESSION_PROFILE).
+				withTurnObserver(EarlyTrialEnd.forTest(test, test.testCases().getFirst(), sessions));
+
+			SessionResult.Completed completed = (SessionResult.Completed) await(sessions.start(request));
+
+			requireThat(completed.endedEarly(), "endedEarly").isFalse();
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("one"), List.of("two")));
+			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md.", "Check again."));
+			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that malformed forwarded rollout evidence fails before a second turn is sent.
+	 *
+	 * @throws IOException if the runner fixture cannot be created or read
+	 * @throws InterruptedException if waiting for the forwarder to return is interrupted
+	 * @throws TimeoutException if the session or forwarder fixture does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void malformedForwardedRecordStopsObserver()
+		throws IOException, InterruptedException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-forwarded-malformed-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Files.writeString(source.resolve("notes.md"), "These notes are complete and exact.", UTF_8);
+			List<String> turns = new CopyOnWriteArrayList<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
+				(arguments, input, output) ->
+				{
+					try
+					{
+						serveForwardedEvidence(jvm, arguments, input, output, List.of("unused"), true, turns);
+					}
+					finally
+					{
+						bridgeReturned.countDown();
+					}
+				});
+			PromptTest test = retainedReadTest();
+			SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
+				List.of("Read notes.md.", "Check again."), List.of(), LIMIT, SESSION_PROFILE).
+				withTurnObserver(EarlyTrialEnd.forTest(test, test.testCases().getFirst(), sessions));
+
+			ExecutionException failure = null;
+			try
+			{
+				await(sessions.start(request));
+			}
+			catch (ExecutionException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getCause(), "failure.cause").isInstanceOf(IOException.class);
+			requireThat(failure.getCause().getMessage(), "failure.message").contains("rollout-child.jsonl:1");
+			requireThat(turns, "turns").isEqualTo(List.of("Read notes.md."));
+			requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
 		}
 	}
 
@@ -1069,10 +1851,125 @@ public final class CodexSessionsTest
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
 			{
 			});
-			Files.writeString(root.resolve("config.toml"), "project_doc_fallback_filenames = [\n");
+			Path configuration = root.resolve("config.toml");
+			Files.writeString(configuration, "project_doc_fallback_filenames = [\n");
 			Files.writeString(project.resolve("AGENTS.md"), "Project instructions");
 
-			org.testng.Assert.expectThrows(IOException.class, () -> sessions.loadedSources(project, List.of()));
+			IOException failure = null;
+			try
+			{
+				sessions.loadedSources(project, List.of());
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains("Cannot parse Codex instruction settings from " +
+				configuration);
+			requireThat(failure.getMessage(), "message").contains("line 2, column 1");
+			requireThat(failure.getCause(), "wrapperCause").isInstanceOf(IOException.class);
+			tools.jackson.core.JacksonException parserFailure =
+				(tools.jackson.core.JacksonException) failure.getCause().getCause();
+			requireThat(parserFailure.getLocation().getLineNr(), "line").isEqualTo(2);
+			requireThat(parserFailure.getLocation().getColumnNr(), "column").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that malformed project configuration fails source discovery.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsInvalidProjectConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-invalid-project-config-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = project.resolve(".codex/config.toml");
+			write(configuration, "[mcp_servers.docs\n");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			IOException failure = null;
+			try
+			{
+				sessions.loadedSources(project, List.of());
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains(configuration.toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
+	 * Verifies that a nonregular user configuration path fails source discovery.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsInvalidUserConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-invalid-user-config-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = Files.createDirectory(root.resolve("config.toml"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			IOException failure = null;
+			try
+			{
+				sessions.loadedSources(project, List.of());
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains(configuration.toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
+	 * Verifies that empty and comment-only TOML configurations preserve the empty defaults.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void acceptsEmptyTomlConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-empty-toml-config-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path projectConfiguration = project.resolve(".codex/config.toml");
+			Path home = Files.createDirectories(root.resolve("home"));
+			write(projectConfiguration, "# no project MCP servers\n");
+			write(home.resolve("config.toml"), "\n# no user plugins or MCP servers\n");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (_, _, _) ->
+			{
+			});
+
+			requireThat(sessions.loadedSources(project, List.of()).homeOnly(), "homeOnly").isEmpty();
 		}
 	}
 
@@ -1233,8 +2130,8 @@ public final class CodexSessionsTest
 	/**
 	 * Verifies that the hooks that Codex trials register are those of the project's {@code .codex/hooks.json}, of each
 	 * hooks file that a plugin's manifest names and of each declaration that its manifest holds inline, or of the
-	 * plugin's {@code hooks/hooks.json} when its manifest declares no hooks; that a hooks file that is not valid JSON
-	 * registers none; and that a hooks file that a project-built plugin's mapping copies from the project is named as
+	 * plugin's {@code hooks/hooks.json} when its manifest declares no hooks; and that a hooks file that a project-built
+	 * plugin's mapping copies from the project is named as
 	 * the project's file.
 	 *
 	 * @throws IOException if the files cannot be written
@@ -1261,7 +2158,6 @@ public final class CodexSessionsTest
 			write(tools.resolve("extra/hooks.json"), """
 				{"hooks": {"SessionStart": [{"matcher": "startup", "hooks": [{"type": "command", "command": "a.sh"}, \
 				{"type": "command", "command": "b.sh"}]}]}}""");
-			write(tools.resolve("broken.json"), "{not json");
 			Path cat = root.resolve("cat");
 			write(cat.resolve(".codex-plugin/plugin.json"), "{\"name\": \"cat\"}");
 			write(cat.resolve("hooks/hooks.json"), """

@@ -6,8 +6,11 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
+import com.holdmyspot.cat.codex.secrets.CodexCuratedPluginCacheAccess.Cleanup;
+import com.holdmyspot.cat.codex.secrets.CodexCuratedPluginCacheSecrets;
 
 import java.io.IOException;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -19,6 +22,11 @@ import java.util.regex.Pattern;
  */
 public final class CodexCuratedPluginCache
 {
+	static
+	{
+		CodexCuratedPluginCacheSecrets.setCodexCuratedPluginCacheAccess(CodexCuratedPluginCache::seed);
+	}
+
 	private static final int MAXIMUM_REVISION_BYTES = 128;
 	private static final Pattern GIT_REVISION = Pattern.compile("[0-9a-f]{40}");
 
@@ -37,14 +45,39 @@ public final class CodexCuratedPluginCache
 	 * @param executables runs Git
 	 * @return {@code true} if an isolated snapshot was created, or {@code false} when ordinary Codex synchronization
 	 *         must proceed
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the child temporary directory cannot be created, or a failed seed leaves an owned
+	 *                                  partial cache that cannot be removed; the cleanup failure is the cause and the
+	 *                                  seeding failure is suppressed
 	 */
 	public static boolean seed(Path parentHome, Path isolatedHome, Map<String, String> environment,
-		ExecutableFiles executables)
+		ExecutableFiles executables) throws IOException
+	{
+		return seed(parentHome, isolatedHome, environment, executables, TemporaryDirectories::deleteRecursively);
+	}
+
+	/**
+	 * Seeds a child snapshot with caller-supplied removal of an owned partial cache.
+	 *
+	 * @param parentHome   the parent Codex home that may contain a curated snapshot
+	 * @param isolatedHome the fresh child Codex home
+	 * @param environment  the isolated command environment
+	 * @param executables  runs Git
+	 * @param cleanup      removes the owned partial cache after seeding fails
+	 * @return {@code true} if seeded, or {@code false} when ordinary synchronization must proceed
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the child temporary directory cannot be created, or a failed seed leaves an owned
+	 *                                  partial cache that cannot be removed; the cleanup failure is the cause and the
+	 *                                  seeding failure is suppressed
+	 */
+	private static boolean seed(Path parentHome, Path isolatedHome, Map<String, String> environment,
+		ExecutableFiles executables, Cleanup cleanup) throws IOException
 	{
 		requireThat(parentHome, "parentHome").isNotNull();
 		requireThat(isolatedHome, "isolatedHome").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
+		requireThat(cleanup, "cleanup").isNotNull();
 		Path parentTemporaryDirectory = parentHome.resolve(".tmp");
 		Path parentRepository = parentTemporaryDirectory.resolve("plugins");
 		Path parentRevision = parentTemporaryDirectory.resolve("plugins.sha");
@@ -64,9 +97,18 @@ public final class CodexCuratedPluginCache
 			return false;
 		Path childTemporaryDirectory = isolatedHome.resolve(".tmp");
 		Path childRepository = childTemporaryDirectory.resolve("plugins");
+		Files.createDirectories(isolatedHome);
 		try
 		{
-			Files.createDirectories(childTemporaryDirectory);
+			Files.createDirectory(childTemporaryDirectory);
+		}
+		catch (FileAlreadyExistsException _)
+		{
+			return false;
+		}
+
+		try
+		{
 			HarnessCommand.execute(cloneCommand(parentRepository, childRepository), isolatedHome, environment,
 				executables);
 			HarnessCommand.execute(checkoutCommand(revision), childRepository, environment, executables);
@@ -77,11 +119,14 @@ public final class CodexCuratedPluginCache
 		{
 			try
 			{
-				TemporaryDirectories.deleteRecursively(childTemporaryDirectory);
+				cleanup.delete(childTemporaryDirectory);
 			}
 			catch (IOException cleanupFailure)
 			{
-				e.addSuppressed(cleanupFailure);
+				IOException failure = new IOException("Cannot remove partial Codex curated-plugin cache at " +
+					childTemporaryDirectory, cleanupFailure);
+				failure.addSuppressed(e);
+				throw failure;
 			}
 			return false;
 		}

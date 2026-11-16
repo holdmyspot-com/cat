@@ -2,7 +2,6 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.io.BufferedReader;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -49,14 +48,16 @@ final class RolloutToolResults
 	}
 
 	/**
-	 * Reads every tool result of a session's rollouts. A line that is not a JSON object is ignored, as is a file whose
-	 * name does not end with {@code .jsonl}.
+	 * Reads every tool result of a session's rollouts. Blank lines and well-formed records that do not hold a tool
+	 * result are ignored, as is a file whose name does not end with {@code .jsonl}. Malformed nonblank JSON records fail
+	 * the read.
 	 *
 	 * @param directory the directory that holds the session's rollouts
 	 * @param json      the JSON mapper
 	 * @return each result as received, followed by its decoded text when it is JSON or holds JSON escape sequences
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if {@code directory} is not a directory or a rollout cannot be read
+	 * @throws IOException          if {@code directory} is not a directory, a rollout cannot be read, or a nonblank
+	 *                              rollout line is malformed JSON
 	 */
 	static List<String> read(Path directory, JsonMapper json) throws IOException
 	{
@@ -65,16 +66,11 @@ final class RolloutToolResults
 		List<String> results = new ArrayList<>();
 		for (Path rollout : list(directory))
 		{
-			try (BufferedReader reader = Files.newBufferedReader(rollout))
+			RolloutRecords.read(rollout, line ->
 			{
-				String line = reader.readLine();
-				while (line != null)
-				{
-					for (String text : texts(json, line))
-						addDecoded(json, text, results);
-					line = reader.readLine();
-				}
-			}
+				for (String text : texts(RolloutRecords.parse(json, line)))
+					addDecoded(json, text, results);
+			});
 		}
 		return results;
 	}
@@ -97,23 +93,13 @@ final class RolloutToolResults
 	}
 
 	/**
-	 * Returns the texts of a rollout line's tool result.
+	 * Returns the texts of a rollout record's tool result.
 	 *
-	 * @param json the JSON mapper
-	 * @param line the rollout line
+	 * @param item the parsed rollout record
 	 * @return the texts, empty if the line does not hold a tool result
 	 */
-	private static List<String> texts(JsonMapper json, String line)
+	private static List<String> texts(JsonNode item)
 	{
-		JsonNode item;
-		try
-		{
-			item = json.readTree(line);
-		}
-		catch (JacksonException _)
-		{
-			return List.of();
-		}
 		if (!item.path("type").asString("").equals("response_item"))
 			return List.of();
 		return outputTexts(item.path("payload"));

@@ -179,17 +179,18 @@ public final class CodexSessionsContractTest
 	}
 
 	/**
-	 * Verifies the shared contract check that a judge leaves its read-only evidence unchanged.
+	 * Runs the shared check that a scripted judge session completes and leaves
+	 * the local evidence fixture bytes unchanged.
 	 *
 	 * @throws Exception if the contract check fails
 	 */
 	@Test
-	public void judgeLeavesReadOnlyEvidenceUnchanged() throws Exception
+	public void judgeKeepsLocalEvidence() throws Exception
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
 			// Requirement: R-E13
-			contract(jvm, List.of(recorded("judge-turn-1.jsonl"))).judgeLeavesReadOnlyEvidenceUnchanged();
+			contract(jvm, List.of(recorded("judge-turn-1.jsonl"))).judgeKeepsLocalEvidence();
 		}
 	}
 

@@ -93,6 +93,97 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies a completed turn publishes the root and child rollouts while the app-server remains alive.
+	 *
+	 * @throws IOException if the turn or retained rollouts cannot be read
+	 */
+	@Test(timeOut = 10_000)
+	public void publishesRolloutsBeforeTurnReturns() throws IOException
+	{
+		try (TemporaryDirectories directories = new TemporaryDirectories())
+		{
+			Path directory = directories.add(Files.createTempDirectory("codex-process-live-rollouts-"));
+			Path sessions = Files.createDirectories(directory.resolve("home/sessions/2026/11/14"));
+			Files.writeString(sessions.resolve("rollout-root.jsonl"), "{\"root\":true}\n", UTF_8);
+			Path child = Files.createDirectories(sessions.resolve("subagents"));
+			Files.writeString(child.resolve("rollout-child.jsonl"), "{\"child\":true}\n", UTF_8);
+			AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "done"),
+				turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+			try (CodexProcess process = server.start(directory))
+			{
+				HarnessProcessResult result = process.sendTurn("Run the trial.");
+
+				requireThat(result.completed(), "completed").isTrue();
+				requireThat(server.process.isAlive(), "appServerAlive").isTrue();
+				requireThat(Files.readString(directory.resolve("rollouts/rollout-root.jsonl"), UTF_8), "rootRollout").
+					isEqualTo("{\"root\":true}\n");
+				requireThat(Files.readString(directory.resolve("rollouts/rollout-child.jsonl"), UTF_8), "childRollout").
+					isEqualTo("{\"child\":true}\n");
+			}
+		}
+	}
+
+	/**
+	 * Verifies later completed turns refresh retained root and child rollout prefixes.
+	 *
+	 * @throws IOException if a turn or retained rollout cannot be read
+	 */
+	@Test(timeOut = 10_000)
+	public void refreshesCompletedRolloutsOnLaterTurns() throws IOException
+	{
+		try (TemporaryDirectories directories = new TemporaryDirectories())
+		{
+			Path directory = directories.add(Files.createTempDirectory("codex-refresh-rollouts-"));
+			Path sessions = Files.createDirectories(directory.resolve("home/sessions/2026/11/14"));
+			Path rootRollout = Files.writeString(sessions.resolve("rollout-root.jsonl"), "root-one\nunfinished");
+			Path childRollout = Files.createDirectories(sessions.resolve("subagents")).
+				resolve("rollout-child.jsonl");
+			Files.writeString(childRollout, "child-one\nunfinished");
+			AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "done"),
+				turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+			try (CodexProcess process = server.start(directory))
+			{
+				process.sendTurn("First turn.");
+				requireThat(Files.readString(directory.resolve("rollouts/rollout-root.jsonl")), "firstRoot").
+					isEqualTo("root-one\n");
+				Files.writeString(rootRollout, "-finished\nroot-two\n", java.nio.file.StandardOpenOption.APPEND);
+				Files.writeString(childRollout, "-finished\nchild-two\n", java.nio.file.StandardOpenOption.APPEND);
+
+				process.sendTurn("Second turn.");
+
+				requireThat(Files.readString(directory.resolve("rollouts/rollout-root.jsonl")), "secondRoot").
+					isEqualTo("root-one\nunfinished-finished\nroot-two\n");
+				requireThat(Files.readString(directory.resolve("rollouts/rollout-child.jsonl")), "secondChild").
+					isEqualTo("child-one\nunfinished-finished\nchild-two\n");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a completed turn fails when a native rollout source is not a directory.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(timeOut = 10_000)
+	public void failsTurnWhenRolloutSnapshotCannotBeRead() throws IOException
+	{
+		try (TemporaryDirectories directories = new TemporaryDirectories())
+		{
+			Path directory = directories.add(Files.createTempDirectory("codex-bad-rollout-source-"));
+			Files.createDirectories(directory.resolve("home"));
+			Path sessions = Files.writeString(directory.resolve("home/sessions"), "not a directory");
+			AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "done"),
+				turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+			try (CodexProcess process = server.start(directory))
+			{
+				IOException failure = expectThrows(IOException.class, () -> process.sendTurn("Run the trial."));
+				requireThat(failure.getMessage(), "message").contains(sessions.toString());
+				requireThat(server.process.isAlive(), "appServerAlive").isTrue();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that closing a process whose Codex home recorded no session still creates the rollouts directory, so
 	 * that a session without threads reads as having received no tool results.
 	 *
@@ -419,26 +510,33 @@ public final class CodexProcessTest
 		// Requirement: R-C12
 		AppServer server = new AppServer(id -> List.of(turnStarted(id), agentMessage(ROOT_THREAD, "Working on it.")),
 			id -> List.of(response(id), turnCompleted(ROOT_THREAD, ROOT_TURN, "interrupted")));
-		CountDownLatch working = new CountDownLatch(1);
-		try (TemporaryDirectories directories = new TemporaryDirectories();
-			ExecutorService turnThread = Executors.newSingleThreadExecutor();
-			CodexProcess process = server.start(directories))
+		try (TemporaryDirectories directories = new TemporaryDirectories())
 		{
-			Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Do the task.", line ->
+			Path directory = directories.add(Files.createTempDirectory("codex-interrupt-rollouts-"));
+			Path sessions = Files.createDirectories(directory.resolve("home/sessions/2026/11/14"));
+			Files.writeString(sessions.resolve("rollout-root.jsonl"), "interrupted-progress\n", UTF_8);
+			CountDownLatch working = new CountDownLatch(1);
+			try (ExecutorService turnThread = Executors.newSingleThreadExecutor();
+				CodexProcess process = server.start(directory))
 			{
-				if (line.contains("Working on it."))
-					working.countDown();
-			}));
-			working.await();
+				Future<HarnessProcessResult> turn = turnThread.submit(() -> process.sendTurn("Do the task.", line ->
+				{
+					if (line.contains("Working on it."))
+						working.countDown();
+				}));
+				working.await();
 
-			process.interrupt();
-			HarnessProcessResult result = turn.get(5, TimeUnit.SECONDS);
+				process.interrupt();
+				HarnessProcessResult result = turn.get(5, TimeUnit.SECONDS);
 
-			requireThat(server.interruptRequests(), "interruptRequests").isEqualTo(List.of(ROOT_THREAD + "/" +
-				ROOT_TURN));
-			requireThat(result.completed(), "completed").isTrue();
-			requireThat(result.exitCode(), "exitCode").isEqualTo(0);
-			requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of("Working on it."));
+				requireThat(server.interruptRequests(), "interruptRequests").isEqualTo(List.of(ROOT_THREAD + "/" +
+					ROOT_TURN));
+				requireThat(result.completed(), "completed").isTrue();
+				requireThat(result.exitCode(), "exitCode").isEqualTo(0);
+				requireThat(result.assistantMessages(), "assistantMessages").isEqualTo(List.of("Working on it."));
+				requireThat(Files.readString(directory.resolve("rollouts/rollout-root.jsonl"), UTF_8), "rollout").
+					isEqualTo("interrupted-progress\n");
+			}
 		}
 	}
 
@@ -507,23 +605,48 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * Verifies the bridge reports an incomplete turn when its input reaches EOF without a completion notification,
-	 * and waits for the supplied process to exit before reading its exit status.
+	 * Verifies the bridge reports an incomplete turn after stdout EOF, remains pending while the child is alive, and
+	 * includes the child's status after its independent exit.
 	 *
-	 * @throws IOException if the turn fails
+	 * @throws IOException            if the turn fails
+	 * @throws InterruptedException   if waiting for the turn is interrupted
+	 * @throws ExecutionException     if processing the turn fails
+	 * @throws TimeoutException       if the turn does not finish after the child exits
 	 */
 	@Test(timeOut = 10_000)
-	public void waitsForExitAfterOutputEnds() throws IOException
+	public void waitsForExitAfterOutputEnds() throws IOException, InterruptedException, ExecutionException,
+		TimeoutException
 	{
 		// Requirement: R-E13
-		AppServer server = new AppServer(id -> List.of(turnStarted(id)), NO_ANSWER).closingOutputAfterTurnStart();
 		try (TemporaryDirectories directories = new TemporaryDirectories();
-			CodexProcess process = server.start(directories))
+			ExecutorService executor = Executors.newSingleThreadExecutor())
 		{
-			HarnessProcessResult result = process.sendTurn("Judge the evidence.");
+			AppServer server = new AppServer(id -> List.of(turnStarted(id)), NO_ANSWER, 37).
+				closingOutputAfterTurnStart();
+			try (CodexProcess process = server.start(directories))
+			{
+				try
+				{
+					Future<HarnessProcessResult> turn = executor.submit(() -> process.sendTurn("Judge the evidence."));
+					server.awaitTurnRequest();
+					expectThrows(TimeoutException.class, () -> turn.get(100, TimeUnit.MILLISECONDS));
+					requireThat(server.process.isAlive(), "childAliveAfterOutputEnds").isTrue();
+					server.process.exit();
+					HarnessProcessResult result = turn.get(5, TimeUnit.SECONDS);
 
-			requireThat(result.completed(), "completed").isFalse();
-			requireThat(result.standardError(), "standardError").contains("ended before turn completion");
+					requireThat(result.completed(), "completed").isFalse();
+					requireThat(result.standardError(), "standardError").contains("ended before turn completion");
+					requireThat(result.exitCode(), "exitCode").isEqualTo(37);
+				}
+				finally
+				{
+					server.process.exit();
+				}
+			}
+			finally
+			{
+				server.process.exit();
+			}
 		}
 	}
 
@@ -700,7 +823,7 @@ public final class CodexProcessTest
 		private final JsonMapper json = JsonMapper.builder().build();
 		private final LongFunction<List<String>> onTurnStart;
 		private final LongFunction<List<String>> onTurnInterrupt;
-		private final FakeHarnessCli process = new FakeHarnessCli(this::answer);
+		private final FakeHarnessCli process;
 		private final CountDownLatch turnRequested = new CountDownLatch(1);
 		private volatile long turnRequestId;
 		private volatile boolean closesOutputAfterTurnStart;
@@ -717,13 +840,27 @@ public final class CodexProcessTest
 		 */
 		private AppServer(LongFunction<List<String>> onTurnStart, LongFunction<List<String>> onTurnInterrupt)
 		{
-			this.onTurnStart = onTurnStart;
-			this.onTurnInterrupt = onTurnInterrupt;
+			this(onTurnStart, onTurnInterrupt, 0);
 		}
 
 		/**
-		 * Makes the app-server close its output right after it answers {@code turn/start}, without reporting that it
-		 * exited until a caller waits for it.
+		 * Creates an app-server that has not started and will exit with the selected status.
+		 *
+		 * @param onTurnStart returns the lines to print for a {@code turn/start} request with the given identifier
+		 * @param onTurnInterrupt returns the lines to print for a {@code turn/interrupt} request with the given
+		 *   identifier
+		 * @param exitStatus the terminal process status
+		 */
+		private AppServer(LongFunction<List<String>> onTurnStart, LongFunction<List<String>> onTurnInterrupt,
+			int exitStatus)
+		{
+			this.onTurnStart = onTurnStart;
+			this.onTurnInterrupt = onTurnInterrupt;
+			process = new FakeHarnessCli(this::answer, exitStatus);
+		}
+
+		/**
+		 * Makes the app-server close its stdout after it answers {@code turn/start}, while leaving the process alive.
 		 *
 		 * @return this app-server
 		 */
@@ -928,10 +1065,10 @@ public final class CodexProcessTest
 				case "turn/start" ->
 				{
 					turnRequestId = id;
-					turnRequested.countDown();
 					process.emit(onTurnStart.apply(id).toArray(String[]::new));
 					if (closesOutputAfterTurnStart)
-						process.closeOutputThenExitWhenAwaited();
+						process.closeOutput();
+					turnRequested.countDown();
 				}
 				case "turn/interrupt" -> process.emit(onTurnInterrupt.apply(id).toArray(String[]::new));
 				default ->

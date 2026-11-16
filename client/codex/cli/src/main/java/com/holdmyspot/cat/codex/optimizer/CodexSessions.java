@@ -34,6 +34,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.TokenStreamLocation;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.dataformat.toml.TomlMapper;
@@ -223,10 +224,24 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(project, "project").isNotNull();
 		Path configuration = new CodexInstallation(settings().configurationDirectory().toAbsolutePath()).
 			configuration();
+		Optional<String> selected;
+		try
+		{
+			selected = CodexConnectionConfiguration.instructionSettings(configuration);
+		}
+		catch (IOException e)
+		{
+			if (e.getCause() instanceof JacksonException parserFailure)
+			{
+				TokenStreamLocation location = parserFailure.getLocation();
+				throw new IOException(e.getMessage() + " at line " + location.getLineNr() + ", column " +
+					location.getColumnNr(), e);
+			}
+			throw e;
+		}
 		JsonNode values;
 		try
 		{
-			Optional<String> selected = CodexConnectionConfiguration.instructionSettings(configuration);
 			values = TomlMapper.builder().build().readTree(selected.orElse(""));
 		}
 		catch (JacksonException e)
@@ -315,18 +330,8 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(project, "project").isNotNull();
 		Path file = CodexInstallation.defaultConfiguration();
 		Path configuration = project.resolve(file);
-		if (!Files.isRegularFile(configuration))
-			return List.of();
-		JsonNode root;
-		try
-		{
-			root = TomlMapper.builder().build().readTree(Files.readString(configuration));
-		}
-		catch (JacksonException _)
-		{
-			// Codex starts no server from a configuration that it cannot parse
-			return List.of();
-		}
+		JsonNode root = readConfigurationFile(configuration, TomlMapper.builder().build()).
+			orElse(JsonMapper.builder().build().missingNode());
 		return mcpServers(file, root.path("mcp_servers"));
 	}
 
@@ -342,18 +347,8 @@ public final class CodexSessions extends RunnerSessions
 	{
 		Path home = settings().configurationDirectory();
 		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
-		JsonNode root = JsonMapper.builder().build().missingNode();
-		if (Files.isRegularFile(configuration))
-		{
-			try
-			{
-				root = TomlMapper.builder().build().readTree(Files.readString(configuration));
-			}
-			catch (JacksonException _)
-			{
-				// Codex starts no plugin or server from a configuration that it cannot parse
-			}
-		}
+		JsonNode root = readConfigurationFile(configuration, TomlMapper.builder().build()).
+			orElse(JsonMapper.builder().build().missingNode());
 		return new UserConfiguration(home.resolve("hooks.json"), enabledEntries(root.path("plugins")), configuration,
 			enabledEntries(root.path("mcp_servers")));
 	}

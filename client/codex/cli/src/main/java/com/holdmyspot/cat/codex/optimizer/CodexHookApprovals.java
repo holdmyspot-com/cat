@@ -4,23 +4,23 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
-import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.function.UnaryOperator;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Finds the hooks of a Codex plugin that the user has not approved. Codex runs a plugin's hook only when the user's
@@ -65,12 +65,14 @@ public final class CodexHookApprovals
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(configuration, "configuration").isNotNull();
 		requireThat(json, "json").isNotNull();
+		Path configurationFile = new CodexInstallation(configuration.toAbsolutePath()).configuration();
+		RunnerSessions.readConfigurationFile(configurationFile, TomlMapper.builder().build());
+		List<HookSource> pluginSources = sources(plugin::resolve, json);
 		String name = PluginManifest.name(plugin, MANIFEST);
-		Map<String, String> approvals = CodexConnectionConfiguration.pluginHookApprovals(
-			new CodexInstallation(configuration.toAbsolutePath()).configuration(), name);
+		Map<String, String> approvals = CodexConnectionConfiguration.pluginHookApprovals(configurationFile, name);
 
 		List<String> unapproved = new ArrayList<>();
-		for (HookSource source : sources(plugin::resolve, json))
+		for (HookSource source : pluginSources)
 		{
 			for (Entry<String, JsonNode> event : source.declaration().path("hooks").properties())
 			{
@@ -101,7 +103,10 @@ public final class CodexHookApprovals
 	 */
 	static List<HookSource> sources(UnaryOperator<Path> resolve, JsonMapper json) throws IOException
 	{
-		JsonNode hooks = read(resolve.apply(MANIFEST), json).path("hooks");
+		Path manifest = resolve.apply(MANIFEST);
+		JsonNode hooks = RunnerSessions.readConfigurationFile(manifest, json, MAXIMUM_FILE_BYTES).
+			orElseThrow(() -> new IOException("Required Codex plugin manifest is missing: " +
+				manifest.toAbsolutePath().normalize())).path("hooks");
 		List<HookSource> sources = new ArrayList<>();
 		if (hooks.isMissingNode() || hooks.isNull())
 		{
@@ -130,8 +135,7 @@ public final class CodexHookApprovals
 	}
 
 	/**
-	 * Adds the declarations of a hooks file. Codex skips a hooks file that is missing or is not valid JSON, so it runs
-	 * none of its hooks and none needs an approval.
+	 * Adds the declarations of an optional hooks file. An absent file contributes no hooks.
 	 *
 	 * @param resolve returns the file that the plugin holds at a path relative to its directory
 	 * @param relative the hooks file, relative to the plugin directory
@@ -143,33 +147,12 @@ public final class CodexHookApprovals
 		throws IOException
 	{
 		Path file = resolve.apply(relative);
-		if (!Files.isRegularFile(file))
+		Optional<JsonNode> content = RunnerSessions.readConfigurationFile(file, json, MAXIMUM_FILE_BYTES);
+		if (content.isEmpty())
 			return;
-		JsonNode declaration;
-		try
-		{
-			declaration = read(file, json);
-		}
-		catch (JacksonException _)
-		{
-			return;
-		}
+		JsonNode declaration = content.get();
 		Path normalized = relative.normalize();
 		sources.add(new HookSource(PortablePaths.text(normalized), normalized, declaration));
-	}
-
-	/**
-	 * Reads a JSON file.
-	 *
-	 * @param file the file
-	 * @param json the JSON mapper
-	 * @return the file's JSON
-	 * @throws IOException if the file cannot be read
-	 * @throws JacksonException if the file is not valid JSON
-	 */
-	private static JsonNode read(Path file, JsonMapper json) throws IOException
-	{
-		return json.readTree(BoundedInput.readUtf8(file, MAXIMUM_FILE_BYTES, "Codex plugin file"));
 	}
 
 	/**

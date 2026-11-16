@@ -139,13 +139,23 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-plugins-"));
 			Path home = root.resolve("isolated");
 			List<String> steps = new ArrayList<>();
+			List<List<String>> commands = new ArrayList<>();
 
 			CodexRunner.installPlugins("codex", artifact(root), false, List.of(plugin(root, "release-docs"),
 				plugin(root, "tools")), root.resolve("host"), home, Map.of(), Yielding.executableFiles(),
-				Yielding.fileReplacer(), (_, step) -> steps.add(step));
+				Yielding.fileReplacer(), (command, step) ->
+				{
+					steps.add(step);
+					commands.add(List.copyOf(command));
+				});
 
 			requireThat(steps, "steps").isEqualTo(List.of("trial-plugin-release-docs-marketplace-add",
 				"trial-plugin-release-docs-add", "trial-plugin-tools-marketplace-add", "trial-plugin-tools-add"));
+			requireThat(commands, "commands").isEqualTo(List.of(
+				List.of("codex", "plugin", "marketplace", "add", home.resolve("plugins/release-docs-marketplace").toString()),
+				List.of("codex", "plugin", "add", "release-docs@release-docs"),
+				List.of("codex", "plugin", "marketplace", "add", home.resolve("plugins/tools-marketplace").toString()),
+				List.of("codex", "plugin", "add", "tools@tools")));
 			requireThat(Files.readString(home.resolve("plugins/tools-marketplace/plugins/tools/README.md")), "copy").
 				isEqualTo("tools");
 		}
@@ -284,12 +294,14 @@ public final class CodexRunnerTest
 			CodexConnectionConfiguration.copy(host.resolve("config.toml"), home.resolve("config.toml"),
 				root.resolve("project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, Platform.current());
 
-			CodexRunner.installPlugins("codex", artifact, true, List.of(), host, home, Map.of(),
+			Map<String, String> environment = Map.of("SystemRoot", root.resolve("bound-system").toString(),
+				"PATH", root.resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), host, home, environment,
 				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
 
 			Path installer = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab").
 				resolve(PluginDirectory.INSTALLER);
-			Map<String, List<String>> entries = new CodexIntegration().permissions(installer);
+			Map<String, List<String>> entries = new CodexIntegration().permissions(environment, installer);
 			String rules = Files.readString(home.resolve("rules/cat-installer.rules"));
 			requireThat(rules, "rules").isEqualTo(entries.get("rules/cat-installer.rules#").get(0));
 			if (!Platform.current().isWindows())

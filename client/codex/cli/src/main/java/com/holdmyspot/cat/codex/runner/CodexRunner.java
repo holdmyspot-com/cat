@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
+import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -141,6 +142,7 @@ public final class CodexRunner
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
 	 * @throws IOException             if validation, copying, or process startup fails
 	 */
+	@SuppressWarnings("PMD.CloseResource")
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
@@ -223,11 +225,16 @@ public final class CodexRunner
 			HarnessSessionTranscripts transcripts = null;
 			if (sessionTranscripts)
 				transcripts = CodexProcess.rollouts(isolatedHome, run.sessionTranscripts());
-			CodexProcess process = new CodexProcess(HarnessProcessStarter.start(command, worktree,
-				isolatedEnvironment, executables), scope, installCat, transcripts);
+			manager.markHarnessStarting(run);
+			ProcessOwnership child = new ProcessOwnership();
+			CodexProcess process = null;
+			boolean identityRecorded = false;
 			try
 			{
+				child.start(command, worktree, isolatedEnvironment, executables);
+				process = new CodexProcess(child.process(), scope, installCat, transcripts);
 				manager.recordHarnessProcess(run, process.pid(), process.processStart());
+				identityRecorded = true;
 				String selectedModel = model;
 				String agentInstructions = "";
 				String selectedEffort = effort;
@@ -246,18 +253,13 @@ public final class CodexRunner
 				{
 					throw refusalOf(e);
 				}
-				return new HarnessRunSession(run, process, scope, lock);
+				HarnessRunSession session = new HarnessRunSession(run, process, scope, lock);
+				child.release();
+				return session;
 			}
-			catch (IOException e)
+			catch (IOException | RuntimeException e)
 			{
-				try
-				{
-					process.close();
-				}
-				catch (IOException closeFailure)
-				{
-					e.addSuppressed(closeFailure);
-				}
+				cleanupLaunchFailure(child, process, manager, run, identityRecorded, e);
 				throw e;
 			}
 		}
@@ -272,6 +274,109 @@ public final class CodexRunner
 			scope.close();
 			manager.fail(run, e.getMessage());
 			throw e;
+		}
+	}
+
+	/**
+	 * Closes a failed harness launch and clears the starting marker only after child exit is confirmed.
+	 *
+	 * @param child the raw process returned by the operating system, if spawned
+	 * @param wrapper the process wrapper, if constructed
+	 * @param manager the run manager
+	 * @param run the run being launched
+	 * @param identityRecorded whether the manifest already contains the child identity
+	 * @param primary the launch failure
+	 */
+	@SuppressWarnings("PMD.CloseResource")
+	private static void cleanupLaunchFailure(ProcessOwnership child, CodexProcess wrapper, HarnessRunManager manager,
+		HarnessRun run, boolean identityRecorded, Throwable primary)
+	{
+		Process rawProcess = child.processOrNull();
+		if (rawProcess != null)
+		{
+			try
+			{
+				HarnessProcessTermination.terminate(rawProcess, "codex");
+				if (rawProcess.isAlive())
+					throw new IOException("Codex child remained alive after launch cleanup");
+			}
+			catch (IOException | RuntimeException e)
+			{
+				primary.addSuppressed(e);
+			}
+		}
+		if (wrapper != null && (rawProcess == null || !rawProcess.isAlive()))
+		{
+			try
+			{
+				wrapper.close();
+			}
+			catch (IOException e)
+			{
+				primary.addSuppressed(e);
+			}
+		}
+		if (!identityRecorded && (rawProcess == null || !rawProcess.isAlive()))
+		{
+			try
+			{
+				manager.recordNoHarnessProcess(run);
+			}
+			catch (IOException e)
+			{
+				primary.addSuppressed(e);
+			}
+		}
+	}
+
+	/**
+	 * Owns a raw child until its durable identity and wrapper have been accepted by the run session.
+	 */
+	private static final class ProcessOwnership
+	{
+		private Process process;
+
+		/**
+		 * Starts and retains the raw child.
+		 *
+		 * @param command the command
+		 * @param worktree the working directory
+		 * @param environment the child environment
+		 * @param executables the process launcher
+		 * @throws IOException if the child cannot be started
+		 */
+		private void start(List<String> command, Path worktree, Map<String, String> environment,
+			ExecutableFiles executables) throws IOException
+		{
+			process = HarnessProcessStarter.start(command, worktree, environment, executables);
+		}
+
+		/**
+		 * Returns the retained child.
+		 *
+		 * @return the raw child process
+		 */
+		private Process process()
+		{
+			return process;
+		}
+
+		/**
+		 * Returns the child if launch cleanup still owns it.
+		 *
+		 * @return the raw child, or null if ownership transferred
+		 */
+		private Process processOrNull()
+		{
+			return process;
+		}
+
+		/**
+		 * Transfers ownership to the returned harness session.
+		 */
+		private void release()
+		{
+			process = null;
 		}
 	}
 
@@ -788,7 +893,7 @@ public final class CodexRunner
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace);
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-add");
-			installPermissions(isolatedHome, replacer);
+			installPermissions(isolatedHome, isolatedEnvironment, replacer);
 		}
 		for (int i = 0; i < trialPlugins.size(); ++i)
 		{
@@ -805,10 +910,13 @@ public final class CodexRunner
 	 * Writes the entries that CAT's installer writes for the CAT version that Codex installed into the isolated home.
 	 *
 	 * @param isolatedHome the isolated Codex home
+	 * @param isolatedEnvironment the isolated Codex process's environment, which CAT's installer records as the harness
+	 *   environment
 	 * @param replacer replaces the rules file and {@code config.toml}
 	 * @throws IOException if Codex did not install exactly one copy of CAT, or an entry cannot be written
 	 */
-	private static void installPermissions(Path isolatedHome, FileReplacer replacer) throws IOException
+	private static void installPermissions(Path isolatedHome, Map<String, String> isolatedEnvironment,
+		FileReplacer replacer) throws IOException
 	{
 		Path home = isolatedHome.toAbsolutePath().normalize();
 		List<Path> copies = InstalledPlugins.of(home, CAT_PLUGIN_ID);
@@ -817,7 +925,8 @@ public final class CodexRunner
 			throw new IOException("Codex did not install exactly one copy of " + CAT_PLUGIN_ID + " into " + home +
 				": " + copies);
 		}
-		new CodexIntegration().installPermissions(home, copies.get(0).resolve(PluginDirectory.INSTALLER), replacer);
+		new CodexIntegration().installPermissions(isolatedEnvironment, home,
+			copies.get(0).resolve(PluginDirectory.INSTALLER), replacer);
 	}
 
 	/**

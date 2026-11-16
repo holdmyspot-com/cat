@@ -3,6 +3,7 @@ package com.holdmyspot.cat.codex.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
@@ -313,7 +314,10 @@ public final class CodexProcess implements HarnessProcess
 						turnActive = false;
 						interrupted = interruptRequested;
 					}
-					return completedTurn(events.toString(), line, assistantMessages, interrupted);
+					HarnessProcessResult result = completedTurn(events.toString(), line, assistantMessages, interrupted);
+					if (result.completed() && transcripts != null)
+						transcripts.copyCompletedLines(FileReplacer.retrying(scope.waiting()));
+					return result;
 				}
 				line = nextLine();
 			}

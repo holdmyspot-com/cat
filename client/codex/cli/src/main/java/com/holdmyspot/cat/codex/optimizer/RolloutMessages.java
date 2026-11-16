@@ -2,16 +2,13 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -41,14 +38,16 @@ final class RolloutMessages
 	}
 
 	/**
-	 * Reads the messages that each thread received. A line that is not a JSON object is ignored, as is a file whose
-	 * name does not end with {@code .jsonl} and a rollout whose first line names no thread.
+	 * Reads the messages that each thread received. Blank lines and well-formed records that do not describe a message
+	 * are ignored, as is a file whose name does not end with {@code .jsonl} and a rollout whose first line names no
+	 * thread. Malformed nonblank JSON records fail the read.
 	 *
 	 * @param directory the directory that holds the session's rollouts
 	 * @param json      the JSON mapper
 	 * @return the messages that each thread received in the order that it received them, by the thread's identifier
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if {@code directory} is not a directory or a rollout cannot be read
+	 * @throws IOException          if {@code directory} is not a directory, a rollout cannot be read, or a nonblank
+	 *                              rollout line is malformed JSON
 	 */
 	static Map<String, List<RolloutMessage>> read(Path directory, JsonMapper json) throws IOException
 	{
@@ -57,62 +56,43 @@ final class RolloutMessages
 		Map<String, List<RolloutMessage>> messages = new HashMap<>();
 		for (Path rollout : RolloutToolResults.list(directory))
 		{
-			try (BufferedReader reader = Files.newBufferedReader(rollout))
+			List<RolloutMessage> received = new ArrayList<>();
+			String[] owner = {""};
+			String[] anchor = {""};
+			RolloutRecords.read(rollout, line ->
 			{
-				String owner = parse(json, reader.readLine()).path("payload").path("id").asString("");
-				if (owner.isBlank())
-					continue;
-				List<RolloutMessage> received = new ArrayList<>();
-				String anchor = "";
-				String line = reader.readLine();
-				while (line != null)
+				JsonNode record = RolloutRecords.parse(json, line);
+				if (line.lineNumber() == 1)
 				{
-					JsonNode payload = parse(json, line).path("payload");
-					switch (payload.path("type").asString(""))
-					{
-						case "item_completed" ->
-						{
-							if (payload.path("thread_id").asString("").equals(owner))
-								anchor = payload.path("item").path("id").asString(anchor);
-						}
-						case "agent_message" ->
-						{
-							String author = payload.path("author").asString("");
-							if (!author.isBlank())
-								received.add(new RolloutMessage(anchor, author, text(payload.path("content"))));
-						}
-						default ->
-						{
-						}
-					}
-					line = reader.readLine();
+					owner[0] = record.path("payload").path("id").asString("");
+					return;
 				}
-				if (!received.isEmpty())
-					messages.put(owner, received);
-			}
+				if (owner[0].isBlank())
+					return;
+				JsonNode payload = record.path("payload");
+				switch (payload.path("type").asString(""))
+				{
+					case "item_completed" ->
+					{
+						if (payload.path("thread_id").asString("").equals(owner[0]))
+							anchor[0] = payload.path("item").path("id").asString(anchor[0]);
+					}
+					case "agent_message" ->
+					{
+						String author = payload.path("author").asString("");
+						if (!author.isBlank())
+							received.add(new RolloutMessage(anchor[0], author, text(payload.path("content"))));
+					}
+					default ->
+					{
+					}
+				}
+			});
+			if (owner[0].isBlank() || received.isEmpty())
+				continue;
+			messages.put(owner[0], received);
 		}
 		return messages;
-	}
-
-	/**
-	 * Parses a rollout line.
-	 *
-	 * @param json the JSON mapper
-	 * @param line the line, or {@code null} at the end of the rollout
-	 * @return the line's JSON value, or a missing node if the line is absent or is not JSON
-	 */
-	private static JsonNode parse(JsonMapper json, String line)
-	{
-		if (line == null)
-			return json.missingNode();
-		try
-		{
-			return json.readTree(line);
-		}
-		catch (JacksonException _)
-		{
-			return json.missingNode();
-		}
 	}
 
 	/**

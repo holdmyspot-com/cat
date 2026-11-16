@@ -1,18 +1,15 @@
 package com.holdmyspot.cat.codex.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
-
 import com.holdmyspot.cat.codex.rollout.RolloutLineage;
-import java.io.BufferedReader;
+import com.holdmyspot.cat.common.history.TranscriptLines.Line;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.nio.channels.Channels;
-import java.nio.channels.SeekableByteChannel;
-import java.nio.charset.CodingErrorAction;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Stream;
@@ -41,10 +38,9 @@ import tools.jackson.databind.node.ObjectNode;
  * latest that the records of its history record: those of the rollouts that it inherited its history from, up to
  * where it inherited them, then its own, as {@link RolloutLineage} finds them.
  * <p>
- * Only the end of a large rollout is read, so a thread whose latest records lie before it has no recorded state. A
- * missing or unreadable rollout, and a malformed line such as one that Codex is still writing, are not errors: the
- * state stays as the records read before them left it. A rollout that the thread inherited from and that cannot be
- * found or read leaves out its records.
+ * A supplied parent must have a complete, readable rollout lineage, which this class reconstructs from the beginning.
+ * A thread with a valid rollout that records no multi-agent state has no recorded state. A blank thread identifier
+ * means that no Codex thread starts the nested process and therefore needs no rollout.
  * <p>
  * <b>Thread Safety:</b> This class is immutable and thread-safe.
  */
@@ -55,12 +51,6 @@ public final class CodexParentMultiAgentState
 	 * the parent's configuration.
 	 */
 	public static final CodexParentMultiAgentState NONE = new CodexParentMultiAgentState(null, Mode.UNKNOWN, "");
-	/**
-	 * The most bytes at the end of a rollout that are read. A thread writes a {@code turn_context} and a full
-	 * {@code world_state} record at the start of each turn, and while it waits for the command that starts the nested
-	 * process its rollout barely grows, so its latest records lie near the end. Rollouts of long threads reach gigabytes.
-	 */
-	private static final long MAXIMUM_TAIL_BYTES = 64L * 1024 * 1024;
 	/**
 	 * The JSON strings that each record this class reads holds, one of which every such rollout line contains whatever
 	 * spacing its JSON has.
@@ -150,27 +140,45 @@ public final class CodexParentMultiAgentState
 	 * @param codexHome the directory that holds the thread's Codex configuration and rollouts
 	 * @param threadId  the thread's identifier, from {@code CODEX_THREAD_ID}, or {@code null} or blank if no Codex
 	 *                  thread starts the nested process
-	 * @return the state, or {@link #NONE} if there is no thread, its identifier names no file, or its rollout is missing,
-	 *   unreadable or records no state
+	 * @return the state, or {@link #NONE} if there is no thread or its valid rollout records no state
 	 * @throws NullPointerException if {@code json} or {@code codexHome} are null
+	 * @throws IOException if a supplied thread's rollout or required lineage cannot be reconstructed
 	 */
-	public static CodexParentMultiAgentState read(JsonMapper json, Path codexHome, String threadId)
+	public static CodexParentMultiAgentState read(JsonMapper json, Path codexHome, String threadId) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(codexHome, "codexHome").isNotNull();
-		if (threadId == null || threadId.isBlank() || threadId.contains("/") || threadId.contains("\\"))
+		if (threadId == null || threadId.isBlank())
 			return NONE;
+		if (threadId.contains("/") || threadId.contains("\\"))
+			throw new IOException("Cannot reconstruct required Codex parent thread '" + threadId + "' under " + codexHome,
+				new IllegalArgumentException("thread identifier contains a path separator"));
+		String requiredThread = threadId.strip();
+		Path rollout;
 		try
 		{
-			Optional<Path> rollout = locate(codexHome, threadId.strip());
-			if (rollout.isEmpty())
-				return NONE;
-			return readRollout(json, rollout.get());
+			rollout = locate(codexHome, requiredThread).orElseThrow(() ->
+				new IOException("Required Codex parent rollout for thread '" + requiredThread + "' was not found under " +
+					codexHome, new NoSuchFileException(codexHome.resolve("sessions").toString())));
 		}
-		catch (IOException | UncheckedIOException _)
+		catch (IOException e)
 		{
-			// The nested process then gets only the parent's configuration, as it does outside a Codex thread
-			return NONE;
+			throw new IOException("Cannot locate required Codex parent thread '" + requiredThread + "' under " + codexHome,
+				e);
+		}
+		try
+		{
+			return readRolloutRequired(json, rollout);
+		}
+		catch (UncheckedIOException e)
+		{
+			throw new IOException("Cannot reconstruct required Codex parent thread '" + requiredThread + "' from " +
+				rollout + ": " + e.getMessage(), e.getCause());
+		}
+		catch (IOException e)
+		{
+			throw new IOException("Cannot reconstruct required Codex parent thread '" + requiredThread + "' from " +
+				rollout + ": " + e.getMessage(), e);
 		}
 	}
 
@@ -185,20 +193,27 @@ public final class CodexParentMultiAgentState
 	 */
 	private static Optional<Path> locate(Path codexHome, String threadId) throws IOException
 	{
-		Path sessions = codexHome.resolve("sessions");
-		if (!Files.isDirectory(sessions))
-			return Optional.empty();
 		String suffix = "-" + threadId + ".jsonl";
-		try (Stream<Path> files = Files.walk(sessions))
+		Path found = null;
+		for (Path directory : List.of(codexHome.resolve("sessions"), codexHome.resolve("archived_sessions")))
 		{
-			return files.filter(Files::isRegularFile).
-				filter(file ->
-				{
-					String name = file.getFileName().toString();
-					return name.startsWith("rollout-") && name.endsWith(suffix);
-				}).
-				max(Comparator.comparing(file -> file.getFileName().toString()));
+			if (!Files.isDirectory(directory))
+				continue;
+			try (Stream<Path> files = Files.walk(directory))
+			{
+				Path candidate = files.filter(Files::isRegularFile).
+					filter(file ->
+					{
+						String name = file.getFileName().toString();
+						return name.startsWith("rollout-") && name.endsWith(suffix);
+					}).
+					max(Comparator.comparing(file -> file.getFileName().toString())).orElse(null);
+				if (candidate != null && (found == null || candidate.getFileName().toString().compareTo(
+					found.getFileName().toString()) > 0))
+					found = candidate;
+			}
 		}
+		return Optional.ofNullable(found);
 	}
 
 	/**
@@ -210,21 +225,33 @@ public final class CodexParentMultiAgentState
 	 * @return the recorded state
 	 * @throws IOException if the thread's own rollout cannot be read
 	 */
-	private static CodexParentMultiAgentState readRollout(JsonMapper json, Path rollout) throws IOException
+	private static CodexParentMultiAgentState readRolloutRequired(JsonMapper json, Path rollout) throws IOException
 	{
 		Latest latest = new Latest();
-		for (RolloutLineage.Segment segment : RolloutLineage.resolve(json, rollout))
+		try (Stream<Line> lines = RolloutLineage.linesRequired(json, rollout))
 		{
-			try
+			Iterator<Line> iterator = lines.iterator();
+			while (iterator.hasNext())
 			{
-				latest.read(json, segment);
+				Line line = iterator.next();
+				if (!holdsReadRecord(line.text()))
+					continue;
+				JsonNode record;
+				try
+				{
+					record = json.readTree(line.text());
+				}
+				catch (JacksonException e)
+				{
+					throw new IOException(line.transcript() + ":" + line.lineNumber() +
+						": multi-agent record is not valid JSON", e);
+				}
+				latest.addRequired(record, line);
 			}
-			catch (IOException | UncheckedIOException e)
-			{
-				if (segment.rollout().equals(rollout))
-					throw e;
-				// An inherited rollout that cannot be read leaves out its records, as one that cannot be found does
-			}
+		}
+		catch (UncheckedIOException e)
+		{
+			throw new IOException(e.getMessage(), e.getCause());
 		}
 		return latest.state();
 	}
@@ -386,88 +413,136 @@ public final class CodexParentMultiAgentState
 		private String customText = "";
 
 		/**
-		 * Reads the records at the end of one rollout of a thread's history, after those of the rollouts read before it.
-		 * Only the end of the part of the rollout that belongs to the history is read, as far as
-		 * {@code MAXIMUM_TAIL_BYTES} allows.
+		 * Applies a validated state record.
 		 *
-		 * @param json    the JSON mapper
-		 * @param segment the rollout, and where the part of it that belongs to the history ends
-		 * @throws IOException if the rollout cannot be read
+		 * @param record the JSON record
+		 * @param line its physical source location
+		 * @throws IOException if a present state field is invalid
 		 */
-		void read(JsonMapper json, RolloutLineage.Segment segment) throws IOException
+		private void addRequired(JsonNode record, Line line) throws IOException
 		{
-			try (SeekableByteChannel channel = Files.newByteChannel(segment.rollout());
-				BufferedReader reader = new BufferedReader(Channels.newReader(channel, UTF_8.newDecoder().
-					onMalformedInput(CodingErrorAction.REPLACE).onUnmappableCharacter(CodingErrorAction.REPLACE), -1)))
+			String type = record.path("type").asString("");
+			if (!type.equals("turn_context") && !type.equals("world_state"))
+				return;
+			JsonNode payload = record.get("payload");
+			if (payload == null || !payload.isObject())
+				throw invalid(line, "state record payload must be an object", null);
+			switch (type)
 			{
-				long end = Math.min(channel.size(), segment.endByteOffset());
-				long start = Math.max(0, end - MAXIMUM_TAIL_BYTES);
-				channel.position(start);
-				// A read that starts inside a line skips the rest of that line
-				if (start > 0)
-					reader.readLine();
-				for (String line = reader.readLine(); line != null; line = reader.readLine())
+				case "turn_context" -> readTurnContext(payload, line);
+				case "world_state" -> readWorldState(payload, line);
+				default ->
 				{
-					if (!holdsReadRecord(line))
-						continue;
-					JsonNode record;
-					try
-					{
-						record = json.readTree(line);
-					}
-					catch (JacksonException _)
-					{
-						continue;
-					}
-					// Ordinals only grow, so the first record at or past the end ends the part that the history holds
-					if (segment.excludes(record))
-						break;
-					add(record);
 				}
 			}
 		}
 
 		/**
-		 * Applies the version or mode that a record holds.
+		 * Applies a version or legacy mode from a turn context.
 		 *
-		 * @param record the {@code turn_context} or {@code world_state} record
+		 * @param payload the context payload
+		 * @param line the physical source line
+		 * @throws IOException if a present state field is invalid
 		 */
-		private void add(JsonNode record)
+		private void readTurnContext(JsonNode payload, Line line) throws IOException
 		{
-			JsonNode payload = record.path("payload");
-			switch (record.path("type").asString(""))
+			if (!payload.has("multi_agent_version"))
+				version = null;
+			else
 			{
-				case "turn_context" ->
+				version = version(payload.get("multi_agent_version"));
+				if (version == null)
+					throw invalid(line, "multi_agent_version is unsupported or has the wrong type", null);
+			}
+			if (payload.has("multi_agent_mode"))
+			{
+				JsonNode recorded = payload.get("multi_agent_mode");
+				validateMode(line, recorded);
+				mode = mode(recorded);
+				customText = customText(recorded);
+			}
+		}
+
+		/**
+		 * Applies a mode patch or replacement from a world-state record.
+		 *
+		 * @param payload the world-state payload
+		 * @param line the physical source line
+		 * @throws IOException if a present state field is invalid
+		 */
+		private void readWorldState(JsonNode payload, Line line) throws IOException
+		{
+			JsonNode fullNode = payload.get("full");
+			if (fullNode != null && !fullNode.isBoolean())
+				throw invalid(line, "world_state.full must be a boolean when present", null);
+			boolean full = fullNode != null && fullNode.asBoolean();
+			JsonNode state = payload.get("state");
+			if (state != null && !state.isObject())
+				throw invalid(line, "world_state.state must be an object when present", null);
+			JsonNode section = null;
+			if (state != null)
+				section = state.get("multi_agent_mode");
+			if (section != null && !section.isNull() && !section.isObject())
+				throw invalid(line, "world_state.multi_agent_mode must be an object or null", null);
+			if (section != null && section.isObject())
+			{
+				if (!section.has("mode"))
 				{
-					version = version(payload.path("multi_agent_version"));
-					if (payload.has("multi_agent_mode"))
+					if (full)
 					{
-						JsonNode recorded = payload.get("multi_agent_mode");
-						mode = mode(recorded);
-						customText = customText(recorded);
-					}
-				}
-				case "world_state" ->
-				{
-					JsonNode state = payload.path("state");
-					boolean full = payload.path("full").asBoolean(false);
-					JsonNode section = state.path("multi_agent_mode");
-					if (full || section.isNull())
-					{
-						// A full record without the section, or a patch that removes it, leaves no mode
 						mode = Mode.UNKNOWN;
 						customText = "";
 					}
-					if (section.isObject() && section.has("mode"))
-					{
-						mode = mode(section.get("mode"));
-						customText = customText(section.get("mode"));
-					}
+					return;
 				}
-				default ->
-				{
-				}
+				JsonNode recorded = section.get("mode");
+				validateMode(line, recorded);
+				mode = mode(recorded);
+				customText = customText(recorded);
+				return;
 			}
+			if (full || section != null)
+			{
+				// A full record without the section, or a patch that removes it, leaves no mode
+				mode = Mode.UNKNOWN;
+				customText = "";
+			}
+		}
+
+		/**
+		 * Verifies that a recorded mode uses a supported JSON shape and value.
+		 *
+		 * @param line the source line
+		 * @param recorded the mode
+		 * @throws IOException if the mode is unsupported
+		 */
+		private static void validateMode(Line line, JsonNode recorded) throws IOException
+		{
+			if (recorded.isString())
+			{
+				if (mode(recorded) == Mode.UNKNOWN)
+					throw invalid(line, "multi-agent mode is unsupported", null);
+				return;
+			}
+			if (recorded.isObject() && recorded.has("custom") && recorded.get("custom").isString())
+				return;
+			throw invalid(line, "multi-agent mode has an invalid type or shape", null);
+		}
+
+		/**
+		 * Creates a source-located error for an invalid state field.
+		 *
+		 * @param line the physical source line
+		 * @param reason the reason
+		 * @param cause the cause, or {@code null}
+		 * @return the failure
+		 */
+		private static IOException invalid(Line line, String reason, Throwable cause)
+		{
+			String message = line.transcript() + ":" + line.lineNumber() + ": " + reason;
+			if (cause == null)
+				return new IOException(message);
+			return new IOException(message, cause);
 		}
 
 		/**

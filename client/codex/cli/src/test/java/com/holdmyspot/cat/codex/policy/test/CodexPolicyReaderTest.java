@@ -8,9 +8,12 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Optional;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -303,6 +306,110 @@ public final class CodexPolicyReaderTest
 
 			session.read("exec", "--frobnicate", "summarize");
 		}
+	}
+
+	/**
+	 * Returns the bare and absolute argv[0] forms of the Codex Linux sandbox helper.
+	 *
+	 * @return the helper's argv[0] values
+	 */
+	@DataProvider
+	public Object[][] sandboxHelperArgumentZeros()
+	{
+		return new Object[][]
+		{
+			{"codex-linux-sandbox"},
+			{"/usr/libexec/codex-linux-sandbox"}
+		};
+	}
+
+	/**
+	 * Verifies that a Codex sandbox helper does not replace the real Codex process as the source of the session's
+	 * command line.
+	 *
+	 * @param argumentZero the helper's argv[0]
+	 */
+	@Test(dataProvider = "sandboxHelperArgumentZeros")
+	public void selectsOuterCodexAfterSandboxHelper(String argumentZero)
+	{
+		ProcessDescription helper = new ProcessDescription(102, Optional.empty(), Optional.of("/usr/bin/codex"),
+			Optional.of(argumentZero), Optional.of(List.of("--sandbox-helper-option")));
+		ProcessDescription codex = new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/codex"),
+			Optional.of("codex"), Optional.of(List.of("exec", "--sandbox=workspace-write", "summarize")));
+
+		Optional<ProcessDescription> selected = CodexPolicyReader.codexProcess(List.of(helper, codex));
+
+		requireThat(selected, "selected").isEqualTo(Optional.of(codex));
+	}
+
+	/**
+	 * Verifies that the reader parses the outer Codex command line after skipping helper-only options.
+	 *
+	 * @throws IOException   if the fixture cannot be written
+	 * @throws PolicyRefusal if the command line is refused
+	 */
+	@Test
+	public void parsesOuterArgumentsAfterSandboxHelper() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+
+			ParentPolicy policy = session.readForCommandWithSandboxHelper("exec", "--sandbox=workspace-write",
+				"summarize");
+
+			requireThat(policy.sandboxed(), "sandboxed").isTrue();
+			requireThat(policy.hosts(), "hosts").isEqualTo(HostAccess.ALL);
+		}
+	}
+
+	/**
+	 * Verifies that an unknown option on the outer Codex command line is still refused after the helper is skipped.
+	 *
+	 * @throws IOException   if the fixture cannot be written
+	 * @throws PolicyRefusal if the outer command line is refused
+	 */
+	@Test(expectedExceptions = PolicyRefusal.class, expectedExceptionsMessageRegExp = ".*--frobnicate.*")
+	public void refusesUnknownOuterOptionAfterHelper() throws IOException, PolicyRefusal
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			CodexParentSession session = new CodexParentSession(cleanup.add(Files.createTempDirectory("codex-policy")));
+			session.write("home/.codex/config.toml", LEGACY_WITH_NETWORK);
+
+			session.readForCommandWithSandboxHelper("exec", "--frobnicate", "summarize");
+		}
+	}
+
+	/**
+	 * Verifies that a Codex executable with another argv[0] remains a host candidate.
+	 */
+	@Test
+	public void unfamiliarArgumentZeroDoesNotSkipCodex()
+	{
+		ProcessDescription codex = new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/codex"),
+			Optional.of("codex-next-launcher"), Optional.of(List.of("--frobnicate")));
+
+		Optional<ProcessDescription> selected = CodexPolicyReader.codexProcess(List.of(codex));
+
+		requireThat(selected, "selected").isEqualTo(Optional.of(codex));
+	}
+
+	/**
+	 * Verifies that a helper without an outer Codex process does not count as the host.
+	 *
+	 * @param argumentZero the helper's argv[0]
+	 */
+	@Test(dataProvider = "sandboxHelperArgumentZeros")
+	public void noHostAfterSandboxHelper(String argumentZero)
+	{
+		ProcessDescription helper = new ProcessDescription(102, Optional.empty(), Optional.of("/usr/bin/codex"),
+			Optional.of(argumentZero), Optional.of(List.of("--sandbox-helper-option")));
+
+		Optional<ProcessDescription> selected = CodexPolicyReader.codexProcess(List.of(helper));
+
+		requireThat(selected, "selected").isEmpty();
 	}
 
 	/**

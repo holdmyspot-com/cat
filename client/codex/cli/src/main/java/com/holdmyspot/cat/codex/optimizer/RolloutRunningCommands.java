@@ -2,9 +2,7 @@ package com.holdmyspot.cat.codex.optimizer;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.time.format.DateTimeParseException;
@@ -15,7 +13,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
-import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -52,9 +49,10 @@ final class RolloutRunningCommands
 	}
 
 	/**
-	 * Reads the results that each agent received from a command that was still running. A line that is not a JSON
-	 * object, or whose time cannot be read, is ignored, as is a file whose name does not end with {@code .jsonl} and a
-	 * rollout whose first line names no thread.
+	 * Reads the results that each agent received from a command that was still running. Blank lines, well-formed records
+	 * that do not describe a command result, and records whose time cannot be read are ignored, as is a file whose name
+	 * does not end with {@code .jsonl} and a rollout whose first line names no thread. Malformed nonblank JSON records
+	 * fail the read.
 	 *
 	 * @param directory the directory that holds the session's rollouts
 	 * @param json      the JSON mapper
@@ -62,7 +60,8 @@ final class RolloutRunningCommands
 	 *         it received them, by the identifier of the command's app-server item; a command whose agent received no
 	 *         such result is absent
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if {@code directory} is not a directory or a rollout cannot be read
+	 * @throws IOException          if {@code directory} is not a directory, a rollout cannot be read, or a nonblank
+	 *                              rollout line is malformed JSON
 	 */
 	static Map<String, List<String>> read(Path directory, JsonMapper json) throws IOException
 	{
@@ -89,57 +88,59 @@ final class RolloutRunningCommands
 		Map<String, Result> results = new HashMap<>();
 		List<Command> commands = new ArrayList<>();
 		Set<String> items = new HashSet<>();
-		try (BufferedReader reader = Files.newBufferedReader(rollout))
+		String[] owner = {""};
+		int[] position = {0};
+		RolloutRecords.read(rollout, line ->
 		{
-			String owner = parse(json, reader.readLine()).path("payload").path("id").asString("");
-			if (owner.isBlank())
-				return;
-			int position = 0;
-			String line = reader.readLine();
-			while (line != null)
+			JsonNode event = RolloutRecords.parse(json, line);
+			if (line.lineNumber() == 1)
 			{
-				position += 1;
-				JsonNode event = parse(json, line);
-				JsonNode payload = event.path("payload");
-				Instant time = parseTime(event.path("timestamp").asString(""));
-				String callId = payload.path("call_id").asString("");
-				switch (payload.path("type").asString(""))
+				owner[0] = event.path("payload").path("id").asString("");
+				return;
+			}
+			position[0] += 1;
+			if (owner[0].isBlank())
+				return;
+			JsonNode payload = event.path("payload");
+			Instant time = parseTime(event.path("timestamp").asString(""));
+			String callId = payload.path("call_id").asString("");
+			switch (payload.path("type").asString(""))
+			{
+				case "function_call", "custom_tool_call" ->
 				{
-					case "function_call", "custom_tool_call" ->
+					if (time != null && !callId.isBlank())
+						calls.add(new Call(callId, time));
+				}
+				case "function_call_output", "custom_tool_call_output" ->
+				{
+					if (time != null && !callId.isBlank())
 					{
-						if (time != null && !callId.isBlank())
-							calls.add(new Call(callId, time));
-					}
-					case "function_call_output", "custom_tool_call_output" ->
-					{
-						if (time != null && !callId.isBlank())
-						{
-							String text = String.join("", RolloutToolResults.outputTexts(payload));
-							results.putIfAbsent(callId, new Result(time, position, text));
-						}
-					}
-					case "item_completed" ->
-					{
-						if (payload.path("thread_id").asString("").equals(owner))
-						{
-							JsonNode item = payload.path("item");
-							String id = item.path("id").asString("");
-							items.add(id);
-							JsonNode started = payload.path("started_at_ms");
-							if (item.path("type").asString("").equals("CommandExecution") && !id.isBlank() &&
-								started.isIntegralNumber())
-							{
-								commands.add(new Command(id, Instant.ofEpochMilli(started.longValue()), position));
-							}
-						}
-					}
-					default ->
-					{
+						String text = String.join("", RolloutToolResults.outputTexts(payload));
+						results.putIfAbsent(callId, new Result(time, position[0], text));
 					}
 				}
-				line = reader.readLine();
+				case "item_completed" ->
+				{
+					if (payload.path("thread_id").asString("").equals(owner[0]))
+					{
+						JsonNode item = payload.path("item");
+						String id = item.path("id").asString("");
+						items.add(id);
+						JsonNode started = payload.path("started_at_ms");
+						if (item.path("type").asString("").equals("CommandExecution") && !id.isBlank() &&
+							started.isIntegralNumber())
+						{
+							commands.add(new Command(id, Instant.ofEpochMilli(started.longValue()), position[0]));
+						}
+					}
+				}
+				default ->
+				{
+				}
 			}
-		}
+		});
+		if (owner[0].isBlank())
+			return;
 		calls.removeIf(call -> items.contains(call.id()));
 		for (Command command : commands)
 		{
@@ -154,27 +155,6 @@ final class RolloutRunningCommands
 			Result result = results.get(owning.id());
 			if (result != null && !result.time().isBefore(command.started()) && result.position() < command.ended())
 				running.computeIfAbsent(command.id(), _ -> new ArrayList<>()).add(result.text());
-		}
-	}
-
-	/**
-	 * Parses a rollout line.
-	 *
-	 * @param json the JSON mapper
-	 * @param line the line, or {@code null} at the end of the rollout
-	 * @return the line's JSON value, or a missing node if the line is absent or is not JSON
-	 */
-	private static JsonNode parse(JsonMapper json, String line)
-	{
-		if (line == null)
-			return json.missingNode();
-		try
-		{
-			return json.readTree(line);
-		}
-		catch (JacksonException _)
-		{
-			return json.missingNode();
 		}
 	}
 

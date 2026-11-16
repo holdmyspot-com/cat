@@ -204,7 +204,8 @@ public final class CodexPolicyReader
 	}
 
 	/**
-	 * Returns the arguments of the nearest Codex process that started the hook.
+	 * Returns the arguments of the nearest Codex process that started the hook, skipping a Codex sandbox helper whose
+	 * argv[0] basename is {@code codex-linux-sandbox}.
 	 *
 	 * @param session the session
 	 * @return the arguments after the executable
@@ -212,27 +213,29 @@ public final class CodexPolicyReader
 	 */
 	private static List<String> codexArguments(CodexSession session) throws PolicyRefusal
 	{
-		for (ProcessDescription process : session.ancestors())
+		Optional<ProcessDescription> codex = codexProcess(session.ancestors());
+		if (codex.isEmpty())
+		{
+			throw new PolicyRefusal("CAT cannot find the Codex process that runs this session among the hook's " +
+				"parent processes", "Start the session with the codex command, then start a new Codex session");
+		}
+		ProcessDescription process = codex.get();
+		if (process.arguments().isEmpty())
 		{
 			String executable = process.command().orElse("");
-			if (!isCodex(executable))
-				continue;
-			if (process.arguments().isEmpty())
-			{
-				throw new PolicyRefusal("CAT cannot read the command line of the Codex process " +
-					executable, "Run Codex as the same user as CAT, then start a new Codex session");
-			}
-			return process.arguments().get();
+			throw new PolicyRefusal("CAT cannot read the command line of the Codex process " + executable,
+				"Run Codex as the same user as CAT, then start a new Codex session");
 		}
-		throw new PolicyRefusal("CAT cannot find the Codex process that runs this session among the hook's " +
-			"parent processes", "Start the session with the codex command, then start a new Codex session");
+		return process.arguments().get();
 	}
 
 	/**
-	 * Returns the nearest Codex process among the processes that run a command.
+	 * Returns the nearest Codex process among the processes that run a command, skipping a process whose argv[0]
+	 * basename is {@code codex-linux-sandbox}.
 	 *
 	 * @param ancestors the processes that run the command, from its parent up
-	 * @return the process, or empty if no ancestor's executable is Codex's
+	 * @return the nearest process whose executable is Codex's and whose argv[0] basename is not
+	 *   {@code codex-linux-sandbox}, or empty if no such process exists
 	 * @throws NullPointerException if {@code ancestors} is null
 	 */
 	public static Optional<ProcessDescription> codexProcess(List<ProcessDescription> ancestors)
@@ -240,7 +243,20 @@ public final class CodexPolicyReader
 		requireThat(ancestors, "ancestors").isNotNull();
 		return ancestors.stream().
 			filter(process -> isCodex(process.command().orElse(""))).
+			filter(process -> !isCodexSandbox(process.argumentZero().orElse(""))).
 			findFirst();
+	}
+
+	/**
+	 * Indicates whether argv[0] names the Codex sandbox helper.
+	 *
+	 * @param argumentZero the first command-line argument
+	 * @return {@code true} if its basename is {@code codex-linux-sandbox}
+	 */
+	private static boolean isCodexSandbox(String argumentZero)
+	{
+		String name = argumentZero.replaceAll("^.*[/\\\\]", "");
+		return name.equals("codex-linux-sandbox");
 	}
 
 	/**
