@@ -14,7 +14,8 @@
 	rather than read it again.
 
 - Make the smallest evidence-backed correction, naming an analogous case and a dissimilar confirmed-contract test id
-	for every changed hunk. CAT rejects missing or invalid dissimilar evidence. Report its manifest.
+	for every changed hunk. CAT rejects missing or invalid dissimilar evidence, but never asks for a test that the
+	contract lacks: the id of any one of its tests is valid. Report its manifest.
 	Also report each needed edit outside your authority, except one that the user declined. CAT checks the manifest
 	against the copy's changes and supplied failures, then measures the attempt itself.
 - Put each correction in the file that owns the decision, and guidance that no existing instruction covers where it
@@ -179,8 +180,11 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 	Remove a contradiction or ambiguity before adding emphasis. Check that your edit contradicts no other instruction
 	of the prompt system. Capitals, "important" markers and repeated instructions are not corrections.
 3. For each changed hunk, name an analogous case that needs the same path. Name the dissimilar case using the `id` of a
-	test in the confirmed contract whose turns must not receive the new guidance.
-	If you cannot name a dissimilar test, do not submit the change.
+	test in the confirmed contract, preferably one whose turns must not receive the new guidance. When every test of
+	the contract applies the new guidance, as in a contract of one test or of requirements that always apply, name the
+	test whose other assertions the edit is most likely to disturb, which may be the failing test itself: the trials
+	measure the edit there. The absence of a test that must not receive the guidance is never a reason to submit no
+	edit. CAT rejects a `routing` or `guidance` kind that names no hunk, and the failure behind it stays uncorrected.
 	Word the correction for the invariant shared by the failing and analogous cases.
 4. Emit the manifest: every kind with its name, its failure ids, its classification and the ids of the hunks that
 	address it; every changed hunk with an id of your choice, its motivating failure ids, analogous case and dissimilar

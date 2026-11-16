@@ -8,6 +8,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.HunkEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
@@ -474,10 +477,60 @@ public final class PromptAuthorManifestTest
 			List.of());
 		String turn = prompt.request(brief, Path.of("/copy").toAbsolutePath()).turns().getFirst();
 
-		requireThat(turn, "instructions").contains("the `id` of a").contains("whose turns must not receive").
-			contains("\"plain_list\"").contains("For each changed hunk").
-			contains("If you cannot name a dissimilar test, do not submit the change.").
+		requireThat(turn, "instructions").contains("the `id` of a").contains("\"plain_list\"").
+			contains("For each changed hunk").
 			contains("a missing dissimilar case or an id that names no test of the confirmed contract");
+	}
+
+	/**
+	 * Verifies that the prompt author is told that a contract without a test that must not receive the new guidance
+	 * still has a valid dissimilar case, and that it never withholds an edit for that reason: a {@code routing} or
+	 * {@code guidance} kind without a hunk is rejected, so withholding leaves the failure uncorrected.
+	 */
+	@Test
+	public void neverWithholdsAnEditForNoDissimilar()
+	{
+		// Requirement: R-D17
+		JsonMapper json = JsonMapper.builder().build();
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, new ProposalSchema(json), Set.of(Path.of("CLAUDE.md")),
+			Set.of());
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+			List.of());
+		String turn = prompt.request(brief, Path.of("/copy").toAbsolutePath()).turns().getFirst().
+			replaceAll("\\s+", " ");
+
+		requireThat(turn, "instructions").
+			contains("When every test of the contract applies the new guidance").
+			contains("may be the failing test itself").
+			contains("never a reason to submit no edit").
+			doesNotContain("do not submit the change");
+	}
+
+	/**
+	 * Accepts the contract's only test, the failing test itself, as the dissimilar case of a hunk, because a
+	 * contract of one test has no other test to name.
+	 */
+	@Test
+	public void acceptsTheOnlyTestAsTheDissimilarCase()
+	{
+		// Requirement: R-D17
+		Contract full = ContractFixtures.contract();
+		List<Requirement> requirements = full.requirements().stream().filter(requirement -> requirement.id().equals("r2")).
+			toList();
+		List<PromptTest> tests = full.tests().stream().filter(test -> test.id().equals("safety")).toList();
+		Contract single = new Contract(requirements, tests, ContractFixtures.profiles(requirements, tests), full.judge(),
+			full.limitations(), full.minimumPassRate(), full.salt());
+		Path path = Path.of("rules/safety.md");
+		Hunk hunk = new Hunk(path, 1, 2, 3, 2, 4);
+		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(new PromptAuthorKind("deletion", List.of("f"),
+			FailureKind.ROUTING, List.of("h1"), "")), List.of(new HunkEvidence("h1", path, 2, 3, 2, 4, List.of("f"),
+			"Another deletion request", "safety")));
+
+		List<String> violations = manifest.violations(Set.of("f"), List.of(hunk), single,
+			new FileInventory(Path.of("/project").toAbsolutePath(), Map.of()), Map.of(), List.of(), Map.of());
+
+		requireThat(violations, "violations").isEmpty();
 	}
 
 	/**
