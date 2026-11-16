@@ -49,7 +49,7 @@ Session `990cbfa9` also added WI-145 (user ruling, 2026-11-16): Claude Code 2.1.
 its sandbox over any write grant, so the prompt optimizer's worktree registration (add, recreate, remove, repair) is
 served by the session's request server, by the run's runner inside a CAT run, and in place by the SessionStart sweep.
 `design.md` §4.2, §8 "Worktree requests" and D148 carry the design; WI-145 and R-W17 carry the steps and tests. Nothing
-of WI-145 is implemented. Until it is, a Claude Code 2.1.323 session's `start` cannot create its worktree; Codex sessions are
+of WI-145 is implemented. The user also ruled on 2026-11-16 to keep refusing worktree requests from sessions that can write Git config or hooks (`design.md` §8, D148). Until it is, a Claude Code 2.1.323 session's `start` cannot create its worktree; Codex sessions are
 unaffected. Probe evidence is in
 `~/cat/worktrees/gitwt-probe4/` (report in the session's `temp/worktree-server/probe4-report.md`) and `gitwt-probe3/`.
 
