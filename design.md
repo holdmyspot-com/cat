@@ -342,6 +342,16 @@ at least `pN(k, a) − 0.05`. Each factor is positive, and both e-values depend 
 `Z`. When both trials pass, as they nearly always do on a guard assertion, `Z = ½` and `E_ctl↑` grows slowly; a pair
 that only the control passes shrinks it, and a pair that only the candidate passes grows it fastest.
 
+**Assertions a trial's failed tool left undecided.** A trial that a built-in tool decides without a judge
+([§3.3](#33-allocation-and-concurrency), cheap work first, step 1) never has its judged assertions decided, so a pair
+needs a value for them. In a certification attempt, a trial that fails a built-in tool assertion fails that assertion,
+and CAT scores each assertion that the judge would have decided against the candidate, so that missing evidence cannot
+favour it: the candidate trial fails them (`X_j = 0`), and a control or incumbent trial passes them (`Y_j = 1`). A
+failed trial whose failure names no assertion passes none, whatever its purpose. A pair whose control or incumbent trial
+failed a tool is therefore scored on every judged assertion, a guard included, as if the control had passed, and such a
+pair never grows `E_ctl↑` or `E_inc↑` beyond the ½ of two passes. The guard pilot ([§6.1](#61-derivation-and-confirmation)) is not a
+certification attempt, and its judge decides these assertions.
+
 **Incumbent comparison (per assertion; null: `pC(k, a) ≤ pI(k, a) − 0.05`).** Incumbent trials run the incumbent, the
 snapshot recorded at the fork, and follow every rule of control trials: they run in a cell only after its
 minimum-pass-rate test certified it, the `j`-th pairs with the cell's `j`-th candidate formal trial in assignment order
@@ -1191,7 +1201,8 @@ spends the expensive work:
 1. CAT runs the built-in tools on each finished trial at once, and the failure of a built-in tool whose
 	`on_tool_failure` is `fail` is a definitive trial failure, adopted without a judge; the guard pilot is not a certification
 	attempt, and its trial still gets the judge for the assertions that the judge decides
-	([§6.1](#61-derivation-and-confirmation)). A trial that every tool decides
+	([§6.1](#61-derivation-and-confirmation)). The assertions that the judge would have decided count against the
+	candidate in the control and incumbent comparisons ([§2.3](#23-sequential-tests)). A trial that every tool decides
 	starts no judge ([§6.4](#64-judge)), and a trial whose assertions are all settled before its last turn ends there
 	([§3.2](#32-logical-trials));
 2. a judge decides the remaining assertions of every trial while the attempt is alive;
