@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.optimizer.workspace.Fork;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.secrets.SessionDirectorySecrets;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -522,10 +522,11 @@ public final class SessionDirectory
 	/**
 	 * Removes the directory of every other session of the project whose marker is older than {@link #RETENTION} and
 	 * whose transcript the marker's configuration directory no longer holds. Before it removes a directory, it removes
-	 * the optimization worktree of each campaign in the directory's {@code optimizer/} through Git, so the repository
-	 * keeps no record of a worktree that is gone. A directory without a readable marker is kept, and so is a directory
-	 * whose campaign worktree cannot be removed. That failure, a directory that cannot be removed, and a transcript
-	 * location that cannot be read, are reported on {@code error}; the sweep then continues with the next directory.
+	 * the optimization worktree of each campaign in the directory's {@code optimizer/} through Git, which this process
+	 * runs itself, so the repository keeps no record of a worktree that is gone. A directory without a readable marker
+	 * is kept, and so is a directory whose campaign worktree cannot be removed. That failure, a directory that cannot
+	 * be removed, and a transcript location that cannot be read, are reported on {@code error}; the sweep then
+	 * continues with the next directory.
 	 *
 	 * @param now the current time
 	 * @param error receives the failures
@@ -533,7 +534,7 @@ public final class SessionDirectory
 	 */
 	public void sweep(Instant now, PrintStream error)
 	{
-		sweep(now, error, Fork::remove, TemporaryDirectories::deleteRecursively);
+		sweep(now, error, new GitWorktreeRegistrar()::remove, TemporaryDirectories::deleteRecursively);
 	}
 
 	/**

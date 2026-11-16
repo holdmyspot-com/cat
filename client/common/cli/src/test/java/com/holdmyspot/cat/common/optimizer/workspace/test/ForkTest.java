@@ -19,12 +19,13 @@ import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.test.FileTrees;
 import com.holdmyspot.cat.common.test.ProgramFixture;
 
 import java.io.IOException;
-import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -45,9 +46,9 @@ import org.testng.annotations.Test;
  * fork's participants reads and writes only campaign storage, so those tests store a fork without Git.
  * <p>
  * These are the end-to-end checks of how Git reports and does what a fork asks of it. What the fork decides from
- * Git's output, such as which status entries count as changes, how the tracked files and links are read and when a
- * failure is a denied registration, is checked on recorded output in {@link ForkGitTest}, so only the kinds of change
- * that exercise a different Git behavior run here.
+ * Git's output, such as which status entries count as changes, and how the tracked files and links are read, is
+ * checked on recorded output in {@link ForkGitTest}, so only the kinds of change that exercise a different Git
+ * behavior run here.
  */
 public final class ForkTest
 {
@@ -57,6 +58,10 @@ public final class ForkTest
 	 * The directory, relative to the repository, that holds the campaigns of one session.
 	 */
 	private static final String CAMPAIGNS = ".cat/sessions/2c4e6a8b-1d3f-4a5c-9e7b-0f2d4c6e8a1b/optimizer";
+	/**
+	 * Registers the optimization worktrees in place.
+	 */
+	private static final WorktreeRegistrar REGISTRAR = new GitWorktreeRegistrar();
 	/**
 	 * The directory that holds the repository that each test copies, and the empty global exclude file that the
 	 * repository's configuration names.
@@ -181,7 +186,7 @@ public final class ForkTest
 			}
 			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).refusesDirtyBase();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).refusesDirtyBase();
 			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
 		}
 	}
@@ -207,7 +212,7 @@ public final class ForkTest
 				writeFile(device, "", READ_WRITE);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(),
-				(file, _) -> devices.contains(file));
+				(file, _) -> devices.contains(file), REGISTRAR);
 
 			Path worktreeDirectory = base.resolve(CAMPAIGNS + "/c1/worktree");
 			requireThat(fork.inventory().entries().keySet(), "forkFiles").
@@ -232,7 +237,7 @@ public final class ForkTest
 			Path base = repository(root);
 			writeFile(base.resolve(".cat/sessions/temp/earlier.txt"), "earlier", READ_WRITE);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
 			requireThat(fork.ignoreNotice().orElseThrow(), "ignoreNotice").
 				contains("this change is theirs to commit; do not stage or commit it.");
@@ -254,11 +259,12 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 			Git git = new Git(base);
 			requireThat(worktreeCount(git), "worktreesBefore").isEqualTo(2L);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).removesExistingWorktree();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				removesExistingWorktree();
 			requireThat(worktreeCount(git), "worktreesAfter").isEqualTo(1L);
 		}
 	}
@@ -278,9 +284,10 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).reportsAFailedRemoval(() ->
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				reportsAFailedRemoval(() ->
 			{
 				TemporaryDirectories.deleteRecursively(base.resolve(".git"));
 				Files.writeString(base.resolve(".git"), "not a Git file\n");
@@ -302,9 +309,10 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).removalKeepsAnotherCampaignsFork();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				removalKeepsAnotherCampaignsFork();
 		}
 	}
 
@@ -322,9 +330,10 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork created = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork created = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).createdForkCanBeReopened(created);
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				createdForkCanBeReopened(created);
 		}
 	}
 
@@ -343,7 +352,8 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).missingWorktreeIsNotAFork();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				missingWorktreeIsNotAFork();
 		}
 	}
 
@@ -362,7 +372,7 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			Fork original = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork original = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 			original.workspace().materialize(edited(original));
 			Path copy = root.resolve("copy");
 			FileTrees.copy(base, copy);
@@ -370,7 +380,7 @@ public final class ForkTest
 			Path copiedWorktree = copiedCampaign.resolve("worktree");
 			requireThat(commonDirectory(copiedWorktree), "commonBefore").isEqualTo(base.resolve(".git").toRealPath());
 
-			ForkView fork = new GitForks(Yielding.fileReplacer()).open(copy, copiedCampaign);
+			ForkView fork = new GitForks(Yielding.fileReplacer(), REGISTRAR).open(copy, copiedCampaign);
 			Overlay working = edited(fork);
 			fork.workspace().reconnectWorktree(working);
 
@@ -400,7 +410,7 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 			Path copy = root.resolve("copy");
 			FileTrees.copy(base, copy);
 			TemporaryDirectories.deleteRecursively(copy.resolve(".git/worktrees"));
@@ -408,7 +418,7 @@ public final class ForkTest
 			Path copiedWorktree = copiedCampaign.resolve("worktree");
 			writeFile(copiedWorktree.resolve("leftover.md"), "leftover", READ_WRITE);
 
-			ForkView fork = new GitForks(Yielding.fileReplacer()).open(copy, copiedCampaign);
+			ForkView fork = new GitForks(Yielding.fileReplacer(), REGISTRAR).open(copy, copiedCampaign);
 			Overlay working = edited(fork);
 			fork.workspace().reconnectWorktree(working);
 
@@ -417,6 +427,45 @@ public final class ForkTest
 				isEqualTo(List.of(copy.toRealPath(), copiedWorktree.toRealPath()));
 			requireThat(fork.workspace().scanWorktree().entries(), "worktreeEntries").
 				isEqualTo(working.snapshot().entries());
+		}
+	}
+
+	/**
+	 * Verifies that the links of a worktree whose registration belongs to another campaign are left alone: a campaign
+	 * copied within the project, whose registration still names the original campaign's worktree, and a renamed
+	 * campaign of a copied project, whose registration names the old campaign's worktree.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test
+	public void leavesRegistrationOfAnotherCampaign() throws IOException
+	{
+		// Requirement: R-W17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
+			Path copy = root.resolve("copy");
+			FileTrees.copy(base, copy);
+			Path sibling = base.resolve(CAMPAIGNS + "/c2");
+			FileTrees.copy(base.resolve(CAMPAIGNS + "/c1"), sibling);
+			Path renamed = Files.move(copy.resolve(CAMPAIGNS + "/c1"), copy.resolve(CAMPAIGNS + "/c3"));
+			String siblingLink = Files.readString(sibling.resolve("worktree/.git"), UTF_8);
+			String renamedLink = Files.readString(renamed.resolve("worktree/.git"), UTF_8);
+			String copiedBacklink = Files.readString(copy.resolve(".git/worktrees/worktree/gitdir"), UTF_8);
+
+			requireThat(REGISTRAR.repair(base, sibling), "sibling").isFalse();
+			requireThat(REGISTRAR.repair(copy, renamed), "renamed").isFalse();
+
+			requireThat(Files.readString(sibling.resolve("worktree/.git"), UTF_8), "siblingLink").
+				isEqualTo(siblingLink);
+			requireThat(Files.readString(renamed.resolve("worktree/.git"), UTF_8), "renamedLink").
+				isEqualTo(renamedLink);
+			requireThat(Files.readString(copy.resolve(".git/worktrees/worktree/gitdir"), UTF_8), "copiedBacklink").
+				isEqualTo(copiedBacklink);
+			requireThat(GitWorktreeRegistrar.isLinked(base, base.resolve(CAMPAIGNS + "/c1")), "originalLinked").
+				isTrue();
 		}
 	}
 
@@ -433,13 +482,13 @@ public final class ForkTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
-			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 			Path moved = Files.move(base, root.resolve("moved"));
 			Git git = new Git(moved);
 			requireThat(prunable(git), "prunableBefore").isEqualTo(1L);
 			Path campaign = moved.resolve(CAMPAIGNS + "/c1");
 
-			new GitForks(Yielding.fileReplacer()).remove(moved, campaign);
+			new GitForks(Yielding.fileReplacer(), REGISTRAR).remove(moved, campaign);
 
 			requireThat(Files.exists(campaign.resolve("worktree"), NOFOLLOW_LINKS), "worktreeExists").isFalse();
 			requireThat(registeredWorktrees(git), "worktrees").isEqualTo(List.of(moved.toRealPath()));
@@ -531,9 +580,9 @@ public final class ForkTest
 			Path base = repository(root);
 			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, base.resolve(CAMPAIGNS + "/c1")).
 				reportsIgnoreNoticeOnlyAtCreation(fork, true);
 			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo("ignored.md\n" + IGNORE_LINES);
 			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
@@ -560,9 +609,9 @@ public final class ForkTest
 			Files.writeString(excludeFile(base), ".cat/sessions\n", UTF_8, StandardOpenOption.APPEND);
 			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
 
-			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
+			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, base.resolve(CAMPAIGNS + "/c1")).
 				reportsIgnoreNoticeOnlyAtCreation(fork, false);
 			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
 		}
@@ -583,8 +632,8 @@ public final class ForkTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
 			Path base = repository(root);
 
-			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
-			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer());
+			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
+			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
 			requireThat(first.ignoreNotice(), "firstNotice").isPresent();
 			requireThat(second.ignoreNotice(), "secondNotice").isEmpty();
@@ -612,8 +661,8 @@ public final class ForkTest
 			Files.delete(ignoreFile(base));
 			Files.delete(base.resolve("ignored.md"));
 
-			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer());
-			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer());
+			Fork first = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
+			Fork second = Fork.create(base, base.resolve(CAMPAIGNS + "/c2"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
 			requireThat(first.ignoreNotice(), "firstNotice").isPresent();
 			requireThat(second.ignoreNotice(), "secondNotice").isEmpty();
@@ -641,7 +690,7 @@ public final class ForkTest
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external),
-				Yielding.fileReplacer());
+				Yielding.fileReplacer(), REGISTRAR);
 
 			Path worktreeDirectory = base.resolve(CAMPAIGNS + "/c1/worktree");
 			// The base is listed first, with its commit on the line that starts with "HEAD "
@@ -686,7 +735,8 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).leavesOutDeselectedParticipants();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				leavesOutDeselectedParticipants();
 		}
 	}
 
@@ -713,7 +763,7 @@ public final class ForkTest
 			Files.createSymbolicLink(base.resolve("ignored.md"), only);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			Forks forks = new GitForks(Yielding.fileReplacer());
+			Forks forks = new GitForks(Yielding.fileReplacer(), REGISTRAR);
 			ForkView fork = forks.open(base, campaign).selectParticipants(base, Set.of(Path.of("ignored.md"), alias));
 			requireThat(fork.inventory().entries().keySet(), "selected").contains(only).contains(shared);
 
@@ -745,7 +795,8 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).extensionBecomesCurrentWhenAdopted();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				extensionBecomesCurrentWhenAdopted();
 		}
 	}
 
@@ -765,7 +816,8 @@ public final class ForkTest
 			Path base = project(root);
 			Path campaign = root.resolve("campaign");
 			storeFork(base, campaign);
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).addsParticipantsAfterCreation();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				addsParticipantsAfterCreation();
 		}
 	}
 
@@ -786,9 +838,9 @@ public final class ForkTest
 			Path external = writeFile(root.resolve("external/shared.md"), "shared", READ_WRITE);
 
 			Fork fork = Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(Path.of("ignored.md"), external),
-				Yielding.fileReplacer());
+				Yielding.fileReplacer(), REGISTRAR);
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, base.resolve(CAMPAIGNS + "/c1")).
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, base.resolve(CAMPAIGNS + "/c1")).
 				recordsTrackedAndParticipantFiles(fork, external);
 			requireThat(fork.inventory().entries().get(Path.of("alias.md")), "link").
 				isEqualTo(new SymbolicLink(Path.of("prompt.md")));
@@ -810,7 +862,8 @@ public final class ForkTest
 			Path base = repository(root);
 			Path campaign = base.resolve(CAMPAIGNS + "/c1");
 
-			new ForksContract(new GitForks(Yielding.fileReplacer()), base, campaign).missingParticipantCreatesNoWorktree();
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base, campaign).
+				missingParticipantCreatesNoWorktree();
 		}
 	}
 
@@ -836,7 +889,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer());
+				Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer(), REGISTRAR);
 				throw new AssertionError("A failure while materializing must fail the fork");
 			}
 			catch (WorkspaceException e)
@@ -853,7 +906,7 @@ public final class ForkTest
 			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo("ignored.md\n" + IGNORE_LINES);
 			Files.delete(blocker);
 
-			Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer());
+			Fork.create(base, campaign, Set.of(external), Yielding.fileReplacer(), REGISTRAR);
 
 			requireThat(campaign.resolve("worktree"), "worktree").isDirectory();
 			requireThat(git.lines("worktree", "list"), "retryWorktrees").size().isEqualTo(2);
@@ -880,7 +933,7 @@ public final class ForkTest
 
 			try
 			{
-				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 				throw new AssertionError("A worktree directory that is not empty must fail the fork");
 			}
 			catch (IOException e)
@@ -892,7 +945,7 @@ public final class ForkTest
 			requireThat(Files.readString(foreign, UTF_8), "foreign").isEqualTo("not CAT's");
 			Files.delete(foreign);
 
-			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
 			requireThat(campaign.resolve("worktree/prompt.md"), "prompt").isRegularFile();
 		}
@@ -919,7 +972,7 @@ public final class ForkTest
 			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
 			Path campaign = root.resolve("campaign");
 
-			Fork fork = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer());
+			Fork fork = Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
 			requireThat(fork.ignoreNotice().orElseThrow(), "notice").contains("CAT could not add /.cat/sessions/").
 				contains("check-ignore").contains("status 128");
@@ -929,53 +982,13 @@ public final class ForkTest
 	}
 
 	/**
-	 * Verifies that a session that cannot write the directory in which Git registers linked worktrees is refused with
-	 * a message for the user that names that directory, before anything is created: no campaign storage, no worktree,
-	 * no {@code .gitignore} change. A check that denies every directory stands in for a sandbox that mounts the
-	 * repository's Git directory read-only.
+	 * Verifies that a fork of a linked worktree registers its worktree in the repository's common Git directory, where
+	 * Git registers every linked worktree.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void refusesUnwritableRegistrations() throws IOException
-	{
-		// Requirement: R-W2
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			Path base = repository(root);
-			Git git = new Git(base);
-			Path campaign = base.resolve(CAMPAIGNS + "/c1");
-			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
-			Path registrations = base.toRealPath().resolve(".git/worktrees");
-
-			try
-			{
-				Fork.create(base, campaign, Set.of(), Yielding.fileReplacer(), (_, _) -> false, directory ->
-				{
-					throw new AccessDeniedException(directory.toString(), null, "Read-only file system");
-				});
-				throw new AssertionError("A session that cannot write the worktree registrations must be refused");
-			}
-			catch (WorkspaceException e)
-			{
-				requireThat(e.getMessage(), "message").contains("cannot create the optimization worktree").
-					contains("cannot write " + registrations + ".").contains("then run start again");
-			}
-			requireThat(Files.exists(campaign, NOFOLLOW_LINKS), "campaignExists").isFalse();
-			requireThat(worktreeCount(git), "worktrees").isEqualTo(1L);
-			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
-		}
-	}
-
-	/**
-	 * Verifies that a fork of a linked worktree checks the registrations directory of the repository's common Git
-	 * directory, where Git registers every linked worktree, and that a writable one lets the fork add its worktree.
-	 *
-	 * @throws IOException if the fixture cannot be created
-	 */
-	@Test
-	public void checksCommonRegistrationsOfLinkedBase() throws IOException
+	public void registersLinkedBaseWorktreeInCommonDir() throws IOException
 	{
 		// Requirement: R-W2
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -985,13 +998,11 @@ public final class ForkTest
 			Path base = root.resolve("linked");
 			new Git(main).run("worktree", "add", "--quiet", "--detach", base.toString(), "HEAD");
 			writeFile(base.resolve("ignored.md"), "ignored", READ_WRITE);
-			List<Path> checked = new ArrayList<>();
 
-			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), (_, _) -> false,
-				checked::add);
+			Fork.create(base, base.resolve(CAMPAIGNS + "/c1"), Set.of(), Yielding.fileReplacer(), REGISTRAR);
 
-			requireThat(checked, "checked").isEqualTo(List.of(main.toRealPath().resolve(".git/worktrees")));
 			requireThat(base.resolve(CAMPAIGNS + "/c1/worktree/prompt.md"), "prompt").isRegularFile();
+			requireThat(main.resolve(".git/worktrees/worktree/HEAD"), "registration").isRegularFile();
 		}
 	}
 
@@ -1011,13 +1022,13 @@ public final class ForkTest
 			Path base = repository(root);
 			Path unmanaged = project(root);
 
-			ForksContract repositoryForks = new ForksContract(new GitForks(Yielding.fileReplacer()), base,
+			ForksContract repositoryForks = new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), base,
 				base.resolve(CAMPAIGNS + "/c1"));
 			repositoryForks.reportsTrackedFiles(Set.of(Path.of(".gitignore"), Path.of("prompt.md"),
 				Path.of(ProgramFixture.name("run")), Path.of("alias.md")));
 			repositoryForks.reportsTrackedLinks(Set.of(Path.of("alias.md")));
 			repositoryForks.unchangedSelectionHasNoDiff(List.of(Path.of("prompt.md")));
-			new ForksContract(new GitForks(Yielding.fileReplacer()), unmanaged, root.resolve("campaign")).
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), unmanaged, root.resolve("campaign")).
 				hasNoTrackedLinksOutsideRepository();
 		}
 	}
@@ -1033,7 +1044,7 @@ public final class ForkTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
-			new ForksContract(new GitForks(Yielding.fileReplacer()), project(root), root.resolve("campaign")).
+			new ForksContract(new GitForks(Yielding.fileReplacer(), REGISTRAR), project(root), root.resolve("campaign")).
 				emptySelectionHasNoDiff();
 		}
 	}
@@ -1063,7 +1074,7 @@ public final class ForkTest
 			writeFile(base.resolve("other.md"), "unselected file\n", READ_WRITE);
 			List<String> statusBefore = git.lines("status", "--porcelain", "--untracked-files=all");
 
-			String diff = new GitForks(Yielding.fileReplacer()).diff(base,
+			String diff = new GitForks(Yielding.fileReplacer(), REGISTRAR).diff(base,
 				List.of(Path.of("prompt.md"), Path.of("added.md"), Path.of(program)));
 
 			// Each file's patch starts with a "diff --git a/<path> b/<path>" header

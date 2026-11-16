@@ -213,39 +213,6 @@ public final class ForkGit
 	}
 
 	/**
-	 * Returns the directory in which Git registers a repository's linked worktrees: {@code worktrees} in its common Git
-	 * directory, which the main worktree and every linked worktree share.
-	 *
-	 * @param gitCommonDirectory the output of {@code git rev-parse --path-format=absolute --git-common-dir}
-	 * @return the directory's absolute path
-	 * @throws NullPointerException if {@code gitCommonDirectory} is null
-	 */
-	public static Path worktreeRegistrations(String gitCommonDirectory)
-	{
-		requireThat(gitCommonDirectory, "gitCommonDirectory").isNotNull();
-		return Path.of(gitCommonDirectory.strip()).resolve("worktrees").normalize();
-	}
-
-	/**
-	 * Indicates whether the message of a failed {@code git worktree add} says that Git could not write the directory in
-	 * which it registers linked worktrees. Git names the entry that it could not create below that directory and the
-	 * system's reason.
-	 *
-	 * @param message the message of the failure, or {@code null} if it has none
-	 * @param registrations the directory in which Git registers linked worktrees
-	 * @return {@code true} if the system denied the write
-	 * @throws NullPointerException if {@code registrations} is null
-	 */
-	public static boolean deniedRegistrationWrite(String message, Path registrations)
-	{
-		requireThat(registrations, "registrations").isNotNull();
-		if (message == null)
-			return false;
-		boolean deniedWrite = message.contains("Read-only file system") || message.contains("Permission denied");
-		return deniedWrite && message.contains(registrations.getFileName().toString());
-	}
-
-	/**
 	 * Returns the arguments of {@code git add} that mark paths as intended additions.
 	 *
 	 * @param paths the paths that exist

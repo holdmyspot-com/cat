@@ -61,6 +61,7 @@ import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.test.FileTrees;
 
 import java.io.IOException;
@@ -1758,7 +1759,7 @@ public final class DeliveryTest
 		 */
 		Forks forks()
 		{
-			return new GitForks(Yielding.fileReplacer());
+			return new GitForks(Yielding.fileReplacer(), new GitWorktreeRegistrar());
 		}
 
 		/**

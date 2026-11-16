@@ -192,50 +192,6 @@ public final class ForkGitTest
 	}
 
 	/**
-	 * Git registers linked worktrees in {@code worktrees} below the common Git directory that it prints, whose line
-	 * terminator is not part of the path.
-	 */
-	@Test
-	public void registrationsLieInCommonGitDirectory()
-	{
-		Path registrations = ForkGit.worktreeRegistrations("/home/user/project/.git\n");
-
-		requireThat(registrations, "registrations").isEqualTo(Path.of("/home/user/project/.git/worktrees"));
-	}
-
-	/**
-	 * A failure to add a worktree is a denied write when the system denies the creation of an entry below the
-	 * registrations directory.
-	 */
-	@Test
-	public void deniedRegistrationWriteIsRecognized()
-	{
-		Path registrations = Path.of("/home/user/project/.git/worktrees");
-		String readOnly = "Git command failed: git worktree add --detach campaign/worktree HEAD: fatal: could not " +
-			"create directory of '.git/worktrees/worktree': Read-only file system";
-		String denied = "fatal: could not create directory of '.git/worktrees/worktree': Permission denied";
-
-		requireThat(ForkGit.deniedRegistrationWrite(readOnly, registrations), "readOnly").isTrue();
-		requireThat(ForkGit.deniedRegistrationWrite(denied, registrations), "denied").isTrue();
-	}
-
-	/**
-	 * A failure that does not deny a write below the registrations directory is not taken for one: another reason, a
-	 * denial elsewhere, or no message.
-	 */
-	@Test
-	public void otherFailuresAreNotDeniedWrites()
-	{
-		Path registrations = Path.of("/home/user/project/.git/worktrees");
-		String notEmpty = "fatal: '/home/user/campaign/worktree' already exists";
-		String elsewhere = "fatal: could not create directory of 'campaign/worktree': Permission denied";
-
-		requireThat(ForkGit.deniedRegistrationWrite(notEmpty, registrations), "notEmpty").isFalse();
-		requireThat(ForkGit.deniedRegistrationWrite(elsewhere, registrations), "elsewhere").isFalse();
-		requireThat(ForkGit.deniedRegistrationWrite(null, registrations), "noMessage").isFalse();
-	}
-
-	/**
 	 * A path is separated from the options by {@code --}, so that Git cannot take a path for an option, and each path
 	 * reaches Git as written.
 	 */

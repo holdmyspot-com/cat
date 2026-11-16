@@ -16,10 +16,8 @@ import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
@@ -34,10 +32,9 @@ import java.util.Set;
  * A campaign's fork of a base worktree: the recorded prompt system and the detached optimization worktree at the base's
  * {@code HEAD}.
  * <p>
- * Creating a fork requires a clean base worktree and a directory in which this process can register the optimization
- * worktree with Git, ensures through the base's {@code .gitignore} that Git ignores CAT's session directories so that
- * campaign files never make the base dirty, records the files, and adds the optimization worktree. Every Git operation
- * runs through {@link Git}.
+ * Creating a fork requires a clean base worktree, ensures through the base's {@code .gitignore} that Git ignores CAT's
+ * session directories so that campaign files never make the base dirty, records the files, and has a
+ * {@link WorktreeRegistrar} add the optimization worktree. Every other Git operation runs through {@link Git}.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -86,29 +83,31 @@ public final class Fork implements ForkView
 	 * counts as clean, and the fork records it with those lines. Otherwise this method stops before it creates anything,
 	 * including those lines.
 	 *
-	 * @param base the base worktree, which is the top-level directory of its repository
-	 * @param campaign the campaign storage directory
+	 * @param base         the base worktree, which is the top-level directory of its repository
+	 * @param campaign     the campaign storage directory
 	 * @param participants ignored paths and ignored files relative to {@code base}, and absolute paths outside it, that
-	 *   take part in the campaign; tracked files, and the existing targets outside {@code base} that recorded links
-	 *   reach, always take part
-	 * @param replacer replaces the fork's stored participant selection
+	 *                     take part in the campaign; tracked files, and the existing targets outside {@code base} that
+	 *                     recorded links reach, always take part
+	 * @param replacer     replaces the fork's stored participant selection
+	 * @param registrar    adds, repairs and removes the optimization worktree's registration with the base's
+	 *                     repository
 	 * @return the fork
-	 * @throws NullPointerException if any of the arguments are null
+	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
-	 *   participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
-	 * @throws WorkspaceException if the base has uncommitted changes, a participant does not exist, or this process
-	 *   cannot write the directory in which Git registers linked worktrees
-	 * @throws IOException if Git fails or the files cannot be copied
+	 *                                  participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
+	 * @throws WorkspaceException       if the base has uncommitted changes or a participant does not exist
+	 * @throws WorktreeRefusedException if {@code registrar} refuses to add the optimization worktree
+	 * @throws IOException              if Git fails or the files cannot be copied
 	 */
-	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer)
-		throws IOException
+	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
+		WorktreeRegistrar registrar) throws IOException
 	{
-		return create(base, campaign, participants, replacer, new FileSystemCharacterDevices());
+		return create(base, campaign, participants, replacer, new FileSystemCharacterDevices(), registrar);
 	}
 
 	/**
-	 * Forks a base worktree, as {@link #create(Path, Path, Set, FileReplacer)} does, treating the untracked files that
-	 * a classifier names as character devices as absent.
+	 * Forks a base worktree, as {@link #create(Path, Path, Set, FileReplacer, WorktreeRegistrar)} does, treating the
+	 * untracked files that a classifier names as character devices as absent.
 	 *
 	 * @param base         the base worktree, which is the top-level directory of its repository
 	 * @param campaign     the campaign storage directory
@@ -117,57 +116,30 @@ public final class Fork implements ForkView
 	 *                     recorded links reach, always take part
 	 * @param replacer     replaces the fork's stored participant selection
 	 * @param devices      tells which files are character devices
+	 * @param registrar    adds, repairs and removes the optimization worktree's registration with the base's
+	 *                     repository
 	 * @return the fork
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
 	 *                                  participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
-	 * @throws WorkspaceException       if the base has uncommitted changes, a participant does not exist, or this
-	 *                                  process cannot write the directory in which Git registers linked worktrees
+	 * @throws WorkspaceException       if the base has uncommitted changes or a participant does not exist
+	 * @throws WorktreeRefusedException if {@code registrar} refuses to add the optimization worktree
 	 * @throws IOException              if Git fails or the files cannot be copied
 	 */
 	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
-		CharacterDevices devices) throws IOException
-	{
-		return create(base, campaign, participants, replacer, devices, new FileSystemWritableDirectories());
-	}
-
-	/**
-	 * Forks a base worktree, as {@link #create(Path, Path, Set, FileReplacer, CharacterDevices)} does, confirming
-	 * through {@code writable} that this process can write the directory in which Git registers the optimization
-	 * worktree.
-	 *
-	 * @param base         the base worktree, which is the top-level directory of its repository
-	 * @param campaign     the campaign storage directory
-	 * @param participants ignored paths and ignored files relative to {@code base}, and absolute paths outside it, that
-	 *                     take part in the campaign; tracked files, and the existing targets outside {@code base} that
-	 *                     recorded links reach, always take part
-	 * @param replacer     replaces the fork's stored participant selection
-	 * @param devices      tells which files are character devices
-	 * @param writable     confirms that this process can write a directory
-	 * @return the fork
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code base} is not the top-level directory of its repository, or a
-	 *                                  participant is not a valid path (see {@link ForkTree#record(Path, Path, Set)})
-	 * @throws WorkspaceException       if the base has uncommitted changes, a participant does not exist, or this
-	 *                                  process cannot write the directory in which Git registers linked worktrees
-	 * @throws IOException              if Git fails or the files cannot be copied
-	 */
-	public static Fork create(Path base, Path campaign, Set<Path> participants, FileReplacer replacer,
-		CharacterDevices devices, WritableDirectories writable) throws IOException
+		CharacterDevices devices, WorktreeRegistrar registrar) throws IOException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(participants, "participants").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(devices, "devices").isNotNull();
-		requireThat(writable, "writable").isNotNull();
+		requireThat(registrar, "registrar").isNotNull();
 		Path normalizedBase = base.toAbsolutePath().normalize();
 		Path normalizedCampaign = campaign.toAbsolutePath().normalize();
 		Git git = new Git(normalizedBase);
 		requireTopLevel(git, normalizedBase);
 		requireClean(git, normalizedBase, devices);
-		Path registrations = worktreeRegistrations(git);
-		requireWritable(writable, registrations);
 		Optional<String> ignoreNotice = SessionIgnore.ensure(normalizedBase).
 			map(SessionIgnore.IgnoreNotice::forAgent);
 
@@ -182,17 +154,17 @@ public final class Fork implements ForkView
 		boolean worktreeAdded = false;
 		try
 		{
-			addWorktree(git, worktree, registrations);
+			registrar.add(normalizedBase, normalizedCampaign);
 			worktreeAdded = true;
 			Fork fork = new Fork(tree, ParticipantSelection.NONE, worktree, ignoreNotice, replacer,
-				new GitWorktreeLinks(git, worktree));
+				new RegistrarLinks(registrar, normalizedBase, normalizedCampaign));
 			// Git checks out the tracked files only, so write the participants and the recorded modes as well
 			fork.workspace.materialize(Overlay.of(fork.tree.inventory()));
 			return fork;
 		}
 		catch (IOException | RuntimeException e)
 		{
-			undo(git, tree, worktree, worktreeAdded, e);
+			undo(registrar, normalizedBase, tree, worktreeAdded, e);
 			throw e;
 		}
 	}
@@ -278,26 +250,23 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Removes what {@link #create(Path, Path, Set, FileReplacer)} created after it recorded the files, so that a retry
-	 * starts clean.
-	 * The lines that CAT added to the base's {@code .gitignore} stay, because removing them would let campaign files
-	 * dirty the base. A failure to undo is
-	 * attached to the original failure as a suppressed exception.
+	 * Removes what {@link #create(Path, Path, Set, FileReplacer, WorktreeRegistrar)} created after it recorded the
+	 * files, so that a retry starts clean. The lines that CAT added to the base's {@code .gitignore} stay, because
+	 * removing them would let campaign files dirty the base. A failure to undo is attached to the original failure as a
+	 * suppressed exception.
 	 *
-	 * @param git the base's Git
-	 * @param tree the recorded files
-	 * @param worktree the optimization worktree's directory
-	 * @param worktreeAdded {@code true} if {@code git worktree add} succeeded, so the worktree is CAT's to remove
-	 * @param failure the failure that stops the fork
+	 * @param registrar     removes the optimization worktree's registration
+	 * @param base          the base worktree
+	 * @param tree          the recorded files
+	 * @param worktreeAdded {@code true} if the optimization worktree was added, so it is CAT's to remove
+	 * @param failure       the failure that stops the fork
 	 */
-	private static void undo(Git git, ForkTree tree, Path worktree, boolean worktreeAdded, Throwable failure)
+	private static void undo(WorktreeRegistrar registrar, Path base, ForkTree tree, boolean worktreeAdded,
+		Throwable failure)
 	{
+		Path campaign = tree.directory().getParent();
 		if (worktreeAdded)
-		{
-			attempt(failure, () -> git.run("worktree", "remove", "--force", worktree.toString()));
-			attempt(failure, () -> TemporaryDirectories.deleteRecursively(worktree));
-			attempt(failure, () -> git.run("worktree", "prune"));
-		}
+			attempt(failure, () -> registrar.remove(base, campaign));
 		attempt(failure, () -> TemporaryDirectories.deleteRecursively(tree.directory()));
 	}
 
@@ -334,29 +303,31 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Opens a fork that {@link #create(Path, Path, Set, FileReplacer)} created earlier, for example to resume a
-	 * campaign.
+	 * Opens a fork that {@link #create(Path, Path, Set, FileReplacer, WorktreeRegistrar)} created earlier, for example
+	 * to resume a campaign.
 	 *
-	 * @param base the base worktree
-	 * @param campaign the campaign storage directory
-	 * @param replacer replaces the fork's stored participant selection
+	 * @param base      the base worktree
+	 * @param campaign  the campaign storage directory
+	 * @param replacer  replaces the fork's stored participant selection
+	 * @param registrar repairs and recreates the optimization worktree's registration with the base's repository
 	 * @return the fork, which reports no notice about the base's {@code .gitignore}
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws WorkspaceException if the campaign holds no fork
-	 * @throws IOException if the recorded files cannot be read
+	 * @throws WorkspaceException   if the campaign holds no fork
+	 * @throws IOException          if the recorded files cannot be read
 	 */
-	public static Fork open(Path base, Path campaign, FileReplacer replacer) throws IOException
+	public static Fork open(Path base, Path campaign, FileReplacer replacer, WorktreeRegistrar registrar)
+		throws IOException
 	{
 		requireThat(base, "base").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
-		Path worktree = worktreeOf(campaign.toAbsolutePath().normalize());
-		return open(base, campaign, replacer, new GitWorktreeLinks(new Git(base.toAbsolutePath().normalize()),
-			worktree));
+		requireThat(registrar, "registrar").isNotNull();
+		return open(base, campaign, replacer, new RegistrarLinks(registrar, base.toAbsolutePath().normalize(),
+			campaign.toAbsolutePath().normalize()));
 	}
 
 	/**
-	 * Opens a fork that a campaign holds, as {@link #open(Path, Path, FileReplacer)} does, keeping its optimization
-	 * worktree linked to the base's repository through {@code links}.
+	 * Opens a fork that a campaign holds, as {@link #open(Path, Path, FileReplacer, WorktreeRegistrar)} does, keeping
+	 * its optimization worktree linked to the base's repository through {@code links}.
 	 *
 	 * @param base the base worktree
 	 * @param campaign the campaign storage directory
@@ -383,32 +354,6 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * Removes the optimization worktree that a campaign holds, and Git's record of it. Removing a worktree that does
-	 * not exist only prunes Git's records of missing worktrees. The links of a worktree that the project's move left
-	 * naming the old location are repaired first, so that Git removes the record that the base's repository holds.
-	 *
-	 * @param base the base worktree
-	 * @param campaign the campaign storage directory
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException if Git fails or the worktree cannot be deleted
-	 */
-	public static void remove(Path base, Path campaign) throws IOException
-	{
-		requireThat(base, "base").isNotNull();
-		requireThat(campaign, "campaign").isNotNull();
-		Git git = new Git(base.toAbsolutePath().normalize());
-		Path worktree = worktreeOf(campaign.toAbsolutePath().normalize());
-		// A worktree whose deletion was interrupted may have lost its ".git" file, which Git needs to remove it
-		if (Files.exists(worktree.resolve(".git"), LinkOption.NOFOLLOW_LINKS) &&
-			new GitWorktreeLinks(git, worktree).repair())
-		{
-			git.run("worktree", "remove", "--force", worktree.toString());
-		}
-		TemporaryDirectories.deleteRecursively(worktree);
-		git.run("worktree", "prune");
-	}
-
-	/**
 	 * Returns where a campaign holds its optimization worktree.
 	 *
 	 * @param campaign the campaign storage directory
@@ -416,81 +361,7 @@ public final class Fork implements ForkView
 	 */
 	static Path worktreeOf(Path campaign)
 	{
-		return campaign.resolve("worktree");
-	}
-
-	/**
-	 * Returns the directory in which Git registers a repository's linked worktrees: {@code worktrees} in its common Git
-	 * directory, which the main worktree and every linked worktree share.
-	 *
-	 * @param git the base's Git
-	 * @return the directory's absolute path
-	 * @throws IOException if Git fails
-	 */
-	private static Path worktreeRegistrations(Git git) throws IOException
-	{
-		return ForkGit.worktreeRegistrations(git.run("rev-parse", "--path-format=absolute", "--git-common-dir"));
-	}
-
-	/**
-	 * Requires that this process can write the directory in which Git registers linked worktrees, creating it if it
-	 * does not exist.
-	 *
-	 * @param writable      confirms that this process can write a directory
-	 * @param registrations the directory
-	 * @throws WorkspaceException if this process cannot write the directory
-	 */
-	private static void requireWritable(WritableDirectories writable, Path registrations) throws WorkspaceException
-	{
-		try
-		{
-			writable.requireWritable(registrations);
-		}
-		catch (IOException e)
-		{
-			WorkspaceException refusal = unwritableRegistrations(registrations);
-			refusal.initCause(e);
-			throw refusal;
-		}
-	}
-
-	/**
-	 * Adds the optimization worktree, detached at the base's {@code HEAD}.
-	 *
-	 * @param git           the base's Git
-	 * @param worktree      the optimization worktree's directory
-	 * @param registrations the directory in which Git registers linked worktrees
-	 * @throws WorkspaceException if Git cannot write {@code registrations} because the file system is read-only or
-	 *                            denies the write
-	 * @throws IOException        if Git fails otherwise
-	 */
-	private static void addWorktree(Git git, Path worktree, Path registrations) throws IOException
-	{
-		try
-		{
-			git.run("worktree", "add", "--detach", worktree.toString(), "HEAD");
-		}
-		catch (IOException e)
-		{
-			if (!ForkGit.deniedRegistrationWrite(e.getMessage(), registrations))
-				throw e;
-			WorkspaceException refusal = unwritableRegistrations(registrations);
-			refusal.initCause(e);
-			throw refusal;
-		}
-	}
-
-	/**
-	 * Returns the refusal, for the user, of a fork whose worktree Git cannot register.
-	 *
-	 * @param registrations the directory in which Git registers linked worktrees
-	 * @return the refusal
-	 */
-	private static WorkspaceException unwritableRegistrations(Path registrations)
-	{
-		return new WorkspaceException("CAT cannot create the optimization worktree: this session cannot write " +
-			registrations + ". Allow this session to write that directory, for example in your harness's sandbox " +
-			"settings, then run start again.");
+		return GitWorktreeRegistrar.worktreeOf(campaign);
 	}
 
 	/**
@@ -733,136 +604,28 @@ public final class Fork implements ForkView
 	}
 
 	/**
-	 * The links that Git keeps between the optimization worktree and the base's repository: the worktree's
-	 * {@code .git} file names the worktree's registration in the repository, and the registration's {@code gitdir}
-	 * file names the worktree's {@code .git} file.
-	 * <p>
-	 * CAT writes both links itself instead of running {@code git worktree repair}. That command also rewrites the
-	 * {@code .git} file of every other worktree that the repository registers, and in a copied project those
-	 * registrations name the original project's worktrees, which the command would then link to the copy.
+	 * The links that Git keeps between the optimization worktree and the base's repository, which a registrar repairs
+	 * and recreates: the worktree's {@code .git} file names the worktree's registration in the repository, and the
+	 * registration's {@code gitdir} file names the worktree's {@code .git} file.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param git the base's Git
-	 * @param worktree the optimization worktree's directory
+	 * @param registrar repairs and recreates the registration
+	 * @param base      the normalized absolute base worktree
+	 * @param campaign  the normalized absolute campaign storage directory
 	 */
-	private record GitWorktreeLinks(Git git, Path worktree) implements WorktreeLinks
+	private record RegistrarLinks(WorktreeRegistrar registrar, Path base, Path campaign) implements WorktreeLinks
 	{
-		private static final String GIT_FILE_PREFIX = "gitdir:";
-
 		@Override
 		public boolean repair() throws IOException
 		{
-			Path dotGit = worktree.resolve(".git");
-			Optional<Path> named = linkedPath(dotGit, GIT_FILE_PREFIX, worktree);
-			if (named.isEmpty())
-				return false;
-			Path name = named.get().getFileName();
-			if (name == null)
-				return false;
-			// Git names a registration after the worktree's directory, and the copied registration keeps its name
-			Path registration = worktreeRegistrations(git).resolve(name.toString());
-			if (!Files.isRegularFile(registration.resolve("HEAD"), LinkOption.NOFOLLOW_LINKS))
-				return false;
-			Path backlinkFile = registration.resolve("gitdir");
-			Optional<Path> backlink = linkedPath(backlinkFile, "", registration);
-			boolean backlinked = backlink.isPresent() && isSameFile(backlink.get(), dotGit);
-			if (isSameFile(named.get(), registration) && backlinked)
-				return true;
-			if (!backlinked && backlink.isPresent() && isLinkedTo(backlink.get(), registration))
-			{
-				// Another worktree of the base's repository uses the registration
-				return false;
-			}
-			Files.writeString(dotGit, GIT_FILE_PREFIX + " " + gitText(registration.toRealPath()) + "\n", UTF_8);
-			Files.writeString(backlinkFile, gitText(dotGit.toRealPath()) + "\n", UTF_8);
-			return true;
+			return registrar.repair(base, campaign);
 		}
 
 		@Override
 		public void recreate() throws IOException
 		{
-			TemporaryDirectories.deleteRecursively(worktree);
-			// Drops the registration of the deleted worktree, if the base's repository holds one
-			git.run("worktree", "prune");
-			addWorktree(git, worktree, worktreeRegistrations(git));
-		}
-
-		/**
-		 * Reads the path that a link file of Git names.
-		 *
-		 * @param file the link file
-		 * @param prefix the text that precedes the path
-		 * @param directory the directory that a relative path is relative to
-		 * @return the path, or empty if the file does not exist or names no path
-		 * @throws IOException if the file cannot be read
-		 */
-		private static Optional<Path> linkedPath(Path file, String prefix, Path directory) throws IOException
-		{
-			if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
-				return Optional.empty();
-			String content = Files.readString(file, UTF_8);
-			if (!content.startsWith(prefix))
-				return Optional.empty();
-			String path = content.substring(prefix.length()).strip();
-			if (path.isEmpty())
-				return Optional.empty();
-			try
-			{
-				return Optional.of(directory.resolve(path).normalize());
-			}
-			catch (InvalidPathException _)
-			{
-				return Optional.empty();
-			}
-		}
-
-		/**
-		 * Indicates whether a {@code .git} file names a registration.
-		 *
-		 * @param dotGit the {@code .git} file
-		 * @param registration the registration's directory
-		 * @return {@code true} if the file exists and names the registration
-		 * @throws IOException if the file cannot be read
-		 */
-		private static boolean isLinkedTo(Path dotGit, Path registration) throws IOException
-		{
-			Path parent = dotGit.getParent();
-			if (parent == null)
-				return false;
-			Optional<Path> named = linkedPath(dotGit, GIT_FILE_PREFIX, parent);
-			return named.isPresent() && isSameFile(named.get(), registration);
-		}
-
-		/**
-		 * Indicates whether two paths locate the same file.
-		 *
-		 * @param first a path
-		 * @param second another path
-		 * @return {@code true} if both locate the same existing file, or the paths are equal
-		 * @throws IOException if a file's identity cannot be read
-		 */
-		private static boolean isSameFile(Path first, Path second) throws IOException
-		{
-			try
-			{
-				return Files.isSameFile(first, second);
-			}
-			catch (NoSuchFileException _)
-			{
-				return false;
-			}
-		}
-
-		/**
-		 * Returns a path as Git writes it in a link file, with {@code /} between names on every platform.
-		 *
-		 * @param path an absolute path
-		 * @return the text
-		 */
-		private static String gitText(Path path)
-		{
-			return path.toString().replace(File.separatorChar, '/');
+			registrar.recreate(base, campaign);
 		}
 	}
 }

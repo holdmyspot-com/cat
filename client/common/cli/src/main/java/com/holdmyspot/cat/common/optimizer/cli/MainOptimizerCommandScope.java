@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
@@ -77,7 +78,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		super(new MainJvmScope(environment, waiting));
 		this.fileReplacer = LazyReference.create(() -> FileReplacer.retrying(waiting));
-		this.forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue()));
+		this.forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue(), new GitWorktreeRegistrar()));
 		requireThat(harness, "harness").isNotNull();
 		requireThat(trialSandbox, "trialSandbox").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();

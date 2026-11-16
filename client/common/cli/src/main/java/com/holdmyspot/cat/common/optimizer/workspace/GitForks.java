@@ -11,30 +11,35 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * The {@link Forks} that fork a Git repository.
+ * The {@link Forks} that fork a Git repository, whose optimization worktrees a {@link WorktreeRegistrar} registers with
+ * the repository.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class GitForks implements Forks
 {
 	private final FileReplacer replacer;
+	private final WorktreeRegistrar registrar;
 
 	/**
 	 * Creates the forks.
 	 *
-	 * @param replacer replaces each fork's stored participant selection
-	 * @throws NullPointerException if {@code replacer} is null
+	 * @param replacer  replaces each fork's stored participant selection
+	 * @param registrar adds, repairs, recreates and removes each optimization worktree's registration
+	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public GitForks(FileReplacer replacer)
+	public GitForks(FileReplacer replacer, WorktreeRegistrar registrar)
 	{
 		requireThat(replacer, "replacer").isNotNull();
+		requireThat(registrar, "registrar").isNotNull();
 		this.replacer = replacer;
+		this.registrar = registrar;
 	}
 
 	@Override
 	public ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException
 	{
-		return Fork.create(base, campaign, participants, replacer);
+		return Fork.create(base, campaign, participants, replacer, registrar);
 	}
 
 	@Override
@@ -58,7 +63,7 @@ public final class GitForks implements Forks
 	@Override
 	public ForkView open(Path base, Path campaign) throws IOException
 	{
-		return Fork.open(base, campaign, replacer);
+		return Fork.open(base, campaign, replacer, registrar);
 	}
 
 	@Override
@@ -70,6 +75,6 @@ public final class GitForks implements Forks
 	@Override
 	public void remove(Path base, Path campaign) throws IOException
 	{
-		Fork.remove(base, campaign);
+		registrar.remove(base, campaign);
 	}
 }
