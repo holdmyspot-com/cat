@@ -377,7 +377,8 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
-	 * Records a background driver after taking its lock.
+	 * Records a background driver after taking its lock. A command that is not a background driver discards the
+	 * identity that an earlier driver left, so that it is not taken for this holder's.
 	 *
 	 * @param id the campaign identifier
 	 * @throws IOException if its identity cannot be stored
@@ -385,7 +386,9 @@ public final class OptimizerCore implements Core
 	private void recordBackground(String id) throws IOException
 	{
 		Files.deleteIfExists(lockFile(id).resolveSibling("background-result.json"));
-		if (background && !backgroundRuns.containsKey(id))
+		if (!background)
+			BackgroundRun.discardStale(lockFile(id));
+		else if (!backgroundRuns.containsKey(id))
 			backgroundRuns.put(id, new BackgroundRun(lockFile(id), backgroundStart, scope.json(), scope.fileReplacer()));
 	}
 
@@ -1140,7 +1143,7 @@ public final class OptimizerCore implements Core
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(id));
 		if (lock.isEmpty())
 		{
-			if (BackgroundRun.owner(lockFile(id), scope.json()).isPresent())
+			if (BackgroundRun.owner(lockFile(id), scope.fileLocks(), scope.json()).isPresent())
 				throw new CommandRefusedException("A background driver holds campaign " + id +
 					". Use `status` to see progress or `cancel` to stop it.");
 			throw new CommandRefusedException("Campaign " + id + " is running in another process. Wait for its " +
@@ -2713,7 +2716,8 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			require(scope.store(), campaign, true);
-			Optional<BackgroundRun.Owner> owner = BackgroundRun.owner(lockFile(campaign), scope.json());
+			Optional<BackgroundRun.Owner> owner =
+				BackgroundRun.owner(lockFile(campaign), scope.fileLocks(), scope.json());
 			if (owner.isPresent())
 			{
 				BackgroundRun.requestStop(lockFile(campaign), owner.get(), scope.fileReplacer());
@@ -3476,9 +3480,10 @@ public final class OptimizerCore implements Core
 		CommandResult result = new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(),
 			proposalFile, null, message);
 		List<String> notices = new ArrayList<>();
-		Optional<BackgroundRun.Owner> owner = BackgroundRun.owner(lockFile(campaign.header().id()), scope.json());
+		Optional<BackgroundRun.Owner> owner =
+			BackgroundRun.owner(lockFile(campaign.header().id()), scope.fileLocks(), scope.json());
 		if (!background)
-			owner.ifPresent(driver -> notices.add("Background driver " + driver.pid() + " holds the campaign; started " +
+			owner.ifPresent(driver -> notices.add("Background driver holds the campaign; started " +
 			driver.started() + ". Use `status` for progress or `cancel` to stop it."));
 		if (owner.isEmpty())
 		{

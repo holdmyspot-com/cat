@@ -7520,7 +7520,7 @@ public final class DriverTest
 				requireThat(driver.step(), "unrelatedinterrupt").isInstanceOf(Step.Continue.class);
 				for (FakeSession session : started)
 					requireThat(session.isInterruptRequested(), "stillrunning").isFalse();
-				BackgroundRun.Owner identity = BackgroundRun.owner(
+				BackgroundRun.Owner identity = BackgroundRun.recorded(
 					harness.context().lockFile(), harness.context().json()).orElseThrow();
 				BackgroundRun.requestStop(harness.context().lockFile(),
 					identity, Yielding.fileReplacer());

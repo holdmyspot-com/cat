@@ -1,7 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.execution;
 
 import java.nio.file.NoSuchFileException;
-import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -22,14 +22,13 @@ public final class BackgroundRun implements AutoCloseable
 	private boolean closed;
 
 	/**
-	 * The process and command start of a driver.
+	 * The identity that a driver records. It names no process: a process identifier is meaningful only inside the
+	 * process namespace that assigned it, and a driver in another sandbox has a namespace that its readers cannot see.
 	 *
-	 * @param pid the process identifier
-	 * @param processStart the process start, which prevents PID reuse
 	 * @param started the command start time
 	 * @param token the cancellation address
 	 */
-	public record Owner(long pid, String processStart, Instant started, String token)
+	public record Owner(Instant started, String token)
 	{
 	}
 
@@ -46,10 +45,7 @@ public final class BackgroundRun implements AutoCloseable
 	{
 		this.lockFile = lockFile;
 		this.token = UUID.randomUUID().toString();
-		ProcessHandle process = ProcessHandle.current();
-		String processStart = HarnessProcesses.system().find(process.pid()).orElseThrow().start().orElseThrow();
-		tools.jackson.databind.node.ObjectNode node = json.createObjectNode().put("pid", process.pid()).
-			put("processStart", processStart).
+		tools.jackson.databind.node.ObjectNode node = json.createObjectNode().
 			put("started", started.toString()).put("token", token);
 		write(ownerFile(lockFile), json.writeValueAsString(node), replacer);
 	}
@@ -89,31 +85,60 @@ public final class BackgroundRun implements AutoCloseable
 	}
 
 	/**
-	 * Returns the live owner, or none after its process died or its command ended.
+	 * Returns the driver that is alive, which is the one whose identity is recorded while its campaign lock is held.
+	 * The lock, not a process identifier, says whether the driver is alive, so the answer is the same for a reader in
+	 * any process namespace. The lock is taken and released at once, so a lock that nobody held is left free.
+	 *
+	 * @param lockFile the campaign lock file
+	 * @param fileLocks the process-owned lock coordinator
+	 * @param json the state mapper
+	 * @return the live owner, or empty if no identity is recorded or no process holds the lock
+	 * @throws IOException if state cannot be read or the lock cannot be tried
+	 */
+	public static Optional<Owner> owner(Path lockFile, FileLocks fileLocks, JsonMapper json) throws IOException
+	{
+		Optional<Owner> recorded = recorded(lockFile, json);
+		if (recorded.isEmpty())
+			return recorded;
+		Optional<CampaignLock> free = CampaignLock.tryAcquire(fileLocks, lockFile);
+		if (free.isEmpty())
+			return recorded;
+		free.get().close();
+		return Optional.empty();
+	}
+
+	/**
+	 * Returns the driver identity that is recorded, whether or not that driver is still alive.
 	 *
 	 * @param lockFile the campaign lock file
 	 * @param json the state mapper
-	 * @return the live owner
+	 * @return the recorded identity, or empty if none is recorded
 	 * @throws IOException if state cannot be read
 	 */
-	public static Optional<Owner> owner(Path lockFile, JsonMapper json) throws IOException
+	public static Optional<Owner> recorded(Path lockFile, JsonMapper json) throws IOException
 	{
-		Path file = ownerFile(lockFile);
-		if (!Files.isRegularFile(file))
-			return Optional.empty();
-		Owner owner;
 		try
 		{
-			tools.jackson.databind.JsonNode node = json.readTree(Files.readString(file));
-			owner = new Owner(node.path("pid").asLong(), node.path("processStart").asString(),
-				Instant.parse(node.path("started").asString()), node.path("token").asString());
+			tools.jackson.databind.JsonNode node = json.readTree(Files.readString(ownerFile(lockFile)));
+			return Optional.of(new Owner(Instant.parse(node.path("started").asString()),
+				node.path("token").asString()));
 		}
 		catch (NoSuchFileException _)
 		{
 			return Optional.empty();
 		}
-		return HarnessProcesses.system().find(owner.pid()).
-			filter(process -> process.start().equals(Optional.of(owner.processStart()))).map(_ -> owner);
+	}
+
+	/**
+	 * Removes the identity that an earlier driver left. The caller holds the campaign lock, so the identity cannot
+	 * belong to a live driver.
+	 *
+	 * @param lockFile the held campaign lock file
+	 * @throws IOException if the identity cannot be removed
+	 */
+	public static void discardStale(Path lockFile) throws IOException
+	{
+		Files.deleteIfExists(ownerFile(lockFile));
 	}
 
 	/**
@@ -139,7 +164,7 @@ public final class BackgroundRun implements AutoCloseable
 	 */
 	public static boolean stopRequested(Path lockFile, JsonMapper json) throws IOException
 	{
-		Optional<Owner> owner = owner(lockFile, json);
+		Optional<Owner> owner = recorded(lockFile, json);
 		if (owner.isEmpty())
 			return false;
 		try

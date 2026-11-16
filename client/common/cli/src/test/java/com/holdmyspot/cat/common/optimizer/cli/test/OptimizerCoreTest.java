@@ -103,6 +103,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
+import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
 import org.testng.Assert.ThrowingRunnable;
 import org.testng.annotations.DataProvider;
@@ -7224,7 +7225,7 @@ public final class OptimizerCoreTest
 				try
 				{
 					Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
-					requireThat(BackgroundRun.owner(lockFile, JSON),
+					requireThat(BackgroundRun.owner(lockFile, repository.scope().fileLocks(), JSON),
 						"driverreleased").isEmpty();
 					try (CampaignLock _ = holdLock(repository, id))
 					{
@@ -7297,6 +7298,78 @@ public final class OptimizerCoreTest
 				requireThat(cancelled.status().lifecycle(), "cancelled").isEqualTo(Lifecycle.CANCELLED);
 				requireThat(cancelled.status().lifecycle().isResumable(), "resumable").isTrue();
 			}
+		}
+	}
+
+	/**
+	 * A driver that holds the campaign lock is alive whatever process identifier its identity file records. A
+	 * driver in another sandbox's process namespace records a number that this process cannot resolve, so another
+	 * process must neither call it dead nor be unable to cancel it. Starting the campaign creates a real Git
+	 * repository and worktrees, which makes the case last about a second. The test keeps that boundary because it
+	 * asserts the real lock and the files that the commands write.
+	 *
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test
+	@SuppressWarnings("try")
+	public void backgroundDriverInOtherNamespaceIsAlive() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
+			try (CampaignLock held = holdLock(repository, id))
+			{
+				Files.writeString(lockFile.resolveSibling("background-driver.json"),
+					"{\"pid\":3,\"processStart\":\"a5fa52b6b67240fca5c8afc1874fb585t1667472\"," +
+						"\"started\":\"2026-11-16T17:24:04.105463575Z\",\"token\":\"51e785b3\"}");
+				String summary = repository.core().status(id).summary(ZoneOffset.UTC);
+				requireThat(summary, "status").contains("Background driver").contains("2026-11-16T17:24:04").
+					doesNotContain("no longer alive");
+				repository.scope().controlledWaiting = interval -> () ->
+				{
+					requireThat(BackgroundRun.stopRequested(lockFile, JSON), "requestbeforewaiting").isTrue();
+					held.close();
+				};
+				requireThat(repository.core().cancel(id).status().lifecycle(), "cancelled").
+					isEqualTo(Lifecycle.CANCELLED);
+			}
+		}
+	}
+
+	/**
+	 * A driver identity whose lock nobody holds belongs to a driver that is gone, even when the process that the
+	 * identity names is this very process. Status says so, and a command that takes the lock discards the identity
+	 * so that it is not taken for the new holder's. Starting the campaign creates a real Git repository and
+	 * worktrees, which makes the case last about a second. The test keeps that boundary because it asserts the real
+	 * lock and the files that the commands write.
+	 *
+	 * @throws Exception if the fixture cannot be used
+	 */
+	@Test
+	public void backgroundDriverWithoutLockHolderIsDead() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
+			ProcessHandle self = ProcessHandle.current();
+			String start = HarnessProcesses.system().find(self.pid()).orElseThrow().start().orElseThrow();
+			Path identity = lockFile.resolveSibling("background-driver.json");
+			Files.writeString(identity, "{\"pid\":" + self.pid() + ",\"processStart\":\"" + start +
+				"\",\"started\":\"2026-11-16T17:24:04.105463575Z\",\"token\":\"51e785b3\"}");
+			requireThat(repository.core().status(id).summary(ZoneOffset.UTC), "deadstatus").
+				contains("no longer alive").doesNotContain("Background driver");
+			repository.core().cancel(id);
+			requireThat(Files.exists(identity), "identitydiscarded").isFalse();
+			requireThat(repository.core().status(id).summary(ZoneOffset.UTC), "afterforeground").
+				doesNotContain("no longer alive");
 		}
 	}
 
