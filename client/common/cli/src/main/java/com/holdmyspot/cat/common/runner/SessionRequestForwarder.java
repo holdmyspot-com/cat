@@ -25,6 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
@@ -173,6 +174,7 @@ public final class SessionRequestForwarder
 		ObjectNode request = launch.request();
 		String id = UUID.randomUUID().toString();
 		JsonNode response;
+		AtomicReference<Optional<String>> incomplete = new AtomicReference<>(Optional.empty());
 		if (launch.conversation() == null)
 		{
 			List<String> prompts;
@@ -189,31 +191,21 @@ public final class SessionRequestForwarder
 				prompts, RequestArchive.NULL_DEVICE, route.limits());
 			response = awaitTranscript(json, responses(requests, id), pause, output, launch.transcript(),
 				Function.identity());
+			incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, response));
 		}
 		else
 		{
+			// The conversation ends after the launch has what it keeps, so the asking session that reads its last line
+			// finds the kept run in place
 			response = converse(json, request, requests, id, launch.conversation(), RequestArchive.NULL_DEVICE,
-				route.limits(), pause, output, launch.transcript());
-		}
-		Path childReceipt = responses(requests, id).resolve("receipt.json");
-		if (launch.receipt() != null && Files.isRegularFile(childReceipt))
-		{
-			Files.createDirectories(launch.receipt().toAbsolutePath().getParent());
-			Files.copy(childReceipt, launch.receipt(), StandardCopyOption.REPLACE_EXISTING);
+				route.limits(), pause, output, launch.transcript(),
+				answer -> incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, answer)));
 		}
 		String status = response.path("status").asString();
-		if (route == Route.SERVER)
+		if (incomplete.get().isPresent() && status.equals("completed"))
 		{
-			Path runRoot = launch.runRoot();
-			if (runRoot == null)
-				runRoot = defaultRunRoot;
-			Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "");
-			TemporaryDirectories.deleteRecursively(responses(requests, id));
-			if (incomplete.isPresent() && status.equals("completed"))
-			{
-				errors.println(incomplete.get());
-				return 1;
-			}
+			errors.println(incomplete.get().get());
+			return 1;
 		}
 		if (status.equals("completed"))
 			return 0;
@@ -224,6 +216,42 @@ public final class SessionRequestForwarder
 		if (status.equals("refused"))
 			return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 		return 1;
+	}
+
+	/**
+	 * Keeps what a launch takes from its session's response: the receipt that {@code --receipt} names and, outside a
+	 * run, the kept run, which is copied into the launch's run root. The response is removed once the launch has copied
+	 * what it needs, outside a run.
+	 *
+	 * @param route          the runner that serves the request
+	 * @param harness        the harness of the runner launcher
+	 * @param launch         the launch
+	 * @param defaultRunRoot the run root of a launch that names no {@code --run-root} outside a run, or {@code null}
+	 *                       inside one
+	 * @param requests       the directory into which the launch wrote its request
+	 * @param id             the request identifier
+	 * @param response       the response
+	 * @return the reason why the copy of the kept run is incomplete, or empty if it is complete or the launch copies
+	 *   no kept run
+	 * @throws IOException if the receipt or the kept run cannot be copied
+	 */
+	private static Optional<String> collect(Route route, String harness, Launch launch, Path defaultRunRoot,
+		Path requests, String id, JsonNode response) throws IOException
+	{
+		Path childReceipt = responses(requests, id).resolve("receipt.json");
+		if (launch.receipt() != null && Files.isRegularFile(childReceipt))
+		{
+			Files.createDirectories(launch.receipt().toAbsolutePath().getParent());
+			Files.copy(childReceipt, launch.receipt(), StandardCopyOption.REPLACE_EXISTING);
+		}
+		if (route != Route.SERVER)
+			return Optional.empty();
+		Path runRoot = launch.runRoot();
+		if (runRoot == null)
+			runRoot = defaultRunRoot;
+		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "");
+		TemporaryDirectories.deleteRecursively(responses(requests, id));
+		return incomplete;
 	}
 
 	/**
@@ -597,7 +625,8 @@ public final class SessionRequestForwarder
 	 * transcript, until the parent runner publishes its response. The sender's lock is held from before the request
 	 * appears until this method returns, however it returns, so the parent runner stops a session whose requester
 	 * ended. The conversation's last line names the response's status, or {@code failed} when the request cannot be
-	 * followed to its response.
+	 * followed to its response, and follows {@code afterResponse}, so that what that action leaves behind is in place
+	 * when the asking session reads it.
 	 *
 	 * @param json       the manifest mapper
 	 * @param request    the request's manifest, without its records
@@ -609,12 +638,15 @@ public final class SessionRequestForwarder
 	 * @param pause      paces checks for progress
 	 * @param output     receives the transcript when {@code transcript} is null
 	 * @param transcript the file that receives the transcript, or null
+	 * @param afterResponse acts on the response before the conversation's last line is written
 	 * @return the response
 	 * @throws IllegalArgumentException if {@code folder} is not a new or empty folder
-	 * @throws IOException              if the request cannot be published, a record cannot be sent, or the wait fails
+	 * @throws IOException              if the request cannot be published, a record cannot be sent, the wait fails, or
+	 *                                  {@code afterResponse} fails
 	 */
 	static JsonNode converse(JsonMapper json, ObjectNode request, Path requests, String id, Path folder,
-		Path nullDevice, RequestLimits limits, Pause pause, OutputStream output, Path transcript) throws IOException
+		Path nullDevice, RequestLimits limits, Pause pause, OutputStream output, Path transcript,
+		ResponseAction afterResponse) throws IOException
 	{
 		try (Conversation messages = Conversation.open(folder);
 		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
@@ -635,6 +667,7 @@ public final class SessionRequestForwarder
 				JsonNode response = awaitTranscript(json, responses(requests, id), sending, output, transcript,
 					messages::childOutput);
 				status = response.path("status").asString(status);
+				afterResponse.accept(response);
 				return response;
 			}
 			finally
@@ -642,6 +675,21 @@ public final class SessionRequestForwarder
 				messages.end(status);
 			}
 		}
+	}
+
+	/**
+	 * An action on a request's response.
+	 */
+	@FunctionalInterface
+	interface ResponseAction
+	{
+		/**
+		 * Acts on the response.
+		 *
+		 * @param response the response
+		 * @throws IOException if the action fails
+		 */
+		void accept(JsonNode response) throws IOException;
 	}
 
 	/**

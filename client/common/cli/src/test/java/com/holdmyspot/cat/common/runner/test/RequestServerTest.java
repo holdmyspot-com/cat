@@ -62,6 +62,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -418,6 +419,80 @@ public final class RequestServerTest
 				requireThat(lines.getLast(), "lastLine").isEqualTo("{\"ended\":\"completed\"}");
 				requireThat(child.get().requests(), "records").isEqualTo(List.of(
 					"{\"type\":\"turn\",\"prompt\":\"hello\"}", "{\"type\":\"complete\"}"));
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a conversation of a launch that keeps its run ends only once the run is copied into the launch's
+	 * run root: the asking session that reads the {@code ended} line finds the kept run, including its last file,
+	 * already in place.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 * @throws ExecutionException   if the watcher of the conversation fails
+	 * @throws TimeoutException     if the conversation does not end
+	 */
+	@Test(timeOut = 60_000)
+	public void conversationEndsAfterKeptRunIsCopied() throws IOException, InterruptedException,
+		ExecutionException, TimeoutException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
+			Path folder = fixture.root.resolve("conversation");
+			Path toChild = folder.resolve("to-child.jsonl");
+			Path fromChild = folder.resolve("from-child.jsonl");
+			Path runs = fixture.root.resolve("runs");
+			String lastFile = "artifacts/many/file-399";
+			AtomicBoolean endSent = new AtomicBoolean();
+			try (Fixture.Running server = fixture.start())
+			{
+				// The asking session reads the run root as soon as it reads the line that ends the conversation
+				Future<Boolean> keptWhenEnded = fixture.executor.submit(() ->
+				{
+					long deadline = System.nanoTime() + WAIT.toNanos();
+					while (!(Files.isRegularFile(fromChild) && Files.readString(fromChild).contains("\"ended\"")))
+					{
+						if (System.nanoTime() > deadline)
+							throw new IOException("The conversation did not end");
+						Thread.onSpinWait();
+					}
+					Path claude = runs.resolve("claude");
+					if (!Files.isDirectory(claude))
+						return false;
+					try (Stream<Path> kept = Files.list(claude))
+					{
+						return kept.anyMatch(run -> Files.isRegularFile(run.resolve("run.json")) &&
+							Files.isRegularFile(run.resolve(lastFile)));
+					}
+				});
+				StringWriter errors = new StringWriter();
+				long deadline = System.nanoTime() + WAIT.toNanos();
+				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
+					new String[]{"--project", fixture.project.toString(), "--run-root", runs.toString(),
+						"--keep-run", "--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
+					new StringReader(""), server.requests(), runs, () ->
+					{
+						if (System.nanoTime() > deadline)
+							throw new IOException("The conversation did not end");
+						// Once the session runs, its run holds many files, so that copying it takes a while
+						if (!served.isEmpty() && !endSent.get())
+						{
+							Path many = Files.createDirectories(served.getFirst().run().directory().
+								resolve("artifacts/many"));
+							for (int i = 0; i < 400; ++i)
+								Files.writeString(many.resolve("file-" + i), "content");
+							Files.writeString(toChild, "{\"end\": true}\n", StandardOpenOption.CREATE,
+								StandardOpenOption.APPEND);
+							endSent.set(true);
+						}
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+
+				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+				requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "keptRunInPlaceWhenEnded").isTrue();
 			}
 		}
 	}

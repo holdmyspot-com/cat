@@ -3540,7 +3540,11 @@ the cause is gone, continues the same harness session (user request, 2026-11-10)
 itself ended ends the conversation, and `{"end": true}` after a failed last turn ends it with `{"ended": "failed"}`. A
 session that CAT serves for one of its own commands, such as the optimizer's, and a launch with prompts still fail at
 the request after a failed turn. The last line the launcher writes, however the child ends, is `{"ended": "<response status>"}`, so an
-asking session that waits for a `turn_end` that never comes sees the end instead. Appended files are the channel in both directions, because they work in both harnesses'
+asking session that waits for a `turn_end` that never comes sees the end instead. A launcher that copies the session's
+kept run into its `--run-root` writes that line only after the copy has ended, successfully or not, so the line also
+tells the asking session that the kept run is in place or will not come (end-to-end finding, E5 on Claude, 2026-11-16:
+the driver read the line while the launcher still copied a 2.2 GB run for about two minutes, found `--run-root` empty and
+took the run for lost). Appended files are the channel in both directions, because they work in both harnesses'
 sandboxes on every platform and need no reader to be present when a message is written; a background command in
 Claude Code has no standard input that the session can write to. The launcher sends each turn to the runner that serves its
 request, the run's runner or the session's request server, as the channel's next turn, so the bound and the request's

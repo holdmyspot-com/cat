@@ -403,7 +403,9 @@ public final class SessionRequestCli
 				request.path("effort").asString(""));
 			id = UUID.randomUUID().toString();
 			JsonNode result = SessionRequestForwarder.converse(json, request, requests, id, conversation, nullDevice,
-				limits, pause, OutputStream.nullOutputStream(), null);
+				limits, pause, OutputStream.nullOutputStream(), null, _ ->
+				{
+				});
 			output.println(responseFile(requests, id));
 			return exitStatus(result);
 		}
