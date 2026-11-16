@@ -84,6 +84,11 @@ public final class ClaudeProcess implements HarnessProcess
 	 */
 	private long interruptsSent;
 	/**
+	 * Indicates whether the turn in progress was interrupted, so that the turn ends at Claude's next {@code idle}
+	 * state although a background task is still listed. Written under {@link #turnLock}.
+	 */
+	private volatile boolean turnInterrupted;
+	/**
 	 * Indicates whether Claude has printed a {@code session_state_changed} line since the process started. Turns run
 	 * one at a time, but not always on the same thread.
 	 */
@@ -243,6 +248,7 @@ public final class ClaudeProcess implements HarnessProcess
 			{
 				turnActive = true;
 				boolean interruptRequested = turnPrepared && interruptPending;
+				turnInterrupted = interruptRequested;
 				turnPrepared = false;
 				interruptPending = false;
 				synchronized (input)
@@ -267,6 +273,8 @@ public final class ClaudeProcess implements HarnessProcess
 				String line = next.line();
 				events.append(line).append('\n');
 				listener.accept(line);
+				if (turnInterrupted)
+					boundary.interrupted();
 				LineEffect effect = boundary.accept(line);
 				sessionStatePrinted = boundary.sessionStatePrinted();
 				if (!boundary.sessionId().isEmpty())
@@ -466,6 +474,7 @@ public final class ClaudeProcess implements HarnessProcess
 			if (!process.isAlive())
 				throw new IOException("Claude process is no longer alive");
 			++interruptsSent;
+			turnInterrupted = true;
 			synchronized (input)
 			{
 				input.write(ClaudeStreamingProtocol.interrupt("cat-interrupt-" + interruptsSent));
@@ -576,7 +585,9 @@ public final class ClaudeProcess implements HarnessProcess
 	 * {@code idle} does not mean that all background work has finished: a child agent's own background command can
 	 * still be listed, and when it finishes the child restarts and the root may start a follow-up reply. So the turn
 	 * ends at an {@code idle} state only if the turn has replied to a user message and the latest
-	 * {@code background_tasks_changed} line listed no task; otherwise the turn waits for the next {@code idle} state. A
+	 * {@code background_tasks_changed} line listed no task, or the turn was interrupted; otherwise the turn waits for
+	 * the next {@code idle} state. An interrupt does not stop a background command, so it is the one thing besides an
+	 * empty task list that lets the turn end while a task is listed. A
 	 * result or a change to the task list alone never ends a turn, even if the list empties after the last {@code idle}
 	 * state: the turn then waits for the next {@code idle} state.
 	 * <p>
@@ -605,6 +616,11 @@ public final class ClaudeProcess implements HarnessProcess
 		 * Indicates whether the root session has printed a result line for a reply to a user message in this turn.
 		 */
 		private boolean answered;
+		/**
+		 * Indicates whether the turn was interrupted, which lets it end at an {@code idle} state although a background
+		 * task is still listed.
+		 */
+		private boolean interrupted;
 		/**
 		 * The version in the latest {@code system/init} line, or an empty string if there was none.
 		 */
@@ -684,6 +700,15 @@ public final class ClaudeProcess implements HarnessProcess
 		}
 
 		/**
+		 * Records that the turn was interrupted. A background command outlives an interrupt, so the turn no longer
+		 * waits for the tasks that Claude lists.
+		 */
+		void interrupted()
+		{
+			interrupted = true;
+		}
+
+		/**
 		 * Records one output line.
 		 *
 		 * @param line a line of Claude's output
@@ -750,7 +775,7 @@ public final class ClaudeProcess implements HarnessProcess
 				case "session_state_changed" ->
 				{
 					sessionStatePrinted = true;
-					if (event.path("state").asString("").equals("idle") && answered && !backgroundTasksRunning)
+					if (event.path("state").asString("").equals("idle") && answered && (!backgroundTasksRunning || interrupted))
 						return LineEffect.TURN_ENDS;
 				}
 				default ->

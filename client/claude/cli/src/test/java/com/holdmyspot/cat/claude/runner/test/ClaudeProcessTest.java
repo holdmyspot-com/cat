@@ -761,6 +761,36 @@ public final class ClaudeProcessTest
 	}
 
 	/**
+	 * Verifies an interrupt ends the turn at Claude's next {@code idle} state although a background task is still
+	 * listed. An interrupt does not stop a background command, so without this the interrupted turn would wait for a
+	 * command that may run for as long as the session lives, and the next turn would wait with it.
+	 *
+	 * @throws IOException if the turn or the interrupt fails
+	 */
+	@Test(timeOut = 10_000)
+	public void interruptEndsTurnWhileBackgroundTaskRuns() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING, ROOT_REPLY, ROOT_RESULT,
+				STATE_IDLE);
+
+			HarnessProcessResult result = process.sendTurn("Launch a background child.", line ->
+			{
+				if (line.equals(CHILD_RUNNING))
+					process.interrupt();
+			});
+
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, SECOND_REPLY, SECOND_RESULT, STATE_IDLE);
+			requireThat(process.sendTurn("Reply TWO.").assistantResponse(), "secondTurn").isEqualTo("TWO");
+		}
+	}
+
+	/**
 	 * Verifies an incomplete turn remains pending after child stdout EOF until the child exits with status 37.
 	 *
 	 * @throws IOException            if the turn fails
