@@ -206,7 +206,7 @@ public final class PromptAuthorManifestTest
 			contains("contradiction").contains("analogous").contains("dissimilar").contains("manifest");
 	}
 	/**
-	 * Returns dissimilar cases and whether they are absent or name a test in the confirmed contract.
+	 * Returns dissimilar cases and whether they name a test in the confirmed contract.
 	 *
 	 * @return the dissimilar case and whether the manifest is accepted
 	 */
@@ -216,16 +216,16 @@ public final class PromptAuthorManifestTest
 		return new Object[][]
 			{
 				{"plain_list", true},
-				{null, true},
+				{null, false},
 				{"A question that needs no file", false}
 			};
 	}
 
 	/**
-	 * Accepts an absent dissimilar case or a confirmed test identifier, and rejects an unknown identifier with the
-	 * hunk and value in the rejection.
+	 * Accepts a confirmed test identifier and rejects missing or unknown dissimilar cases with the hunk and value in the
+	 * rejection.
 	 *
-	 * @param dissimilar the hunk's dissimilar case, or null for an unconditional change
+		 * @param dissimilar the hunk's dissimilar case
 	 * @param accepted   indicates whether the manifest is accepted
 	 */
 	@Test(dataProvider = "dissimilarCases")
@@ -243,12 +243,45 @@ public final class PromptAuthorManifestTest
 
 		if (accepted)
 			requireThat(violations, "violations").isEmpty();
+		else if (dissimilar == null)
+		{
+			requireThat(violations.size(), "violations.size()").isEqualTo(1);
+			requireThat(violations.getFirst(), "violation").isEqualTo("Hunk at rules/safety.md " +
+				"(working lines 2..3, prompt author lines 2..4) has no dissimilar case. Name the id of one of the " +
+				"confirmed contract's tests: [formatting, plain_list, safety]");
+		}
 		else
 		{
 			requireThat(violations.size(), "violations.size()").isEqualTo(1);
 			requireThat(violations.getFirst(), "violation").contains("rules/safety.md").contains("2..4").
-				contains("'" + dissimilar + "'");
+				contains("'" + dissimilar + "'").contains("which is not a test of the confirmed contract");
 		}
+	}
+
+	/**
+	 * Rejects missing dissimilar evidence on the second changed hunk while accepting the first hunk's test id.
+	 */
+	@Test
+	public void missingDissimilarInSecondHunk()
+	{
+		// Requirement: R-D17
+		Path safetyPath = Path.of("rules/safety.md");
+		Path formattingPath = Path.of("rules/formatting.md");
+		PromptAuthorManifest manifest = new PromptAuthorManifest(List.of(new PromptAuthorKind("changed guidance",
+			List.of("f", "g"), FailureKind.GUIDANCE, List.of("h1", "h2"), "")), List.of(
+				new HunkEvidence("h1", safetyPath, 2, 3, 2, 4, List.of("f"), "A similar safety change",
+					"plain_list"),
+				new HunkEvidence("h2", formattingPath, 5, 6, 5, 7, List.of("g"),
+					"A similar formatting change", null)));
+		List<Hunk> changed = List.of(new Hunk(safetyPath, 1, 2, 3, 2, 4),
+			new Hunk(formattingPath, 1, 5, 6, 5, 7));
+
+		List<String> violations = manifest.violations(Set.of("f", "g"), changed, ContractFixtures.contract(),
+			new FileInventory(Path.of("/project").toAbsolutePath(), Map.of()), Map.of(), List.of(), Map.of());
+
+		requireThat(violations, "violations").isEqualTo(List.of("Hunk at rules/formatting.md " +
+			"(working lines 5..6, prompt author lines 5..7) has no dissimilar case. Name the id of one of the " +
+			"confirmed contract's tests: [formatting, plain_list, safety]"));
 	}
 
 	/**
@@ -441,9 +474,10 @@ public final class PromptAuthorManifestTest
 			List.of());
 		String turn = prompt.request(brief, Path.of("/copy").toAbsolutePath()).turns().getFirst();
 
-		requireThat(turn, "instructions").contains("the `id` of a test in the confirmed contract").
-			contains("\"plain_list\"").contains("Use `null` for\n\t`dissimilar` only when no confirmed-contract test " +
-				"lies outside the change's scope");
+		requireThat(turn, "instructions").contains("the `id` of a").contains("whose turns must not receive").
+			contains("\"plain_list\"").contains("For each changed hunk").
+			contains("If you cannot name a dissimilar test, do not submit the change.").
+			contains("a missing dissimilar case or an id that names no test of the confirmed contract");
 	}
 
 	/**

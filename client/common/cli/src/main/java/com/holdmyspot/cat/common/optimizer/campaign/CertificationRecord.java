@@ -36,7 +36,7 @@ import java.util.TreeMap;
  * @param target the campaign's target, relative to the project
  * @param certificationIndex the certification index {@code i} of the certified attempt
  * @param scope the certification scope that the user confirmed
- * @param parameters the parameters of the certification's claim
+ * @param parameters the minimum pass rate, comparison margin and significance level of the certification's claim
  * @param cells the certified attempt's counts of each cell, in cell order
  * @param promptFiles the content hash of each delivered prompt file, keyed by its path relative to the project
  * @param identity the measurement conditions that the attempt was measured under
@@ -51,7 +51,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * @param target the campaign's target, relative to the project
 	 * @param certificationIndex the certification index {@code i} of the certified attempt
 	 * @param scope the certification scope that the user confirmed
-	 * @param parameters the parameters of the certification's claim
+	 * @param parameters the minimum pass rate, comparison margin and significance level of the certification's claim
 	 * @param cells the certified attempt's counts of each cell, in cell order
 	 * @param promptFiles the content hash of each delivered prompt file, keyed by its path relative to the project
 	 * @param identity the measurement conditions that the attempt was measured under

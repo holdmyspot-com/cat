@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
@@ -21,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
@@ -30,6 +32,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
+import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 
 import java.io.IOException;
 import java.nio.file.Path;
@@ -72,10 +75,30 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class GuardPilot
 {
+	static
+	{
+		GuardPilotSecrets.setGuardPilotAccess(GuardPilot::new);
+	}
+
 	/**
 	 * The number of control trials of each prompt test.
 	 */
 	public static final int TRIALS = 20;
+	/**
+	 * Removes one of a passing pilot trial's project directories.
+	 */
+	@FunctionalInterface
+	public interface DirectoryRemoval
+	{
+		/**
+		 * Deletes a project directory.
+		 *
+		 * @param directory the project directory
+		 * @throws IOException if the directory cannot be deleted
+		 */
+		void remove(Path directory) throws IOException;
+	}
+
 	/**
 	 * Why a pilot that was kept before it ran every trial stopped, as a later reader sees it if the process that ran
 	 * the pilot ended without finishing it.
@@ -91,6 +114,8 @@ public final class GuardPilot
 	private static final String HOST_INTERRUPTED = "The host interrupted the command that ran the pilot";
 	private final SessionPort sessions;
 	private final WorkspacePort workspace;
+	private final Path target;
+	private final DirectoryRemoval directoryRemoval;
 	private final JudgeProtocol judge;
 	private final ProposalSchema schema;
 	private final JsonMapper json;
@@ -101,25 +126,52 @@ public final class GuardPilot
 	 *
 	 * @param sessions starts the trial and judge sessions
 	 * @param workspace stages the control source that the trials work in
+	 * @param target the normalized relative path of the target prompt
 	 * @param judge writes the judge requests and reads their verdicts
 	 * @param schema writes the definition of each prompt test, whose identity decides whether a stored pilot still
 	 *   applies
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @param ceiling the maximum number of sessions that run at the same time
-	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code ceiling} is not positive
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
 	 */
-	public GuardPilot(SessionPort sessions, WorkspacePort workspace, JudgeProtocol judge, ProposalSchema schema,
-		JsonMapper json, int ceiling)
+	public GuardPilot(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
+		ProposalSchema schema, JsonMapper json, int ceiling)
+	{
+		this(sessions, workspace, target, judge, schema, json, ceiling, TemporaryDirectories::deleteRecursively);
+	}
+
+	/**
+	 * Creates a guard pilot with a supplied project-directory remover.
+	 *
+	 * @param sessions starts the trial and judge sessions
+	 * @param workspace stages the control source that the trials work in
+	 * @param target the normalized relative path of the target prompt
+	 * @param judge writes the judge requests and reads their verdicts
+	 * @param schema writes the definition of each prompt test, whose identity decides whether a stored pilot still
+	 *   applies
+	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
+	 * @param ceiling the maximum number of sessions that run at the same time
+	 * @param directoryRemoval deletes project directories of passing trials
+	 * @throws NullPointerException if any required argument is null
+	 * @throws IllegalArgumentException if {@code target} is absolute or {@code ceiling} is not positive
+	 */
+	private GuardPilot(SessionPort sessions, WorkspacePort workspace, Path target, JudgeProtocol judge,
+		ProposalSchema schema, JsonMapper json, int ceiling, DirectoryRemoval directoryRemoval)
 	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(workspace, "workspace").isNotNull();
+		FileInventory.requireInventoryPath(target, "target");
+		requireThat(target.isAbsolute(), "target.isAbsolute()").isFalse();
+		requireThat(directoryRemoval, "directoryRemoval").isNotNull();
 		requireThat(judge, "judge").isNotNull();
 		requireThat(schema, "schema").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(ceiling, "ceiling").isPositive();
 		this.sessions = sessions;
 		this.workspace = workspace;
+		this.target = target;
+		this.directoryRemoval = directoryRemoval;
 		this.judge = judge;
 		this.schema = schema;
 		this.json = json;
@@ -309,11 +361,17 @@ public final class GuardPilot
 			// Reserves the test's place in contract order
 			pilots.put(test.id(), null);
 		}
+		Set<Path> selectedRoots = new HashSet<>(selection.roots());
+		selectedRoots.add(target);
+		SourceSelection controlSelection = new SourceSelection(selectedRoots, selection.names(), selection.patterns());
+		Set<Path> controlExcluded = new HashSet<>(excluded);
+		controlExcluded.remove(target);
+		Path source = workspace.stage(control, controlExcluded, controlSelection);
+		StagedTarget.read(source, control.snapshot(), target);
 		if (!pending.isEmpty())
 		{
-			Path source = workspace.stage(control, excluded, selection);
 			List<Path> directories = TrialPlugins.of(plugins, contract, workspace, source, true, json);
-			new Run(contract, source, directories, pending, pilots, files, checkpoint, slice).run();
+			new Run(contract, source, control.snapshot(), directories, pending, pilots, files, checkpoint, slice).run();
 		}
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
@@ -587,6 +645,7 @@ public final class GuardPilot
 	{
 		private final Contract contract;
 		private final Path source;
+		private final FileInventory inventory;
 		private final List<Path> plugins;
 		private final List<Pilot> pilots;
 		/**
@@ -628,6 +687,7 @@ public final class GuardPilot
 		 *
 		 * @param contract the proposed contract
 		 * @param source the staged control source
+		 * @param inventory the control snapshot
 		 * @param plugins the plugin directories that the trials of {@code source} install
 		 * @param pilots the pilots to run, in contract order
 		 * @param places the pilot of each prompt test in contract order, with {@code null} for each of {@code pilots}
@@ -636,11 +696,12 @@ public final class GuardPilot
 		 * @param slice the slice's time bound, or {@code null} if the pilot runs until every trial ends or the pilot
 		 *   stops
 		 */
-		Run(Contract contract, Path source, List<Path> plugins, List<Pilot> pilots, Map<String, PilotResult> places,
-			Sha256 files, PilotCheckpoint checkpoint, PilotSlice slice)
+		Run(Contract contract, Path source, FileInventory inventory, List<Path> plugins, List<Pilot> pilots,
+			Map<String, PilotResult> places, Sha256 files, PilotCheckpoint checkpoint, PilotSlice slice)
 		{
 			this.contract = contract;
 			this.source = source;
+			this.inventory = inventory;
 			this.plugins = plugins;
 			this.pilots = pilots;
 			this.places = places;
@@ -857,6 +918,8 @@ public final class GuardPilot
 				Job job = nextAdmitted();
 				if (job == null)
 					return;
+				if (job instanceof TrialJob)
+					StagedTarget.read(source, inventory, target);
 				SessionRequest request = switch (job)
 				{
 					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
@@ -1102,7 +1165,8 @@ public final class GuardPilot
 		{
 			try
 			{
-				Driver.deleteProjects(trial);
+				directoryRemoval.remove(trial.effects());
+				directoryRemoval.remove(trial.initialProject());
 			}
 			catch (IOException e)
 			{

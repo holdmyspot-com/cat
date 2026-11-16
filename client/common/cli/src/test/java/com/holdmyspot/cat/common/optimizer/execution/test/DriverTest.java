@@ -36,7 +36,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureSummary;
-import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
@@ -54,6 +53,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
@@ -109,6 +109,7 @@ import com.holdmyspot.cat.common.optimizer.execution.SliceReports;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceRunner;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
+import com.holdmyspot.cat.common.optimizer.execution.SnapshotMismatchException;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
 import com.holdmyspot.cat.common.optimizer.execution.fixture.test.FaultingFileChannel;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
@@ -142,6 +143,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.report.CellReport;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
@@ -165,6 +167,7 @@ import org.testng.annotations.Test;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermission;
@@ -201,6 +204,11 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class DriverTest
 {
+	/**
+	 * The supplied generic plugin rule directory used by trial-plugin mappings and their physical test bases.
+	 */
+	private static final Path PLUGIN_RULES = Path.of("rules/harness-a");
+
 	/**
 	 * Completed candidate and incumbent trials record their observed profiles and report improvement and token medians.
 	 *
@@ -989,7 +997,7 @@ public final class DriverTest
 				Write selected = (Write) minimal.entries().get(DriverHarness.PROMPT);
 				requireThat(new String(selected.content().bytes(), UTF_8), "minimalWinner").
 					isEqualTo("needed-two\nseparator\nlast\n");
-				requireThat(promoted.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				requireThat(promoted.optimization().removed(), "removed").isEqualTo(List.of(DriverHarness.PROMPT + "#2"));
 				requireThat(promoted.development().counts(), "newCounts").isEmpty();
 				requireThat(promoted.attempts(), "allowance").isEmpty();
 				ObjectNode status = StatusReport.of(promoted, ReportEvidence.NONE).toJson(JsonMapper.builder().build());
@@ -1044,6 +1052,10 @@ public final class DriverTest
 	/**
 	 * Restarting a weak round reruns unfinished targeted trials under their original identities and retains completed
 	 * attempts without spending certification allowance or adding development evidence.
+	 * <p>
+	 * This test can take over one second: three prompt-author attempts reach targeted trials before the driver
+	 * closes, then a reopened driver resumes those trials through promotion. The three-attempt round and both
+	 * driver lifetimes are needed to check retained trial identities and the eventual promotion together.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -1093,13 +1105,13 @@ public final class DriverTest
 	 * The reference starts the pooled check of each attempt's failed regression run, whose paired reruns then reject
 	 * every attempt where the working candidate passes and accept every attempt where it fails.
 	 * <p>
-	 * This test can take one second or longer when it runs first in its JVM: each invocation runs three prompt author
-	 * attempts through their triggering, regression and paired rerun trials until the round ends, persisting and
-	 * validating the campaign at each step, and the first test in a JVM to use the driver also loads its classes.
+	 * The three prompt-author attempts share one working reference, then each completes regression and paired reruns
+	 * before the round ends. Retaining those transitions and the persisted campaign lets this test check the single
+	 * reference plan, each attempt's own evidence, and the eventual decisions together.
 	 *
 	 * @param referenceVerdict the working candidate's verdict on the regression test case
-	 * @param accepted whether every attempt fixes the failure without introducing a regression
-	 * @param reruns the paired reruns of each attempt
+	 * @param accepted         indicates whether every attempt fixes the failure without introducing a regression
+	 * @param reruns           the paired reruns of each attempt
 	 * @throws IOException if the fixture cannot be used
 	 */
 	// Requirement: R-D12
@@ -1614,7 +1626,7 @@ public final class DriverTest
 					entries().get(DriverHarness.PROMPT);
 				requireThat(new String(entry.content().bytes(), UTF_8), "minimalPrompt").
 					isEqualTo("needed\nseparator\nlast\n");
-				requireThat(result.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				requireThat(result.optimization().removed(), "removed").isEqualTo(List.of(DriverHarness.PROMPT + "#2"));
 				JsonNode attempts = StatusReport.of(result, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
 					get("prompt_author_attempts");
 				requireThat(attempts.get(0).get("accepted").asBoolean(), "accepted").isTrue();
@@ -1799,11 +1811,11 @@ public final class DriverTest
 					isEqualTo("needed\nseparator\nlast\n");
 				requireThat(campaign.development().counts(), "counts").isEmpty();
 				requireThat(campaign.attempts(), "allowance").isEmpty();
-				requireThat(campaign.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				requireThat(campaign.optimization().removed(), "removed").isEqualTo(List.of(DriverHarness.PROMPT + "#2"));
 				StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 				requireThat(report.toJson(JsonMapper.builder().build()).path("removed_hunks").get(0).asString(),
-					"reportedRemoval").isEqualTo("CLAUDE.md#2");
-				requireThat(report.summary(ZoneOffset.UTC), "summary").contains("CLAUDE.md#2");
+					"reportedRemoval").isEqualTo(DriverHarness.PROMPT + "#2");
+				requireThat(report.summary(ZoneOffset.UTC), "summary").contains(DriverHarness.PROMPT + "#2");
 			}
 		}
 	}
@@ -1872,7 +1884,7 @@ public final class DriverTest
 				workingPasses.add(new DiagnosticRerun(Verdict.PASS, "working pass"));
 			FileDelta file = new FileDelta(DriverHarness.PROMPT, new FileContent("candidate-1".getBytes(UTF_8)),
 				new FileContent("needed".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"));
-			Minimality search = new Minimality(List.of(file), List.of("CLAUDE.md#1"), 2, 0, List.of(),
+			Minimality search = new Minimality(List.of(file), List.of(DriverHarness.PROMPT + "#1"), 2, 0, List.of(),
 				accepted.identity(), acceptedRuns);
 			Campaign saved = new Builder().confirmed().working(new Candidate(1, working)).readyBaseline().
 				round(new Round(Map.of("safety", 0))).failure(new Failure(testCase, "working failure", List.of(),
@@ -1948,7 +1960,7 @@ public final class DriverTest
 				requireThat(harness.promptAuthor().briefs().size(), "prompt_authors").isEqualTo(2);
 				requireThat(harness.campaign().optimization().promptAuthors().size(), "retained").isEqualTo(1);
 				requireThat(harness.campaign().optimization().promptAuthors().getFirst().rejections(), "rejections").
-					contains("Uncited changed hunk: CLAUDE.md#1");
+					contains("Uncited changed hunk: " + DriverHarness.PROMPT + "#1");
 				requireThat(Files.isRegularFile(harness.campaign().optimization().promptAuthors().getFirst().effects().
 					resolve(DriverHarness.PROMPT)), "effects").isTrue();
 			}
@@ -1981,7 +1993,7 @@ public final class DriverTest
 				Write entry = (Write) harness.overlays().require(resumed.development().working().snapshot()).
 					entries().get(DriverHarness.PROMPT);
 				requireThat(new String(entry.content().bytes(), UTF_8), "prompt").isEqualTo("needed\nseparator\nlast\n");
-				requireThat(resumed.optimization().removed(), "removed").isEqualTo(List.of("CLAUDE.md#2"));
+				requireThat(resumed.optimization().removed(), "removed").isEqualTo(List.of(DriverHarness.PROMPT + "#2"));
 				requireThat(resumed.development().counts(), "counts").isEmpty();
 				requireThat(resumed.attempts(), "allowance").isEmpty();
 			}
@@ -2006,12 +2018,13 @@ public final class DriverTest
 			harness.promptAuthors(request ->
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String failureId = harness.promptAuthor().briefs().getLast().developmentId(0);
 				String response = """
-					{"needed_edits":[],"kinds":[{"name":"missing instruction","failures":["%s"],
+					{"needed_edits":[],"kinds":[{"name":"missing instruction","failures":["%1$s"],
 					 "classification":"guidance","hunks":["h1"]}],
-					 "hunks":[{"id":"h1","path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					 "hunks":[{"id":"h1","path":"%2$s","before_start":0,"before_end":1,"after_start":0,"after_end":1,
 					 "failures":["unknown"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
-					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0));
+					""".formatted(failureId, DriverHarness.PROMPT);
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
 					edited.initialProject(),
 					edited.model(),
@@ -2023,7 +2036,7 @@ public final class DriverTest
 				harness.runUntil(driver, state -> harness.promptAuthor().briefs().size() == 2);
 				requireThat(harness.campaign().candidates(), "candidates").isEqualTo(1);
 				requireThat(harness.campaign().optimization().promptAuthors().getFirst().rejections(), "rejections").
-					isEqualTo(List.of("Unknown failure unknown cited at CLAUDE.md"));
+					isEqualTo(List.of("Unknown failure unknown cited at " + DriverHarness.PROMPT));
 			}
 		}
 	}
@@ -2046,12 +2059,13 @@ public final class DriverTest
 			harness.promptAuthors(request ->
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String failureId = harness.promptAuthor().briefs().getLast().developmentId(0);
 				String response = """
-					{"needed_edits":[],"kinds":[{"name":"skipped step","failures":["%s"],
+					{"needed_edits":[],"kinds":[{"name":"skipped step","failures":["%1$s"],
 					 "classification":"guidance","hunks":[]}],
-					 "hunks":[{"id":"h1","path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					 "hunks":[{"id":"h1","path":"%2$s","before_start":0,"before_end":1,"after_start":0,"after_end":1,
 					 "failures":["%1$s"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
-					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0));
+					""".formatted(failureId, DriverHarness.PROMPT);
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
 					edited.initialProject(),
 					edited.model(), edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
@@ -2064,6 +2078,71 @@ public final class DriverTest
 				PromptAuthorDiagnosis retained = harness.campaign().optimization().promptAuthors().getFirst();
 				requireThat(retained.rejections(), "rejections").isEqualTo(List.of(
 					"Kind 'skipped step' is classified guidance but names no hunk that addresses it"));
+				List<PromptAuthorBrief.EarlierManifest> earlier = harness.promptAuthor().briefs().getLast().
+					earlierManifests();
+				requireThat(earlier.size(), "earlier").isEqualTo(1);
+				requireThat(earlier.getFirst().diagnosis(), "earlierDiagnosis").isEqualTo(retained);
+				requireThat(earlier.getFirst().result(), "earlierResult").
+					isEqualTo(PromptAuthorBrief.PromotionResult.REJECTED);
+			}
+		}
+	}
+
+	/**
+	 * Rejects an edited prompt without dissimilar evidence, retains its diagnosis and offers the next prompt author.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void missingDissimilarRetainedAndRetried() throws IOException
+	{
+		// Requirement: R-D17
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("manifest"));
+			Path base = Files.createDirectory(root.resolve("base"));
+			Files.writeString(base.resolve(DriverHarness.PROMPT), "fork");
+			FileInventory fork = InventoryScanner.scan(base, Set.of());
+			DriverHarness harness = new DriverHarness(root.resolve("driver"), new Builder().confirmed().working(1).
+				readyBaseline().round(new Round(Map.of("safety", 0))).failure(Builder.targeted("safety", "cache")).build(),
+				fork, base);
+			harness.promptAuthors(request ->
+			{
+				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String failureId = harness.promptAuthor().briefs().getLast().developmentId(0);
+				String response = """
+					{"needed_edits":[],"kinds":[{"name":"missing instruction","failures":["%1$s"],
+					 "classification":"guidance","hunks":["h1"]}],
+					 "hunks":[{"id":"h1","path":"%2$s","before_start":0,"before_end":1,"after_start":0,
+					 "after_end":1,"failures":["%1$s"],"analogous":"related change","dissimilar":null}],
+					 "conflicts":[]}
+					""".formatted(failureId, DriverHarness.PROMPT);
+				try
+				{
+					Files.createDirectories(edited.transcript().getParent());
+					Files.writeString(edited.transcript(), response, UTF_8);
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
+					edited.initialProject(), edited.model(), edited.reasoning(), edited.usage(), edited.windows(),
+					edited.promptSources(), edited.toolCalls());
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, state -> harness.promptAuthor().briefs().size() == 2);
+				requireThat(harness.campaign().candidates(), "candidates").isEqualTo(1);
+				requireThat(harness.campaign().development().working().number(), "working").isEqualTo(1);
+				PromptAuthorDiagnosis retained = harness.campaign().optimization().promptAuthors().getFirst();
+				requireThat(retained.rejections(), "rejections").isEqualTo(List.of(
+					"Hunk at CLAUDE.md (working lines 0..1, prompt author lines 0..1) has no dissimilar case. " +
+						"Name the id of one of the confirmed contract's tests: [formatting, plain_list, safety]"));
+				requireThat(Files.isRegularFile(retained.transcript()), "transcript").isTrue();
+				requireThat(Files.isDirectory(retained.effects()), "effects").isTrue();
+				requireThat(Files.isRegularFile(retained.effects().resolve(DriverHarness.PROMPT)), "editedPrompt").
+					isTrue();
 				List<PromptAuthorBrief.EarlierManifest> earlier = harness.promptAuthor().briefs().getLast().
 					earlierManifests();
 				requireThat(earlier.size(), "earlier").isEqualTo(1);
@@ -2092,12 +2171,13 @@ public final class DriverTest
 			harness.promptAuthors(request ->
 			{
 				SessionResult.Completed edited = (SessionResult.Completed) harness.edit(request, DriverHarness.PROMPT);
+				String failureId = harness.promptAuthor().briefs().getLast().developmentId(0);
 				String response = """
-					{"needed_edits":[],"kinds":[{"name":"judge outage","failures":["%s"],
+					{"needed_edits":[],"kinds":[{"name":"judge outage","failures":["%1$s"],
 					 "classification":"not_guidance","hunks":[]}],
-					 "hunks":[{"id":"h1","path":"CLAUDE.md","before_start":0,"before_end":1,"after_start":0,"after_end":1,
+					 "hunks":[{"id":"h1","path":"%2$s","before_start":0,"before_end":1,"after_start":0,"after_end":1,
 					 "failures":["%1$s"],"analogous":"related case","dissimilar":"plain_list"}],"conflicts":[]}
-					""".formatted(harness.promptAuthor().briefs().getLast().developmentId(0));
+					""".formatted(failureId, DriverHarness.PROMPT);
 				return new SessionResult.Completed(edited.transcript(), List.of(List.of(response)), edited.effects(),
 					edited.initialProject(),
 					edited.model(), edited.reasoning(), edited.usage(), edited.windows(), edited.promptSources(),
@@ -2357,20 +2437,23 @@ public final class DriverTest
 		// Requirement: R-W10
 		Path script = Path.of("bin/repair.sh");
 		Path hooks = Path.of("hooks.json");
-		Path agents = Path.of("AGENTS.md");
+		Path routing = Path.of("routing.md");
+		String eventA = "event-a";
+		String eventB = "event-b";
 		String hooksText = """
-			{"hooks": {"PostToolUse": [{"hooks": [{"type": "command", "command": "bin/repair.sh"}]}],
-			  "SessionStart": [{"hooks": [{"type": "command", "command": "start.sh"}]}]}}
+			{"hooks": {"%1$s": [{"hooks": [{"type": "command", "command": "%2$s"}]}],
+			  "%3$s": [{"hooks": [{"type": "command", "command": "start.sh"}]}]}}
 			""";
+		hooksText = hooksText.formatted(eventA, script, eventB);
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(), List.of(
 			new Dependent(script, new Dependent.WholeFile(), "Repairs read output."),
 			new Dependent(hooks,
-				new Dependent.HookRegistration("PostToolUse", "bin/repair.sh"), "Runs the repair script."),
-			new Dependent(agents, new Dependent.Span("Read CLAUDE.md first.\n"),
+				new Dependent.HookRegistration(eventA, script.toString()), "Runs the repair script."),
+			new Dependent(routing, new Dependent.Span("Read the target first.\n"),
 				"Routes the agent to the target.")));
 		Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");
 		Map<Path, String> files = Map.of(DriverHarness.PROMPT, "fork", script, "#!/bin/sh\n", hooks, hooksText,
-			agents, "Read CLAUDE.md first.\nBe brief.\n");
+			routing, "Read the target first.\nBe brief.\n");
 		Map<Path, FileEntry> entries = new HashMap<>();
 		for (Map.Entry<Path, String> file : files.entrySet())
 			entries.put(file.getKey(), new RegularFile(Sha256.of(file.getValue().getBytes(UTF_8)), permissions));
@@ -2390,12 +2473,12 @@ public final class DriverTest
 				Campaign committed = harness.runUntil(driver, state -> state.attempts().size() == 1);
 				Overlay control = harness.overlays().require(committed.attempt(1).control());
 				requireThat(control.snapshot().entry(script), "script").isEmpty();
-				requireThat(new String(harness.workspace().readFile(control, agents).orElseThrow().bytes(), UTF_8),
-					"agents").isEqualTo("Be brief.\n");
+				requireThat(new String(harness.workspace().readFile(control, routing).orElseThrow().bytes(), UTF_8),
+					"routing").isEqualTo("Be brief.\n");
 				JsonNode hookConfiguration = JsonMapper.builder().build().readTree(
 					harness.workspace().readFile(control, hooks).orElseThrow().bytes()).get("hooks");
-				requireThat(hookConfiguration.has("PostToolUse"), "PostToolUse").isFalse();
-				requireThat(hookConfiguration.has("SessionStart"), "SessionStart").isTrue();
+				requireThat(hookConfiguration.has(eventA), eventA).isFalse();
+				requireThat(hookConfiguration.has(eventB), eventB).isTrue();
 			}
 		}
 	}
@@ -3614,10 +3697,12 @@ public final class DriverTest
 				new Hold(harness.clock().instant().plus(Duration.ofMinutes(30)), 6), true, List.of()));
 			try (Driver driver = harness.open())
 			{
+				Header campaignHeader = harness.campaign().header();
+				String commandName = campaignHeader.harness().commandName();
 				SliceResult result = harness.runSlice(driver);
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").
-					isEqualTo("The provider refused claude requests after a 30-minute hold");
+					isEqualTo("The provider refused " + commandName + " requests after a 30-minute hold");
 				Campaign campaign = harness.campaign();
 				requireThat(harness.sessions().sessions().size(), "sessions").isEqualTo(1);
 				List<LogicalTrial> queued = trials(campaign, TrialState.ASSIGNED);
@@ -3641,7 +3726,7 @@ public final class DriverTest
 		{
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("launch-refused")),
 				developing().window(1).build());
-			String refusal = "No request server serves this Claude Code session. Start the request server, then run " +
+			String refusal = "No request server serves this harness-a session. Start the request server, then run " +
 				"the command again.";
 			harness.trials(_ -> new SessionResult.LaunchRefused(refusal, List.of()));
 			try (Driver driver = harness.open())
@@ -3930,6 +4015,59 @@ public final class DriverTest
 				requireThat(harness.campaign(), "campaign").isEqualTo(before);
 				requireThat(harness.sessions().sessions(), "sessions").isEmpty();
 			}
+		}
+	}
+
+	/**
+	 * A changed staged target refuses the next trial admission and driver cleanup interrupts its running session.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void corruptTargetBlocksTrialStart() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-corrupt-target")),
+				developing().window(4).build());
+			AtomicBoolean changed = new AtomicBoolean();
+			harness.sessions().onStart(session ->
+			{
+				if (changed.compareAndSet(false, true))
+				{
+					try
+					{
+						Files.writeString(session.request().source().resolve(DriverHarness.PROMPT), "changed", UTF_8);
+					}
+					catch (IOException e)
+					{
+						throw new UncheckedIOException(e);
+					}
+				}
+			});
+			IOException failure = null;
+
+			try (Driver driver = harness.open())
+			{
+				try
+				{
+					driver.step();
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+			}
+
+			requireThat(failure, "failure").isInstanceOf(SnapshotMismatchException.class);
+				requireThat(failure.getMessage(), "message").contains("snapshot").contains(
+					DriverHarness.PROMPT.toString());
+			List<FakeSession> sessions = harness.sessions().sessions();
+			requireThat(sessions.size(), "sessions").isEqualTo(1);
+			requireThat(sessions.getFirst().isInterruptRequested(), "interruptRequested").isTrue();
+			requireThat(sessions.stream().map(session -> session.request().role()).toList(), "roles").
+				isEqualTo(List.of(SessionRole.TRIAL));
 		}
 	}
 
@@ -4333,11 +4471,12 @@ public final class DriverTest
 	public void trialsStageBaseSelection() throws IOException
 	{
 		// Requirement: R-W15
-		TrialPlugin plugin = builtPlugin();
 		Contract contract = ContractFixtures.contract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("selected-trials"));
+			Path pluginBase = pluginBase(directory.resolve("plugin-base"));
+			TrialPlugin plugin = builtPlugin(pluginBaseDigest(directory.resolve("plugin-base-identity"), pluginBase));
 			Path project = Files.createDirectories(directory.resolve("project"));
 			Files.createDirectories(project.resolve("rules"));
 			Files.createDirectories(project.resolve(".cat/tests/main"));
@@ -4348,6 +4487,8 @@ public final class DriverTest
 			FileInventory fork = InventoryScanner.scan(project, Set.of());
 			DriverHarness harness = new DriverHarness(directory.resolve("driver"),
 				new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).build(), fork, project);
+			requireThat(harness.workspace().copyPluginBase(pluginBase), "pluginBaseDigest").
+				isEqualTo(plugin.baseDigest());
 			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
 			harness.trials(request ->
 			{
@@ -4432,14 +4573,22 @@ public final class DriverTest
 	public void trialsInstallTrialPlugins() throws IOException
 	{
 		// Requirement: R-W12
-		TrialPlugin plugin = builtPlugin();
-		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
-			List.of(), null);
 		Contract contract = ContractFixtures.contract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("plugin-trials")),
+			Path directory = cleanup.add(Files.createTempDirectory("plugin-trials"));
+			Path builtBase = pluginBase(directory.resolve("built-plugin-base"));
+			Path installedBase = pluginBase(directory.resolve("installed-plugin-base"));
+			TrialPlugin plugin = builtPlugin(pluginBaseDigest(directory.resolve("built-base-identity"), builtBase));
+			TrialPlugin installed = new TrialPlugin("tools@market",
+				pluginBaseDigest(directory.resolve("installed-base-identity"), installedBase),
+				new TrialPlugin.Installed(), List.of(), null);
+			DriverHarness harness = new DriverHarness(directory,
 				new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin, installed)).build());
+			requireThat(harness.workspace().copyPluginBase(builtBase), "builtPluginBaseDigest").
+				isEqualTo(plugin.baseDigest());
+			requireThat(harness.workspace().copyPluginBase(installedBase), "installedPluginBaseDigest").
+				isEqualTo(installed.baseDigest());
 			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
 			harness.trials(request ->
 			{
@@ -4471,20 +4620,25 @@ public final class DriverTest
 	public void controlTrialsRemovePluginDependents() throws IOException
 	{
 		// Requirement: R-W10
-		TrialPlugin plugin = builtPlugin();
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(),
 			List.of(new Dependent(Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(),
 				"Reads the part that the target tells the agent to read.")));
-		Builder start = new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).readyBaseline();
-		for (String cell : contract.cellIds())
-			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
-		DecisionBoundaries boundaries = Boundaries.paired(contract.cellIds().size());
-		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
-		for (String cell : contract.cellIds())
-			oneControlPairShort(running, boundaries, contract, cell);
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
+			Path directory = cleanup.add(Files.createTempDirectory("plugin-control-trials"));
+			Path pluginBase = pluginBase(directory.resolve("plugin-base"));
+			TrialPlugin plugin = builtPlugin(pluginBaseDigest(directory.resolve("plugin-base-identity"), pluginBase));
+			Builder start = new Builder().confirmed(contract, 1).working(1).plugins(List.of(plugin)).readyBaseline();
+			for (String cell : contract.cellIds())
+				start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+			DecisionBoundaries boundaries = Boundaries.paired(contract.cellIds().size());
+			Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
+			for (String cell : contract.cellIds())
+				oneControlPairShort(running, boundaries, contract, cell);
+			Campaign campaign = running.build();
+			DriverHarness harness = runningAttemptHarness(cleanup, campaign);
+			requireThat(harness.workspace().copyPluginBase(pluginBase), "pluginBaseDigest").
+				isEqualTo(plugin.baseDigest());
 			List<SessionRequest> trials = new CopyOnWriteArrayList<>();
 			harness.trials(request ->
 			{
@@ -4518,12 +4672,43 @@ public final class DriverTest
 	/**
 	 * Returns a trial plugin that the project builds.
 	 *
+	 * @param baseDigest the identity of the plugin's copied base
 	 * @return the plugin
 	 */
-	private static TrialPlugin builtPlugin()
+	private static TrialPlugin builtPlugin(String baseDigest)
 	{
-		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
+		return new TrialPlugin("cat", baseDigest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), PLUGIN_RULES)), null);
+	}
+
+	/**
+	 * Creates the physical base files used by the trial-plugin fixtures.
+	 *
+	 * @param directory the directory that owns the base
+	 * @return the base directory
+	 * @throws IOException if a base file cannot be created
+	 */
+	private static Path pluginBase(Path directory) throws IOException
+	{
+		Files.createDirectories(directory.resolve(PLUGIN_RULES));
+		Files.createDirectories(directory.resolve("bin"));
+		Files.writeString(directory.resolve(PLUGIN_RULES.resolve("base.md")), "base rule\n", UTF_8);
+		Files.writeString(directory.resolve("bin/read-part"), "read part\n", UTF_8);
+		return directory;
+	}
+
+	/**
+	 * Returns the identity reported by the supported plugin-base copy operation.
+	 *
+	 * @param storage the storage directory owned by the identity fixture
+	 * @param base the physical plugin base
+	 * @return the copied base's identity
+	 * @throws IOException if the base cannot be copied
+	 */
+	private static String pluginBaseDigest(Path storage, Path base) throws IOException
+	{
+		FileInventory empty = new FileInventory(Path.of("/project").toAbsolutePath(), Map.of());
+		return new FakeWorkspacePort(storage, empty).copyPluginBase(base);
 	}
 
 	/**
@@ -4649,77 +4834,6 @@ public final class DriverTest
 	}
 
 	/**
-	 * In Codex, a reproduction round in the lowest effort of its model that does not reproduce its group repeats
-	 * under a tool-output token limit: its trial sessions start with the limit, a reproduction there makes the
-	 * limited cell a development cell whose development trials start with the limit too, and the observed identity
-	 * records the limit for that cell.
-	 *
-	 * @throws IOException if the test directory cannot be used
-	 */
-	@Test
-	public void codexReproducesUnderAToolOutputLimit() throws IOException
-	{
-		// Requirement: R-C19
-		Contract contract = TierFixtures.tieredContract();
-		String limited = TierFixtures.BIG_LOW + "/tool-output-5000";
-		DrawnTestCase failed = new Generator(contract).draw(TierFixtures.BIG_LOW,
-			DrawStream.create(DrawStream.Kind.DEVELOPMENT, 1));
-		PromptTest test = contract.findTest(failed.testId()).orElseThrow();
-		List<TriedTestCase> tried = new ArrayList<>();
-		List<AddedTestCase> added = ContractFixtures.addedTestCases(test, 1, "a");
-		for (int i = 0; i < added.size(); ++i)
-		{
-			int trials = 25;
-			if (i == added.size() - 1)
-				trials = 24;
-			tried.add(new TriedTestCase(added.get(i), trials, 0));
-		}
-		FailedAssertion wrongTone = new FailedAssertion(test.assertions().getFirst().assertion().id(), "wrong_tone");
-		Failure failure = new Failure(failed, "", List.of(wrongTone), null, List.of(), List.of(), Builder.FILES);
-		FailureGroup group = new FailureGroup(TierFixtures.BIG_LOW, test.id(), wrongTone, 2, FailureGroup.ROUNDS,
-			List.of(new ReproductionRound(TierFixtures.BIG_LOW, tried)), FailureGroup.Status.REPRODUCING);
-		Campaign start = new Builder().header(new Header(DriverHarness.CAMPAIGN, Path.of("/project").toAbsolutePath(),
-			Path.of("/project").toAbsolutePath().resolve(DriverHarness.PROMPT), Harness.CODEX, Lifecycle.ACTIVE)).
-			confirmed(contract, 1).working(1).readyBaseline().readyDevelopment().certificationAttempt(1).
-			failure(failure).failure(failure).outcome(Outcome.BELOW_MINIMUM).groups(List.of(group)).campaign().build();
-		List<TrialProfile> limitedProfiles = new CopyOnWriteArrayList<>();
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), start);
-			harness.trials(request ->
-			{
-				try
-				{
-					if (request.profile().toolOutputTokenLimit() == 0)
-						return harness.passed();
-					limitedProfiles.add(request.profile());
-					if (harness.campaign().reproducing().isPresent())
-						return harness.failed();
-					return harness.passed();
-				}
-				catch (IOException e)
-				{
-					throw new UncheckedIOException(e);
-				}
-			});
-			try (Driver driver = harness.open())
-			{
-				Campaign developed = harness.runUntil(driver, state ->
-					state.development().count(limited).outcomes() > 0);
-
-				FailureGroup reproduced = developed.attempt(1).group(1);
-				requireThat(reproduced.status(), "status").isEqualTo(FailureGroup.Status.REPRODUCED);
-				requireThat(reproduced.round().cellId(), "round().cellId()").isEqualTo(limited);
-				requireThat(CellTier.developmentCellIds(developed), "developmentCells").contains(limited);
-				requireThat(Set.copyOf(limitedProfiles), "limitedProfiles").
-					isEqualTo(Set.of(new TrialProfile("big", "low", 5000)));
-				requireThat(developed.identity().cells().getOrDefault(limited, Map.of()).
-					get(MeasurementCondition.TOOL_OUTPUT_LIMIT), "toolOutputLimit").isEqualTo("5000");
-			}
-		}
-	}
-
-	/**
 	 * A certification attempt whose formal trials fail in the weakest cell of a test ends there, and no formal
 	 * trial runs in the test's stronger cells, which never open.
 	 *
@@ -4826,7 +4940,12 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				campaign = harness.runUntil(driver, state -> state.development().working().number() == 2);
+				campaign = harness.runUntil(driver, () ->
+				{
+					boolean allPurposesRan = testCasesByPurpose.keySet().equals(Set.of(Purpose.values()));
+					boolean briefCreated = !harness.promptAuthor().briefs().isEmpty();
+					return allPurposesRan && briefCreated;
+				});
 			}
 			requireThat(testCasesByPurpose.keySet(), "purposes").isEqualTo(Set.of(Purpose.values()));
 			for (Map.Entry<Purpose, List<DrawnTestCase>> entry : testCasesByPurpose.entrySet())
@@ -5508,7 +5627,7 @@ public final class DriverTest
 			});
 			try (Driver driver = harness.open())
 			{
-				harness.runUntil(driver, state -> state.development().working().number() == 2);
+				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
 			}
 			PromptAuthorBrief brief = harness.promptAuthor().briefs().getFirst();
 			requireThat(brief.cell(), "cell").isEqualTo("plain_list");
@@ -5956,6 +6075,172 @@ public final class DriverTest
 	}
 
 	/**
+	 * A malformed retained transcript stops each consumer before judging and preserves its parser failure.
+	 *
+	 * @param successfulReads the successful evidence reads before the selected read fails
+	 * @throws IOException the retained transcript failure
+	 */
+	@Test(dataProvider = "retainedEvidenceReadBoundaries", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*Malformed JSON in .*:3:.*")
+	public void malformedEvidenceStopsBeforeJudge(int successfulReads)
+		throws IOException, InterruptedException
+	{
+		Contract contract = withAssertions(Map.of(
+			"plain_list", List.of(new MappedAssertion(new Assertion("retained_evidence_guard", AssertionKind.GUARD,
+				"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r1")),
+			"formatting", List.of(new MappedAssertion(new Assertion("retained_evidence_guard", AssertionKind.GUARD,
+				"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r1")),
+			"safety", List.of(new MappedAssertion(new Assertion("retained_evidence_guard", AssertionKind.GUARD,
+				"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r2"))));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-retained-evidence")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().window(2).build());
+			SessionResult.Completed completed = harness.completed(BROKEN, DriverHarness.MODEL);
+			Path transcript = completed.transcript().toAbsolutePath();
+			Files.createDirectories(transcript.getParent());
+			Files.writeString(transcript, "{\"record\":1}\n\n{", UTF_8);
+			IOException cause = new IOException("The retained record could not be parsed");
+			IOException failure = new IOException("Malformed JSON in " + transcript + ":3: invalid object", cause);
+			AtomicReference<FakeSession> firstTrial = new AtomicReference<>();
+			AtomicReference<FakeSession> unfinishedTrial = new AtomicReference<>();
+			harness.sessions().onStart(session ->
+			{
+				if (session.request().role() == SessionRole.TRIAL)
+				{
+					if (firstTrial.compareAndSet(null, session))
+						return;
+					if (unfinishedTrial.compareAndSet(null, session))
+						firstTrial.get().end(completed);
+				}
+			});
+			SessionPort sessions = refusingEvidence(harness.sessions(), transcript, successfulReads, failure,
+				() -> harness.interrupts().interrupt(DriverHarness.START.plusNanos(1)));
+			Campaign before = harness.campaign();
+			IOException observed;
+			try
+			{
+				SliceRunner.run(harness.context(sessions), DriverHarness.CAMPAIGN, List.of());
+				throw new AssertionError("The slice returned without the required retained-transcript failure");
+			}
+			catch (IOException e)
+			{
+				requireThat(e == failure, "failureIdentity").isTrue();
+				requireThat(e.getCause() == cause, "failureCause").isTrue();
+				requireThat(e.getMessage(), "failureMessage").contains(transcript.toString()).contains(":3:");
+				observed = e;
+			}
+			Campaign after = harness.campaign();
+			requireThat(observed, "observedFailure").isNotNull();
+			assertRefusalState(harness, before, after, unfinishedTrial.get());
+			throw observed;
+		}
+	}
+
+	/**
+	 * A denied retained transcript stops before judging and preserves the filesystem failure.
+	 *
+	 * @param successfulReads the successful evidence reads before the selected read fails
+	 * @throws IOException the retained transcript failure
+	 */
+	@Test(dataProvider = "retainedEvidenceReadBoundaries", expectedExceptions = AccessDeniedException.class)
+	public void inaccessibleEvidenceStopsBeforeJudge(int successfulReads) throws IOException, InterruptedException
+	{
+		Contract contract = withAssertions(Map.of(
+			"plain_list", List.of(new MappedAssertion(new Assertion("retained_evidence_guard", AssertionKind.GUARD,
+				"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r1")),
+			"formatting", List.of(new MappedAssertion(new Assertion("retained_evidence_guard", AssertionKind.GUARD,
+				"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r1")),
+			"safety", List.of(new MappedAssertion(new Assertion("retained_evidence_guard", AssertionKind.GUARD,
+				"forbidden-text " + BROKEN, OnToolFailure.JUDGE, "No reply says " + BROKEN + "."), "r2"))));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-denied-evidence")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().window(2).build());
+			SessionResult.Completed completed = harness.completed(BROKEN, DriverHarness.MODEL);
+			Path transcript = completed.transcript().toAbsolutePath();
+			IOException cause = new IOException("The retained transcript is not accessible");
+			AccessDeniedException failure = new AccessDeniedException(transcript.toString());
+			failure.initCause(cause);
+			AtomicReference<FakeSession> firstTrial = new AtomicReference<>();
+			AtomicReference<FakeSession> unfinishedTrial = new AtomicReference<>();
+			harness.sessions().onStart(session ->
+			{
+				if (session.request().role() == SessionRole.TRIAL)
+				{
+					if (firstTrial.compareAndSet(null, session))
+						return;
+					if (unfinishedTrial.compareAndSet(null, session))
+						firstTrial.get().end(completed);
+				}
+			});
+			SessionPort sessions = refusingEvidence(harness.sessions(), transcript, successfulReads, failure,
+				() -> harness.interrupts().interrupt(DriverHarness.START.plusNanos(1)));
+			Campaign before = harness.campaign();
+			IOException observed;
+			try
+			{
+				SliceRunner.run(harness.context(sessions), DriverHarness.CAMPAIGN, List.of());
+				throw new AssertionError("The slice returned without the required retained-transcript failure");
+			}
+			catch (AccessDeniedException e)
+			{
+				requireThat(e == failure, "failureIdentity").isTrue();
+				requireThat(e.getCause() == cause, "failureCause").isTrue();
+				observed = e;
+			}
+			Campaign after = harness.campaign();
+			assertRefusalState(harness, before, after, unfinishedTrial.get());
+			throw observed;
+		}
+	}
+
+	/**
+	 * Successful empty retained evidence records unknown command measurements and still starts the judge.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the driver is interrupted
+	 */
+	@Test
+	public void emptyEvidenceLeavesCommandUnknown() throws IOException, InterruptedException
+	{
+		Contract contract = ContractFixtures.contract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver-empty-evidence")),
+				new Builder().confirmed(contract, 1).working(1).readyBaseline().window(2).build());
+			SessionResult.Completed completed = harness.completed("A sample response.", DriverHarness.MODEL);
+			harness.sessions().supplyEvidence(completed.transcript(), new SessionEvidence(List.of()));
+			try (Driver driver = harness.open())
+			{
+				driver.step();
+				FakeSession trial = harness.runningTrials().getFirst();
+				trial.end(completed);
+				driver.step();
+				requireThat(recordedSessions(harness).getFirst().commands(), "commands").
+					isEqualTo(CommandSummary.UNKNOWN);
+				requireThat(judgeRequests(harness), "judges").isNotEmpty();
+			}
+		}
+	}
+
+	/**
+	 * Returns the evidence-read counts that reach command recording, built-in tools and rendered evidence.
+	 *
+	 * @return the successful reads before the selected read fails
+	 */
+	@DataProvider
+	public static Object[][] retainedEvidenceReadBoundaries()
+	{
+		return new Object[][]
+		{
+			{0},
+			{1},
+			{2}
+		};
+	}
+
+	/**
 	 * Verifies that a failed built-in tool of {@code expected_outcome} whose {@code on_tool_failure} is {@code fail}
 	 * fails the trial without a judge session and records the tool's behavior as the failed assertion.
 	 *
@@ -6039,7 +6324,8 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 					certificationAttempt(1).cell("formatting", 50, 0).cell("safety", 50, 0).build());
-			harness.trials(_ -> harness.completed("pass", DriverHarness.MODEL, "CLAUDE.md, .claude/rules/extra.md"));
+			harness.trials(_ -> harness.completed("pass", DriverHarness.MODEL,
+				DriverHarness.PROMPT + ", rules/harness-a/extra.md"));
 			try (Driver driver = harness.open())
 			{
 				driver.step();
@@ -6265,7 +6551,7 @@ public final class DriverTest
 									UnreachableReference.Problem.MISSING));
 							}
 							else
-								loaded.add(new DerivedSource(path, "`CLAUDE.md` imports this file"));
+								loaded.add(new DerivedSource(path, "The target imports this file"));
 						}
 					}
 				}
@@ -6364,6 +6650,164 @@ public final class DriverTest
 				requireThat(trials(harness.campaign(), TrialState.RUNNING), "running").isEmpty();
 				requireThat(trials(harness.campaign(), TrialState.ASSIGNED), "queued").isNotEmpty();
 			}
+		}
+	}
+
+	/**
+	 * Simulates a required evidence read failing after a chosen number of successful reads.
+	 *
+	 * @param delegate the port that receives every operation except the selected failing evidence read
+	 * @param transcript the transcript whose evidence reads fail
+	 * @param successfulReads the successful reads before the failure
+	 * @param failure the exact failure to throw
+	 * @param onRefusal the action to perform immediately before throwing
+	 * @return the port that refuses the selected evidence read
+	 */
+	private static SessionPort refusingEvidence(SessionPort delegate, Path transcript, int successfulReads,
+		IOException failure, Runnable onRefusal)
+	{
+		int[] remainingReads = {successfulReads};
+		return new SessionPort()
+		{
+			@Override
+			public int sessionEnvironmentVersion()
+			{
+				return delegate.sessionEnvironmentVersion();
+			}
+
+			@Override
+			public String sessionEnvironmentRelease()
+			{
+				return delegate.sessionEnvironmentRelease();
+			}
+
+			@Override
+			public int judgeVersion()
+			{
+				return delegate.judgeVersion();
+			}
+
+			@Override
+			public SessionEvidence readEvidence(Path selectedTranscript) throws IOException
+			{
+				if (transcript.equals(selectedTranscript))
+				{
+					if (remainingReads[0] == 0)
+					{
+						onRefusal.run();
+						throw failure;
+					}
+					--remainingReads[0];
+				}
+				return delegate.readEvidence(selectedTranscript);
+			}
+
+			@Override
+			public boolean reportsExitStatus()
+			{
+				return delegate.reportsExitStatus();
+			}
+
+			@Override
+			public SessionHandle start(SessionRequest request) throws IOException
+			{
+				return delegate.start(request);
+			}
+
+			@Override
+			public Optional<Instant> sharedHoldUntil(Instant now) throws IOException
+			{
+				return delegate.sharedHoldUntil(now);
+			}
+
+			@Override
+			public List<Path> runRoots()
+			{
+				return delegate.runRoots();
+			}
+
+			@Override
+			public HostLogin hostLogin() throws IOException
+			{
+				return delegate.hostLogin();
+			}
+
+			@Override
+			public List<String> unapprovedHooks(Path plugin) throws IOException
+			{
+				return delegate.unapprovedHooks(plugin);
+			}
+
+			@Override
+			public Optional<String> findHeldOutExposure(Path project) throws IOException
+			{
+				return delegate.findHeldOutExposure(project);
+			}
+
+			@Override
+			public LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
+			{
+				return delegate.loadedSources(project, plugins);
+			}
+
+			@Override
+			public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+				throws IOException
+			{
+				return delegate.hookRegistrations(project, plugins);
+			}
+
+			@Override
+			public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+				String prompt) throws IOException
+			{
+				return delegate.earlyHooks(project, plugins, home, prompt);
+			}
+
+			@Override
+			public List<Path> installedPlugins(String name) throws IOException
+			{
+				return delegate.installedPlugins(name);
+			}
+
+			@Override
+			public List<String> installedPluginNames() throws IOException
+			{
+				return delegate.installedPluginNames();
+			}
+		};
+	}
+
+	/**
+	 * Verifies that a retained evidence refusal leaves correctness evidence unchanged and releases the campaign lock.
+	 *
+	 * @param harness the campaign fixture
+	 * @param before the campaign before the slice
+	 * @param after the campaign after the refusal
+	 * @param unfinishedTrial the still-running trial that cleanup must interrupt
+	 */
+	private static void assertRefusalState(DriverHarness harness, Campaign before, Campaign after,
+		FakeSession unfinishedTrial) throws IOException
+	{
+		requireThat(judgeRequests(harness), "judges").isEmpty();
+		requireThat(unfinishedTrial, "unfinishedTrial").isNotNull();
+		requireThat(unfinishedTrial.isInterruptRequested(), "interruptRequested").isTrue();
+		requireThat(harness.running(), "runningSessions").isEmpty();
+		requireThat(after.development().counts(), "developmentCounts").isEqualTo(before.development().counts());
+		requireThat(after.development().failures(), "developmentFailures").isEqualTo(before.development().failures());
+		requireThat(after.baseline().counts(), "baselineCounts").isEqualTo(before.baseline().counts());
+		for (LogicalTrial trial : after.trials())
+		{
+			requireThat(trial.verdict(), "verdict").isNull();
+			requireThat(trial.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+			requireThat(trial.infrastructureAttempts().stream().noneMatch(attempt ->
+				attempt.failure() == RunFailure.INFRASTRUCTURE), "infrastructureAttempt").isTrue();
+		}
+		try (CampaignLock lock = CampaignLock.tryAcquire(harness.context().fileLocks(),
+			harness.context().lockFile()).orElseThrow())
+		{
+			requireThat(lock, "campaignLock").isNotNull();
+			// Acquiring the lock proves SliceRunner released its writer lock while unwinding the refusal.
 		}
 	}
 

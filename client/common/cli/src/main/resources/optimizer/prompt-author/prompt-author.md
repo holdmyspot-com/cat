@@ -12,8 +12,9 @@
 	supplied failure outside every kind or names no hunk for such a kind.
 - When a kind fails again after an earlier attempt targeted it, make the model weigh the instruction differently
 	rather than read it again.
-- Make the smallest evidence-backed correction, supported by analogous and dissimilar cases, and report its manifest.
-	Use a dissimilar contract test when one lies outside the change's scope; otherwise report its absence.
+
+- Make the smallest evidence-backed correction, naming an analogous case and a dissimilar confirmed-contract test id
+	for every changed hunk. CAT rejects missing or invalid dissimilar evidence. Report its manifest.
 	Also report each needed edit outside your authority, except one that the user declined. CAT checks the manifest
 	against the copy's changes and supplied failures, then measures the attempt itself.
 - Put each correction in the file that owns the decision, and guidance that no existing instruction covers where it
@@ -177,16 +178,16 @@ Other attempts for this cell may follow other approaches. Follow this one in eve
 {{new_guidance}}
 	Remove a contradiction or ambiguity before adding emphasis. Check that your edit contradicts no other instruction
 	of the prompt system. Capitals, "important" markers and repeated instructions are not corrections.
-3. For each change, name an analogous case that needs the same path and, as the dissimilar case,
-	the `id` of a test in the confirmed contract whose turns must not receive the new guidance. Use `null` for
-	`dissimilar` only when no confirmed-contract test lies outside the change's scope, such as when an unconditional
-	requirement applies in every test. Word the correction for the invariant shared by the failing and analogous cases.
+3. For each changed hunk, name an analogous case that needs the same path. Name the dissimilar case using the `id` of a
+	test in the confirmed contract whose turns must not receive the new guidance.
+	If you cannot name a dissimilar test, do not submit the change.
+	Word the correction for the invariant shared by the failing and analogous cases.
 4. Emit the manifest: every kind with its name, its failure ids, its classification and the ids of the hunks that
 	address it; every changed hunk with an id of your choice, its motivating failure ids, analogous case and dissimilar
 	case; and each conflict with the failure ids it explains, its requirement ids, quotations, resolutions and
 	recommended one. CAT rejects the attempt for a supplied failure outside every kind or in two kinds, a `routing` or
 	`guidance` kind that names no hunk, a kind that names a hunk id absent from `hunks`, an uncited hunk, a citation to
-	a failure you did not receive, a non-null dissimilar case that names no test of the confirmed contract, a
+	a failure you did not receive, a missing dissimilar case or an id that names no test of the confirmed contract, a
 	`test_defect` kind without a `fault`, or a `test_defect` kind that cites a failure of a test listed as sound.
 	When every kind is `not_guidance`, `test_defect` or `conflict`, report the kinds with an empty `hunks` array; the
 	attempt produces no candidate.

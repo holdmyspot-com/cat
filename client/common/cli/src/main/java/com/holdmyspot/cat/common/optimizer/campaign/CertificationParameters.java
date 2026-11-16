@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
+import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.math.BigDecimal;
@@ -11,29 +12,36 @@ import java.util.List;
 
 /**
  * The parameters of a certification's claim: each certified cell's pass probability exceeds
- * {@code minimumPassRate}, with an error probability of at most the certification level {@code α_i}.
+ * {@code minimumPassRate}, comparisons are implied when that rate is at least one minus {@code controlMargin}, and
+ * the error probability is at most the certification level {@code α_i}.
  * <p>
  * A certification proves its claim and every weaker one. A claim implies another when its minimum pass rate is at
- * least the other's and its certification level is at most the other's.
+ * least the other's, its certification level is at most the other's, and either its comparison margin is at most the
+ * other's or its pass rate implies the other's comparisons.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
  * @param minimumPassRate the pass probability that each certified cell exceeds
+ * @param controlMargin the maximum deficit from 1 at which comparisons are implied
  * @param level the certification level {@code α_i} of the attempt
  */
-public record CertificationParameters(BigDecimal minimumPassRate, SignificanceLevel level)
+public record CertificationParameters(BigDecimal minimumPassRate, BigDecimal controlMargin, SignificanceLevel level)
 {
 	/**
 	 * Creates the parameters.
 	 *
 	 * @param minimumPassRate the pass probability that each certified cell exceeds
+	 * @param controlMargin the maximum deficit from 1 at which comparisons are implied
 	 * @param level the certification level {@code α_i} of the attempt
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code minimumPassRate} is not between 0 and 1, exclusive
+	 * @throws IllegalArgumentException if {@code minimumPassRate} is not between 0 and 1, exclusive, or if
+	 *   {@code controlMargin} is not between 0, inclusive, and 1, exclusive
 	 */
 	public CertificationParameters
 	{
 		requireThat(minimumPassRate, "minimumPassRate").isGreaterThan(BigDecimal.ZERO).
+			isLessThan(BigDecimal.ONE);
+		requireThat(controlMargin, "controlMargin").isGreaterThanOrEqualTo(BigDecimal.ZERO).
 			isLessThan(BigDecimal.ONE);
 		requireThat(level, "level").isNotNull();
 	}
@@ -50,7 +58,29 @@ public record CertificationParameters(BigDecimal minimumPassRate, SignificanceLe
 	 */
 	public static CertificationParameters current(int certificationIndex, BigDecimal minimumPassRate)
 	{
-		return new CertificationParameters(minimumPassRate, ErrorBudget.certificationLevel(certificationIndex));
+		return new CertificationParameters(minimumPassRate, PairedComparison.MARGIN,
+			ErrorBudget.certificationLevel(certificationIndex));
+	}
+
+	/**
+	 * Indicates whether this pass rate implies the control and incumbent comparisons.
+	 *
+	 * @return {@code true} if {@code minimumPassRate} is at least 1 minus {@code controlMargin}
+	 */
+	public boolean comparisonsImplied()
+	{
+		return comparisonsImplied(controlMargin);
+	}
+
+	/**
+	 * Indicates whether this pass rate implies comparisons at the requested margin.
+	 *
+	 * @param requestedMargin the comparison margin
+	 * @return {@code true} if {@code minimumPassRate} is at least 1 minus {@code requestedMargin}
+	 */
+	private boolean comparisonsImplied(BigDecimal requestedMargin)
+	{
+		return minimumPassRate.compareTo(BigDecimal.ONE.subtract(requestedMargin)) >= 0;
 	}
 
 	/**
@@ -66,6 +96,10 @@ public record CertificationParameters(BigDecimal minimumPassRate, SignificanceLe
 		List<CertificationParameter> parameters = new ArrayList<>();
 		if (minimumPassRate.compareTo(other.minimumPassRate) < 0)
 			parameters.add(CertificationParameter.MINIMUM_PASS_RATE);
+		boolean needsLowerMargin = controlMargin.compareTo(other.controlMargin) > 0 &&
+			minimumPassRate.compareTo(BigDecimal.ONE.subtract(other.controlMargin)) < 0;
+		if (needsLowerMargin)
+			parameters.add(CertificationParameter.CONTROL_MARGIN);
 		// A larger threshold is a smaller level
 		if (level.threshold().compareTo(other.level.threshold()) < 0)
 			parameters.add(CertificationParameter.CERTIFICATION_LEVEL);

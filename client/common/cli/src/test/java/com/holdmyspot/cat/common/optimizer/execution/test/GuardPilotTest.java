@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
+import com.holdmyspot.cat.common.optimizer.execution.SnapshotMismatchException;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
@@ -49,7 +50,9 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
+import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
@@ -57,6 +60,7 @@ import tools.jackson.databind.node.ObjectNode;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileSystemException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
@@ -77,6 +81,12 @@ import java.util.Set;
 import java.util.stream.Stream;
 import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 
 /**
@@ -91,7 +101,15 @@ import java.util.function.Function;
  */
 public final class GuardPilotTest
 {
-	private static final Path PROMPT = Path.of("CLAUDE.md");
+	private static final Path PROMPT = Path.of("prompt.md");
+	/**
+	 * Relative path of the harness-neutral rule file in the built plugin base.
+	 */
+	private static final Path PLUGIN_BASE_RULE = Path.of("rules/harness-a/base.md");
+	/**
+	 * Relative path of the plugin file used by the dependent assertion.
+	 */
+	private static final Path PLUGIN_READ_PART = Path.of("bin/read-part");
 	/**
 	 * The files that the staged control source holds.
 	 */
@@ -242,6 +260,186 @@ public final class GuardPilotTest
 				boolean failed = trial.responses().getFirst().getFirst().startsWith("fail");
 				requireThat(Files.isDirectory(trial.effects()), "effectsKept").isEqualTo(failed);
 				requireThat(Files.isDirectory(trial.initialProject()), "initialProjectKept").isEqualTo(failed);
+			}
+		}
+	}
+
+	/**
+	 * A deletion failure waits for a pending session, keeps its decision and stops further admissions.
+	 *
+	 * @param failureTarget the passing trial directory whose deletion fails
+	 * @param directoryName the physical directory name for {@code failureTarget}
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the test thread is interrupted
+	 */
+	@Test(dataProvider = "projectDeletionFailures")
+	public void deletionFailureWaitsForRunningSession(String failureTarget, String directoryName)
+		throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-delete-failure"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			CountDownLatch secondStarted = new CountDownLatch(1);
+			CountDownLatch deletionAttempted = new CountDownLatch(1);
+			CountDownLatch checkpointSaved = new CountDownLatch(1);
+			Path failedDirectory = directory.resolve("sessions/1").resolve(directoryName);
+			FileSystemException deletionFailure = new FileSystemException(failedDirectory.toString(), null,
+				"injected pilot deletion failure");
+			AtomicReference<FakeSession> pendingSession = new AtomicReference<>();
+			AtomicReference<Path> attemptedDirectory = new AtomicReference<>();
+			AtomicReference<Map<String, PilotResult>> checkpoint = new AtomicReference<>();
+			sessions.stallTrialsAfter(1, secondStarted::countDown);
+			GuardPilot.DirectoryRemoval removal = path ->
+			{
+				if (path.equals(failedDirectory))
+				{
+					FakeSession session = sessions.port().sessions().stream().filter(candidate ->
+						candidate.request().role() == SessionRole.TRIAL).toList().getLast();
+					pendingSession.set(session);
+					attemptedDirectory.set(path);
+					deletionAttempted.countDown();
+					requireThat(session.hasEnded(), "pendingSessionEnded").isFalse();
+					requireThat(session.isInterruptRequested(), "pendingSessionInterrupted").isFalse();
+					throw deletionFailure;
+				}
+				TemporaryDirectories.deleteRecursively(path);
+			};
+			FutureTask<Map<String, PilotResult>> task = new FutureTask<>(() -> pilot(sessions,
+				workspace(directory), 2, removal).run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
+				new SplittableRandom(22), pilots ->
+				{
+					checkpoint.set(pilots);
+					checkpointSaved.countDown();
+				}));
+			Thread worker = Thread.ofVirtual().start(task);
+			try
+			{
+				requireThat(secondStarted.await(10, TimeUnit.SECONDS), "secondStarted").isTrue();
+				requireThat(deletionAttempted.await(10, TimeUnit.SECONDS), "deletionAttempted").isTrue();
+
+				FakeSession pending = pendingSession.get();
+				requireThat(attemptedDirectory.get(), "attemptedDirectory").isEqualTo(failedDirectory);
+				requireThat(pending.hasEnded(), "pendingSessionEnded").isFalse();
+				requireThat(pending.isInterruptRequested(), "pendingSessionInterrupted").isFalse();
+				requireThat(sessions.requests(SessionRole.TRIAL).size(), "trialStarts").isEqualTo(2);
+				requireThat(sessions.requests(SessionRole.JUDGE).size(), "judgeStarts").isEqualTo(1);
+
+				boolean remainsPending = false;
+				try
+				{
+					task.get(Duration.ofMillis(100).toMillis(), TimeUnit.MILLISECONDS);
+				}
+				catch (TimeoutException _)
+				{
+					remainsPending = true;
+				}
+				catch (ExecutionException e)
+				{
+					throw new AssertionError("The pilot failed before the pending session ended", e);
+				}
+				requireThat(remainsPending, "remainsPending").isTrue();
+				requireThat(sessions.requests(SessionRole.TRIAL).size(), "trialStarts").isEqualTo(2);
+				requireThat(sessions.requests(SessionRole.JUDGE).size(), "judgeStarts").isEqualTo(1);
+				requireThat(pending.hasEnded(), "pendingSessionEnded").isFalse();
+				requireThat(pending.isInterruptRequested(), "pendingSessionInterrupted").isFalse();
+				requireThat(checkpointSaved.await(10, TimeUnit.SECONDS), "checkpointSaved").isTrue();
+				List<PilotTrial> decidedTrials = checkpoint.get().values().stream().
+					flatMap(pilot -> pilot.trials().stream()).toList();
+				requireThat(decidedTrials.size(), "decidedTrials").isEqualTo(1);
+				PilotTrial decidedTrial = decidedTrials.getFirst();
+				requireThat(decidedTrial.position(), "decidedPosition").isEqualTo(0);
+				requireThat(decidedTrial.assertions().values().stream().allMatch(Boolean.TRUE::equals),
+					"assertionsPassed").isTrue();
+
+				pending.end(new SessionResult.Interrupted(List.of()));
+				try
+				{
+					task.get(Duration.ofSeconds(10).toMillis(), TimeUnit.MILLISECONDS);
+					throw new AssertionError("The pilot should propagate its deletion failure");
+				}
+				catch (ExecutionException e)
+				{
+					requireThat(e.getCause(), "cause").isReferenceEqualTo(deletionFailure, "deletionFailure");
+				}
+				catch (TimeoutException e)
+				{
+					throw new AssertionError("The pilot did not drain after the pending session ended", e);
+				}
+
+				Path effects = directory.resolve("sessions/1/project");
+				Path initialProject = directory.resolve("sessions/1/initial-project");
+				if (failureTarget.equals("effects"))
+				{
+					requireThat(effects, "effects").isDirectory();
+					requireThat(initialProject, "initialProject").isDirectory();
+				}
+				else
+				{
+					requireThat(Files.notExists(effects), "effectsRemoved").isTrue();
+					requireThat(initialProject, "initialProject").isDirectory();
+				}
+				requireThat(sessions.requests(SessionRole.TRIAL).size(), "trialStarts").isEqualTo(2);
+				requireThat(sessions.requests(SessionRole.JUDGE).size(), "judgeStarts").isEqualTo(1);
+			}
+			finally
+			{
+				FakeSession pending = pendingSession.get();
+				if (pending != null && !pending.hasEnded())
+					pending.end(new SessionResult.Interrupted(List.of()));
+				task.cancel(true);
+				worker.join(Duration.ofSeconds(10).toMillis());
+				requireThat(worker.isAlive(), "workerAlive").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Supplies effects and initial-project deletion failures independently.
+	 *
+	 * @return each passing-trial directory whose removal can fail
+	 */
+	@DataProvider(name = "projectDeletionFailures")
+	public static Object[][] projectDeletionFailures()
+	{
+		return new Object[][]{{"effects", "project"}, {"initial_project", "initial-project"}};
+	}
+
+	/**
+	 * An injected remover deletes passing projects through the normal recursive deletion operation.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the test thread is interrupted
+	 */
+	@Test
+	public void injectedRemovalDeletesPassingProjects() throws IOException, InterruptedException
+	{
+		Contract contract = checkedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-injected-delete"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+			AtomicInteger removals = new AtomicInteger();
+			GuardPilot.DirectoryRemoval removal = path ->
+			{
+				removals.incrementAndGet();
+				TemporaryDirectories.deleteRecursively(path);
+			};
+
+			Map<String, PilotResult> result = pilot(sessions, workspace(directory), 4, removal).run(contract,
+				List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(23));
+
+			requireThat(decided(result), "decided").isEqualTo(GuardPilot.TRIALS * result.size());
+			requireThat(sessions.trials().size(), "trials").isEqualTo(GuardPilot.TRIALS * result.size());
+			requireThat(result.values().stream().flatMap(pilot -> pilot.trials().stream()).
+				flatMap(trial -> trial.assertions().values().stream()).allMatch(Boolean.TRUE::equals),
+				"assertionsPassed").isTrue();
+			requireThat(removals.get(), "removals").isEqualTo(2 * sessions.trials().size());
+			for (SessionResult.Completed trial : sessions.trials())
+			{
+				requireThat(Files.notExists(trial.effects()), "effectsRemoved").isTrue();
+				requireThat(Files.notExists(trial.initialProject()), "initialProjectRemoved").isTrue();
 			}
 		}
 	}
@@ -491,7 +689,7 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-crash"));
 			SessionScript sessions = new SessionScript(directory, _ -> "pass");
-			String manifest = directory.resolve("runs/claude/mw9qj3hn-1x2ce9sid1/run.json").toString();
+			String manifest = directory.resolve("runs/harness-a/mw9qj3hn-1x2ce9sid1/run.json").toString();
 			sessions.crashTrials(new NoSuchFileException(manifest));
 
 			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).run(contract, List.of(),
@@ -894,6 +1092,80 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A cached pilot still requires the staged control target to match its empty control snapshot.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test(expectedExceptions = SnapshotMismatchException.class,
+		expectedExceptionsMessageRegExp = ".*prompt\\.md.*snapshot.*")
+	public void cachedPilotStillChecksControl() throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-corrupt-cached-control"));
+			FakeWorkspacePort workspace = workspace(directory);
+			Map<String, PilotResult> cached = pilot(new SessionScript(directory, _ -> "pass"), workspace, 4).
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5));
+			Path source = workspace.stage(control(), Set.of(), SELECTION);
+			Files.writeString(source.resolve(PROMPT), "corrupt control", UTF_8);
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+
+			pilot(sessions, workspace, 4).run(contract, List.of(), control(), Set.of(), SELECTION, cached,
+				new SplittableRandom(6));
+		}
+	}
+
+	/**
+	 * A changed control stops the next trial admission and interrupts a session that is still running.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void mutationStopsPilotAndInterruptsSession() throws IOException, InterruptedException
+	{
+		Contract contract = checkedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-mutated-control"));
+			FakeWorkspacePort workspace = workspace(directory);
+			Path source = workspace.stage(control(), Set.of(), SELECTION);
+			SessionScript sessions = new SessionScript(directory, _ -> BROKEN);
+			sessions.stallTrialsAfter(1, () ->
+			{
+				try
+				{
+					Files.writeString(source.resolve(PROMPT), "changed control", UTF_8);
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			});
+			IOException failure = null;
+
+			try
+			{
+				pilot(sessions, workspace, 2).run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
+					new SplittableRandom(9));
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isInstanceOf(SnapshotMismatchException.class);
+			requireThat(sessions.requests(SessionRole.TRIAL).size(), "trials").isEqualTo(2);
+			requireThat(sessions.requests(SessionRole.JUDGE).size(), "judges").isEqualTo(1);
+			requireThat(sessions.port().sessions().stream().filter(session ->
+				session.request().role() == SessionRole.TRIAL).toList().getLast().isInterruptRequested(),
+				"trialInterruptRequested").isTrue();
+		}
+	}
+
+	/**
 	 * After a revision changes one prompt test, the pilot reruns that test only and keeps the other test's results.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -1099,16 +1371,16 @@ public final class GuardPilotTest
 	public void controlTrialsInstallPlugins() throws IOException, InterruptedException
 	{
 		// Requirement: R-W12
-		TrialPlugin built = builtPlugin();
-		TrialPlugin installed = new TrialPlugin("tools@market", "b".repeat(64), new TrialPlugin.Installed(),
-			List.of(), null);
-		List<TrialPlugin> plugins = List.of(built, installed);
 		Contract contract = TierFixtures.tieredContract();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
 			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			FakeWorkspacePort workspace = workspace(directory);
+			TrialPlugin built = builtPlugin(copyTemporaryPluginBase(workspace, cleanup));
+			TrialPlugin installed = new TrialPlugin("tools@market", copyTemporaryPluginBase(workspace, cleanup),
+				new TrialPlugin.Installed(), List.of(), null);
+			List<TrialPlugin> plugins = List.of(built, installed);
 
 			pilot(sessions, workspace, 4).run(contract, plugins, control(), Set.of(), SELECTION, Map.of(),
 				new SplittableRandom(9));
@@ -1134,15 +1406,15 @@ public final class GuardPilotTest
 	public void controlTrialsRemovePluginDependents() throws IOException, InterruptedException
 	{
 		// Requirement: R-W10
-		TrialPlugin plugin = builtPlugin();
 		Contract withoutDependents = TierFixtures.tieredContract();
-		Contract contract = ContractFixtures.withDependents(withoutDependents, List.of(new Dependent(
-			Dependent.Location.PLUGIN, "cat", Path.of("bin/read-part"), new Dependent.WholeFile(), "Reads a part.")));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-plugin"));
 			SessionScript sessions = new SessionScript(directory, _ -> "pass");
 			FakeWorkspacePort workspace = workspace(directory);
+			TrialPlugin plugin = builtPlugin(copyTemporaryPluginBase(workspace, cleanup));
+			Contract contract = ContractFixtures.withDependents(withoutDependents, List.of(new Dependent(
+				Dependent.Location.PLUGIN, "cat", PLUGIN_READ_PART, new Dependent.WholeFile(), "Reads a part.")));
 			GuardPilot pilot = pilot(sessions, workspace, 4);
 
 			pilot.run(contract, List.of(plugin), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(9));
@@ -1161,14 +1433,35 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * Returns a trial plugin that the project builds.
+	 * Returns a built trial plugin with the supplied physical base identity.
+	 *
+	 * @param baseDigest digest of the plugin base copied into the test workspace
 	 *
 	 * @return the plugin
 	 */
-	private static TrialPlugin builtPlugin()
+	private static TrialPlugin builtPlugin(String baseDigest)
 	{
-		return new TrialPlugin("cat", "a".repeat(64), new TrialPlugin.Build(List.of("build"), Path.of("out")),
-			List.of(new TrialPlugin.Mapping(Path.of("rules"), Path.of("rules/codex"))), null);
+		return new TrialPlugin("cat", baseDigest, new TrialPlugin.Build(List.of("build"), Path.of("out")),
+			List.of(new TrialPlugin.Mapping(Path.of("rules"), PLUGIN_BASE_RULE.getParent())), null);
+	}
+
+	/**
+	 * Creates a physical plugin base and returns the digest of the copy stored in the workspace.
+	 *
+	 * @param workspace workspace that stores the copied plugin base
+	 * @param cleanup   scope that owns the physical plugin base
+	 * @return digest reported by the workspace copy operation
+	 * @throws IOException if the base cannot be created or copied
+	 */
+	private static String copyTemporaryPluginBase(FakeWorkspacePort workspace, TemporaryDirectories cleanup)
+		throws IOException
+	{
+		Path base = cleanup.add(Files.createTempDirectory("pilot-plugin-base"));
+		Files.createDirectories(base.resolve(PLUGIN_BASE_RULE.getParent()));
+		Files.createDirectories(base.resolve(PLUGIN_READ_PART.getParent()));
+		Files.writeString(base.resolve(PLUGIN_BASE_RULE), "base rule\n", UTF_8);
+		Files.writeString(base.resolve(PLUGIN_READ_PART), "read part\n", UTF_8);
+		return workspace.copyPluginBase(base);
 	}
 
 	/**
@@ -1546,8 +1839,24 @@ public final class GuardPilotTest
 	 */
 	private GuardPilot pilot(SessionScript sessions, FakeWorkspacePort workspace, int ceiling)
 	{
-		return new GuardPilot(sessions.port(), workspace, sessions.judge(), new ProposalSchema(json), json,
+		return new GuardPilot(sessions.port(), workspace, PROMPT, sessions.judge(), new ProposalSchema(json), json,
 			ceiling);
+	}
+
+	/**
+	 * Returns a pilot whose passing project directories use the supplied remover.
+	 *
+	 * @param sessions the session port
+	 * @param workspace the workspace port
+	 * @param ceiling the maximum number of simultaneous sessions
+	 * @param removal deletes project directories of passing trials
+	 * @return the pilot
+	 */
+	private GuardPilot pilot(SessionScript sessions, FakeWorkspacePort workspace, int ceiling,
+		GuardPilot.DirectoryRemoval removal)
+	{
+		return GuardPilotSecrets.getGuardPilotAccess().create(sessions.port(), workspace, PROMPT, sessions.judge(),
+			new ProposalSchema(json), json, ceiling, removal);
 	}
 
 	/**
@@ -1558,7 +1867,16 @@ public final class GuardPilotTest
 	 */
 	private static FakeWorkspacePort workspace(Path directory)
 	{
-		return new FakeWorkspacePort(directory.resolve("workspace"), fork());
+		try
+		{
+			Path project = Files.createDirectories(directory.resolve("project"));
+			Files.writeString(project.resolve(PROMPT), "fork", UTF_8);
+			return new FakeWorkspacePort(directory.resolve("workspace"), fork(), project);
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
 	}
 
 	/**

@@ -236,22 +236,27 @@ public record PromptAuthorManifest(List<PromptAuthorKind> kinds, List<HunkEviden
 	}
 
 	/**
-	 * Checks that each non-null dissimilar case names a test of the confirmed contract. Whether a test lies outside
-	 * the change's scope is the prompt author's semantic judgment.
+	 * Checks that each hunk names a test of the confirmed contract as its dissimilar case.
 	 *
 	 * @param contract the confirmed contract
-	 * @return a rejection reason for each hunk whose non-null dissimilar case names no test of the contract
+	 * @return a rejection reason for each hunk with missing or unknown dissimilar evidence
 	 */
 	private List<String> dissimilarViolations(Contract contract)
 	{
 		List<String> violations = new ArrayList<>();
+		List<String> testIds = contract.tests().stream().map(PromptTest::id).toList();
 		for (HunkEvidence evidence : hunks)
 		{
 			if (evidence.dissimilar() == null)
+			{
+				violations.add("Hunk at " + PortablePaths.text(evidence.path()) + " (working lines " +
+					evidence.beforeStart() + ".." + evidence.beforeEnd() + ", prompt author lines " +
+					evidence.afterStart() + ".." + evidence.afterEnd() + ") has no dissimilar case. Name the id of one of " +
+					"the confirmed contract's tests: " + testIds);
 				continue;
+			}
 			if (contract.findTest(evidence.dissimilar()).isPresent())
 				continue;
-			List<String> testIds = contract.tests().stream().map(PromptTest::id).toList();
 			violations.add("Hunk at " + PortablePaths.text(evidence.path()) + " (working lines " + evidence.beforeStart() +
 				".." + evidence.beforeEnd() + ", prompt author lines " + evidence.afterStart() + ".." + evidence.afterEnd() +
 				") names the dissimilar case '" + evidence.dissimilar() + "', which is not a test of the confirmed " +

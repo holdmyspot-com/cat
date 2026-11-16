@@ -199,35 +199,51 @@ final class Session implements SessionHandle
 		Outcome outcome = awaitOutcome(0);
 		if (outcome == Outcome.STARTED)
 		{
-			limitDeadline = clock.instant().plus(request.timeLimit());
-			int turn = 0;
-			while (turn < request.turns().size() && !isStopping())
+			try
 			{
-				turn += 1;
-				String prompt = request.turns().get(turn - 1);
-				if (turn == 1)
-					prompt = brief;
-				outcome = sendTurn(turn, prompt);
-				if (outcome != Outcome.TURN_COMPLETED)
-					break;
-				if (turn < request.turns().size() && request.turnObserver().isPresent() &&
-					request.turnObserver().get().endAfter(turn, completed()))
+				limitDeadline = clock.instant().plus(request.timeLimit());
+				int turn = 0;
+				while (turn < request.turns().size() && !isStopping())
 				{
-					endedEarly = true;
-					settledAssertions = request.turnObserver().get().settledAssertions();
-					break;
+					turn += 1;
+					String prompt = request.turns().get(turn - 1);
+					if (turn == 1)
+						prompt = brief;
+					outcome = sendTurn(turn, prompt);
+					if (outcome != Outcome.TURN_COMPLETED)
+						break;
+					if (turn < request.turns().size() && request.turnObserver().isPresent() &&
+						request.turnObserver().get().endAfter(turn, completed()))
+					{
+						endedEarly = true;
+						settledAssertions = request.turnObserver().get().settledAssertions();
+						break;
+					}
+				}
+				if (outcome == Outcome.TURN_COMPLETED && !isStopping() && isTurnClean() &&
+					request.followUp().isPresent())
+				{
+					Optional<String> followUp = request.followUp().get().next(completed());
+					if (followUp.isPresent())
+					{
+						// The follow-up turn answers the replies so far, so it gets a time limit of its own
+						limitDeadline = clock.instant().plus(request.timeLimit());
+						outcome = sendTurn(turn + 1, followUp.get());
+					}
 				}
 			}
-			if (outcome == Outcome.TURN_COMPLETED && !isStopping() && isTurnClean() &&
-				request.followUp().isPresent())
+			catch (IOException | RuntimeException failure)
 			{
-				Optional<String> followUp = request.followUp().get().next(completed());
-				if (followUp.isPresent())
+				try
 				{
-					// The follow-up turn answers the replies so far, so it gets a time limit of its own
-					limitDeadline = clock.instant().plus(request.timeLimit());
-					outcome = sendTurn(turn + 1, followUp.get());
+					stopRunner(runner, outcome);
 				}
+				catch (IOException | RuntimeException shutdownFailure)
+				{
+					if (shutdownFailure != failure)
+						failure.addSuppressed(shutdownFailure);
+				}
+				throw failure;
 			}
 		}
 		stopRunner(runner, outcome);
@@ -372,10 +388,9 @@ final class Session implements SessionHandle
 	{
 		if (ended == null && outcome != Outcome.STUCK && outcome != Outcome.STARTUP_TIMEOUT)
 		{
-			// A normal finish asks the runner to report a turn that failed without a result. On an early end, just
-			// close input and let the harness flush its completed-turn events.
-			if (!endedEarly)
-				feed.send("{\"type\":\"complete\"}");
+			// Every successful stop, including settlement between turns, completes the bridge protocol. EOF alone
+			// means the requester disappeared and makes the bridge fail the session.
+			feed.send("{\"type\":\"complete\"}");
 			feed.end();
 			graceDeadline = clock.instant().plus(GRACE);
 			while (ended == null && !clock.instant().isAfter(graceDeadline))

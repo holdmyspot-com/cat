@@ -730,22 +730,16 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Reads how a completed trial session's shell commands ran.
+	 * Reads how a completed trial session's shell commands ran. Missing command measurements yield an unknown summary;
+	 * a failure to read the required transcript escapes.
 	 *
 	 * @param completed the session's result
-	 * @return the summary, which is unknown if the session's transcript cannot be read
+	 * @return the recorded summary, or unknown if the evidence has no command measurements
+	 * @throws IOException if the transcript cannot be read
 	 */
-	private CommandSummary readCommands(SessionResult.Completed completed)
+	private CommandSummary readCommands(SessionResult.Completed completed) throws IOException
 	{
-		try
-		{
-			return context.sessions().readEvidence(completed.transcript()).commands();
-		}
-		catch (IOException _)
-		{
-			// The trial's built-in tools read the same transcript and report that it cannot be read
-			return CommandSummary.UNKNOWN;
-		}
+		return context.sessions().readEvidence(completed.transcript()).commands();
 	}
 
 	/**
@@ -792,23 +786,24 @@ public final class Driver implements AutoCloseable
 	 * {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed, which receive the tool
 	 * results as evidence. A trial whose passing tools decide every assertion starts no judge: it passes with the record
 	 * of its tools. A tool that the record cannot decide, or evidence that cannot be rendered, makes the run an
-	 * infrastructure failure.
+	 * infrastructure failure; a failure to read required trial evidence escapes.
 	 *
 	 * @param trial the trial session
 	 * @param completed the trial session's result
 	 * @param now the current time
-	 * @throws IOException if the store or the worktree cannot be read or written
+	 * @throws IOException if retained trial evidence, the store or the worktree cannot be read or written
 	 */
 	private void decideTools(InFlight.Trial trial, SessionResult.Completed completed, Instant now)
 		throws IOException
 	{
 		DrawnTestCase testCase = trial.testCase();
 		PromptTest test = campaign.contract().findTest(testCase.testId()).orElseThrow();
+		new Generator(campaign.contract(), campaign.developmentTestCases()).validate(testCase);
+		TrialEvidence evidence = TrialEvidence.read(context.sessions(), completed);
 		List<BuiltInToolResult> results;
 		try
 		{
-			new Generator(campaign.contract(), campaign.developmentTestCases()).validate(testCase);
-			results = test.decide(testCase.testCase(), TrialEvidence.read(context.sessions(), completed));
+			results = test.decide(testCase.testCase(), evidence);
 		}
 		catch (IOException | UndecidableToolException e)
 		{
@@ -973,20 +968,21 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Renders a completed trial's activity and file changes. A failure to render returns the trial to the queue as an
-	 * infrastructure failure.
+	 * infrastructure failure; a failure to read its required transcript escapes.
 	 *
 	 * @param key the logical trial
 	 * @param completed the trial session's result
 	 * @param now the current time
 	 * @return the rendered evidence, or empty if it could not be rendered
-	 * @throws IOException if the store cannot be written
+	 * @throws IOException if the transcript cannot be read or the store cannot be written
 	 */
 	private Optional<String> renderEvidence(TrialKey key, SessionResult.Completed completed, Instant now)
 		throws IOException
 	{
+		TrialEvidence evidence = TrialEvidence.read(context.sessions(), completed);
 		try
 		{
-			return Optional.of(TrialEvidence.read(context.sessions(), completed).render());
+			return Optional.of(evidence.render());
 		}
 		catch (IOException e)
 		{
@@ -2470,13 +2466,24 @@ public final class Driver implements AutoCloseable
 	private void startTrial(LogicalTrial trial, Instant now) throws IOException
 	{
 		TrialKey key = trial.key();
-		SessionHandle handle;
 		Path source;
+		Overlay candidate;
 		try
 		{
-			Overlay candidate = context.overlays().require(key.snapshot());
+			candidate = context.overlays().require(key.snapshot());
 			source = context.workspace().stage(candidate, excludedTests(), trialSelection());
 			staged.put(key.snapshot(), candidate.identity());
+		}
+		catch (IOException e)
+		{
+			fail(key, RunFailure.INFRASTRUCTURE, "The trial session could not start: " + describe(e), now);
+			return;
+		}
+		Path target = campaign.header().root().relativize(campaign.header().target());
+		StagedTarget.read(source, candidate.snapshot(), target);
+		SessionHandle handle;
+		try
+		{
 			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
 			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
 			boolean control = key.purpose() == Purpose.CONTROL;
@@ -2763,6 +2770,10 @@ public final class Driver implements AutoCloseable
 			staged.put(snapshot, overlay.identity());
 			Path target = campaign.header().root().relativize(campaign.header().target());
 			size = PromptMeasurements.measure(source, overlay.snapshot(), target);
+		}
+		catch (SnapshotMismatchException e)
+		{
+			throw e;
 		}
 		catch (IOException e)
 		{

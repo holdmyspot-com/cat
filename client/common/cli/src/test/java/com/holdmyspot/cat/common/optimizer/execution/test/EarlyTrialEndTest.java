@@ -14,6 +14,7 @@ import org.testng.annotations.Test;
 public final class EarlyTrialEndTest
 {
 	/** Checks scoped reply assertions and contradictions that settle an unscoped assertion. */
+	// Requirement: R-E25
 	@Test
 	public void replyChecksSettleByScopeOrContradiction()
 	{
@@ -29,6 +30,7 @@ public final class EarlyTrialEndTest
 	}
 
 	/** Checks that effect assertions settle only when later turns cannot change their evidence. */
+	// Requirement: R-E25
 	@Test
 	public void effectChecksSettleOnFixedEvidence()
 	{
@@ -44,6 +46,22 @@ public final class EarlyTrialEndTest
 		requireThat(EarlyTrialEnd.isSettled(readAtMost, result(readAtMost, false), 1),
 			"read_limit_failure_settled").isTrue();
 		requireThat(EarlyTrialEnd.isSettled(file, result(file, true), 1), "file_state_may_change").isFalse();
+	}
+
+	/** An unscoped count's failure needs evidence; a scoped count settles when its selected turn completes. */
+	// Requirement: R-E25
+	@Test
+	public void countResultNeedsItsCompletedScope()
+	{
+		BuiltInTool.Count unscoped = new BuiltInTool.Count(null, "answer", 2, 2);
+		BuiltInToolResult failed = new BuiltInToolResult(new Assertion("count", AssertionKind.EFFECT,
+			"count answer 2 2", "bounded reply count"), false, "1 match");
+		requireThat(EarlyTrialEnd.isSettled(unscoped, failed, 1), "recoverable_count_failure").isFalse();
+		BuiltInTool.Count scoped = new BuiltInTool.Count(2, "answer", 2, 2);
+		BuiltInToolResult scopedFailure = new BuiltInToolResult(new Assertion("count", AssertionKind.EFFECT,
+			"count turn=2 answer 2 2", "bounded reply count"), false, "1 match");
+		requireThat(EarlyTrialEnd.isSettled(scoped, scopedFailure, 1), "count_scope_pending").isFalse();
+		requireThat(EarlyTrialEnd.isSettled(scoped, scopedFailure, 2), "count_scope_complete").isTrue();
 	}
 
 	/**

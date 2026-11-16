@@ -630,7 +630,9 @@ public final class OptimizerCoreTest
 				refusal = e;
 			}
 			requireThat(refusal, "refusal").isNotNull();
-			requireThat(refusal.getMessage(), "message").doesNotContain("was started by");
+			requireThat(refusal.getMessage(), "message").doesNotContain("was started by").
+				contains(project.campaign()).
+				contains("has no usable fork");
 		}
 	}
 
@@ -2649,6 +2651,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that confirmation refuses the proposal format that predates explicit regression scenario citations.
+	 * <p>
+	 * Uses one persisted campaign with a usable fork and a proposal produced by scripted sessions. Confirmation
+	 * loads the campaign and opens its fork before reading the changed proposal file; checking the proposal reader
+	 * alone would not verify that the public confirmation command reports this refusal.
 	 *
 	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -2674,6 +2680,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that confirmation refuses the proposal format that predates the stored capability ranking.
+	 * <p>
+	 * Uses one persisted campaign with a usable fork and a proposal produced by scripted sessions. Confirmation
+	 * loads the campaign and opens its fork before reading the changed proposal file; checking the proposal reader
+	 * alone would not verify that the public confirmation command reports this refusal.
 	 *
 	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -2702,6 +2712,10 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that confirmation refuses the proposal format that predates failure behaviors.
+	 * <p>
+	 * Uses one persisted campaign with a usable fork and a proposal produced by scripted sessions. Confirmation
+	 * loads the campaign and opens its fork before reading the changed proposal file; checking the proposal reader
+	 * alone would not verify that the public confirmation command reports this refusal.
 	 *
 	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -2901,9 +2915,9 @@ public final class OptimizerCoreTest
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
-			Repository repository = repository(scope, _ -> derivation(_ ->
-			{
-			}), Set.of(Path.of("CLAUDE.md")), null, true);
+			// The notice precedes proposal acceptance; an invalid response avoids unrelated pilot work
+			Repository repository = repository(scope, _ -> "invalid proposal", Set.of(Path.of("CLAUDE.md")),
+				null, true);
 
 			ObjectNode first = output(repository, List.of("start", "CLAUDE.md"));
 			ObjectNode second = output(repository, List.of("status", "CLAUDE.md"));
@@ -2954,6 +2968,10 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code confirm} refuses a proposal file of format version 2, which predates deterministic checks
 	 * and the core-task requirement, and asks for a new derivation instead of misreading it.
+	 * <p>
+	 * Uses one persisted campaign with a usable fork and a proposal produced by scripted sessions. Confirmation
+	 * loads the campaign and opens its fork before reading the changed proposal file; checking the proposal reader
+	 * alone would not verify that the public confirmation command reports this refusal.
 	 */
 	@Test
 	public void confirmRefusesVersionTwoProposalFile() throws Exception
@@ -3533,8 +3551,10 @@ public final class OptimizerCoreTest
 			ForkView fork = repository.forks().open(repository.root(), repository.directory(id));
 			Overlay incumbent = new FileCandidateOverlays(repository.directory(id), fork.inventory(),
 				repository.scope().json(), Yielding.fileReplacer()).require(campaign.incumbent().snapshot());
-			fork.workspace().stage(incumbent, Set.of());
+			Path staged = fork.workspace().stage(incumbent, Set.of());
 			requireThat(incumbent.snapshot().entries().keySet(), "stagedFiles").contains(Path.of("CLAUDE.md"));
+			requireThat(Files.readString(staged.resolve("CLAUDE.md"), StandardCharsets.UTF_8), "stagedPrompt").
+				isEqualTo("Be brief.\n");
 		}
 	}
 
@@ -6515,9 +6535,9 @@ public final class OptimizerCoreTest
 			Repository repository = repository(scope, _ -> derivation(_ ->
 			{
 			}));
-			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
-			Builder builder = new Builder().header(repository.load(id).header().withLifecycle(Lifecycle.FINISHED)).
-				confirmed();
+			String id = "campaign-1";
+			Builder builder = new Builder().header(new Header(id, repository.root(),
+				repository.root().resolve("CLAUDE.md"), Harness.CLAUDE, Lifecycle.FINISHED)).confirmed();
 			builder.certificationAttempt(1);
 			Campaign finished = builder.outcome(Outcome.CERTIFIED).
 				delivery(new DeliveryRequest(new Candidate(1, Builder.snapshot("candidate-1")), 1, Outcome.CERTIFIED)).
@@ -7319,6 +7339,16 @@ public final class OptimizerCoreTest
 			Repository repository = repository(cleanup, _ -> derivation(output -> output.putArray("scope_conditions")));
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			Campaign c = repository.load(id);
+			Campaign evidence = new Builder().confirmed(c.contract(), c.lineage().number()).
+				working(c.development().working()).readyDevelopment().
+				development("formatting", 197, List.of(0, 0, 0, 2)).sound("formatting").build();
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
+				replaceSnapshot(new Campaign(c.header(), c.ceiling(), c.lineages(),
+				c.identity(), c.incumbent(), c.candidates(), c.promptAuthorAttempts(), evidence.development(),
+				c.baseline(), c.attempts(), c.trials(), c.sequences(), c.evidenceRevision(), c.windows(),
+				c.throttle(), c.pendingDecisions(), c.revisionRequested(), c.outcome(), c.delivery(),
+				c.optimization(), c.answeredWarnings(), evidence.testRevisions(), c.plugins()));
 			repository.sessions().sessionDuration(Duration.ofMinutes(12));
 			List<String> arguments = List.of("run", id, "--background");
 			if (resume)
@@ -7327,12 +7357,16 @@ public final class OptimizerCoreTest
 				arguments = List.of("choose", id, "resume", "--background");
 			}
 			Instant began = repository.scope().clock().instant();
+			int judgesBefore = repository.sessions().requests(SessionRole.JUDGE).size();
 			ObjectNode result = output(repository, arguments);
-			requireThat(result.path("status").asString(), "status").isNotEqualTo("running");
+			requireThat(result.path("status").asString(), "status").isEqualTo("awaiting_user");
 			requireThat(result.path("campaign").asString(), "campaign").isEqualTo(id);
-			requireThat(repository.sessions().roles(), "roles").contains(SessionRole.JUDGE);
+			requireThat(repository.sessions().requests(SessionRole.JUDGE).size(), "judges").
+				isGreaterThan(judgesBefore);
 			requireThat(repository.scope().clock().instant().isAfter(began.plus(Duration.ofMinutes(8))),
 				"elapsed").isTrue();
+			requireThat(repository.load(id).pending(), "pending").
+				isEqualTo(new PendingDecision.CheckpointReached("formatting", 200));
 		}
 	}
 }

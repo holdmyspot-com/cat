@@ -74,7 +74,8 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	 *   allocation rule does not assign the key's purpose, a verdict exists without the {@link TrialState#JUDGED} state
 	 *   or that state lacks a verdict, only one of {@code rationale}, {@code files} and {@code verdict} has a value,
 	 *   {@code failedAssertions} is not empty for a trial that did not fail, a
-	 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial, or
+	 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} or
+	 *   {@link Purpose#RACE race} trial, or
 	 *   {@code infrastructureFailures} exceeds the number of {@link RunFailure#INFRASTRUCTURE} attempts
 	 */
 	public LogicalTrial

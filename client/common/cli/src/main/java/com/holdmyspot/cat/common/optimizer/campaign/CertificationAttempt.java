@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
+import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.secrets.CertificationAttemptAccess;
 import com.holdmyspot.cat.common.secrets.CertificationAttemptSecrets;
 
@@ -183,7 +184,7 @@ public record CertificationAttempt(int index, int lineage, Candidate candidate, 
 	public CertificationParameters parameters()
 	{
 		DecisionBoundaries boundaries = procedure.boundaries();
-		return new CertificationParameters(boundaries.minimumPassRate(), boundaries.level());
+		return new CertificationParameters(boundaries.minimumPassRate(), PairedComparison.MARGIN, boundaries.level());
 	}
 
 	/**

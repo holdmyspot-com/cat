@@ -223,7 +223,8 @@ public sealed interface CampaignEvent
 		 *   {@code failedAssertions}, {@code observed}, {@code responses}, {@code files}, {@code judge},
 		 *   {@code shadows}, a comparison, a failed assertion, a turn's messages or an assistant message are null
 		 * @throws IllegalArgumentException if {@code inputTokens} is negative, a pass has failed assertions, or a
-		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} trial
+		 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} or
+		 *   {@link Purpose#RACE race} trial
 		 */
 		public Complete
 		{
@@ -244,7 +245,8 @@ public sealed interface CampaignEvent
 			if (triage != null)
 			{
 				requireThat(verdict, "verdict").isEqualTo(Verdict.FAIL);
-				requireThat(key.purpose(), "key.purpose()").isEqualTo(Purpose.DEVELOPMENT);
+				requireThat(key.purpose() == Purpose.DEVELOPMENT || key.purpose() == Purpose.RACE,
+					"developmentTrial").isTrue();
 			}
 
 			failedAssertions = List.copyOf(failedAssertions);

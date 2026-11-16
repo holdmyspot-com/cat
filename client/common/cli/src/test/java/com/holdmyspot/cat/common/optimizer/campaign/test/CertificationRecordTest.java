@@ -4,8 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameter;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord.CellResult;
@@ -172,8 +174,9 @@ public final class CertificationRecordTest
 		requireThat(new HashSet<>(root.propertyNames()), "fileFields").isEqualTo(Set.of("format_version", "records"));
 		JsonNode entry = root.get("records").get(0);
 		requireThat(new HashSet<>(entry.propertyNames()), "fields").isEqualTo(Set.of("target", "label",
-			"certification_index", "scope", "minimum_pass_rate", "comparisons_implied", "alpha", "cells", "prompt_files",
-			"identity"));
+			"certification_index", "scope", "minimum_pass_rate", "control_margin", "comparisons_implied", "alpha",
+			"cells", "prompt_files", "identity"));
+		requireThat(entry.get("control_margin").asString(), "controlMargin").isEqualTo("0.05");
 		requireThat(entry.get("scope").asString(), "scope").isEqualTo("weakest_cell");
 	}
 
@@ -234,9 +237,8 @@ public final class CertificationRecordTest
 	}
 
 	/**
-	 * The record's file says whether the control and incumbent comparisons follow from the minimum pass rate: they do
-	 * at 0.95 and not at 0.90. Each file reads back as the same record, and a file whose statement contradicts its
-	 * minimum pass rate is refused.
+	 * The record's file says whether the control and incumbent comparisons follow from its pass rate and margin. Each
+	 * file reads back as the same record, and a file whose statement contradicts its claim is refused.
 	 *
 	 * @throws IOException if a record file cannot be written or read
 	 */
@@ -246,29 +248,33 @@ public final class CertificationRecordTest
 		// Requirement: R-M6
 		// Requirement: R-F9
 		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
-		Map<BigDecimal, Boolean> expected = Map.of(Contract.DEFAULT_MINIMUM_PASS_RATE, true,
-			Boundaries.PAIRED_MINIMUM_PASS_RATE, false);
+		List<CertificationParameters> parameters = List.of(
+			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			new CertificationParameters(new BigDecimal("0.90"), new BigDecimal("0.10"),
+				CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE).level()),
+			new CertificationParameters(new BigDecimal("0.90"), new BigDecimal("0.04"),
+				CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE).level()),
+			CertificationParameters.current(1, Boundaries.PAIRED_MINIMUM_PASS_RATE));
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("cat-record-"));
-			for (Map.Entry<BigDecimal, Boolean> entry : expected.entrySet())
+			for (CertificationParameters claim : parameters)
 			{
-				BigDecimal minimumPassRate = entry.getKey();
 				CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
-					CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, minimumPassRate), List.of(),
+					CertificationScope.LATEST_VERSIONS, claim, List.of(),
 					Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
 				byte[] bytes = codec.write(CertificationHistory.EMPTY.appended(record));
+				boolean comparisonsImplied = claim.comparisonsImplied();
 				requireThat(JSON.readTree(bytes).get("records").get(0).get("comparisons_implied").asBoolean(),
-					"comparisonsImplied").
-					withContext(minimumPassRate, "minimumPassRate").isEqualTo(entry.getValue());
-				Path file = directory.resolve("CLAUDE-" + minimumPassRate + ".json");
+					"comparisonsImplied").isEqualTo(comparisonsImplied);
+				Path file = directory.resolve("CLAUDE-" + claim.minimumPassRate() + "-" + claim.controlMargin() + ".json");
 				Files.write(file, bytes);
-				requireThat(codec.read(file).records(), "read").withContext(minimumPassRate, "minimumPassRate").
-					isEqualTo(List.of(record));
+				requireThat(codec.read(file).records(), "read").isEqualTo(List.of(record));
 
 				ObjectNode edited = (ObjectNode) JSON.readTree(bytes);
-				((ObjectNode) edited.get("records").get(0)).put("comparisons_implied", !entry.getValue());
-				Path editedFile = directory.resolve("edited-" + minimumPassRate + ".json");
+				((ObjectNode) edited.get("records").get(0)).put("comparisons_implied", !comparisonsImplied);
+				Path editedFile = directory.resolve("edited-" + claim.minimumPassRate() + "-" + claim.controlMargin() +
+					".json");
 				Files.write(editedFile, JSON.writeValueAsBytes(edited));
 				IOException failure = null;
 				try
@@ -279,8 +285,54 @@ public final class CertificationRecordTest
 				{
 					failure = e;
 				}
-				requireThat(failure, "failure").withContext(minimumPassRate, "minimumPassRate").isNotNull();
+				requireThat(failure, "failure").isNotNull();
 				requireThat(failure.getMessage(), "message").contains("comparisons_implied");
+			}
+		}
+	}
+
+	/**
+	 * A serialized record keeps its margin and uses that claim when the record is compared with current parameters.
+	 *
+	 * @throws IOException if a record file cannot be written or read
+	 */
+	@Test
+	public void marginReloadControlsApplicability() throws IOException
+	{
+		// Requirement: R-M6
+		// Requirement: R-M2
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		List<CertificationParameters> claims = List.of(
+			new CertificationParameters(new BigDecimal("0.90"), new BigDecimal("0.04"),
+				CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE).level()),
+			new CertificationParameters(new BigDecimal("0.90"), new BigDecimal("0.06"),
+				CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE).level()),
+			new CertificationParameters(new BigDecimal("0.95"), new BigDecimal("0.06"),
+				CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE).level()));
+		List<List<CertificationParameter>> expectedNotImplying = List.of(List.of(),
+			List.of(CertificationParameter.CONTROL_MARGIN), List.of());
+		List<Applicability.Status> expectedStatuses = List.of(Applicability.Status.CURRENT,
+			Applicability.Status.HISTORICAL, Applicability.Status.CURRENT);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-margin-"));
+			for (int i = 0; i < claims.size(); ++i)
+			{
+				CertificationParameters claim = claims.get(i);
+				CertificationRecord original = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+					CertificationScope.LATEST_VERSIONS, claim, List.of(),
+					Map.of(Path.of("CLAUDE.md"), hash("prompt v1")), Builder.OBSERVED);
+				Path file = directory.resolve("margin-" + claim.controlMargin() + ".json");
+				Files.write(file, codec.write(CertificationHistory.EMPTY.appended(original)));
+				CertificationRecord reloaded = codec.read(file).records().getFirst();
+
+				requireThat(reloaded.parameters().controlMargin(), "controlMargin").isEqualTo(claim.controlMargin());
+				requireThat(reloaded.identity(), "identity").isEqualTo(original.identity());
+				requireThat(reloaded.promptFiles(), "promptFiles").isEqualTo(original.promptFiles());
+				Applicability applicability = reloaded.applicability(reloaded.promptFiles(), reloaded.identity(),
+					claim.minimumPassRate());
+				requireThat(applicability.status(), "status").isEqualTo(expectedStatuses.get(i));
+				requireThat(applicability.parameters(), "parameters").isEqualTo(expectedNotImplying.get(i));
 			}
 		}
 	}

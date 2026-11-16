@@ -84,7 +84,7 @@ public final class LeftoverRuns
 	 *
 	 * @return the harness processes whose identifiers and starts can be parsed, in run root and directory
 	 *   order; empty if no run root exists
-	 * @throws IOException if the run directories cannot be listed
+	 * @throws IOException if the run directories cannot be listed or process identity is uncertain
 	 */
 	public List<RecordedProcess> find() throws IOException
 	{
@@ -133,9 +133,10 @@ public final class LeftoverRuns
 	 *
 	 * @param manifest the manifest's content
 	 * @return the harness process; empty if the run is not running, the manifest cannot be parsed, the owner process
-	 *   is not identified or is alive, or the harness process is not identified
+	 *   is absent or alive, or the harness process is not identified
+	 * @throws IOException if owner process identity cannot be established
 	 */
-	private Optional<RecordedProcess> parse(byte[] manifest)
+	private Optional<RecordedProcess> parse(byte[] manifest) throws IOException
 	{
 		JsonNode root;
 		try

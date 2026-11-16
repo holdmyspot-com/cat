@@ -3,14 +3,11 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
-import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
-import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.charset.CharacterCodingException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 
 /**
@@ -33,23 +30,18 @@ public final class PromptMeasurements
 	 * @param inventory the snapshot inventory
 	 * @param target the target prompt file, relative to the project
 	 * @return observed sizes, or the reason a measurement is unavailable
+	 * @throws SnapshotMismatchException if the staged target differs from its frozen snapshot
 	 */
-	public static PromptSize measure(Path staged, FileInventory inventory, Path target)
+	public static PromptSize measure(Path staged, FileInventory inventory, Path target) throws SnapshotMismatchException
 	{
 		byte[] bytes;
 		try
 		{
-			Path file = staged.resolve(target);
-			if (!Files.isRegularFile(file))
-				throw new IOException("The staged snapshot holds no target prompt file at " + target);
-			Path resolved = inventory.resolve(target).orElse(target);
-			FileContent content = new FileContent(Files.readAllBytes(file));
-			if (!(inventory.entries().get(resolved) instanceof RegularFile expected) ||
-				!content.hash().equals(expected.contentHash()))
-			{
-				throw new IOException("Staged target prompt bytes differ from the snapshot at " + target);
-			}
-			bytes = content.bytes();
+			bytes = StagedTarget.read(staged, inventory, target).bytes();
+		}
+		catch (SnapshotMismatchException e)
+		{
+			throw e;
 		}
 		catch (IOException e)
 		{

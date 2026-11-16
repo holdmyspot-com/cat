@@ -3122,8 +3122,8 @@ public final class OptimizerCore implements Core
 		PilotFile file = pilotFile(campaign);
 		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(campaign),
 			derived.contract().projectRemovals(), scope.json());
-		GuardPilot pilot = new GuardPilot(sessions(campaign), fork.workspace(), judgePrompt(campaign), schema,
-			scope.json(), campaign.ceiling());
+		GuardPilot pilot = new GuardPilot(sessions(campaign), fork.workspace(), relativeTarget(campaign),
+			judgePrompt(campaign), schema, scope.json(), campaign.ceiling());
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(campaign), root);
 		// Each decided trial is stored as soon as it is decided, so that a command that ends before the pilot does
 		// loses only the trials in flight

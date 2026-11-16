@@ -22,7 +22,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
-import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.io.IOException;
@@ -55,11 +54,12 @@ import tools.jackson.databind.node.ObjectNode;
  * better than the incumbent, the incumbent's snapshot hash, each prompt file's content hash and the measurement
  * conditions. Reading ignores the fields that it does not know.
  * <p>
- * A certification record holds the target, the certification index, the scope's identifier, the minimum pass rate
- * and the significance level {@code alpha} as decimal strings, whether the control and incumbent comparisons follow
- * from the minimum pass rate, each cell's counts with the pairs of each assertion's control and incumbent
- * comparisons, each prompt file's content hash and the measurement conditions. A cell whose comparisons follow from
- * the minimum pass rate has no pairs.
+ * A certification record holds the target, the certification index, the scope's identifier, the minimum pass rate,
+ * comparison margin and significance level {@code alpha} as decimal strings, whether the control and incumbent
+ * comparisons follow from the recorded claim, each cell's counts with the pairs of each assertion's control and
+ * incumbent comparisons, each prompt file's content hash and the measurement conditions. A cell whose comparisons
+ * follow from the recorded claim has no pairs. A format-one certification entry that omits its margin has the fixed
+ * margin {@code 0.05}.
  * <p>
  * {@code alpha} is {@code 1 / threshold} of the level. A reciprocal that has no finite decimal form is rounded up to
  * {@value #ALPHA_DIGITS} significant digits, so the written value never understates the level's error probability.
@@ -74,9 +74,17 @@ public final class CertificationHistoryJson
 	 * The format version that this version of CAT writes and reads.
 	 */
 	private static final int FORMAT_VERSION = 1;
+	/**
+	 * The fixed comparison margin of format-one history entries that omit their margin.
+	 */
+	private static final BigDecimal FORMAT_ONE_CONTROL_MARGIN = new BigDecimal("0.05");
 	private static final String MALFORMED = "is malformed";
 	private static final String RECORDS = "records";
 	private static final String LABEL = "label";
+	/**
+	 * The persisted field that records the certification's comparison margin.
+	 */
+	private static final String CONTROL_MARGIN = "control_margin";
 	/**
 	 * The significant digits of an {@code alpha} that has no finite decimal form.
 	 */
@@ -153,7 +161,8 @@ public final class CertificationHistoryJson
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
 		root.put("minimum_pass_rate", parameters.minimumPassRate().toPlainString());
-		root.put("comparisons_implied", PairedComparison.isImpliedBy(parameters.minimumPassRate()));
+		root.put(CONTROL_MARGIN, parameters.controlMargin().toPlainString());
+		root.put("comparisons_implied", parameters.comparisonsImplied());
 		root.put("alpha", alpha(parameters.level()));
 
 		ArrayNode cells = root.putArray("cells");
@@ -333,13 +342,14 @@ public final class CertificationHistoryJson
 		String scopeId = text(root, "scope");
 		CertificationScope scope = CertificationScope.fromId(scopeId).orElseThrow(() ->
 			new IllegalArgumentException("scope: " + scopeId + " is not a certification scope"));
-		CertificationParameters parameters = new CertificationParameters(
-			CampaignJson.decimal(root, "minimum_pass_rate"), level(CampaignJson.decimal(root, "alpha")));
+		CertificationParameters parameters = new CertificationParameters(CampaignJson.decimal(root, "minimum_pass_rate"),
+			controlMargin(root), level(CampaignJson.decimal(root, "alpha")));
 		boolean comparisonsImplied = bool(root, "comparisons_implied");
-		if (comparisonsImplied != PairedComparison.isImpliedBy(parameters.minimumPassRate()))
+		if (comparisonsImplied != parameters.comparisonsImplied())
 		{
 			throw new IllegalArgumentException("comparisons_implied: " + comparisonsImplied +
-				" contradicts minimum_pass_rate " + parameters.minimumPassRate().toPlainString());
+				" contradicts minimum_pass_rate " + parameters.minimumPassRate().toPlainString() + " and control_margin " +
+				parameters.controlMargin().toPlainString());
 		}
 
 		List<CellResult> cells = new ArrayList<>();
@@ -352,6 +362,25 @@ public final class CertificationHistoryJson
 
 		return new CertificationRecord(Path.of(text(root, "target")), integer(root, "certification_index"), scope,
 			parameters, cells, readPromptFiles(root), CampaignJson.readIdentity(field(root, "identity")));
+	}
+
+	/**
+	 * Returns the recorded comparison margin.
+	 *
+	 * @param root the certification record's node
+	 * @return the margin, or the fixed format-one margin when the field is absent
+	 * @throws IllegalArgumentException if a present field is malformed or outside [0, 1)
+	 */
+	private static BigDecimal controlMargin(JsonNode root)
+	{
+		if (root.has(CONTROL_MARGIN))
+		{
+			BigDecimal controlMargin = CampaignJson.decimal(root, CONTROL_MARGIN);
+			if (controlMargin.compareTo(BigDecimal.ZERO) < 0 || controlMargin.compareTo(BigDecimal.ONE) >= 0)
+				throw new IllegalArgumentException(CONTROL_MARGIN + ": must be at least 0 and less than 1");
+			return controlMargin;
+		}
+		return FORMAT_ONE_CONTROL_MARGIN;
 	}
 
 	/**

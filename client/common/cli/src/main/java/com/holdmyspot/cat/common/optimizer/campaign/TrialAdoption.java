@@ -4,6 +4,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -790,9 +791,10 @@ public final class TrialAdoption
 		{
 			String testId = draft.contract().findCell(cell).orElseThrow().testId();
 			PromptTest test = draft.contract().findTest(testId).orElseThrow();
-			boolean allToolDecided = test.expectedOutcomeTool().isPresent() && test.assertions().stream().
+			boolean allToolDecided = test.expectedOutcomeTool().filter(tool ->
+				tool.onToolFailure() == OnToolFailure.FAIL).isPresent() && test.assertions().stream().
 				allMatch(mapped -> mapped.assertion().tool() != null &&
-					mapped.assertion().onToolFailure() == com.holdmyspot.cat.common.optimizer.contract.OnToolFailure.FAIL);
+					mapped.assertion().onToolFailure() == OnToolFailure.FAIL);
 			if (allToolDecided)
 				limits.put(cell, 6);
 		}

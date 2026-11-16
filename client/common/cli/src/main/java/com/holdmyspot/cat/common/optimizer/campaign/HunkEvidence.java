@@ -21,8 +21,8 @@ import java.util.List;
  * @param afterEnd    the end of the prompt author range, exclusive
  * @param failures    the supplied failure identifiers
  * @param analogous   a case requiring the same guidance
- * @param dissimilar  the identifier of the contract test whose case must not receive the guidance, or null when no
- *                    confirmed-contract test lies outside the change's scope
+ * @param dissimilar  the identifier of a confirmed-contract test whose case must not receive the guidance, or null
+ *                    when the prompt author omitted the evidence; a changed hunk with null cannot be accepted
  */
 public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd, int afterStart, int afterEnd,
 	List<String> failures, String analogous, String dissimilar)
@@ -38,8 +38,8 @@ public record HunkEvidence(String id, Path path, int beforeStart, int beforeEnd,
 	 * @param afterEnd    the prompt author range end
 	 * @param failures    the supplied failure identifiers
 	 * @param analogous   a case requiring the same guidance
-	 * @param dissimilar  the identifier of the contract test whose case is excluded from the guidance, or null when no
-	 *                    confirmed-contract test lies outside the change's scope
+	 * @param dissimilar  the identifier of a confirmed-contract test whose case is excluded from the guidance, or null
+	 *                    when the prompt author omitted the evidence; a changed hunk with null cannot be accepted
 	 * @throws NullPointerException     if an argument other than {@code dissimilar} or a collection element is null
 	 * @throws IllegalArgumentException if a path is invalid, a range is invalid, the citations are empty,
 	 *   or any text is blank

@@ -70,7 +70,7 @@ public final class EarlyTrialEnd implements TurnObserver
 				continue;
 			BuiltInTool tool = assertion.builtInTool().orElseThrow();
 			BuiltInToolResult result = results.get(assertion.id());
-			if (result != null && isSettled(tool, result, turn))
+			if (result != null && settledWithEvidence(tool, result, turn, evidence))
 				settledAssertions.putIfAbsent(assertion.id(), turn);
 		}
 		return settledAssertions.size() == test.allAssertions().size();
@@ -83,12 +83,37 @@ public final class EarlyTrialEnd implements TurnObserver
 	}
 
 	/**
-	 * Checks whether a built-in tool result can no longer change on a later turn.
+	 * Checks settlement using the trial evidence when the pass/fail result alone is insufficient.
+	 *
+	 * @param tool the tool being evaluated
+	 * @param result its result on the completed turns
+	 * @param turn the completed turn number
+	 * @param evidence the record of those turns
+	 * @return {@code true} if later turns cannot change the verdict
+	 */
+	private boolean settledWithEvidence(BuiltInTool tool, BuiltInToolResult result, int turn,
+		TrialEvidence evidence)
+	{
+		if (tool instanceof BuiltInTool.Count count && count.turn() == null)
+		{
+			if (result.leftToJudge() || evidence.replies().isEmpty())
+				return false;
+			// Later replies can repair a count below the minimum, but cannot undo matches above the maximum.
+			BuiltInTool.Count maximumOnly = new BuiltInTool.Count(null, count.regex(), 0, count.maximum());
+			return !maximumOnly.decide(evidence, PromptTest.textByName(testCase)).passed();
+		}
+		return isSettled(tool, result, turn);
+	}
+
+	/**
+	 * Checks whether a built-in tool result alone establishes that its verdict cannot change on a later turn.
+	 * An unscoped count requires the trial evidence to distinguish too few matches from too many, so its boolean
+	 * result alone never establishes settlement.
 	 *
 	 * @param tool the assertion tool
 	 * @param result the tool's result
 	 * @param turn the completed turn number
-	 * @return {@code true} if later turns cannot change the verdict
+	 * @return {@code true} if the result establishes that later turns cannot change the verdict
 	 */
 	public static boolean isSettled(BuiltInTool tool, BuiltInToolResult result, int turn)
 	{
@@ -100,7 +125,7 @@ public final class EarlyTrialEnd implements TurnObserver
 			Integer scopedTurn = tool.turn();
 			if (scopedTurn != null)
 				return scopedTurn <= turn;
-			return !result.passed();
+			return !(tool instanceof BuiltInTool.Count) && !result.passed();
 		}
 		if (tool instanceof BuiltInTool.ToolUsed)
 			return result.passed();
