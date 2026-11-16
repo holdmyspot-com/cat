@@ -77,6 +77,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
 	private String userLoaderSettings;
 	private String launchRefusal;
+	private String worktreeRefusal;
 	Consumer<String> backgroundNotice = _ ->
 	{
 	};
@@ -389,6 +390,25 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		return Optional.ofNullable(launchRefusal);
+	}
+
+	@Override
+	protected Optional<String> worktreeRefusal()
+	{
+		ensureOpen();
+		return Optional.ofNullable(worktreeRefusal);
+	}
+
+	/**
+	 * Makes this scope's commands find no receiver for their worktree operations.
+	 *
+	 * @param refusal why the operations are refused and how the user fixes it
+	 * @throws NullPointerException if {@code refusal} is null
+	 */
+	void refuseWorktrees(String refusal)
+	{
+		requireThat(refusal, "refusal").isNotNull();
+		this.worktreeRefusal = refusal;
 	}
 
 	/**

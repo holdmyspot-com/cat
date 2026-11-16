@@ -222,6 +222,21 @@ public final class RequestArchive
 	}
 
 	/**
+	 * Publishes a request whose archive holds its manifest and nothing else.
+	 *
+	 * @param json        the manifest mapper
+	 * @param destination the final request file
+	 * @param manifest    the request's document
+	 * @param limits      the bounds that the archive must stay within
+	 * @throws IOException if the archive exceeds {@code limits} or cannot be written or renamed into place
+	 */
+	static void packDocument(JsonMapper json, Path destination, ObjectNode manifest, RequestLimits limits)
+		throws IOException
+	{
+		publish(json, destination, limits, (_, _) -> manifest);
+	}
+
+	/**
 	 * Writes an archive beside its destination, checks it as its receiver will, and renames it into place.
 	 *
 	 * @param json        the manifest mapper

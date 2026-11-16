@@ -5,6 +5,7 @@ import java.util.EnumMap;
 import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PluginInfo;
@@ -99,9 +100,11 @@ import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.statistics.ComparisonBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
+import org.testng.Assert.ThrowingRunnable;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -115,6 +118,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.function.Function;
 import java.util.function.IntFunction;
 import tools.jackson.databind.node.ArrayNode;
@@ -159,6 +163,8 @@ public final class OptimizerCoreTest
 	 */
 	private static final String LAUNCH_REFUSAL = "No request server serves this Claude Code session. Start the " +
 		"request server, then run the command again.";
+	private static final String WORKTREE_REFUSAL = "No request server serves this session, and the optimizer adds " +
+		"and removes its worktrees through it.";
 
 	/**
 	 * Matches the identifier of each assertion that a judge request lists, which its turn holds as a JSON array of
@@ -1599,6 +1605,46 @@ public final class OptimizerCoreTest
 
 			requireThat(refusal, "refusal").isEqualTo(LAUNCH_REFUSAL);
 			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
+		}
+	}
+
+	/**
+	 * Verifies that each command that changes or may remove a campaign's optimization worktree refuses with the
+	 * refusal's message, before it starts any session or changes anything, when nothing can carry out the operations
+	 * on the worktree's registration for it.
+	 *
+	 * @throws IOException             if the repository cannot be written
+	 * @throws CommandRefusedException if a command that sets up the campaign is refused
+	 * @throws InterruptedException    if the test is interrupted
+	 */
+	@Test
+	public void refusesWithoutWorktreeServer() throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-W17
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			Map<String, String> before = contents(repository.root());
+			int requests = repository.sessions().requests().size();
+			repository.scope().refuseWorktrees(WORKTREE_REFUSAL);
+
+			List<String> refusals = new ArrayList<>();
+			for (ThrowingRunnable command : List.<ThrowingRunnable>of(
+				() -> repository.core().start(Path.of("CLAUDE.md")),
+				() -> repository.core().run(id),
+				() -> repository.core().choose(id, Choice.STOP, 0, 0),
+				() -> repository.core().cancel(id)))
+			{
+				refusals.add(expectThrows(WorktreeRefusedException.class, command).getMessage());
+			}
+
+			requireThat(refusals, "refusals").isEqualTo(Collections.nCopies(4, WORKTREE_REFUSAL));
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
+			requireThat(contents(repository.root()), "contents").isEqualTo(before);
 		}
 	}
 

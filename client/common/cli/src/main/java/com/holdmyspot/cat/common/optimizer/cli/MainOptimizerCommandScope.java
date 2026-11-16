@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
@@ -23,6 +24,8 @@ import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import io.github.cowwoc.pouch10.core.LazyReference;
 import io.github.cowwoc.pouch10.core.Reference;
 
@@ -55,7 +58,11 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	private final List<Path> loaderConfiguration;
 	private final Reference<RandomGenerator> random = LazyReference.create(RandomGenerator::getDefault);
 	private final Reference<FileReplacer> fileReplacer;
-	private final Reference<Forks> forks;
+	private final Object forksLock = new Object();
+	/**
+	 * The forks, which the first call to {@link #forks()} creates; guarded by {@code forksLock}.
+	 */
+	private Forks forks;
 
 	/**
 	 * Creates an open scope.
@@ -78,7 +85,6 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		super(new MainJvmScope(environment, waiting));
 		this.fileReplacer = LazyReference.create(() -> FileReplacer.retrying(waiting));
-		this.forks = LazyReference.create(() -> new GitForks(fileReplacer.getValue(), new GitWorktreeRegistrar()));
 		requireThat(harness, "harness").isNotNull();
 		requireThat(trialSandbox, "trialSandbox").isNotNull();
 		requireThat(sessionHarness, "sessionHarness").isNotNull();
@@ -277,6 +283,64 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	}
 
 	/**
+	 * Returns why this command's worktree operations would be refused because no request server serves the host
+	 * session, when the operations go to the session's request server: when this scope's harness runs the command
+	 * outside a run.
+	 *
+	 * @return the message that names the command that starts the request server, or empty if a request server serves
+	 *   the host session or the operations do not go to a request server
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException           if the host session's CAT session directory cannot be opened
+	 */
+	@Override
+	protected final Optional<String> worktreeRefusal() throws IOException
+	{
+		ensureOpen();
+		String id = harness.commandName();
+		if (!(LaunchRoute.decide(id, id, markers.running(environment), new String[0],
+			environment) instanceof LaunchRoute.Served))
+			return Optional.empty();
+		try (ToolScope tools = ToolScope.forSession(directory, environment, SessionHarness.installed(), waiting()))
+		{
+			if (RequestServer.servedRequests(tools).isPresent())
+				return Optional.empty();
+			return Optional.of(RequestServer.missingWorktreeServer(plugin()));
+		}
+	}
+
+	/**
+	 * Opens the channel that this command's worktree requests go through, by the route that decides its launches:
+	 * the run's runner inside a run, the host session's request server when this scope's harness runs the command
+	 * outside a run, and none when no harness runs the command, which then carries out the operations itself.
+	 *
+	 * @return the channel, or empty if the command carries out the operations itself
+	 * @throws WorktreeRefusedException if the route refuses the command's requests, or no request server serves the
+	 *                                  host session
+	 * @throws IOException              if the host session's CAT session directory cannot be opened
+	 */
+	private Optional<WorktreeRequestClient.Channel> worktreeChannel() throws IOException
+	{
+		String id = harness.commandName();
+		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
+		{
+			case LaunchRoute.Forward(Path requests) -> Optional.of(new RunChannel(requests));
+			case LaunchRoute.Refused(String reason) -> throw new WorktreeRefusedException(reason);
+			case LaunchRoute.Served _ ->
+			{
+				try (ToolScope tools = ToolScope.forSession(directory, environment, SessionHarness.installed(),
+					waiting()))
+				{
+					Optional<Path> requests = RequestServer.servedRequests(tools);
+					if (requests.isEmpty())
+						throw new WorktreeRefusedException(RequestServer.missingWorktreeServer(plugin()));
+					yield Optional.of(new ServerChannel(requests.get()));
+				}
+			}
+			case LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> Optional.empty();
+		};
+	}
+
+	/**
 	 * Returns the folder of the CAT plugin that runs this command.
 	 *
 	 * @return the plugin's folder
@@ -309,7 +373,15 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	protected final Forks forks()
 	{
 		ensureOpen();
-		return forks.getValue();
+		synchronized (forksLock)
+		{
+			if (forks == null)
+			{
+				forks = new GitForks(fileReplacer.getValue(), new WorktreeRequestClient(this::worktreeChannel,
+					new GitWorktreeRegistrar(), json(), waiting().every(SessionRequestForwarder.RESPONSE_POLL)));
+			}
+			return forks;
+		}
 	}
 
 	@Override
@@ -317,5 +389,78 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	{
 		ensureOpen();
 		return CapCalibration::calibrate;
+	}
+
+	/**
+	 * The channel to the runner of the run whose session runs the command. The runner lives as long as the run, and
+	 * removes the run's responses with it.
+	 *
+	 * @param requests the run's requests directory
+	 */
+	private record RunChannel(Path requests) implements WorktreeRequestClient.Channel
+	{
+		@Override
+		public boolean isServed()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean removesResponses()
+		{
+			return false;
+		}
+
+		@Override
+		public void close()
+		{
+		}
+	}
+
+	/**
+	 * The channel to the request server of the host session, which keeps each response until its requester removes
+	 * it.
+	 */
+	private final class ServerChannel implements WorktreeRequestClient.Channel
+	{
+		private final Path requests;
+
+		/**
+		 * Creates a channel.
+		 *
+		 * @param requests the server's requests directory
+		 */
+		private ServerChannel(Path requests)
+		{
+			this.requests = requests;
+		}
+
+		@Override
+		public Path requests()
+		{
+			return requests;
+		}
+
+		@Override
+		public boolean isServed() throws IOException
+		{
+			try (ToolScope tools = ToolScope.forSession(directory, environment, SessionHarness.installed(),
+				waiting()))
+			{
+				Optional<SessionDirectory> session = tools.sessionDirectory();
+				return session.isPresent() && RequestServer.serves(session.get(), tools);
+			}
+		}
+
+		@Override
+		public boolean removesResponses()
+		{
+			return true;
+		}
+
+		@Override
+		public void close()
+		{
+		}
 	}
 }

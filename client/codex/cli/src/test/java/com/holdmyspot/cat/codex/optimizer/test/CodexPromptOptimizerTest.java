@@ -316,9 +316,10 @@ public final class CodexPromptOptimizerTest
 
 	/**
 	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no request
-	 * server serves the session that runs it.
+	 * server serves the session that runs it, and its exit status: a command whose worktree requests go to the missing
+	 * server is refused with status 2 before it changes anything.
 	 *
-	 * @return the environments and the beginnings of the refusals
+	 * @return the environments, the beginnings of the refusals and the exit statuses
 	 */
 	@DataProvider
 	public static Object[][] launchRoutes()
@@ -326,10 +327,10 @@ public final class CodexPromptOptimizerTest
 		return new Object[][]
 		{
 			// Codex runs the command, so its sessions go to its request server, and none serves the session
-			{Map.of("CODEX_THREAD_ID", SESSION_ID), LAUNCH_REFUSAL},
+			{Map.of("CODEX_THREAD_ID", SESSION_ID), LAUNCH_REFUSAL, 2},
 			// Only Claude Code runs the command, so each of its sessions would be refused when it starts, but no Codex
 			// session hosts a campaign
-			{Map.of("CLAUDECODE", "1"), NO_HOST_SESSION}
+			{Map.of("CLAUDECODE", "1"), NO_HOST_SESSION, 1}
 		};
 	}
 
@@ -340,12 +341,14 @@ public final class CodexPromptOptimizerTest
 	 *
 	 * @param variables the environment's variables, besides the home folder
 	 * @param refusal   how the refusal begins
+	 * @param status    the command's exit status
 	 * @throws IOException if a file cannot be written
 	 */
 	@Test(dataProvider = "launchRoutes")
-	public void startNeedsServerOnServedRoute(Map<String, String> variables, String refusal)
+	public void startNeedsServerOnServedRoute(Map<String, String> variables, String refusal, int status)
 		throws IOException
 	{
+		// Requirement: R-W17
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Setup setup = setup(scope);
@@ -355,7 +358,7 @@ public final class CodexPromptOptimizerTest
 
 			int exit = run(setup, environment, List.of("start", "prompts/missing.md"), output);
 
-			requireThat(exit, "exit").isEqualTo(1);
+			requireThat(exit, "exit").isEqualTo(status);
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").startsWith(refusal);

@@ -168,6 +168,17 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract Optional<String> launchRefusal() throws IOException;
 
 	/**
+	 * Returns why this command could not have its optimization worktrees added, repaired or removed, found without
+	 * sending a request: the operations go to the session's request server, and none serves the host session.
+	 *
+	 * @return the message that names the command that starts the request server, or empty if the operations have a
+	 *   receiver
+	 * @throws IllegalStateException if this scope is closed
+	 * @throws IOException           if the host session's CAT session directory cannot be opened
+	 */
+	protected abstract Optional<String> worktreeRefusal() throws IOException;
+
+	/**
 	 * Returns why this command is refused because no harness session runs it, found before the command reads or
 	 * changes any state. Only a Claude Code or Codex session can start or resume a campaign.
 	 *

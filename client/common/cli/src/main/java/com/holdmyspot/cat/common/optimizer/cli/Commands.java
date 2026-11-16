@@ -14,7 +14,9 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.ChoiceItem;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.secrets.CommandsSecrets;
 import tools.jackson.databind.json.JsonMapper;
@@ -34,7 +36,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
-import java.util.regex.Pattern;
 
 /**
  * Parses the arguments of the {@code prompt-optimizer} launcher and dispatches the command to the {@link Core}.
@@ -82,7 +83,6 @@ public final class Commands
 		  contract check <context file>
 		  contract workspace %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, EXTRA_PERMISSIONS,
 		scopeIds(), WORKSPACE_FORM);
-	private static final Pattern CAMPAIGN_ID = Pattern.compile("[A-Za-z0-9][A-Za-z0-9_-]{0,63}");
 	private final Core core;
 	private final JsonMapper json;
 	private final ZoneId zone;
@@ -373,7 +373,7 @@ public final class Commands
 	 */
 	static boolean isCampaignId(String value)
 	{
-		return CAMPAIGN_ID.matcher(value).matches();
+		return WorktreeRequest.isCampaignId(value);
 	}
 
 	/**
@@ -549,6 +549,12 @@ public final class Commands
 		{
 			out.println(statusMessage(json, "refused", e.getMessage()));
 			return 1;
+		}
+		catch (WorktreeRefusedException e)
+		{
+			// Nothing serves the optimization worktree's registration, as nothing serves a refused launch
+			out.println(statusMessage(json, "refused", e.getMessage()));
+			return 2;
 		}
 		catch (IOException e)
 		{

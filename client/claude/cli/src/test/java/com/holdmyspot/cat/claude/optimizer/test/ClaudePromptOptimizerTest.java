@@ -286,9 +286,10 @@ public final class ClaudePromptOptimizerTest
 
 	/**
 	 * Returns environments of a harness session's {@code start}, each with how its refusal begins when no request
-	 * server serves the session that runs it.
+	 * server serves the session that runs it, and its exit status: a command whose worktree requests go to the missing
+	 * server is refused with status 2 before it changes anything.
 	 *
-	 * @return the environments and the beginnings of the refusals
+	 * @return the environments, the beginnings of the refusals and the exit statuses
 	 */
 	@DataProvider
 	public static Object[][] launchRoutes()
@@ -296,9 +297,9 @@ public final class ClaudePromptOptimizerTest
 		return new Object[][]
 		{
 			// Claude Code runs the command, so its sessions go to its request server, and none serves the session
-			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"), LAUNCH_REFUSAL},
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE", "1"), LAUNCH_REFUSAL, 2},
 			// Only Codex runs the command, so each of its sessions is refused, with the reason, when it starts
-			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET}
+			{Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CODEX_THREAD_ID", "thread"), MISSING_TARGET, 1}
 		};
 	}
 
@@ -309,12 +310,14 @@ public final class ClaudePromptOptimizerTest
 	 *
 	 * @param variables the environment's variables, besides the home folder
 	 * @param refusal   how the refusal begins
+	 * @param status    the command's exit status
 	 * @throws IOException if a file cannot be written
 	 */
 	@Test(dataProvider = "launchRoutes")
-	public void startNeedsServerOnServedRoute(Map<String, String> variables, String refusal)
+	public void startNeedsServerOnServedRoute(Map<String, String> variables, String refusal, int status)
 		throws IOException
 	{
+		// Requirement: R-W17
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Setup setup = setup(scope);
@@ -324,7 +327,7 @@ public final class ClaudePromptOptimizerTest
 
 			int exit = run(setup, environment, List.of("start", "prompts/missing.md"), output);
 
-			requireThat(exit, "exit").isEqualTo(1);
+			requireThat(exit, "exit").isEqualTo(status);
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").startsWith(refusal);

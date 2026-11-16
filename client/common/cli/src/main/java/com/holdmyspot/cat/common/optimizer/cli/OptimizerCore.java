@@ -120,6 +120,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
 import com.holdmyspot.cat.common.optimizer.workspace.ReferencedFiles;
 import com.holdmyspot.cat.common.optimizer.workspace.PluginBuild;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -563,8 +564,25 @@ public final class OptimizerCore implements Core
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
 		Instant sliceStart = scope.clock().instant();
+		refuseWithoutWorktrees();
 		refuseUnlaunchable();
 		return withCleanup(_ -> startBody(target, ceiling, goal, extraPermissions, sliceStart));
+	}
+
+	/**
+	 * Refuses a command that can end by adding or removing a campaign's optimization worktree before its first change,
+	 * if nothing would carry out those operations because no request server serves the host session. A delivery then
+	 * never writes the base and cannot remove the campaign afterwards.
+	 *
+	 * @throws WorktreeRefusedException with the refusal's message, which names the command that starts the request
+	 *   server, if no request server serves the host session
+	 * @throws IOException if the host session's CAT session directory cannot be opened
+	 */
+	private void refuseWithoutWorktrees() throws IOException
+	{
+		Optional<String> refusal = scope.worktreeRefusal();
+		if (refusal.isPresent())
+			throw new WorktreeRefusedException(refusal.get());
 	}
 
 	/**
@@ -1671,6 +1689,7 @@ public final class OptimizerCore implements Core
 	public CommandResult run(String campaign) throws CommandRefusedException, IOException, InterruptedException
 	{
 		Instant sliceStart = scope.clock().instant();
+		refuseWithoutWorktrees();
 		refuseUnlaunchable();
 		return withCleanup(notices ->
 		{
@@ -2585,6 +2604,7 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		Instant sliceStart = scope.clock().instant();
+		refuseWithoutWorktrees();
 		return withCleanup(notices ->
 		{
 			Path root = scope.projectRoot();
@@ -2688,6 +2708,7 @@ public final class OptimizerCore implements Core
 	@Override
 	public CommandResult cancel(String campaign) throws CommandRefusedException, IOException
 	{
+		refuseWithoutWorktrees();
 		return withCleanup(_ ->
 		{
 			Path root = scope.projectRoot();

@@ -10,6 +10,10 @@ import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.test.ExitedProcess;
+import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
@@ -17,6 +21,8 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.WorktreeRequest;
+import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeParentPolicySource;
@@ -38,6 +44,7 @@ import java.nio.channels.FileChannel;
 import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Clock;
@@ -47,6 +54,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -771,6 +779,250 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that the server carries out each worktree operation of a campaign of its session in the session's
+	 * project, outside the session's sandbox: add, recreate after sandboxed code deleted the worktree, repair after the
+	 * registration came to name another location of the project, and remove of an existing and of a missing worktree.
+	 * The client carries out none of them itself, sends no request for links that are intact, and removes each
+	 * response that it read.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void servesWorktreeOperations() throws IOException, InterruptedException
+	{
+		// Requirement: R-W17
+		try (Fixture fixture = new Fixture())
+		{
+			Git git = fixture.repository();
+			fixture.policy.allow(fixture.protectingGit());
+			Path campaign = Files.createDirectories(fixture.sessionDirectory().resolve("optimizer/c1"));
+			Path worktree = campaign.resolve("worktree");
+			try (Fixture.Running server = fixture.start())
+			{
+				WorktreeRegistrar client = server.client();
+
+				client.add(fixture.project, campaign);
+				requireThat(worktree.resolve("README.md"), "added").isRegularFile();
+				requireThat(TestRepositories.worktreeCount(git), "addedCount").isEqualTo(2L);
+
+				TemporaryDirectories.deleteRecursively(worktree);
+				client.recreate(fixture.project, campaign);
+				requireThat(worktree.resolve("README.md"), "recreated").isRegularFile();
+				requireThat(TestRepositories.worktreeCount(git), "recreatedCount").isEqualTo(2L);
+
+				requireThat(client.repair(fixture.project, campaign), "intact").isTrue();
+				Path backlink = fixture.project.resolve(".git/worktrees/worktree/gitdir");
+				Files.writeString(backlink, "/moved/project/.cat/sessions/" + SESSION_ID +
+					"/optimizer/c1/worktree/.git\n", StandardCharsets.UTF_8);
+				requireThat(GitWorktreeRegistrar.isLinked(fixture.project, campaign), "brokenLinked").isFalse();
+				requireThat(client.repair(fixture.project, campaign), "repaired").isTrue();
+				requireThat(GitWorktreeRegistrar.isLinked(fixture.project, campaign), "repairedLinked").isTrue();
+
+				client.remove(fixture.project, campaign);
+				requireThat(Files.exists(worktree, LinkOption.NOFOLLOW_LINKS), "removed").isFalse();
+				requireThat(TestRepositories.worktreeCount(git), "removedCount").isEqualTo(1L);
+				client.remove(fixture.project, campaign);
+				requireThat(TestRepositories.worktreeCount(git), "missingCount").isEqualTo(1L);
+
+				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
+				{
+					requireThat(responses.toList(), "responses").isEmpty();
+				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the server refuses, with the reason and having changed nothing, a worktree request for a campaign
+	 * that is not its session's, one whose campaign directory or worktree is a link, an add over an existing worktree,
+	 * and any request of a session whose sandbox lets its commands write the repository's configuration.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesWorktreeRequests() throws IOException, InterruptedException
+	{
+		// Requirement: R-W17
+		try (Fixture fixture = new Fixture())
+		{
+			Git git = fixture.repository();
+			fixture.policy.allow(fixture.protectingGit());
+			Path optimizer = Files.createDirectories(fixture.sessionDirectory().resolve("optimizer"));
+			Path other = Files.createDirectories(fixture.project.resolve(".cat/sessions/" +
+				"1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/optimizer/c2"));
+			Path target = Files.createDirectories(fixture.root.resolve("elsewhere"));
+			Path linked = Files.createSymbolicLink(optimizer.resolve("c3"), target);
+			Path campaign = Files.createDirectories(optimizer.resolve("c4"));
+			Files.createSymbolicLink(Files.createDirectories(optimizer.resolve("c5")).resolve("worktree"), target);
+			try (Fixture.Running server = fixture.start())
+			{
+				WorktreeRegistrar client = server.client();
+				for (Path refused : List.of(optimizer.resolve("unknown"), other, linked, optimizer.resolve("c5")))
+				{
+					String message = refusal(() -> client.remove(fixture.project, refused));
+					requireThat(message, "message").contains("is not this session's");
+				}
+				client.add(fixture.project, campaign);
+				String existing = refusal(() -> client.add(fixture.project, campaign));
+				requireThat(existing, "existing").contains("already exists");
+				requireThat(TestRepositories.worktreeCount(git), "count").isEqualTo(2L);
+				try (Stream<Path> entries = Files.list(target))
+				{
+					requireThat(entries.toList(), "target").isEmpty();
+				}
+			}
+		}
+		try (Fixture fixture = new Fixture())
+		{
+			Git git = fixture.repository();
+			Path campaign = Files.createDirectories(fixture.sessionDirectory().resolve("optimizer/c1"));
+			try (Fixture.Running server = fixture.start())
+			{
+				String message = refusal(() -> server.client().add(fixture.project, campaign));
+				requireThat(message, "message").contains("lets its commands write " +
+					fixture.project.resolve(".git/config"));
+				requireThat(Files.exists(campaign.resolve("worktree"), LinkOption.NOFOLLOW_LINKS), "worktree").isFalse();
+				requireThat(TestRepositories.worktreeCount(git), "count").isEqualTo(1L);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that the server refuses a worktree request whose document holds another field, names another
+	 * operation or an identifier that is not shaped like a campaign identifier, or whose archive holds another entry.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesMalformedWorktreeRequests() throws IOException, InterruptedException
+	{
+		// Requirement: R-W17
+		try (Fixture fixture = new Fixture())
+		{
+			fixture.repository();
+			fixture.policy.allow(fixture.protectingGit());
+			Files.createDirectories(fixture.sessionDirectory().resolve("optimizer/c1"));
+			try (Fixture.Running server = fixture.start())
+			{
+				ObjectNode extra = fixture.json.createObjectNode().put("operation", "add").put("campaign", "c1").
+					put("path", "/elsewhere");
+				ObjectNode operation = fixture.json.createObjectNode().put("operation", "prune").put("campaign", "c1");
+				ObjectNode identifier = fixture.json.createObjectNode().put("operation", "add").
+					put("campaign", "../c1");
+				List<String> reasons = new ArrayList<>();
+				for (ObjectNode manifest : List.of(extra, operation, identifier))
+				{
+					JsonNode response = server.worktreeRequest(manifest, false);
+					requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+					reasons.add(response.path("reason").asString());
+				}
+				JsonNode response = server.worktreeRequest(fixture.json.createObjectNode().put("operation", "add").
+					put("campaign", "c1"), true);
+				requireThat(response.path("status").asString(), "entryStatus").isEqualTo("refused");
+				requireThat(reasons.get(0), "extra").contains("may not choose path");
+				requireThat(reasons.get(1), "operation").contains("not prune");
+				requireThat(reasons.get(2), "identifier").contains("campaign identifier");
+				requireThat(response.path("reason").asString(), "entry").contains("holds only request.json");
+				requireThat(Files.exists(fixture.sessionDirectory().resolve("optimizer/c1/worktree")), "worktree").
+					isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Runs a worktree operation that must be refused.
+	 *
+	 * @param operation the operation
+	 * @return the refusal's message
+	 * @throws IOException if the operation fails otherwise
+	 */
+	private static String refusal(WorktreeOperation operation) throws IOException
+	{
+		try
+		{
+			operation.run();
+		}
+		catch (WorktreeRefusedException e)
+		{
+			return e.getMessage();
+		}
+		throw new AssertionError("The worktree operation was not refused");
+	}
+
+	/**
+	 * A worktree operation of a test.
+	 */
+	@FunctionalInterface
+	private interface WorktreeOperation
+	{
+		/**
+		 * Runs the operation.
+		 *
+		 * @throws IOException if the operation fails or is refused
+		 */
+		void run() throws IOException;
+	}
+
+	/**
+	 * The channel of a client to a server that runs on a thread of the test.
+	 *
+	 * @param requests the server's requests directory
+	 * @param exit     the server's exit status
+	 */
+	private record ServerChannel(Path requests, Future<Integer> exit) implements WorktreeRequestClient.Channel
+	{
+		@Override
+		public boolean isServed()
+		{
+			return !exit.isDone();
+		}
+
+		@Override
+		public boolean removesResponses()
+		{
+			return true;
+		}
+
+		@Override
+		public void close()
+		{
+		}
+	}
+
+	/**
+	 * The registrar that a client uses in place, which a client that sends requests never calls.
+	 */
+	private static final class NoInPlace implements WorktreeRegistrar
+	{
+		@Override
+		public void add(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran add itself");
+		}
+
+		@Override
+		public void recreate(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran recreate itself");
+		}
+
+		@Override
+		public void remove(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran remove itself");
+		}
+
+		@Override
+		public boolean repair(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran repair itself");
+		}
+	}
+
+	/**
 	 * Waits, for a bounded time, until the server removes a path once it has answered the request that the path
 	 * belongs to.
 	 *
@@ -869,6 +1121,30 @@ public final class RequestServerTest
 		{
 			return new ParentPolicy(true, writeRoots, List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of(MODEL_HOST)), false, List.of());
+		}
+
+		/**
+		 * Makes the session's project a repository with one commit.
+		 *
+		 * @return the repository's Git
+		 * @throws IOException if Git fails
+		 */
+		private Git repository() throws IOException
+		{
+			return TestRepositories.initialize(project, root.resolve("no-excludes"));
+		}
+
+		/**
+		 * Returns a sandboxed policy that lets the session write its project but not the repository's configuration
+		 * or hooks, as a harness's sandbox protects them.
+		 *
+		 * @return the policy
+		 */
+		private ParentPolicy protectingGit()
+		{
+			return new ParentPolicy(true, List.of(project), List.of(project.resolve(".git/config"),
+				project.resolve(".git/hooks")), List.of(), List.of(), HostAccess.listed(Set.of(MODEL_HOST)), false,
+				List.of());
 		}
 
 		/**
@@ -1014,6 +1290,49 @@ public final class RequestServerTest
 					entry(archive, "project/", new byte[0]);
 					entry(archive, "project/marker", "original".getBytes(StandardCharsets.UTF_8));
 					entry(archive, "prompts/0", "hello".getBytes(StandardCharsets.UTF_8));
+				}
+				Files.move(staging, requests.resolve(id + ".tar"));
+				Path response = requests.resolveSibling("responses").resolve(id).resolve("response.json");
+				long deadline = System.nanoTime() + WAIT.toNanos();
+				while (!Files.isRegularFile(response))
+				{
+					if (System.nanoTime() > deadline)
+						throw new AssertionError("The server did not answer " + id);
+					Thread.onSpinWait();
+				}
+				return json.readTree(Files.readString(response));
+			}
+
+			/**
+			 * Returns a client that sends its worktree requests to this server.
+			 *
+			 * @return the client
+			 */
+			private WorktreeRegistrar client()
+			{
+				return new WorktreeRequestClient(() -> Optional.of(new ServerChannel(requests, exit)), new NoInPlace(),
+					JsonMapper.builder().build(), Thread::yield);
+			}
+
+			/**
+			 * Writes a worktree request archive that holds a document, and waits for its response.
+			 *
+			 * @param manifest the document
+			 * @param extra    {@code true} to add an entry besides the document
+			 * @return the response
+			 * @throws IOException if the request cannot be written or the response does not arrive in time
+			 */
+			private JsonNode worktreeRequest(ObjectNode manifest, boolean extra) throws IOException
+			{
+				JsonMapper json = JsonMapper.builder().build();
+				String id = WorktreeRequest.PREFIX + UUID.randomUUID();
+				Path staging = requests.resolveSibling("staging.tar");
+				try (OutputStream bytes = Files.newOutputStream(staging);
+				     TarArchiveOutputStream archive = new TarArchiveOutputStream(bytes))
+				{
+					entry(archive, "request.json", json.writeValueAsBytes(manifest));
+					if (extra)
+						entry(archive, "project/marker", "extra".getBytes(StandardCharsets.UTF_8));
 				}
 				Files.move(staging, requests.resolve(id + ".tar"));
 				Path response = requests.resolveSibling("responses").resolve(id).resolve("response.json");

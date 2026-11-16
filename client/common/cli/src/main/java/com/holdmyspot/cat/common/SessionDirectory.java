@@ -67,7 +67,10 @@ public final class SessionDirectory
 	public static final Duration RETENTION = Duration.ofHours(24);
 	private static final String MARKER = "session.json";
 	private static final String TEMP = "temp";
-	private static final String CAMPAIGNS = "optimizer";
+	/**
+	 * The name of the directory, in a CAT session directory, that holds the session's prompt-optimizer campaigns.
+	 */
+	public static final String CAMPAIGNS = "optimizer";
 	private static final Pattern AGENT_ID = Pattern.compile("[A-Za-z0-9-]+");
 	private static final Pattern GLOB = Pattern.compile("[*?\\[{]");
 	private final Path projectRoot;
@@ -285,6 +288,16 @@ public final class SessionDirectory
 	public Optional<SessionIgnore.IgnoreNotice> ignoreNotice()
 	{
 		return ignoreNotice;
+	}
+
+	/**
+	 * Returns the session's project.
+	 *
+	 * @return the absolute, normalized project
+	 */
+	public Path projectRoot()
+	{
+		return projectRoot;
 	}
 
 	/**

@@ -6,6 +6,10 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.git.Git;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
+import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -18,6 +22,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
@@ -1821,6 +1826,87 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a run's runner carries out each worktree operation that a session inside the run requests for a
+	 * campaign of the run's project, outside the session's sandbox: add, recreate, repair after the registration came
+	 * to name another location of the project, and remove. The requests do not count against the run's allowance of
+	 * sessions.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void servesWorktreeOperations() throws IOException
+	{
+		// Requirement: R-W17
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			{
+				throw new AssertionError("A worktree request starts no session");
+			}))
+		{
+			broker.start(_ -> () ->
+			{
+			});
+			Git git = TestRepositories.initialize(fixture.project, fixture.root.resolve("no-excludes"));
+			Path campaign = Files.createDirectories(fixture.project.resolve(".cat/sessions/s1/optimizer/c1"));
+			Path worktree = campaign.resolve("worktree");
+			WorktreeRegistrar client = fixture.worktreeClient(broker);
+
+			client.add(fixture.project, campaign);
+			requireThat(worktree.resolve("marker"), "added").isRegularFile();
+			TemporaryDirectories.deleteRecursively(worktree);
+			client.recreate(fixture.project, campaign);
+			requireThat(worktree.resolve("marker"), "recreated").isRegularFile();
+			requireThat(TestRepositories.worktreeCount(git), "count").isEqualTo(2L);
+
+			Files.writeString(fixture.project.resolve(".git/worktrees/worktree/gitdir"),
+				"/moved/project/.cat/sessions/s1/optimizer/c1/worktree/.git\n", StandardCharsets.UTF_8);
+			requireThat(client.repair(fixture.project, campaign), "repaired").isTrue();
+			requireThat(GitWorktreeRegistrar.isLinked(fixture.project, campaign), "linked").isTrue();
+
+			client.remove(fixture.project, campaign);
+			requireThat(Files.exists(worktree), "removed").isFalse();
+			requireThat(TestRepositories.worktreeCount(git), "removedCount").isEqualTo(1L);
+			requireThat(SessionRequestAccess.furtherRequestRefusal(fixture.requests), "refusal").isEmpty();
+		}
+	}
+
+	/**
+	 * Verifies that a run's runner refuses, having changed nothing, a worktree request whose campaign lies in more
+	 * than one CAT session directory of the run's project, and any worktree request of a run that allows no session
+	 * request.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesWorktreeRequests() throws IOException
+	{
+		// Requirement: R-W17
+		for (String allowed : List.of("1", "0"))
+		{
+			try (Fixture fixture = new Fixture("--session-requests", allowed);
+				SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+				{
+					throw new AssertionError("A worktree request starts no session");
+				}))
+			{
+				Git git = TestRepositories.initialize(fixture.project, fixture.root.resolve("no-excludes"));
+				Path campaign = Files.createDirectories(fixture.project.resolve(".cat/sessions/s1/optimizer/c1"));
+				if (allowed.equals("1"))
+					Files.createDirectories(fixture.project.resolve(".cat/sessions/s2/optimizer/c1"));
+				WorktreeRegistrar client = fixture.worktreeClient(broker);
+				WorktreeRefusedException refusal = expectThrows(WorktreeRefusedException.class,
+					() -> client.add(fixture.project, campaign));
+				String expected = SessionRequestAccess.NO_REQUESTS_REASON;
+				if (allowed.equals("1"))
+					expected = "lies in more than one CAT session directory";
+				requireThat(refusal.getMessage(), "message").contains(expected);
+				requireThat(Files.exists(campaign.resolve("worktree")), "worktree").isFalse();
+				requireThat(TestRepositories.worktreeCount(git), "count").isEqualTo(1L);
+			}
+		}
+	}
+
+	/**
 	 * Finds one option in the child runner command.
 	 *
 	 * @param arguments the runner options
@@ -1830,6 +1916,61 @@ public final class SessionRequestBrokerTest
 	private static String option(List<String> arguments, String name)
 	{
 		return arguments.get(arguments.indexOf(name) + 1);
+	}
+
+	/**
+	 * The channel of a session inside a run to the run's runner.
+	 *
+	 * @param requests the run's requests directory
+	 */
+	private record RunChannel(Path requests) implements WorktreeRequestClient.Channel
+	{
+		@Override
+		public boolean isServed()
+		{
+			return true;
+		}
+
+		@Override
+		public boolean removesResponses()
+		{
+			return false;
+		}
+
+		@Override
+		public void close()
+		{
+		}
+	}
+
+	/**
+	 * The registrar that a client uses in place, which a client that sends requests never calls.
+	 */
+	private static final class InPlaceRefused implements WorktreeRegistrar
+	{
+		@Override
+		public void add(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran add itself");
+		}
+
+		@Override
+		public void recreate(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran recreate itself");
+		}
+
+		@Override
+		public void remove(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran remove itself");
+		}
+
+		@Override
+		public boolean repair(Path project, Path campaign)
+		{
+			throw new AssertionError("The client ran repair itself");
+		}
 	}
 
 	/**
@@ -2206,6 +2347,19 @@ public final class SessionRequestBrokerTest
 				return archive;
 			}
 			throw new AssertionError("No header names " + name);
+		}
+
+		/**
+		 * Returns a client that sends its worktree requests to the run's runner, scanning the run's requests while it
+		 * waits for each answer.
+		 *
+		 * @param broker the run's broker
+		 * @return the client
+		 */
+		private WorktreeRegistrar worktreeClient(SessionRequestBroker broker)
+		{
+			return new WorktreeRequestClient(() -> Optional.of(new RunChannel(requests)), new InPlaceRefused(), json,
+				broker::scan);
 		}
 
 		/**

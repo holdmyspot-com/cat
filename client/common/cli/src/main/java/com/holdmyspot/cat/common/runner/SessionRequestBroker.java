@@ -1,6 +1,9 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -42,6 +45,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * is stopped once the request's sender ends. Closing the broker stops child process trees and answers unprocessed
  * requests as stopped.
  * <p>
+ * A worktree request, whose archive's name starts with {@link WorktreeRequest#PREFIX}, is not a requested session: it
+ * takes no slot and no count of the run's limits, and the broker carries it out on a thread of its own, one request at
+ * a time, so that it never delays a launch.
+ * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
 public final class SessionRequestBroker implements Closeable
@@ -65,6 +72,11 @@ public final class SessionRequestBroker implements Closeable
 	private final RequestedSessionStarter starter;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ExecutorService children = Executors.newVirtualThreadPerTaskExecutor();
+	/**
+	 * Carries out the worktree requests one at a time, since Git's operations on a repository's worktrees must not
+	 * overlap.
+	 */
+	private final ExecutorService worktrees = Executors.newSingleThreadExecutor(Thread.ofVirtual().factory());
 	/**
 	 * Live child processes, guarded with all other broker state by this instance's monitor.
 	 */
@@ -226,6 +238,8 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private boolean take(String id, Path file, Path directory) throws IOException
 	{
+		if (id.startsWith(WorktreeRequest.PREFIX))
+			return takeWorktree(id, file, directory);
 		if (stopped)
 		{
 			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
@@ -260,6 +274,71 @@ public final class SessionRequestBroker implements Closeable
 			respond(id, "", "refused", e.getMessage(), "", directory);
 		}
 		return true;
+	}
+
+	/**
+	 * Answers or submits one worktree request whose response directory this scan created. A request whose archive is
+	 * busy is left for a later scan, as a launch is.
+	 *
+	 * @param id        the request ID
+	 * @param file      the request archive
+	 * @param directory the request's response directory
+	 * @return {@code true} if the request was answered or submitted, or {@code false} if its archive is busy
+	 * @throws IOException if a response cannot be published
+	 */
+	private boolean takeWorktree(String id, Path file, Path directory) throws IOException
+	{
+		if (stopped)
+		{
+			WorktreeResponse.failed(site.closedReason()).write(json, id, directory);
+			return true;
+		}
+		WorktreeRequest request;
+		Path inputs = directory.resolve("inputs");
+		try
+		{
+			unpack(file, directory, inputs);
+			request = WorktreeRequest.read(json, inputs);
+		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
+			return true;
+		}
+		finally
+		{
+			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
+				TemporaryDirectories.deleteRecursively(inputs);
+		}
+		worktrees.submit(() -> serveWorktree(id, request, directory));
+		return true;
+	}
+
+	/**
+	 * Carries out a worktree request on the broker's worktree thread and publishes its response.
+	 *
+	 * @param id        the request ID
+	 * @param request   the request
+	 * @param directory the request's response directory
+	 */
+	private void serveWorktree(String id, WorktreeRequest request, Path directory)
+	{
+		try
+		{
+			site.worktree(request).write(json, id, directory);
+		}
+		catch (IOException e)
+		{
+			synchronized (this)
+			{
+				recordFailure(e);
+			}
+		}
 	}
 
 	/**
@@ -319,12 +398,27 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private RunRequest read(Path file, Path directory) throws IOException
 	{
+		Path inputs = directory.resolve("inputs");
+		unpack(file, directory, inputs);
+		return site.read(json, inputs);
+	}
+
+	/**
+	 * Copies a request's archive into its response directory and extracts it there.
+	 *
+	 * @param file      the request archive
+	 * @param directory the broker-owned response directory
+	 * @param inputs    the new directory that receives the archive's entries
+	 * @throws RequestArchiveBusyException if another handle to the archive is open on Windows
+	 * @throws IOException                 if the archive is invalid or cannot be copied or extracted
+	 */
+	private void unpack(Path file, Path directory, Path inputs) throws IOException
+	{
 		Path copy = directory.resolve("request.tar");
 		// The broker has the user's permissions while the requesting session keeps running. Walking its input
 		// directories would let it swap a link or junction into the path and make us read a file it may not read.
 		// The launcher packs inside its sandbox, which refuses that read. We open only this single archive in
 		// requests, whose path has no session-controlled directory, without following links and with one hard link.
-		Path inputs = directory.resolve("inputs");
 		try
 		{
 			RequestArchive.copy(file, copy, site.limits());
@@ -335,7 +429,6 @@ public final class SessionRequestBroker implements Closeable
 		{
 			Files.deleteIfExists(copy);
 		}
-		return site.read(json, inputs);
 	}
 
 	/**
@@ -803,10 +896,16 @@ public final class SessionRequestBroker implements Closeable
 				recordFailure(e);
 			}
 			children.shutdownNow();
+			worktrees.shutdown();
 		}
 		children.close();
-		if (failure != null)
-			throw failure;
+		// A worktree request that has started runs to its end, so that Git never stops halfway through an operation
+		worktrees.close();
+		synchronized (this)
+		{
+			if (failure != null)
+				throw failure;
+		}
 	}
 
 	/**
@@ -967,6 +1066,14 @@ public final class SessionRequestBroker implements Closeable
 		String closedReason();
 
 		/**
+		 * Carries out a worktree request, on the broker's worktree thread.
+		 *
+		 * @param request the request
+		 * @return the response
+		 */
+		WorktreeResponse worktree(WorktreeRequest request);
+
+		/**
 		 * Releases a request's archive once the broker has copied it, or answered the request without reading it.
 		 *
 		 * @param file the request archive
@@ -988,6 +1095,11 @@ public final class SessionRequestBroker implements Closeable
 	private record RunSite(HarnessRun run, HarnessRunnerOptions options, RequestLimits limits, SessionSlots slots)
 		implements Site
 	{
+		/**
+		 * Carries out the run's worktree requests.
+		 */
+		private static final WorktreeService WORKTREES = new WorktreeService(new GitWorktreeRegistrar());
+
 		/**
 		 * Creates the site of a run.
 		 *
@@ -1081,6 +1193,48 @@ public final class SessionRequestBroker implements Closeable
 					arguments.addAll(List.of("--request-depth", String.valueOf(childDepth)));
 			}
 			return arguments;
+		}
+
+		/**
+		 * Carries out a worktree request in the run's project, which the run's one session can write entirely, so the
+		 * campaign is found by its identifier among the {@code optimizer} directories of the project's CAT session
+		 * directories. The run's own sandbox keeps the session from writing the repository's configuration and hooks.
+		 *
+		 * @param request the request
+		 * @return the response
+		 */
+		@Override
+		public WorktreeResponse worktree(WorktreeRequest request)
+		{
+			if (options.sessionRequests() == 0)
+				return WorktreeResponse.refused(SessionRequestAccess.NO_REQUESTS_REASON);
+			Path project = run.directory().resolve("project");
+			List<Path> campaigns = new ArrayList<>();
+			Path sessions = project.resolve(SessionDirectory.ROOT);
+			if (Files.isDirectory(sessions, LinkOption.NOFOLLOW_LINKS))
+			{
+				try (DirectoryStream<Path> entries = Files.newDirectoryStream(sessions))
+				{
+					for (Path session : entries)
+					{
+						Path campaign = session.resolve(SessionDirectory.CAMPAIGNS).resolve(request.campaign());
+						if (Files.isDirectory(campaign, LinkOption.NOFOLLOW_LINKS))
+							campaigns.add(campaign);
+					}
+				}
+				catch (IOException e)
+				{
+					return WorktreeResponse.failed(String.valueOf(e.getMessage()));
+				}
+			}
+			if (campaigns.isEmpty())
+				return WorktreeResponse.refused(WorktreeService.foreignCampaign(request.campaign()));
+			if (campaigns.size() > 1)
+			{
+				return WorktreeResponse.refused("Campaign " + request.campaign() + " lies in more than one CAT " +
+					"session directory of the run's project, so CAT cannot tell which campaign the request names.");
+			}
+			return WORKTREES.serve(request, project, campaigns.getFirst().getParent(), Optional.empty());
 		}
 
 		@Override

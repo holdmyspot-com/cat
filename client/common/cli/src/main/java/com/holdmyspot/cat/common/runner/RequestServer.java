@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.launcher.ChildNeedsSource;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
@@ -19,6 +20,7 @@ import com.holdmyspot.cat.common.runner.launcher.RunnerChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
@@ -377,6 +379,21 @@ public final class RequestServer
 	}
 
 	/**
+	 * Returns why a command that a harness session runs outside a run cannot have its optimization worktree's
+	 * registration changed, because no request server serves the session, naming the command that starts one.
+	 *
+	 * @param plugin the folder of the plugin that holds the command
+	 * @return the reason
+	 * @throws NullPointerException if {@code plugin} is null
+	 */
+	public static String missingWorktreeServer(Path plugin)
+	{
+		return "No request server serves this session, and the prompt optimizer adds, repairs and removes its " +
+			"optimization worktrees through it, outside the session's sandbox. Start it in the background once, as a " +
+			"command of its own: " + program(plugin) + ". Then run the command again.";
+	}
+
+	/**
 	 * Sends a launch that a harness session's command makes outside a run to the session's request server, and waits
 	 * for the requested session to end, as {@link SessionRequestForwarder#forward(SessionRequestForwarder.Route,
 	 * String, String[], Reader, Path, Path, Pause, OutputStream, PrintWriter)} does. A launch that no request server
@@ -593,7 +610,8 @@ public final class RequestServer
 		Path responses = directory(directory.directory().resolve(RESPONSES));
 		SessionSlots slots = new SessionSlots(directory.directory().resolve(RUNS), HarnessCapacity.MAXIMUM_CONCURRENCY,
 			new ProcessHandleLiveness());
-		ServerSite site = new ServerSite(requests, responses, slots, bound, session.askingThread());
+		ServerSite site = new ServerSite(requests, responses, slots, bound, session.askingThread(), directory,
+			new WorktreeService(new GitWorktreeRegistrar()));
 		try (SessionRequestBroker broker = new SessionRequestBroker(site, host.starter()))
 		{
 			errors.println("The request server serves this " + productName(host.harness()) +
@@ -653,10 +671,36 @@ public final class RequestServer
 	 *                     each session
 	 * @param bound        bounds each requested session by the session's policy
 	 * @param askingThread the thread of the session that runs the server, or empty for its main thread
+	 * @param session      the CAT session directory of the session that runs the server, in the project that the
+	 *                     session's transcript names
+	 * @param worktrees    carries out the session's worktree requests
 	 */
 	private record ServerSite(Path requests, Path responses, SessionSlots slots, ChildBound bound,
-		Optional<String> askingThread) implements SessionRequestBroker.Site
+		Optional<String> askingThread, SessionDirectory session, WorktreeService worktrees)
+		implements SessionRequestBroker.Site
 	{
+		/**
+		 * Carries out a worktree request on a campaign of the session's own {@code optimizer} directory, once the
+		 * session's policy shows that its commands cannot write the repository's configuration or hooks.
+		 *
+		 * @param request the request
+		 * @return the response
+		 */
+		@Override
+		public WorktreeResponse worktree(WorktreeRequest request)
+		{
+			ParentPolicy policy;
+			try
+			{
+				policy = bound.parentPolicy(askingThread);
+			}
+			catch (SessionRefusedException e)
+			{
+				return WorktreeResponse.refused(String.valueOf(e.getMessage()));
+			}
+			return worktrees.serve(request, session.projectRoot(), session.campaigns(), Optional.of(policy));
+		}
+
 		@Override
 		public RequestLimits limits()
 		{

@@ -101,11 +101,13 @@ public final class TestabilityAuditTest
 	private static final Pattern GIT_CONSTRUCTOR_REFERENCE = Pattern.compile(
 		"Git(?<![\\w$]Git)\\s*::\\s*new(?![\\w$])");
 	/**
-	 * The production source, relative to the {@code client} directory, that may construct {@code Git}: the adapter
-	 * behind {@code Forks}, through which the rest of the optimizer reaches Git so that its tests can replace it.
+	 * The production sources, relative to the {@code client} directory, that may construct {@code Git}: the adapter
+	 * behind {@code Forks} and the registrar that carries out its worktree operations, through which the rest of the
+	 * optimizer reaches Git so that its tests can replace it.
 	 */
-	private static final String FORK_ADAPTER = "common/cli/src/main/java/" +
-		"com/holdmyspot/cat/common/optimizer/workspace/Fork.java";
+	private static final List<String> FORK_ADAPTER = List.of(
+		"common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/workspace/Fork.java",
+		"common/cli/src/main/java/com/holdmyspot/cat/common/optimizer/workspace/GitWorktreeRegistrar.java");
 	/**
 	 * The production source, relative to the {@code client} directory, that may sleep: it declares
 	 * {@code Pause.sleeping}, which only an application entry point creates.
@@ -357,17 +359,20 @@ public final class TestabilityAuditTest
 	}
 
 	/**
-	 * Verifies that no production source other than the fork adapter constructs {@code Git}.
+	 * Verifies that no production source other than the fork adapter and its worktree registrar constructs
+	 * {@code Git}.
 	 */
 	@Test
 	public void onlyForkAdapterConstructsGit()
 	{
 		// Requirement: R-T1
-		Path adapter = clientDirectory().resolve(FORK_ADAPTER);
+		List<Path> adapter = new ArrayList<>();
+		for (String source : FORK_ADAPTER)
+			adapter.add(clientDirectory().resolve(source));
 		List<String> violations = new ArrayList<>();
 		for (SourceFile file : Scan.FILES)
 		{
-			if (!file.path().equals(adapter))
+			if (!adapter.contains(file.path()))
 				violations.addAll(findGitConstructions(file));
 		}
 		requireThat(violations, "violations").isEmpty();
