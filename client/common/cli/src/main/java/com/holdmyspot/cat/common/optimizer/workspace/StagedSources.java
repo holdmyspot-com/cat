@@ -5,14 +5,18 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
+import com.holdmyspot.cat.common.secrets.StagedSourcesAccess;
+import com.holdmyspot.cat.common.secrets.StagedSourcesSecrets;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.StringJoiner;
@@ -36,6 +40,21 @@ import java.util.function.Predicate;
  */
 public final class StagedSources
 {
+	static
+	{
+		StagedSourcesSecrets.setStagedSourcesAccess(new StagedSourcesAccess()
+		{
+			@Override
+			public List<StagedSourcesAccess.Source> sources(FileInventory inventory) throws WorkspaceException
+			{
+				Dereferenced files = Dereferenced.of(inventory);
+				files.requireResolvable();
+				return files.placements().stream().map(placement -> new StagedSourcesAccess.Source(placement.destination(),
+					placement.source())).toList();
+			}
+		});
+	}
+
 	/**
 	 * Separates a candidate's identity from the digest of the paths that its staged source leaves out and of the
 	 * files that it selects.

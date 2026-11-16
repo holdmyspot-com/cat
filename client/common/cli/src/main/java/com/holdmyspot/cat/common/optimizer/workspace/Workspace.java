@@ -19,6 +19,8 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
+import com.holdmyspot.cat.common.secrets.PluginCopiesAccess;
+import com.holdmyspot.cat.common.secrets.PluginCopiesSecrets;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -39,6 +41,40 @@ import java.util.Set;
  */
 public final class Workspace implements WorkspacePort
 {
+	static
+	{
+		PluginCopiesSecrets.setPluginCopiesAccess(storage ->
+		{
+			PluginCopies copies = new PluginCopies(storage);
+			return new PluginCopiesAccess.Copies()
+			{
+				@Override
+				public Path copy(TrialPlugin plugin, Path source, PluginRemovals removals) throws IOException
+				{
+					return copies.copy(plugin, source, removals);
+				}
+
+				@Override
+				public String copyBase(Path directory) throws IOException
+				{
+					return copies.copyBase(directory);
+				}
+
+				@Override
+				public Path base(String digest)
+				{
+					return copies.base(digest);
+				}
+
+				@Override
+				public void delete(Sha256 candidate) throws IOException
+				{
+					copies.delete(candidate);
+				}
+			};
+		});
+	}
+
 	private final Object worktreeLock = new Object();
 	private final ForkTree tree;
 	private final StagedSources stagedSources;

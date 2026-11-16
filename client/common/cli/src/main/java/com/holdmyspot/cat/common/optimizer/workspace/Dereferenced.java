@@ -205,6 +205,16 @@ final class Dereferenced
 	}
 
 	/**
+	 * Returns the files that the dereferenced tree places, in tree order.
+	 *
+	 * @return the placements, preserving duplicate destinations
+	 */
+	List<Placement> placements()
+	{
+		return List.copyOf(placements);
+	}
+
+	/**
 	 * Requires that every link can be dereferenced.
 	 *
 	 * @throws WorkspaceException if a link forms a cycle or leads to a missing target

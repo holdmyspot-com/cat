@@ -77,6 +77,13 @@ final class PluginCopies
 			throw new WorkspaceException("Campaign storage holds no base of the trial plugin " + plugin.name() + " at " +
 				base + ". Run start so that CAT copies the plugin's base again.");
 		}
+		String observed = InventoryScanner.scan(base, Set.of()).identity().hex();
+		if (!observed.equals(plugin.baseDigest()))
+		{
+			throw new WorkspaceException("The copied base of trial plugin " + plugin.name() + " at " + base +
+				" has changed (expected " + plugin.baseDigest() + ", observed " + observed +
+				"). Run start so that CAT copies the plugin's base again.");
+		}
 		if (!plugin.isProjectBuilt())
 			return base;
 		Path directory = storage.resolve(source.getFileName() + COPY_SEPARATOR + identity(plugin, removals).hex());
