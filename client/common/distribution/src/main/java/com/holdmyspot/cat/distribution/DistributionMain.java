@@ -204,6 +204,7 @@ public final class DistributionMain
 		DependencyJar commonsCodec = findThirdParty(moduleDirectory, "commons-codec", "commons-codec");
 		DependencyJar commonsLang = findThirdParty(moduleDirectory, "org.apache.commons", "commons-lang3");
 		DependencyJar javaDiff = findThirdParty(moduleDirectory, "io.github.java-diff-utils", "java-diff-utils");
+		DependencyJar oshi = findThirdParty(moduleDirectory, "com.github.oshi", "oshi-common");
 		Path commonAgents = findDependencyJar(moduleDirectory, "client-common-agents");
 		Path commonPlugin = findDependencyJar(moduleDirectory, "client-common-plugin");
 		Path commonSkills = findDependencyJar(moduleDirectory, "client-common-skills");
@@ -230,7 +231,7 @@ public final class DistributionMain
 			copyModule(slf4jNop.path(), staged), copyModule(compress.path(), staged),
 			copyModule(commonsIo.path(), staged), copyModule(commonsCodec.path(), staged),
 			copyModule(commonsLang.path(), staged),
-			modularizeJavaDiff(javaDiff.path(), staged));
+			modularizeJavaDiff(javaDiff.path(), staged), copyModule(oshi.path(), staged));
 		Path packagedClaudeCli = copyModule(claudeCli, staged);
 		Path packagedCodexCli = copyModule(codexCli, staged);
 		// Each harness's runner launcher finds the other harness's installed plugin through that harness's layout, and
@@ -297,6 +298,7 @@ public final class DistributionMain
 				List.of("META-INF/LICENSE.txt")),
 			new ThirdPartyComponent("SLF4J NOP Provider", slf4jNop.coordinates(), "MIT.txt", slf4jNop.path(),
 				List.of("META-INF/LICENSE.txt")),
+			new ThirdPartyComponent("OSHI Common", oshi.coordinates(), "MIT.txt", oshi.path(), List.of()),
 			new ThirdPartyComponent("Jackson Annotations", jacksonAnnotations.coordinates(), "Apache-2.0.txt",
 				jacksonAnnotations.path(), List.of("META-INF/NOTICE")),
 			new ThirdPartyComponent("Jackson Core", jacksonCoreCoordinates, "Apache-2.0.txt",
