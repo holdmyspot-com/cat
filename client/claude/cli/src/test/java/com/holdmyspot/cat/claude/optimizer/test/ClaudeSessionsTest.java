@@ -962,6 +962,48 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that a judge request sends its source as the project and each evidence path as read-only evidence.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void passesJudgeEvidenceToRunnerReadOnly()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E13
+			try (TemporaryDirectories cleanup = new TemporaryDirectories())
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
+				Path source = Files.createDirectories(root.resolve("source"));
+				Path first = Files.createDirectories(root.resolve("evidence-1"));
+				Path second = Files.createDirectories(root.resolve("evidence-2"));
+				List<List<String>> arguments = new CopyOnWriteArrayList<>();
+				ClaudeSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+					arguments, List.of(Turn.replies("ok")));
+				SessionRequest request = new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, source, List.of("judge"),
+					List.of(first, second), LIMIT, SESSION_PROFILE);
+
+				SessionResult result = await(sessions.start(request));
+
+				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
+				List<String> options = arguments.get(0);
+				requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
+				requireThat(options.stream().filter("--read-only-evidence"::equals).count(), "evidenceCount").isEqualTo(2L);
+				int firstEvidence = options.indexOf("--read-only-evidence");
+				requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
+				requireThat(options.subList(firstEvidence, firstEvidence + 4), "evidenceOptions").isEqualTo(List.of(
+					"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a trial asks the runner for session transcripts, so that the tool results its agents received can
 	 * be read, and that a judge does not.
 	 *
@@ -1405,6 +1447,189 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
+	 * Verifies that malformed project MCP configuration fails source discovery.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsInvalidProjectConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-invalid-project-config-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = project.resolve(".mcp.json");
+			write(configuration, "{not json");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
+				(_, _, _) ->
+				{
+				});
+
+			IOException failure = null;
+			try
+			{
+				sessions.loadedSources(project, List.of());
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains(configuration.toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
+	 * Verifies that malformed user settings fail source discovery.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsInvalidUserConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-invalid-user-config-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path configuration = root.resolve("home/.claude");
+			Path settingsFile = configuration.resolve("settings.json");
+			write(settingsFile, "{not json");
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), configuration, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
+				(_, _, _) ->
+				{
+				});
+
+			IOException failure = null;
+			try
+			{
+				sessions.loadedSources(project, List.of());
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "message").contains(settingsFile.toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
+	 * Verifies that malformed user MCP configuration fails at either selected {@code .claude.json} location.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsMalformedUserServersConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			for (boolean configured : List.of(false, true))
+			{
+				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+					"cat-invalid-user-servers-"));
+				Path project = Files.createDirectories(root.resolve("project"));
+				Path directory = Files.createDirectories(root.resolve("home/.claude"));
+				Path servers;
+				Map<String, String> environment;
+				if (configured)
+				{
+					servers = directory.resolve(".claude.json");
+					environment = Map.of("CLAUDE_CONFIG_DIR", directory.toString());
+				}
+				else
+				{
+					servers = directory.resolveSibling(".claude.json");
+					environment = Map.of();
+				}
+				write(servers, "{not json");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
+					List::of, false, environment, directory, HarnessCapacity.unlimited(), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
+					(_, _, _) ->
+					{
+					});
+
+				IOException failure = null;
+				try
+				{
+					sessions.loadedSources(project, List.of());
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				requireThat(failure, "failure").isNotNull();
+				requireThat(failure.getMessage(), "message").contains(servers.toAbsolutePath().normalize().toString());
+			}
+		}
+	}
+
+	/**
+	 * Verifies that malformed present plugin manifests and hooks files fail hook discovery.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void rejectsMalformedPluginConfiguration() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-invalid-plugin-config-"));
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path plugin = root.resolve("plugin");
+			Path manifest = plugin.resolve(".claude-plugin/plugin.json");
+			Path hooks = plugin.resolve("hooks/hooks.json");
+			Files.createDirectories(manifest.getParent());
+			Files.createDirectories(hooks.getParent());
+			write(manifest, "{not json");
+			List<PluginBase> plugins = List.of(new PluginBase(new TrialPlugin("plugin", "a".repeat(64),
+				new TrialPlugin.Installed(), List.of(), null), plugin));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			ClaudeSessions sessions = ClaudeSessionsSecrets.getClaudeSessionsAccess().newClaudeSessions(settings,
+				(_, _, _) ->
+				{
+				});
+			IOException manifestFailure = null;
+			try
+			{
+				sessions.hookRegistrations(project, plugins);
+			}
+			catch (IOException e)
+			{
+				manifestFailure = e;
+			}
+			requireThat(manifestFailure, "manifestFailure").isNotNull();
+			requireThat(manifestFailure.getMessage(), "manifestMessage").contains(
+				manifest.toAbsolutePath().normalize().toString());
+
+			write(manifest, "{\"name\": \"plugin\"}");
+			write(hooks, "{not json");
+			IOException hooksFailure = null;
+			try
+			{
+				sessions.hookRegistrations(project, plugins);
+			}
+			catch (IOException e)
+			{
+				hooksFailure = e;
+			}
+			requireThat(hooksFailure, "hooksFailure").isNotNull();
+			requireThat(hooksFailure.getMessage(), "hooksMessage").contains(
+				hooks.toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
 	 * Verifies that the hooks that run before the model acts are the command hooks of the project's settings and of
 	 * each trial plugin that run when a session starts, as a matcher that selects {@code startup} or no matcher
 	 * declares, or when the user submits a prompt; that each runs in Bash with the project directory, the plugin
@@ -1476,8 +1701,8 @@ public final class ClaudeSessionsTest
 	/**
 	 * Verifies that the hooks that Claude Code trials register are those of the project's shared and local settings,
 	 * of each plugin's {@code hooks/hooks.json}, of each hooks file that its manifest names and of each declaration
-	 * that its manifest holds inline; that a settings file that is not valid JSON registers none; and that a hooks file
-	 * that a project-built plugin's mapping copies from the project is named as the project's file.
+	 * that its manifest holds inline; and that a hooks file that a project-built plugin's mapping copies from the project
+	 * is named as the project's file.
 	 *
 	 * @throws IOException if the files cannot be written
 	 */
@@ -1491,7 +1716,6 @@ public final class ClaudeSessionsTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			write(project.resolve(".claude/settings.json"), """
 				{"hooks": {"PreToolUse": [{"matcher": "Bash", "hooks": [{"type": "command", "command": "check.sh"}]}]}}""");
-			write(project.resolve(".claude/settings.local.json"), "{not json");
 			write(project.resolve("plugin/hooks/hooks.json"), """
 				{"hooks": {"UserPromptSubmit": [{"hooks": [{"type": "command", "command": "mapped.sh"}]}]}}""");
 

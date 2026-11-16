@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
+import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -172,6 +173,7 @@ public final class ClaudeRunner
 	 *   sandbox and its tools include one beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}
 	 * @throws IOException if startup fails
 	 */
+	@SuppressWarnings("PMD.CloseResource")
 	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
@@ -238,8 +240,9 @@ public final class ClaudeRunner
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			List<Path> plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
-				FileReplacer.retrying(waiting), scope.json(), (command, step) -> HarnessCommand.execute(command, worktree,
-					isolatedEnvironment, executables, manager, run, step));
+				isolatedEnvironment, FileReplacer.retrying(waiting), scope.json(),
+				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
+					run, step));
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
@@ -265,35 +268,35 @@ public final class ClaudeRunner
 			}
 			// A session without a sandbox has none whose failure to confine the watch could report
 			SandboxWatch watch = null;
-			ClaudeProcess process;
-			if (sandboxed(role))
-			{
-				watch = new SandboxWatch(HarnessProcessStarter.start(command, worktree, isolatedEnvironment, executables),
-					scope.json());
-				process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);
-			}
-			else
-			{
-				process = new ClaudeProcess(scope, HarnessProcessStarter.start(command, worktree, isolatedEnvironment,
-					executables), projectDirectory, transcripts);
-			}
+			ProcessOwnership child = new ProcessOwnership();
+			ClaudeProcess process = null;
+			boolean identityRecorded = false;
+			manager.markHarnessStarting(run);
 			try
 			{
+				child.start(command, worktree, isolatedEnvironment, executables);
+				if (sandboxed(role))
+				{
+					watch = new SandboxWatch(child.process(), scope.json());
+					process = new ClaudeProcess(scope, watch.process(), projectDirectory, transcripts);
+				}
+				else
+					process = new ClaudeProcess(scope, child.process(), projectDirectory, transcripts);
 				manager.recordHarnessProcess(run, process.pid(), process.processStart());
+				identityRecorded = true;
 				if (watch == null)
-					return new HarnessRunSession(run, process, scope, lock);
-				return new HarnessRunSession(run, watch.guard(process), scope, lock);
+				{
+					HarnessRunSession session = new HarnessRunSession(run, process, scope, lock);
+					child.release();
+					return session;
+				}
+				HarnessRunSession session = new HarnessRunSession(run, watch.guard(process), scope, lock);
+				child.release();
+				return session;
 			}
-			catch (IOException e)
+			catch (IOException | RuntimeException e)
 			{
-				try
-				{
-					process.close();
-				}
-				catch (IOException closeFailure)
-				{
-					e.addSuppressed(closeFailure);
-				}
+				cleanupLaunchFailure(child, process, manager, run, identityRecorded, e);
 				throw e;
 			}
 		}
@@ -308,6 +311,109 @@ public final class ClaudeRunner
 			scope.close();
 			manager.fail(run, e.getMessage());
 			throw e;
+		}
+	}
+
+	/**
+	 * Closes a failed harness launch and clears the starting marker only after child exit is confirmed.
+	 *
+	 * @param child the raw process returned by the operating system, if spawned
+	 * @param wrapper the process wrapper, if constructed
+	 * @param manager the run manager
+	 * @param run the run being launched
+	 * @param identityRecorded whether the manifest already contains the child identity
+	 * @param primary the launch failure
+	 */
+	@SuppressWarnings("PMD.CloseResource")
+	private static void cleanupLaunchFailure(ProcessOwnership child, ClaudeProcess wrapper, HarnessRunManager manager,
+		HarnessRun run, boolean identityRecorded, Throwable primary)
+	{
+		Process rawProcess = child.processOrNull();
+		if (rawProcess != null)
+		{
+			try
+			{
+				HarnessProcessTermination.terminate(rawProcess, "claude");
+				if (rawProcess.isAlive())
+					throw new IOException("Claude child remained alive after launch cleanup");
+			}
+			catch (IOException | RuntimeException e)
+			{
+				primary.addSuppressed(e);
+			}
+		}
+		if (wrapper != null && (rawProcess == null || !rawProcess.isAlive()))
+		{
+			try
+			{
+				wrapper.close();
+			}
+			catch (IOException e)
+			{
+				primary.addSuppressed(e);
+			}
+		}
+		if (!identityRecorded && (rawProcess == null || !rawProcess.isAlive()))
+		{
+			try
+			{
+				manager.recordNoHarnessProcess(run);
+			}
+			catch (IOException e)
+			{
+				primary.addSuppressed(e);
+			}
+		}
+	}
+
+	/**
+	 * Owns a raw child until its durable identity and wrapper have been accepted by the run session.
+	 */
+	private static final class ProcessOwnership
+	{
+		private Process process;
+
+		/**
+		 * Starts and retains the raw child.
+		 *
+		 * @param command the command
+		 * @param worktree the working directory
+		 * @param environment the child environment
+		 * @param executables the process launcher
+		 * @throws IOException if the child cannot be started
+		 */
+		private void start(List<String> command, Path worktree, Map<String, String> environment,
+			ExecutableFiles executables) throws IOException
+		{
+			process = HarnessProcessStarter.start(command, worktree, environment, executables);
+		}
+
+		/**
+		 * Returns the retained child.
+		 *
+		 * @return the raw child process
+		 */
+		private Process process()
+		{
+			return process;
+		}
+
+		/**
+		 * Returns the child if launch cleanup still owns it.
+		 *
+		 * @return the raw child, or null if ownership transferred
+		 */
+		private Process processOrNull()
+		{
+			return process;
+		}
+
+		/**
+		 * Transfers ownership to the returned harness session.
+		 */
+		private void release()
+		{
+			process = null;
 		}
 	}
 
@@ -978,6 +1084,8 @@ public final class ClaudeRunner
 	 * @param installCat {@code true} to install CAT
 	 * @param trialPlugins the trial plugins, each installed under its manifest's name
 	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param environment the environment of the run's Claude process, which CAT's installer records as the harness
+	 *   environment
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @param commands runs the commands that add each marketplace and install each plugin
@@ -988,13 +1096,14 @@ public final class ClaudeRunner
 	 *   Claude Code's install records cannot be read or {@code settings.json} cannot be changed
 	 */
 	public static List<Path> installPlugins(String executable, Path artifact, boolean installCat,
-		List<Path> trialPlugins, Path isolatedConfiguration, FileReplacer replacer, JsonMapper json,
-		SetupCommands commands) throws IOException
+		List<Path> trialPlugins, Path isolatedConfiguration, Map<String, String> environment, FileReplacer replacer,
+		JsonMapper json, SetupCommands commands) throws IOException
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		requireThat(isolatedConfiguration, "isolatedConfiguration").isNotNull();
+		requireThat(environment, "environment").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(commands, "commands").isNotNull();
@@ -1006,7 +1115,7 @@ public final class ClaudeRunner
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-install");
 			Path plugin = marketplace.resolve("plugins/cat");
-			installPermissions(isolatedConfiguration, plugin, replacer, json);
+			installPermissions(isolatedConfiguration, environment, plugin, replacer, json);
 			plugins.add(plugin);
 		}
 		for (Path trialPlugin : trialPlugins)
@@ -1027,13 +1136,15 @@ public final class ClaudeRunner
 	 * in the run's marketplace and each copy that Claude Code's install records name for CAT.
 	 *
 	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param environment the environment of the run's Claude process, which CAT's installer records as the harness
+	 *   environment
 	 * @param marketplacePlugin the copy of CAT in the run's marketplace
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @throws IOException if the install records cannot be read or {@code settings.json} cannot be changed
 	 */
-	private static void installPermissions(Path isolatedConfiguration, Path marketplacePlugin, FileReplacer replacer,
-		JsonMapper json) throws IOException
+	private static void installPermissions(Path isolatedConfiguration, Map<String, String> environment,
+		Path marketplacePlugin, FileReplacer replacer, JsonMapper json) throws IOException
 	{
 		Path configuration = isolatedConfiguration.toAbsolutePath().normalize();
 		Set<Path> copies = new LinkedHashSet<>();
@@ -1041,7 +1152,7 @@ public final class ClaudeRunner
 		copies.addAll(InstalledPlugins.of(configuration, "cat@cat", json));
 		Integration integration = new Integration();
 		for (Path copy : copies)
-			integration.installPermissions(configuration, copy.resolve(PluginDirectory.INSTALLER), replacer);
+			integration.installPermissions(environment, configuration, copy.resolve(PluginDirectory.INSTALLER), replacer);
 	}
 
 	/**

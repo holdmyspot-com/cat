@@ -589,18 +589,8 @@ public final class ClaudeSessions extends RunnerSessions
 		requireThat(project, "project").isNotNull();
 		Path file = Path.of(".mcp.json");
 		Path configuration = project.resolve(file);
-		if (!Files.isRegularFile(configuration))
-			return List.of();
-		JsonNode root;
-		try
-		{
-			root = JsonMapper.builder().build().readTree(Files.readString(configuration));
-		}
-		catch (JacksonException _)
-		{
-			// Claude Code starts no server from a configuration that it cannot parse
-			return List.of();
-		}
+		JsonNode root = readConfigurationFile(configuration, JsonMapper.builder().build()).
+			orElse(JsonMapper.builder().build().missingNode());
 		return mcpServers(file, root.path("mcpServers"));
 	}
 
@@ -619,7 +609,7 @@ public final class ClaudeSessions extends RunnerSessions
 		JsonMapper json = JsonMapper.builder().build();
 		Path settingsFile = directory.resolve("settings.json");
 		List<String> plugins = new ArrayList<>();
-		JsonNode enabled = readHooksFile(settingsFile, json).map(node -> node.path("enabledPlugins")).
+		JsonNode enabled = readConfigurationFile(settingsFile, json).map(node -> node.path("enabledPlugins")).
 			orElse(json.missingNode());
 		if (enabled.isObject())
 		{
@@ -637,19 +627,10 @@ public final class ClaudeSessions extends RunnerSessions
 		else
 			serversFile = directory.resolve(".claude.json");
 		List<String> servers = new ArrayList<>();
-		if (Files.isRegularFile(serversFile))
-		{
-			try
-			{
-				JsonNode declared = json.readTree(Files.readString(serversFile)).path("mcpServers");
-				if (declared.isObject())
-					servers.addAll(declared.propertyNames());
-			}
-			catch (JacksonException _)
-			{
-				// Claude Code starts no server from a configuration that it cannot parse
-			}
-		}
+		JsonNode declared = readConfigurationFile(serversFile, json).map(node -> node.path("mcpServers")).
+			orElse(json.missingNode());
+		if (declared.isObject())
+			servers.addAll(declared.propertyNames());
 		return new UserConfiguration(settingsFile, plugins, serversFile, servers);
 	}
 
@@ -665,7 +646,7 @@ public final class ClaudeSessions extends RunnerSessions
 		requireThat(plugin, "plugin").isNotNull();
 		requireThat(json, "json").isNotNull();
 		Path manifest = Path.of(".claude-plugin/plugin.json");
-		JsonNode hooks = readHooksFile(plugin.resolve(manifest), json).map(node -> node.path("hooks")).
+		JsonNode hooks = readConfigurationFile(plugin.resolve(manifest), json).map(node -> node.path("hooks")).
 			orElse(json.missingNode());
 		List<JsonNode> entries = new ArrayList<>();
 		if (hooks.isArray())
@@ -696,7 +677,7 @@ public final class ClaudeSessions extends RunnerSessions
 		List<HookDeclaration> declarations = new ArrayList<>();
 		for (Path file : files)
 		{
-			Optional<JsonNode> content = readHooksFile(plugin.resolve(file), json);
+			Optional<JsonNode> content = readConfigurationFile(plugin.resolve(file), json);
 			content.ifPresent(node -> declarations.add(new HookDeclaration(file, node.path("hooks"))));
 		}
 		declarations.addAll(inline);
