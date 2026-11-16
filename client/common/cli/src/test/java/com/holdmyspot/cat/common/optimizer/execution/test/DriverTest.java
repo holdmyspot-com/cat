@@ -3101,7 +3101,18 @@ public final class DriverTest
 	 */
 	private static Builder developing()
 	{
-		return new Builder().confirmed().working(1).readyBaseline().development("formatting", 50, 0).
+		return developing(ContractFixtures.contract());
+	}
+
+	/**
+	 * Returns a builder for a campaign that confirmed a contract, develops candidate 1 and has met its baseline.
+	 *
+	 * @param contract the confirmed contract
+	 * @return the builder
+	 */
+	private static Builder developing(Contract contract)
+	{
+		return new Builder().confirmed(contract, 1).working(1).readyBaseline().development("formatting", 50, 0).
 			development("plain_list", 50, 0).development("safety", 50, 0);
 	}
 
@@ -6534,36 +6545,7 @@ public final class DriverTest
 				developing().development("safety", 50, 1).failure(Builder.testCase("safety", "logs")).
 					round(new Round(Map.of("safety", 0))).build());
 			// Each import in the target loads, except an import of a missing file, which trials cannot receive
-			harness.sessions().loading((project, _) ->
-			{
-				List<DerivedSource> loaded = new ArrayList<>();
-				List<UnreachableReference> unreachable = new ArrayList<>();
-				Path target = project.resolve(DriverHarness.PROMPT);
-				try
-				{
-					if (Files.isRegularFile(target))
-					{
-						loaded.add(new DerivedSource(DriverHarness.PROMPT.toString(), "The harness reads the target"));
-						Matcher matcher = Pattern.compile("@(\\S+)").matcher(Files.readString(target));
-						while (matcher.find())
-						{
-							String path = matcher.group(1);
-							if (path.contains("missing"))
-							{
-								unreachable.add(new UnreachableReference(DriverHarness.PROMPT.toString(), path,
-									UnreachableReference.Problem.MISSING));
-							}
-							else
-								loaded.add(new DerivedSource(path, "The target imports this file"));
-						}
-					}
-				}
-				catch (IOException e)
-				{
-					throw new UncheckedIOException(e);
-				}
-				return new LoadedSources(loaded, loaded, List.of(), List.of(), unreachable);
-			});
+			harness.sessions().loading((project, _) -> loadedImports(project));
 			harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT, text));
 			try (Driver driver = harness.open())
 			{
@@ -6577,6 +6559,106 @@ public final class DriverTest
 				requireThat(harness.campaign().promptAuthorAttempts(), "promptAuthorAttempts").isEqualTo(0);
 				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(result.status().outcomeDetail(), "outcomeDetail").contains(imported);
+			}
+		}
+	}
+
+	/**
+	 * Returns the sources that load in a trial of a project whose target imports files with {@code @path}: the target
+	 * and each file that it imports, except an import of a missing file, which trials cannot receive.
+	 *
+	 * @param project the project that the prompt author edited
+	 * @return the loaded sources
+	 */
+	private static LoadedSources loadedImports(Path project)
+	{
+		List<DerivedSource> loaded = new ArrayList<>();
+		List<UnreachableReference> unreachable = new ArrayList<>();
+		Path target = project.resolve(DriverHarness.PROMPT);
+		try
+		{
+			if (Files.isRegularFile(target))
+			{
+				loaded.add(new DerivedSource(DriverHarness.PROMPT.toString(), "The harness reads the target"));
+				Matcher matcher = Pattern.compile("@(\\S+)").matcher(Files.readString(target));
+				while (matcher.find())
+				{
+					String path = matcher.group(1);
+					if (path.contains("missing"))
+					{
+						unreachable.add(new UnreachableReference(DriverHarness.PROMPT.toString(), path,
+							UnreachableReference.Problem.MISSING));
+					}
+					else
+						loaded.add(new DerivedSource(path, "The target imports this file"));
+				}
+			}
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
+		}
+		return new LoadedSources(loaded, loaded, List.of(), List.of(), unreachable);
+	}
+
+	/**
+	 * Returns the prompt tests that place a file in their workspace, and whether an attempt that imports the file
+	 * contributes a candidate.
+	 *
+	 * @return the identifiers of the tests whose workspace holds {@code docs/handbook.md} and whether the attempt
+	 *   contributes a candidate
+	 */
+	@DataProvider
+	public static Object[][] workspaceHandbooks()
+	{
+		return new Object[][]
+			{
+				{List.of("formatting", "plain_list", "safety"), true},
+				{List.of("safety"), false},
+				{List.of(), false}
+			};
+	}
+
+	/**
+	 * Verifies that an attempt that imports a project file contributes a candidate when every prompt test places the
+	 * file in its workspace, because every trial then receives it, and otherwise contributes none; and that the
+	 * prompt author failure tells the user how to give trials the file.
+	 *
+	 * @param holders the identifiers of the prompt tests whose workspace holds the file
+	 * @param permitted whether the attempt contributes a candidate
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "workspaceHandbooks")
+	public void attemptImportsFileOfEveryWorkspace(List<String> holders, boolean permitted) throws IOException
+	{
+		// Requirement: R-C28
+		Contract contract = ContractFixtures.contract();
+		for (String test : holders)
+		{
+			contract = ContractFixtures.withWorkspaceFiles(contract, test,
+				List.of(new WorkspaceFile("docs/handbook.md", "# Handbook\n\n## Motto\n\nShip small.\n")));
+		}
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing(contract).development("safety", 50, 1).failure(Builder.testCase("safety", "logs")).
+					round(new Round(Map.of("safety", 0))).build());
+			harness.sessions().loading((project, _) -> loadedImports(project));
+			harness.promptAuthors(request -> harness.edit(request, DriverHarness.PROMPT,
+				"Answer briefly, using the team handbook. @docs/handbook.md"));
+			try (Driver driver = harness.open())
+			{
+				if (permitted)
+				{
+					harness.runUntil(driver, campaign -> campaign.promptAuthorAttempts() > 0);
+					return;
+				}
+				SliceResult result = harness.runSlice(driver);
+				requireThat(harness.campaign().promptAuthorAttempts(), "promptAuthorAttempts").isEqualTo(0);
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().outcomeDetail(), "outcomeDetail").
+					contains("docs/handbook.md is not among the files that trials receive").
+					contains("revise").contains("referenced file");
 			}
 		}
 	}

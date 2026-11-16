@@ -73,6 +73,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
@@ -160,6 +161,11 @@ public final class Driver implements AutoCloseable
 	 * Stop the slice with an infrastructure failure after this many prompt author sessions fail.
 	 */
 	public static final int PROMPT_AUTHOR_FAILURE_LIMIT = 3;
+	/**
+	 * Tells the user how to give trials a loaded file that they do not receive.
+	 */
+	private static final String UNRECEIVED_FILE_ROUTE = "To give trials such a file, run `revise` with feedback that " +
+		"names it, so that the contract declares it as a referenced file.";
 	private final DriverContext context;
 	private final CampaignLock lock;
 	private final String campaignId;
@@ -2269,26 +2275,62 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the files that load or run in a prompt author attempt's trials but that its trials do not receive: each
-	 * project file outside the campaign's trial selection, and each reference to a file that trials cannot receive.
+	 * project file that lies outside the campaign's trial selection and that not every prompt test places in its
+	 * workspace, and each reference to a file that trials cannot receive.
 	 *
 	 * @param project the project as the prompt author session left it
-	 * @return one description of each file, empty if trials receive every file that loads
+	 * @return one description of each file, followed by how to give trials a project file that they do not receive, or
+	 *   empty if trials receive every file that loads
 	 * @throws IOException if the project cannot be read
 	 */
 	private List<String> unreceivedFiles(Path project) throws IOException
 	{
 		LoadedSources loaded = context.sessions().loadedSources(project, List.of());
 		SourceSelection selection = trialSelection();
+		Set<String> workspaceFiles = workspaceFilesOfEveryTest();
 		List<String> unreceived = new ArrayList<>();
+		boolean projectFile = false;
 		for (DerivedSource source : loaded.trials())
 		{
 			Path path = Path.of(source.path());
-			if (!PortablePaths.isRooted(path) && !selection.selects(path))
+			if (!PortablePaths.isRooted(path) && !selection.selects(path) && !workspaceFiles.contains(source.path()))
+			{
 				unreceived.add(source.path() + " is not among the files that trials receive.");
+				projectFile = true;
+			}
 		}
 		for (UnreachableReference reference : loaded.unreachable())
 			unreceived.add(reference.describe());
+		if (projectFile)
+			unreceived.add(UNRECEIVED_FILE_ROUTE);
 		return unreceived;
+	}
+
+	/**
+	 * Returns the paths that every prompt test of the confirmed contract places in its trials' workspace, which every
+	 * trial therefore receives whichever test it runs.
+	 *
+	 * @return the paths relative to the project, with {@code /} separators, or an empty set if no contract is
+	 *   confirmed
+	 */
+	private Set<String> workspaceFilesOfEveryTest()
+	{
+		if (!campaign.isConfirmed())
+			return Set.of();
+		Set<String> common = new HashSet<>();
+		boolean first = true;
+		for (PromptTest test : campaign.contract().tests())
+		{
+			Set<String> paths = new HashSet<>();
+			for (WorkspaceFile file : test.workspaceFiles())
+				paths.add(file.path());
+			if (first)
+				common.addAll(paths);
+			else
+				common.retainAll(paths);
+			first = false;
+		}
+		return common;
 	}
 
 	/**
