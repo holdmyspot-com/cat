@@ -841,6 +841,9 @@ public final class ProjectRuleLoaderTest
 	/**
 	 * Verifies project and user rules receive the plugin-root directive unchanged, because the plugin root is not
 	 * theirs to state.
+	 * <p>
+	 * The case creates real temporary directories and rule files on disk, then loads them through the real loader and
+	 * tool scope, which takes over a second. The test keeps that boundary because it asserts the loaded rule text.
 	 */
 	@Test
 	public void keepsPluginRootDirectiveOutsidePlugin() throws IOException
