@@ -9,6 +9,8 @@ Every fixture holds the prompt test configuration of both targets, `.cat/tests/A
 instructions.
 
 - `deficient/`: `AGENTS.md` asks every reply to close with the handbook motto but also forbids slogans and sign-offs.
+	Start E1 without a goal: requirements then derive from the target instructions, so both sides of this conflict
+	belong in the proposal. A supplied goal would be the sole requirements source and would change this acceptance case.
 	Before optimization, Codex closed 0 of 6 replies with the motto and Claude 4 of 6; resolving the contradiction raised
 	Codex to 6 of 6. The delivery scenario expects the proposal to list the conflict with its resolutions, confirmation
 	to be refused until the user chooses one, and the campaign then to raise compliance with the resolved contract,

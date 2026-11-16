@@ -2790,10 +2790,14 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that confirmation refuses the proposal format whose frozen judge prompt names the test case with a
 	 * placeholder that the judge no longer fills.
+	 * <p>
+	 * Uses one persisted campaign with a usable fork and a proposal produced by scripted sessions. Confirmation
+	 * loads the campaign and opens its fork before reading the changed proposal file; checking the proposal reader
+	 * alone would not verify that the public confirmation command reports this refusal.
 	 *
-	 * @throws IOException if the proposal file cannot be written or its obsolete format is refused
+	 * @throws IOException             if the proposal file cannot be written or its obsolete format is refused
 	 * @throws CommandRefusedException if the project cannot start a campaign
-	 * @throws InterruptedException if the session wait is interrupted
+	 * @throws InterruptedException    if the session wait is interrupted
 	 */
 	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*version 8 proposal file.*")
 	public void confirmRefusesProposalWithOldJudgePrompt() throws IOException, CommandRefusedException,

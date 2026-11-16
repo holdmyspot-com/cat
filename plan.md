@@ -51,16 +51,13 @@ version's `bin/request-server` (this session's background task). The commits aft
 3. When no run uses the installed plugin, ask the user to install the new build in both harnesses and `/reload-plugins`,
    then restart the request server bare from the new version folder (stop the old one first). Never reinstall while runs or
    probes use the plugin.
-4. Ask the user the open decision below, then rerun the E scenarios.
+4. Rerun the E scenarios under the user ruling below; E1 starts without a goal.
 
-**Open decision for the user.** Design D124: when a `start` states a goal, requirements come only from the goal, so a
-target instruction that contradicts it (the `deficient` fixture's AGENTS.md no-slogans line against the motto) cannot be a
-listed conflict; the contract author puts it under limitations and the prompt author resolves it as a guidance failure.
-WI-15 E1 and `client/common/cli/src/test/resources/optimizer/e2e/README.md` expect a listed conflict and a refused confirm
-for goal-stated starts. Recommended: keep D124 and change E1 and the README so the conflict case starts without a goal.
-The alternative is to express such a contradiction as a conflict (a target-sourced requirement, or a conflict that pairs a
-requirement with quoted target text), which reopens D124 and changes the conflict schema. Note that live runs disagree:
-round-4 Claude E1 and Codex E1 listed the conflict, Claude E3 did not.
+**User ruling (2026-11-16).** Keep design D124: when `start` states a goal, requirements come only from
+that goal. Run E1 without a goal so the deficient fixture's contradictory target instructions are both requirements,
+allowing its proposal to list a conflict and refuse confirmation until a resolution is chosen. The E1 definition and
+fixture README now state this start mode. No conflict-schema change is authorized. The earlier goal-stated round-4 runs
+remain historical observations; they do not establish this corrected E1 acceptance check.
 
 **Round-4 E results (suffix `s990d`, build `1.0+b13e913dc00f0`).** Receipts are in
 `/home/gili/cat/worktrees/<scenario>-<harness>-s990d/receipts/receipt.md`.
@@ -3551,6 +3548,39 @@ requirement names.
 
 ## 2. Status
 
+### Continuation verification (2026-11-16, session `01a1e6ba`)
+
+The uncached whole-client `clean verify` passed on `3e9ca6b1edf1`: 455 Surefire reports,
+6,060 tests, zero failures or errors, six skips, and zero findings in 20 Checkstyle/PMD
+reports. Both `HOME` and test-JVM `user.home` used the invocation's absent home, which
+remained absent. No tracked source changed during the build. Gate 1 and the absent-home
+execution subclaim of gate 6 pass for that source. Nineteen test cases took at least one
+second; 18 already explain their necessary integration work in Javadoc. The nineteenth,
+`OptimizerCoreTest.confirmRefusesProposalWithOldJudgePrompt`, now explains why it exercises the
+persisted campaign and public confirmation command. This documentation-only change passed the
+whole-client `verify` with the same 6,060 tests, six skips and zero test or quality failures.
+The 19-case disposition is retained in `slow-test-documentation.md` beside the build evidence;
+it accounts for their documentation, not measured timing causes or the whole testability gate.
+Root retains the command, terminal receipt, frozen reports and summary in this session's
+`temp/continuation-dVKKLk/` through final acceptance, then owns their cleanup.
+
+The previously pending Claude E1 kept run is now present at
+`/home/gili/cat/worktrees/E1-claude-s990d/runs/claude/mwjusv5h-ch0611ds1/`;
+its `run.json` records `completed`. The earlier missing-destination observation no longer
+requires a launcher investigation.
+
+The built artifacts are `1.0+b3e9ca6b1edf1`. Installing the Codex artifact into the actual
+harness home exited 10 while writing
+`/home/gili/cat/home/.codex/plugins/cat-marketplace/.agents/plugins/`, a read-only filesystem
+in this session. The installed version remains `1.0+b13e913dc00f0`; a subsequent installed
+`installer status --harness codex --json` reports `consistent: false`. Complete the same
+documented local install from a writable host terminal before using the new artifact for
+installed acceptance. The copied version directory alone does not prove registration.
+The earlier documented request-server path does not support installation, and this turn's
+exposed tools provide no outside-shell execution operation. No sandbox setting was changed.
+Claude installation and the new installed acceptance runs remain unrun. The user chose to keep
+D124 and run E1 without a goal; its procedure is updated below. Gates 2–8 remain open.
+
 Rows marked done keep only their first sentence here. Their full records, unchanged, are in [`plan-history.md`](plan-history.md), which is deleted with this plan.
 
 | Work item | State |
@@ -6722,7 +6752,8 @@ selection and download it describes are unchanged.
 ### WI-15 — Acceptance
 
 - **End-to-end:** in both harnesses, run these scenarios through the installed skill:
-	- **E1:** the deficient fixture's proposal lists its conflict, confirmation is refused
+	- **E1:** start the deficient fixture without a goal, so requirements derive from its target instructions
+		under D124. The proposal lists its conflict, confirmation is refused
 		until a resolution is chosen, and the fixture then improves to `certified` and is delivered as a Git diff, with a
 		disjoint base edit surviving. Its receipt also shows, per harness: the contract author's proposal is schema-valid,
 		has requirements and names the instruction file as a derived source; each judge verdict is schema-valid, carries a
