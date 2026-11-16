@@ -27,7 +27,7 @@ not establish that the installed plugin contains the change.
 
 When developing CAT and a task requires a CAT helper CLI, do not treat its absence from `PATH` as evidence that it is
 unavailable. Build the distribution, then run the launcher from
-`client/common/distribution/target/jlink/<harness>/bin/<command>`. For an installed plugin, the selected harness wrapper
+`client/common/distribution/target/runtime/<harness>/bin/<command>`. For an installed plugin, the selected harness wrapper
 must resolve that harness's native plugin-root value and supply the launcher path. Before reporting a helper unavailable,
 inspect the distribution's declared launchers and the harness-specific installed location. When a workflow consumes both
 a shipped prompt and a helper launcher, record one artifact revision that supplies both. After changing either source,

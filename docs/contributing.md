@@ -32,6 +32,9 @@ directory, with the release key from the tree's `bin/conf/installer/default-poli
 entries that name the installed version folder's `bin/installer`. Pass `--home` with the harness home before the
 operation (`--home` is an option of `install`, and it comes before the word `install`):
 
+Each local install replaces the files in the version folder, even when the folder already has the tree's version. Before
+repeating an install, wait for sessions using that folder to finish or confirm they use independent copies of its files.
+
 ```bash
 client/common/distribution/target/runtime/claude/bin/installer --home ~/.claude install --harness claude
 client/common/distribution/target/runtime/codex/bin/installer --home ~/.codex install --harness codex

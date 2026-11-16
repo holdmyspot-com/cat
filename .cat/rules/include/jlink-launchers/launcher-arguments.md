@@ -7,5 +7,6 @@
 ## Guidance
 
 A batch file expands `%NAME%` in its own arguments when `NAME` is a defined variable, and an unquoted `&` in an
-argument ends the command, so a caller must not pass untrusted text to a batch launcher as an argument; pass it on
-standard input or in a file instead.
+argument ends the command. Before passing text as an argument to a Windows batch launcher, establish that the batch
+invocation preserves that text literally. When literal handling is unproven, pass the text on standard input or in a
+file instead, whether the text is trusted or untrusted.

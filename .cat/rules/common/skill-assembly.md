@@ -15,6 +15,10 @@ paths:
 
 ## Guidance
 
+For a repeatedly selected skill, keep `SKILL.md` limited to routing and put its procedure in `first-use.md`. Require
+the reader to load that procedure on first selection in the current conversation context, reuse it on later selections,
+and read it again after the context resets or is compacted.
+
 The common skill layer must not contain a file named `SKILL.md`: it is harness-neutral source, not an installable skill.
 Keep its shared body and instructions in source-only files. When a shared skill needs harness-specific frontmatter, give
 each harness its own `SKILL.md` header in that harness's skill layer. Each header must include the shared body with

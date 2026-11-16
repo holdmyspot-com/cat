@@ -5,6 +5,8 @@
 - Route documentation-specific guidance from the writing task's observable trigger so readers load only the companion
 	rule that governs their documentation decision.
 
+## Guidance
+
 When writing or changing Bash source code, including a function, a Bats test, or a Bats file, or documenting Bash
 functions, Bats tests, or Bash source code while maintaining CAT, lazy load
 `${CAT_PROJECT_ROOT}/client/common/rules/src/main/resources/rules/include/bash/documentation.md`.
