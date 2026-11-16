@@ -1751,7 +1751,15 @@ The proposal lists every file of the incumbent's base source. CAT refuses, namin
 	guard pilot's hook status;
 - a candidate whose prompt system loads or runs a project file that its trials do not receive, or makes a reference
 	that `start` would refuse, contributes no candidate, and the prompt author's failure names the file. A file that the
-	prompt author writes lies inside the prompt sources, so trials receive it.
+	prompt author writes lies inside the prompt sources, so trials receive it. So does a file that every prompt test of
+	the contract places in its `workspace/` at that path, such as the handbook that each test case supplies with its
+	own content, because every trial's workspace holds it; a file that only some tests place there is missing from the
+	trials of the others. When trials do not receive a loaded file, the failure also says how to give them the file:
+	the user runs `revise` with feedback that names it, so that the contract declares it as a referenced file
+	([§4.5](#45-symbolic-link-warning)). Three such failures end the slice as a paused infrastructure failure, which
+	offers no `choose` choice, so that text is the user's way forward (end-to-end finding, 2026-11-16: in the E7 `link`
+	run the prompt author's `@docs/handbook.md` import was refused three times, although each test supplied that file
+	in its workspace, and the pause named no route).
 
 Run directories lie inside the user's project, and a harness can load instruction files from the directories above its
 working directory, as Claude Code does. A nested session therefore loads no instruction file from above its run
