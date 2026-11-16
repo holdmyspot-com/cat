@@ -56,6 +56,9 @@ public final class HumanReportTest
 	/**
 	 * A command that ends with {@code --json}, as the update skill's commands do, prints one line of JSON and has the
 	 * exit status of the result.
+	 * <p>
+	 * The time goes to generating the release's signing key pair, writing a signed archive to disk, and running two real
+	 * installs into real directories.
 	 *
 	 * @throws IOException    if the fixture cannot be created
 	 * @throws TrustException if the release's policy is invalid

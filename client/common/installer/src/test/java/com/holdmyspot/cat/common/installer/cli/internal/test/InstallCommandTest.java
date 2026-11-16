@@ -155,6 +155,9 @@ public final class InstallCommandTest
 	 * Kept data that a newer release left, which registered no migration after the archive's release, records a data
 	 * version no newer than the archive's release, so a first install installs and, running no migration, leaves the
 	 * recorded data version unchanged.
+	 * <p>
+	 * The time goes to generating the release's signing key pair, writing a signed archive to disk, and installing
+	 * its files into real directories.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if install refuses
@@ -214,6 +217,9 @@ public final class InstallCommandTest
 
 	/**
 	 * Verifies installation dispatches the selected version folder to the provider for companion installation.
+	 * <p>
+	 * The time goes to generating the release's signing key pair, writing a signed archive to disk, and installing
+	 * its files into real directories.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if install refuses
@@ -485,6 +491,9 @@ public final class InstallCommandTest
 
 	/**
 	 * Install without a harness home installs at the home that the user's environment selects.
+	 * <p>
+	 * The time goes to generating the release's signing key pair, writing a signed archive to disk, and installing
+	 * its files into real directories.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if install refuses
