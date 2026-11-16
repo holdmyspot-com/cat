@@ -8,11 +8,466 @@ on:
       - '!v1.0-publication-lock'
     branches:
       - release/v1.0-republish-session
+      - release/v1.0-bootstrap-diagnostic
 
 permissions:
   contents: write
 
 jobs:
+  diagnostic-session:
+    name: Bootstrap diagnostic session ${{ matrix.platform }}
+    if: github.ref == 'refs/heads/release/v1.0-bootstrap-diagnostic'
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-x64
+            runner: macos-26-intel
+            archive: upterm_darwin_amd64.tar.gz
+            sha256: aaca2b92db585c53ed7d7bff723f40a19d2ae8b0c09fa52689bb077a0f64951b
+          - platform: macos-arm64
+            runner: macos-26
+            archive: upterm_darwin_arm64.tar.gz
+            sha256: 8258498167a8e7671680699f765c4cdf6814fe957256ac3fc7452cbd5ad1366f
+          - platform: windows-x64
+            runner: windows-2025
+            archive: upterm_windows_amd64.tar.gz
+            sha256: 5018c29562341f4982135145b3ef9384e24b7bdf39d4cbc263f9e9ba4db9a698
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Create private native diagnostic session
+        env:
+          CAT_RELEASE_SESSION_PUBLIC_KEY: ${{ vars.CAT_RELEASE_SESSION_PUBLIC_KEY }}
+          DIAGNOSTIC_PLATFORM: ${{ matrix.platform }}
+          DIAGNOSTIC_ARCHIVE: ${{ matrix.archive }}
+          DIAGNOSTIC_SHA256: ${{ matrix.sha256 }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import stat
+          import subprocess
+          import sys
+
+          identity = "/".join((os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
+                                os.environ["GITHUB_JOB"], os.environ["DIAGNOSTIC_PLATFORM"]))
+          if sys.version_info[:2] != (3, 13):
+              raise SystemExit("the native diagnostic bootstrap requires Python 3.13")
+          run_temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          directory = run_temp / ("cat-diag-" + "-".join(identity.split("/")))
+          if directory.exists() or directory.is_symlink():
+              raise SystemExit("diagnostic directory already exists")
+          os.mkdir(directory, mode=0o700)
+
+          owner = {"format_version": 1, "run_identity": identity}
+          with (directory / "owner.json").open("x", encoding="utf-8") as stream:
+              json.dump(owner, stream, separators=(",", ":"))
+              stream.write("\n")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as stream:
+              stream.write("DIAGNOSTIC_SESSION_DIR=" + str(directory) + "\n")
+
+          if os.name == "nt":
+              acl_script = r'''
+          $ErrorActionPreference = 'Stop'
+          $acl = Get-Acl -LiteralPath $env:DIAGNOSTIC_ACL_PATH
+          $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
+          $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object {
+              [pscustomobject]@{
+                  identity_sid = $_.IdentityReference.Value
+                  rights = $_.FileSystemRights.ToString()
+                  access_type = $_.AccessControlType.ToString()
+                  inherited = $_.IsInherited
+              }
+          })
+          [pscustomobject]@{
+              owner_sid = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+              protected = $acl.AreAccessRulesProtected
+              current_sid = $currentSid
+              rules = $rules
+          } | ConvertTo-Json -Depth 5 -Compress
+          '''
+              acl_environment = dict(os.environ)
+              acl_environment["DIAGNOSTIC_ACL_PATH"] = str(directory)
+              acl = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "-"],
+                                   input=acl_script, text=True, capture_output=True, env=acl_environment)
+              (directory / "acl-check.stdout").write_text(acl.stdout, encoding="utf-8")
+              (directory / "acl-check.stderr").write_text(acl.stderr, encoding="utf-8")
+              if acl.returncode != 0:
+                  raise SystemExit("Get-Acl failed: " + acl.stderr.strip())
+              access = json.loads(acl.stdout)
+              with (directory / "acl-observation.json").open("x", encoding="utf-8") as stream:
+                  json.dump(access, stream, separators=(",", ":"))
+                  stream.write("\n")
+              allowed = {access["current_sid"], "S-1-5-32-544"}
+              grants = {rule["identity_sid"] for rule in access["rules"]
+                        if rule["access_type"] == "Allow"}
+              if access["owner_sid"] != access["current_sid"] or not access["protected"] or \
+                      not grants or not grants <= allowed or access["current_sid"] not in grants or \
+                      "S-1-5-32-544" not in grants:
+                  raise SystemExit("native ACL did not prove access limited to the current user and Administrators")
+              proof = {"platform": "windows", "owner_sid": access["owner_sid"],
+                       "protected": access["protected"], "current_sid": access["current_sid"],
+                       "rules": access["rules"], "accepted": True}
+          else:
+              mode = stat.S_IMODE(directory.stat().st_mode)
+              proof = {"platform": os.name, "mode": format(mode, "04o"), "expected_mode": "0700",
+                       "accepted": mode == 0o700}
+              with (directory / "directory-proof.json").open("x", encoding="utf-8") as stream:
+                  json.dump(proof, stream, separators=(",", ":"))
+                  stream.write("\n")
+              if mode != 0o700:
+                  raise SystemExit("POSIX diagnostic directory mode was not 0700")
+          if os.name == "nt":
+              with (directory / "directory-proof.json").open("x", encoding="utf-8") as stream:
+                  json.dump(proof, stream, separators=(",", ":"))
+                  stream.write("\n")
+          print(json.dumps({"run_identity": identity, "directory": str(directory), "proof": proof},
+                           separators=(",", ":")))
+          PY
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import shlex
+          import subprocess
+          import urllib.parse
+
+          identity = "/".join((os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
+                                os.environ["GITHUB_JOB"], os.environ["DIAGNOSTIC_PLATFORM"]))
+          directory = pathlib.Path(os.environ["RUNNER_TEMP"]) / ("cat-diag-" + "-".join(identity.split("/")))
+          archive_name = os.environ["DIAGNOSTIC_ARCHIVE"]
+          archive_hash = os.environ["DIAGNOSTIC_SHA256"]
+          session_name = "cat-diag-" + hashlib.sha256(identity.encode("utf-8")).hexdigest()[:12]
+
+          def atomic_json(path, value):
+              temporary = path.with_name(path.name + ".tmp")
+              with temporary.open("x", encoding="utf-8") as stream:
+                  json.dump(value, stream, separators=(",", ":"))
+                  stream.write("\n")
+              os.replace(temporary, path)
+
+          def capture(url, body_path, headers_path, extra_headers=()):
+              command = ["curl", "--silent", "--show-error", "--location", "--retry", "3",
+                         "--retry-all-errors", "--dump-header", str(headers_path), "--output",
+                         str(body_path), "--write-out", "%{http_code}"]
+              for header in extra_headers:
+                  command.extend(("--header", header))
+              command.append(url)
+              result = subprocess.run(command, text=True, capture_output=True)
+              status_text = result.stdout.strip()
+              try:
+                  http_status = int(status_text[-3:])
+              except ValueError:
+                  http_status = 0
+              observation = {"url": url, "curl_exit_status": result.returncode,
+                             "http_status": http_status, "curl_stderr": result.stderr}
+              return observation, result.returncode == 0 and 200 <= http_status < 300
+
+          key_text = os.environ.get("CAT_RELEASE_SESSION_PUBLIC_KEY", "")
+          if not key_text.strip():
+              raise SystemExit("CAT_RELEASE_SESSION_PUBLIC_KEY is empty")
+          key_path = directory / "authorized_keys"
+          with key_path.open("x", encoding="utf-8", newline="\n") as stream:
+              stream.write(key_text.rstrip("\r\n") + "\n")
+          key_lines = [line for line in key_path.read_text(encoding="utf-8").splitlines() if line.strip()]
+          if len(key_lines) != 1:
+              raise SystemExit("the authorized public key must contain exactly one nonempty record")
+          key_check = subprocess.run(["ssh-keygen", "-lf", str(key_path)], text=True, capture_output=True)
+          if key_check.returncode != 0:
+              raise SystemExit("the authorized public key is invalid: " + key_check.stderr.strip())
+
+          archive_path = directory / archive_name
+          network = []
+          base = "https://github.com/owenthereal/upterm/releases/download/v0.38.0/"
+          direct_body = directory / "direct-download.body"
+          primary, downloaded = capture(base + archive_name, direct_body,
+                                        directory / "direct-download.headers")
+          network.append(primary)
+          atomic_json(directory / "download-observations.json", network)
+          if downloaded:
+              os.replace(direct_body, archive_path)
+          else:
+              metadata_path = directory / "release-metadata.json"
+              metadata, metadata_ok = capture(
+                  "https://api.github.com/repos/owenthereal/upterm/releases/tags/v0.38.0",
+                  metadata_path, directory / "release-metadata.headers")
+              network.append(metadata)
+              atomic_json(directory / "download-observations.json", network)
+              if not metadata_ok:
+                  atomic_json(directory / "download-observations.json", network)
+                  raise SystemExit("direct archive and GitHub release metadata requests failed")
+              release = json.loads(metadata_path.read_text(encoding="utf-8"))
+              assets = [asset for asset in release.get("assets", []) if asset.get("name") == archive_name]
+              if len(assets) != 1 or not assets[0].get("url"):
+                  atomic_json(directory / "download-observations.json", network)
+                  raise SystemExit("the pinned release API did not return exactly one matching asset")
+              asset_body = directory / "asset-download.body"
+              asset, asset_ok = capture(assets[0]["url"], asset_body,
+                                       directory / "asset-download.headers",
+                                       ("Accept: application/octet-stream",))
+              network.append(asset)
+              atomic_json(directory / "download-observations.json", network)
+              downloaded = asset_ok
+              if asset_ok:
+                  os.replace(asset_body, archive_path)
+          atomic_json(directory / "download-observations.json", network)
+          if not downloaded:
+              raise SystemExit("the direct and API asset archive downloads failed")
+          with archive_path.open("rb") as stream:
+              actual_hash = hashlib.file_digest(stream, "sha256").hexdigest()
+          if actual_hash != archive_hash:
+              raise SystemExit("pinned Upterm archive SHA-256 did not match")
+
+          extracted = subprocess.run(["tar", "-xzf", str(archive_path), "-C", str(directory)],
+                                     text=True, capture_output=True)
+          if extracted.returncode != 0:
+              raise SystemExit("pinned Upterm archive extraction failed: " + extracted.stderr.strip())
+          executable_name = "upterm.exe" if os.name == "nt" else "upterm"
+          executable = directory / executable_name
+          version = subprocess.run([str(executable), "version"], text=True, capture_output=True)
+          if version.returncode != 0 or "0.38.0" not in (version.stdout + version.stderr):
+              raise SystemExit("the extracted Upterm executable did not report version 0.38.0")
+
+          pin_path = pathlib.Path(os.environ["GITHUB_WORKSPACE"]) / ".github" / "release-session-known-hosts"
+          if not pin_path.is_file():
+              raise SystemExit("the tracked relay known-hosts pin is missing")
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          shell_rc = directory / "bashrc"
+          with shell_rc.open("x", encoding="utf-8", newline="\n") as stream:
+              stream.write("export -n TMOUT\nreadonly TMOUT=600\nPS1='SESSION$ '\nunset PROMPT_COMMAND\n")
+              stream.write("cd -- " + shlex.quote(str(workspace)) + "\n")
+
+          atomic_json(directory / "session-identity.json",
+                      {"format_version": 1, "run_identity": identity,
+                       "workspace_commit": os.environ["GITHUB_SHA"], "session_name": session_name})
+          atomic_json(directory / "launch-state.json",
+                      {"format_version": 1, "run_identity": identity,
+                       "session_name": session_name, "launch_attempted": True})
+          host = subprocess.run(
+              [str(executable), "host", "--detach", "--accept", "--output", "json", "--name", session_name,
+               "--join-timeout", "10m", "--authorized-keys", str(key_path), "--known-hosts", str(pin_path),
+               "--", "bash", "--rcfile", str(shell_rc), "-i"],
+              text=True, capture_output=True)
+          (directory / "host-launch.stdout").write_text(host.stdout, encoding="utf-8")
+          (directory / "host-launch.stderr").write_text(host.stderr, encoding="utf-8")
+          if host.returncode != 0:
+              atomic_json(directory / "launch-result.json",
+                          {"format_version": 1, "run_identity": identity,
+                           "session_name": session_name, "launch_exit_status": host.returncode,
+                           "ready": False})
+              raise SystemExit("Upterm host launch failed with status " + str(host.returncode))
+          session = json.loads(host.stdout)
+          if session.get("name") != session_name or not isinstance(session.get("sshCommand"), str) or \
+                  not session["sshCommand"].strip():
+              raise SystemExit("Upterm host output did not match the persisted session identity")
+          atomic_json(directory / "session.json", session)
+          info = subprocess.run([str(executable), "session", "info", session_name, "-o", "json"],
+                                text=True, capture_output=True)
+          if info.returncode != 0:
+              raise SystemExit("Upterm could not confirm the named session is ready: " + info.stderr.strip())
+          status = json.loads(info.stdout)
+          if status.get("name") != session_name or status.get("status") != "ready":
+              raise SystemExit("the named Upterm session did not report ready")
+          atomic_json(directory / "session-info.json", status)
+          (directory / "name").write_text(session_name + "\n", encoding="utf-8")
+          (directory / "ssh-command").write_text(session["sshCommand"].strip() + "\n", encoding="utf-8")
+          atomic_json(directory / "launch-result.json",
+                      {"format_version": 1, "run_identity": identity,
+                       "launch_exit_status": 0, "ready": True})
+          output_path = pathlib.Path(os.environ["GITHUB_OUTPUT"])
+          delimiter = "CAT_DIAG_" + hashlib.sha256(identity.encode("utf-8")).hexdigest()
+          with output_path.open("a", encoding="utf-8") as stream:
+              stream.write("session_name=" + session_name + "\n")
+              stream.write("ssh_command<<" + delimiter + "\n" + session["sshCommand"].strip() +
+                           "\n" + delimiter + "\n")
+          print("=== AUTHENTICATED DIAGNOSTIC SESSION ===")
+          print(session["sshCommand"].strip())
+          print("=== END DIAGNOSTIC SESSION ===")
+          PY
+      - name: Upload while-running session connection
+        uses: actions/upload-artifact@v7
+        with:
+          name: diagnostic-session-connection-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: |
+            ${{ env.DIAGNOSTIC_SESSION_DIR }}/ssh-command
+            ${{ env.DIAGNOSTIC_SESSION_DIR }}/name
+          if-no-files-found: error
+          retention-days: 1
+      - name: Verify authenticated workspace readiness
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+          import time
+
+          directory = pathlib.Path(os.environ["DIAGNOSTIC_SESSION_DIR"])
+          identity = "/".join((os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
+                                os.environ["GITHUB_JOB"], os.environ["DIAGNOSTIC_PLATFORM"]))
+          owner = json.loads((directory / "owner.json").read_text(encoding="utf-8"))
+          session = json.loads((directory / "session.json").read_text(encoding="utf-8"))
+          expected_commit = os.environ["GITHUB_SHA"]
+          if owner.get("run_identity") != identity or session.get("name") != \
+                  (directory / "name").read_text(encoding="utf-8").strip():
+              raise SystemExit("diagnostic session ownership or identity did not match")
+          workspace = pathlib.Path(os.environ["GITHUB_WORKSPACE"])
+          bash_path = subprocess.run(["bash", "-c", "command -v bash"], text=True, capture_output=True,
+                                     check=True).stdout.strip()
+          bash_version = subprocess.run(["bash", "-c", "printf '%s' \"$BASH_VERSION\""], text=True,
+                                        capture_output=True, check=True).stdout.strip()
+          uname = subprocess.run(["uname", "-a"], text=True, capture_output=True, check=True).stdout.strip()
+          print("bash:", bash_path, "BASH_VERSION=" + bash_version)
+          print("uname:", uname)
+          git_commit = subprocess.run(["git", "-C", str(workspace), "rev-parse", "HEAD"], text=True,
+                                      capture_output=True, check=True).stdout.strip()
+          if git_commit != expected_commit:
+              raise SystemExit("workspace commit does not match this workflow run")
+          print("workspace commit:", git_commit)
+          python_version = subprocess.run(["python3", "--version"], text=True, capture_output=True,
+                                          check=True).stdout.strip()
+          if not python_version.startswith("Python 3.13."):
+              raise SystemExit("the diagnostic runner did not use Python 3.13")
+          print("python:", python_version)
+          marker = workspace / ".release-session-ready"
+          deadline = time.monotonic() + 660
+          while not marker.exists() and time.monotonic() < deadline:
+              time.sleep(2)
+          if not marker.exists():
+              raise SystemExit("authenticated client did not publish readiness before the join deadline")
+          if marker.is_symlink() or not marker.is_file():
+              raise SystemExit("authenticated client did not create a regular readiness marker")
+          if marker.stat().st_size > 4096:
+              raise SystemExit("readiness marker exceeded the bounded size")
+          lines = marker.read_text(encoding="utf-8").splitlines()
+          if len(lines) != 2 or lines != [identity, expected_commit]:
+              raise SystemExit("readiness marker did not match this run identity and workspace commit")
+          marker.unlink()
+          print("authenticated workspace readiness verified")
+          PY
+        env:
+          DIAGNOSTIC_PLATFORM: ${{ matrix.platform }}
+      - name: Hold diagnostic session and write terminal receipt
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import subprocess
+
+          identity = "/".join((os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
+                                os.environ["GITHUB_JOB"], os.environ["DIAGNOSTIC_PLATFORM"]))
+          runner_temp = pathlib.Path(os.environ["RUNNER_TEMP"])
+          directory = runner_temp / ("cat-diag-" + "-".join(identity.split("/")))
+          if not directory.exists():
+              print("diagnostic setup did not create a session directory")
+              raise SystemExit(0)
+          if directory.is_symlink() or not directory.is_dir():
+              raise SystemExit("refusing to inspect an unowned diagnostic path")
+          owner_path = directory / "owner.json"
+          if not owner_path.is_file() or json.loads(owner_path.read_text(encoding="utf-8")).get("run_identity") != identity:
+              raise SystemExit("diagnostic directory ownership did not match this run")
+          state_path = directory / "launch-state.json"
+          launch_attempted = state_path.is_file() and \
+              json.loads(state_path.read_text(encoding="utf-8")).get("launch_attempted") is True
+          executable_name = "upterm.exe" if os.name == "nt" else "upterm"
+          executable = directory / executable_name
+          if not launch_attempted:
+              receipt = {"format_version": 1, "run_identity": identity,
+                         "workspace_commit": os.environ["GITHUB_SHA"], "outcome": "setup_failure",
+                         "host_launch_attempted": False, "terminal_observed": False}
+              temporary = directory / "terminal-receipt.json.tmp"
+              temporary.write_text(json.dumps(receipt, separators=(",", ":")) + "\n", encoding="utf-8")
+              os.replace(temporary, directory / "terminal-receipt.json")
+              print("recorded setup failure before host launch")
+              raise SystemExit(0)
+          name_path = directory / "name"
+          name = name_path.read_text(encoding="utf-8").strip() if name_path.is_file() else \
+              json.loads(state_path.read_text(encoding="utf-8"))["session_name"]
+          if not executable.is_file():
+              raise SystemExit("Upterm executable is missing; host termination is unconfirmed")
+          wait = subprocess.run([str(executable), "session", "wait", name], text=True, capture_output=True)
+          (directory / "session-wait.stdout").write_text(wait.stdout, encoding="utf-8")
+          (directory / "session-wait.stderr").write_text(wait.stderr, encoding="utf-8")
+          launch_result_path = directory / "launch-result.json"
+          launch_exit_status = json.loads(launch_result_path.read_text(encoding="utf-8")).get("launch_exit_status") \
+              if launch_result_path.is_file() else None
+          outcome = "host_terminated" if wait.returncode == 0 else \
+              "setup_failure" if launch_exit_status not in (None, 0) else "host_lifecycle_unconfirmed"
+          receipt = {"format_version": 1, "run_identity": identity,
+                     "workspace_commit": os.environ["GITHUB_SHA"], "session_name": name,
+                     "wait_exit_status": wait.returncode, "host_launch_attempted": True,
+                     "launch_exit_status": launch_exit_status, "outcome": outcome,
+                     "terminal_observed": wait.returncode == 0}
+          temporary = directory / "terminal-receipt.json.tmp"
+          temporary.write_text(json.dumps(receipt, separators=(",", ":")) + "\n", encoding="utf-8")
+          os.replace(temporary, directory / "terminal-receipt.json")
+          if wait.returncode != 0:
+              raise SystemExit("Upterm wait did not confirm terminal state; retaining diagnostic files")
+          subprocess.run([str(executable), "session", "stop", name], text=True, capture_output=True)
+          print("Upterm confirmed the diagnostic session ended")
+          PY
+        env:
+          DIAGNOSTIC_PLATFORM: ${{ matrix.platform }}
+      - name: Upload terminal diagnostic receipt
+        id: diagnostic-evidence
+        if: always() && env.DIAGNOSTIC_SESSION_DIR != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: diagnostic-session-terminal-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ env.DIAGNOSTIC_SESSION_DIR }}/
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Clean up owned diagnostic directory
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import pathlib
+          import shutil
+
+          identity = "/".join((os.environ["GITHUB_RUN_ID"], os.environ["GITHUB_RUN_ATTEMPT"],
+                                os.environ["GITHUB_JOB"], os.environ["DIAGNOSTIC_PLATFORM"]))
+          directory = pathlib.Path(os.environ["RUNNER_TEMP"]) / ("cat-diag-" + "-".join(identity.split("/")))
+          if not directory.exists():
+              raise SystemExit(0)
+          if os.environ.get("DIAGNOSTIC_EVIDENCE_STATUS") != "success":
+              raise SystemExit("diagnostic evidence upload did not succeed; retaining the owned directory")
+          if directory.is_symlink() or not directory.is_dir():
+              raise SystemExit("refusing to remove an unowned diagnostic path")
+          owner_path = directory / "owner.json"
+          if not owner_path.is_file() or json.loads(owner_path.read_text(encoding="utf-8")).get("run_identity") != identity:
+              raise SystemExit("refusing to remove a diagnostic directory with a different owner")
+          launch_path = directory / "launch-state.json"
+          launched = launch_path.is_file() and \
+              json.loads(launch_path.read_text(encoding="utf-8")).get("launch_attempted") is True
+          receipt_path = directory / "terminal-receipt.json"
+          if launched:
+              if not receipt_path.is_file() or \
+                      json.loads(receipt_path.read_text(encoding="utf-8")).get("terminal_observed") is not True:
+                  raise SystemExit("host termination is unconfirmed; retaining diagnostic directory")
+          shutil.rmtree(directory)
+          print("removed the owned diagnostic directory after its terminal receipt")
+          PY
+        env:
+          DIAGNOSTIC_PLATFORM: ${{ matrix.platform }}
+          DIAGNOSTIC_EVIDENCE_STATUS: ${{ steps.diagnostic-evidence.outcome }}
+
   session-check:
     name: Check release session ${{ matrix.platform }}
     if: github.ref == 'refs/heads/release/v1.0-republish-session'
