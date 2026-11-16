@@ -4,10 +4,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.delegation.Repositories;
+import com.holdmyspot.cat.common.delegation.SourceSnapshot;
 import com.holdmyspot.cat.common.git.Git;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.Test;
 
 /**
@@ -80,6 +85,61 @@ public final class GitTest
 
 			requireThat(spaced, "spaced").isEqualTo(0);
 			requireThat(joined, "joined").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that an explicit environment replaces inherited process variables.
+	 *
+	 * @throws IOException if the repository fixture cannot be created or Git fails
+	 */
+	@Test
+	public void explicitEnvironmentDoesNotInherit()	throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-git-"));
+			AtomicReference<Map<String, String>> observed = new AtomicReference<>();
+			Git git = new Git(directory, Map.of("GIT_CONFIG_NOSYSTEM", "1"), builder ->
+			{
+				observed.set(Map.copyOf(builder.environment()));
+				return builder.start();
+			});
+
+			git.run("init", "--quiet");
+
+			requireThat(observed.get(), "environment").isEqualTo(Map.of("GIT_CONFIG_NOSYSTEM", "1"));
+		}
+	}
+
+	/**
+	 * Verifies real delegate clones have separate repository state and exact snapshot bytes.
+	 *
+	 * @throws IOException if the repository fixture cannot be created or Git fails
+	 */
+	@Test
+	public void delegateRepositoriesAreIndependent() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("cat-delegation-source-"));
+			Path cohort = cleanup.add(Files.createTempDirectory("cat-delegation-cohort-"));
+			Files.writeString(project.resolve("source.txt"), "dirty source");
+			SourceSnapshot snapshot = SourceSnapshot.capture(project, cohort, List.of("source.txt"));
+			Map<String, String> environment = Map.of("PATH", System.getenv("PATH"));
+			Repositories.RepositorySet repositories = Repositories.create(cohort, snapshot, List.of("alpha", "beta"),
+				environment, com.holdmyspot.cat.common.CodeLoadingVariables::start);
+			Path alpha = repositories.workProjects().get("alpha");
+			Path beta = repositories.workProjects().get("beta");
+			Git alphaGit = new Git(alpha, environment, com.holdmyspot.cat.common.CodeLoadingVariables::start);
+			Git betaGit = new Git(beta, environment, com.holdmyspot.cat.common.CodeLoadingVariables::start);
+			alphaGit.run("config", "user.name", "Alpha only");
+			Files.writeString(alpha.resolve("source.txt"), "alpha edit");
+
+			int betaAlphaConfig = betaGit.status("config", "--local", "--get", "user.name");
+			requireThat(Files.readString(beta.resolve("source.txt")), "betaBytes").isEqualTo("dirty source");
+			requireThat(betaAlphaConfig, "betaDoesNotHaveAlphaConfig").isEqualTo(1);
+			requireThat(Files.readString(project.resolve("source.txt")), "parentBytes").isEqualTo("dirty source");
 		}
 	}
 

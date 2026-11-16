@@ -21,6 +21,7 @@ public final class Git
 {
 	private static final int MAXIMUM_RETAINED_OUTPUT_BYTES = 64 * 1024 * 1024;
 	private final Path repository;
+	private final Map<String, String> environment;
 	/**
 	 * Starts each Git process.
 	 */
@@ -33,7 +34,7 @@ public final class Git
 	 */
 	public Git(Path repository)
 	{
-		this(repository, CodeLoadingVariables::start);
+		this(repository, null, false, CodeLoadingVariables::start);
 	}
 
 	/**
@@ -45,8 +46,39 @@ public final class Git
 	 */
 	public Git(Path repository, ExecutableFiles.ProcessLauncher launcher)
 	{
+		this(repository, null, false, launcher);
+	}
+
+	/**
+	 * Creates a Git access object with a complete, isolated process environment.
+	 *
+	 * @param repository the repository directory
+	 * @param environment the complete environment for each Git process
+	 * @param launcher starts the configured Git process
+	 * @throws NullPointerException if any of the parameters is null
+	 */
+	public Git(Path repository, Map<String, String> environment, ExecutableFiles.ProcessLauncher launcher)
+	{
+		this(repository, environment, true, launcher);
+	}
+
+	/**
+	 * Creates a Git access object.
+	 *
+	 * @param repository the repository directory
+	 * @param environment the complete environment, or null to inherit
+	 * @param isolateEnvironment whether to clear inherited values
+	 * @param launcher starts Git
+	 */
+	private Git(Path repository, Map<String, String> environment, boolean isolateEnvironment,
+		ExecutableFiles.ProcessLauncher launcher)
+	{
 		requireThat(launcher, "launcher").isNotNull();
 		this.repository = repository;
+		if (isolateEnvironment)
+			this.environment = Map.copyOf(environment);
+		else
+			this.environment = null;
 		this.launcher = launcher;
 	}
 
@@ -170,7 +202,13 @@ public final class Git
 		command.add("git");
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).directory(repository.toFile()).redirectErrorStream(true);
-		builder.environment().putAll(environment);
+		if (this.environment == null)
+			builder.environment().putAll(environment);
+		else
+		{
+			builder.environment().clear();
+			builder.environment().putAll(this.environment);
+		}
 		return launcher.start(builder);
 	}
 

@@ -9,7 +9,9 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.core.JacksonException;
 
 /**
  * Tests {@link SessionHistory} command behavior.
@@ -72,6 +74,53 @@ public final class SessionHistoryTest
 			requireThat(result, "result").contains("records=1").contains("types=message:1").
 				contains("first_timestamp=2026-08-18T10:01:00Z").
 				doesNotContain("secret detail").doesNotContain("after");
+		}
+	}
+
+	/**
+	 * Returns the history queries that parse transcript records.
+	 *
+	 * @return each operation and its arguments
+	 */
+	@DataProvider
+	public static Object[][] historyOperations()
+	{
+		return new Object[][]
+		{
+			{new String[]{"analyze"}},
+			{new String[]{"summary"}},
+			{new String[]{"search", "needle"}},
+			{new String[]{"errors"}},
+			{new String[]{"file-history", "sample.txt"}}
+		};
+	}
+
+	/**
+	 * Verifies that malformed JSON reports its file and physical line, counting preceding blank lines, and retains
+	 * the parser failure as its cause.
+	 *
+	 * @param operation the query and its arguments
+	 * @throws IOException if the transcript cannot be read or contains malformed JSON
+	 */
+	@Test(dataProvider = "historyOperations", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*session\\.jsonl:3.*")
+	public void reportsMalformedJsonLocation(String[] operation) throws IOException
+	{
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path transcript = cleanup.add(Files.createTempDirectory("cat-session-history-")).resolve("session.jsonl");
+			Files.writeString(transcript, "\n \n{\n");
+			try
+			{
+				SessionHistory.execute(scope, transcript, operation);
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(transcript + ":3");
+				requireThat(e.getCause(), "cause").isInstanceOf(JacksonException.class);
+				throw e;
+			}
 		}
 	}
 }

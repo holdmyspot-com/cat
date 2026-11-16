@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.history.TranscriptLines.Line;
 import com.holdmyspot.cat.common.secrets.SessionHistoryAccess;
 import com.holdmyspot.cat.common.secrets.SessionHistorySecrets;
 import java.io.IOException;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.stream.Stream;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -43,7 +45,7 @@ public final class SessionHistory
 			@Override
 			public String search(JvmScope scope, Path transcript, String phrase, int context) throws IOException
 			{
-				return SessionHistory.search(scope, transcript, Files::lines, phrase, context);
+				return SessionHistory.search(scope, transcript, TranscriptLines::readFileLines, phrase, context);
 			}
 		});
 	}
@@ -103,7 +105,8 @@ public final class SessionHistory
 
 		String operation = args[0];
 		Path transcript = transcript(Path.of(args[1]));
-		return execute(scope, operation, transcript, Files::lines, Arrays.copyOfRange(args, 2, args.length));
+		return execute(scope, operation, transcript, TranscriptLines::readFileLines,
+			Arrays.copyOfRange(args, 2, args.length));
 	}
 
 	/**
@@ -118,7 +121,7 @@ public final class SessionHistory
 	 */
 	public static String execute(JvmScope scope, Path transcript, String[] args) throws IOException
 	{
-		return execute(scope, transcript, Files::lines, args);
+		return execute(scope, transcript, TranscriptLines::readFileLines, args);
 	}
 
 	/**
@@ -183,17 +186,19 @@ public final class SessionHistory
 		Instant lastTimestamp = null;
 		boolean truncated = false;
 		Map<String, Integer> types = new TreeMap<>();
-		try (Stream<String> lines = source.lines(transcript))
+		try (Stream<Line> lines = source.lines(transcript))
 		{
-			Iterator<String> iterator = lines.iterator();
+			Iterator<Line> iterator = lines.iterator();
 			while (iterator.hasNext())
 			{
-				String record = iterator.next();
+				Line line = iterator.next();
+				String record = line.text();
 				if (record.isBlank())
 					continue;
-				JsonNode node = scope.json().readTree(record);
+				JsonNode node = parseTranscriptRecord(scope, line);
 				if (node == null || !node.isObject())
-					throw new IOException("Session transcript record is not a JSON object: " + transcript);
+					throw new IOException("Session transcript record is not a JSON object: " + line.transcript() + ":" +
+						line.lineNumber());
 				String type = node.path("type").asString("");
 				Instant timestamp = timestamp(node, transcript, filter);
 				if (!matchesSummaryFilter(type, timestamp, filter))
@@ -232,6 +237,27 @@ public final class SessionHistory
 			result.add("last_timestamp=" + lastTimestamp);
 		}
 		return result.toString();
+	}
+
+	/**
+	 * Parses a transcript record and adds its physical source location to malformed JSON diagnostics.
+	 *
+	 * @param scope the process scope
+	 * @param line the record and its physical source location
+	 * @return the parsed JSON value
+	 * @throws IOException if the record contains malformed JSON
+	 */
+	private static JsonNode parseTranscriptRecord(JvmScope scope, Line line) throws IOException
+	{
+		try
+		{
+			return scope.json().readTree(line.text());
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Malformed JSON in session transcript " + line.transcript() + ":" + line.lineNumber() +
+				": " + e.getMessage(), e);
+		}
 	}
 
 	/**
@@ -385,11 +411,11 @@ public final class SessionHistory
 	 */
 	static String analyze(JvmScope scope, Path transcript, TranscriptLines source) throws IOException
 	{
-		List<String> records = records(scope, transcript, source);
+		List<Line> records = records(scope, transcript, source);
 		List<String> types = new ArrayList<>();
-		for (String record : records)
+		for (Line line : records)
 		{
-			JsonNode node = scope.json().readTree(record);
+			JsonNode node = parseTranscriptRecord(scope, line);
 			String type = node.path("type").asString("");
 			if (!type.isBlank() && !types.contains(type))
 				types.add(type);
@@ -496,12 +522,12 @@ public final class SessionHistory
 	private static String matching(JvmScope scope, Path transcript, TranscriptLines source, String phrase,
 		int context) throws IOException
 	{
-		List<String> records = records(scope, transcript, source);
+		List<Line> records = records(scope, transcript, source);
 		String needle = phrase.toLowerCase(Locale.ROOT);
 		boolean[] selected = new boolean[records.size()];
 		for (int index = 0; index < records.size(); ++index)
 		{
-			if (!records.get(index).toLowerCase(Locale.ROOT).contains(needle))
+			if (!records.get(index).text().toLowerCase(Locale.ROOT).contains(needle))
 				continue;
 			for (int adjacent = Math.max(0, index - context); adjacent <= Math.min(records.size() - 1,
 				index + context); ++adjacent)
@@ -511,7 +537,7 @@ public final class SessionHistory
 		for (int index = 0; index < records.size(); ++index)
 		{
 			if (selected[index])
-				result.append(records.get(index)).append('\n');
+				result.append(records.get(index).text()).append('\n');
 		}
 		return result.toString();
 	}
@@ -525,19 +551,19 @@ public final class SessionHistory
 	 * @return the non-blank records in source order
 	 * @throws IOException if the transcript cannot be read or parsed
 	 */
-	private static List<String> records(JvmScope scope, Path transcript, TranscriptLines source) throws IOException
+	private static List<Line> records(JvmScope scope, Path transcript, TranscriptLines source) throws IOException
 	{
-		List<String> result;
-		try (Stream<String> lines = source.lines(transcript))
+		List<Line> result;
+		try (Stream<Line> lines = source.lines(transcript))
 		{
-			result = lines.filter(line -> !line.isBlank()).toList();
+			result = lines.filter(line -> !line.text().isBlank()).toList();
 		}
 		catch (UncheckedIOException e)
 		{
 			throw e.getCause();
 		}
-		for (String record : result)
-			scope.json().readTree(record);
+		for (Line line : result)
+			parseTranscriptRecord(scope, line);
 		return result;
 	}
 
