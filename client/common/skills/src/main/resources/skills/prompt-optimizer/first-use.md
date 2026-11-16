@@ -170,7 +170,7 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 		`latest_versions` or, for cells that the user described and confirmed, `described`. When the user confirms
 		without choosing, run `confirm <campaign>`, which certifies `weakest_cell`.
 	- Never confirm on the user's behalf, and never choose cells other than `weakest_cell` on the user's behalf.
-3. **Run.** Use the execution mode above. In foreground mode, while the `status` of the result of `confirm` or `run` is `running`, run `run <campaign>` again. After each
+3. **Run.** Use the execution mode above. `confirm` always runs in the foreground, without `--background`. While the `status` of the result of `confirm` or `run` is `running` in foreground mode, run `run <campaign>` again. After each
 	run, show the user its `summary`, and its `message` when it has one: while a test revision's guard pilot is
 	unfinished, the `message` says how many of its trials are decided. (A `running` result of `start`, `revise` or
 	`choose <campaign> retry` is step 2's guard pilot, which `start` continues.)
