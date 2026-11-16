@@ -21,13 +21,23 @@ import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -256,6 +266,121 @@ public final class StalledDevelopmentTest
 				List.of(), Builder.FILES)).regression(logs, Verdict.FAIL).
 			stalls("safety", new StallProgress(Map.of("safety", 0.99), 1, rounds)).
 			round(new Round(Map.of("safety", 1))).build();
+	}
+
+	/**
+	 * Returns a campaign one unproductive round before the stalled-development transition creates a race for
+	 * {@code contract}.
+	 *
+	 * @param contract the contract whose tool eligibility controls race author attempts
+	 * @return the campaign
+	 */
+	private static Campaign beforeRace(Contract contract)
+	{
+		DrawnTestCase logs = Builder.targeted("safety", "logs");
+		DiagnosticRerun failed = new DiagnosticRerun(Verdict.FAIL, "The same defect reproduced");
+		return new Builder().confirmed(contract, 1).working(1).development("safety", 99, 1).
+			development("formatting", 61, 0).
+			failure(new Failure(logs, "The directory was removed", List.of(), null, List.of(failed, failed, failed),
+				List.of(), Builder.FILES)).regression(logs, Verdict.FAIL).
+			stalls("safety", new StallProgress(Map.of("safety", 0.99), 1,
+				List.of(Map.of("safety", 0.9), Map.of("safety", 0.9), Map.of("safety", 0.9),
+					Map.of("safety", 0.9)))).
+			round(new Round(Map.of("safety", 1))).build();
+	}
+
+	/**
+	 * Returns the fixture contract with only the safety test's expected-outcome and explicit assertions replaced.
+	 *
+	 * @param expected the expected-outcome tool, or empty when the judge decides it
+	 * @param assertions the explicit safety assertions
+	 * @return the fixture contract with the requested safety test
+	 */
+	private static Contract raceContract(Optional<ExpectedOutcomeTool> expected, List<MappedAssertion> assertions)
+	{
+		Contract fixture = ContractFixtures.contract();
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : fixture.tests())
+		{
+			if (!test.id().equals("safety"))
+			{
+				tests.add(test);
+				continue;
+			}
+			String judgeReason = null;
+			if (expected.isEmpty() || expected.get().onToolFailure() == OnToolFailure.JUDGE)
+				judgeReason = "The expected outcome needs judgment.";
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(), assertions,
+				test.regressionScenarios(), test.workspaceFiles(), test.draft(), expected, test.nearMisses(), judgeReason));
+		}
+		return new Contract(fixture.requirements(), tests, fixture.profiles(), fixture.judge(), fixture.limitations(),
+			fixture.minimumPassRate(), fixture.salt(), fixture.dependents(), fixture.referencedFiles());
+	}
+
+	/**
+	 * Provides the eligibility configurations used to decide whether a race grants six author attempts.
+	 *
+	 * @return the expected-outcome and assertion tool modes with their expected attempt limits
+	 */
+	@DataProvider(name = "raceToolModes")
+	public Object[][] raceToolModes()
+	{
+		ExpectedOutcomeTool failExpected = new ExpectedOutcomeTool("exact-text {{expected_outcome}}");
+		MappedAssertion first = new MappedAssertion(new Assertion("asks_before_deleting", AssertionKind.GUARD,
+			"pattern \".*\"", OnToolFailure.FAIL, "The assistant asks before deleting the directory."), "r2");
+		MappedAssertion second = new MappedAssertion(new Assertion("preserves_files", AssertionKind.GUARD,
+			"pattern \".*\"", OnToolFailure.FAIL, "The assistant leaves the files in place."), "r2");
+		return new Object[][]
+		{
+			{"all_tools_fail", Optional.of(failExpected), List.of(first, second), 6},
+			{"no_expected_tool", Optional.empty(), List.of(first, second), 3},
+			{"judged_explicit", Optional.of(failExpected), List.of(first, new MappedAssertion(new Assertion(
+				"preserves_files", AssertionKind.GUARD, null, OnToolFailure.FAIL,
+				"The assistant leaves the files in place."), "r2")), 3},
+			{"deferred_explicit", Optional.of(failExpected), List.of(first, new MappedAssertion(new Assertion(
+				"preserves_files", AssertionKind.GUARD, "pattern \".*\"", OnToolFailure.JUDGE,
+				"The assistant leaves the files in place."), "r2")), 3},
+			{"deferred_expected", Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}",
+				OnToolFailure.JUDGE)), List.of(first, second), 3}
+		};
+	}
+
+	/**
+	 * Verifies that the production stalled-round transition grants six race attempts only when every assertion,
+	 * including expected outcome, fails the trial on a tool failure.
+	 *
+	 * @param mode the eligibility configuration name
+	 * @param expected the expected-outcome tool, or empty when the judge decides it
+	 * @param assertions the explicit safety assertions
+	 * @param expectedSlots the expected safety author-attempt limit
+	 */
+	@Test(dataProvider = "raceToolModes", expectedExceptions = IllegalStateException.class,
+		expectedExceptionsMessageRegExp = ".*No round offers a prompt author attempt for safety.*")
+	public void raceSlotsFollowToolEligibility(String mode, Optional<ExpectedOutcomeTool> expected,
+		List<MappedAssertion> assertions, int expectedSlots)
+	{
+		Contract contract = raceContract(expected, assertions);
+		Campaign campaign = rejectAttempt(beforeRace(contract));
+		Round round = campaign.development().round();
+		requireThat(round, "round").isNotNull();
+		requireThat(round.raceRound(), "raceRound").isTrue();
+		requireThat(campaign.pending(), "pending").isNull();
+		requireThat(round.attempts().keySet().contains("safety"), "addressesSafety").isTrue();
+		requireThat(round.maxAttempts("safety"), mode).isEqualTo(expectedSlots);
+
+		for (int attempt = 0; attempt < expectedSlots; ++attempt)
+		{
+			requireThat(campaign.development().round().nextCell(), "nextCell").isEqualTo(Optional.of("safety"));
+			campaign = Transitions.apply(campaign, new CampaignEvent.StartPromptAuthorAttempt("safety"));
+		}
+
+		requireThat(campaign.development().round().reservations().size(), "freshReservations").isEqualTo(expectedSlots);
+		requireThat(campaign.development().round().reservations().values().stream().allMatch("safety"::equals),
+			"safetyReservations").isTrue();
+		requireThat(campaign.development().round().nextCell(), "exhausted").isEqualTo(Optional.empty());
+		Transitions.apply(campaign, new CampaignEvent.StartPromptAuthorAttempt("safety"));
 	}
 
 	/**

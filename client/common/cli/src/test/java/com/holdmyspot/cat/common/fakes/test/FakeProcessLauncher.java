@@ -7,6 +7,7 @@ import java.io.OutputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Stands in for the operating system's process start: it records each configured process and returns, in place of the
@@ -67,7 +68,7 @@ public final class FakeProcessLauncher implements ProcessLauncher
 		 */
 		RunningProcess(long pid)
 		{
-			this.handle = new FakeProcessHandle(pid, START, true);
+			this.handle = new FakeProcessHandle(pid, START, ended);
 		}
 
 		@Override
@@ -93,6 +94,12 @@ public final class FakeProcessLauncher implements ProcessLauncher
 		{
 			ended.await();
 			return exitValue();
+		}
+
+		@Override
+		public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException
+		{
+			return ended.await(timeout, unit);
 		}
 
 		@Override

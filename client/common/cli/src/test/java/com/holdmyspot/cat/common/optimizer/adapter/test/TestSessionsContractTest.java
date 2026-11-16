@@ -8,10 +8,28 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.Part;
+import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
+import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TestValue;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
+import com.holdmyspot.cat.common.optimizer.execution.EarlyTrialEnd;
+import com.holdmyspot.cat.common.optimizer.execution.TrialEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
+import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.optimizer.port.SessionResult;
+import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.SessionPortContract;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.SessionPortContract.Subject;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
@@ -22,11 +40,16 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.testng.annotations.Test;
 
@@ -128,16 +151,230 @@ public final class TestSessionsContractTest
 	}
 
 	/**
-	 * Runs the contract check that a judge leaves its read-only evidence unchanged.
+	 * Ends a tool-decided trial normally after its first complete turn and never requests its second turn.
+	 *
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
+	 */
+	// Requirement: R-E25
+	@Test(timeOut = 60_000)
+	public void settledTrialSkipsRemainingTurns()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		List<String> requests = new ArrayList<>();
+		try (TestJvmScope jvm = new TestJvmScope();
+			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
+		{
+			SessionResult.Completed completed = completeObservedTrial(subject, trialTest("exact-text turn=1 ok"));
+
+			requireThat(requests.size(), "requestedTurnsSentToHarness").isEqualTo(1);
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(REPLY)));
+			requireThat(completed.requestedTurns(), "requestedTurns").isEqualTo(2);
+			requireThat(completed.endedEarly(), "endedEarly").isTrue();
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
+			requireThat(completed.settledAssertions(), "settledAssertions").
+				isEqualTo(Map.of("reply", 1, TestCase.EXPECTED_OUTCOME, 1));
+		}
+	}
+
+	/**
+	 * Runs both turns when a passing unscoped reply assertion could still fail on a later turn.
+	 *
+	 * @throws IOException          if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
+	 */
+	// Requirement: R-E25
+	@Test(timeOut = 60_000)
+	public void unsettledTrialRunsRemainingTurns()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		List<String> requests = new ArrayList<>();
+		try (TestJvmScope jvm = new TestJvmScope();
+			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
+		{
+			SessionResult.Completed completed = completeObservedTrial(subject, trialTest("exact-text ok"));
+
+			requireThat(requests.size(), "requestedTurnsSentToHarness").isEqualTo(2);
+			requireThat(requests.get(1), "secondTurn").isEqualTo("Reply again.");
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(REPLY), List.of(REPLY)));
+			requireThat(completed.requestedTurns(), "requestedTurns").isEqualTo(2);
+			requireThat(completed.endedEarly(), "endedEarly").isFalse();
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEmpty();
+			requireThat(completed.settledAssertions(), "settledAssertions").isEmpty();
+		}
+	}
+
+	/**
+	 * Stops after a cumulative count exceeds its maximum, which later turns cannot undo.
+	 *
+	 * @throws IOException              if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException     if waiting for completion is interrupted
+	 * @throws ExecutionException       if the session fails
+	 * @throws TimeoutException         if the session does not complete
+	 * @throws UndecidableToolException if the recorded evidence cannot decide the count
+	 */
+	// Requirement: R-E25
+	@Test(timeOut = 60_000)
+	public void aboveMaximumCountSkipsRemainingTurns()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException, UndecidableToolException
+	{
+		List<String> requests = new ArrayList<>();
+		try (TestJvmScope jvm = new TestJvmScope();
+			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
+		{
+			PromptTest test = trialTest("count ok 0 0");
+			SessionResult.Completed completed = completeObservedTrial(subject, test);
+
+			requireThat(requests.size(), "requestedTurnsSentToHarness").isEqualTo(1);
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(REPLY)));
+			requireThat(completed.requestedTurns(), "requestedTurns").isEqualTo(2);
+			requireThat(completed.endedEarly(), "endedEarly").isTrue();
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEqualTo(List.of(2));
+			requireThat(completed.settledAssertions(), "settledAssertions").
+				isEqualTo(Map.of("reply", 1, TestCase.EXPECTED_OUTCOME, 1));
+			requireThat(test.decide(test.testCases().getFirst(), TrialEvidence.read(subject.port(), completed)).
+				stream().map(BuiltInToolResult::passed).toList(), "finalToolVerdicts").isEqualTo(List.of(false, false));
+		}
+	}
+
+	/**
+	 * Runs the second turn when its added match can bring a cumulative count up to its minimum.
+	 *
+	 * @throws IOException              if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException     if waiting for completion is interrupted
+	 * @throws ExecutionException       if the session fails
+	 * @throws TimeoutException         if the session does not complete
+	 * @throws UndecidableToolException if the recorded evidence cannot decide the count
+	 */
+	// Requirement: R-E25
+	@Test(timeOut = 60_000)
+	public void belowMinimumCountRunsRemainingTurns()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException, UndecidableToolException
+	{
+		List<String> requests = new ArrayList<>();
+		try (TestJvmScope jvm = new TestJvmScope();
+			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
+		{
+			PromptTest test = trialTest("count {{expected_outcome}} 2 2");
+			SessionResult.Completed completed = completeObservedTrial(subject, test);
+
+			requireThat(requests.size(), "requestedTurnsSentToHarness").isEqualTo(2);
+			requireThat(requests.get(1), "secondTurn").isEqualTo("Reply again.");
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(REPLY), List.of(REPLY)));
+			requireThat(completed.requestedTurns(), "requestedTurns").isEqualTo(2);
+			requireThat(completed.endedEarly(), "endedEarly").isFalse();
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEmpty();
+			requireThat(completed.settledAssertions(), "settledAssertions").isEmpty();
+			requireThat(test.decide(test.testCases().getFirst(), TrialEvidence.read(subject.port(), completed)).
+				stream().map(BuiltInToolResult::passed).toList(), "finalToolVerdicts").isEqualTo(List.of(true, true));
+		}
+	}
+
+	/**
+	 * A settled reply check cannot skip a later turn while the expected outcome still needs whole-trial judgment.
+	 *
+	 * @throws IOException if the trial evidence cannot be prepared or read
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException if the session fails
+	 * @throws TimeoutException if the session does not complete
+	 */
+	// Requirement: R-E25
+	@Test(timeOut = 60_000)
+	public void judgedOutcomeRunsRemainingTurns()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		List<String> requests = new ArrayList<>();
+		try (TestJvmScope jvm = new TestJvmScope();
+			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
+		{
+			SessionResult.Completed completed = completeObservedTrial(subject,
+				trialTest("exact-text turn=1 ok", Optional.empty()));
+
+			requireThat(requests.size(), "requestedTurnsSentToHarness").isEqualTo(2);
+			requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of(REPLY), List.of(REPLY)));
+			requireThat(completed.endedEarly(), "endedEarly").isFalse();
+			requireThat(completed.turnsNotRun(), "turnsNotRun").isEmpty();
+		}
+	}
+
+	/**
+	 * Creates a two-turn test whose declared assertion and expected outcome use the given reply check.
+	 *
+	 * @param tool the built-in reply check
+	 * @return the test
+	 */
+	private static PromptTest trialTest(String tool)
+	{
+		return trialTest(tool, Optional.of(new ExpectedOutcomeTool(tool)));
+	}
+
+	/**
+	 * Creates a two-turn test whose expected outcome is either tool-decided or left to the judge.
+	 *
+	 * @param tool the declared assertion's built-in check
+	 * @param expectedOutcomeTool the added expected-outcome assertion's tool, or empty for a judged assertion
+	 * @return the test
+	 */
+	private static PromptTest trialTest(String tool, Optional<ExpectedOutcomeTool> expectedOutcomeTool)
+	{
+		TestCase testCase = new TestCase(Map.of("request", new TestValue.Text("Reply with ok.")), REPLY);
+		MappedAssertion reply = new MappedAssertion(new Assertion("reply", AssertionKind.EFFECT, tool,
+			"The reply is ok."), "reply_required");
+		return new PromptTest("reply", new RiskRank(1), List.of("reply_required"), List.of(), "A reply is requested.",
+			List.of("{{request}}", "Reply again."), Duration.ofSeconds(30), "Replies with ok.", List.of(),
+			List.of(new VariableDeclaration("request", "The first user turn.")), List.of(), List.of(testCase),
+			List.of(reply), List.of(), List.of(), Optional.empty(), expectedOutcomeTool);
+	}
+
+	/**
+	 * Runs the real session adapter with the production observer and requires normal completion.
+	 *
+	 * @param subject the adapter and scripted harness
+	 * @param test    the two-turn trial contract
+	 * @return the completed trial evidence
+	 * @throws IOException          if the session cannot start
+	 * @throws InterruptedException if waiting for completion is interrupted
+	 * @throws ExecutionException   if the session fails
+	 * @throws TimeoutException     if the session does not complete
+	 */
+	private static SessionResult.Completed completeObservedTrial(ScriptedSubject subject, PromptTest test)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		TestCase testCase = test.testCases().getFirst();
+		SessionRequest request = new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, subject.workspace(),
+			List.of("Reply with ok.", "Reply again."), List.of(), test.timeLimit(), new TrialProfile("model-a", "low")).
+			withTurnObserver(EarlyTrialEnd.forTest(test, testCase, subject.port()));
+		SessionResult result = subject.port().start(request).completion().toCompletableFuture().get(30, TimeUnit.SECONDS);
+		requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+		return (SessionResult.Completed) result;
+	}
+
+	/**
+	 * Runs the shared check that a scripted judge session completes and leaves
+	 * the local evidence fixture bytes unchanged.
 	 *
 	 * @throws Exception if the check fails
 	 */
 	@Test(timeOut = 60_000)
-	public void judgeLeavesReadOnlyEvidenceUnchanged() throws Exception
+	public void judgeKeepsLocalEvidence() throws Exception
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
-			contract(jvm, List.of(quickTurn())).judgeLeavesReadOnlyEvidenceUnchanged();
+			contract(jvm, List.of(quickTurn())).judgeKeepsLocalEvidence();
 		}
 	}
 

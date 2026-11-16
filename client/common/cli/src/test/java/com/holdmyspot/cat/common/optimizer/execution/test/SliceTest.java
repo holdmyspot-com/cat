@@ -41,6 +41,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
@@ -49,8 +50,11 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 /**
  * Covers a slice's admission cutoff, its grace period and the runner that waits between steps.
@@ -346,21 +350,61 @@ public final class SliceTest
 				context.terminator(), context.leftoverRuns(), context.authority(), context.promptSources(),
 				context.environment(), context.lockFile(), context.random(), context.settings(), context.json(),
 				context.temporaryDirectory());
-			try (ExecutorService executor = Executors.newSingleThreadExecutor())
+			AtomicReference<Thread> worker = new AtomicReference<>();
+			ThreadFactory threadFactory = task ->
+			{
+				Thread thread = new Thread(task);
+				worker.set(thread);
+				return thread;
+			};
+			try (ExecutorService executor = Executors.newSingleThreadExecutor(threadFactory))
 			{
 				Future<SliceResult> slice = executor.submit(() ->
 					SliceRunner.run(observed, DriverHarness.CAMPAIGN, List.of()));
-				FakeSession first = started.poll(WAIT_SECONDS, TimeUnit.SECONDS);
-				if (first == null)
-					throw new TimeoutException("The runner did not start a session");
-				requireThat(first.request().role(), "role").isEqualTo(SessionRole.TRIAL);
+				try
+				{
+					FakeSession first = started.poll(WAIT_SECONDS, TimeUnit.SECONDS);
+					if (first == null)
+						throw new TimeoutException("The runner did not start a session");
+					requireThat(first.request().role(), "role").isEqualTo(SessionRole.TRIAL);
 
-				harness.clock().set(GRACE_END);
-				first.end(harness.passed());
-				SliceResult result = slice.get(WAIT_SECONDS, TimeUnit.SECONDS);
-				requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.RUNNING));
-				requireThat(keys(harness.campaign(), TrialState.ASSIGNED), "assigned").isNotEmpty();
-				requireThat(keys(harness.campaign(), TrialState.RUNNING), "running").isEmpty();
+					long observationStartedAt = System.nanoTime();
+					long observationTimeoutNanos = TimeUnit.SECONDS.toNanos(WAIT_SECONDS);
+					boolean waiterObserved = false;
+					while (System.nanoTime() - observationStartedAt < observationTimeoutNanos)
+					{
+						Thread runner = worker.get();
+						if (runner != null)
+						{
+							boolean isTimedWaiting = runner.getState() == Thread.State.TIMED_WAITING;
+							if (isTimedWaiting)
+							{
+								boolean isAwaitingEvent = Arrays.stream(runner.getStackTrace()).anyMatch(frame ->
+									frame.getClassName().equals(Driver.class.getName()) &&
+									frame.getMethodName().equals("awaitEvent"));
+								if (isAwaitingEvent)
+								{
+									waiterObserved = true;
+									break;
+								}
+							}
+						}
+						LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(1));
+					}
+					if (!waiterObserved)
+						throw new TimeoutException("The runner did not wait for a session event");
+
+					harness.clock().set(GRACE_END);
+					first.end(harness.passed());
+					SliceResult result = slice.get(WAIT_SECONDS, TimeUnit.SECONDS);
+					requireThat(result.status().status(), "status").isEqualTo(new ReportStatus.Active(Status.RUNNING));
+					requireThat(keys(harness.campaign(), TrialState.ASSIGNED), "assigned").isNotEmpty();
+					requireThat(keys(harness.campaign(), TrialState.RUNNING), "running").isEmpty();
+				}
+				finally
+				{
+					slice.cancel(true);
+				}
 			}
 		}
 	}

@@ -67,8 +67,8 @@ public final class TurnCopyServedSessionTest
 	}
 
 	/**
-	 * Verifies that a requested session whose first turn writes a valid output file gets no correction, because the
-	 * follow-up that validates the file after that turn reads the file that the session wrote.
+	 * Verifies that the first turn writes a valid output file, then the follow-up validates the copied session
+	 * workspace, reads that file and needs no correction.
 	 *
 	 * @param harness the harness whose runner serves the session
 	 * @throws IOException          if a fixture cannot be created

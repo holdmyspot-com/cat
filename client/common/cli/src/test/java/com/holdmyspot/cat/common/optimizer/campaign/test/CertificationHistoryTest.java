@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 
 import java.io.IOException;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.EnumMap;
@@ -334,6 +335,22 @@ public final class CertificationHistoryTest
 		return new Object[][]
 			{
 				{"records[1].alpha", (Edit) root -> ((ObjectNode) root.get("records").get(1)).put("alpha", "0.03")},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).putNull("control_margin")},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).put("control_margin", 0.05)},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).put("control_margin", true)},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).putObject("control_margin")},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).putArray("control_margin")},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).put("control_margin", "invalid")},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).put("control_margin", "-0.01")},
+				{"records[1].control_margin", (Edit) root ->
+					((ObjectNode) root.get("records").get(1)).put("control_margin", "1")},
 				{"records[0].scope", (Edit) root -> ((ObjectNode) root.get("records").get(0)).remove("scope")},
 				{"records[1].cells", (Edit) root -> ((ObjectNode) root.get("records").get(1)).put("cells", "none")},
 				{"records[1]: must be an object", (Edit) root -> ((ArrayNode) root.get("records")).set(1, "text")},
@@ -341,6 +358,94 @@ public final class CertificationHistoryTest
 				{"records: must be an array", (Edit) root -> root.put("records", "none")},
 				{"format_version is 2", (Edit) root -> root.put("format_version", 2)}
 			};
+	}
+
+	/**
+	 * Format-one certified entries that omit their margin keep the fixed claim on read, and reading leaves the file
+	 * bytes unchanged. Explicit margins remain as written.
+	 *
+	 * @throws IOException if the history file cannot be written or read
+	 */
+	@Test
+	public void formatOneImplicitMarginIsFixed() throws IOException
+	{
+		// Requirement: R-M6
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		CertificationHistory history = CertificationHistory.EMPTY.appended(record(1, "claude")).
+			appended(record(2, "codex")).appended(record(3, "claude"));
+		ObjectNode root = (ObjectNode) JSON.readTree(codec.write(history));
+		((ObjectNode) root.get("records").get(0)).remove("control_margin");
+		((ObjectNode) root.get("records").get(1)).remove("control_margin");
+		((ObjectNode) root.get("records").get(1)).remove("label");
+		ObjectNode explicitEntry = (ObjectNode) root.get("records").get(2);
+		explicitEntry.put("minimum_pass_rate", "0.90");
+		explicitEntry.put("control_margin", "0.04");
+		explicitEntry.put("comparisons_implied", false);
+		JsonNode entries = root.get("records");
+		requireThat(entries.get(0).has("control_margin"), "firstMarginPresent").isFalse();
+		requireThat(entries.get(1).has("control_margin"), "secondMarginPresent").isFalse();
+		requireThat(entries.get(1).has("label"), "secondLabelPresent").isFalse();
+		byte[] original = JSON.writeValueAsBytes(root);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");
+			Files.write(file, original);
+			CertificationHistory read = codec.read(file);
+
+			requireThat(read.records().get(0).parameters().controlMargin(), "labelledImplicitMargin").
+				isEqualTo(new BigDecimal("0.05"));
+			requireThat(read.records().get(1).parameters().controlMargin(), "unlabelledImplicitMargin").
+				isEqualTo(new BigDecimal("0.05"));
+			requireThat(read.records().get(2).parameters().controlMargin(), "explicitMargin").
+				isEqualTo(new BigDecimal("0.04"));
+			requireThat(Files.readAllBytes(file), "unchangedBytes").isEqualTo(original);
+		}
+	}
+
+	/**
+	 * Appending a new claim preserves the earlier explicit and implicit margins and leaves delivery entries without a
+	 * certification margin.
+	 *
+	 * @throws IOException if the history file cannot be written or read
+	 */
+	@Test
+	public void appendPreservesMarginClaims() throws IOException
+	{
+		// Requirement: R-M6
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		CertificationRecord implicit = record(1, "claude");
+		CertificationRecord explicit = record(2, "codex");
+		DeliveryEntry delivery = deliveryEntry(DeliveryLabel.NOT_CERTIFIED, "claude");
+		ObjectNode before = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(implicit).
+			appended(explicit).appended(delivery)));
+		((ObjectNode) before.get("records").get(0)).remove("control_margin");
+		ObjectNode explicitEntry = (ObjectNode) before.get("records").get(1);
+		explicitEntry.put("minimum_pass_rate", "0.90");
+		explicitEntry.put("control_margin", "0.04");
+		explicitEntry.put("comparisons_implied", false);
+		byte[] initial = JSON.writeValueAsBytes(before);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("cat-history-")).resolve("certifications.json");
+			Files.write(file, initial);
+			CertificationHistory loaded = codec.read(file);
+			CertificationHistory appended = loaded.appended(record(3, "claude"));
+			Files.write(file, codec.write(appended));
+			JsonNode after = JSON.readTree(Files.readAllBytes(file)).get("records");
+			JsonNode beforeEntries = before.get("records");
+			ObjectNode expectedImplicit = (ObjectNode) beforeEntries.get(0).deepCopy();
+			expectedImplicit.put("control_margin", "0.05");
+
+			requireThat(after.size(), "entryCount").isEqualTo(4);
+			requireThat(after.get(0).get("control_margin").asString(), "implicitMargin").isEqualTo("0.05");
+			requireThat(after.get(1).get("control_margin").asString(), "explicitMargin").isEqualTo("0.04");
+			requireThat(after.get(2).has("control_margin"), "deliveryMarginPresent").isFalse();
+			requireThat(after.get(3).get("control_margin").asString(), "appendedMargin").isEqualTo("0.05");
+			requireThat(after.get(0), "implicitEntry").isEqualTo(expectedImplicit);
+			requireThat(after.get(1), "explicitEntry").isEqualTo(beforeEntries.get(1));
+			requireThat(after.get(2), "deliveryEntry").isEqualTo(beforeEntries.get(2));
+			requireThat(codec.read(file).entries(), "reloadedEntries").isEqualTo(appended.entries());
+		}
 	}
 
 	/**

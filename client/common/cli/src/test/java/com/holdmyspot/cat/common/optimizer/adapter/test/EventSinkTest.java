@@ -157,11 +157,16 @@ public final class EventSinkTest
 		expectedExceptionsMessageRegExp = ".*assistant_messages.*")
 	public void rejectsMalformedMessages(String value) throws IOException
 	{
+		BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 		try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
-			directories -> new TestSessions.Sources(JSON, directories), Path.of("runs"), Map.of(),
-			new LinkedBlockingQueue<>()))
+			directories -> new TestSessions.Sources(JSON, directories), Path.of("runs"), Map.of(), messages))
 		{
 			sink.write("{\"type\":\"turn_completed\",\"assistant_messages\":" + value + "}\n");
+		}
+		catch (IOException e)
+		{
+			requireThat(messages, "messages").isEmpty();
+			throw e;
 		}
 	}
 

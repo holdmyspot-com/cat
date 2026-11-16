@@ -76,15 +76,16 @@ public final class FakeSessionPortContractTest
 	}
 
 	/**
-	 * Verifies that the fake leaves read-only evidence unchanged.
+	 * Runs the shared check that a scripted judge session completes and leaves
+	 * the local evidence fixture bytes unchanged.
 	 *
 	 * @throws Exception if the check fails
 	 */
 	@Test
-	public void judgeLeavesReadOnlyEvidenceUnchanged() throws Exception
+	public void judgeKeepsLocalEvidence() throws Exception
 	{
 		// Requirement: R-E13
-		contract().judgeLeavesReadOnlyEvidenceUnchanged();
+		contract().judgeKeepsLocalEvidence();
 	}
 
 	/**

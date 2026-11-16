@@ -762,10 +762,13 @@ public final class ProposalSchemaTest
 				new String[]{"tests"},
 				new String[]{"tests", "0", "turns"},
 				new String[]{"tests", "0", "requirement_ids"},
-				new String[]{"tests", "0", "variables", "0", "values"}
+				new String[]{"tests", "0", "test_cases", "0", "values"}
 			};
 		for (String[] location : locations)
 			rejection(changed(location, empty));
+		String problems = String.join(" | ",
+			rejection(changed(new String[]{"tests", "0", "test_cases", "0", "values"}, empty)).problems());
+		requireThat(problems, "problems").contains("$.tests[0].test_cases[0]").contains("values");
 	}
 
 	/**
@@ -939,7 +942,11 @@ public final class ProposalSchemaTest
 	public void rejectsDuplicateIdentifiers()
 	{
 		// Requirement: R-C1
-		rejection(text(new String[]{"requirements", "1", "id"}, "r1"));
+		ObjectNode duplicated = (ObjectNode) json.readTree(ContractFixtures.resource("valid-proposal.json"));
+		ArrayNode requirements = (ArrayNode) duplicated.get("requirements");
+		requirements.add(requirements.get(0).deepCopy());
+		String problems = String.join(" | ", rejection(json.writeValueAsString(duplicated)).problems());
+		requireThat(problems, "problems").contains("r1").contains("listed twice");
 		rejection(text(new String[]{"tests", "1", "id"}, "formatting"));
 		rejection(text(new String[]{"tests", "2", "id"}, "plain_list"));
 	}

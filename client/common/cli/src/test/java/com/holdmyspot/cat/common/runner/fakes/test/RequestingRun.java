@@ -26,9 +26,12 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.IntFunction;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * A run whose session requests sessions, served by the run's real {@link SessionRequestBroker}, which discovers
@@ -72,6 +75,7 @@ public final class RequestingRun implements AutoCloseable
 	private final List<List<String>> launches = new CopyOnWriteArrayList<>();
 	private final List<String> received = new CopyOnWriteArrayList<>();
 	private final CountDownLatch holding = new CountDownLatch(1);
+	private final IntFunction<String> replyForTurn;
 
 	/**
 	 * Creates the run and starts its broker.
@@ -83,7 +87,24 @@ public final class RequestingRun implements AutoCloseable
 	 */
 	public RequestingRun(Path root, FileLocks fileLocks, int sessionRequests) throws IOException
 	{
+		this(root, fileLocks, sessionRequests, turn -> "reply " + turn);
+	}
+
+	/**
+	 * Creates the run and starts its broker with caller-controlled normal-turn replies.
+	 *
+	 * @param root the folder that holds the run and its artifact
+	 * @param fileLocks the file locks of the runs
+	 * @param sessionRequests how many sessions the run allows
+	 * @param replyForTurn returns the reply for a one-based turn number; it must be immutable and thread-safe
+	 * @throws IOException if the run cannot be created or its broker cannot start
+	 */
+	public RequestingRun(Path root, FileLocks fileLocks, int sessionRequests, IntFunction<String> replyForTurn)
+		throws IOException
+	{
+		requireThat(replyForTurn, "replyForTurn").isNotNull();
 		this.fileLocks = fileLocks;
+		this.replyForTurn = replyForTurn;
 		Files.createDirectories(root);
 		this.run = new HarnessRunManager(fileLocks, root.resolve("requesting-runs"), Clock.systemUTC(),
 			Yielding.fileReplacer()).create("claude");
@@ -186,8 +207,8 @@ public final class RequestingRun implements AutoCloseable
 						if (record.path("prompt").asString().equals(WRITE_OUTPUT))
 							Files.writeString(child.directory().resolve("project").resolve(OUTPUT_FILE), "{\"written\":true}");
 						if (arguments.contains(TURN_COPY_OPTION))
-							KeptRunCopy.copyProjects(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
-						String reply = "reply " + turns.incrementAndGet();
+							KeptRunCopy.copyTurn(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
+						String reply = replyForTurn.apply(turns.incrementAndGet());
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
 							put("run_id", child.id()).put("exit_code", 0).put("error", "").put("assistant_response", reply);
 						completed.putArray("assistant_messages").add(reply);

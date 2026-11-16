@@ -4,21 +4,22 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
-import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
-import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
+import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameter;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
-import com.holdmyspot.cat.common.optimizer.campaign.Choice;
+import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
-import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
+import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.math.BigDecimal;
@@ -152,18 +153,11 @@ public final class ApplicabilityTest
 	public void historicalAttemptIsKept()
 	{
 		// Requirement: R-M2
-		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
-			certificationAttempt(1).cell("formatting", 100, 0).cell("safety", 100, 0).
-			outcome(Outcome.CERTIFIED).build();
+		CertificationAttempt attempt = certifiedAttempt();
 		MeasurementIdentity observed = changed(MeasurementCondition.MODEL);
-		campaign = Transitions.apply(campaign, new CampaignEvent.ChangeMeasurement(observed));
-		campaign = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.NEW_IDENTITY));
-
-		CertificationAttempt attempt = campaign.attempt(1);
 		requireThat(attempt.outcome(), "outcome").isEqualTo(Outcome.CERTIFIED);
-		requireThat(attempt.count("formatting").passes(), "passes").isEqualTo(100);
 		Applicability applicability = Applicability.of(attempt.candidate().snapshot(), attempt.identity(),
-			campaign.development().working().snapshot(), campaign.identity());
+			attempt.candidate().snapshot(), observed);
 		requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
 		requireThat(applicability.changed(), "changed").containsExactly(List.of(MeasurementCondition.MODEL));
 	}
@@ -226,9 +220,7 @@ public final class ApplicabilityTest
 	public void judgeVersionDecidesApplicability(String currentJudge, Applicability.Status expected)
 	{
 		// Requirement: R-M2
-		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
-			certificationAttempt(1).cell("formatting", 100, 0).outcome(Outcome.CERTIFIED).build();
-		CertificationAttempt attempt = campaign.attempt(1);
+		CertificationAttempt attempt = certifiedAttempt();
 		requireThat(attempt.identity().values().get(MeasurementCondition.JUDGE), "recordedJudge").
 			isEqualTo("judge-1");
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
@@ -272,7 +264,8 @@ public final class ApplicabilityTest
 	{
 		// Requirement: R-M2
 		SignificanceLevel level = ErrorBudget.certificationLevel(1);
-		assertParameterApplicability(new CertificationParameters(currentPassRate, level), staysCurrent,
+		assertParameterApplicability(new CertificationParameters(currentPassRate, PairedComparison.MARGIN, level),
+			staysCurrent,
 			CertificationParameter.MINIMUM_PASS_RATE);
 	}
 
@@ -308,7 +301,7 @@ public final class ApplicabilityTest
 	{
 		// Requirement: R-M2
 		CertificationParameters current = new CertificationParameters(Contract.DEFAULT_MINIMUM_PASS_RATE,
-			currentLevel);
+			PairedComparison.MARGIN, currentLevel);
 		assertParameterApplicability(current, staysCurrent, CertificationParameter.CERTIFICATION_LEVEL);
 	}
 
@@ -446,9 +439,7 @@ public final class ApplicabilityTest
 	private static void assertParameterApplicability(CertificationParameters current, boolean staysCurrent,
 		CertificationParameter parameter)
 	{
-		Campaign campaign = new Builder().confirmed().readyDevelopment().readyBaseline().
-			certificationAttempt(1).cell("formatting", 100, 0).outcome(Outcome.CERTIFIED).build();
-		CertificationAttempt attempt = campaign.attempt(1);
+		CertificationAttempt attempt = certifiedAttempt();
 		Applicability applicability = Applicability.of(attempt, attempt.candidate().snapshot(), attempt.identity(),
 			current);
 		requireThat(applicability.changed(), "changed").isEmpty();
@@ -463,5 +454,21 @@ public final class ApplicabilityTest
 			requireThat(applicability.status(), "status").isEqualTo(Applicability.Status.HISTORICAL);
 			requireThat(applicability.parameters(), "parameters").containsExactly(List.of(parameter));
 		}
+	}
+
+	/**
+	 * Returns a certified first attempt with no reference trials or formal failures.
+	 *
+	 * @return the attempt
+	 */
+	private static CertificationAttempt certifiedAttempt()
+	{
+		MeasurementIdentity identity = Builder.confirmedIdentity("model-a");
+		CertificationProcedure procedure = new CertificationProcedure(ErrorBudget.improvementLevel(1, 1), 1,
+			identity, List.of("formatting"), Boundaries.standard(1), CertificationProcedure.BETS,
+			CertificationProcedure.ALLOCATION_POLICY);
+		return new CertificationAttempt(1, 1, new Candidate(1, Builder.snapshot("candidate")), identity, procedure,
+			Builder.CONTROL, Map.of("formatting", new CellCounts(100, 0, List.of(0, 0))), Map.of(), Map.of(), List.of(),
+			new DrawStream.State(DrawStream.Kind.FORMAL, 1, 0, true), Outcome.CERTIFIED, List.of());
 	}
 }

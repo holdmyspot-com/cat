@@ -37,7 +37,9 @@ import com.holdmyspot.cat.common.optimizer.inventory.Operation;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
+import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -105,7 +107,7 @@ public final class PromptAuthorTest
 	}
 
 	/**
-	 * Returns dissimilar report values and whether the report reader accepts their representation.
+	 * Returns dissimilar report values and whether the report reader can decode their representation.
 	 *
 	 * @return JSON values and their acceptance
 	 */
@@ -117,13 +119,13 @@ public final class PromptAuthorTest
 	}
 
 	/**
-	 * Reads a dissimilar test identifier or explicit absence, rejecting malformed representations.
+	 * Decodes explicit null as missing evidence for rejection and retention, while rejecting malformed representations.
 	 *
 	 * @param value    the JSON value
-	 * @param accepted indicates whether the report must be accepted
+	 * @param decoded indicates whether the report representation can be decoded
 	 */
 	@Test(dataProvider = "dissimilarReportValues")
-	public void readsDissimilarReportValue(String value, boolean accepted)
+	public void readsDissimilarReportValue(String value, boolean decoded)
 	{
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(), Set.of());
 		String response = """
@@ -134,13 +136,39 @@ public final class PromptAuthorTest
 		SessionResult.Completed result = new SessionResult.Completed(COPY.resolve("transcript.jsonl"),
 			List.of(List.of(response)), COPY, COPY, "model", null, null, List.of(), "none", List.of());
 
-		requireThat(prompt.report(result).isPresent(), "accepted").isEqualTo(accepted);
-		if (accepted)
+		requireThat(prompt.report(result).isPresent(), "decoded").isEqualTo(decoded);
+		if (decoded)
 		{
 			String expected = json.readTree(value).stringValue();
 			requireThat(prompt.report(result).orElseThrow().manifest().hunks().getFirst().dissimilar(), "dissimilar").
 				isEqualTo(expected);
 		}
+	}
+
+	/**
+	 * Verifies that the shipped author report schema requires nonblank dissimilar evidence and is delivered in the
+	 * prompt-author request.
+	 *
+	 * @throws IOException if the schema cannot be parsed or serialized
+	 */
+	@Test
+	public void reportSchemaRequiresDissimilar() throws IOException
+	{
+		JsonNode schemaNode = json.readTree(PromptTemplate.load("/optimizer/prompt-author/report.schema.json").text());
+		JsonNode dissimilar = schemaNode.at("/properties/hunks/items/properties/dissimilar");
+		requireThat(dissimilar.get("type").stringValue(), "type").isEqualTo("string");
+		requireThat(dissimilar.get("pattern").stringValue(), "pattern").isEqualTo("\\S");
+		requireThat(schemaNode.at("/properties/hunks/items/required").toString(), "required").
+			contains("\"dissimilar\"");
+
+		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(), Set.of());
+		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
+			ContractFixtures.contract(), List.of(), Map.of(), Map.of(), List.of(), Map.of(), "", List.of(), List.of(),
+			List.of());
+		SessionRequest request = prompt.request(brief, COPY);
+
+		requireThat(request.turns().getFirst(), "prompt").contains(
+			json.writerWithDefaultPrettyPrinter().writeValueAsString(schemaNode));
 	}
 
 	/**

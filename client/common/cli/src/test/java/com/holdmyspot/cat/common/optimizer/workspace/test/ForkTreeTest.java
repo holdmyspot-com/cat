@@ -119,9 +119,20 @@ public final class ForkTreeTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-fork-tree-"));
 			LinkedProject project = ProjectFixtures.linkedProject(root);
 
+			FileInventory expected = project.tree().inventory();
+			Path externalKey = project.external().resolve("shared.md");
+			TemporaryDirectories.deleteRecursively(project.base());
+			TemporaryDirectories.deleteRecursively(project.external());
+			requireThat(Files.notExists(project.base()), "baseDeleted").isTrue();
+			requireThat(Files.notExists(project.external()), "externalDeleted").isTrue();
+
 			ForkTree reopened = ForkTree.open(project.base(), project.campaign());
 
-			requireThat(reopened.inventory(), "inventory").isEqualTo(project.tree().inventory());
+			requireThat(reopened.inventory(), "inventory").isEqualTo(expected);
+			requireThat(Files.readString(ForkTreeSecrets.getForkTreeAccess().
+				physical(reopened, Path.of("prompt.md")), UTF_8), "promptCopy").isEqualTo("prompt");
+			requireThat(Files.readString(ForkTreeSecrets.getForkTreeAccess().
+				physical(reopened, externalKey), UTF_8), "externalCopy").isEqualTo("shared");
 		}
 	}
 

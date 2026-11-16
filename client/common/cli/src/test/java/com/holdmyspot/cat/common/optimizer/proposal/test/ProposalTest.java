@@ -759,7 +759,8 @@ public final class ProposalTest
 		String correction = request.followUp().orElseThrow().next(session(fixture("derivation-with-judge-fields.json"))).
 			orElseThrow();
 		requireThat(correction, "correction").contains(OutputFile.NAME).
-			contains("- $.judge.model: CAT supplies this field");
+			contains("- $.judge.model: CAT supplies this field").
+			contains("- $.judge.result_schema: CAT supplies this field");
 		requireThat(request.followUp().orElseThrow().next(session(fixture("derivation.json"))), "valid").isEmpty();
 	}
 
@@ -767,14 +768,21 @@ public final class ProposalTest
 	 * Verifies that a stored derivation is validated again from its text, as {@code confirm} and {@code revise} read
 	 * it after the session's files are gone.
 	 *
+	 * @throws IOException              if the session's files cannot be moved or removed
 	 * @throws InvalidProposalException if the stored text is rejected
 	 */
 	@Test
-	public void validatesAStoredDerivation() throws InvalidProposalException
+	public void validatesAStoredDerivation() throws IOException, InvalidProposalException
 	{
-		DerivedProposal derived = contractAuthor.proposal(session(fixture("derivation.json")), PROMPT_SYSTEM, PROFILES,
-			SALT);
-		DerivedProposal stored = contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
+		SessionResult.Completed completed = session(fixture("derivation.json"));
+		DerivedProposal derived = contractAuthor.proposal(completed, PROMPT_SYSTEM, PROFILES, SALT);
+		Path heldOut = directories.add(Files.createTempDirectory("contract-author-held-out-"));
+		Path draft = DraftDirectory.store(derived.draft(), heldOut);
+		TemporaryDirectories.deleteRecursively(completed.effects());
+		TemporaryDirectories.deleteRecursively(completed.initialProject());
+		requireThat(Files.exists(completed.effects()), "effectsExist").isFalse();
+		requireThat(Files.exists(completed.initialProject()), "initialProjectExists").isFalse();
+		DerivedProposal stored = contractAuthor.proposal(derived.derivation(), draft, OBSERVED, PROFILES, SALT);
 		requireThat(stored.contract(), "contract").isEqualTo(derived.contract());
 		requireThat(stored.observedSources(), "observedSources").isEqualTo(OBSERVED);
 		try
@@ -2555,9 +2563,16 @@ public final class ProposalTest
 		Files.createDirectories(effects.resolve("docs"));
 		Files.copy(docs.resolve("handbook.md"), effects.resolve("docs/handbook.md"));
 		write(effects, initialProject, output, Path.of("CLAUDE.md"), DraftDirectory.testDirectories(scenarios));
-		DerivedProposal derived = author.proposal(session(effects, initialProject, "The proposal is in " +
-			OutputFile.name(initialProject) + "."), project, PROFILES, SALT);
-		DerivedProposal stored = author.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT);
+		SessionResult.Completed completed = session(effects, initialProject, "The proposal is in " +
+			OutputFile.name(initialProject) + ".");
+		DerivedProposal derived = author.proposal(completed, project, PROFILES, SALT);
+		Path heldOut = directories.add(Files.createTempDirectory("contract-author-held-out-"));
+		Path draft = DraftDirectory.store(derived.draft(), heldOut);
+		TemporaryDirectories.deleteRecursively(effects);
+		TemporaryDirectories.deleteRecursively(initialProject);
+		requireThat(Files.exists(effects), "effectsExist").isFalse();
+		requireThat(Files.exists(initialProject), "initialProjectExists").isFalse();
+		DerivedProposal stored = author.proposal(derived.derivation(), draft, OBSERVED, PROFILES, SALT);
 
 		WorkspaceFile handbook = new WorkspaceFile("docs/handbook.md", content, "docs/handbook.md");
 		requireThat(derived.contract().findTest("formatting").orElseThrow().workspaceFiles(), "derived").

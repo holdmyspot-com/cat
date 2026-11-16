@@ -7,8 +7,11 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
 import java.util.function.LongFunction;
 import java.util.stream.Stream;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
  * Models the identity, liveness and descendants described by the JDK's {@link ProcessHandle} contract, and the
@@ -44,14 +47,18 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	public static HarnessProcesses processes(FakeProcessHandle... processes)
 	{
 		List<FakeProcessHandle> table = List.of(processes);
-		return pid -> table.stream().filter(process -> process.pid == pid && process.running).findFirst().
+		return pid -> table.stream().filter(process -> process.pid == pid && process.isAlive()).findFirst().
 			map(process -> new ProcessDescription(pid, Optional.ofNullable(process.start), Optional.empty(),
-				Optional.empty()));
+				Optional.empty(), Optional.empty()));
 	}
 
 	private final long pid;
 	private final String start;
-	private volatile boolean running;
+	/**
+	 * A count of one represents a running process; zero represents its completion. The launcher can share this
+	 * completion with its Process view so either view's termination releases the same waiters.
+	 */
+	private final CountDownLatch ended;
 	private final List<FakeProcessHandle> children;
 
 	/**
@@ -70,9 +77,28 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	 */
 	public FakeProcessHandle(long pid, String start, boolean running, FakeProcessHandle... children)
 	{
+		this(pid, start, new CountDownLatch(1), children);
+		if (!running)
+			ended.countDown();
+	}
+
+	/**
+	 * Creates a handle sharing a process's completion. This handle retains {@code ended}; either its owner or this
+	 * handle's termination methods may count it down to complete the process.
+	 *
+	 * @param pid      the process identifier
+	 * @param start    the reported start, or null when it is unavailable
+	 * @param ended    the shared completion, with count one while running or zero after exit
+	 * @param children the processes it started
+	 * @throws NullPointerException if {@code ended} is null
+	 * @throws IllegalArgumentException if {@code ended} has a count greater than one
+	 */
+	public FakeProcessHandle(long pid, String start, CountDownLatch ended, FakeProcessHandle... children)
+	{
+		requireThat(ended.getCount(), "ended.getCount()").isLessThanOrEqualTo(1L);
 		this.pid = pid;
 		this.start = start;
-		this.running = running;
+		this.ended = ended;
 		this.children = List.of(children);
 	}
 
@@ -107,7 +133,7 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	@Override
 	public boolean isAlive()
 	{
-		return running;
+		return ended.getCount() != 0;
 	}
 
 	@Override
@@ -126,7 +152,7 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	public boolean destroy()
 	{
 		stopRequested = true;
-		running = false;
+		ended.countDown();
 		return true;
 	}
 
@@ -134,7 +160,7 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	public boolean destroyForcibly()
 	{
 		stopRequested = true;
-		running = false;
+		ended.countDown();
 		return true;
 	}
 

@@ -333,6 +333,7 @@ public final class ProjectRuleLoaderTest
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
 
+			requireThat(context, "context").contains("# Routes").contains("# Write clearly");
 			requireThat(context.indexOf("# Routes"), "routeIndex").isLessThan(context.indexOf("# Write clearly"));
 		}
 	}
@@ -356,6 +357,8 @@ public final class ProjectRuleLoaderTest
 
 			String context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, userRules, project, "harnessa");
 
+			requireThat(context, "context").contains("# User routes").contains("# User build").
+				contains("# Project routes").contains("# Project build");
 			requireThat(context.indexOf("# User routes"), "userRouteIndex").
 				isLessThan(context.indexOf("# User build"));
 			requireThat(context.indexOf("# Project routes"), "projectRouteIndex").
@@ -412,7 +415,8 @@ public final class ProjectRuleLoaderTest
 				context = new ProjectRuleLoader(scope.yaml()).loadForMainAgent(plugin, project, "harnessa");
 			}
 
-			requireThat(context, "context").startsWith("# CAT environment");
+			requireThat(context, "context").startsWith("# CAT environment").contains("# Reading files").
+				contains("# Routes").contains("# Rendering").contains("# Project");
 			int readFile = context.indexOf("# Reading files");
 			requireThat(readFile, "readFile").isLessThan(context.indexOf("# Routes")).
 				isLessThan(context.indexOf("# Rendering")).isLessThan(context.indexOf("# Project"));
@@ -446,6 +450,7 @@ public final class ProjectRuleLoaderTest
 				contains("Run `" + plugin.resolve("bin/run-part") + "`").doesNotContain("# CAT environment").
 				doesNotContain(ProjectRuleLoader.PLUGIN_ROOT_DIRECTIVE);
 			requireThat(session.rules(), "rules").startsWith("# CAT environment").doesNotContain("# Reading files");
+			requireThat(session.rules(), "rules").contains("# Routes").contains("# Project");
 			requireThat(session.rules().indexOf("# Routes"), "routes").
 				isLessThan(session.rules().indexOf("# Project"));
 		}

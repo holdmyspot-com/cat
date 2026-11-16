@@ -87,14 +87,22 @@ public final class AuthorityWarningsTest
 	public void useAuthorizedSourceAnswersEveryWarning()
 	{
 		// Requirement: R-W4
+		AuthorityWarning first = readOnly("shared.md", TARGET);
+		AuthorityWarning second = readOnly("other.md", OTHER_TARGET);
 		Campaign campaign = new Builder().confirmed().working(1).
-			pending(new PendingDecision.AuthorityWarnings(List.of(readOnly("shared.md", TARGET),
-				readOnly("other.md", OTHER_TARGET)))).build();
+			pending(new PendingDecision.AuthorityWarnings(List.of(first, second))).build();
 
 		Campaign answered = Transitions.apply(campaign, CampaignEvent.Choose.of(Choice.USE_AUTHORIZED_SOURCE));
 
 		requireThat(answered.pending(), "pending").isNull();
 		requireThat(answered.lifecycle(), "lifecycle").isEqualTo(Lifecycle.ACTIVE);
+		requireThat(answered.answeredWarnings(), "answeredWarnings").isEqualTo(List.of(first, second));
+
+		Campaign warnedAgain = Transitions.apply(answered,
+			new CampaignEvent.WarnAuthority(List.of(first, second, first)));
+
+		requireThat(warnedAgain.pending(), "warnedAgain.pending").isNull();
+		requireThat(warnedAgain.answeredWarnings(), "warnedAgain.answeredWarnings").isEqualTo(List.of(first, second));
 	}
 
 	/**

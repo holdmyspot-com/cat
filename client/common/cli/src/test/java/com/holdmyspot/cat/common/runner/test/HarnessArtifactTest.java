@@ -83,12 +83,23 @@ public final class HarnessArtifactTest
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	@Test(expectedExceptions = IOException.class)
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Artifact is missing required CAT runtime files")
 	public void windowsArtifactNeedsBatchLaunchers() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path artifact = createArtifact(cleanup, false);
+			Path artifact = createArtifact(cleanup, true);
+			try
+			{
+				HarnessArtifact.validate(artifact, MANIFEST, VERSION, Platform.WINDOWS_X64);
+			}
+			catch (IOException failure)
+			{
+				throw new AssertionError("The intact Windows artifact must validate", failure);
+			}
+			Files.move(artifact.resolve("bin/plugin-info.cmd"), artifact.resolve("bin/plugin-info"));
+			Files.move(artifact.resolve("bin/session-start.cmd"), artifact.resolve("bin/session-start"));
 
 			HarnessArtifact.validate(artifact, MANIFEST, VERSION, Platform.WINDOWS_X64);
 		}

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
@@ -42,8 +43,10 @@ public final class HarnessRunSessionTest
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			try (HarnessRunSession session = new HarnessRunSession(run, process, new TestHarnessRunnerScope()))
 			{
-				session.sendTurn("first");
-				session.sendTurn("second");
+				HarnessProcessResult first = session.sendTurn("first");
+				HarnessProcessResult second = session.sendTurn("second");
+				requireThat(first, "first").isEqualTo(new HarnessProcessResult(0, "", "", true, "one", List.of("one")));
+				requireThat(second, "second").isEqualTo(new HarnessProcessResult(0, "", "", true, "two", List.of("two")));
 			}
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));

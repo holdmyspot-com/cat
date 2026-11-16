@@ -11,7 +11,8 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Checks that a {@link HeartbeatTicker} runs a started action once each period until the action's handle closes, and
- * runs each started action apart from the others: closing one action's handle stops that action only.
+ * runs each started action apart from the others: closing one action's handle stops only that start, even when another
+ * start uses the same action.
  */
 public final class HeartbeatTickerContract
 {
@@ -78,6 +79,38 @@ public final class HeartbeatTickerContract
 			awaitPeriod("third period after close", openRuns);
 			awaitPeriod("fourth period after close", openRuns);
 			requireThat(closedRuns.availablePermits(), "closedRuns").isEqualTo(runsAfterClose);
+		}
+	}
+
+	/**
+	 * Verifies that starting the same action twice gives each start an independent handle.
+	 *
+	 * @throws IOException          if a handle cannot close
+	 * @throws InterruptedException if the thread is interrupted while it waits
+	 */
+	public void sameActionStartsHaveSeparateHandles() throws IOException, InterruptedException
+	{
+		HeartbeatTicker ticker = subject.ticker();
+		Semaphore actionRuns = new Semaphore(0);
+		Semaphore periodSignals = new Semaphore(0);
+		Runnable action = actionRuns::release;
+		try (Closeable _ = ticker.start(periodSignals::release))
+		{
+			try (Closeable _ = ticker.start(action))
+			{
+				try (Closeable _ = ticker.start(action))
+				{
+					awaitPeriod("period with both starts", actionRuns, actionRuns, periodSignals);
+				}
+				awaitPeriod("first period after one handle closes", actionRuns, periodSignals);
+				awaitPeriod("second period after one handle closes", actionRuns, periodSignals);
+			}
+			awaitPeriod("settling after the final handle closes", periodSignals);
+			awaitPeriod("first period after the final handle closes", periodSignals);
+			int runsAfterClose = actionRuns.availablePermits();
+			awaitPeriod("second period after the final handle closes", periodSignals);
+			awaitPeriod("third period after the final handle closes", periodSignals);
+			requireThat(actionRuns.availablePermits(), "actionRuns").isEqualTo(runsAfterClose);
 		}
 	}
 

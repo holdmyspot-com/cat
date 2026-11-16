@@ -2,10 +2,14 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Admission;
+import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
+import com.holdmyspot.cat.common.optimizer.campaign.AllocationRule;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptSelection;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
 import com.holdmyspot.cat.common.optimizer.campaign.EditOrContinue;
@@ -16,7 +20,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
 import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
+import com.holdmyspot.cat.common.optimizer.campaign.RaceDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
+import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -33,6 +39,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.ArrayList;
 
@@ -304,6 +312,14 @@ public final class AttemptSelectionTest
 		Campaign campaign = selection(List.of(3, 1, 2), List.of(Verdict.PASS, Verdict.PASS, Verdict.PASS));
 		requireThat(campaign.development().race().racers().size(), "racerCount").isEqualTo(3);
 		requireThat(campaign.development().race().winner(), "winner").isNull();
+		Map<Integer, Integer> changedLinesByAttempt = new HashMap<>();
+		for (RaceDecision.Racer racer : campaign.development().race().racers())
+			changedLinesByAttempt.put(racer.attempt(), racer.changedLines());
+		requireThat(changedLinesByAttempt, "changedLinesByAttempt").isEqualTo(Map.of(1, 6, 2, 2, 3, 4));
+
+		campaign = finishTiedRace(campaign);
+		requireThat(campaign.development().race().winner(), "winner").isEqualTo(2);
+		requireThat(campaign.development().promptAuthor().number(), "promptAuthor").isEqualTo(2);
 	}
 
 	/**
@@ -317,6 +333,14 @@ public final class AttemptSelectionTest
 		Campaign campaign = selection(List.of(1, 1, 1), List.of(Verdict.PASS, Verdict.PASS, Verdict.PASS));
 		requireThat(campaign.development().race().racers().size(), "racerCount").isEqualTo(3);
 		requireThat(campaign.development().race().winner(), "winner").isNull();
+		Map<Integer, Integer> changedLinesByAttempt = new HashMap<>();
+		for (RaceDecision.Racer racer : campaign.development().race().racers())
+			changedLinesByAttempt.put(racer.attempt(), racer.changedLines());
+		requireThat(changedLinesByAttempt, "changedLinesByAttempt").isEqualTo(Map.of(1, 2, 2, 2, 3, 2));
+
+		campaign = finishTiedRace(campaign);
+		requireThat(campaign.development().race().winner(), "winner").isEqualTo(1);
+		requireThat(campaign.development().promptAuthor().number(), "promptAuthor").isEqualTo(1);
 	}
 
 	/**
@@ -451,6 +475,33 @@ public final class AttemptSelectionTest
 					Builder.targeted("safety", "cache"), Verdict.PASS);
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
 				Builder.targeted("safety", "logs"), regressions.get(attempt - 1));
+		}
+		return campaign;
+	}
+
+	/**
+	 * Completes a tied campaign race at the per-cell sample cap using actual race admissions and transitions.
+	 *
+	 * @param campaign the campaign awaiting race outcomes
+	 * @return the campaign after race adoption
+	 */
+	private static Campaign finishTiedRace(Campaign campaign)
+	{
+		List<String> cells = campaign.development().race().cells();
+		List<RaceDecision.Racer> racers = campaign.development().race().racers();
+		for (int draw = 0; draw < RaceDecision.CELL_LIMIT; ++draw)
+		{
+			for (String cell : cells)
+			{
+				for (RaceDecision.Racer racer : racers)
+				{
+					Admission.Assign admission = new Admission.Assign(Purpose.RACE, racer.attempt(),
+						Builder.snapshot("attempt" + racer.attempt()), cell, null,
+						new Allocation(AllocationRule.RACER, campaign.evidenceRevision(), Instant.EPOCH));
+					campaign = Transitions.apply(campaign, new CampaignEvent.Assign(admission));
+					campaign = TransitionSteps.run(campaign, TransitionSteps.last(campaign), Verdict.PASS);
+				}
+			}
 		}
 		return campaign;
 	}

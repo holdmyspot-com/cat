@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.test;
 
 import com.holdmyspot.cat.common.CodeLoadingVariables;
 import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.fakes.test.FakeProcessLauncher;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import java.io.IOException;
@@ -13,6 +14,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.testng.annotations.Test;
 
@@ -36,25 +38,33 @@ public final class ExecutableFilesTest
 	}
 
 	/**
-	 * Verifies a text-file-busy failure pauses before each retry, until a start succeeds.
+	 * Verifies the started process reaches the caller after three text-file-busy failures.
 	 *
 	 * @throws IOException if the simulated process start fails
 	 */
 	@Test public void retriesTextFileBusyStart() throws IOException
 	{
-		AtomicInteger attempts = new AtomicInteger();
-		AtomicInteger pauses = new AtomicInteger();
-		ExecutableFiles executables = new ExecutableFiles(pauses::incrementAndGet, FIXED);
-
-		ExecutableFilesSecrets.getExecutableFilesAccess().run(executables, () ->
+		AtomicInteger failuresRemaining = new AtomicInteger(3);
+		AtomicReference<Process> successfulProcess = new AtomicReference<>();
+		FakeProcessLauncher processLauncher = new FakeProcessLauncher();
+		ManualClock clock = new ManualClock(Instant.EPOCH);
+		ExecutableFiles executables = ExecutableFilesSecrets.getExecutableFilesAccess().create(() ->
 		{
-			if (attempts.getAndIncrement() < 3)
-				throw new IOException("error=26, Text file busy");
-			return null;
+			clock.advance(Duration.ofMillis(1));
+		}, clock, builder ->
+		{
+			if (failuresRemaining.getAndDecrement() > 0)
+				throw new IOException("ETXTBSY");
+			Process process = processLauncher.start(builder);
+			successfulProcess.set(process);
+			return process;
 		});
 
-		requireThat(attempts.get(), "attempts").isEqualTo(4);
-		requireThat(pauses.get(), "pauses").isEqualTo(3);
+		try (Process process = executables.run(new ProcessBuilder("fixture-program")))
+		{
+			process.destroy();
+			requireThat(process, "returnedProcess").isReferenceEqualTo(successfulProcess.get(), "successfulProcess");
+		}
 	}
 
 	/**

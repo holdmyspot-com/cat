@@ -180,7 +180,7 @@ public final class ContractTest
 			List.of("Hello."), Duration.ofMinutes(1), "Complies.", List.of(), List.of(), List.of(), List.of(),
 			List.of(COMPLIES), List.of(), List.of());
 		List<Runnable> inconsistent = List.of(
-			() -> new Contract(List.of(r1, r1), valid.tests(), valid.profiles(), valid.judge(),
+			() -> new Contract(List.of(r1, r1, valid.requirements().get(1)), valid.tests(), valid.profiles(), valid.judge(),
 				valid.limitations(), valid.minimumPassRate(), valid.salt()),
 			() -> new Contract(valid.requirements(), List.of(formatting, formatting), cells(formatting),
 				valid.judge(), valid.limitations(), valid.minimumPassRate(), valid.salt()),

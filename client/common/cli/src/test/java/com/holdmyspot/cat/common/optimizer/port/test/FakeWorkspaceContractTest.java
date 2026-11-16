@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.port.test;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.WorkspaceContract;
 import com.holdmyspot.cat.common.optimizer.workspace.test.ContractWorkspace;
+import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -52,6 +53,58 @@ public final class FakeWorkspaceContractTest
 	}
 
 	/**
+	 * Verifies that fake staging uses recorded candidate bytes for file and directory aliases.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void stagesRecordedLinksWithCandidateBytes() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, true, ContractWorkspace.LinkFixture.STAGING)).
+				stagesRecordedLinksWithCandidateBytes();
+		}
+	}
+
+	/**
+	 * Verifies that fake staging rejects cyclic links on repeated attempts in either mode.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or refusal check fails
+	 */
+	@Test(dataProvider = "modes", expectedExceptions = WorkspaceException.class,
+		expectedExceptionsMessageRegExp = ".*links/cycle-one: link cycle.*")
+	public void rejectsCyclicLinksWithoutCachingSource(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles, ContractWorkspace.LinkFixture.CYCLE)).
+				rejectsCyclicLinksWithoutCachingSource();
+		}
+	}
+
+	/**
+	 * Verifies that fake staging rejects an excluded missing link on repeated attempts in either mode.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or refusal check fails
+	 */
+	@Test(dataProvider = "modes", expectedExceptions = WorkspaceException.class,
+		expectedExceptionsMessageRegExp = ".*links/missing-alias.*missing target.*")
+	public void rejectsMissingLinksWithoutCachingSource(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles, ContractWorkspace.LinkFixture.MISSING)).
+				rejectsMissingLinksWithoutCachingSource();
+		}
+	}
+
+	/**
 	 * Verifies that the fake reads the files of a saved candidate.
 	 *
 	 * @throws IOException if the fixture or check fails
@@ -64,6 +117,40 @@ public final class FakeWorkspaceContractTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
 			new WorkspaceContract(new ContractWorkspace(root, true, true)).readsFilesOfASavedCandidate();
+		}
+	}
+
+	/**
+	 * Verifies that the fake returns explicitly supplied captured bytes after its live project file is changed and
+	 * deleted, and that candidate writes take precedence in both modes.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void readsCapturedFilesAfterProjectChanges(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				readsCapturedFilesAfterProjectChanges();
+		}
+	}
+
+	/**
+	 * Verifies that reconnect preserves the fake's externally changed worktree in both modes.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void reconnectPreservesIntactWorktree(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).reconnectPreservesIntactWorktree();
 		}
 	}
 
@@ -104,6 +191,107 @@ public final class FakeWorkspaceContractTest
 	}
 
 	/**
+	 * Verifies that fake plugin copies apply mapped physical source files and retain base files.
+	 *
+	 * @param stagedFiles whether fake staging writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void copiesMappedStagedFilesIntoPlugins(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				copiesMappedStagedFilesIntoPlugins();
+		}
+	}
+
+	/**
+	 * Verifies that fake plugin copies apply dependent removals to mapped files.
+	 *
+	 * @param stagedFiles whether fake staging writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void appliesPluginRemovalsAfterMappings(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				appliesPluginRemovalsAfterMappings();
+		}
+	}
+
+	/**
+	 * Verifies that fake plugin copying rejects an installed plugin without its base.
+	 *
+	 * @param stagedFiles whether fake staging writes staged files
+	 * @throws IOException if the fixture or refusal check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void rejectsInstalledPluginWithoutBase(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				rejectsInstalledPluginWithoutBase();
+		}
+	}
+
+	/**
+	 * Verifies that fake plugin copying rejects a built plugin without its base.
+	 *
+	 * @param stagedFiles whether fake staging writes staged files
+	 * @throws IOException if the fixture or refusal check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void rejectsBuiltPluginWithoutBase(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				rejectsBuiltPluginWithoutBase();
+		}
+	}
+
+	/**
+	 * Verifies that fake plugin copying rejects a dependent absent from the plugin.
+	 *
+	 * @param stagedFiles whether fake staging writes staged files
+	 * @throws IOException if the fixture or refusal check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void rejectsMissingPluginDependent(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).
+				rejectsMissingPluginDependent();
+		}
+	}
+
+	/**
+	 * Verifies that fake plugin copies reject changed stored bases for installed and built plugins in both modes.
+	 *
+	 * @param stagedFiles whether fake staging writes staged files
+	 * @throws IOException if the fixture or refusal check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void rejectsChangedPluginBase(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).rejectsChangedPluginBase();
+		}
+	}
+
+	/**
 	 * Verifies that the fake's worktree is an absolute directory.
 	 *
 	 * @param stagedFiles whether the fake writes staged files
@@ -134,6 +322,37 @@ public final class FakeWorkspaceContractTest
 			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
 			new WorkspaceContract(new ContractWorkspace(root, true, true)).
 				stagesSelectedFiles();
+		}
+	}
+
+	/**
+	 * Verifies that exclusion variants stage and remove independent file sets.
+	 *
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test
+	public void stagesExcludedFiles() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, true)).stagesExcludedFiles();
+		}
+	}
+
+	/**
+	 * Verifies that fake staging removes every variant for one candidate and preserves another candidate in both modes.
+	 *
+	 * @param stagedFiles whether the fake writes staged files
+	 * @throws IOException if the fixture or check fails
+	 */
+	@Test(dataProvider = "modes")
+	public void deletesVariantsKeepsOtherCandidates(boolean stagedFiles) throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("workspace-contract-"));
+			new WorkspaceContract(new ContractWorkspace(root, true, stagedFiles)).deletesVariantsKeepsOtherCandidates();
 		}
 	}
 

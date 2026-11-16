@@ -236,6 +236,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 		{
 			Path campaigns = cleanup.add(Files.createTempDirectory("empty-effort"));
 			Campaign campaign = new Builder().confirmed().working(1).build();
+			List<String> expectedInventoryEfforts = campaign.contract().profiles().inventory().profiles().stream().
+				map(_ -> "none").toList();
+			List<String> expectedCellEfforts = campaign.contract().profiles().cells().stream().map(_ -> "none").toList();
 			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			store.replaceSnapshot(campaign);
 			Path file = heldOutDirectory(campaigns).resolve("campaign.json");
@@ -253,9 +256,11 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 			TrialProfiles loadedProfiles = loaded.contract().profiles();
 			requireThat(loadedProfiles.inventory().profiles().stream().map(TrialProfile::effort).toList(),
-				"inventoryEfforts").isNotEmpty().containsAll(List.of("none")).doesNotContain("");
+				"inventoryEfforts").isNotEmpty().containsAll(List.of("none")).doesNotContain("").
+				isEqualTo(expectedInventoryEfforts);
 			requireThat(loadedProfiles.cells().stream().map(cell -> cell.profile().effort()).toList(),
-				"cellEfforts").isNotEmpty().containsAll(List.of("none")).doesNotContain("");
+				"cellEfforts").isNotEmpty().containsAll(List.of("none")).doesNotContain("").
+				isEqualTo(expectedCellEfforts);
 			requireThat(loaded.contract().judge().profile().effort(), "judgeEffort").isEqualTo("none");
 		}
 	}

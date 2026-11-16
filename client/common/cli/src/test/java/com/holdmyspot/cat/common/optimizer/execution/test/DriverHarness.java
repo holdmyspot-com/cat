@@ -49,9 +49,14 @@ import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
+import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
+import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
+import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
@@ -302,6 +307,109 @@ public final class DriverHarness
 	 */
 	public DriverContext context()
 	{
+		return context(sessions);
+	}
+
+	/**
+	 * Returns the driver's context with the supplied session port.
+	 *
+	 * @param sessions the sessions used by the driver and leftover-run reader
+	 * @return the context
+	 */
+	public DriverContext context(SessionPort sessions)
+	{
+		WorkspacePort workspace = new WorkspacePort()
+		{
+			@Override
+			public Optional<FileContent> readFile(Overlay candidate, Path path) throws IOException
+			{
+				return fakeWorkspace.readFile(candidate, path);
+			}
+
+			@Override
+			public Path stage(Overlay candidate, Set<Path> excluded) throws IOException
+			{
+				return stageWithTarget(candidate, fakeWorkspace.stage(candidate, excluded));
+			}
+
+			@Override
+			public Path stage(Overlay candidate, Set<Path> excluded, SourceSelection selection) throws IOException
+			{
+				return stageWithTarget(candidate, fakeWorkspace.stage(candidate, excluded, selection));
+			}
+
+			@Override
+			public void deleteStaged(Sha256 candidate) throws IOException
+			{
+				fakeWorkspace.deleteStaged(candidate);
+			}
+
+			@Override
+			public Path pluginCopy(TrialPlugin plugin, Path source, PluginRemovals removals) throws IOException
+			{
+				return fakeWorkspace.pluginCopy(plugin, source, removals);
+			}
+
+			@Override
+			public String copyPluginBase(Path directory) throws IOException
+			{
+				return fakeWorkspace.copyPluginBase(directory);
+			}
+
+			@Override
+			public Path pluginBase(String digest)
+			{
+				return fakeWorkspace.pluginBase(digest);
+			}
+
+			@Override
+			public Path worktree()
+			{
+				return fakeWorkspace.worktree();
+			}
+
+			@Override
+			public Path prepareAuthoringCopy(Overlay working) throws IOException
+			{
+				return fakeWorkspace.prepareAuthoringCopy(working);
+			}
+
+			@Override
+			public FileInventory scanAuthoringCopy(Path copy) throws IOException
+			{
+				return fakeWorkspace.scanAuthoringCopy(copy);
+			}
+
+			@Override
+			public FileInventory scanPromptAuthorEffects(Path copy, Path effects) throws IOException
+			{
+				return fakeWorkspace.scanPromptAuthorEffects(copy, effects);
+			}
+
+			@Override
+			public void deleteAuthoringCopy(Path copy) throws IOException
+			{
+				fakeWorkspace.deleteAuthoringCopy(copy);
+			}
+
+			@Override
+			public void reconnectWorktree(Overlay candidate) throws IOException
+			{
+				fakeWorkspace.reconnectWorktree(candidate);
+			}
+
+			@Override
+			public FileInventory scanWorktree() throws IOException
+			{
+				return fakeWorkspace.scanWorktree();
+			}
+
+			@Override
+			public void materialize(Overlay candidate) throws IOException
+			{
+				fakeWorkspace.materialize(candidate);
+			}
+		};
 		Map<MeasurementCondition, String> environment = new EnumMap<>(MeasurementCondition.class);
 		environment.putAll(Builder.OBSERVED.values());
 		environment.remove(MeasurementCondition.MODEL);
@@ -328,13 +436,33 @@ public final class DriverHarness
 					return driver;
 				}
 			});
-		return new DriverContext(fileLocks, crashingStore, sessions, fakeWorkspace, interrupts, clock, overlays,
+		return new DriverContext(fileLocks, crashingStore, sessions, workspace, interrupts, clock, overlays,
 			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, this::deliver,
 			calibrator, terminator,
 			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json,
 			candidateJudges, judgeRecords, temporaryDirectory);
+	}
+
+	/**
+	 * Makes the virtual workspace's target available to admission checks in its staged directory.
+	 *
+	 * @param candidate the overlay to stage
+	 * @param source the staged directory
+	 * @return the staged directory
+	 * @throws IOException if the target cannot be materialized
+	 */
+	private Path stageWithTarget(Overlay candidate, Path source) throws IOException
+	{
+		Path target = source.resolve(PROMPT);
+		if (Files.notExists(target))
+		{
+			Optional<FileContent> content = fakeWorkspace.readFile(candidate, PROMPT);
+			if (content.isPresent())
+				Files.write(target, content.get().bytes());
+		}
+		return source;
 	}
 
 	/**

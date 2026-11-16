@@ -20,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Stream;
 
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -427,7 +428,19 @@ public final class FileCandidateOverlaysTest extends CandidateOverlaysContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path campaign = cleanup.add(Files.createTempDirectory("cat-candidate-overlays-other-"));
-			new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).save(candidate(otherFork, "other"));
+			try
+			{
+				new FileCandidateOverlays(campaign, fork, JSON, Yielding.fileReplacer()).
+					save(candidate(otherFork, "other"));
+			}
+			catch (IllegalArgumentException e)
+			{
+				try (Stream<Path> entries = Files.list(campaign))
+				{
+					requireThat(entries.toList(), "filesAfterRefusal").isEmpty();
+				}
+				throw e;
+			}
 		}
 	}
 

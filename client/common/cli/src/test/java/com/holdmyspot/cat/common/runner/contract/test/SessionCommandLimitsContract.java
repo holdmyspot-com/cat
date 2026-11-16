@@ -433,6 +433,10 @@ public abstract class SessionCommandLimitsContract
 	 * Verifies that a session requested in a slot of its requester's run is denied the directories that stand for the
 	 * requester's requested sessions as one path, which holds them all and none of the session's own files, however
 	 * many groups of them there are, and that the denial still covers each of them.
+	 * <p>
+	 * Creates the requested roots through the first group boundary so that the single denial must cover two groups.
+	 * The child occupies a separate broker slot: constructing both runs and their command limits lets the same
+	 * check require every requested root to be unreadable while the child's own project and home remain readable.
 	 *
 	 * @throws IOException          if fixture or configuration I/O fails
 	 * @throws InterruptedException if the test is interrupted while it takes the slot
@@ -444,7 +448,7 @@ public abstract class SessionCommandLimitsContract
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture parent = fixture(cleanup);
-			int sessionRequests = 3 * SessionRequestAccess.GROUP_SIZE;
+			int sessionRequests = SessionRequestAccess.GROUP_SIZE;
 			limits(parent, sessionRequests);
 			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
 			SessionSlots.Slot slot = new SessionSlots(requested, 1, new ProcessHandleLiveness()).acquire(false);

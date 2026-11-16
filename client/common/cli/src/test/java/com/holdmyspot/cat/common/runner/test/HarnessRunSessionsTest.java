@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunSessions;
@@ -45,8 +46,12 @@ public final class HarnessRunSessionsTest
 		{
 			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			sessions.add(new HarnessRunSession(run, process, new TestHarnessRunnerScope()));
-			sessions.sendTurn("run-1", "first");
-			sessions.sendTurn("run-1", "second");
+			HarnessProcessResult first = sessions.sendTurn("run-1", "first");
+			HarnessProcessResult second = sessions.sendTurn("run-1", "second");
+			requireThat(first.completed(), "firstCompleted").isTrue();
+			requireThat(first.assistantResponse(), "firstAssistantResponse").isEqualTo("one");
+			requireThat(second.completed(), "secondCompleted").isTrue();
+			requireThat(second.assistantResponse(), "secondAssistantResponse").isEqualTo("two");
 			sessions.complete("run-1");
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));

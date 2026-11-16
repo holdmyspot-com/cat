@@ -817,7 +817,18 @@ public abstract class CampaignStoreContract
 			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment("campaign-1", trial);
 			store.writeOutcome("campaign-1", complete(trial.key(), Verdict.FAIL));
-			fixture.reopen().writeOutcome("campaign-1", complete(trial.key(), Verdict.PASS));
+			TrialRecord retained = ((AbstractCampaignStore) fixture.reopen()).readRecord("campaign-1", trial.key()).
+				orElseThrow();
+			try
+			{
+				fixture.reopen().writeOutcome("campaign-1", complete(trial.key(), Verdict.PASS));
+			}
+			catch (IllegalStateException e)
+			{
+				requireThat(((AbstractCampaignStore) fixture.reopen()).readRecord("campaign-1", trial.key()).
+					orElseThrow(), "recordAfterRefusal").isEqualTo(retained);
+				throw e;
+			}
 		}
 	}
 
@@ -853,7 +864,18 @@ public abstract class CampaignStoreContract
 			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
 			store.writeAssignment("campaign-1", trial);
 			store.writeOutcome("campaign-1", complete(trial.key(), Verdict.FAIL));
-			fixture.reopen().writeAssignment("campaign-1", trial);
+			TrialRecord retained = ((AbstractCampaignStore) fixture.reopen()).readRecord("campaign-1", trial.key()).
+				orElseThrow();
+			try
+			{
+				fixture.reopen().writeAssignment("campaign-1", trial);
+			}
+			catch (IllegalStateException e)
+			{
+				requireThat(((AbstractCampaignStore) fixture.reopen()).readRecord("campaign-1", trial.key()).
+					orElseThrow(), "recordAfterRefusal").isEqualTo(retained);
+				throw e;
+			}
 		}
 	}
 
@@ -1004,8 +1026,18 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			CampaignStore store = fixture.store();
-			store.writeJournal("campaign-1", journal("candidate-2", 0));
-			store.writeJournal("campaign-1", journal("candidate-3", 0));
+			DeliveryJournal original = journal("candidate-2", 0);
+			store.writeJournal("campaign-1", original);
+			try
+			{
+				store.writeJournal("campaign-1", journal("candidate-3", 0));
+			}
+			catch (IllegalStateException e)
+			{
+				requireThat(fixture.reopen().loadJournal("campaign-1"), "journalAfterRefusal").
+					isEqualTo(Optional.of(original));
+				throw e;
+			}
 		}
 	}
 
@@ -1022,8 +1054,18 @@ public abstract class CampaignStoreContract
 		try (StoreFixture fixture = open())
 		{
 			CampaignStore store = fixture.store();
-			store.writeJournal("campaign-1", journal("candidate-2", 2));
-			store.writeJournal("campaign-1", journal("candidate-2", 1));
+			DeliveryJournal original = journal("candidate-2", 2);
+			store.writeJournal("campaign-1", original);
+			try
+			{
+				store.writeJournal("campaign-1", journal("candidate-2", 1));
+			}
+			catch (IllegalStateException e)
+			{
+				requireThat(fixture.reopen().loadJournal("campaign-1"), "journalAfterRefusal").
+					isEqualTo(Optional.of(original));
+				throw e;
+			}
 		}
 	}
 

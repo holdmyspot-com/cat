@@ -277,6 +277,10 @@ public final class TestabilityAuditTest
 	/**
 	 * Verifies that only a {@code main} method creates a sleeping pause or waiting, and that no test calls the
 	 * {@code main} method of a production class, so that no unit test reaches the sleeping pause.
+	 * <p>
+	 * This audit examines every discovered module's production and test sources for sleeping-pause construction and
+	 * test calls to production main methods. It shares the once-per-class source inventory with the other audits;
+	 * restricting the source population would allow a violation outside that subset to pass.
 	 */
 	@Test
 	public void onlyMainCreatesSleepingPause()

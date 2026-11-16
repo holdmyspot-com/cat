@@ -38,12 +38,10 @@ import java.util.function.Predicate;
  * <p>
  * The answers that a real port gives without a session are checked by {@code SessionPortContract}, which runs against
  * this fake and the real adapters: the versions, run roots, empty answers about the host, evidence reading, the
- * exit-status answer and the windows of an interrupted session. {@link #loading(BiFunction)},
- * {@link #earlyHooks(List)}, {@link #install(String, List)}, {@link #unapprovedHooks(Function)},
- * {@link #sessionEnvironmentVersion(int)}, {@link #judgeVersion(int)}, {@link #unstartable(Predicate)},
- * {@link #onStart(Consumer)} and {@link #supplyEvidence(Path, SessionEvidence)} are controls that make the fake
- * answer what no contract case can induce in a real port, such as a project with prompt files, an installed plugin,
- * another CAT release, a session that cannot start, or a session that the test ends as soon as it starts.
+ * exit-status answer and the windows of an interrupted session.
+ * The configuration methods supply typed host responses, evidence, failures and session results directly to consumer
+ * tests. They do not discover prompt files or installed plugins, parse harness events, or establish how a real harness
+ * responds.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

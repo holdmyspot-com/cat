@@ -5,8 +5,8 @@ import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionStarterCon
 import java.util.List;
 
 /**
- * Runs the {@link RequestedSessionStarter} contract against {@link FakeStarter}, so that the request server tests that
- * start their children's runners through it see what the request servers' starters do.
+ * Checks that {@link FakeStarter} starts supported requests with the supplied arguments and directory and refuses
+ * unsupported harnesses.
  */
 public final class FakeStarterContractTest extends RequestedSessionStarterContract
 {
@@ -38,8 +38,7 @@ public final class FakeStarterContractTest extends RequestedSessionStarterContra
 			@Override
 			public List<StartedRunner> started()
 			{
-				return starter.runners().stream().map(runner -> new StartedRunner(runner.harness(), runner.arguments(),
-					runner.directory(), runner.directory().resolve(RequestedSessionStarter.ERROR_FILE))).toList();
+				return starter.started();
 			}
 
 			@Override

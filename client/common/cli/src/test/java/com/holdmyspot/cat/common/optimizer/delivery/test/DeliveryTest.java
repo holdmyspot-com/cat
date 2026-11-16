@@ -65,6 +65,7 @@ import com.holdmyspot.cat.common.test.FileTrees;
 
 import java.io.IOException;
 import java.io.Reader;
+import java.math.BigDecimal;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
@@ -83,7 +84,9 @@ import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests {@link Delivery} against a test-owned base worktree and a test-owned external directory that holds a read-only
@@ -605,10 +608,21 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
+			CampaignStore store = fixture.store();
+			FileInventory before = fixture.scan();
 
-			fixture.delivery(fixture.store(), candidate, NO_HOOK).
-				deliver(CAMPAIGN, request(candidate, Outcome.BELOW_MINIMUM), candidate, candidate,
-					fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
+			try
+			{
+				fixture.delivery(store, candidate, NO_HOOK).
+					deliver(CAMPAIGN, request(candidate, Outcome.BELOW_MINIMUM), candidate, candidate,
+						fixture.promptSources(), entry(DeliveryLabel.NOT_CERTIFIED), List.of());
+			}
+			catch (IllegalArgumentException e)
+			{
+				requireThat(fixture.scan(), "baseAfterRefusal").isEqualTo(before);
+				requireThat(store.loadJournal(CAMPAIGN), "journalAfterRefusal").isEmpty();
+				throw e;
+			}
 		}
 	}
 
@@ -687,6 +701,8 @@ public final class DeliveryTest
 			requireThat(last, "last").isInstanceOf(Create.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
 			requireThat(history(fixture).records(), "records").isEqualTo(List.of(RECORD));
+			requireThat(history(fixture).records().getFirst().parameters().controlMargin(), "controlMargin").
+				isEqualTo(new BigDecimal("0.05"));
 			requireThat(patchedPaths(delivered), "patchedPaths").contains(RECORD_FILE).isEqualTo(targets(delivered));
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 			requireThat(delivered.applicability().status(), "status").isEqualTo(Applicability.Status.CURRENT);
@@ -707,7 +723,9 @@ public final class DeliveryTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
-			byte[] earlier = codec.write(CertificationHistory.EMPTY.appended(record(3)));
+			ObjectNode earlierRoot = (ObjectNode) JSON.readTree(codec.write(CertificationHistory.EMPTY.appended(record(3))));
+			((ObjectNode) earlierRoot.get("records").get(0)).remove("control_margin");
+			byte[] earlier = JSON.writeValueAsBytes(earlierRoot);
 			Fixture fixture = Fixture.create(template, cleanup).recordFile(RECORD_FILE, earlier);
 			Overlay candidate = fixture.candidate();
 
@@ -718,7 +736,17 @@ public final class DeliveryTest
 			DeliveryChange last = delivered.changes().getLast();
 			requireThat(last, "last").isInstanceOf(Edit.class);
 			requireThat(last.target(), "target").isEqualTo(RECORD_FILE);
-			requireThat(history(fixture).records(), "records").isEqualTo(List.of(record(3), RECORD));
+			CertificationHistory appended = history(fixture);
+			requireThat(appended.records(), "records").isEqualTo(List.of(record(3), RECORD));
+			requireThat(appended.records().get(0).parameters().controlMargin(), "earlierMargin").
+				isEqualTo(new BigDecimal("0.05"));
+			requireThat(appended.records().get(1).parameters().controlMargin(), "deliveredMargin").
+				isEqualTo(new BigDecimal("0.05"));
+			JsonNode storedRecords = JSON.readTree(Files.readAllBytes(fixture.resolve(RECORD_FILE))).get("records");
+			requireThat(storedRecords.get(0).get("control_margin").asString(), "storedEarlierMargin").
+				isEqualTo("0.05");
+			requireThat(storedRecords.get(1).get("control_margin").asString(), "storedDeliveredMargin").
+				isEqualTo("0.05");
 			requireThat(patchedPaths(delivered), "patchedPaths").contains(RECORD_FILE).isEqualTo(targets(delivered));
 			requireThat(delivered.baseOnlyChanges(), "baseOnlyChanges").isEmpty();
 		}
@@ -848,7 +876,9 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
-			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
+			CampaignStore store = fixture.store();
+			FileInventory before = fixture.scan();
+			Delivery delivery = fixture.delivery(store, candidate, NO_HOOK);
 
 			try
 			{
@@ -859,6 +889,8 @@ public final class DeliveryTest
 			catch (IllegalArgumentException e)
 			{
 				requireThat(e.getMessage(), "message").contains("history entry");
+				requireThat(fixture.scan(), "baseAfterRefusal").isEqualTo(before);
+				requireThat(store.loadJournal(CAMPAIGN), "journalAfterRefusal").isEmpty();
 			}
 			try
 			{
@@ -869,6 +901,8 @@ public final class DeliveryTest
 			catch (IllegalArgumentException e)
 			{
 				requireThat(e.getMessage(), "message").contains("incumbent kept");
+				requireThat(fixture.scan(), "baseAfterRefusal").isEqualTo(before);
+				requireThat(store.loadJournal(CAMPAIGN), "journalAfterRefusal").isEmpty();
 			}
 			try
 			{
@@ -879,6 +913,8 @@ public final class DeliveryTest
 			catch (IllegalArgumentException e)
 			{
 				requireThat(e.getMessage(), "message").contains("history entry");
+				requireThat(fixture.scan(), "baseAfterRefusal").isEqualTo(before);
+				requireThat(store.loadJournal(CAMPAIGN), "journalAfterRefusal").isEmpty();
 			}
 			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 		}
@@ -1427,7 +1463,9 @@ public final class DeliveryTest
 		{
 			Fixture fixture = Fixture.create(template, cleanup);
 			Overlay candidate = fixture.candidate();
-			Delivery delivery = fixture.delivery(fixture.store(), candidate, NO_HOOK);
+			CampaignStore store = fixture.store();
+			FileInventory before = fixture.scan();
+			Delivery delivery = fixture.delivery(store, candidate, NO_HOOK);
 			try
 			{
 				delivery.deliver(CAMPAIGN, null, candidate, candidate, fixture.promptSources(),
@@ -1437,6 +1475,8 @@ public final class DeliveryTest
 			catch (IllegalArgumentException e)
 			{
 				requireThat(e.getMessage(), "message").contains("kept incumbent");
+				requireThat(fixture.scan(), "baseAfterRefusal").isEqualTo(before);
+				requireThat(store.loadJournal(CAMPAIGN), "journalAfterRefusal").isEmpty();
 			}
 			requireThat(read(fixture.resolve(Path.of("rules/main.md"))), "main.md").isEqualTo("main v1\n");
 			requireThat(Files.notExists(fixture.resolve(TESTS)), "testsAreAbsent").isTrue();

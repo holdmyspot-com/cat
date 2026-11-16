@@ -136,7 +136,7 @@ public final class RoundTest
 	}
 
 	/** A tool-only race round allows six independent author attempts for that cell. */
-	// Requirement: G1
+	// Requirement: R-D20
 	@Test
 	public void toolDecidedRaceAllowsSixAttempts()
 	{

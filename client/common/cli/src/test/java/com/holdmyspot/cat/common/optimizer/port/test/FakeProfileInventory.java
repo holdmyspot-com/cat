@@ -147,9 +147,12 @@ public final class FakeProfileInventory implements ProfileInventory
 	public boolean canBind(Path path)
 	{
 		requireThat(path, "path").isNotNull();
+		Path name = path.getFileName();
 		Path parent = path.getParent();
-		return path.getFileName().toString().endsWith(".agent") && parent != null &&
-			parent.getFileName().toString().equals("agents");
+		if (name == null || parent == null)
+			return false;
+		Path directoryName = parent.getFileName();
+		return directoryName != null && name.toString().endsWith(".agent") && directoryName.toString().equals("agents");
 	}
 
 	@Override

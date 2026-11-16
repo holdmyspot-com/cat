@@ -136,36 +136,6 @@ public final class HarnessProjectRepositoryTest
 	}
 
 	/**
-	 * Verifies, through real Git, that two copies of the same fixture get the same baseline commit hash, whatever the
-	 * time of their initialization, and that a different fixture gets a different one. The baseline's dates are the
-	 * fixed ones, not the clock's, so copies made at different times also agree.
-	 *
-	 * @throws IOException if the fixture cannot be created or initialization fails
-	 */
-	@Test
-	public void sameFixtureGetsSameCommitHash() throws IOException
-	{
-		try (TestJvmScope jvm = new TestJvmScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "repository-hash-"));
-			Path sourceProject = GitWorkTrees.notIgnoring(root.resolve("source"));
-			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"),
-				"[user]\n\tname = A User\n\temail = user@example.test\n", UTF_8);
-			Map<String, String> parent = parentEnvironment(root, hostConfiguration);
-
-			String first = baselineHash(sourceProject, root.resolve("first"), "content", parent);
-			String second = baselineHash(sourceProject, root.resolve("second"), "content", parent);
-			String other = baselineHash(sourceProject, root.resolve("other"), "other content", parent);
-
-			requireThat(second, "second").isEqualTo(first);
-			requireThat(other, "other").isNotEqualTo(first);
-			List<String> dates = new Git(root.resolve("first").resolve("project")).lines("log", "--format=%at %ct");
-			requireThat(dates, "dates").isEqualTo(List.of("946684800 946684800"));
-		}
-	}
-
-	/**
 	 * Copies a one-file fixture to a new project, initializes it and returns its baseline commit hash.
 	 *
 	 * @param sourceProject the source project whose Git identity is inherited
@@ -188,6 +158,8 @@ public final class HarnessProjectRepositoryTest
 	/**
 	 * Verifies, end to end through real Git, that initialization makes the copy a repository whose one commit holds
 	 * the copied files, is authored by the host's identity, and whose configuration disables background maintenance.
+	 * Two copies of the same fixture have the same baseline hash and fixed commit dates; different content changes
+	 * the hash. These three one-file copies also supply the commit and configuration checks, avoiding a fourth copy.
 	 *
 	 * @throws IOException if the fixture cannot be created or initialization fails
 	 */
@@ -199,15 +171,19 @@ public final class HarnessProjectRepositoryTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "repository-identity-"));
 			Path sourceProject = GitWorkTrees.notIgnoring(root.resolve("source"));
-			Path project = Files.createDirectory(root.resolve("project"));
-			Files.writeString(project.resolve("file.txt"), "content", UTF_8);
 			Path hostConfiguration = Files.writeString(root.resolve("host.gitconfig"),
 				"[user]\n\tname = A User\n\temail = user@example.test\n", UTF_8);
+			Map<String, String> parent = parentEnvironment(root, hostConfiguration);
 
-			HarnessProjectRepository.initialize(sourceProject, project, root, parentEnvironment(root, hostConfiguration),
-				Yielding.executableFiles(), null, null);
+			String first = baselineHash(sourceProject, root.resolve("first"), "content", parent);
+			String second = baselineHash(sourceProject, root.resolve("second"), "content", parent);
+			String other = baselineHash(sourceProject, root.resolve("other"), "other content", parent);
 
-			Git git = new Git(project);
+			requireThat(second, "second").isEqualTo(first);
+			requireThat(other, "other").isNotEqualTo(first);
+			Git git = new Git(root.resolve("first").resolve("project"));
+			List<String> dates = git.lines("log", "--format=%at %ct");
+			requireThat(dates, "dates").isEqualTo(List.of("946684800 946684800"));
 			List<String> commits = git.lines("log", "--format=%an <%ae> %s");
 			requireThat(commits, "commits").isEqualTo(List.of("A User <user@example.test> CAT fixture baseline"));
 			requireThat(git.lines("ls-tree", "-r", "--name-only", "HEAD"), "files").isEqualTo(List.of("file.txt"));

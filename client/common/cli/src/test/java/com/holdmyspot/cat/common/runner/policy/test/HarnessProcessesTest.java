@@ -53,9 +53,12 @@ public final class HarnessProcessesTest
 			Files.write(commandLine, ("claude\0--settings\0" + settings + "\0-p\0").getBytes(StandardCharsets.UTF_8));
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(processFolder);
 
-			Optional<List<String>> arguments = processes.find(processId).flatMap(ProcessDescription::arguments);
+			Optional<ProcessDescription> process = processes.find(processId);
 
-			requireThat(arguments, "arguments").isEqualTo(Optional.of(List.of("--settings", settings, "-p")));
+			requireThat(process.flatMap(ProcessDescription::argumentZero), "argumentZero").
+				isEqualTo(Optional.of("claude"));
+			requireThat(process.flatMap(ProcessDescription::arguments), "arguments").
+				isEqualTo(Optional.of(List.of("--settings", settings, "-p")));
 		}
 	}
 
@@ -75,9 +78,10 @@ public final class HarnessProcessesTest
 			long processId = ProcessHandle.current().pid();
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(processFolder);
 
-			Optional<List<String>> arguments = processes.find(processId).flatMap(ProcessDescription::arguments);
+			Optional<ProcessDescription> process = processes.find(processId);
 
-			requireThat(arguments, "arguments").isEmpty();
+			requireThat(process.flatMap(ProcessDescription::argumentZero), "argumentZero").isEmpty();
+			requireThat(process.flatMap(ProcessDescription::arguments), "arguments").isEmpty();
 		}
 	}
 

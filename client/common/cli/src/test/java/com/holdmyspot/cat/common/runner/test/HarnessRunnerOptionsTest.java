@@ -381,10 +381,11 @@ public final class HarnessRunnerOptionsTest
 	/**
 	 * Verifies the artifact is required.
 	 */
-	@Test(expectedExceptions = IllegalArgumentException.class)
+	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Missing --artifact")
 	public void rejectsMissingArtifact()
 	{
-		HarnessRunnerOptions.parse(new String[0], "harness", SESSION);
+		HarnessRunnerOptions.parse(new String[] {"--project", absolute("project"), "--run-root", absolute("runs"),
+			"--model", "model-a", "--effort", "effort-a"}, "harness", SESSION);
 	}
 
 	/**

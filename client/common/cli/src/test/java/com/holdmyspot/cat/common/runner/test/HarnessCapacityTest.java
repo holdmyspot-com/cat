@@ -357,16 +357,29 @@ public final class HarnessCapacityTest
 	{
 		// Requirement: R-E8
 		HarnessCapacity capacity = HarnessCapacity.unlimited();
+		List<HarnessCapacity.Permit> permits = new ArrayList<>();
 
-		for (int i = 0; i < HarnessCapacity.MAXIMUM_CONCURRENCY * 4; ++i)
+		try
 		{
-			Optional<HarnessCapacity.Permit> permit = capacity.tryAcquire();
-			requireThat(permit.isPresent(), "permit.isPresent").isTrue();
-			permit.orElseThrow().close();
+			for (int i = 0; i < HarnessCapacity.MAXIMUM_CONCURRENCY * 4; ++i)
+			{
+				Optional<HarnessCapacity.Permit> permit = capacity.tryAcquire();
+				requireThat(permit.isPresent(), "permit.isPresent").isTrue();
+				permits.add(permit.orElseThrow());
+			}
+			try (HarnessCapacity.Permit permit = capacity.acquire())
+			{
+				requireThat(permit, "permit").isNotNull();
+			}
 		}
-		try (HarnessCapacity.Permit permit = capacity.acquire())
+		finally
 		{
-			requireThat(permit, "permit").isNotNull();
+			for (HarnessCapacity.Permit permit : permits)
+			{
+				try (permit)
+				{
+				}
+			}
 		}
 	}
 

@@ -6,6 +6,11 @@ import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 import org.testng.annotations.Test;
 
@@ -27,22 +32,77 @@ public final class HarnessStandardErrorTest
 	}
 
 	/**
-	 * Verifies standard error is drained while the harness process remains open.
+	 * Verifies a harness producer can write and flush its complete diagnostic through a one-byte stderr pipe while the
+	 * reader remains open. The producer thread represents the harness process writing its standard-error stream and stays
+	 * alive until the test closes that stream.
 	 *
-	 * @throws IOException if test stream I/O fails
+	 * @throws IOException          if test stream I/O fails
+	 * @throws InterruptedException if cleanup of the harness producer is interrupted
+	 * @throws ExecutionException   if writing the harness diagnostic fails
+	 * @throws TimeoutException     if the harness producer does not finish within five seconds
 	 */
-	@Test
-	public void drainsOpenStream() throws IOException
+	@Test(timeOut = 10_000)
+	public void drainsOpenStream() throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
-		try (PipedInputStream input = new PipedInputStream())
+		try (PipedInputStream input = new PipedInputStream(1))
 		{
-			HarnessStandardError standardError;
-			try (PipedOutputStream output = new PipedOutputStream(input))
+			CompletableFuture<Boolean> diagnosticWriteCompleted = new CompletableFuture<>();
+			CountDownLatch harnessMayExit = new CountDownLatch(1);
+			HarnessStandardError standardError = null;
+			Thread harnessProducer = null;
+
+			try
 			{
-				standardError = new HarnessStandardError(input);
-				write(output);
+				try (PipedOutputStream harnessOutput = new PipedOutputStream(input))
+				{
+					standardError = new HarnessStandardError(input);
+					harnessProducer = Thread.startVirtualThread(() ->
+					{
+						try
+						{
+						write(harnessOutput);
+						harnessOutput.flush();
+						diagnosticWriteCompleted.complete(true);
+						harnessMayExit.await();
+					}
+						catch (IOException e)
+						{
+							diagnosticWriteCompleted.completeExceptionally(e);
+						}
+						catch (InterruptedException e)
+						{
+							diagnosticWriteCompleted.completeExceptionally(e);
+							Thread.currentThread().interrupt();
+						}
+					});
+
+					requireThat(diagnosticWriteCompleted.get(5, TimeUnit.SECONDS), "diagnosticWriteCompleted").isTrue();
+					// Closing this scope represents the harness closing stderr after writing its complete diagnostic.
+				}
+				harnessMayExit.countDown();
+				requireThat(standardError.await(), "standardError").isEqualTo("diagnostic");
 			}
-			requireThat(standardError.await(), "standardError").isEqualTo("diagnostic");
+			finally
+			{
+				harnessMayExit.countDown();
+				try
+				{
+					if (standardError != null)
+						standardError.close();
+				}
+				finally
+				{
+					if (harnessProducer != null)
+					{
+						if (harnessProducer.isAlive())
+						{
+							harnessProducer.interrupt();
+							harnessProducer.join(5_000);
+						}
+						requireThat(harnessProducer.isAlive(), "harnessProducer").isFalse();
+					}
+				}
+			}
 		}
 	}
 
@@ -54,18 +114,23 @@ public final class HarnessStandardErrorTest
 	@Test
 	public void boundsLargeDiagnostic() throws IOException
 	{
-		byte[] diagnostic = new byte[HarnessStandardErrorSecrets.getHarnessStandardErrorAccess().
-			maximumDiagnosticBytes() + 1];
+		int maximumDiagnosticBytes = HarnessStandardErrorSecrets.getHarnessStandardErrorAccess().
+			maximumDiagnosticBytes();
+		String prefix = "a".repeat(maximumDiagnosticBytes);
+		String discardedTail = "discarded diagnostic tail";
+		byte[] diagnostic = (prefix + discardedTail).getBytes(UTF_8);
 		HarnessStandardError standardError = new HarnessStandardError(new ByteArrayInputStream(diagnostic));
 
 		String result = standardError.await();
 
-		requireThat(result, "standardError").contains("standard error truncated after " +
-			HarnessStandardErrorSecrets.getHarnessStandardErrorAccess().maximumDiagnosticBytes() + " bytes");
+		requireThat(result, "standardError").isEqualTo(prefix + "\n[standard error truncated after " +
+			maximumDiagnosticBytes + " bytes]");
+		requireThat(result, "standardError").contains("standard error truncated after " + maximumDiagnosticBytes +
+			" bytes");
 	}
 
 	/**
-	 * Writes and closes one connected output stream.
+	 * Writes diagnostic bytes to the harness's stderr pipe without closing it.
 	 *
 	 * @param output the connected output stream
 	 *

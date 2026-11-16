@@ -68,7 +68,6 @@ public final class FakeHarnessCli extends Process
 	 * The actions to run when the child exits, guarded by this list's monitor, which also guards the exit.
 	 */
 	private final List<Runnable> exitActions = new ArrayList<>();
-	private volatile boolean exitsWhenAwaited;
 	private volatile boolean keepsRunningWhenInputCloses;
 	private final AtomicInteger terminationRequests = new AtomicInteger();
 	private volatile byte[] standardError = new byte[0];
@@ -134,7 +133,7 @@ public final class FakeHarnessCli extends Process
 	}
 
 	/**
-	 * Ends the child: closes its standard output and marks it as exited with status 0.
+	 * Ends the child: closes its standard output and marks it as exited with the status selected by the constructor.
 	 */
 	public void exit()
 	{
@@ -198,14 +197,10 @@ public final class FakeHarnessCli extends Process
 	}
 
 	/**
-	 * Closes the child's standard output without marking the child as exited. The child is marked as exited, with
-	 * status 0, when a caller waits for it. This makes the JDK contract's separate output-EOF and exit observations
-	 * testable; it does not prescribe the ordering or delay of a real harness. Reading the exit status while the
-	 * child is alive fails.
+	 * Closes the child's stdout without ending the child. The caller must use {@link #exit()} or termination to end it.
 	 */
-	public void closeOutputThenExitWhenAwaited()
+	public void closeOutput()
 	{
-		exitsWhenAwaited = true;
 		standardOutput.add(new byte[0]);
 	}
 
@@ -243,7 +238,6 @@ public final class FakeHarnessCli extends Process
 	@Override
 	public int waitFor() throws InterruptedException
 	{
-		exitIfAwaited();
 		exited.await();
 		return exitStatus;
 	}
@@ -251,17 +245,7 @@ public final class FakeHarnessCli extends Process
 	@Override
 	public boolean waitFor(long timeout, TimeUnit unit) throws InterruptedException
 	{
-		exitIfAwaited();
 		return exited.await(timeout, unit);
-	}
-
-	/**
-	 * Marks the child as exited if it was set to exit when awaited.
-	 */
-	private void exitIfAwaited()
-	{
-		if (exitsWhenAwaited)
-			markExited();
 	}
 
 	@Override

@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.test.ExitedProcess;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
@@ -55,6 +56,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
@@ -255,6 +257,7 @@ public final class RequestServerTest
 			AtomicReference<List<String>> started = new AtomicReference<>();
 			AtomicReference<List<String>> copied = new AtomicReference<>();
 			AtomicReference<ChildPolicy> bounds = new AtomicReference<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			fixture.child = arguments ->
 			{
 				started.set(arguments);
@@ -267,10 +270,8 @@ public final class RequestServerTest
 				}
 				Files.writeString(Path.of(option(arguments, "--output")), "{\"type\":\"turn_completed\"}\n");
 				Files.writeString(Path.of(option(arguments, "--receipt")), "{}");
-				FakeHarnessCli process = new FakeHarnessCli(_ ->
-				{
-				});
-				process.closeOutputThenExitWhenAwaited();
+				FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child));
+				child.set(process);
 				return process;
 			};
 			try (Fixture.Running server = fixture.start())
@@ -566,6 +567,22 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Returns a request handler that ends the captured runner when it receives a complete record.
+	 *
+	 * @param json reads the runner's input record
+	 * @param process receives the fake runner before the handler is called
+	 * @return the request handler
+	 */
+	private static Consumer<String> exitOnCompleteRecord(JsonMapper json, AtomicReference<FakeHarnessCli> process)
+	{
+		return line ->
+		{
+			if (json.readTree(line).path("type").asString().equals("complete"))
+				process.get().exit();
+		};
+	}
+
+	/**
 	 * Serves one session of a command through the server, as the prompt optimizer does.
 	 *
 	 * @param fixture the session that runs the server
@@ -672,14 +689,13 @@ public final class RequestServerTest
 		try (Fixture fixture = new Fixture())
 		{
 			AtomicReference<List<String>> started = new AtomicReference<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			fixture.child = arguments ->
 			{
 				started.set(arguments);
 				Files.writeString(Path.of(option(arguments, "--receipt")), "{}");
-				FakeHarnessCli process = new FakeHarnessCli(_ ->
-				{
-				});
-				process.closeOutputThenExitWhenAwaited();
+				FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child));
+				child.set(process);
 				return process;
 			};
 			try (Fixture.Running server = fixture.start())
@@ -879,11 +895,7 @@ public final class RequestServerTest
 				if (arguments.getFirst().equals(ChildNeedsReport.OPTION))
 				{
 					new ChildNeedsReport(List.of(), Set.of(MODEL_HOST), List.of()).write(json, Path.of(arguments.get(1)));
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					});
-					process.closeOutputThenExitWhenAwaited();
-					return process;
+					return new ExitedProcess(new ProcessBuilder(), 0, "", "");
 				}
 				return child.start(arguments);
 			};

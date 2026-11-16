@@ -83,5 +83,6 @@ public final class HeartbeatTickerTest
 	{
 		contract.runsActionEachPeriod();
 		contract.closingStopsOnlyItsAction();
+		contract.sameActionStartsHaveSeparateHandles();
 	}
 }

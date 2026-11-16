@@ -340,7 +340,7 @@ public final class StatusReportTest
 	}
 
 	/** The status counts only completed trials in the reported phase and shows the early-end share in JSON and text. */
-	// Requirement: R-E6
+	// Requirement: R-E25
 	@Test
 	public void reportsEarlyEndShare()
 	{
@@ -771,6 +771,8 @@ public final class StatusReportTest
 		requireThat(output.get("prompt_size").get("working").get("unavailable").asString(), "reason").isNotBlank();
 		requireThat(output.get("prompt_size").get("incumbent").get("unavailable").asString(), "reason").isNotBlank();
 		requireThat(output.has("trial_input_tokens"), "trialTokens").isTrue();
+		requireThat(values(output.get("trial_input_tokens"), "cell"), "cells").
+			isEqualTo(List.of("formatting", "plain_list", "safety"));
 		for (JsonNode cell : output.get("trial_input_tokens"))
 		{
 			requireThat(cell.get("working_median").isNull(), "workingUnavailable").isTrue();
@@ -802,6 +804,8 @@ public final class StatusReportTest
 		requireThat(output.get("prompt_size").get("working").get("words").asLong(), "workingWords").isEqualTo(2);
 		requireThat(output.get("prompt_size").get("incumbent").get("bytes").asLong(), "incumbentBytes").isEqualTo(4);
 		requireThat(output.get("prompt_size").get("incumbent").get("words").asLong(), "incumbentWords").isEqualTo(1);
+		requireThat(values(output.get("trial_input_tokens"), "cell"), "cells").
+			isEqualTo(List.of("formatting", "plain_list", "safety"));
 		for (JsonNode cell : output.get("trial_input_tokens"))
 		{
 			if (cell.get("cell").asString().equals("safety"))
@@ -910,12 +914,12 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies that the measurement refuses a staged target prompt file whose bytes differ from the snapshot, and
-	 * reports the measurement as unavailable instead of the size of the wrong bytes.
+	 * Verifies that measuring a staged target whose bytes differ from the snapshot throws rather than reporting an
+	 * unavailable optional measurement.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
-	@Test
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*snapshot.*")
 	public void sizeRefusesAlteredStagedBytes() throws IOException
 	{
 		// Requirement: R-E18
@@ -927,10 +931,54 @@ public final class StatusReportTest
 			Files.writeString(staged.resolve(DriverHarness.PROMPT), "edited after staging\n", UTF_8);
 			FileInventory inventory = new FileInventory(staged, Map.of(DriverHarness.PROMPT,
 				new RegularFile(Sha256.of("short prompt\n".getBytes(UTF_8)), permissions)));
+			PromptMeasurements.measure(staged, inventory, DriverHarness.PROMPT);
+		}
+	}
+
+	/**
+	 * Invalid UTF-8 keeps the byte count available while the word count remains unavailable.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void invalidUtf8KeepsByteCount() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path staged = cleanup.add(Files.createTempDirectory("prompt-size-invalid-utf8"));
+			byte[] bytes = {(byte) 0xc3, (byte) 0x28};
+			Files.write(staged.resolve(DriverHarness.PROMPT), bytes);
+			FileInventory inventory = new FileInventory(staged, Map.of(DriverHarness.PROMPT,
+				new RegularFile(Sha256.of(bytes), PosixFilePermissions.fromString("rw-r--r--"))));
+
 			PromptSize size = PromptMeasurements.measure(staged, inventory, DriverHarness.PROMPT);
+
+			requireThat(size.bytes(), "bytes").isEqualTo(2L);
+			requireThat(size.words(), "words").isNull();
+			requireThat(size.unavailable(), "unavailable").contains("not UTF-8");
+		}
+	}
+
+	/**
+	 * An ordinary staged read failure leaves the optional measurement unavailable.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void ordinaryReadFailureIsUnavailable() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path staged = cleanup.add(Files.createTempDirectory("prompt-size-looped-link"));
+			Files.createSymbolicLink(staged.resolve(DriverHarness.PROMPT), DriverHarness.PROMPT);
+			FileInventory inventory = new FileInventory(staged, Map.of(DriverHarness.PROMPT,
+				new RegularFile(Sha256.of(new byte[0]), PosixFilePermissions.fromString("rw-r--r--"))));
+
+			PromptSize size = PromptMeasurements.measure(staged, inventory, DriverHarness.PROMPT);
+
 			requireThat(size.bytes(), "bytes").isNull();
 			requireThat(size.words(), "words").isNull();
-			requireThat(size.unavailable(), "unavailable").isNotBlank();
+			requireThat(size.unavailable(), "unavailable").contains("could not be measured");
 		}
 	}
 
@@ -948,10 +996,12 @@ public final class StatusReportTest
 		Campaign campaign = new Builder().confirmed().working(1).optimization(evidence).build();
 		JsonNode cells = StatusReport.of(campaign, ReportEvidence.NONE).toJson(JsonMapper.builder().build()).
 			get("trial_input_tokens");
+		requireThat(values(cells, "cell"), "cells").isEqualTo(List.of("formatting", "plain_list", "safety"));
 		for (JsonNode cell : cells)
 		{
 			if (cell.get("cell").asString().equals("safety"))
 			{
+				requireThat(cell.get("incumbent_median").isNull(), "incumbentNull").isFalse();
 				requireThat(cell.get("working_median").asLong(), "workingMedian").isEqualTo(30);
 				requireThat(cell.get("incumbent_median").asLong(), "incumbentMedian").isEqualTo(0);
 				requireThat(cell.get("working_outcomes").asLong(), "outcomes").isEqualTo(5);
@@ -1983,8 +2033,8 @@ public final class StatusReportTest
 		requireThat(first.path("pass_rate").path("label").asString(), "label").isEqualTo("development estimate");
 		requireThat(first.path("comparison").path("state").asString(), "state").isEqualTo("not certified");
 		String text = json.toString().toLowerCase(java.util.Locale.ROOT);
-		requireThat(text, "text").doesNotContain("tokentotal").doesNotContain("timeestimate").
-			doesNotContain("completionprobability").doesNotContain("remainingtime");
+		requireThat(text, "text").doesNotContain("\"token_total\":").doesNotContain("\"time_estimate\":").
+			doesNotContain("\"completion_probability\":").doesNotContain("\"remaining_time\":");
 	}
 
 	/**

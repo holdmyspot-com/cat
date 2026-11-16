@@ -107,6 +107,11 @@ public final class ProfileInventoryContract
 		requireThat(port.canBind(subject.bindingFile()), "canBind(bindingFile)").isTrue();
 		for (String name : new String[]{"CLAUDE.md", "AGENTS.md", ".claude/rules/style.md", "notes/model.toml"})
 			requireThat(port.canBind(Path.of(name)), "canBind(" + name + ")").isFalse();
+		Path root = Path.of("/");
+		requireThat(port.canBind(root), "canBindRoot").isFalse();
+		requireThat(port.canBind(root.resolve(subject.bindingFile().getFileName())), "canBindFileAtRoot").isFalse();
+		requireThat(port.canBind(Path.of("unrelated").resolve(subject.bindingFile().getFileName())),
+			"canBindFileOutsideBindingDirectory").isFalse();
 	}
 
 	/**

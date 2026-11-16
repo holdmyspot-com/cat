@@ -187,6 +187,12 @@ public final class DevelopmentJudgeTest
 		requireThat(judge.shadowed(), "shadowed").isEqualTo(2);
 		requireThat(judge.strict(), "strict").isEqualTo(1);
 		requireThat(judge.lenient(), "lenient").isEqualTo(0);
+
+		DevelopmentJudge both = shadowing(List.of(CHEAP)).trialShadowed(new ShadowResult(CHEAP, false, true, true));
+
+		requireThat(both.stage(), "stage").isEqualTo(Stage.FROZEN);
+		requireThat(both.rejected(), "rejected").
+			isEqualTo(List.of(new RejectedJudge(CHEAP, Rejection.SHADOWING, 1, 0, 1, 1)));
 	}
 
 	/**
