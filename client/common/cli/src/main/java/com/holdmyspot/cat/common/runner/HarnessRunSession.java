@@ -88,13 +88,29 @@ public final class HarnessRunSession implements AutoCloseable
 	 */
 	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
 	{
+		return sendTurn(request, listener, TurnMode.STANDARD);
+	}
+
+	/**
+	 * Sends one turn for the given purpose and forwards harness events while the process remains live.
+	 *
+	 * @param request the framed turn request
+	 * @param listener receives raw harness event lines
+	 * @param mode what the turn is for
+	 * @return the terminal result for the turn
+	 * @throws IOException if the harness process is no longer alive, the turn fails, or event forwarding fails
+	 */
+	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener, TurnMode mode)
+		throws IOException
+	{
 		requireThat(request, "request").isNotBlank();
 		requireThat(listener, "listener").isNotNull();
+		requireThat(mode, "mode").isNotNull();
 		synchronized (process)
 		{
 			if (!process.isAlive())
 				throw new IOException("Harness process is no longer alive for run " + run.id());
-			return process.sendTurn(request, listener);
+			return process.sendTurn(request, listener, mode);
 		}
 	}
 

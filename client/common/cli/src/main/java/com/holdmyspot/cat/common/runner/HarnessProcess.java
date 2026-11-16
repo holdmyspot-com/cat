@@ -56,6 +56,29 @@ public interface HarnessProcess extends AutoCloseable
 	}
 
 	/**
+	 * Sends one turn for the given purpose and forwards each harness event before returning its terminal result. A
+	 * harness whose turn ends the same way for every purpose ignores {@code mode}.
+	 *
+	 * @param request the framed turn request
+	 *
+	 * @param listener receives raw harness event lines
+	 *
+	 * @param mode what the turn is for
+	 *
+	 * @return the terminal result for the turn
+	 *
+	 * @throws IOException if the process cannot accept or complete the turn, event forwarding fails, or the calling
+	 *   thread is interrupted while the turn is in progress, which lets a caller stop a turn that does not end; the
+	 *   thread's interrupt status is then set
+	 */
+	default HarnessProcessResult sendTurn(String request, HarnessEventListener listener, TurnMode mode)
+		throws IOException
+	{
+		requireThat(mode, "mode").isNotNull();
+		return sendTurn(request, listener);
+	}
+
+	/**
 	 * Sends additional user direction to the active turn without starting another turn.
 	 *
 	 * @param request the non-blank additional user direction

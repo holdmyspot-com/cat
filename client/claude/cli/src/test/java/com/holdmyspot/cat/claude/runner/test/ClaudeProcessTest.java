@@ -10,6 +10,7 @@ import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.TurnMode;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
@@ -317,14 +318,26 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Feeds lines to the turn boundary of a process that has printed no session state yet.
+	 * Feeds lines to the turn boundary of a standard turn of a process that has printed no session state yet.
 	 *
 	 * @param lines the lines Claude printed
 	 * @return the boundary after the lines
 	 */
 	private static TurnBoundary boundaryAfter(String... lines)
 	{
-		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false);
+		return boundaryAfter(TurnMode.STANDARD, lines);
+	}
+
+	/**
+	 * Feeds lines to the turn boundary of a process that has printed no session state yet.
+	 *
+	 * @param mode  what the turn is for
+	 * @param lines the lines Claude printed
+	 * @return the boundary after the lines
+	 */
+	private static TurnBoundary boundaryAfter(TurnMode mode, String... lines)
+	{
+		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false, mode);
 		for (String line : lines)
 			requireThat(boundary.accept(line), "effect").isEqualTo(LineEffect.NONE);
 		return boundary;
@@ -383,7 +396,7 @@ public final class ClaudeProcessTest
 	{
 		// Requirement: R-E14
 		List<String> lines = recorded(timeline);
-		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false);
+		TurnBoundary boundary = new TurnBoundary(JsonMapper.builder().build(), false, TurnMode.STANDARD);
 		List<Integer> ends = new ArrayList<>();
 		for (int i = 0; i < lines.size(); ++i)
 		{
@@ -465,6 +478,100 @@ public final class ClaudeProcessTest
 			List<String> relayed = new ArrayList<>();
 
 			HarnessProcessResult next = process.sendTurn("Reply TWO.", relayed::add);
+
+			requireThat(next.completed(), "completed").isTrue();
+			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");
+			requireThat(next.assistantMessages(), "assistantMessages").isEqualTo(List.of("TWO"));
+			requireThat(next.standardError(), "standardError").isEqualTo(ClaudeProcess.LATE_FOLLOW_UP);
+			requireThat(relayed, "relayed").isEqualTo(lines);
+		}
+	}
+
+	/**
+	 * Verifies that Claude's {@code idle} state after the turn's reply ends a conversation turn although a background
+	 * task is still listed, and that the same lines leave a standard turn open, because each standard turn's reply is
+	 * judged and a child's completion can restart the root.
+	 */
+	@Test
+	public void conversationEndsAtIdleWhileTaskListed()
+	{
+		String[] lines = {STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED,
+			ROOT_REPLY, ROOT_RESULT};
+
+		requireThat(boundaryAfter(TurnMode.CONVERSATION, lines).accept(STATE_IDLE), "conversationEffect").
+			isEqualTo(LineEffect.TURN_ENDS);
+		requireThat(boundaryAfter(TurnMode.STANDARD, lines).accept(STATE_IDLE), "standardEffect").
+			isEqualTo(LineEffect.NONE);
+	}
+
+	/**
+	 * Verifies that a conversation turn still needs the reply to its own message: an {@code idle} state before the
+	 * reply does not end it.
+	 */
+	@Test
+	public void conversationWaitsForReplyBeforeEnding()
+	{
+		TurnBoundary boundary = boundaryAfter(TurnMode.CONVERSATION, STATE_RUNNING, INIT, MESSAGE_START);
+
+		requireThat(boundary.accept(STATE_IDLE), "effect").isEqualTo(LineEffect.NONE);
+	}
+
+	/**
+	 * Verifies a process ends a conversation turn at the {@code idle} state with a child agent still listed, relaying
+	 * every line and replying with the root's result.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void conversationTurnEndsWithChildListed() throws IOException
+	{
+		List<String> lines = List.of(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED,
+			ROOT_REPLY, ROOT_RESULT, STATE_IDLE);
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(lines.toArray(String[]::new));
+			List<String> relayed = new ArrayList<>();
+
+			HarnessProcessResult result = process.sendTurn("Launch a background child.", relayed::add,
+				TurnMode.CONVERSATION);
+
+			requireThat(result.completed(), "completed").isTrue();
+			requireThat(result.assistantResponse(), "assistantResponse").isEqualTo("LAUNCHED");
+			requireThat(result.standardError(), "standardError").isEmpty();
+			requireThat(relayed, "relayed").isEqualTo(lines);
+		}
+	}
+
+	/**
+	 * Verifies that a follow-up reply that a child's completion starts after a conversation turn ended is reported as a
+	 * late follow-up of that turn when it arrives in the next turn: the next turn ends at the {@code idle} state that
+	 * follows the reply to its own message, with a child agent still listed, and does not take the follow-up for its
+	 * reply.
+	 *
+	 * @throws IOException if a turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void conversationReportsLateFollowUp() throws IOException
+	{
+		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		{
+		});
+		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+		{
+			claude.emit(STATE_RUNNING, INIT, MESSAGE_START, CHILD_LAUNCH, CHILD_RUNNING, CHILD_STARTED, ROOT_REPLY,
+				ROOT_RESULT, STATE_IDLE);
+			process.sendTurn("Launch a background child.", _ ->
+			{
+			}, TurnMode.CONVERSATION);
+			List<String> lines = List.of(STATE_RUNNING, INIT, MESSAGE_START, FOLLOW_UP_REPLY, FOLLOW_UP_RESULT,
+				STATE_IDLE, STATE_RUNNING, INIT, MESSAGE_START, SECOND_REPLY, SECOND_RESULT, CHILD_RUNNING, STATE_IDLE);
+			claude.emit(lines.toArray(String[]::new));
+			List<String> relayed = new ArrayList<>();
+
+			HarnessProcessResult next = process.sendTurn("Reply TWO.", relayed::add, TurnMode.CONVERSATION);
 
 			requireThat(next.completed(), "completed").isTrue();
 			requireThat(next.assistantResponse(), "assistantResponse").isEqualTo("TWO");

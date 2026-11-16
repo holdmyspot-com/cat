@@ -30,6 +30,7 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.TurnMode;
 
 /**
  * Adapts Claude's stream-json CLI process to the multi-request {@link HarnessProcess} contract.
@@ -240,8 +241,16 @@ public final class ClaudeProcess implements HarnessProcess
 	@Override
 	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
 	{
+		return sendTurn(request, listener, TurnMode.STANDARD);
+	}
+
+	@Override
+	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener, TurnMode mode)
+		throws IOException
+	{
 		requireThat(request, "request").isNotBlank();
 		requireThat(listener, "listener").isNotNull();
+		requireThat(mode, "mode").isNotNull();
 		try
 		{
 			synchronized (turnLock)
@@ -266,7 +275,7 @@ public final class ClaudeProcess implements HarnessProcess
 			// Where the turn's own reply begins in events: after any follow-up reply that belongs to an earlier turn
 			int replyStart = 0;
 			StringJoiner diagnostics = new StringJoiner("\n");
-			TurnBoundary boundary = new TurnBoundary(scope.json(), sessionStatePrinted);
+			TurnBoundary boundary = new TurnBoundary(scope.json(), sessionStatePrinted, mode);
 			OutputLine next = nextLine();
 			while (next.line() != null)
 			{
@@ -583,13 +592,19 @@ public final class ClaudeProcess implements HarnessProcess
 	 * agent that the root sees is running, Claude is not idle either.
 	 * <p>
 	 * {@code idle} does not mean that all background work has finished: a child agent's own background command can
-	 * still be listed, and when it finishes the child restarts and the root may start a follow-up reply. So the turn
-	 * ends at an {@code idle} state only if the turn has replied to a user message and the latest
-	 * {@code background_tasks_changed} line listed no task, or the turn was interrupted; otherwise the turn waits for
-	 * the next {@code idle} state. An interrupt does not stop a background command, so it is the one thing besides an
-	 * empty task list that lets the turn end while a task is listed. A
-	 * result or a change to the task list alone never ends a turn, even if the list empties after the last {@code idle}
-	 * state: the turn then waits for the next {@code idle} state.
+	 * still be listed, and when it finishes the child restarts and the root may start a follow-up reply. So a
+	 * {@link TurnMode#STANDARD standard} turn ends at an {@code idle} state only if the turn has replied to a user
+	 * message and the latest {@code background_tasks_changed} line listed no task, or the turn was interrupted;
+	 * otherwise the turn waits for the next {@code idle} state. An interrupt does not stop a background command, so it
+	 * is the one thing besides an empty task list that lets a standard turn end while a task is listed. A result or a
+	 * change to the task list alone never ends a turn, even if the list empties after the last {@code idle} state: the
+	 * turn then waits for the next {@code idle} state.
+	 * <p>
+	 * A turn of a {@link TurnMode#CONVERSATION conversation} ends at the first {@code idle} state that follows its
+	 * reply, whatever the task list says. The asking session plays the user and scores nothing per turn, Claude queues
+	 * a message that the asking session writes while background work runs, and a real user can type at {@code idle}, so
+	 * waiting for the task list to empty only holds the turn open for as long as a background command lives. A reply
+	 * that a finished task later causes is then a late follow-up of the earlier turn, as below.
 	 * <p>
 	 * A {@code result} whose {@code origin.kind} is {@code task-notification} and that arrives before the turn's first
 	 * reply to a user message ends a follow-up reply that belongs to an earlier turn; it does not end this turn, and
@@ -604,6 +619,10 @@ public final class ClaudeProcess implements HarnessProcess
 		 * Parses Claude's output lines.
 		 */
 		private final JsonMapper json;
+		/**
+		 * What the turn is for.
+		 */
+		private final TurnMode mode;
 		/**
 		 * Indicates whether Claude has printed a {@code session_state_changed} line since the process started.
 		 */
@@ -639,12 +658,15 @@ public final class ClaudeProcess implements HarnessProcess
 		 *
 		 * @param json                parses Claude's output lines
 		 * @param sessionStatePrinted whether Claude printed a {@code session_state_changed} line in an earlier turn
+		 * @param mode                what the turn is for
 		 */
-		public TurnBoundary(JsonMapper json, boolean sessionStatePrinted)
+		public TurnBoundary(JsonMapper json, boolean sessionStatePrinted, TurnMode mode)
 		{
 			assert json != null;
+			assert mode != null;
 			this.json = json;
 			this.sessionStatePrinted = sessionStatePrinted;
+			this.mode = mode;
 		}
 
 		/**
@@ -775,8 +797,11 @@ public final class ClaudeProcess implements HarnessProcess
 				case "session_state_changed" ->
 				{
 					sessionStatePrinted = true;
-					if (event.path("state").asString("").equals("idle") && answered && (!backgroundTasksRunning || interrupted))
+					if (event.path("state").asString("").equals("idle") && answered && (!backgroundTasksRunning || interrupted ||
+						mode == TurnMode.CONVERSATION))
+					{
 						return LineEffect.TURN_ENDS;
+					}
 				}
 				default ->
 				{

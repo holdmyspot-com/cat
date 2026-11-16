@@ -35,6 +35,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.TurnMode;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
@@ -1038,6 +1039,94 @@ public final class HarnessRunnerBridgeTest
 					requireThat(received, "received").isEqualTo(List.of("first"));
 				}
 			}
+		}
+	}
+
+	/**
+	 * Returns the ways a bridge gets its records, with the purpose of the turns that it sends.
+	 *
+	 * @return the way, and the purpose
+	 */
+	@DataProvider
+	public static Object[][] turnModes()
+	{
+		return new Object[][]{{BridgeRecords.CONVERSATION_FOLDER, TurnMode.CONVERSATION},
+			{BridgeRecords.REQUESTED_CONVERSATION, TurnMode.CONVERSATION}, {BridgeRecords.INPUT, TurnMode.STANDARD}};
+	}
+
+	/**
+	 * Where a bridge reads its records.
+	 */
+	private enum BridgeRecords
+	{
+		/**
+		 * The messages that an asking session appended to a conversation's folder.
+		 */
+		CONVERSATION_FOLDER,
+		/**
+		 * The records that a request server writes for a requested conversation, whose runner got
+		 * {@code --continue-after-failed-turn}.
+		 */
+		REQUESTED_CONVERSATION,
+		/**
+		 * Records of any other bridge, as a trial's.
+		 */
+		INPUT
+	}
+
+	/**
+	 * Verifies that the turns of a conversation are sent to the harness as conversation turns, whether the asking
+	 * session's messages come from a conversation's folder or from a requested conversation's runner, and that the
+	 * turns of any other bridge are standard turns, whose replies a caller judges.
+	 *
+	 * @param records the way the bridge gets its records
+	 * @param expected the purpose of the turns that the bridge sends
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 10_000, dataProvider = "turnModes")
+	public void sendsTurnsForTheirPurpose(BridgeRecords records, TurnMode expected) throws IOException
+	{
+		String input = "";
+		if (records != BridgeRecords.CONVERSATION_FOLDER)
+		{
+			input = "{\"type\":\"turn\",\"prompt\":\"first\"}\n{\"type\":\"turn\",\"prompt\":\"second\"}\n" +
+				"{\"type\":\"complete\"}\n";
+		}
+		List<String> received = new CopyOnWriteArrayList<>();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
+			StringReader standardInput = new StringReader(input))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			List<String> arguments = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
+				"--run-root", root.toString(), "--keep-run", "--model", "model-a", "--effort", "effort-a"));
+			switch (records)
+			{
+				case CONVERSATION_FOLDER ->
+				{
+					Path folder = Files.createDirectory(cleanup.add(Files.createTempDirectory("cat-asking-")).
+						resolve("conversation"));
+					Files.writeString(folder.resolve("to-child.jsonl"),
+						"{\"turn\": \"first\"}\n{\"turn\": \"second\"}\n{\"end\": true}\n");
+					arguments.addAll(List.of("--conversation", folder.toString()));
+				}
+				case REQUESTED_CONVERSATION -> arguments.add("--continue-after-failed-turn");
+				case INPUT ->
+				{
+				}
+			}
+			HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",
+				HarnessTemporaryRoot.of(root));
+
+			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
+
+			requireThat(received, "received").isEqualTo(List.of("first", "second"));
+			requireThat(process.turnModes(), "turnModes").isEqualTo(List.of(expected, expected));
 		}
 	}
 

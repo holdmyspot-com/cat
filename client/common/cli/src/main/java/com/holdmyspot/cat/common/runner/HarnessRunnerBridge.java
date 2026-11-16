@@ -186,6 +186,13 @@ public final class HarnessRunnerBridge
 		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
 		// send the next turn once the cause is gone, such as a usage limit that resets
 		boolean continueAfterFailedTurn = conversation != null || (options != null && options.continueAfterFailedTurn());
+		// The records of a conversation come from a session that plays the user, so nothing scores each turn's reply and
+		// a turn need not wait for the harness's background work, which would hold the asking session's next message back
+		TurnMode turnMode;
+		if (continueAfterFailedTurn)
+			turnMode = TurnMode.CONVERSATION;
+		else
+			turnMode = TurnMode.STANDARD;
 		// Why the last turn failed, if the bridge kept serving after it failed
 		AtomicReference<IOException> failedTurn = new AtomicReference<>();
 		boolean copiesChecked = false;
@@ -236,7 +243,7 @@ public final class HarnessRunnerBridge
 													manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
 												forwardHarnessEvent(session, client, harnessEvent);
 												recordSessionTranscript(session, client, transcriptRecorded);
-											});
+											}, turnMode);
 											recordSessionTranscript(session, client, transcriptRecorded);
 											if (manager != null)
 												manager.writeTurnOutput(session.run(), currentTurn, result);

@@ -42,6 +42,7 @@ import com.holdmyspot.cat.common.runner.UserRuleTree;
 import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.TurnMode;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -1688,11 +1689,18 @@ public final class ClaudeRunner
 			@Override
 			public HarnessProcessResult sendTurn(String request, HarnessEventListener listener) throws IOException
 			{
+				return sendTurn(request, listener, TurnMode.STANDARD);
+			}
+
+			@Override
+			public HarnessProcessResult sendTurn(String request, HarnessEventListener listener, TurnMode mode)
+				throws IOException
+			{
 				requireNoRefusal();
 				HarnessProcessResult result;
 				try
 				{
-					result = session.sendTurn(request, listener);
+					result = session.sendTurn(request, listener, mode);
 				}
 				catch (IOException e)
 				{

@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.TurnMode;
 import com.holdmyspot.cat.common.runner.contract.test.HarnessProcessContract;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 
@@ -13,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 
 /**
@@ -33,6 +35,7 @@ public final class ScriptedProcess implements HarnessProcess
 	private final InterruptedTurn interruptedTurn;
 	private final Path transcript;
 	private final HarnessSessionTranscripts transcripts;
+	private final List<TurnMode> turnModes = new CopyOnWriteArrayList<>();
 	private final Object lock = new Object();
 	/**
 	 * The number of turns that have started; guarded by {@link #lock}.
@@ -225,6 +228,36 @@ public final class ScriptedProcess implements HarnessProcess
 				activeTurn = null;
 			}
 		}
+	}
+
+	/**
+	 * Records what the turn is for and plays the script's next turn, which ends the same way for every purpose.
+	 *
+	 * @param request  the non-blank user prompt
+	 * @param listener receives each harness event line
+	 * @param mode     what the turn is for
+	 * @return the turn's result
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code request} is blank
+	 * @throws IOException              as {@link #sendTurn(String, HarnessEventListener)} throws
+	 */
+	@Override
+	public HarnessProcessResult sendTurn(String request, HarnessEventListener listener, TurnMode mode)
+		throws IOException
+	{
+		requireThat(mode, "mode").isNotNull();
+		turnModes.add(mode);
+		return sendTurn(request, listener);
+	}
+
+	/**
+	 * Returns what each turn sent with a purpose was for, in the order they were sent.
+	 *
+	 * @return the purposes
+	 */
+	public List<TurnMode> turnModes()
+	{
+		return List.copyOf(turnModes);
 	}
 
 	@Override
