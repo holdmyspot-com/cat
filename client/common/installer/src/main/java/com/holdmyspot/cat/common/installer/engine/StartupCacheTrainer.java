@@ -9,6 +9,8 @@ import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
 import com.holdmyspot.cat.common.runner.StartupCache;
+import com.holdmyspot.cat.common.installer.secrets.StartupCacheTrainerAccess;
+import com.holdmyspot.cat.common.installer.secrets.StartupCacheTrainerSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -36,9 +38,10 @@ import tools.jackson.databind.JsonNode;
  * it, and the wrapper runs the runtime that the directory's runtime binding names, so the caller binds the directory to
  * the runtime that is to run it before training. The program runs against a scratch home, temporary folder and project
  * that are removed afterwards, with an environment that holds nothing of the caller's except its program search path,
- * and its output is discarded. A plugin directory that cannot be trained keeps no cache and no partial file, and its
- * launchers start without one; training never fails the operation. A process with administrative rights trains
- * nothing, so that the plugin's program never runs with those rights.
+	 * and its output is discarded. A plugin directory that cannot be trained keeps no cache and no partial file, and its
+	 * launchers start without one. Ordinary training misses do not fail the operation; an invalid training description
+	 * or a cache or scratch folder that cannot be removed is reported. A process with administrative rights trains
+	 * nothing, so that the plugin's program never runs with those rights.
  */
 public final class StartupCacheTrainer
 {
@@ -58,6 +61,27 @@ public final class StartupCacheTrainer
 	private final Path scratch;
 	private final Duration timeout;
 	private final BooleanSupplier elevated;
+	private final TreeDeleter deleteTree;
+
+	static
+	{
+		StartupCacheTrainerSecrets.setStartupCacheTrainerAccess(new StartupCacheTrainerAccess()
+		{
+			@Override
+			public StartupCacheTrainer create(Path scratch, Duration timeout, BooleanSupplier elevated,
+				TreeDeleter deleteTree)
+			{
+				return new StartupCacheTrainer(scratch, timeout, elevated, deleteTree);
+			}
+
+			@Override
+			public void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree)
+				throws IOException
+			{
+				StartupCacheTrainer.cleanUp(written, cacheDirectory, work, deleteTree);
+			}
+		});
+	}
 
 	/**
 	 * Creates a trainer.
@@ -72,76 +96,136 @@ public final class StartupCacheTrainer
 	 */
 	public StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated)
 	{
+		this(scratch, timeout, elevated, StateFiles::delete);
+	}
+
+	/**
+	 * Creates a trainer with the file-removal operation that it uses to retire its cache and scratch trees.
+	 *
+	 * @param scratch    the directory below which each training run gets its scratch folders, which is created when
+	 *                   absent
+	 * @param timeout    the longest time that each of a training's two Java runs may take before it is stopped
+	 * @param elevated   tells whether this process runs with administrative rights
+	 * @param deleteTree removes a cache or scratch tree
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code timeout} is not positive
+	 */
+	private StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated, TreeDeleter deleteTree)
+	{
 		requireThat(scratch, "scratch").isNotNull();
 		requireThat(timeout, "timeout").isGreaterThan(Duration.ZERO);
 		requireThat(elevated, "elevated").isNotNull();
+		requireThat(deleteTree, "deleteTree").isNotNull();
 		this.scratch = scratch.toAbsolutePath().normalize();
 		this.timeout = timeout;
 		this.elevated = elevated;
+		this.deleteTree = deleteTree;
 	}
 
 	/**
 	 * Replaces a plugin directory's startup cache with one trained at the directory's location. When this process runs
 	 * with administrative rights, the plugin has no training description, or either Java run fails or takes too long,
-	 * the directory is left without a cache.
+	 * the directory is left without a cache. An invalid description or a failed cache or scratch removal is reported.
 	 *
 	 * @param plugin the plugin directory
 	 * @return {@code true} if the cache was written
 	 * @throws NullPointerException if {@code plugin} is null
+	 * @throws IOException          if the training description is invalid or a cache or scratch folder cannot be
+	 *                              removed
 	 */
-	public boolean train(Path plugin)
+	public boolean train(Path plugin) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
 		Path cacheDirectory = plugin.resolve(StartupCache.DIRECTORY);
+		deleteTree.delete(cacheDirectory);
 		boolean written = false;
+		IOException descriptionFailure = null;
+		RuntimeException programmingFailure = null;
 		Path work = null;
 		try
 		{
-			StateFiles.delete(cacheDirectory);
-			if (elevated.getAsBoolean())
-				return false;
+			boolean elevatedProcess = elevated.getAsBoolean();
 			Path description = plugin.resolve(StartupCache.TRAINING);
-			if (!Files.exists(description, NOFOLLOW_LINKS))
-				return false;
-			Training training = Training.read(description);
-			work = StateFiles.createTemporaryDirectory(scratch, "training-");
-			Path configuration = work.resolve("tmp").resolve("session-start.aotconf");
-			TrainingRun recording = plan(plugin, training, work,
-				List.of("-XX:AOTMode=record", "-XX:AOTConfiguration=" + configuration), System.getenv(),
-				Platform.current());
-			for (Path directory : recording.directories())
-				Files.createDirectory(directory);
-			Files.writeString(recording.input(), training.input(), UTF_8);
-			OptionalInt recorded = run(recording);
-			if (!succeeded(recorded, Files.isRegularFile(configuration, NOFOLLOW_LINKS)))
-				return false;
-			Files.createDirectories(cacheDirectory);
-			Path partial = cacheDirectory.resolve(StartupCache.FILE.getFileName() + ".partial");
-			TrainingRun writing = plan(plugin, training, work, List.of("-XX:AOTMode=create",
-				"-XX:AOTConfiguration=" + configuration, "-XX:AOTCache=" + partial), System.getenv(),
-				Platform.current());
-			OptionalInt created = run(writing);
-			if (!succeeded(created, Files.isRegularFile(partial, NOFOLLOW_LINKS)))
-				return false;
-			Files.move(partial, plugin.resolve(StartupCache.FILE), StandardCopyOption.ATOMIC_MOVE);
-			written = true;
-			return true;
+			if (!elevatedProcess)
+			{
+				boolean descriptionExists = Files.exists(description, NOFOLLOW_LINKS);
+				if (descriptionExists)
+				{
+					try
+					{
+						Training training = Training.read(description);
+						try
+						{
+							work = StateFiles.createTemporaryDirectory(scratch, "training-");
+							Path configuration = work.resolve("tmp").resolve("session-start.aotconf");
+							TrainingRun recording = plan(plugin, training, work,
+								List.of("-XX:AOTMode=record", "-XX:AOTConfiguration=" + configuration), System.getenv(),
+								Platform.current());
+							for (Path directory : recording.directories())
+								Files.createDirectory(directory);
+							Files.writeString(recording.input(), training.input(), UTF_8);
+							OptionalInt recorded = run(recording);
+							if (succeeded(recorded, Files.isRegularFile(configuration, NOFOLLOW_LINKS)))
+							{
+								Files.createDirectories(cacheDirectory);
+								Path partial = cacheDirectory.resolve(StartupCache.FILE.getFileName() + ".partial");
+								TrainingRun writing = plan(plugin, training, work, List.of("-XX:AOTMode=create",
+									"-XX:AOTConfiguration=" + configuration, "-XX:AOTCache=" + partial), System.getenv(),
+									Platform.current());
+								OptionalInt created = run(writing);
+								if (succeeded(created, Files.isRegularFile(partial, NOFOLLOW_LINKS)))
+								{
+									Files.move(partial, plugin.resolve(StartupCache.FILE), StandardCopyOption.ATOMIC_MOVE);
+									written = true;
+								}
+							}
+						}
+						catch (IOException _)
+						{
+							// Training is optional when its inputs or Java runs are unavailable.
+						}
+						catch (InterruptedException _)
+						{
+							Thread.currentThread().interrupt();
+						}
+					}
+					catch (IOException failure)
+					{
+						descriptionFailure = failure;
+					}
+				}
+			}
 		}
-		catch (IOException | IllegalArgumentException _)
+		catch (RuntimeException failure)
 		{
-			return false;
+			programmingFailure = failure;
 		}
-		catch (InterruptedException _)
-		{
-			Thread.currentThread().interrupt();
-			return false;
-		}
-		finally
-		{
-			cleanUp(written, cacheDirectory, work);
-		}
-	}
 
+		IOException cleanupFailure = null;
+		try
+		{
+			cleanUp(written, cacheDirectory, work, deleteTree);
+		}
+		catch (IOException failure)
+		{
+			cleanupFailure = failure;
+		}
+		if (descriptionFailure != null)
+		{
+			if (cleanupFailure != null)
+				descriptionFailure.addSuppressed(cleanupFailure);
+			throw descriptionFailure;
+		}
+		if (programmingFailure != null)
+		{
+			if (cleanupFailure != null)
+				programmingFailure.addSuppressed(cleanupFailure);
+			throw programmingFailure;
+		}
+		if (cleanupFailure != null)
+			throw cleanupFailure;
+		return written;
+	}
 	/**
 	 * Plans one Java run of a training: the plugin's {@code java} wrapper with the run's options and the training's
 	 * arguments, in an environment that holds the caller's program search path, the variables that Windows programs need
@@ -256,38 +340,75 @@ public final class StartupCacheTrainer
 
 	/**
 	 * Ends a training: removes its scratch folder and, unless it wrote the cache, the plugin's cache folder, which may
-	 * hold a partial file. A folder that cannot be deleted is left, because a later training of the same plugin directory
-	 * deletes the cache folder first and the scratch folder is below a directory that the caller owns.
+	 * hold a partial file. It attempts both removals and reports any failures.
 	 *
 	 * @param written        {@code true} if the training wrote the cache
 	 * @param cacheDirectory the plugin's cache folder, which may be absent
 	 * @param work           the training's scratch folder, or {@code null} if the training made none
 	 * @throws NullPointerException if {@code cacheDirectory} is null
+	 * @throws IOException          if a required folder cannot be removed
 	 */
-	public static void cleanUp(boolean written, Path cacheDirectory, Path work)
+	public static void cleanUp(boolean written, Path cacheDirectory, Path work) throws IOException
 	{
-		requireThat(cacheDirectory, "cacheDirectory").isNotNull();
-		if (!written)
-			deleteQuietly(cacheDirectory);
-		if (work != null)
-			deleteQuietly(work);
+		cleanUp(written, cacheDirectory, work, StateFiles::delete);
 	}
 
 	/**
-	 * Deletes a directory that a training wrote, leaving it when it cannot be deleted.
+	 * Ends a training with the supplied file-removal operation.
 	 *
-	 * @param directory the directory, which may be absent
+	 * @param written        {@code true} if the training wrote the cache
+	 * @param cacheDirectory the plugin's cache folder, which may be absent
+	 * @param work           the training's scratch folder, or {@code null} if the training made none
+	 * @param deleteTree     removes a cache or scratch tree
 	 */
-	private static void deleteQuietly(Path directory)
+	private static void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree)
+		throws IOException
 	{
-		try
+		requireThat(cacheDirectory, "cacheDirectory").isNotNull();
+		requireThat(deleteTree, "deleteTree").isNotNull();
+		IOException failure = null;
+		if (!written)
 		{
-			StateFiles.delete(directory);
+			try
+			{
+				deleteTree.delete(cacheDirectory);
+			}
+			catch (IOException cacheFailure)
+			{
+				failure = cacheFailure;
+			}
 		}
-		catch (IOException _)
+		if (work != null)
 		{
-			// A later training of the same plugin directory deletes it first
+			try
+			{
+				deleteTree.delete(work);
+			}
+			catch (IOException scratchFailure)
+			{
+				if (failure == null)
+					failure = scratchFailure;
+				else
+					failure.addSuppressed(scratchFailure);
+			}
 		}
+		if (failure != null)
+			throw failure;
+	}
+
+	/**
+	 * Removes one cache or scratch tree.
+	 */
+	@FunctionalInterface
+	public interface TreeDeleter
+	{
+		/**
+		 * Removes a tree.
+		 *
+		 * @param path the tree to remove
+		 * @throws IOException if the tree cannot be removed
+		 */
+		void delete(Path path) throws IOException;
 	}
 
 	/**

@@ -12,6 +12,8 @@ import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -226,6 +228,8 @@ public final class InstallTest
 			fixture.registerExisting(Releases.pluginVersion("1.0"));
 			List<Path> startupFiles = List.of(fixture.root.resolve("user/.bashrc"),
 				fixture.root.resolve("user/.zshenv"));
+			fixture.integration.maintain(Map.of("settings.json#unrelated", List.of("unrelated-entry")));
+			fixture.integration.denyingWrites();
 
 			UpdateResult result = fixture.engine().install("v1.1", new InstallRequest(fixture.integration.session(),
 				fixture.root.resolve("download/plugin"), List.of(), fixture.root.resolve("user/.cat/locks"),
@@ -237,6 +241,16 @@ public final class InstallTest
 			requireThat(calls, "calls").contains("installReadOnlyEntries " + startupFiles);
 			requireThat(fixture.integration.calls().lastIndexOf("installReadOnlyEntries"), "denied").
 				isGreaterThan(fixture.integration.calls().lastIndexOf("installPermissions"));
+			List<String> startupPaths = startupFiles.stream().map(Path::toString).toList();
+			requireThat(fixture.integration.installedEntries(fixture.home).get("read-only.json#denied"),
+				"installedStartupEntries").isEqualTo(startupPaths);
+			JsonMapper json = JsonMapper.builder().build();
+			JsonNode permissions = json.readTree(Files.readString(
+				InstallerState.of(fixture.data(), "harness-a").permissions()));
+			requireThat(permissions.path("read-only.json#denied"), "recordedStartupEntries").
+				isEqualTo(json.valueToTree(startupPaths));
+			requireThat(permissions.path("settings.json#unrelated"), "unrelatedPermissionEntries").
+				isEqualTo(json.valueToTree(List.of("unrelated-entry")));
 		}
 	}
 

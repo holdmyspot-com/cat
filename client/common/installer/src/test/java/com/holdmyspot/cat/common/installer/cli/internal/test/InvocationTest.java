@@ -107,6 +107,8 @@ public final class InvocationTest
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("status");
 			requireThat(run.result().path("version").stringValue(), "version").isEqualTo("1.2");
 			requireThat(run.result().path("installed").booleanValue(), "installed").isTrue();
+			requireThat(run.result().path("update_command").stringValue(), "updateCommand").
+				isEqualTo("recorded latest update");
 			requireThat(run.result().path("key_ids").get(0).stringValue(), "keyId").isEqualTo("protected-key");
 			requireThat(run.diagnostics, "diagnostics").isEmpty();
 			requireThat(Files.exists(installation.data.resolve("state"), NOFOLLOW_LINKS), "stateExists").isFalse();
@@ -1037,6 +1039,43 @@ public final class InvocationTest
 	}
 
 	/**
+	 * Running the local install command from a tree with the active version replaces the installed payload and reports
+	 * the version as updated.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void archiveRefreshesSameVersion() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-archive-refresh-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.createDirectories(installation.image.resolve("bin"));
+			Files.writeString(installation.image.resolve("bin/VERSION"), PluginArchive.VERSION + "\n");
+			Files.writeString(installation.image.resolve("bin/plugin-info"), "active payload");
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), PluginArchive.VERSION + "\n");
+			byte[] policy = Files.readAllBytes(installation.policyFile);
+			Path archive = PluginArchive.create(installation.root.resolve("download"),
+				List.of(trusted("release-key", keyPair())));
+			Files.writeString(archive.resolve("bin/plugin-info"), "supplied payload");
+			RecordingIntegration integration = new RecordingIntegration();
+
+			Run run = run(archive, installation.root, Map.of(), List.of(new RegisteredProvider()), integration,
+				"--home", installation.home.toString(), "install", "--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("updated");
+			requireThat(run.result().path("version").stringValue(), "version").isEqualTo(PluginArchive.VERSION);
+			Path installedPayload = installation.home.resolve("plugins/cache/cat/cat").resolve(PluginArchive.VERSION).
+				resolve("bin/plugin-info");
+			requireThat(Files.readString(installedPayload), "installedPayload").isEqualTo("supplied payload");
+			requireThat(Files.readAllBytes(installation.policyFile), "policy").isEqualTo(policy);
+		}
+	}
+
+	/**
 	 * Install appends what the harness integration says about the entries that it added to the installed message.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
@@ -1290,7 +1329,8 @@ public final class InvocationTest
 	 * that holds the running installer's version folder and starts the system's Windows PowerShell, which starts
 	 * another, hidden, through the Windows shell, so that it holds none of the handles through which the installer's
 	 * caller reads the result. That one waits for the installer's process to exit and then deletes the folder,
-	 * retrying for at most 60 seconds, without a script file.
+	 * retrying for at most 60 seconds, without a script file. The test inspects the request that uninstall generates and
+	 * leaves running the waiter in Windows PowerShell to other tests.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -1324,7 +1364,8 @@ public final class InvocationTest
 			requireThat(start.matches(), "startsThroughShell").withContext(starter, "starter").isTrue();
 			String script = new String(Base64.getDecoder().decode(start.group(1)), UTF_16LE);
 			requireThat(script, "script").contains("Wait-Process -Id " + ProcessHandle.current().pid() + "\n").
-				contains("'" + cache + "'").contains("AddSeconds(60)");
+				contains("'" + cache + "'").contains("AddSeconds(60)").
+				contains("foreach ($folder in $folders) { [System.IO.Directory]::Delete($folder, $true) }");
 		}
 	}
 

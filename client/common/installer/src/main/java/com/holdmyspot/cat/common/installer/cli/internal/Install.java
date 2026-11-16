@@ -215,7 +215,8 @@ public final class Install
 		Path installer = PluginInstall.installer(versionFolder, platform.isWindows());
 		List<HarnessInstallation> otherInstallations = others.stream().
 			map(other -> other.installation(environment, userHome)).toList();
-		InstalledEntries entries = steps.installEntries(home, installer, installation, otherInstallations, catLocks,
+		InstalledEntries entries = steps.installEntries(command.environment(), home, installer, installation,
+			otherInstallations, catLocks,
 			PluginInstall.formerLauncherState(userHome), ShellStartupFiles.in(userHome), consented);
 		return new Outcome(version, before, versionFolder, installer, startupCache, entries, policy);
 	}

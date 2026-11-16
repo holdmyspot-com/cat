@@ -57,6 +57,19 @@ public final class HarnessIntegrationContract
 	}, Clock.systemUTC());
 
 	/**
+	 * Supplies isolated recorded operating-system bindings for a permission fixture.
+	 *
+	 * @param installer an absolute fixture path whose filesystem supplies the root
+	 * @return recorded bindings independent of the test process environment
+	 */
+	public static Map<String, String> permissionEnvironment(Path installer)
+	{
+		Path root = installer.getRoot();
+		return Map.of("SystemRoot", root.resolve("bound-system").toString(),
+			"PATH", root.resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
+	}
+
+	/**
 	 * The integration under contract and how its harness behaves.
 	 */
 	private final Subject subject;
@@ -271,15 +284,18 @@ public final class HarnessIntegrationContract
 		register(integration, home, VERSION);
 		Path installer = PluginInstall.installer(integration.installation(home).versionFolder(VERSION),
 			Platform.current().isWindows());
-		Map<String, List<String>> maintained = integration.permissions(installer);
+		Map<String, List<String>> maintained = integration.permissions(permissionEnvironment(installer), installer);
 		requireThat(maintained, "maintained").isNotEmpty();
 
-		Map<String, List<String>> added = integration.installPermissions(home, installer, REPLACER);
+		Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
+			home, installer, REPLACER);
 		requireThat(added, "added").isEqualTo(maintained);
-		requireThat(integration.installPermissions(home, installer, REPLACER), "again").isEmpty();
+		requireThat(integration.installPermissions(permissionEnvironment(home),
+			home, installer, REPLACER), "again").isEmpty();
 		integration.removePermissions(home, added, REPLACER);
 		requireThat(integration.describeRetained(home, added), "retained").isEmpty();
-		requireThat(integration.installPermissions(home, installer, REPLACER), "restored").isEqualTo(added);
+		requireThat(integration.installPermissions(permissionEnvironment(home),
+			home, installer, REPLACER), "restored").isEqualTo(added);
 	}
 
 	/**
@@ -403,7 +419,8 @@ public final class HarnessIntegrationContract
 		register(integration, home, VERSION);
 		Path installer = PluginInstall.installer(integration.installation(home).versionFolder(VERSION),
 			Platform.current().isWindows());
-		Map<String, List<String>> recorded = new LinkedHashMap<>(integration.installPermissions(home, installer,
+		Map<String, List<String>> recorded = new LinkedHashMap<>(integration.installPermissions(permissionEnvironment(home),
+			home, installer,
 			REPLACER));
 		Map<String, List<String>> sandbox = integration.installSandboxEntries(home, integration.installation(otherHome),
 			otherHome.resolve("locks"), REPLACER);

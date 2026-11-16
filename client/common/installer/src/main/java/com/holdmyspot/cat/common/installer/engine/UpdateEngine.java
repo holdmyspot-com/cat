@@ -177,7 +177,9 @@ public final class UpdateEngine
 	/**
 	 * Installs a plugin tree, the extracted plugin archive that the running installer belongs to, into a harness under
 	 * the rules of {@link #install(String, InstallRequest)}; the tree's own {@code bin/VERSION} names its version. The
-	 * tree is validated like a signed release and is never changed.
+	 * tree is validated like a signed release and is never changed. The supplied tree goes through the install lifecycle
+	 * even when its version matches the active installation; a successful same-version install reports
+	 * {@link Result#UPDATED}.
 	 *
 	 * @param tree    the plugin tree
 	 * @param request the harness and the running installer's plugin folder
@@ -428,8 +430,6 @@ public final class UpdateEngine
 		StateFiles.requireNoLinks(versionFile);
 		PluginVersion plugin = PluginVersion.parse(Files.readString(versionFile, StandardCharsets.UTF_8).strip());
 		StagedRelease.validate(tree, plugin, activation.pluginManifest(), platform);
-		if (active.isUpToDate(plugin))
-			return upToDate(request, home, active);
 		ReleaseVersion release = ReleaseVersion.parse(plugin.release());
 		boolean downgrade = active.release().isPresent() && release.compareTo(active.release().get()) < 0;
 		return inScratch((download, extractRoot) ->
@@ -511,7 +511,8 @@ public final class UpdateEngine
 		{
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
-			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
+			entries = steps.installEntries(policy.command(integration.harness()).orElseThrow().environment(), home,
+				PluginInstall.installer(versionFolder, windows), installation,
 				request.others(), request.catLocks(), request.formerLauncherState(), request.startupFiles(), consented);
 		}
 		catch (IOException e)
@@ -603,7 +604,8 @@ public final class UpdateEngine
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			startupCache = trainer.train(versionFolder);
-			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
+			entries = steps.installEntries(policy.command(integration.harness()).orElseThrow().environment(), home,
+				PluginInstall.installer(versionFolder, windows), installation,
 				request.others(), request.catLocks(), request.formerLauncherState(), request.startupFiles(), consented);
 		}
 		catch (IOException e)

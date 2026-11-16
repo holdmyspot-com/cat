@@ -395,16 +395,17 @@ public final class CodexIntegration implements HarnessIntegration
 	 *                                  edit
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer)
 		throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
 		requireThat(replacer, "replacer").isNotNull();
+		String content = InstallerRules.render(environment, installer, isWindows());
 		validateConfiguration(home);
 		deleteUpdaterLeftover(home);
 		Map<String, List<String>> added = new LinkedHashMap<>();
-		String content = InstallerRules.render(installer, isWindows());
 		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
 		if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS) || !read(file).equals(content))
 		{
@@ -489,13 +490,19 @@ public final class CodexIntegration implements HarnessIntegration
 	 * @throws IOException              if the plugin's manifest or hooks file cannot be read
 	 */
 	@Override
-	public Map<String, List<String>> permissions(Path installer) throws IOException
+	public Map<String, List<String>> permissions(Map<String, String> environment, Path installer) throws IOException
 	{
 		Map<String, List<String>> permissions = new LinkedHashMap<>();
-		permissions.put(RULES_KEY, List.of(InstallerRules.render(installer, isWindows())));
+		permissions.put(RULES_KEY, List.of(InstallerRules.render(environment, installer, isWindows())));
 		for (Map.Entry<String, String> hook : hookHashes(installer).entrySet())
 			permissions.put(HookTrust.recordKey(hook.getKey()), List.of(hook.getValue()));
 		return Map.copyOf(permissions);
+	}
+
+	@Override
+	public String latestUpdateCommand(Map<String, String> environment, Path installer)
+	{
+		return InstallerRules.latestUpdateCommand(environment, installer, isWindows());
 	}
 
 	/**

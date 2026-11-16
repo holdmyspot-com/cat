@@ -321,6 +321,14 @@ public final class Invocation
 					platform.id(), clock, waiting);
 				UpdateResult status = engine.status();
 				ObjectNode object = encode(status);
+				if (status.result() == Result.STATUS && status.version().isPresent())
+				{
+					HarnessIntegration integration = integrations.stream().
+						filter(candidate -> candidate.harness().equals(own)).findFirst().orElseThrow();
+					object.put("update_command", integration.latestUpdateCommand(
+						managed.policy().command(own).orElseThrow().environment(),
+						PluginInstall.installer(locations.image(), platform.isWindows())));
+				}
 				if (arguments.verbose() && status.version().isPresent())
 				{
 					// The report abbreviates the user's home folder in the entries' paths
