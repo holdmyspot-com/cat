@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
+import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
@@ -44,6 +45,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -55,6 +57,7 @@ import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -126,10 +129,7 @@ public final class SessionRequestBrokerTest
 							HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 							run, transcript, List.of());
 					}
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, exit);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), exit);
 					child.set(process);
 					return process;
 				}))
@@ -190,14 +190,13 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "1", "--request-depth", String.valueOf(depth)))
 		{
 			AtomicReference<List<String>> arguments = new AtomicReference<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, options, _) ->
 				{
 					arguments.set(options);
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, 1);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 1);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -229,14 +228,13 @@ public final class SessionRequestBrokerTest
 	{
 		try (Fixture fixture = new Fixture("--session-requests", "1", "--request-depth", "2"))
 		{
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			Path file = fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE);
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, _, _) ->
 				{
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, 1);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 1);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -294,14 +292,13 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "2"))
 		{
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, options, _) ->
 				{
 					arguments.add(options);
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, 1);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 1);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -332,16 +329,15 @@ public final class SessionRequestBrokerTest
 				Set.of("registry.example"));
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			List<ExtraPermissions> given = new CopyOnWriteArrayList<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, options, _) ->
 				{
 					arguments.add(options);
 					if (options.contains(ExtraPermissions.OPTION))
 						given.add(ExtraPermissions.read(fixture.json, Path.of(option(options, ExtraPermissions.OPTION))));
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, 1);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 1);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -393,14 +389,14 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture())
 		{
 			String reason = "The session needs host registry.example, which the parent's sandbox does not allow";
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, _, directory) ->
 				{
 					Files.writeString(directory.resolve("runner.stderr"), reason + System.lineSeparator());
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child),
+						HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -428,14 +424,13 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture())
 		{
 			AtomicInteger started = new AtomicInteger();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, _, _) ->
 				{
 					started.incrementAndGet();
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, 75);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 75);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -555,16 +550,15 @@ public final class SessionRequestBrokerTest
 		{
 			List<Path> targets = new CopyOnWriteArrayList<>();
 			List<String> contents = new CopyOnWriteArrayList<>();
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
 				(_, options, _) ->
 				{
 					Path link = Path.of(options.get(options.indexOf("--project") + 1)).resolve("docs/marker");
 					targets.add(Files.readSymbolicLink(link));
 					contents.add(Files.readString(link));
-					FakeHarnessCli process = new FakeHarnessCli(_ ->
-					{
-					}, 0);
-					process.closeOutputThenExitWhenAwaited();
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 0);
+					child.set(process);
 					return process;
 				}))
 			{
@@ -1215,6 +1209,80 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies kept receipts remain readable after a second request reuses their slot and the broker closes.
+	 *
+	 * @throws IOException if fixture, broker or retained evidence I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void keptReceiptSurvivesSlotReuse() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			Iterator<String> markers = List.of("first", "second").iterator();
+			JsonNode firstResponse;
+			JsonNode secondResponse;
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) -> inSlotWithReceipt(fixture, fileLocks, options, runs,
+					markers.next())))
+			{
+				fixture.writeRequest("first", fixture.document().put("keep_run", true));
+				broker.scan();
+				firstResponse = fixture.await("first");
+				fixture.writeRequest("second", fixture.document().put("keep_run", true));
+				broker.scan();
+				secondResponse = fixture.await("second");
+			}
+
+			Path firstReceiptPath = Path.of(firstResponse.path("receipt").asString());
+			Path secondReceiptPath = Path.of(secondResponse.path("receipt").asString());
+			Path firstRun = Path.of(firstResponse.path("run").asString());
+			Path secondRun = Path.of(secondResponse.path("run").asString());
+			requireThat(Files.isDirectory(firstRun.resolve("project")), "firstCopiedProject").isTrue();
+			requireThat(Files.isRegularFile(firstRun.resolve("artifacts/bridge-transcript.jsonl")),
+				"firstCopiedRawResult").isTrue();
+			requireThat(Files.isDirectory(secondRun.resolve("project")), "secondCopiedProject").isTrue();
+			requireThat(Files.isRegularFile(secondRun.resolve("artifacts/bridge-transcript.jsonl")),
+				"secondCopiedRawResult").isTrue();
+			HarnessEvaluationResult firstReceipt = HarnessRunReceipt.read(fixture.json, firstReceiptPath,
+				firstRun.resolve("project"));
+			HarnessEvaluationResult secondReceipt = HarnessRunReceipt.read(fixture.json, secondReceiptPath,
+				secondRun.resolve("project"));
+			requireThat(firstReceipt.retainedProject(), "firstRetainedProject").isEqualTo(firstRun.resolve("project"));
+			requireThat(secondReceipt.retainedProject(), "secondRetainedProject").isEqualTo(secondRun.resolve("project"));
+			requireThat(Files.readString(firstReceipt.retainedProject().resolve("session.txt")), "firstProjectMarker").
+				isEqualTo("first");
+			requireThat(Files.readString(secondReceipt.retainedProject().resolve("session.txt")), "secondProjectMarker").
+				isEqualTo("second");
+			requireThat(firstReceipt.sessionTranscripts(), "firstNativeTranscripts").size().isEqualTo(1);
+			requireThat(secondReceipt.sessionTranscripts(), "secondNativeTranscripts").size().isEqualTo(1);
+			requireThat(Files.readString(firstReceipt.sessionTranscripts().getFirst()), "firstNativeTranscript").
+				isEqualTo("first native bytes");
+			requireThat(Files.readString(secondReceipt.sessionTranscripts().getFirst()), "secondNativeTranscript").
+				isEqualTo("second native bytes");
+			requireThat(Files.readString(firstReceipt.rawResult()), "firstRawResult").isEqualTo("first response bytes");
+			requireThat(Files.readString(secondReceipt.rawResult()), "secondRawResult").isEqualTo("second response bytes");
+			requireThat(Files.readString(Path.of(firstResponse.path("transcript").asString())), "firstPublishedTranscript").
+				isEqualTo(Files.readString(firstReceipt.rawResult()));
+			requireThat(Files.readString(Path.of(secondResponse.path("transcript").asString())), "secondPublishedTranscript").
+				isEqualTo(Files.readString(secondReceipt.rawResult()));
+			requireThat(Files.exists(firstRun.resolve("home")), "firstHome").isFalse();
+			requireThat(Files.exists(secondRun.resolve("home")), "secondHome").isFalse();
+			ObjectNode firstReceiptDocument = (ObjectNode) fixture.json.readTree(firstReceiptPath.toFile());
+			ObjectNode secondReceiptDocument = (ObjectNode) fixture.json.readTree(secondReceiptPath.toFile());
+			requireThat(firstReceiptDocument.path("requested_sessions").get(0).path("response").asString(),
+				"firstRequestedResponse").isEqualTo("responses/nested/response.json");
+			requireThat(secondReceiptDocument.path("requested_sessions").get(0).path("response").asString(),
+				"secondRequestedResponse").isEqualTo("responses/nested/response.json");
+			requireThat(fixture.json.readTree(firstRun.resolve("responses/nested/response.json").toFile()).
+				path("id").asString(), "firstRequestedResponseId").isEqualTo("first");
+			requireThat(fixture.json.readTree(secondRun.resolve("responses/nested/response.json").toFile()).
+				path("id").asString(), "secondRequestedResponseId").isEqualTo("second");
+		}
+	}
+
+	/**
 	 * Verifies that a slot is not reused while a process that its previous session's run recorded remains alive: the
 	 * run's runner asks the process to end, waits while it lives, and starts the next session once it has ended, in a
 	 * slot that holds nothing of the previous session.
@@ -1449,18 +1517,67 @@ public final class SessionRequestBrokerTest
 			Yielding.fileReplacer()).withFixedRunId(option(options, "--run-id"));
 		HarnessRun run = manager.create("claude");
 		if (harnessPid != 0)
-			manager.recordHarnessProcess(run, harnessPid, "abc");
+		{
+			manager.markHarnessStarting(run);
+			manager.recordHarnessProcess(run, harnessPid, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
+		}
 		runs.add(new SlotRun(runRoot, run, entries));
 		Files.writeString(run.directory().resolve("left-behind"), "left behind");
 		Files.writeString(run.directory().resolve("result.txt"), String.valueOf(runs.size()));
 		Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
 		HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
 			transcript, List.of());
-		FakeHarnessCli process = new FakeHarnessCli(_ ->
-		{
-		});
-		process.closeOutputThenExitWhenAwaited();
+		AtomicReference<FakeHarnessCli> processReference = new AtomicReference<>();
+		FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, processReference));
+		processReference.set(process);
 		return process;
+	}
+
+	/**
+	 * Adds distinct requested-run evidence to the current slot and writes its receipt for the slot-reuse test.
+	 *
+	 * @param fixture the requesting run
+	 * @param fileLocks the requesting run's file locks
+	 * @param options the requested runner's options
+	 * @param runs receives the run built in its slot
+	 * @param marker the request identity and retained project content
+	 * @return the fake runner
+	 * @throws IOException if the run's evidence cannot be written
+	 */
+	private static FakeHarnessCli inSlotWithReceipt(Fixture fixture, FileLocks fileLocks, List<String> options,
+		List<SlotRun> runs, String marker) throws IOException
+	{
+		FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
+		HarnessRun run = runs.getLast().run();
+		Files.writeString(run.directory().resolve("project/session.txt"), marker);
+		Path nativeTranscript = Files.writeString(Files.createDirectories(
+			run.sessionTranscripts().resolve("subagents")).resolve("native.jsonl"), marker + " native bytes");
+		Path nestedResponse = Files.createDirectories(SessionRequestAccess.responsesDirectory(run).resolve("nested")).
+			resolve("response.json");
+		ObjectNode nestedResponseDocument = fixture.json.createObjectNode().put("id", marker).
+			put("harness", "harness").put("status", "completed").put("child_run_id", "child-" + marker);
+		fixture.json.writeValue(nestedResponse.toFile(), nestedResponseDocument);
+		Path rawResult = Path.of(option(options, "--output"));
+		Files.writeString(rawResult, marker + " response bytes");
+		HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
+			rawResult, List.of(nativeTranscript));
+		return process;
+	}
+
+	/**
+	 * Returns a request handler that ends the captured runner when it receives a complete record.
+	 *
+	 * @param json reads the runner's input record
+	 * @param process receives the fake runner before the handler is called
+	 * @return the request handler
+	 */
+	private static Consumer<String> exitOnCompleteRecord(JsonMapper json, AtomicReference<FakeHarnessCli> process)
+	{
+		return line ->
+		{
+			if (json.readTree(line).path("type").asString().equals("complete"))
+				process.get().exit();
+		};
 	}
 
 	/**

@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 
+import java.io.IOException;
 import java.util.Optional;
 import java.util.function.LongFunction;
 
@@ -53,7 +54,7 @@ public final class ProcessHandleLiveness implements HarnessProcessLiveness
 	}
 
 	@Override
-	public boolean isAlive(long pid, String start)
+	public boolean isAlive(long pid, String start) throws IOException
 	{
 		assert pid > 0;
 		assert start != null;
@@ -61,11 +62,21 @@ public final class ProcessHandleLiveness implements HarnessProcessLiveness
 	}
 
 	@Override
-	public boolean terminate(long pid, String start)
+	public boolean terminate(long pid, String start) throws IOException
 	{
 		assert pid > 0;
 		assert start != null;
-		return matchingProcess(pid, start).map(ProcessHandle::destroy).orElse(false);
+		Optional<ProcessHandle> process = matchingProcess(pid, start);
+		if (process.isEmpty())
+			return false;
+		try
+		{
+			return process.get().destroy();
+		}
+		catch (SecurityException e)
+		{
+			throw observationFailure(pid, start, "termination was denied", e);
+		}
 	}
 
 	/**
@@ -74,13 +85,56 @@ public final class ProcessHandleLiveness implements HarnessProcessLiveness
 	 * @param pid   the positive process identifier
 	 * @param start the process's start
 	 * @return the matching process, if present
+	 * @throws IOException if a live process's start or identity cannot be established
 	 */
-	private Optional<ProcessHandle> matchingProcess(long pid, String start)
+	private Optional<ProcessHandle> matchingProcess(long pid, String start) throws IOException
 	{
 		assert pid > 0;
 		assert start != null;
-		if (processes.find(pid).flatMap(ProcessDescription::start).filter(start::equals).isEmpty())
+		Optional<ProcessDescription> description;
+		try
+		{
+			description = processes.find(pid);
+		}
+		catch (RuntimeException e)
+		{
+			throw observationFailure(pid, start, "process lookup failed", e);
+		}
+		if (description.isEmpty())
 			return Optional.empty();
-		return handles.apply(pid).filter(ProcessHandle::isAlive);
+		Optional<String> observedStart = description.get().start();
+		if (observedStart.isEmpty() || !observedStart.get().matches(ProcessDescription.START_PATTERN))
+			throw observationFailure(pid, start, "live process start is unavailable", null);
+		if (!observedStart.get().equals(start))
+			return Optional.empty();
+		try
+		{
+			Optional<ProcessHandle> handle = handles.apply(pid);
+			if (handle.isEmpty() || handle.get().pid() != pid || !handle.get().isAlive())
+				return Optional.empty();
+			return handle;
+		}
+		catch (RuntimeException e)
+		{
+			throw observationFailure(pid, start, "process handle lookup failed", e);
+		}
+	}
+
+	/**
+	 * Creates a contextual failure for an identity that cannot be safely observed.
+	 *
+	 * @param pid the recorded process identifier
+	 * @param start the recorded process start
+	 * @param reason the failed observation
+	 * @param cause the underlying failure, if any
+	 * @return the contextual failure
+	 */
+	private static IOException observationFailure(long pid, String start, String reason, RuntimeException cause)
+	{
+		String message = "Cannot verify process identity pid=" + pid + ", recorded start=" + start +
+			", observed start unavailable: " + reason;
+		if (cause == null)
+			return new IOException(message);
+		return new IOException(message, cause);
 	}
 }

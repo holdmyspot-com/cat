@@ -3,18 +3,14 @@ package com.holdmyspot.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
-import tools.jackson.core.JacksonException;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import java.util.stream.Stream;
 
 /**
  * A fixed set of run directories, one for each requested session that may run at once, which a requested session
@@ -66,7 +62,6 @@ public final class SessionSlots
 	private final Path base;
 	private final int count;
 	private final HarnessProcessLiveness liveness;
-	private final JsonMapper json = JsonMapper.builder().build();
 	private final BitSet developmentTaken;
 	private final BitSet heldOutTaken;
 
@@ -269,23 +264,41 @@ public final class SessionSlots
 	 */
 	private boolean stopRecordedProcesses(Path root) throws IOException
 	{
-		boolean ended = true;
-		for (Path manifest : manifests(root))
+		List<RecordedRun> records = manifests(root);
+		List<ValidatedRun> validated = new ArrayList<>();
+		for (RecordedRun record : records)
 		{
-			JsonNode run;
-			try
+			HarnessRunManager.Manifest manifest = HarnessRunManager.readManifest(record.manifest());
+			if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.runId()))
+				throw new IOException("Run manifest does not match its slot path: " + record.manifest());
+			if (manifest.harnessProcessState() == HarnessRunManager.HarnessProcessState.STARTING)
+				throw new IOException("Harness launch state is unknown; refusing to empty slot: " + record.manifest());
+			boolean currentOwner = manifest.ownerPid() == ProcessHandle.current().pid();
+			boolean ownerAlive = currentOwner || liveness.isAlive(manifest.ownerPid(), manifest.ownerStart());
+			boolean childAlive = false;
+			if (manifest.harnessProcessState() == HarnessRunManager.HarnessProcessState.RECORDED)
+				childAlive = liveness.isAlive(manifest.harnessPid(), manifest.harnessStart());
+			validated.add(new ValidatedRun(manifest, currentOwner, ownerAlive, childAlive));
+		}
+		boolean ended = true;
+		for (ValidatedRun run : validated)
+		{
+			if (run.ownerAlive() && !run.currentOwner())
 			{
-				run = json.readTree(Files.readAllBytes(manifest));
-			}
-			catch (IOException | JacksonException _)
-			{
-				// A manifest that cannot be read records no process that CAT could identify
+				ended = false;
 				continue;
 			}
-			if (run == null || !run.isObject())
+			if (!run.childAlive())
 				continue;
-			ended &= stop(run.get("harness_pid"), run.get("harness_started_at"));
-			ended &= stop(run.get("owner_pid"), run.get("owner_started_at"));
+			long pid = run.manifest().harnessPid();
+			if (pid == ProcessHandle.current().pid())
+			{
+				ended = false;
+				continue;
+			}
+			liveness.terminate(pid, run.manifest().harnessStart());
+			if (liveness.isAlive(pid, run.manifest().harnessStart()))
+				ended = false;
 		}
 		return ended;
 	}
@@ -297,24 +310,29 @@ public final class SessionSlots
 	 * @return the manifests
 	 * @throws IOException if the slot's directories cannot be read
 	 */
-	private static List<Path> manifests(Path root) throws IOException
+	private static List<RecordedRun> manifests(Path root) throws IOException
 	{
-		List<Path> manifests = new ArrayList<>();
+		List<RecordedRun> manifests = new ArrayList<>();
 		if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
 			return manifests;
-		try (DirectoryStream<Path> harnesses = Files.newDirectoryStream(root))
+		try (Stream<Path> harnesses = Files.list(root))
 		{
-			for (Path harness : harnesses)
+			for (Path harness : harnesses.toList())
 			{
 				if (!Files.isDirectory(harness, LinkOption.NOFOLLOW_LINKS))
 					continue;
-				try (DirectoryStream<Path> runs = Files.newDirectoryStream(harness))
+				try (Stream<Path> runs = Files.list(harness))
 				{
-					for (Path run : runs)
+					for (Path run : runs.toList())
 					{
+						if (!Files.isDirectory(run, LinkOption.NOFOLLOW_LINKS) ||
+							!run.getFileName().toString().startsWith(RUN_ID))
+							continue;
 						Path manifest = run.resolve("run.json");
-						if (Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
-							manifests.add(manifest);
+						if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
+							throw new IOException("Slot run is missing its manifest: " + manifest);
+						manifests.add(new RecordedRun(harness.getFileName().toString(),
+							run.getFileName().toString(), manifest));
 					}
 				}
 			}
@@ -323,32 +341,26 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Asks one recorded process to end if it is alive. The current process is never asked, because a run that the
-	 * current process runs in itself records it, and it cannot wait for its own end.
+	 * A path-derived run whose manifest is required before slot reuse.
 	 *
-	 * @param pid   the recorded process identifier, which may be missing
-	 * @param start the recorded start of the process, which may be missing
-	 * @return {@code true} if the process is not alive
+	 * @param harness the harness directory name
+	 * @param runId the generated run identifier
+	 * @param manifest the expected manifest path
 	 */
-	private boolean stop(JsonNode pid, JsonNode start)
+	private record RecordedRun(String harness, String runId, Path manifest)
 	{
-		if (pid == null || start == null || !start.isString() ||
-			!start.asString().matches(ProcessDescription.START_PATTERN))
-		{
-			return true;
-		}
-		long value;
-		if (pid.isIntegralNumber() && pid.canConvertToLong())
-			value = pid.asLong();
-		else if (pid.isString() && pid.asString().matches("[1-9][0-9]{0,18}"))
-			value = Long.parseLong(pid.asString());
-		else
-			return true;
-		if (value <= 0 || value == ProcessHandle.current().pid())
-			return true;
-		if (!liveness.isAlive(value, start.asString()))
-			return true;
-		liveness.terminate(value, start.asString());
-		return !liveness.isAlive(value, start.asString());
+	}
+
+	/**
+	 * A parsed run whose identities have all been checked before cleanup starts.
+	 *
+	 * @param manifest the parsed manifest
+	 * @param currentOwner whether the owner is this JVM
+	 * @param ownerAlive whether the owner is still live
+	 * @param childAlive whether the recorded harness process is still live
+	 */
+	private record ValidatedRun(HarnessRunManager.Manifest manifest, boolean currentOwner,
+		boolean ownerAlive, boolean childAlive)
+	{
 	}
 }

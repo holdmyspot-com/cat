@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 
+import java.io.IOException;
+
 /**
  * Checks and terminates a process only when its recorded identity still matches.
  * <p>
@@ -17,9 +19,10 @@ public interface HarnessProcessLiveness
 	 *
 	 * @param start the process's start
 	 *
-	 * @return {@code true} if the matching process is alive
+	 * @return {@code true} if the exact process is alive, or {@code false} if it is absent, ended, or replaced
+	 * @throws IOException if the process is present but its start cannot be established
 	 */
-	boolean isAlive(long pid, String start);
+	boolean isAlive(long pid, String start) throws IOException;
 
 	/**
 	 * Requests termination of a process with an exact start.
@@ -28,7 +31,10 @@ public interface HarnessProcessLiveness
 	 *
 	 * @param start the process's start
 	 *
-	 * @return {@code true} if a matching live process accepted termination
+	 * @return {@code true} if a termination request was accepted, or {@code false} if the process is absent, ended, or
+	 *   replaced; a successful request does not establish that the process exited
+	 * @throws IOException if the process is present but its start cannot be established, or termination cannot be
+	 *   requested
 	 */
-	boolean terminate(long pid, String start);
+	boolean terminate(long pid, String start) throws IOException;
 }

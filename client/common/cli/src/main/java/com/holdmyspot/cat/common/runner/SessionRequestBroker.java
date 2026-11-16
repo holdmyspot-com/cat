@@ -188,6 +188,8 @@ public final class SessionRequestBroker implements Closeable
 	{
 		synchronized (this)
 		{
+			if (failure != null)
+				throw failure;
 			Path requests = site.requests();
 			for (String id : RequestArchive.pendingIds(requests, ""))
 			{
@@ -466,7 +468,15 @@ public final class SessionRequestBroker implements Closeable
 		}
 		catch (IOException e)
 		{
-			publishFailure(id, request.harness(), "failed", e.getMessage(), directory);
+			if (slot == null)
+			{
+				synchronized (this)
+				{
+					recordFailure(e);
+				}
+			}
+			else
+				publishFailure(id, request.harness(), "failed", e.getMessage(), directory);
 		}
 		finally
 		{
@@ -590,6 +600,11 @@ public final class SessionRequestBroker implements Closeable
 						diagnostic += "\n" + incomplete.get();
 					if (outcome.equals("completed"))
 						outcome = "failed";
+				}
+				else if (outcome.equals("completed"))
+				{
+					HarnessRunReceipt.read(json, directory.resolve("receipt.json"),
+						directory.resolve(RUN_COPY).resolve("project"));
 				}
 			}
 			respond(id, harness, outcome, diagnostic, childRunId, directory);
@@ -801,7 +816,7 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private void recordFailure(IOException exception)
 	{
-		if (failure == null)
+		if (failure == null || failure == exception)
 			failure = exception;
 		else
 			failure.addSuppressed(exception);

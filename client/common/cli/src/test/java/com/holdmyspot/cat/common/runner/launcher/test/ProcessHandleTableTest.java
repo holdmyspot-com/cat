@@ -20,6 +20,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import org.testng.annotations.Test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -199,6 +200,23 @@ public final class ProcessHandleTableTest extends ProcessTableContract
 
 			requireThat(alive, "alive").isTrue();
 		}
+	}
+
+	/**
+	 * Verifies a live process without an observed start cannot be matched to a recorded identity.
+	 *
+	 * @throws IOException if the process start cannot be observed
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*42.*0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125.*")
+	public void unavailableLiveStartFails() throws IOException
+	{
+		ProcessIdentity recorded = new ProcessIdentity(42,
+			"0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
+		HarnessProcesses processes = processId -> Optional.of(new ProcessDescription(processId, Optional.empty(),
+			Optional.empty(), Optional.empty(), Optional.empty()));
+
+		new ProcessHandleTable(processes).isAlive(recorded);
 	}
 
 	/**

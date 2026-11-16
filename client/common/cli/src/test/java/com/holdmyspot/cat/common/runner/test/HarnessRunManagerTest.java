@@ -482,7 +482,8 @@ public final class HarnessRunManagerTest
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	@Test(expectedExceptions = IOException.class)
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Run manifest exceeds the maximum supported size of .* bytes: .*")
 	public void refusesOversizedRunManifest() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -494,10 +495,22 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			int tooLarge = HarnessRunManagerSecrets.getHarnessRunManagerAccess().maximumManifestBytes() + 1;
-			Files.write(run.directory().resolve("run.json"), new byte[tooLarge]);
+			int maximumManifestBytes = HarnessRunManagerSecrets.getHarnessRunManagerAccess().maximumManifestBytes();
+			int tooLarge = maximumManifestBytes + 1;
+			Path manifest = Files.write(run.directory().resolve("run.json"), new byte[tooLarge]);
 
-			manager.deleteRun(run);
+			try
+			{
+				manager.deleteRun(run);
+			}
+			catch (IOException failure)
+			{
+				requireThat(failure.getMessage(), "failureMessage").isEqualTo(
+					"Run manifest exceeds the maximum supported size of " + maximumManifestBytes + " bytes: " + manifest);
+				requireThat(manifest, "manifest").isRegularFile();
+				requireThat(Files.size(manifest), "manifestSize").isEqualTo(tooLarge);
+				throw failure;
+			}
 		}
 	}
 
@@ -616,6 +629,7 @@ public final class HarnessRunManagerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
+			manager.markHarnessStarting(run);
 			manager.recordHarnessProcess(run, 12_345, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t9000");
 
 			String manifest = Files.readString(run.directory().resolve("run.json"));
@@ -735,7 +749,10 @@ public final class HarnessRunManagerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "initialManifest").
+			String initialManifest = Files.readString(run.directory().resolve("run.json"));
+			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 4");
+			requireThat(initialManifest, "initialManifest").contains("\"harness_process_state\": \"absent\"");
+			requireThat(initialManifest, "initialManifest").
 				contains("\"phase\": \"initializing\"");
 			manager.markIdle(run);
 			requireThat(Files.readString(run.directory().resolve("run.json")), "idleManifest").
@@ -743,6 +760,26 @@ public final class HarnessRunManagerTest
 			manager.markWorking(run);
 			requireThat(Files.readString(run.directory().resolve("run.json")), "workingManifest").
 				contains("\"phase\": \"working\"");
+		}
+	}
+
+	/**
+	 * Verifies a harness process cannot be recorded until the manager has persisted the prelaunch state.
+	 *
+	 * @throws IOException if the run manifest cannot be created
+	 */
+	@Test(expectedExceptions = IOException.class)
+	public void refusesHarnessRecordBeforeStarting() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+
+			manager.recordHarnessProcess(run, 12_345, OWNER_START);
 		}
 	}
 
@@ -1559,6 +1596,7 @@ public final class HarnessRunManagerTest
 			FakeProcessHandle harness = new FakeProcessHandle(12_345, harnessStart, true);
 			HarnessRunManager oldManager = manager(jvm, root, oldClock, harness);
 			HarnessRun run = oldManager.create("harness");
+			oldManager.markHarnessStarting(run);
 			oldManager.recordHarnessProcess(run, 12_345, harnessStart);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			HarnessRunManager manager = manager(jvm, root, currentClock, harness);
@@ -1660,6 +1698,7 @@ public final class HarnessRunManagerTest
 			long owner = ProcessHandle.current().pid();
 			folder.start(owner, "java", 7000);
 			recordOwner(run, owner, OWNER_START);
+			manager.markHarnessStarting(run);
 			manager.recordHarnessProcess(run, harnessPid,
 				processes.find(harnessPid).flatMap(ProcessDescription::start).orElseThrow());
 			// The wall clock is set an hour back
@@ -1674,13 +1713,12 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that stale cleanup leaves running, and leaves its harness process alone, a run whose manifest records its
-	 * owner's and its harness process's starts as instants, which identify no process: the owner might still be alive.
+	 * Verifies that stale cleanup refuses to delete a run whose process identities are malformed.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void retainsRunWhoseStartsAreInstants() throws IOException
+	public void refusesRunWhoseStartsAreInstants() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1697,8 +1735,17 @@ public final class HarnessRunManagerTest
 				replaceFirst("\"harness_pid\": null", "\"harness_pid\": 12345").
 				replaceFirst("\"harness_started_at\": null", "\"harness_started_at\": \"2026-07-20T00:00:01Z\""));
 
-			manager.deleteStaleRuns(Duration.ofDays(7));
+			IOException failure = null;
+			try
+			{
+				manager.deleteStaleRuns(Duration.ofDays(7));
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
 
+			requireThat(failure, "failure").isNotNull();
 			requireThat(Files.readString(manifest), "manifest").contains("\"state\": \"running\"");
 			requireThat(harness.stopRequested(), "terminationRequested").isFalse();
 		}

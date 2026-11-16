@@ -18,13 +18,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * the instant at which the process started, in milliseconds since the epoch, which the kernel records when the
  * process starts.
  *
- * @param processId the process ID
- * @param start     the process's start, or empty if the system does not report it
- * @param command   the program that the process runs, or empty if the system does not report it
- * @param arguments the arguments after the program, or empty if the system does not report them
+ * @param processId    the process ID
+ * @param start        the process's start, or empty if the system does not report it
+ * @param command      the program that the process runs, or empty if the system does not report it
+ * @param argumentZero the first command-line argument, or empty if the system does not report it
+ * @param arguments    the arguments after the program, or empty if the system does not report them
  */
 public record ProcessDescription(long processId, Optional<String> start, Optional<String> command,
-	Optional<List<String>> arguments)
+	Optional<String> argumentZero, Optional<List<String>> arguments)
 {
 	/**
 	 * The form of a process's start: lower-case letters and digits, so that a launcher's name, which holds it, keeps
@@ -35,10 +36,11 @@ public record ProcessDescription(long processId, Optional<String> start, Optiona
 	/**
 	 * Creates a process.
 	 *
-	 * @param processId the process ID
-	 * @param start     the process's start, or empty if the system does not report it
-	 * @param command   the program that the process runs, or empty if the system does not report it
-	 * @param arguments the arguments after the program, or empty if the system does not report them
+	 * @param processId    the process ID
+	 * @param start        the process's start, or empty if the system does not report it
+	 * @param command      the program that the process runs, or empty if the system does not report it
+	 * @param argumentZero the first command-line argument, or empty if the system does not report it
+	 * @param arguments    the arguments after the program, or empty if the system does not report them
 	 * @throws NullPointerException     if any of the arguments are null, or {@code arguments} contains null
 	 * @throws IllegalArgumentException if {@code start} does not match {@link #START_PATTERN}
 	 */
@@ -47,6 +49,7 @@ public record ProcessDescription(long processId, Optional<String> start, Optiona
 		requireThat(start, "start").isNotNull();
 		start.ifPresent(value -> requireThat(value, "start").matches(START_PATTERN));
 		requireThat(command, "command").isNotNull();
+		requireThat(argumentZero, "argumentZero").isNotNull();
 		requireThat(arguments, "arguments").isNotNull();
 		arguments = arguments.map(List::copyOf);
 	}

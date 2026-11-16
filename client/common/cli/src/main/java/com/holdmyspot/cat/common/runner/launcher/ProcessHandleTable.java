@@ -4,6 +4,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
+
+import java.io.IOException;
 import java.util.Optional;
 
 /**
@@ -37,22 +39,40 @@ public final class ProcessHandleTable implements ProcessTable
 	}
 
 	@Override
-	public boolean isAlive(ProcessIdentity process)
+	public boolean isAlive(ProcessIdentity process) throws IOException
 	{
 		requireThat(process, "process").isNotNull();
-		return find(process).isPresent();
+		Optional<ProcessDescription> description;
+		try
+		{
+			description = processes.find(process.pid());
+		}
+		catch (RuntimeException e)
+		{
+			throw observationFailure(process, "process lookup failed", e);
+		}
+		if (description.isEmpty())
+			return false;
+		Optional<String> observedStart = description.get().start();
+		if (observedStart.isEmpty() || !observedStart.get().matches(ProcessDescription.START_PATTERN))
+			throw observationFailure(process, "live process start is unavailable", null);
+		return observedStart.get().equals(process.start());
 	}
 
 	/**
-	 * Finds the live process that has an identity.
+	 * Creates a diagnostic for an identity observation that could not be completed.
 	 *
-	 * @param process the identity
-	 * @return the process with the identifier of {@code process} whose start matches, or empty if there is none
+	 * @param process the requested identity
+	 * @param reason the observation failure
+	 * @param cause the underlying failure, if any
+	 * @return the contextual I/O failure
 	 */
-	private Optional<ProcessDescription> find(ProcessIdentity process)
+	private static IOException observationFailure(ProcessIdentity process, String reason, RuntimeException cause)
 	{
-		// The start tells the process apart from a later one that reuses its identifier
-		return processes.find(process.pid()).
-			filter(description -> description.start().filter(process.start()::equals).isPresent());
+		String message = "Cannot verify process identity pid=" + process.pid() + ", recorded start=" +
+			process.start() + ", observed start unavailable: " + reason;
+		if (cause == null)
+			return new IOException(message);
+		return new IOException(message, cause);
 	}
 }

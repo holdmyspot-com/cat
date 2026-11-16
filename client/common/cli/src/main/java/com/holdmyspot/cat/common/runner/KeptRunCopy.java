@@ -38,10 +38,12 @@ public final class KeptRunCopy
 	 * The directory of a kept run that holds the copy of the project as it was before the child's first turn.
 	 */
 	private static final String RUN_INITIAL_PROJECT = "initial-project";
+	private static final String RUN_ARTIFACTS = "artifacts";
+	private static final String RUN_TRANSCRIPTS = "session-transcripts";
 	/**
-	 * The directories of a run that {@link #copyProjects(Path, Path)} copies.
+	 * The directories of a run that {@link #copyTurn(Path, Path)} replaces.
 	 */
-	private static final Set<String> PROJECTS = Set.of(RUN_PROJECT, RUN_INITIAL_PROJECT);
+	private static final Set<String> TURN_COPIES = Set.of(RUN_PROJECT, RUN_INITIAL_PROJECT);
 
 	/**
 	 * How the copy of a kept run ended.
@@ -86,37 +88,66 @@ public final class KeptRunCopy
 	}
 
 	/**
-	 * Replaces the project and the initial project of a run with those of another run, which the requester reads
-	 * while the other run's session is still working. The copy leaves out what {@link #copy(Path, Path)} leaves out.
-	 * A run that holds neither leaves the target without them.
+	 * Replaces a run's project, initial project and native session transcripts with those of another run, which the
+	 * requester reads while the other run's session is still working. Other artifacts remain untouched.
 	 *
-	 * @param source the run whose project and initial project are copied
-	 * @param target the run that receives them, which need not exist
+	 * @param source the run whose turn evidence is copied
+	 * @param target the run that receives it, which need not exist
 	 * @throws NullPointerException if {@code source} or {@code target} are null
 	 * @throws IOException          if the target's earlier copy cannot be removed, or a file cannot be copied
 	 */
-	public static void copyProjects(Path source, Path target) throws IOException
+	public static void copyTurn(Path source, Path target) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
-		deleteProjects(target);
-		Optional<String> incomplete = copy(source, target, PROJECTS::contains).incomplete();
-		if (incomplete.isPresent())
-			throw new IOException(incomplete.get());
+		deleteTurnCopies(target);
+		RunCopier copier = new RunCopier(source, target, KeptRunCopy::includesTurnPath,
+			KeptRunCopy::isRequiredTranscript);
+		Files.walkFileTree(source, copier);
 	}
 
 	/**
-	 * Removes the project and the initial project of a run's copy, so that a copy of the whole run can follow.
+	 * Removes the project, initial project and session transcript copies from a run's copy, so that a copy of the whole
+	 * run can follow.
 	 *
 	 * @param run the run's copy
 	 * @throws NullPointerException if {@code run} is null
 	 * @throws IOException          if a file cannot be removed
 	 */
-	public static void deleteProjects(Path run) throws IOException
+	public static void deleteTurnCopies(Path run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
-		for (String name : PROJECTS)
+		for (String name : TURN_COPIES)
 			TemporaryDirectories.deleteRecursively(run.resolve(name));
+		TemporaryDirectories.deleteRecursively(run.resolve(RUN_ARTIFACTS).resolve(RUN_TRANSCRIPTS));
+	}
+
+	/**
+	 * Indicates whether a path belongs to the evidence that changes during a turn.
+	 *
+	 * @param relative the path relative to the run
+	 * @return whether the path is a project, initial project, artifacts directory or session transcript
+	 */
+	private static boolean includesTurnPath(Path relative)
+	{
+		if (relative.toString().isEmpty())
+			return true;
+		String first = relative.getName(0).toString();
+		return TURN_COPIES.contains(first) || first.equals(RUN_ARTIFACTS) &&
+			(relative.getNameCount() == 1 || relative.getName(1).toString().equals(RUN_TRANSCRIPTS));
+	}
+
+	/**
+	 * Indicates whether a copy failure must abort turn evidence publication.
+	 *
+	 * @param relative the path relative to the run
+	 * @return whether the path is a native session transcript path
+	 */
+	private static boolean isRequiredTranscript(Path relative)
+	{
+		return relative.getNameCount() == 1 && relative.getName(0).toString().equals(RUN_ARTIFACTS) ||
+			relative.getNameCount() >= 2 && relative.getName(0).toString().equals(RUN_ARTIFACTS) &&
+				relative.getName(1).toString().equals(RUN_TRANSCRIPTS);
 	}
 
 	/**
@@ -127,9 +158,9 @@ public final class KeptRunCopy
 	 * @param included accepts the name of each directory directly below the run that the copy includes
 	 * @return how the copy ended
 	 */
-	private static Result copy(Path source, Path target, Predicate<String> included)
+	private static Result copy(Path source, Path target, Predicate<Path> included)
 	{
-		RunCopier copier = new RunCopier(source, target, included);
+		RunCopier copier = new RunCopier(source, target, included, _ -> false);
 		try
 		{
 			Files.walkFileTree(source, copier);
@@ -204,7 +235,8 @@ public final class KeptRunCopy
 		/**
 		 * Accepts the name of each directory directly below the run that the copy includes.
 		 */
-		private final Predicate<String> included;
+		private final Predicate<Path> included;
+		private final Predicate<Path> required;
 		/**
 		 * The paths, relative to the run, that the copier's sandbox refused to let the copy write.
 		 */
@@ -219,13 +251,15 @@ public final class KeptRunCopy
 		 *
 		 * @param source the kept run that is copied
 		 * @param target the copy of the kept run
-		 * @param included accepts the name of each directory directly below the run that the copy includes
+		 * @param included accepts the paths relative to the run that the copy includes
+		 * @param required accepts the paths whose copy failures must be thrown
 		 */
-		RunCopier(Path source, Path target, Predicate<String> included)
+		RunCopier(Path source, Path target, Predicate<Path> included, Predicate<Path> required)
 		{
 			this.source = source;
 			this.target = target;
 			this.included = included;
+			this.required = required;
 			this.attempted = target;
 		}
 
@@ -237,7 +271,7 @@ public final class KeptRunCopy
 		 */
 		private boolean includes(Path relative)
 		{
-			return relative.toString().isEmpty() || included.test(relative.getName(0).toString());
+			return relative.toString().isEmpty() || included.test(relative);
 		}
 
 		/**
@@ -261,7 +295,7 @@ public final class KeptRunCopy
 		 */
 		private boolean skips(Path file, IOException failure)
 		{
-			if (!isPermissionRefusal(failure) || !Files.isReadable(file))
+			if (required.test(source.relativize(file)) || !isPermissionRefusal(failure) || !Files.isReadable(file))
 				return false;
 			skipped.add(PortablePaths.text(source.relativize(file)));
 			return true;

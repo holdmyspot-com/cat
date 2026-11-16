@@ -754,8 +754,8 @@ public final class SessionRequestForwarder
 	/**
 	 * Copies the requested session's records, one per line, to a served command's output, creating the
 	 * {@code artifacts} directory of the session's run below the command's run root once the session reports its
-	 * start, and replacing the run's project and initial project there with the session's, which the runner copied,
-	 * before the command reads each record that reports the end of a completed turn.
+	 * start, and replacing its project, initial project and native transcript copies with the session's, which the runner
+	 * copied, before the command reads each record that reports the end of a completed turn.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
@@ -774,7 +774,7 @@ public final class SessionRequestForwarder
 		 */
 		private final Path runs;
 		/**
-		 * The runner's copy of the session's project and initial project as of the end of its last completed turn.
+		 * The runner's copy of the session's project, initial project and native transcripts as of its last completed turn.
 		 */
 		private final Path turnCopy;
 		/**
@@ -786,7 +786,7 @@ public final class SessionRequestForwarder
 		 */
 		private String runId = "";
 		/**
-		 * Indicates whether the run holds a copy of a turn's project.
+		 * Indicates whether the run holds a copy of turn evidence.
 		 */
 		private boolean turnCopied;
 
@@ -796,8 +796,8 @@ public final class SessionRequestForwarder
 		 * @param json     the record mapper
 		 * @param output   receives the records
 		 * @param runs     the folder of the command's runs of the session's harness
-		 * @param turnCopy the runner's copy of the session's project and initial project as of the end of its last
-		 *                 completed turn, which exists once a turn has completed
+		 * @param turnCopy the runner's copy of the session's project, initial project and native transcripts as of the
+		 *                 end of its last completed turn, which exists once a turn has completed
 		 */
 		RecordCopy(JsonMapper json, Writer output, Path runs, Path turnCopy)
 		{
@@ -808,14 +808,14 @@ public final class SessionRequestForwarder
 		}
 
 		/**
-		 * Removes the project and initial project that the copies of the turns left in the session's run.
+		 * Removes the turn evidence that copies of turns left in the session's run.
 		 *
 		 * @throws IOException if they cannot be removed
 		 */
 		void deleteTurnCopies() throws IOException
 		{
 			if (turnCopied)
-				KeptRunCopy.deleteProjects(runs.resolve(runId));
+				KeptRunCopy.deleteTurnCopies(runs.resolve(runId));
 			turnCopied = false;
 		}
 
@@ -867,7 +867,7 @@ public final class SessionRequestForwarder
 					}
 					else if (type.equals("turn_completed") && !runId.isEmpty() && Files.isDirectory(turnCopy))
 					{
-						KeptRunCopy.copyProjects(turnCopy, runs.resolve(runId));
+						KeptRunCopy.copyTurn(turnCopy, runs.resolve(runId));
 						turnCopied = true;
 					}
 				}

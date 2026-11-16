@@ -237,9 +237,15 @@ public final class HarnessRunnerBridgeTest
 			requireThat(output.toString(), "output").isEmpty();
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
 				contains("\"type\":\"completed\"");
-			requireThat(HarnessRunReceipt.read(json, receipt).retainedProject(), "retainedProject").
+			requireThat(HarnessRunReceipt.read(json, receipt, project).retainedProject(), "retainedProject").
 				isEqualTo(project);
-			requireThat(HarnessRunReceipt.read(json, receipt).rawResult(), "rawResult").isEqualTo(transcript);
+			requireThat(HarnessRunReceipt.read(json, receipt, project).rawResult(), "rawResult").
+				isEqualTo(run.directory().resolve("artifacts/bridge-transcript.jsonl"));
+			requireThat(Files.readString(run.directory().resolve("artifacts/bridge-transcript.jsonl")), "retainedOutput").
+				isEqualTo(Files.readString(transcript));
+			Files.delete(transcript);
+			requireThat(HarnessRunReceipt.read(json, receipt, project).rawResult(), "relocatedRawResult").
+				isEqualTo(run.directory().resolve("artifacts/bridge-transcript.jsonl"));
 		}
 	}
 
@@ -327,6 +333,86 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies that completed-turn responses follow copies of root and child native transcripts.
+	 *
+	 * @throws IOException if the bridge or transcript copy fails
+	 */
+	@Test
+	public void copiesTranscriptsBeforeTurnCompletion() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Files.createDirectories(run.directory().resolve("project"));
+			manager.snapshotProject(run);
+			Path turnCopy = root.resolve("turn-copy");
+			Path rootTranscript = run.sessionTranscripts().resolve("rollout-root.jsonl");
+			Path childTranscript = run.sessionTranscripts().resolve("rollout-child.jsonl");
+			List<String> copies = new ArrayList<>();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(
+				Turn.replies("reply-1").withCheckpoint(printed ->
+				{
+					if (printed == 0)
+						writeTranscriptSnapshot(rootTranscript, childTranscript, 1);
+				}),
+				Turn.replies("reply-2").withCheckpoint(printed ->
+				{
+					if (printed == 0)
+						writeTranscriptSnapshot(rootTranscript, childTranscript, 2);
+				})), new ArrayList<>()); Writer output = new Writer()
+			{
+				private final StringBuilder line = new StringBuilder();
+
+				@Override
+				public void write(char[] characters, int offset, int length) throws IOException
+				{
+					for (int index = offset; index < offset + length; index += 1)
+					{
+						if (characters[index] != '\n')
+						{
+							line.append(characters[index]);
+							continue;
+						}
+						if (line.indexOf("\"turn_completed\"") >= 0)
+						{
+							Path copiedRoot = turnCopy.resolve("artifacts/session-transcripts/rollout-root.jsonl");
+							Path copiedChild = turnCopy.resolve("artifacts/session-transcripts/rollout-child.jsonl");
+							copies.add(readCopyOrMissing(copiedRoot, "missing-root") +
+								readCopyOrMissing(copiedChild, "missing-child"));
+						}
+						line.setLength(0);
+					}
+				}
+
+				@Override
+				public void flush()
+				{
+				}
+
+				@Override
+				public void close()
+				{
+				}
+			})
+			{
+				HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+					"effort-a", null, true, null, false, false, 1, List.of(), List.of(), null, List.of(), 0, null, 0,
+					null, null, null, false, null, null, null, turnCopy, false, null);
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+					options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
+			}
+
+				requireThat(copies, "copies").isEqualTo(List.of("root-1\nchild-1\n", "root-2\nchild-2\n"));
+			}
+		}
+
+	/**
 	 * Supplies changes that a session makes to the read-only copies that stand in for its project's symbolic links to
 	 * targets outside the project, each with how the run's diagnostic names the changed path.
 	 *
@@ -386,6 +472,23 @@ public final class HarnessRunnerBridgeTest
 				contains("\"failed\"").contains(named);
 			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
 		}
+	}
+
+	/**
+	 * Writes the root and child transcript files for one turn's snapshot.
+	 *
+	 * @param rootTranscript  the root transcript file
+	 * @param childTranscript the child transcript file
+	 * @param snapshot        the snapshot number written to both files
+	 * @throws IOException if either transcript file cannot be written
+	 */
+	private static void writeTranscriptSnapshot(Path rootTranscript, Path childTranscript, int snapshot)
+		throws IOException
+	{
+		Files.createDirectories(rootTranscript.getParent());
+		Files.createDirectories(childTranscript.getParent());
+		Files.writeString(rootTranscript, "root-" + snapshot + "\n");
+		Files.writeString(childTranscript, "child-" + snapshot + "\n");
 	}
 
 	/**
@@ -1035,7 +1138,8 @@ public final class HarnessRunnerBridgeTest
 			requireThat(records, "records").size().isEqualTo(1);
 			requireThat(records.getFirst(), "record").contains(nativeFile.toString().replace("\\", "\\\\"));
 			requireThat(Files.exists(run.directory().resolve("home")), "homeExists").isFalse();
-			requireThat(HarnessRunReceipt.read(json, receipt).sessionTranscripts(), "sessionTranscripts").
+			requireThat(HarnessRunReceipt.read(json, receipt, run.directory().resolve("project")).
+				sessionTranscripts(), "sessionTranscripts").
 				isEqualTo(List.of(run.sessionTranscripts().resolve("session-7.jsonl")));
 		}
 	}
@@ -1074,7 +1178,8 @@ public final class HarnessRunnerBridgeTest
 				options, json, Yielding.fileReplacer(), input, new StringWriter());
 
 			requireThat(Files.readString(transcript), "transcript").doesNotContain("session_transcript");
-			requireThat(HarnessRunReceipt.read(json, receipt).sessionTranscripts(), "sessionTranscripts").isEmpty();
+			requireThat(HarnessRunReceipt.read(json, receipt, run.directory().resolve("project")).
+				sessionTranscripts(), "sessionTranscripts").isEmpty();
 			requireThat(Files.exists(run.sessionTranscripts()), "directoryExists").isFalse();
 		}
 	}
@@ -1638,6 +1743,21 @@ public final class HarnessRunnerBridgeTest
 			"--effort", "effort-a", "--conversation", folder.toString()}, "harness", HarnessTemporaryRoot.of(root));
 		HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 			options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
+	}
+
+	/**
+	 * Reads a copied transcript, or returns the supplied marker when the copy is absent.
+	 *
+	 * @param path the copied transcript
+	 * @param missingValue the marker to return if it is absent
+	 * @return the copied text or marker
+	 * @throws IOException if the transcript cannot be read
+	 */
+	private static String readCopyOrMissing(Path path, String missingValue) throws IOException
+	{
+		if (!Files.exists(path))
+			return missingValue;
+		return Files.readString(path);
 	}
 
 	/**

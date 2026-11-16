@@ -1,9 +1,17 @@
 package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.Pause;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
+import com.holdmyspot.cat.common.runner.KeptRunCopy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -11,6 +19,7 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -19,13 +28,16 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.time.Clock;
 import java.util.stream.Stream;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -111,6 +123,209 @@ public final class SessionRequestForwarderTest
 			requireThat(Files.readString(transcript), "transcript").isEqualTo(Fixture.TRANSCRIPT);
 			requireThat(output.size(), "standardOutput").isEqualTo(0);
 		}
+	}
+
+	/**
+	 * Verifies the served command sees each root and child transcript copy before its matching completed-turn record.
+	 *
+	 * @throws IOException if the served session or its kept run cannot be copied
+	 */
+	@Test
+	public void copiesTranscriptsBeforeTurnCompletion() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("forward-transcript-copy-"));
+			Path requests = Files.createDirectories(root.resolve("run/requests"));
+			Path runRoot = root.resolve("kept-runs");
+			Path project = Files.createDirectories(root.resolve("project"));
+			Path artifact = Files.createDirectories(root.resolve("artifact"));
+			Path childRoot = root.resolve("child-runs");
+			Path responses = root.resolve("run/responses");
+			AtomicInteger pauseCount = new AtomicInteger();
+			List<String> copied = new ArrayList<>();
+			String[] forwardedRunId = {""};
+			Path[] finalResponse = {null};
+			String childRunId = "ab12-cd34";
+			JsonMapper json = JsonMapper.builder().build();
+			try (Writer output = new Writer()
+			{
+				private final StringBuilder line = new StringBuilder();
+
+				@Override
+				public void write(char[] characters, int offset, int length) throws IOException
+				{
+					for (int index = offset; index < offset + length; index += 1)
+					{
+						if (characters[index] != '\n')
+						{
+							line.append(characters[index]);
+							continue;
+						}
+						JsonNode record = json.readTree(line.toString());
+						String type = record.path("type").asString();
+						if (type.equals("started"))
+							forwardedRunId[0] = record.path("run_id").asString();
+						else if (type.equals("turn_completed"))
+						{
+							Path kept = runRoot.resolve("harnessa").resolve(forwardedRunId[0]);
+							copied.add(readCopyOrMissing(kept.resolve(
+								"artifacts/session-transcripts/rollout-root.jsonl"), "missing-root") +
+								readCopyOrMissing(kept.resolve(
+									"artifacts/session-transcripts/subagents/rollout-child.jsonl"), "missing-child"));
+						}
+						line.setLength(0);
+					}
+				}
+
+				@Override
+				public void flush()
+				{
+				}
+
+				@Override
+				public void close()
+				{
+				}
+			})
+			{
+			Pause pause = () ->
+			{
+				int currentPause = pauseCount.incrementAndGet();
+				if (currentPause > 2)
+					throw new IOException("The kept-run response was not published");
+				if (currentPause == 1)
+				{
+					Path archive;
+					try (Stream<Path> files = Files.list(requests))
+					{
+						archive = files.filter(path -> path.getFileName().toString().endsWith(".tar")).findFirst().
+							orElseThrow(() -> new IOException("The served request was not published"));
+					}
+					String id = archive.getFileName().toString().replace(".tar", "");
+					Path response = Files.createDirectories(responses.resolve(id));
+					Path turnCopy = Files.createDirectories(response.resolve("turn-copy"));
+					writeTurnSnapshot(turnCopy, 1);
+					Path sessionTranscripts = Files.createDirectories(
+						turnCopy.resolve("artifacts/session-transcripts/subagents"));
+					Files.writeString(turnCopy.resolve("artifacts/session-transcripts/rollout-root.jsonl"), "root-1\n");
+					Files.writeString(sessionTranscripts.resolve("rollout-child.jsonl"), "child-1\n");
+					Path transcript = response.resolve("transcript.jsonl");
+					Files.writeString(transcript, "{\"type\":\"started\",\"run_id\":\"runa-1\"}\n" +
+						"{\"type\":\"turn_completed\",\"run_id\":\"runa-1\"}\n");
+
+					HarnessRunManager manager = new HarnessRunManager(new FileLocks(), childRoot, Clock.systemUTC(),
+						Yielding.fileReplacer());
+					HarnessRun child = manager.create("harnessa");
+					Path childProject = child.directory().resolve("project");
+					Files.writeString(childProject.resolve("marker"), "kept project");
+					Path raw = Files.writeString(child.directory().resolve("artifacts/result.jsonl"), "result\n");
+					Path nativeCopies = Files.createDirectories(
+						child.directory().resolve("artifacts/session-transcripts/subagents"));
+					Path rootCopy = child.directory().resolve("artifacts/session-transcripts/rollout-root.jsonl");
+					Path childCopy = nativeCopies.resolve("rollout-child.jsonl");
+					Files.writeString(rootCopy, "root-complete\n");
+					Files.writeString(childCopy, "child-complete\n");
+					Path receipt = child.directory().resolve("artifacts/receipt.json");
+					HarnessRunReceipt.write(json, Yielding.fileReplacer(), receipt, child, raw,
+						List.of(rootCopy, childCopy));
+					manager.initialize(child, artifact, project, "fixture", List.of("fixture"));
+					manager.markCompleted(child);
+					Path kept = response.resolve("run");
+					KeptRunCopy.Result copyResult = KeptRunCopy.copy(child.directory(), kept);
+					requireThat(copyResult.incomplete(), "keptRun").isEmpty();
+					HarnessRunManager.renameCopy(kept, childRunId);
+				}
+				else
+				{
+					Path response;
+					try (Stream<Path> directories = Files.list(responses))
+					{
+						response = directories.findFirst().orElseThrow();
+					}
+					finalResponse[0] = response;
+					Path turnCopy = response.resolve("turn-copy");
+					writeTurnSnapshot(turnCopy, 2);
+					Path sessionTranscripts = Files.createDirectories(
+						turnCopy.resolve("artifacts/session-transcripts/subagents"));
+					Files.writeString(turnCopy.resolve("artifacts/session-transcripts/rollout-root.jsonl"), "root-2\n");
+					Files.writeString(sessionTranscripts.resolve("rollout-child.jsonl"), "child-2\n");
+					Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"started\",\"run_id\":\"runa-1\"}\n" +
+						"{\"type\":\"turn_completed\",\"run_id\":\"runa-1\"}\n" +
+						"{\"type\":\"turn_completed\",\"run_id\":\"runa-1\"}\n" +
+						"{\"type\":\"completed\",\"run_id\":\"runa-1\"}\n");
+					HarnessRun copiedChild = new HarnessRun("harnessa", childRunId, response.resolve("run"));
+					requireThat(Files.isDirectory(copiedChild.directory().resolve("project")), "copiedProject").isTrue();
+					requireThat(Files.isRegularFile(response.resolve("transcript.jsonl")), "externalOutput").isTrue();
+					Path copiedRootTranscript = copiedChild.sessionTranscripts().resolve("rollout-root.jsonl");
+					Path copiedChildTranscript = copiedChild.sessionTranscripts().resolve("subagents/rollout-child.jsonl");
+					HarnessRunReceipt.write(json, Yielding.fileReplacer(),
+						copiedChild.directory().resolve("artifacts/receipt.json"),
+						copiedChild, response.resolve("transcript.jsonl"),
+						List.of(copiedRootTranscript, copiedChildTranscript));
+					ObjectNode result = json.createObjectNode().put("format_version", 1).
+						put("id", response.getFileName().toString()).put("harness", "harnessa").
+						put("status", "completed").put("reason", "").put("child_run_id", childRunId).
+						put("transcript", response.resolve("transcript.jsonl").toString()).
+						put("receipt", copiedChild.directory().resolve("artifacts/receipt.json").toString()).
+						put("run", response.resolve("run").toString());
+					json.writeValue(response.resolve("response.json").toFile(), result);
+				}
+			};
+			String[] arguments = {"--run-root", runRoot.toString(), "--project", project.toString(), "--model",
+				"model-a", "--effort", "effort-a", "--keep-run"};
+
+			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
+				new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+					"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"), output,
+				requests, pause);
+
+			requireThat(copied, "copied").isEqualTo(List.of("root-1\nchild-1\n", "root-2\nchild-2\n"));
+			Path retained = runRoot.resolve("harnessa").resolve(forwardedRunId[0]);
+			Path receiptPath = retained.resolve("artifacts/receipt.json");
+			String externalTranscript = Files.readString(finalResponse[0].resolve("transcript.jsonl"));
+			Files.delete(finalResponse[0].resolve("transcript.jsonl"));
+			HarnessEvaluationResult receipt = HarnessRunReceipt.read(json, receiptPath, retained.resolve("project"));
+			requireThat(Files.isRegularFile(receipt.retainedProject().resolve("marker")), "retainedProjectMarker").
+				isTrue();
+			requireThat(Files.readString(receipt.retainedProject().resolve("marker")), "retainedProject").
+				isEqualTo("kept project");
+			requireThat(receipt.rawResult(), "retainedRawResult").
+				isEqualTo(retained.resolve("artifacts/bridge-transcript.jsonl"));
+			requireThat(Files.readString(receipt.rawResult()), "rawResult").isEqualTo(externalTranscript);
+			requireThat(receipt.sessionTranscripts(), "nativeTranscripts").size().isEqualTo(2);
+			}
+		}
+	}
+
+	/**
+	 * Replaces a turn's project and native transcript inputs for the next response.
+	 *
+	 * @param turnCopy the run snapshot the forwarder copies
+	 * @param turn the snapshot number
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static void writeTurnSnapshot(Path turnCopy, int turn) throws IOException
+	{
+		Files.createDirectories(turnCopy.resolve("project"));
+		Files.createDirectories(turnCopy.resolve("initial-project"));
+		Files.writeString(turnCopy.resolve("project/marker"), "project-" + turn);
+		Files.writeString(turnCopy.resolve("initial-project/marker"), "initial-" + turn);
+	}
+
+	/**
+	 * Reads a copied transcript, or returns the supplied marker when the copy is absent.
+	 *
+	 * @param path the copied transcript
+	 * @param missingValue the marker to return if it is absent
+	 * @return the copied text or marker
+	 * @throws IOException if the transcript cannot be read
+	 */
+	private static String readCopyOrMissing(Path path, String missingValue) throws IOException
+	{
+		if (!Files.exists(path))
+			return missingValue;
+		return Files.readString(path);
 	}
 
 	/**

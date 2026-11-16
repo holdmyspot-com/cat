@@ -56,7 +56,7 @@ public final class SessionSlotsTest
 			Path base = cleanup.add(Files.createTempDirectory("slots-"));
 			SessionSlots slots = new SessionSlots(base, 1, new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
-			Files.writeString(Files.createDirectories(first.root().resolve("claude/s-1/home")).resolve("login"),
+			Files.writeString(Files.createDirectories(first.root().resolve("claude/cache/home")).resolve("login"),
 				"login");
 			slots.release(first);
 			SessionSlots.Slot second = slots.acquire(false);
@@ -174,7 +174,8 @@ public final class SessionSlotsTest
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(first.runId());
 			HarnessRun run = manager.create("claude");
-			manager.recordHarnessProcess(run, 4242, "abc");
+			manager.markHarnessStarting(run);
+			manager.recordHarnessProcess(run, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			slots.release(first);
 
 			requireThat(Files.isDirectory(run.directory()), "keptWhileAlive").isTrue();
@@ -221,14 +222,13 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a run whose manifest cannot be read records no process that CAT could identify, so it does not
-	 * keep the slot.
+	 * Verifies that a run whose manifest cannot be read keeps its bytes and prevents the slot from being reused.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 30_000)
-	public void ignoresUnreadableManifest() throws IOException, InterruptedException
+	public void refusesUnreadableManifest() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -236,10 +236,24 @@ public final class SessionSlotsTest
 				new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
 			Path run = Files.createDirectories(first.root().resolve("claude").resolve(first.runId()));
-			Files.writeString(run.resolve("run.json"), "{not json");
-			slots.release(first);
+			Path manifest = run.resolve("run.json");
+			Path sentinel = run.resolve("evidence");
+			Files.writeString(manifest, "{not json");
+			Files.writeString(sentinel, "keep");
+			IOException failure = null;
+			try
+			{
+				slots.release(first);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
 
-			requireThat(slots.acquire(false), "second").isEqualTo(first);
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "failureMessage").contains(manifest.toString());
+			requireThat(manifest, "manifest").isRegularFile();
+			requireThat(sentinel, "sentinel").isRegularFile();
 		}
 	}
 

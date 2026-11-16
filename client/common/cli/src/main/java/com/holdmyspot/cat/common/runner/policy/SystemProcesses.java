@@ -107,7 +107,12 @@ final class SystemProcesses implements HarnessProcesses
 	private ProcessDescription describe(ProcessHandle handle)
 	{
 		ProcessHandle.Info info = handle.info();
-		return new ProcessDescription(handle.pid(), start(handle, info), info.command(), arguments(handle, info));
+		Optional<LinuxCommandLine> linuxCommandLine = linuxCommandLine(handle);
+		Optional<String> argumentZero = linuxCommandLine.map(LinuxCommandLine::argumentZero);
+		Optional<List<String>> arguments = linuxCommandLine.map(LinuxCommandLine::arguments);
+		if (processFolder == null)
+			arguments = info.arguments().map(List::of);
+		return new ProcessDescription(handle.pid(), start(handle, info), info.command(), argumentZero, arguments);
 	}
 
 	/**
@@ -162,16 +167,15 @@ final class SystemProcesses implements HarnessProcesses
 	}
 
 	/**
-	 * Returns the arguments of a process after its program.
+	 * Returns the first argument and the arguments after it from a Linux process's command line.
 	 *
 	 * @param handle the process
-	 * @param info   what {@link ProcessHandle} reports about it
-	 * @return the arguments, or empty if the system does not report them
+	 * @return the command line, or empty if the system does not report it
 	 */
-	private Optional<List<String>> arguments(ProcessHandle handle, ProcessHandle.Info info)
+	private Optional<LinuxCommandLine> linuxCommandLine(ProcessHandle handle)
 	{
 		if (processFolder == null)
-			return info.arguments().map(List::of);
+			return Optional.empty();
 		byte[] commandLine;
 		try
 		{
@@ -191,6 +195,10 @@ final class SystemProcesses implements HarnessProcesses
 		if (commandLine[end - 1] == 0)
 			--end;
 		String[] words = new String(commandLine, 0, end, StandardCharsets.UTF_8).split("\0", -1);
-		return Optional.of(List.of(words).subList(1, words.length));
+		return Optional.of(new LinuxCommandLine(words[0], List.of(words).subList(1, words.length)));
+	}
+
+	private record LinuxCommandLine(String argumentZero, List<String> arguments)
+	{
 	}
 }
