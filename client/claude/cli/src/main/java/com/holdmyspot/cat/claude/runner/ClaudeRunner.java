@@ -232,8 +232,9 @@ public final class ClaudeRunner
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
 			List<Path> plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
-				FileReplacer.retrying(waiting), scope.json(), (command, step) -> HarnessCommand.execute(command, worktree,
-					isolatedEnvironment, executables, manager, run, step));
+				isolatedEnvironment, FileReplacer.retrying(waiting), scope.json(),
+				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
+					run, step));
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
@@ -959,6 +960,7 @@ public final class ClaudeRunner
 	 * @param installCat {@code true} to install CAT
 	 * @param trialPlugins the trial plugins, each installed under its manifest's name
 	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param environment the isolated environment passed to CAT's permission installer
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @param commands runs the commands that add each marketplace and install each plugin
@@ -969,13 +971,14 @@ public final class ClaudeRunner
 	 *   Claude Code's install records cannot be read or {@code settings.json} cannot be changed
 	 */
 	public static List<Path> installPlugins(String executable, Path artifact, boolean installCat,
-		List<Path> trialPlugins, Path isolatedConfiguration, FileReplacer replacer, JsonMapper json,
-		SetupCommands commands) throws IOException
+		List<Path> trialPlugins, Path isolatedConfiguration, Map<String, String> environment, FileReplacer replacer,
+		JsonMapper json, SetupCommands commands) throws IOException
 	{
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		requireThat(isolatedConfiguration, "isolatedConfiguration").isNotNull();
+		requireThat(environment, "environment").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(commands, "commands").isNotNull();
@@ -987,7 +990,7 @@ public final class ClaudeRunner
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-install");
 			Path plugin = marketplace.resolve("plugins/cat");
-			installPermissions(isolatedConfiguration, plugin, replacer, json);
+			installPermissions(environment, isolatedConfiguration, plugin, replacer, json);
 			plugins.add(plugin);
 		}
 		for (Path trialPlugin : trialPlugins)
@@ -1008,13 +1011,14 @@ public final class ClaudeRunner
 	 * in the run's marketplace and each copy that Claude Code's install records name for CAT.
 	 *
 	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param environment the isolated environment passed to CAT's permission installer
 	 * @param marketplacePlugin the copy of CAT in the run's marketplace
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @throws IOException if the install records cannot be read or {@code settings.json} cannot be changed
 	 */
-	private static void installPermissions(Path isolatedConfiguration, Path marketplacePlugin, FileReplacer replacer,
-		JsonMapper json) throws IOException
+	private static void installPermissions(Map<String, String> environment, Path isolatedConfiguration,
+		Path marketplacePlugin, FileReplacer replacer, JsonMapper json) throws IOException
 	{
 		Path configuration = isolatedConfiguration.toAbsolutePath().normalize();
 		Set<Path> copies = new LinkedHashSet<>();
@@ -1022,7 +1026,7 @@ public final class ClaudeRunner
 		copies.addAll(InstalledPlugins.of(configuration, "cat@cat", json));
 		Integration integration = new Integration();
 		for (Path copy : copies)
-			integration.installPermissions(configuration, copy.resolve(PluginDirectory.INSTALLER), replacer);
+			integration.installPermissions(environment, configuration, copy.resolve(PluginDirectory.INSTALLER), replacer);
 	}
 
 	/**

@@ -1234,7 +1234,7 @@ public final class ClaudeRunnerTest
 				});
 
 			Path installer = installed.get(0).resolve(PluginDirectory.INSTALLER);
-			Map<String, List<String>> entries = new Integration().permissions(installer);
+			Map<String, List<String>> entries = new Integration().permissions(Map.of(), installer);
 			JsonNode settings = JSON.readTree(Files.readString(configuration.resolve("settings.json")));
 			requireThat(settings.path("model").asString(), "model").isEqualTo("opus");
 			List<String> excluded = strings(settings.path("sandbox").path("excludedCommands"));
@@ -1283,7 +1283,7 @@ public final class ClaudeRunnerTest
 			List<String> excluded = strings(settings.path("sandbox").path("excludedCommands"));
 			List<String> expected = new ArrayList<>();
 			for (Path plugin : List.of(installed.get(0), recorded))
-				expected.addAll(integration.permissions(plugin.resolve(PluginDirectory.INSTALLER)).
+				expected.addAll(integration.permissions(Map.of(), plugin.resolve(PluginDirectory.INSTALLER)).
 					get("settings.json#sandbox.excludedCommands"));
 			requireThat(excluded, "excluded").isEqualTo(expected);
 		}
@@ -1304,7 +1304,7 @@ public final class ClaudeRunnerTest
 		SetupCommands commands) throws IOException
 	{
 		return ClaudeRunner.installPlugins("claude", artifact, installCat, trialPlugins, configuration,
-			Yielding.fileReplacer(), JSON, commands);
+			Map.of(), Yielding.fileReplacer(), JSON, commands);
 	}
 
 	/**

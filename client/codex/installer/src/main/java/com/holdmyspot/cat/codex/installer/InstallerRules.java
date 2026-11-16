@@ -9,17 +9,15 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Writes and recognizes the CAT-owned Codex execution-policy file that lets an agent run the installer launcher of the
- * active version folder and the request server beside it.
- * <p>
- * Each rule is a {@code prefix_rule}. Codex applies a prefix rule to every command that starts with its pattern, so
- * the installer validates its complete argument list itself. Every rule that allows a command names this harness
- * after {@code --harness}, or names {@code status}, so installing CAT into another harness always needs the user.
+ * Writes and recognizes the CAT-owned Codex execution-policy file. Latest updates require the complete installer
+ * script through run-part and a trusted outer shell. Bare installer status is allowed, and uninstall asks the user.
+ * On POSIX, the request server beside the installer may also run outside the sandbox.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -65,6 +63,10 @@ public final class InstallerRules
 	 * Quotes rule tokens as string literals.
 	 */
 	private static final JsonMapper MAPPER = JsonMapper.builder().build();
+	/**
+	 * Marks the recorded environment needed to regenerate the complete Windows update rules for ownership checks.
+	 */
+	private static final String BINDINGS_PREFIX = "# Update bindings: ";
 
 	/**
 	 * Prevents instantiation.
@@ -79,15 +81,165 @@ public final class InstallerRules
 	 * outside the sandbox, so that it can start the sessions that the session's sandboxed commands request inside
 	 * Codex's own sandbox, which a sandboxed command cannot do. Codex matches each path only as spelled.
 	 *
-	 * @param launcher the absolute, normalized path of the installer launcher in the active version folder
-	 * @param windows  {@code true} to name the launcher script through PowerShell, as Windows runs it
+	 * @param environment the environment recorded when the harness program was bound
+	 * @param launcher    the absolute, normalized path of the installer launcher in the active version folder
+	 * @param windows     {@code true} to name the launcher script through PowerShell, as Windows runs it
 	 * @return the complete file content, ending with a line feed
-	 * @throws NullPointerException     if {@code launcher} is null
-	 * @throws IllegalArgumentException if {@code launcher} is relative or not normalized
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if a path is relative, not normalized or contains a line break, or a required
+	 *                                  recorded Windows binding is missing or invalid
 	 */
-	public static String render(Path launcher, boolean windows)
+	public static String render(Map<String, String> environment, Path launcher, boolean windows)
 	{
-		return render(HEADER, launcher, windows, false, siblings(windows));
+		String script = latestUpdateCommand(environment, launcher, windows);
+		List<String> command = launcherCommand(launcher, windows);
+		StringBuilder content = new StringBuilder(HEADER.length() + BINDINGS_PREFIX.length() + 2).
+			append(HEADER).append('\n');
+		rule(content, command, List.of("status"), ALLOW);
+		content.append(BINDINGS_PREFIX).append(MAPPER.writeValueAsString(new TreeMap<>(bindings(environment, windows)))).
+			append('\n');
+		for (List<String> shell : shells(environment, windows))
+			rule(content, shell, List.of(script), ALLOW);
+		rule(content, command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION);
+		for (String sibling : siblings(windows))
+			rule(content, List.of(launcher.resolveSibling(sibling).toString()), List.of(), ALLOW);
+		return content.toString();
+	}
+
+	/**
+	 * Returns the exact latest-update script used by the permission file and installer status.
+	 *
+	 * @param environment the environment recorded when the harness program was bound
+	 * @param launcher    the absolute, normalized installer launcher
+	 * @param windows     true for PowerShell, false for a POSIX shell
+	 * @return the complete script; the Windows command ends with a line feed after its exit statement
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if a path is relative, not normalized or contains a line break, or a required
+	 *                                  recorded Windows binding is missing or invalid
+	 */
+	public static String latestUpdateCommand(Map<String, String> environment, Path launcher, boolean windows)
+	{
+		requireThat(launcher, "launcher").isAbsolute().isEqualTo(launcher.normalize());
+		requireThat(environment, "environment").isNotNull();
+		String installer = literal(launcher.toString(), windows);
+		if (!windows)
+		{
+			return """
+				PATH=/usr/bin:/bin %s <<'EOF'
+				%s --json install --harness codex
+				EOF""".formatted(literal(launcher.resolveSibling("run-part").toString(), false), installer);
+		}
+		Map<String, String> recorded = bindings(environment, true);
+		Path systemRoot = Path.of(recorded.get("SystemRoot"));
+		Path system = systemRoot.resolve("System32");
+		Path powershell = system.resolve("WindowsPowerShell/v1.0/powershell.exe");
+		return """
+			& {
+			trap { exit 1 }
+			$ErrorActionPreference = 'Stop'
+			$env:SystemRoot = %s
+			$env:ComSpec = %s
+			$env:PATH = %s
+			$env:PATHEXT = %s
+			$env:NoDefaultCurrentDirectoryInExePath = '1'
+			$OutputEncoding = [Text.UTF8Encoding]::new()
+			@'
+			& %s -NoProfile -NonInteractive -ExecutionPolicy Bypass -File %s --json install --harness codex
+			'@ | & %s
+			exit $LASTEXITCODE;
+			};
+			exit 1;
+			""".formatted(literal(systemRoot.toString(), true),
+				literal(system.resolve("cmd.exe").toString(), true), literal(recorded.get("PATH"), true),
+				literal(recorded.get("PATHEXT"), true), literal(powershell.toString(), true), installer,
+				literal(launcher.resolveSibling("run-part.cmd").toString(), true));
+	}
+
+	/**
+	 * Selects and validates only the recorded Windows values used by the update script.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param windows     true when Windows bindings are required
+	 * @return the exact binding metadata, empty for POSIX
+	 */
+	private static Map<String, String> bindings(Map<String, String> environment, boolean windows)
+	{
+		if (!windows)
+			return Map.of();
+		String systemRoot = environment.get("SystemRoot");
+		String path = environment.get("PATH");
+		if (systemRoot == null || path == null)
+			throw new IllegalArgumentException("Recorded Windows update bindings require SystemRoot and PATH");
+		requireThat(systemRoot, "environment.SystemRoot").isNotBlank();
+		requireThat(Path.of(systemRoot), "environment.SystemRoot").isAbsolute();
+		requireThat(path, "environment.PATH").isNotBlank();
+		for (String directory : path.split(";", -1))
+			requireThat(Path.of(directory), "environment.PATH.directory").isAbsolute();
+		Map<String, String> result = new TreeMap<>();
+		result.put("SystemRoot", systemRoot);
+		result.put("PATH", path);
+		result.put("PATHEXT", environment.getOrDefault("PATHEXT", ".EXE;.CMD"));
+		for (String value : result.values())
+			literal(value, true);
+		return Map.copyOf(result);
+	}
+
+	/**
+	 * Quotes one value literally and rejects line breaks that could terminate a fixed input block.
+	 *
+	 * @param value   the path or recorded environment value
+	 * @param windows true for PowerShell quoting
+	 * @return an unconditionally single-quoted literal
+	 */
+	private static String literal(String value, boolean windows)
+	{
+		if (value.indexOf('\r') >= 0 || value.indexOf('\n') >= 0)
+			throw new IllegalArgumentException("Update command paths and bindings must not contain line breaks");
+		if (windows)
+			return "'" + value.replace("'", "''") + "'";
+		return "'" + value.replace("'", "'\\''") + "'";
+	}
+
+	/**
+	 * Returns each supported outer shell argument form; every rule also requires the complete script argument.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param windows     true for the Windows PowerShell forms
+	 * @return the shell argument prefixes
+	 */
+	private static List<List<String>> shells(Map<String, String> environment, boolean windows)
+	{
+		List<List<String>> commands = new ArrayList<>();
+		if (windows)
+		{
+			String shell = Path.of(bindings(environment, true).get("SystemRoot")).
+				resolve("System32/WindowsPowerShell/v1.0/powershell.exe").toString();
+			commands.add(List.of(shell, "-Command"));
+			commands.add(List.of(shell, "-NoProfile", "-Command"));
+			return commands;
+		}
+		for (String shell : List.of("/bin/bash", "/usr/bin/bash", "/bin/sh", "/usr/bin/sh", "/bin/zsh", "/usr/bin/zsh"))
+		{
+			commands.add(List.of(shell, "-c"));
+			commands.add(List.of(shell, "-lc"));
+		}
+		return commands;
+	}
+
+	/**
+	 * Returns the argument prefix for a bare status or uninstall invocation.
+	 *
+	 * @param launcher the installed installer launcher
+	 * @param windows  true for a PowerShell script launcher
+	 * @return the launcher command
+	 */
+	private static List<String> launcherCommand(Path launcher, boolean windows)
+	{
+		List<String> command = new ArrayList<>();
+		if (windows)
+			command.addAll(WINDOWS_PREFIX);
+		command.add(launcher.toString());
+		return command;
 	}
 
 	/**
@@ -126,11 +278,17 @@ public final class InstallerRules
 			command.addAll(WINDOWS_PREFIX);
 		command.add(launcher.toString());
 		Map<String, String> allowed = new HashMap<>();
-		allowed.put(ruleLine(command, List.of("install", "--harness", CodexActivation.HARNESS), ALLOW),
-			"installer install");
+		boolean hasBindings = content.lines().anyMatch(line -> line.startsWith(BINDINGS_PREFIX));
+		if (hasBindings)
+		{
+			Map<String, String> environment = readBindings(content);
+			String script = latestUpdateCommand(environment, launcher, windows);
+			for (List<String> shell : shells(environment, windows))
+				allowed.put(ruleLine(shell, List.of(script), ALLOW), "installer install");
+		}
 		allowed.put(ruleLine(command, List.of("status"), ALLOW), "installer status");
-		allowed.put(ruleLine(List.of(launcher.resolveSibling(REQUEST_SERVER).toString()), List.of(), ALLOW),
-			REQUEST_SERVER);
+		for (String sibling : siblings(windows))
+			allowed.put(ruleLine(List.of(launcher.resolveSibling(sibling).toString()), List.of(), ALLOW), sibling);
 		Map<String, String> prompted = Map.of(
 			ruleLine(command, List.of("uninstall", "--harness", CodexActivation.HARNESS), UNINSTALL_DECISION),
 			"installer uninstall");
@@ -217,9 +375,76 @@ public final class InstallerRules
 	 */
 	public static boolean isWrittenByCat(String content, boolean windows)
 	{
-		return isRenderedUnder(HEADER, content, windows, false, siblings(windows)) ||
+		return isCurrentRender(content, windows) ||
+			isRenderedUnder(HEADER, content, windows, false, siblings(windows)) ||
+			!windows && isRenderedUnder(HEADER, content, false, false, List.of(REQUEST_SERVER)) ||
 			!windows && isRenderedUnder(HEADER, content, false, false, RUNNER_LAUNCHERS) ||
 			isRenderedUnder(HEADER, content, windows, false, List.of());
+	}
+
+	/**
+	 * Recognizes current ownership only by regenerating and comparing the complete permission file.
+	 *
+	 * @param content the candidate file content
+	 * @param windows true for Windows launcher paths
+	 * @return true when the entire file equals the current rendering
+	 */
+	private static boolean isCurrentRender(String content, boolean windows)
+	{
+		try
+		{
+			Map<String, String> environment = readBindings(content);
+			String[] lines = content.split("\n", -1);
+			String first = lines[1];
+			String prefix = "prefix_rule(pattern=";
+			int end = first.lastIndexOf("], decision=");
+			if (!first.startsWith(prefix) || end < prefix.length())
+				return false;
+			JsonNode pattern = MAPPER.readTree(first.substring(prefix.length(), end + 1));
+			int index = 0;
+			if (windows)
+				index = WINDOWS_PREFIX.size();
+			if (!pattern.isArray() || !pattern.path(index).isString())
+				return false;
+			Path launcher = Path.of(pattern.path(index).stringValue());
+			return content.equals(render(environment, launcher, windows));
+		}
+		catch (JacksonException | IllegalArgumentException _)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Reads only the exact binding metadata fields used by the serializer.
+	 *
+	 * @param content the candidate permission file
+	 * @return the recorded bindings
+	 * @throws IllegalArgumentException if the metadata is absent or malformed
+	 */
+	private static Map<String, String> readBindings(String content)
+	{
+		String[] lines = content.split("\n", -1);
+		if (lines.length < 3 || !lines[2].startsWith(BINDINGS_PREFIX))
+			throw new IllegalArgumentException("Update bindings metadata is absent");
+		try
+		{
+			JsonNode object = MAPPER.readTree(lines[2].substring(BINDINGS_PREFIX.length()));
+			if (!object.isObject())
+				throw new IllegalArgumentException("Update bindings metadata must be an object");
+			Map<String, String> environment = new TreeMap<>();
+			for (Map.Entry<String, JsonNode> entry : object.properties())
+			{
+				if (!List.of("SystemRoot", "PATH", "PATHEXT").contains(entry.getKey()) || !entry.getValue().isString())
+					throw new IllegalArgumentException("Update bindings contain an unknown key or non-string value");
+				environment.put(entry.getKey(), entry.getValue().stringValue());
+			}
+			return environment;
+		}
+		catch (JacksonException e)
+		{
+			throw new IllegalArgumentException("Malformed update bindings metadata", e);
+		}
 	}
 
 	/**

@@ -392,25 +392,31 @@ public final class CodexIntegration implements HarnessIntegration
 	 * that holds {@code installer}, so that Codex runs the hooks without the user reviewing them. A hash that differs
 	 * from the one that {@code config.toml} records for a hook replaces it.
 	 *
+	 * @param environment the Codex environment recorded in the trust policy
+	 * @param home        the Codex home
+	 * @param installer   the absolute, normalized installer launcher
+	 * @param replacer    replaces Codex configuration files
 	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}} when this call wrote the file, and for each hash
 	 * 	that this call recorded or replaced, {@code {"config.toml#hooks.state.\"<hook>\".trusted_hash": [<hash>]}};
 	 * 	otherwise an empty map
+	 * @throws NullPointerException     if any required argument is null
 	 * @throws IllegalArgumentException if any of the paths are relative or not normalized
 	 * @throws IOException              if {@link #validateConfiguration} refuses the configuration, a file cannot be
 	 *                                  written, or {@code config.toml} holds a hook's state in a form that CAT does not
-	 *                                  edit
+	 *                                  edit; or a required recorded Windows binding is invalid
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer)
 		throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
 		requireThat(replacer, "replacer").isNotNull();
+		String content = InstallerRules.render(environment, installer, isWindows());
 		validateConfiguration(home);
 		deleteUpdaterLeftover(home);
 		Map<String, List<String>> added = new LinkedHashMap<>();
-		String content = InstallerRules.render(installer, isWindows());
 		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
 		if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS) || !read(file).equals(content))
 		{
@@ -489,19 +495,28 @@ public final class CodexIntegration implements HarnessIntegration
 	 * Returns the content of {@code rules/cat-installer.rules} that {@link #installPermissions} writes, and the hash of
 	 * each hook of the plugin that holds {@code installer}, which it records in {@code config.toml}.
 	 *
+	 * @param environment the Codex environment recorded in the trust policy
+	 * @param installer   the installer launcher in the plugin's version folder
 	 * @return {@code {"rules/cat-installer.rules#": [<file content>]}}, and for each hook,
 	 * 	{@code {"config.toml#hooks.state.\"<hook>\".trusted_hash": [<hash>]}}
-	 * @throws IllegalArgumentException if {@code installer} is relative or not normalized
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code installer} is relative or required recorded Windows bindings are invalid
 	 * @throws IOException              if the plugin's manifest or hooks file cannot be read
 	 */
 	@Override
-	public Map<String, List<String>> permissions(Path installer) throws IOException
+	public Map<String, List<String>> permissions(Map<String, String> environment, Path installer) throws IOException
 	{
 		Map<String, List<String>> permissions = new LinkedHashMap<>();
-		permissions.put(RULES_KEY, List.of(InstallerRules.render(installer, isWindows())));
+		permissions.put(RULES_KEY, List.of(InstallerRules.render(environment, installer, isWindows())));
 		for (Map.Entry<String, String> hook : hookHashes(installer).entrySet())
 			permissions.put(HookTrust.recordKey(hook.getKey()), List.of(hook.getValue()));
 		return Map.copyOf(permissions);
+	}
+
+	@Override
+	public String latestUpdateCommand(Map<String, String> environment, Path installer)
+	{
+		return InstallerRules.latestUpdateCommand(environment, installer, isWindows());
 	}
 
 	/**

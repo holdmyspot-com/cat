@@ -137,6 +137,7 @@ public final class PluginInstall
 	 * changing the shell startup files, and records the added ones. The recorded write denial of that folder is among
 	 * the removed entries.
 	 *
+	 * @param environment         the harness environment recorded in the trust policy
 	 * @param home                the harness home
 	 * @param installer           the installer launcher in the version folder
 	 * @param installation        the harness's CAT installation
@@ -152,10 +153,12 @@ public final class PluginInstall
 	 * @throws IOException              if an entry or the record cannot be read or written, or the folder cannot be
 	 *                                  deleted or is a link
 	 */
-	public InstalledEntries installEntries(Path home, Path installer, HarnessInstallation installation,
+	public InstalledEntries installEntries(Map<String, String> environment, Path home, Path installer,
+		HarnessInstallation installation,
 		List<HarnessInstallation> others, Path catLocks, Path formerLauncherState, List<Path> startupFiles,
 		boolean consented) throws IOException
 	{
+		requireThat(environment, "environment").isNotNull();
 		requireThat(home, "home").isNotNull();
 		requireThat(installer, "installer").isNotNull();
 		requireThat(installation, "installation").isNotNull();
@@ -168,7 +171,7 @@ public final class PluginInstall
 		if (consented)
 			merge(added, integration.installConsentedEntries(home, replacer));
 
-		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(installer));
+		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(environment, installer));
 		for (HarnessInstallation other : others)
 			merge(maintained, integration.sandboxEntries(home, other, catLocks));
 		merge(maintained, integration.readOnlyEntries(home, startupFiles));
@@ -180,7 +183,7 @@ public final class PluginInstall
 		}
 		Path stateParent = LinkSafeDeletion.resolveRoot(formerLauncherState.getParent());
 		LinkSafeDeletion.delete(stateParent.resolve(formerLauncherState.getFileName()), stateParent);
-		merge(added, integration.installPermissions(home, installer, replacer));
+		merge(added, integration.installPermissions(environment, home, installer, replacer));
 		for (HarnessInstallation other : others)
 			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));
 		merge(added, integration.installReadOnlyEntries(home, startupFiles, replacer));

@@ -5,13 +5,84 @@ on:
   push:
     tags:
       - v*
+      - '!v1.0-publication-lock'
+    branches:
+      - release/v1.0-republish-session
 
 permissions:
   contents: write
 
 jobs:
+  session-check:
+    name: Check release session ${{ matrix.platform }}
+    if: github.ref == 'refs/heads/release/v1.0-republish-session'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-x64
+            runner: ubuntu-26.04
+          - platform: linux-arm64
+            runner: ubuntu-26.04-arm
+          - platform: macos-x64
+            runner: macos-26-intel
+          - platform: macos-arm64
+            runner: macos-26
+          - platform: windows-x64
+            runner: windows-2025
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 360
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - name: Prepare authenticated release session
+        run: |
+          if [ "${RUNNER_OS}" = Windows ]; then
+            runner_temp="$(cygpath --unix "${RUNNER_TEMP}")"
+          else
+            runner_temp="${RUNNER_TEMP}"
+          fi
+          echo "RELEASE_SESSION_DIR=${runner_temp}/cat-release-session-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-${{ matrix.platform }}" >> "${GITHUB_ENV}"
+          echo "RELEASE_SESSION_IDENTITY=${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${GITHUB_JOB}/${{ matrix.platform }}" >> "${GITHUB_ENV}"
+      - name: Start authenticated session and exercise checksum-pinned API fallback
+        run: >-
+          .github/scripts/release-session.sh start "${RELEASE_SESSION_DIR}" "${{ matrix.platform }}"
+          "${CAT_RELEASE_SESSION_PUBLIC_KEY}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}"
+          60 "${GITHUB_WORKSPACE}" https://invalid.example.invalid/forced-primary-failure/
+        env:
+          CAT_RELEASE_SESSION_PUBLIC_KEY: ${{ vars.CAT_RELEASE_SESSION_PUBLIC_KEY }}
+      - name: Upload session connection details
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-session-connection-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: |
+            ${{ env.RELEASE_SESSION_DIR }}/ssh-command
+            ${{ env.RELEASE_SESSION_DIR }}/name
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for authenticated workspace readiness
+        run: .github/scripts/release-session.sh wait-ready "${RELEASE_SESSION_DIR}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}" "${GITHUB_WORKSPACE}"
+      - name: Hold session until remote work completes
+        if: always()
+        run: .github/scripts/release-session.sh hold "${RELEASE_SESSION_DIR}"
+      - name: Upload terminal session receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-session-terminal-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ env.RELEASE_SESSION_DIR }}/terminal-receipt.json
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Clean up release session
+        if: always()
+        run: .github/scripts/release-session.sh cleanup "${RELEASE_SESSION_DIR}"
+
   build:
     name: Build ${{ matrix.platform }}
+    if: startsWith(github.ref, 'refs/tags/v')
+    timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +103,33 @@ jobs:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+      - name: Prepare authenticated release session
+        run: |
+          if [ "${RUNNER_OS}" = Windows ]; then
+            runner_temp="$(cygpath --unix "${RUNNER_TEMP}")"
+          else
+            runner_temp="${RUNNER_TEMP}"
+          fi
+          echo "RELEASE_SESSION_DIR=${runner_temp}/cat-release-session-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-${{ matrix.platform }}" >> "${GITHUB_ENV}"
+          echo "RELEASE_SESSION_IDENTITY=${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${GITHUB_JOB}/${{ matrix.platform }}" >> "${GITHUB_ENV}"
+      - name: Start authenticated release session
+        run: >-
+          .github/scripts/release-session.sh start "${RELEASE_SESSION_DIR}" "${{ matrix.platform }}"
+          "${CAT_RELEASE_SESSION_PUBLIC_KEY}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}"
+          600 "${GITHUB_WORKSPACE}"
+        env:
+          CAT_RELEASE_SESSION_PUBLIC_KEY: ${{ vars.CAT_RELEASE_SESSION_PUBLIC_KEY }}
+      - name: Upload session connection details
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-session-connection-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: |
+            ${{ env.RELEASE_SESSION_DIR }}/ssh-command
+            ${{ env.RELEASE_SESSION_DIR }}/name
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for authenticated workspace readiness
+        run: .github/scripts/release-session.sh wait-ready "${RELEASE_SESSION_DIR}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}" "${GITHUB_WORKSPACE}"
       - uses: actions/setup-java@v6
         with:
           distribution: zulu
@@ -125,6 +223,8 @@ jobs:
       - name: Verify the Codex plugin's part launchers
         if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+      - name: Verify the latest update command
+        run: bats client/codex/distribution/src/test/bats/latest-update-command.bats
       - name: Upload native release files
         uses: actions/upload-artifact@v7
         with:
@@ -135,24 +235,94 @@ jobs:
             client/common/distribution/target/release/cat-*-*.tar.gz
             client/common/distribution/target/release/SHA256SUMS.txt
             client/common/distribution/target/release/cat-release-assets-*.json
+      - name: Hold session until remote work completes
+        if: always()
+        run: .github/scripts/release-session.sh hold "${RELEASE_SESSION_DIR}"
+      - name: Upload terminal session receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-session-terminal-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.platform }}
+          path: ${{ env.RELEASE_SESSION_DIR }}/terminal-receipt.json
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Clean up release session
+        if: always()
+        run: .github/scripts/release-session.sh cleanup "${RELEASE_SESSION_DIR}"
 
   publish:
     name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-26.04
+    timeout-minutes: 360
+    concurrency:
+      group: cat-release-publication-${{ github.ref_name }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v7
         with:
           sparse-checkout: |
             .github/release-notes.md
+            .github/scripts/release-session.sh
+            .github/release-session-known-hosts
             client/common/lifecycle/src/main/release/
           sparse-checkout-cone-mode: false
+      - name: Prepare authenticated release session
+        run: |
+          echo "RELEASE_SESSION_DIR=${RUNNER_TEMP}/cat-release-session-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${GITHUB_JOB}-publish" >> "${GITHUB_ENV}"
+          echo "RELEASE_SESSION_IDENTITY=${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${GITHUB_JOB}/publish" >> "${GITHUB_ENV}"
+      - name: Start authenticated release session
+        run: >-
+          .github/scripts/release-session.sh start "${RELEASE_SESSION_DIR}" linux-x64
+          "${CAT_RELEASE_SESSION_PUBLIC_KEY}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}"
+          600 "${GITHUB_WORKSPACE}"
+        env:
+          CAT_RELEASE_SESSION_PUBLIC_KEY: ${{ vars.CAT_RELEASE_SESSION_PUBLIC_KEY }}
+      - name: Upload session connection details
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-session-connection-${{ github.run_id }}-${{ github.run_attempt }}-publish
+          path: |
+            ${{ env.RELEASE_SESSION_DIR }}/ssh-command
+            ${{ env.RELEASE_SESSION_DIR }}/name
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for authenticated workspace readiness
+        run: .github/scripts/release-session.sh wait-ready "${RELEASE_SESSION_DIR}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}" "${GITHUB_WORKSPACE}"
+      - name: Reuse the retained signed v1.0 bundle on a publisher rerun
+        id: prior-bundle
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          reused=false
+          prior_attempt=$((GITHUB_RUN_ATTEMPT - 1))
+          while (( prior_attempt > 0 )); do
+            bundle_name="publication-v1.0-${GITHUB_RUN_ID}-${prior_attempt}"
+            if gh run download "${GITHUB_RUN_ID}" --repo "${GITHUB_REPOSITORY}" \
+              --name "${bundle_name}" --dir "${RUNNER_TEMP}/prior-publication-bundle"; then
+              mkdir -p release
+              cp -a "${RUNNER_TEMP}/prior-publication-bundle/." release/
+              echo "reused=true" >> "${GITHUB_OUTPUT}"
+              echo "bundle_attempt=${prior_attempt}" >> "${GITHUB_OUTPUT}"
+              reused=true
+              break
+            fi
+            rm -rf -- "${RUNNER_TEMP}/prior-publication-bundle"
+            prior_attempt=$((prior_attempt - 1))
+          done
+          if [ "${reused}" = false ]; then
+            echo "reused=false" >> "${GITHUB_OUTPUT}"
+            echo "bundle_attempt=0" >> "${GITHUB_OUTPUT}"
+          fi
       - name: Download native release files
+        if: steps.prior-bundle.outputs.reused != 'true'
         uses: actions/download-artifact@v8
         with:
           pattern: cat-*
           path: native
       - name: Assemble release
+        if: steps.prior-bundle.outputs.reused != 'true'
         run: |
           mkdir release
           find native -type f -name 'cat-*-*.tar.gz' -exec cp '{}' release/ \;
@@ -165,6 +335,7 @@ jobs:
       # The manifest lists every platform's archives, sorted by name, under the release's tag, release commit and
       # publication time. Every platform must have built the archives from the same commit.
       - name: Write release manifest
+        if: steps.prior-bundle.outputs.reused != 'true'
         run: |
           jq -s --arg tag "${GITHUB_REF_NAME}" --arg build "${GITHUB_SHA::12}" \
             --arg published "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -175,6 +346,7 @@ jobs:
             fragments/*.json > release/cat-release-manifest.json
           test "$(jq '.assets | length' release/cat-release-manifest.json)" -eq 10
       - name: Sign release manifest
+        if: steps.prior-bundle.outputs.reused != 'true'
         env:
           CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
         run: |
@@ -201,6 +373,7 @@ jobs:
       # The entry script embeds the release's tag and every archive's SHA-256 digest, and downloads only from the
       # release
       - name: Write entry scripts
+        if: steps.prior-bundle.outputs.reused != 'true'
         run: |
           release_sources=client/common/lifecycle/src/main/release
           sh "${release_sources}/generate-cat-sh.sh" "${release_sources}/cat.sh" "${GITHUB_REF_NAME}" \
@@ -212,6 +385,7 @@ jobs:
       # The notes start with the agent pointer and this release's install commands, followed by the notes that GitHub
       # generates, which end with the link to the full changelog
       - name: Write release notes
+        if: steps.prior-bundle.outputs.reused != 'true'
         run: |
           test -n "${CAT_KEY_FINGERPRINT}"
           # The template's placeholders are matched literally, not expanded
@@ -224,18 +398,543 @@ jobs:
               "\${CAT_KEY_FINGERPRINT}." >&2
             exit 1
           fi
-      - name: Create GitHub release
+      - name: Prepare guarded v1.0 publication controller
+        run: |
+          cat > "${RUNNER_TEMP}/release-publication.py" <<'PY'
+          # BEGIN CAT_RELEASE_PUBLICATION_POLICY
+          import argparse
+          import base64
+          import hashlib
+          import json
+          import os
+          import re
+          import shutil
+          import subprocess
+          import sys
+          import time
+          from pathlib import Path
+
+          RELEASE_ID = 443430003
+          RELEASE_TAG = "v1.0"
+          RELEASE_TITLE = "CAT v1.0"
+          RELEASE_BODY_SHA256 = "6a12f35fb7fc944dab884d14e4f1f36499d772f4b58572de35d9fbdcd44e993c"
+          KEY_FINGERPRINT = "8be98cd395e57f622cd2e1a153050472de54e580c3812f4c31e462ccf0c8d9a8"
+          OWNER_FIELDS = {
+              "format_version", "operation_id", "controller_id", "candidate_commit", "previous_tag_object",
+              "release_id", "old_assets_sha256", "publisher_run_id", "publisher_run_attempt",
+              "desired_assets_sha256", "state",
+          }
+          STATES = {"preparing", "assigned", "upload_authorized", "publisher_terminal", "repairing", "verified"}
+          HEX40 = re.compile(r"^[0-9a-f]{40}$")
+          HEX64 = re.compile(r"^[0-9a-f]{64}$")
+          ARCHIVE = re.compile(r"^cat-(?:claude|codex)-(?:linux-arm64|linux-x64|macos-arm64|macos-x64|windows-x64)-v1\.0\.tar\.gz$")
+          FIXED_NAMES = {
+              "SHA256SUMS.txt", "cat-release-manifest.json", "cat-release-manifest.json.sig", "cat.ps1", "cat.sh",
+          }
+
+          class Refusal(RuntimeError):
+              pass
+
+          def canonical_inventory(items):
+              normalized = []
+              names = set()
+              for item in items:
+                  if not isinstance(item, dict):
+                      raise Refusal("inventory entries must be objects")
+                  name = item["name"]
+                  size = item["size"]
+                  digest = item["sha256"]
+                  if not isinstance(name, str) or not name or name in names:
+                      raise Refusal("inventory contains an empty or duplicate asset name")
+                  if (not isinstance(size, int) or isinstance(size, bool) or size < 0
+                          or not isinstance(digest, str) or not HEX64.fullmatch(digest.lower())):
+                      raise Refusal("inventory contains an invalid size or SHA-256 value")
+                  names.add(name)
+                  normalized.append({"name": name, "size": size, "sha256": digest.lower()})
+              normalized.sort(key=lambda item: item["name"])
+              encoded = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode()
+              return normalized, hashlib.sha256(encoded).hexdigest()
+
+          def validate_owner(owner):
+              if not isinstance(owner, dict) or set(owner) != OWNER_FIELDS:
+                  return False, "coordination owner has missing or unknown fields"
+              if (type(owner["format_version"]) is not int or owner["format_version"] != 1
+                      or type(owner["release_id"]) is not int or owner["release_id"] != RELEASE_ID):
+                  return False, "coordination owner has an unsupported format or release id"
+              if not isinstance(owner["operation_id"], str) or not owner["operation_id"]:
+                  return False, "coordination owner has no operation id"
+              if not isinstance(owner["controller_id"], str) or not owner["controller_id"]:
+                  return False, "coordination owner has no controller id"
+              if not HEX40.fullmatch(str(owner["candidate_commit"])) or not HEX40.fullmatch(str(owner["previous_tag_object"])):
+                  return False, "coordination owner has an invalid commit identity"
+              if not HEX64.fullmatch(str(owner["old_assets_sha256"])):
+                  return False, "coordination owner has an invalid original-asset inventory digest"
+              if owner["publisher_run_id"] is not None and not str(owner["publisher_run_id"]).isdigit():
+                  return False, "coordination owner has an invalid assigned run id"
+              if owner["publisher_run_attempt"] is not None and not str(owner["publisher_run_attempt"]).isdigit():
+                  return False, "coordination owner has an invalid assigned run attempt"
+              desired = owner["desired_assets_sha256"]
+              if desired is not None and not HEX64.fullmatch(str(desired)):
+                  return False, "coordination owner has an invalid desired-asset digest"
+              if owner["state"] not in STATES:
+                  return False, "coordination owner has an unknown state"
+              if owner["state"] in {"assigned", "upload_authorized", "publisher_terminal", "repairing", "verified"}:
+                  if owner["publisher_run_id"] is None or owner["publisher_run_attempt"] is None:
+                      return False, "assigned publication state lacks a run and attempt"
+              if owner["state"] in {"upload_authorized", "publisher_terminal", "repairing", "verified"}:
+                  if desired is None:
+                      return False, "authorized publication state lacks its fixed desired digest"
+              if owner["state"] == "preparing" and (owner["publisher_run_id"] is not None
+                      or owner["publisher_run_attempt"] is not None or desired is not None):
+                  return False, "preparing owner must not contain a publisher assignment or desired digest"
+              return True, "valid"
+
+          def decide_publication(owner, actor, required_state, desired_digest=None):
+              valid, reason = validate_owner(owner)
+              if not valid:
+                  return False, reason
+              if owner["state"] != required_state:
+                  return False, "coordination owner is not in the required publication state"
+              if str(owner["publisher_run_id"]) != str(actor["run_id"]):
+                  return False, "workflow run is not assigned as the publisher"
+              if str(owner["publisher_run_attempt"]) != str(actor["run_attempt"]):
+                  return False, "workflow attempt is not assigned as the publisher"
+              if owner["candidate_commit"] != actor["candidate_commit"]:
+                  return False, "workflow commit does not match the assigned candidate"
+              if desired_digest is not None and owner["desired_assets_sha256"] != desired_digest:
+                  return False, "desired signed bundle does not match parent authorization"
+              return True, "authorized"
+
+          def decide_asset_action(current_sha256, desired_sha256, original_sha256, prior_writer_terminal, same_assignment):
+              if current_sha256 == desired_sha256:
+                  return "skip"
+              if current_sha256 == original_sha256 and prior_writer_terminal and same_assignment:
+                  return "upload"
+              return "refuse"
+
+          def run_json(*args):
+              return json.loads(subprocess.check_output(args, text=True))
+
+          def repository():
+              value = os.environ["GITHUB_REPOSITORY"]
+              if not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", value):
+                  raise Refusal("GITHUB_REPOSITORY is malformed")
+              return value
+
+          def read_ref(ref):
+              return run_json("gh", "api", f"repos/{repository()}/git/ref/{ref}")
+
+          def resolve_tag_commit(ref):
+              obj = read_ref(ref)["object"]
+              if obj["type"] == "commit":
+                  return obj["sha"]
+              if obj["type"] != "tag":
+                  raise Refusal(f"{ref} does not resolve to a commit or annotated tag")
+              tag = run_json("gh", "api", f"repos/{repository()}/git/tags/{obj['sha']}")
+              if tag["object"]["type"] != "commit":
+                  raise Refusal(f"{ref} annotated tag does not target a commit")
+              return tag["object"]["sha"]
+
+          def read_owner():
+              ref = read_ref("tags/v1.0-publication-lock")
+              obj = ref["object"]
+              if obj["type"] != "tag":
+                  raise Refusal("publication owner ref must be an annotated tag")
+              annotated = run_json("gh", "api", f"repos/{repository()}/git/tags/{obj['sha']}")
+              if annotated["object"]["type"] != "commit":
+                  raise Refusal("publication owner tag must target the candidate commit")
+              if annotated["message"].endswith("\n"):
+                  message = annotated["message"].rstrip("\n")
+              else:
+                  message = annotated["message"]
+              try:
+                  owner = json.loads(message, object_pairs_hook=reject_duplicate_fields)
+              except (ValueError, TypeError) as error:
+                  raise Refusal(f"publication owner message is not strict JSON: {error}") from error
+              valid, reason = validate_owner(owner)
+              if not valid or annotated["object"]["sha"] != owner.get("candidate_commit"):
+                  raise Refusal(reason if not valid else "owner tag target and candidate field differ")
+              return owner
+
+          def reject_duplicate_fields(pairs):
+              result = {}
+              for key, value in pairs:
+                  if key in result:
+                      raise ValueError(f"duplicate field {key}")
+                  result[key] = value
+              return result
+
+          def actor():
+              return {
+                  "run_id": os.environ["GITHUB_RUN_ID"],
+                  "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+                  "candidate_commit": os.environ["GITHUB_SHA"],
+              }
+
+          def require_owner(required_state, desired_digest=None):
+              owner = read_owner()
+              allowed, reason = decide_publication(owner, actor(), required_state, desired_digest)
+              if not allowed:
+                  raise Refusal(reason)
+              if resolve_tag_commit("tags/v1.0") != actor()["candidate_commit"]:
+                  raise Refusal("v1.0 does not point to the assigned candidate commit")
+              return owner
+
+          def read_release():
+              release = run_json("gh", "api", f"repos/{repository()}/releases/{RELEASE_ID}")
+              if (release.get("id") != RELEASE_ID or release.get("tag_name") != RELEASE_TAG
+                      or release.get("name") != RELEASE_TITLE or release.get("draft") is not False
+                      or release.get("prerelease") is not False):
+                  raise Refusal("existing v1.0 release identity, title, or state changed")
+              body = release.get("body")
+              if not isinstance(body, str) or hashlib.sha256(body.encode()).hexdigest() != RELEASE_BODY_SHA256:
+                  raise Refusal("existing v1.0 release body changed")
+              if KEY_FINGERPRINT not in body:
+                  raise Refusal("existing v1.0 signing-key fingerprint changed")
+              return release
+
+          def remote_inventory(release=None):
+              release = release or read_release()
+              items = []
+              for asset in release.get("assets", []):
+                  digest = asset.get("digest") or ""
+                  if not digest.startswith("sha256:"):
+                      raise Refusal(f"GitHub did not provide a SHA-256 digest for {asset.get('name')}")
+                  items.append({"name": asset["name"], "size": asset["size"], "sha256": digest[7:]})
+              normalized, _ = canonical_inventory(items)
+              return normalized
+
+          def inventory_map(items):
+              return {item["name"]: item for item in items}
+
+          def local_inventory(directory, excluded=()):
+              items = []
+              for path in sorted(Path(directory).iterdir()):
+                  if not path.is_file() or path.name in excluded:
+                      continue
+                  data = path.read_bytes()
+                  items.append({"name": path.name, "size": len(data), "sha256": hashlib.sha256(data).hexdigest()})
+              return canonical_inventory(items)
+
+          def expected_asset_names(items):
+              names = {item["name"] for item in items}
+              archives = {name for name in names if ARCHIVE.fullmatch(name)}
+              if (len(archives) != 10 or len(names - archives) != 5
+                      or names - archives != FIXED_NAMES):
+                  raise Refusal("v1.0 bundle does not contain the fixed signed 15-file asset set")
+
+          def receipt_path():
+              return Path("release/publication-receipt.json")
+
+          def write_json(path, value):
+              Path(path).write_text(json.dumps(value, ensure_ascii=False, sort_keys=True, indent=2) + "\n")
+
+          def prepare():
+              owner = read_owner()
+              allowed, reason = decide_publication(owner, actor(), "assigned")
+              if not allowed:
+                  raise Refusal(reason)
+              if resolve_tag_commit("tags/v1.0") != actor()["candidate_commit"]:
+                  raise Refusal("v1.0 does not point to the assigned candidate commit")
+              read_release()
+              if os.environ.get("BUNDLE_REUSED") == "true":
+                  receipt = json.loads(receipt_path().read_text())
+                  items, digest = local_inventory("release", excluded={"publication-receipt.json"})
+                  if (receipt.get("operation_id") != owner["operation_id"]
+                          or receipt.get("candidate_commit") != actor()["candidate_commit"]
+                          or receipt.get("desired_assets_sha256") != digest):
+                      raise Refusal("retained signed bundle or operation identity changed")
+                  expected_asset_names(items)
+                  return
+              items, digest = local_inventory("release")
+              expected_asset_names(items)
+              baseline = remote_inventory()
+              _, baseline_digest = canonical_inventory(baseline)
+              if baseline_digest != owner["old_assets_sha256"]:
+                  raise Refusal("existing v1.0 assets do not match the owned original inventory")
+              receipt = {
+                  "format_version": 1,
+                  "operation_id": owner["operation_id"],
+                  "candidate_commit": actor()["candidate_commit"],
+                  "publisher_run_id": actor()["run_id"],
+                  "publisher_run_attempt": actor()["run_attempt"],
+                  "desired_assets_sha256": digest,
+                  "desired_inventory": items,
+                  "original_inventory": baseline,
+                  "key_fingerprint": KEY_FINGERPRINT,
+              }
+              write_json(receipt_path(), receipt)
+
+          def append_ledger(path, record):
+              with open(path, "a", encoding="utf-8") as stream:
+                  stream.write(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n")
+                  stream.flush()
+                  os.fsync(stream.fileno())
+
+          def previous_attempt_names(source_attempt):
+              if not source_attempt or source_attempt == "0":
+                  return set()
+              directory = Path(os.environ["RUNNER_TEMP"]) / "prior-publication-ledger"
+              shutil.rmtree(directory, ignore_errors=True)
+              name = f"publication-ledger-{actor()['run_id']}-{source_attempt}"
+              result = subprocess.run(
+                  ["gh", "run", "download", actor()["run_id"], "--repo", repository(), "--name", name,
+                   "--dir", str(directory)], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+              if result.returncode:
+                  return set()
+              ledger = directory / "publication-ledger.jsonl"
+              if not ledger.is_file():
+                  return set()
+              names = set()
+              for line in ledger.read_text().splitlines():
+                  record = json.loads(line)
+                  if record.get("asset_name"):
+                      names.add(record["asset_name"])
+              return names
+
+          def wait_for_readiness(owner):
+              path = Path(os.environ["GITHUB_WORKSPACE"]) / ".release-publication-ready.json"
+              deadline = time.monotonic() + 660
+              while not path.exists():
+                  if time.monotonic() >= deadline:
+                      raise Refusal("parent did not signal operation-bound upload readiness before the session deadline")
+                  time.sleep(2)
+              if path.is_symlink() or not path.is_file():
+                  raise Refusal("publication readiness must be a regular workspace file")
+              marker = json.loads(path.read_text(), object_pairs_hook=reject_duplicate_fields)
+              expected = {
+                  "format_version": 1,
+                  "operation_id": owner["operation_id"],
+                  "publisher_run_id": actor()["run_id"],
+                  "publisher_run_attempt": actor()["run_attempt"],
+                  "candidate_commit": actor()["candidate_commit"],
+              }
+              if marker != expected:
+                  raise Refusal("publication readiness does not match the authorized operation and workflow attempt")
+              path.unlink()
+
+          def assert_current_assets_explained(current, original, desired, prior_names):
+              original_map = inventory_map(original)
+              desired_map = inventory_map(desired)
+              current_map = inventory_map(current)
+              if set(current_map) != set(original_map):
+                  raise Refusal("release asset names changed outside this publication operation")
+              for name, item in current_map.items():
+                  if decide_inventory_action(item, original_map[name], desired_map[name], name in prior_names) != "allow":
+                      raise Refusal(f"asset {name} changed without an explained retained upload receipt")
+
+          def decide_inventory_action(current_item, original_item, desired_item, prior_receipted):
+              if current_item == original_item:
+                  return "allow"
+              if current_item == desired_item and prior_receipted:
+                  return "allow"
+              return "refuse"
+
+          def verify_signature(directory, public_key_path):
+              release_dir = Path(directory)
+              signature = base64.b64decode((release_dir / "cat-release-manifest.json.sig").read_text(), validate=True)
+              signature_path = Path(os.environ["RUNNER_TEMP"]) / "cat-release-manifest.verify.sig"
+              signature_path.write_bytes(signature)
+              subprocess.run([
+                  "openssl", "pkeyutl", "-verify", "-pubin", "-inkey", public_key_path, "-rawin",
+                  "-in", str(release_dir / "cat-release-manifest.json"), "-sigfile", str(signature_path),
+              ], check=True)
+
+          def derive_and_verify_bundle_key():
+              runner_temp = Path(os.environ["RUNNER_TEMP"])
+              key_file = runner_temp / "cat-release-signing-key.pem"
+              public_key = runner_temp / "cat-release-public-key.pem"
+              descriptor = os.open(key_file, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+              try:
+                  with os.fdopen(descriptor, "w", encoding="utf-8") as stream:
+                      stream.write(os.environ["CAT_RELEASE_SIGNING_KEY"] + "\n")
+                  subprocess.run(["openssl", "pkey", "-in", str(key_file), "-pubout", "-out", str(public_key)], check=True)
+                  public_der = subprocess.check_output([
+                      "openssl", "pkey", "-in", str(key_file), "-pubout", "-outform", "DER",
+                  ])
+              finally:
+                  key_file.unlink(missing_ok=True)
+              if hashlib.sha256(public_der).hexdigest() != KEY_FINGERPRINT:
+                  raise Refusal("provided signing key differs from v1.0's published fingerprint")
+              verify_signature("release", public_key)
+              return public_key
+
+          def publish():
+              receipt = json.loads(receipt_path().read_text())
+              desired = receipt["desired_inventory"]
+              _, desired_digest = canonical_inventory(desired)
+              if (receipt["format_version"] != 1 or receipt["desired_assets_sha256"] != desired_digest
+                      or receipt["candidate_commit"] != actor()["candidate_commit"]):
+                  raise Refusal("retained signed bundle receipt failed its digest or commit check")
+              expected_asset_names(desired)
+              public_key = derive_and_verify_bundle_key()
+              owner = require_owner("upload_authorized", desired_digest)
+              if receipt["operation_id"] != owner["operation_id"] or receipt["key_fingerprint"] != KEY_FINGERPRINT:
+                  raise Refusal("bundle operation or signing-key identity differs from the coordination owner")
+              wait_for_readiness(owner)
+              owner = require_owner("upload_authorized", desired_digest)
+              release = read_release()
+              original = receipt["original_inventory"]
+              prior_names = previous_attempt_names(os.environ.get("BUNDLE_SOURCE_ATTEMPT", "0"))
+              current = remote_inventory(release)
+              assert_current_assets_explained(current, original, desired, prior_names)
+              current_map = inventory_map(current)
+              original_map = inventory_map(original)
+              desired_map = inventory_map(desired)
+              ledger_path = Path(os.environ["RUNNER_TEMP"]) / "publication-ledger.jsonl"
+              ledger_path.unlink(missing_ok=True)
+              append_ledger(ledger_path, {
+                  "format_version": 1, "phase": "baseline", "operation_id": owner["operation_id"],
+                  "publisher_run_id": actor()["run_id"], "publisher_run_attempt": actor()["run_attempt"],
+                  "candidate_commit": actor()["candidate_commit"], "inventory": current,
+              })
+              archives = sorted(name for name in desired_map if ARCHIVE.fullmatch(name))
+              order = archives + ["SHA256SUMS.txt", "cat.sh", "cat.ps1", "cat-release-manifest.json.sig", "cat-release-manifest.json"]
+              for index, name in enumerate(order, start=1):
+                  owner = require_owner("upload_authorized", desired_digest)
+                  read_release()
+                  fresh = remote_inventory()
+                  if fresh != current:
+                      raise Refusal("release inventory changed outside the last terminal upload receipt")
+                  action = decide_asset_action(
+                      current_map[name]["sha256"], desired_map[name]["sha256"], original_map[name]["sha256"],
+                      prior_writer_terminal=True, same_assignment=True,
+                  )
+                  if action == "refuse":
+                      raise Refusal(f"asset {name} is not an explained old or desired value")
+                  if action == "skip":
+                      append_ledger(ledger_path, {
+                          "format_version": 1, "phase": "already_desired", "operation_id": owner["operation_id"],
+                          "publisher_run_id": actor()["run_id"], "publisher_run_attempt": actor()["run_attempt"],
+                          "asset_index": index, "asset_name": name, "desired_sha256": desired_map[name]["sha256"],
+                          "before_inventory": current, "terminal_status": "no_mutation_needed",
+                      })
+                      continue
+                  asset_path = Path("release") / name
+                  if hashlib.sha256(asset_path.read_bytes()).hexdigest() != desired_map[name]["sha256"]:
+                      raise Refusal(f"local signed bundle bytes changed for {name}")
+                  append_ledger(ledger_path, {
+                      "format_version": 1, "phase": "request_started", "operation_id": owner["operation_id"],
+                      "publisher_run_id": actor()["run_id"], "publisher_run_attempt": actor()["run_attempt"],
+                      "asset_index": index, "asset_name": name, "desired_sha256": desired_map[name]["sha256"],
+                      "before_inventory": current, "terminal_status": "request_pending",
+                  })
+                  completed = subprocess.run([
+                      "gh", "release", "upload", RELEASE_TAG, str(asset_path), "--clobber", "--repo", repository(),
+                  ], check=False)
+                  if completed.returncode:
+                      raise Refusal(f"release upload for {name} exited {completed.returncode}; request outcome needs reconciliation")
+                  owner = require_owner("upload_authorized", desired_digest)
+                  after = remote_inventory()
+                  expected = dict(current_map)
+                  expected[name] = desired_map[name]
+                  if inventory_map(after) != expected:
+                      raise Refusal(f"post-upload inventory for {name} contains an unexplained change")
+                  append_ledger(ledger_path, {
+                      "format_version": 1, "phase": "request_completed", "operation_id": owner["operation_id"],
+                      "publisher_run_id": actor()["run_id"], "publisher_run_attempt": actor()["run_attempt"],
+                      "asset_index": index, "asset_name": name, "desired_sha256": desired_map[name]["sha256"],
+                      "before_inventory": current, "after_inventory": after,
+                      "invocation_exit_status": completed.returncode, "terminal_status": "verified_by_api",
+                  })
+                  current = after
+                  current_map = inventory_map(after)
+              owner = require_owner("upload_authorized", desired_digest)
+              read_release()
+              final_api_inventory = remote_inventory()
+              if final_api_inventory != desired:
+                  raise Refusal("final GitHub asset metadata inventory does not equal the fixed desired bundle")
+              fresh_dir = Path(os.environ["RUNNER_TEMP"]) / "fresh-v1.0-download"
+              shutil.rmtree(fresh_dir, ignore_errors=True)
+              fresh_dir.mkdir(parents=True)
+              subprocess.run([
+                  "gh", "release", "download", RELEASE_TAG, "--repo", repository(), "--dir", str(fresh_dir),
+              ], check=True)
+              downloaded, downloaded_digest = local_inventory(fresh_dir)
+              if downloaded != desired or downloaded_digest != desired_digest:
+                  raise Refusal("fresh downloaded v1.0 assets differ from the retained signed bundle")
+              verify_signature(fresh_dir, public_key)
+              owner = require_owner("upload_authorized", desired_digest)
+              read_release()
+              if remote_inventory() != desired:
+                  raise Refusal("v1.0 assets changed during fresh downloaded verification")
+              append_ledger(ledger_path, {
+                  "format_version": 1, "phase": "verified", "operation_id": owner["operation_id"],
+                  "publisher_run_id": actor()["run_id"], "publisher_run_attempt": actor()["run_attempt"],
+                  "candidate_commit": actor()["candidate_commit"], "desired_assets_sha256": desired_digest,
+                  "downloaded_inventory": downloaded, "terminal_status": "verified_hashes_and_signature",
+              })
+              print(json.dumps({
+                  "publication": "verified", "release_id": RELEASE_ID, "tag": RELEASE_TAG,
+                  "operation_id": owner["operation_id"], "run_id": actor()["run_id"],
+                  "run_attempt": actor()["run_attempt"], "desired_assets_sha256": desired_digest,
+              }, sort_keys=True))
+
+          def main():
+              parser = argparse.ArgumentParser()
+              parser.add_argument("mode", choices={"prepare", "publish"})
+              args = parser.parse_args()
+              try:
+                  if args.mode == "prepare":
+                      prepare()
+                  else:
+                      publish()
+              except (Refusal, OSError, KeyError, ValueError, subprocess.CalledProcessError) as error:
+                  print(f"release-publication: {error}", file=sys.stderr)
+                  return 1
+              return 0
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          # END CAT_RELEASE_PUBLICATION_POLICY
+          PY
+      - name: Retain the exact signed v1.0 asset bundle
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >-
-          gh release create "${GITHUB_REF_NAME}" release/* --repo "${GITHUB_REPOSITORY}"
-          --title "CAT ${GITHUB_REF_NAME}" --notes-file "${RUNNER_TEMP}/release-notes.md" --generate-notes
+          BUNDLE_REUSED: ${{ steps.prior-bundle.outputs.reused }}
+        run: python3 "${RUNNER_TEMP}/release-publication.py" prepare
+      - name: Upload retained publication bundle for parent verification
+        uses: actions/upload-artifact@v7
+        with:
+          name: publication-v1.0-${{ github.run_id }}-${{ github.run_attempt }}
+          path: release
+          if-no-files-found: error
+          retention-days: 1
+      - name: Authorize and upload the existing v1.0 release sequentially
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CAT_RELEASE_SIGNING_KEY: ${{ secrets.CAT_RELEASE_SIGNING_KEY }}
+          BUNDLE_REUSED: ${{ steps.prior-bundle.outputs.reused }}
+          BUNDLE_SOURCE_ATTEMPT: ${{ steps.prior-bundle.outputs.bundle_attempt }}
+        run: python3 "${RUNNER_TEMP}/release-publication.py" publish
+      - name: Upload publication mutation receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: publication-ledger-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/publication-ledger.jsonl
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Hold session until remote work completes
+        if: always()
+        run: .github/scripts/release-session.sh hold "${RELEASE_SESSION_DIR}"
+      - name: Upload terminal session receipt
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-session-terminal-${{ github.run_id }}-${{ github.run_attempt }}-publish
+          path: ${{ env.RELEASE_SESSION_DIR }}/terminal-receipt.json
+          if-no-files-found: warn
+          retention-days: 1
+      - name: Clean up release session
+        if: always()
+        run: .github/scripts/release-session.sh cleanup "${RELEASE_SESSION_DIR}"
 
   # Artifact storage is billed by the hour, so delete the native release files once publishing ends instead of
   # keeping them for their retention period. This also runs when a build or the publish job fails.
   cleanup:
     name: Delete native release files
-    needs: [build, publish]
+    needs: [build, publish, session-check]
     if: always()
     runs-on: ubuntu-26.04
     permissions:

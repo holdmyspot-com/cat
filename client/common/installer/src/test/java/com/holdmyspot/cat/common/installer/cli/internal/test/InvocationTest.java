@@ -660,9 +660,33 @@ public final class InvocationTest
 			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
 			JsonNode result = run.result();
 			requireThat(result.path("version").stringValue(), "version").isEqualTo("1.2");
+			requireThat(result.path("update_command").stringValue(), "updateCommand").
+				isEqualTo("recorded latest update");
 			requireThat(result.has("pending_swap"), "pendingSwap").isFalse();
 			requireThat(result.has("cached_bundle"), "cachedBundle").isFalse();
 			requireThat(result.has("previous_version"), "previousVersion").isFalse();
+		}
+	}
+
+	/**
+	 * Status without an installed version does not offer a latest-update command.
+	 *
+	 * @throws IOException    if the fixture cannot be created or the output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void statusWithoutVersionOmitsUpdateCommand() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-status-no-version-")));
+			installation.writePolicy(installation.trustPolicy());
+
+			Run run = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(), "status",
+				"--harness", "harness-a");
+
+			requireThat(run.status, "status").withContext(run.output, "output").isEqualTo(0);
+			requireThat(run.result().has("update_command"), "updateCommand").isFalse();
 		}
 	}
 

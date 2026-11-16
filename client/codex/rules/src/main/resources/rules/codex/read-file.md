@@ -9,6 +9,8 @@
 	when the parts already read show that the rest will not serve it.
 - Keep each part that the agent receives whole: each command runs through run-part alone in its tool call, without
 	piping its output and without `max_output_tokens`, so that Codex shows the part without removing lines.
+- When the installer's status provides its complete latest-update command, execute that command unchanged. It already
+	contains the complete run-part invocation; do not add a second run-part wrapper or edit its script.
 
 ## Guidance
 

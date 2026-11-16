@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex.installer.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -556,12 +557,22 @@ public final class SandboxEntriesTest
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
 			HarnessInstallation installation = provider.installation(home);
-			install.installEntries(home, launcher, installation, List.of(other()), wrongLocks,
+			install.installEntries(permissionEnvironment(launcher), home, launcher, installation,
+				List.of(other()), wrongLocks,
 				launcherState(wrongLocks), List.of(), false);
 			requireThat(Files.readString(configuration), "granted").contains(quote(wrongLocks));
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
-				List.of(other()), locks, launcherState(locks), List.of(), false);
+			PluginInstall.InstalledEntries entries = install.installEntries(
+				permissionEnvironment(launcher),
+				 home,
+				 launcher,
+				 installation,
+
+				List.of(other()),
+				 locks,
+				 launcherState(locks),
+				 List.of(),
+				 false);
 
 			requireThat(Files.readString(configuration), "reinstalled").contains(quote(locks)).
 				doesNotContain(quote(wrongLocks)).contains(kept);
@@ -597,8 +608,17 @@ public final class SandboxEntriesTest
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
-				List.of(other()), locks, state, List.of(), false);
+			PluginInstall.InstalledEntries entries = install.installEntries(
+				permissionEnvironment(launcher),
+				 home,
+				 launcher,
+				 installation,
+
+				List.of(other()),
+				 locks,
+				 state,
+				 List.of(),
+				 false);
 
 			requireThat(Files.readString(configuration), "reinstalled").doesNotContain(quote(state)).
 				contains("\"/mine\" = \"read\"").contains(quote(locks) + " = \"write\"");

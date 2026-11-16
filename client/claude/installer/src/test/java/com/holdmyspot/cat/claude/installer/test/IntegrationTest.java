@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.claude.installer.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 
 import com.holdmyspot.cat.claude.installer.Integration;
 import com.holdmyspot.cat.claude.installer.PluginCommand;
@@ -402,8 +403,8 @@ public final class IntegrationTest
 			Path launcher = launcher(home);
 			TransientRefusal adding = new TransientRefusal(settings);
 
-			Map<String, List<String>> added = integration().installPermissions(home, launcher,
-				adding.replacer());
+			Map<String, List<String>> added = integration().installPermissions(
+				permissionEnvironment(launcher), home, launcher, adding.replacer());
 
 			requireThat(added, "added").isEqualTo(platformEntries(launcher));
 			requireThat(Files.readString(settings), "settings").contains("excludedCommands");
@@ -545,7 +546,9 @@ public final class IntegrationTest
 			Path launcher = launcher(home);
 			Map<String, List<String>> expected = platformEntries(launcher);
 
-			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added =
+				integration().installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			requireThat(added, "added").isEqualTo(expected);
 			StringJoiner excluded = new StringJoiner(",\n", "", "\n");
@@ -581,7 +584,8 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = launcher(home);
 
-			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration().installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			String quoted = launcherCommand(launcher);
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
@@ -620,7 +624,8 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = launcher(home);
 
-			Map<String, List<String>> added = integration().installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration().installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			String quoted = launcherCommand(launcher);
 			String installWildcard = pattern(quoted + " install --harness claude");
@@ -657,10 +662,12 @@ public final class IntegrationTest
 			Path earlier = launcher(home);
 			Path next = launcher(home, NEW_VERSION);
 			Integration integration = integration();
-			Map<String, List<String>> recorded = integration.installPermissions(home, earlier, replacer());
+			Map<String, List<String>> recorded = integration.installPermissions(
+				permissionEnvironment(earlier), home, earlier, replacer());
 
 			integration.removePermissions(home, recorded, replacer());
-			Map<String, List<String>> added = integration.installPermissions(home, next, replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(next), home, next, replacer());
 
 			requireThat(added, "added").isEqualTo(platformEntries(next));
 			String settings = Files.readString(home.resolve("settings.json"));
@@ -694,7 +701,8 @@ public final class IntegrationTest
 				"\" install --harness codex";
 		}
 
-		Map<String, List<String>> maintained = new Integration(platform).permissions(launcher);
+		Map<String, List<String>> maintained = new Integration(platform).permissions(
+			permissionEnvironment(launcher), launcher);
 
 		for (String entry : maintained.get(SETTINGS_KEY_EXCLUDED))
 			requireThat(matches(entry, command), "matches").withContext(entry, "entry").isFalse();
@@ -725,7 +733,8 @@ public final class IntegrationTest
 		}
 		String other = ShellQuoting.posix(home.resolveSibling("other-home").toString());
 
-		Map<String, List<String>> maintained = new Integration(platform).permissions(launcher);
+		Map<String, List<String>> maintained = new Integration(platform).permissions(
+			permissionEnvironment(launcher), launcher);
 
 		for (String options : List.of("--create-profile", "--home " + other, "--home " + other + " --create-profile"))
 		{
@@ -870,11 +879,13 @@ public final class IntegrationTest
 			Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"filesystem\":{\"allowWrite\":[" +
 				json(userEntry.toString()) + "]}}}");
 			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
-			install.installEntries(home, launcher(home), claude, List.of(codex), wrongLocks,
+			install.installEntries(
+				permissionEnvironment(launcher(home)), home, launcher(home), claude, List.of(codex), wrongLocks,
 				userHome.resolve("account/.cat/sessions"), List.of(), false);
 			requireThat(Files.readString(home.resolve("settings.json")), "granted").contains(json(wrongLocks.toString()));
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
+			PluginInstall.InstalledEntries entries = install.installEntries(
+				permissionEnvironment(launcher(home)), home, launcher(home), claude,
 				List.of(codex), catLocks, userHome.resolve(".cat/sessions"), List.of(), false);
 
 			requireThat(Files.readString(home.resolve("settings.json")), "settings").
@@ -910,7 +921,8 @@ public final class IntegrationTest
 				Map.of(SETTINGS_KEY_DENY_WRITE, List.of(launcherState.toString())));
 			PluginInstall install = new PluginInstall(integration(), ClaudeProgram.cli(home), replacer());
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher(home), claude,
+			PluginInstall.InstalledEntries entries = install.installEntries(
+				permissionEnvironment(launcher(home)), home, launcher(home), claude,
 				List.of(codex), userHome.resolve(".cat/locks"), launcherState, List.of(), false);
 
 			requireThat(Files.readString(home.resolve("settings.json")), "settings").
@@ -951,7 +963,8 @@ public final class IntegrationTest
 			PluginInstall install = new PluginInstall(new Integration(Platform.LINUX_X64), ClaudeProgram.cli(home),
 				replacer());
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, claude, List.of(codex),
+			PluginInstall.InstalledEntries entries = install.installEntries(
+				permissionEnvironment(launcher), home, launcher, claude, List.of(codex),
 				userHome.resolve(".cat/locks"), userHome.resolve(".cat/sessions"), List.of(), false);
 
 			String settings = Files.readString(home.resolve("settings.json"));
@@ -1059,7 +1072,8 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = home.resolve("plugins\\cache/bin/installer");
 			Integration integration = new Integration(Platform.LINUX_X64);
-			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			List<EntryGroup> groups = integration.describeEntries(added, launcher);
 
@@ -1088,7 +1102,8 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 			Path launcher = home.resolve("plugins/cache/cat/cat/1.0/bin/installer");
 			Integration integration = new Integration(Platform.LINUX_X64);
-			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			List<EntryGroup> groups = integration.describeEntries(added, launcher);
 
@@ -1118,7 +1133,8 @@ public final class IntegrationTest
 			Path launcher = launcher(home).resolveSibling("installer.ps1");
 			Integration integration = new Integration(Platform.WINDOWS_X64);
 
-			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			String prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher +
 				"\"";
@@ -1165,7 +1181,8 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(testDirectory());
 
-			Map<String, List<String>> added = new Integration(Platform.LINUX_X64).installPermissions(home, launcher,
+			Map<String, List<String>> added = new Integration(Platform.LINUX_X64).installPermissions(
+				permissionEnvironment(launcher), home, launcher,
 				replacer());
 
 			requireThat(added, "added").isEqualTo(posixEntries(launcher));
@@ -1192,10 +1209,12 @@ public final class IntegrationTest
 				"\"sandbox\":{\"enabled\":true}}");
 			Integration integration = integration();
 
-			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 			String merged = Files.readString(settings);
 			FileTime modified = Files.getLastModifiedTime(settings);
-			Map<String, List<String>> repeated = integration.installPermissions(home, launcher, replacer());
+			Map<String, List<String>> repeated = integration.installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 
 			List<String> expectedAllowed = new ArrayList<>(expected.get(SETTINGS_KEY_ALLOW));
 			expectedAllowed.removeFirst();
@@ -1227,7 +1246,8 @@ public final class IntegrationTest
 			Path settings = Files.writeString(home.resolve("settings.json"),
 				"{\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"theme\":\"dark\"}");
 			Integration integration = integration();
-			Map<String, List<String>> added = integration.installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(launcher), home, launcher, replacer());
 			String removedByUser = added.get(SETTINGS_KEY_ALLOW).getFirst();
 			Files.writeString(settings, Files.readString(settings).replace(json(removedByUser) + ",", ""));
 
@@ -1284,7 +1304,8 @@ public final class IntegrationTest
 			Path settings = Files.writeString(home.resolve("settings.json"), "{\"sandbox\":{\"excludedCommands\":[" +
 				json(server) + "]},\"permissions\":{\"allow\":[" + json("Bash(" + server + ")") + "]}}");
 			Integration integration = integration();
-			Map<String, List<String>> added = integration.installPermissions(home, launcher(home), replacer());
+			Map<String, List<String>> added = integration.installPermissions(
+				permissionEnvironment(launcher(home)), home, launcher(home), replacer());
 
 			integration.removePermissions(home, added, replacer());
 			List<String> retained = integration.describeRetained(home, added);
@@ -1357,7 +1378,8 @@ public final class IntegrationTest
 			Integration integration = integration();
 
 			requireRefusal(() -> integration.validateConfiguration(home));
-			requireRefusal(() -> integration.installPermissions(home, launcher(home), replacer()));
+			requireRefusal(() -> integration.installPermissions(
+				permissionEnvironment(launcher(home)), home, launcher(home), replacer()));
 			requireRefusal(() -> integration.installSandboxEntries(home, new CodexInstallation(home.resolve("codex")),
 				home.resolve("locks"), replacer()));
 			requireThat(Files.readString(settings), "settings").isEqualTo(content);

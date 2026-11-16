@@ -303,6 +303,8 @@ public final class CodexRunner
 		requireThat(platform, "platform").isNotNull();
 		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 		HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
+		if (platform.isWindows())
+			HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, Set.of("SystemRoot"));
 		// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 		// independent trials do not redownload the same immutable registry artifacts.
 		isolatedEnvironment.putAll(caches.environment());
@@ -788,7 +790,7 @@ public final class CodexRunner
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace);
 			commands.execute(pluginCommands.get(0), "marketplace-add");
 			commands.execute(pluginCommands.get(1), "plugin-add");
-			installPermissions(isolatedHome, replacer);
+			installPermissions(isolatedEnvironment, isolatedHome, replacer);
 		}
 		for (int i = 0; i < trialPlugins.size(); ++i)
 		{
@@ -804,11 +806,13 @@ public final class CodexRunner
 	/**
 	 * Writes the entries that CAT's installer writes for the CAT version that Codex installed into the isolated home.
 	 *
+	 * @param environment the isolated process environment
 	 * @param isolatedHome the isolated Codex home
 	 * @param replacer replaces the rules file and {@code config.toml}
 	 * @throws IOException if Codex did not install exactly one copy of CAT, or an entry cannot be written
 	 */
-	private static void installPermissions(Path isolatedHome, FileReplacer replacer) throws IOException
+	private static void installPermissions(Map<String, String> environment, Path isolatedHome,
+		FileReplacer replacer) throws IOException
 	{
 		Path home = isolatedHome.toAbsolutePath().normalize();
 		List<Path> copies = InstalledPlugins.of(home, CAT_PLUGIN_ID);
@@ -817,7 +821,8 @@ public final class CodexRunner
 			throw new IOException("Codex did not install exactly one copy of " + CAT_PLUGIN_ID + " into " + home +
 				": " + copies);
 		}
-		new CodexIntegration().installPermissions(home, copies.get(0).resolve(PluginDirectory.INSTALLER), replacer);
+		new CodexIntegration().installPermissions(environment, home,
+			copies.get(0).resolve(PluginDirectory.INSTALLER), replacer);
 	}
 
 	/**

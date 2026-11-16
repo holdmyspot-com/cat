@@ -69,7 +69,15 @@
 	After the user says the command is done, and before you rely on it, check that a version folder of CAT's plugin
 	under the session's harness home now holds the launcher. When none does, the command acted on another harness
 	home: ask the user for the command's printed output instead of continuing.
-3. Run the launcher:
+3. For a latest-release install or repair, first run `<launcher> status --harness <h>`. If its result is
+	`status` and it has an `update_command` field, run the complete command in that field unchanged. In Codex, it already
+	contains the complete run-part invocation; do not add another run-part wrapper or alter its script. In Claude Code,
+	it is the equivalent latest install command for that harness. Then use the install result it prints in step 4. If
+	status reports no installed version or does not return `update_command`, use the entry command in step 2 to install.
+	For a named release, run the install command below directly; the latest-update permission does not authorize a named
+	release.
+
+	Run the launcher for these other requests:
 	- When the user asks to install or update CAT to a release they name, run `<launcher> install --harness <h> <tag>`,
 		with the release's tag such as `v1.1`. This is also how to move to a release other than the one that the
 		installation runs. An install of another release moves the Java runtime, the installer and the plugin together.
@@ -81,9 +89,7 @@
 		does not look for a newer one, so when the user asked about a newer release, say so and offer to run the
 		install below, which installs the latest approved release when it is newer. When its `installed` field is
 		false, CAT's plugin is absent: say so, and offer to install it.
-	- Otherwise, including when the user asks to install or update CAT without naming a release, or when CAT's plugin
-		was removed by other means, run `<launcher> install --harness <h>`. It installs the latest release that the
-		user's policy approves, or repairs the active one when that is the latest.
+	- When CAT's plugin was removed by other means, use the entry command in step 2.
 4. The launcher prints one line of JSON. Act on its `result` field:
 	- `installed`: tell the user that the release that `version` names is installed and registered, and that it takes
 		effect once they restart or resume the session. In Codex, also say that Codex asks them to review a new or

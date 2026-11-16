@@ -1,8 +1,10 @@
 package com.holdmyspot.cat.codex.installer.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 
 import com.holdmyspot.cat.codex.installer.CodexIntegration;
+import com.holdmyspot.cat.codex.installer.InstallerRules;
 import com.holdmyspot.cat.codex.installer.CodexPluginCommand;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -41,7 +43,7 @@ public final class IntegrationTest
 	 * Matches one rule of a Codex execution-policy file: its pattern and its decision.
 	 */
 	private static final Pattern PREFIX_RULE = Pattern.compile(
-		"prefix_rule\\(pattern=(\\[[^]]*]), decision=(\"[^\"]*\")\\)");
+		"prefix_rule\\(pattern=(\\[.*]), decision=(\"[^\"]*\")\\)");
 
 	/**
 	 * The release's marketplace metadata in the fixtures.
@@ -404,9 +406,10 @@ public final class IntegrationTest
 	}
 
 	/**
-	 * The rules file permits installing into Codex and status without asking, asks before uninstall, lets the request
-	 * server beside the installer, and no runner launcher, run without asking and outside the sandbox, except on
-	 * Windows, reports the server among the operations it lets run that way, and is reported as added only by the call
+	 * The rules file permits status without asking and latest update only through its complete script, asks before
+	 * uninstall, lets the request server beside the installer, and no runner launcher, run without asking and outside
+	 * the sandbox, except on Windows, reports the server among the operations it lets run that way, and is reported as
+	 * added only by the call
 	 * that wrote it.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
@@ -420,7 +423,11 @@ public final class IntegrationTest
 			Path launcher = installer(home, VERSION);
 			String expected = rules(launcher);
 
-			Map<String, List<String>> added = provider().installPermissions(home, launcher, replacer());
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(launcher),
+				 home,
+				 launcher,
+				 replacer());
 			requireThat(added, "added").isEqualTo(Map.of("rules/cat-installer.rules#", List.of(expected)));
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").isEqualTo(expected).
 				doesNotContain("-runner");
@@ -428,11 +435,16 @@ public final class IntegrationTest
 			{
 				for (EntryGroup group : provider().describeEntries(added, launcher))
 				{
-					if (group.effect() == EntryEffect.RUNS_WITHOUT_ASKING || group.effect() == EntryEffect.RUNS_OUTSIDE_SANDBOX)
+					if (group.effect() == EntryEffect.RUNS_WITHOUT_ASKING ||
+						group.effect() == EntryEffect.RUNS_OUTSIDE_SANDBOX)
 						requireThat(group.items(), "items").contains("request-server");
 				}
 			}
-			requireThat(provider().installPermissions(home, launcher, replacer()), "repeated").isEmpty();
+			requireThat(provider().installPermissions(
+				permissionEnvironment(launcher),
+				 home,
+				 launcher,
+					replacer()), "repeated").isEmpty();
 			provider().validateConfiguration(home);
 		}
 	}
@@ -449,20 +461,72 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			List<String> launcher = launcherCommand(installer(home, VERSION));
-			provider().installPermissions(home, installer(home, VERSION), replacer());
+			Path installer = installer(home, VERSION);
+			List<String> launcher = launcherCommand(installer);
+			provider().installPermissions(permissionEnvironment(installer), home, installer, replacer());
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 
 			requireThat(decisions(content, command(launcher, "install", "--harness", "claude")), "otherHarness").
 				isEmpty();
-			requireThat(decisions(content, command(launcher, "install", "--harness", "codex")), "ownHarness").
-				isEqualTo(List.of("allow"));
+			requireThat(decisions(content, command(launcher, "install", "--harness", "codex")), "ownHarness").isEmpty();
 			requireThat(decisions(content, command(launcher, "install", "--harness", "codex", "v1.2")),
-				"namedRelease").isEqualTo(List.of("allow"));
+				"namedRelease").isEmpty();
 			requireThat(decisions(content, command(launcher, "update", "--harness", "codex")), "update").isEmpty();
 			requireThat(decisions(content, command(launcher, "uninstall", "--harness", "codex")), "uninstall").
 				isEqualTo(List.of("prompt"));
 		}
+	}
+
+	/**
+	 * Only the complete latest-update script through a trusted absolute shell gets an install allowance.
+	 *
+	 * @throws IOException if a fixture path cannot be resolved
+	 */
+	@Test
+	public void updateRuleRequiresExactScript() throws IOException
+	{
+		Path launcher = absoluteTestPath("codex-home/plugins/cache/cat/cat/" + VERSION + "/bin/installer");
+		Map<String, String> environment = permissionEnvironment(launcher);
+		boolean windows = Platform.current().isWindows();
+		String script = InstallerRules.latestUpdateCommand(environment, launcher, windows);
+		String launcherName;
+		if (windows)
+			launcherName = "installer.ps1";
+		else
+			launcherName = "installer";
+		Path boundaryLauncher = absoluteTestPath("latest-update-runtime/bin/" + launcherName);
+		Map<String, String> boundaryEnvironment = Map.of();
+		if (windows)
+		{
+			String systemRoot = System.getenv("SystemRoot");
+			String path = systemRoot + ";" + systemRoot + "\\System32;" + systemRoot +
+				"\\System32\\WindowsPowerShell\\v1.0";
+			boundaryEnvironment = Map.of("SystemRoot", systemRoot, "PATH", path, "PATHEXT", ".EXE;.CMD");
+		}
+		String boundaryScript = InstallerRules.latestUpdateCommand(boundaryEnvironment, boundaryLauncher, windows);
+		Path boundaryOutput = absoluteTestPath("latest-update-command.txt");
+		Files.createDirectories(boundaryOutput.getParent());
+		Files.writeString(boundaryOutput, boundaryScript);
+		String content = InstallerRules.render(environment, launcher, windows);
+		List<String> shell;
+		if (windows)
+			shell = List.of(Path.of(environment.get("SystemRoot")).
+				resolve("System32/WindowsPowerShell/v1.0/powershell.exe").toString(), "-NoProfile", "-Command");
+		else
+			shell = List.of("/bin/bash", "-lc");
+		requireThat(decisions(content, command(shell, script)), "exactScript").isEqualTo(List.of("allow"));
+		requireThat(decisions(content, command(List.of("bash", "-lc"), script)), "shellBasename").isEmpty();
+		requireThat(decisions(content, command(shell, script.replace("--harness codex", "--harness codex v1.2"))),
+			"namedRelease").isEmpty();
+		requireThat(decisions(content, command(shell, script.replace("--harness codex", "--harness claude"))),
+			"otherHarness").isEmpty();
+		requireThat(decisions(content, command(shell, script + "\necho extra")), "appendedScript").isEmpty();
+		requireThat(decisions(content, command(shell, "echo arbitrary")), "arbitraryScript").isEmpty();
+		requireThat(decisions(content, launcherCommand(launcher)), "bareInstaller").isEmpty();
+		requireThat(decisions(content, command(launcherCommand(launcher), "status")), "status").
+			isEqualTo(List.of("allow"));
+		requireThat(decisions(content, command(launcherCommand(launcher), "uninstall", "--harness", "codex")),
+			"uninstall").isEqualTo(List.of("prompt"));
 	}
 
 	/**
@@ -478,7 +542,11 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			List<String> launcher = launcherCommand(installer(home, VERSION));
-			provider().installPermissions(home, installer(home, VERSION), replacer());
+			provider().installPermissions(
+				permissionEnvironment(installer(home, VERSION)),
+				 home,
+				 installer(home, VERSION),
+				 replacer());
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 			String other = home.resolveSibling("other-home").toString();
 
@@ -512,7 +580,11 @@ public final class IntegrationTest
 			Path leftover = home.resolve("rules/cat-updater.rules");
 			write(leftover, updaterRules(home.resolveSibling(".local/share/cat-updater/codex/bin/cat-updater")));
 
-			provider().installPermissions(home, installer(home, VERSION), replacer());
+			provider().installPermissions(
+				permissionEnvironment(installer(home, VERSION)),
+				 home,
+				 installer(home, VERSION),
+				 replacer());
 			requireThat(Files.exists(leftover), "leftoverExists").isFalse();
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(installer(home, VERSION)));
@@ -536,7 +608,11 @@ public final class IntegrationTest
 			write(file, content);
 
 			provider().validateConfiguration(home);
-			provider().installPermissions(home, installer(home, VERSION), replacer());
+			provider().installPermissions(
+				permissionEnvironment(installer(home, VERSION)),
+				 home,
+				 installer(home, VERSION),
+				 replacer());
 			requireThat(Files.readString(file), "content").isEqualTo(content);
 		}
 	}
@@ -568,11 +644,15 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(home, installer(home, EARLIER_VERSION), replacer());
+			provider().installPermissions(
+				permissionEnvironment(installer(home, EARLIER_VERSION)),
+				 home,
+				 installer(home, EARLIER_VERSION),
+				 replacer());
 			Path launcher = installer(home, VERSION);
 			TransientRefusal refusal = new TransientRefusal(home.resolve("rules/cat-installer.rules"));
 
-			provider().installPermissions(home, launcher, refusal.replacer());
+			provider().installPermissions(permissionEnvironment(launcher), home, launcher, refusal.replacer());
 
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -592,14 +672,18 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(home, installer(home, EARLIER_VERSION), replacer());
+			provider().installPermissions(
+				permissionEnvironment(installer(home, EARLIER_VERSION)),
+				 home,
+				 installer(home, EARLIER_VERSION),
+				 replacer());
 			Path launcher = installer(home, VERSION);
 
-			requireThat(provider().installPermissions(home, launcher, replacer()), "added").
+			requireThat(provider().installPermissions(permissionEnvironment(launcher), home, launcher, replacer()), "added").
 				isEqualTo(Map.of("rules/cat-installer.rules#", List.of(rules(launcher))));
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
-			requireThat(provider().permissions(launcher), "maintained").
+			requireThat(provider().permissions(permissionEnvironment(launcher), launcher), "maintained").
 				isEqualTo(Map.of("rules/cat-installer.rules#", List.of(rules(launcher))));
 		}
 	}
@@ -620,7 +704,7 @@ public final class IntegrationTest
 			write(home.resolve("rules/cat-installer.rules"), earlierRules(launcher));
 			provider().validateConfiguration(home);
 
-			provider().installPermissions(home, launcher, replacer());
+			provider().installPermissions(permissionEnvironment(launcher), home, launcher, replacer());
 
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -645,7 +729,7 @@ public final class IntegrationTest
 			write(home.resolve("rules/cat-installer.rules"), runnerRules(launcher));
 			provider().validateConfiguration(home);
 
-			provider().installPermissions(home, launcher, replacer());
+			provider().installPermissions(permissionEnvironment(launcher), home, launcher, replacer());
 
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -676,7 +760,11 @@ public final class IntegrationTest
 					if (attempt == 0)
 						provider().validateConfiguration(home);
 					else
-						provider().installPermissions(home, installer(home, VERSION), replacer());
+						provider().installPermissions(
+							permissionEnvironment(installer(home, VERSION)),
+							 home,
+							 installer(home, VERSION),
+							 replacer());
 					throw new AssertionError("Accepted a rules file that CAT did not write");
 				}
 				catch (IOException e)
@@ -749,7 +837,11 @@ public final class IntegrationTest
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path file = home.resolve("rules/cat-installer.rules");
 			Path userRules = home.resolve("rules/default.rules");
-			Map<String, List<String>> added = provider().installPermissions(home, installer(home, VERSION), replacer());
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(installer(home, VERSION)),
+				 home,
+				 installer(home, VERSION),
+				 replacer());
 			Files.writeString(userRules, "prefix_rule(pattern=[\"git\", \"status\"], decision=\"allow\")\n");
 			Files.writeString(file, Files.readString(file) + "# edited\n");
 
@@ -784,7 +876,11 @@ public final class IntegrationTest
 				""".formatted(MAPPER.writeValueAsString(installer(home, VERSION).resolveSibling("request-server").
 				toString()));
 			write(userRules, content);
-			Map<String, List<String>> added = provider().installPermissions(home, installer(home, VERSION), replacer());
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(installer(home, VERSION)),
+				 home,
+				 installer(home, VERSION),
+				 replacer());
 
 			provider().removePermissions(home, added, replacer());
 			List<String> retained = provider().describeRetained(home, added);
@@ -802,12 +898,7 @@ public final class IntegrationTest
 	 */
 	private static String rules(Path launcher)
 	{
-		String installerRules = earlierRules(launcher);
-		if (Platform.current().isWindows())
-			return installerRules;
-		return installerRules + """
-			prefix_rule(pattern=[%s], decision="allow")
-			""".formatted(MAPPER.writeValueAsString(launcher.resolveSibling("request-server").toString()));
+		return InstallerRules.render(permissionEnvironment(launcher), launcher, Platform.current().isWindows());
 	}
 
 	/**

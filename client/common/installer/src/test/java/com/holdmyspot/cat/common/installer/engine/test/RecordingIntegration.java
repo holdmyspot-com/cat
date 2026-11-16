@@ -615,7 +615,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer)
 		throws IOException
 	{
 		record("installPermissions", installer);
@@ -623,9 +624,15 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public Map<String, List<String>> permissions(Path installer)
+	public Map<String, List<String>> permissions(Map<String, String> environment, Path installer)
 	{
 		return Map.copyOf(maintained);
+	}
+
+	@Override
+	public String latestUpdateCommand(Map<String, String> environment, Path installer)
+	{
+		return "recorded latest update";
 	}
 
 	/**

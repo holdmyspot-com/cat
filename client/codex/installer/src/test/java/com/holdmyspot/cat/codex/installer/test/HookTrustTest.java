@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex.installer.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -127,7 +128,7 @@ public final class HookTrustTest
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path installer = plugin(home, VERSION, CAT_HOOKS);
 
-			provider().installPermissions(home, installer, replacer());
+			provider().installPermissions(permissionEnvironment(installer), home, installer, replacer());
 
 			requireThat(Files.readString(home.resolve("config.toml")), "configuration").isEqualTo(
 				trusted(SESSION_START, SESSION_START_HASH) + "\n" + trusted(POST_TOOL_USE, POST_TOOL_USE_HASH) + "\n" +
@@ -149,7 +150,11 @@ public final class HookTrustTest
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path installer = plugin(home, VERSION, CAT_HOOKS);
 
-			Map<String, List<String>> recorded = provider().installPermissions(home, installer, replacer());
+			Map<String, List<String>> recorded = provider().installPermissions(
+				permissionEnvironment(installer),
+				 home,
+				 installer,
+				 replacer());
 			List<EntryGroup> hooks = provider().describeEntries(recorded, installer).stream().
 				filter(group -> group.effect() == EntryEffect.HOOKS_RUN_WITHOUT_REVIEW).toList();
 
@@ -189,8 +194,16 @@ public final class HookTrustTest
 			Path first = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path second = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 
-			provider().installPermissions(first, plugin(first, VERSION, sessionStart(declared)), replacer());
-			provider().installPermissions(second, plugin(second, VERSION, sessionStart(plain)), replacer());
+			provider().installPermissions(
+				permissionEnvironment(plugin(first, VERSION, sessionStart(declared))),
+				 first,
+				 plugin(first, VERSION, sessionStart(declared)),
+				 replacer());
+			provider().installPermissions(
+				permissionEnvironment(plugin(second, VERSION, sessionStart(plain))),
+				 second,
+				 plugin(second, VERSION, sessionStart(plain)),
+				 replacer());
 
 			requireThat(Files.readString(first.resolve("config.toml")), "declared").
 				isEqualTo(Files.readString(second.resolve("config.toml")));
@@ -211,7 +224,11 @@ public final class HookTrustTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 
-			provider().installPermissions(home, plugin(home, VERSION, changed), replacer());
+			provider().installPermissions(
+				permissionEnvironment(plugin(home, VERSION, changed)),
+				 home,
+				 plugin(home, VERSION, changed),
+				 replacer());
 
 			requireThat(Files.readString(home.resolve("config.toml")), "configuration").
 				doesNotContain(SESSION_START_HASH).contains(POST_TOOL_USE_HASH).contains(SUBAGENT_START_HASH);
@@ -262,7 +279,11 @@ public final class HookTrustTest
 				""".formatted("b".repeat(64), SESSION_START);
 			Files.writeString(configuration, original);
 
-			Map<String, List<String>> added = provider().installPermissions(home, installer, replacer());
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(installer),
+				 home,
+				 installer,
+				 replacer());
 
 			String edited = original.replace("enabled = false\n", "trusted_hash = \"" + SESSION_START_HASH +
 				"\"\nenabled = false\n") + "\n" + trusted(POST_TOOL_USE, POST_TOOL_USE_HASH) + "\n" +
@@ -271,7 +292,11 @@ public final class HookTrustTest
 			requireThat(added.values().stream().flatMap(List::stream).filter(value -> value.startsWith("sha256:")).
 				toList(), "recorded").
 				containsExactly(List.of(SESSION_START_HASH, POST_TOOL_USE_HASH, SUBAGENT_START_HASH));
-			requireThat(provider().installPermissions(home, installer, replacer()), "repeated").isEmpty();
+			requireThat(provider().installPermissions(
+				permissionEnvironment(installer),
+				 home,
+				 installer,
+					replacer()), "repeated").isEmpty();
 			requireThat(Files.readString(configuration), "repeatedContent").isEqualTo(edited);
 		}
 	}
@@ -291,7 +316,11 @@ public final class HookTrustTest
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, original);
-			Map<String, List<String>> added = provider().installPermissions(home, plugin(home, VERSION, CAT_HOOKS),
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(plugin(home, VERSION, CAT_HOOKS)),
+				 home,
+				 plugin(home, VERSION, CAT_HOOKS),
+
 				replacer());
 			requireThat(Files.readString(configuration), "installed").isNotEqualTo(original);
 
@@ -334,7 +363,11 @@ public final class HookTrustTest
 			String theirs = trusted(SESSION_START, SESSION_START_HASH);
 			Files.writeString(configuration, theirs);
 
-			Map<String, List<String>> added = provider().installPermissions(home, plugin(home, VERSION, CAT_HOOKS),
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(plugin(home, VERSION, CAT_HOOKS)),
+				 home,
+				 plugin(home, VERSION, CAT_HOOKS),
+
 				replacer());
 			requireThat(Files.readString(configuration), "installed").contains(POST_TOOL_USE_HASH).
 				contains(SUBAGENT_START_HASH);
@@ -356,7 +389,11 @@ public final class HookTrustTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path configuration = home.resolve("config.toml");
-			Map<String, List<String>> added = provider().installPermissions(home, plugin(home, VERSION, CAT_HOOKS),
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(plugin(home, VERSION, CAT_HOOKS)),
+				 home,
+				 plugin(home, VERSION, CAT_HOOKS),
+
 				replacer());
 			String changedHash = "sha256:" + "c".repeat(64);
 			Files.writeString(configuration, Files.readString(configuration).replace(POST_TOOL_USE_HASH, changedHash));
@@ -392,8 +429,17 @@ public final class HookTrustTest
 			PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
 			HarnessInstallation installation = provider.installation(home);
 			Path earlier = plugin(home, VERSION, CAT_HOOKS);
-			install.installEntries(home, earlier, installation, List.of(), locks, locks.resolveSibling("sessions"),
-				List.of(), false);
+			install.installEntries(
+				permissionEnvironment(earlier),
+				 home,
+				 earlier,
+				 installation,
+				 List.of(),
+				 locks,
+				 locks.resolveSibling("sessions"),
+
+				List.of(),
+				 false);
 			requireThat(Files.readString(configuration), "installed").contains(SESSION_START_HASH).
 				contains(POST_TOOL_USE_HASH).contains(SUBAGENT_START_HASH).doesNotContain(staleByHand);
 			ObjectNode withoutPostToolUse = (ObjectNode) JSON.readTree(CAT_HOOKS);
@@ -401,8 +447,17 @@ public final class HookTrustTest
 			String later = JSON.writeValueAsString(withoutPostToolUse).replace("session-start.sh", "start.sh");
 			Path newer = plugin(home, LATER_VERSION, later);
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, newer, installation, List.of(),
-				locks, locks.resolveSibling("sessions"), List.of(), false);
+			PluginInstall.InstalledEntries entries = install.installEntries(
+				permissionEnvironment(newer),
+				 home,
+				 newer,
+				 installation,
+				 List.of(),
+
+				locks,
+				 locks.resolveSibling("sessions"),
+				 List.of(),
+				 false);
 
 			String content = Files.readString(configuration);
 			requireThat(content, "updated").contains("model = \"gpt\"").contains(other).
@@ -432,7 +487,7 @@ public final class HookTrustTest
 			Files.writeString(folder.resolve(".codex-plugin/plugin.json"),
 				"{\"name\": \"cat\", \"hooks\": \"./config/hooks.json\"}");
 
-			provider().installPermissions(home, installer, replacer());
+			provider().installPermissions(permissionEnvironment(installer), home, installer, replacer());
 
 			requireThat(Files.readString(home.resolve("config.toml")), "configuration").
 				contains("[hooks.state.\"cat@cat:config/hooks.json:session_start:0:0\"]").
@@ -462,7 +517,11 @@ public final class HookTrustTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 
-			provider().installPermissions(home, plugin(home, VERSION, hooks), replacer());
+			provider().installPermissions(
+				permissionEnvironment(plugin(home, VERSION, hooks)),
+				 home,
+				 plugin(home, VERSION, hooks),
+				 replacer());
 
 			String configuration = Files.readString(home.resolve("config.toml"));
 			requireThat(configuration, "configuration").contains("cat@cat:hooks/hooks.json:session_start:0:1").
@@ -488,7 +547,7 @@ public final class HookTrustTest
 
 			try
 			{
-				provider().installPermissions(home, installer, replacer());
+				provider().installPermissions(permissionEnvironment(installer), home, installer, replacer());
 				throw new AssertionError("The install did not refuse the configuration");
 			}
 			catch (IOException e)
@@ -510,7 +569,11 @@ public final class HookTrustTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			Map<String, List<String>> added = provider().installPermissions(home, plugin(home, VERSION, CAT_HOOKS),
+			Map<String, List<String>> added = provider().installPermissions(
+				permissionEnvironment(plugin(home, VERSION, CAT_HOOKS)),
+				 home,
+				 plugin(home, VERSION, CAT_HOOKS),
+
 				replacer());
 
 			List<String> sentences = provider().describeAdded(home, added);
@@ -536,7 +599,7 @@ public final class HookTrustTest
 			if (Platform.current().isWindows())
 				installer = installer.resolveSibling("installer.ps1");
 
-			provider().installPermissions(home, installer, replacer());
+			provider().installPermissions(permissionEnvironment(installer), home, installer, replacer());
 
 			requireThat(Files.exists(home.resolve("config.toml")), "configurationExists").isFalse();
 		}

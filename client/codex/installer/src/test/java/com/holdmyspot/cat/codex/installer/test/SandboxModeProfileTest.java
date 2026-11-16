@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.codex.installer.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
@@ -414,8 +415,17 @@ public final class SandboxModeProfileTest
 		provider.validateConfiguration(home);
 		PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer());
 		HarnessInstallation installation = provider.installation(home);
-		return install.installEntries(home, installer(home), installation, List.of(other()), locks(home),
-			launcherState(home), startupFiles(home), consented);
+		return install.installEntries(
+			permissionEnvironment(installer(home)),
+			 home,
+			 installer(home),
+			 installation,
+			 List.of(other()),
+			 locks(home),
+
+			launcherState(home),
+			 startupFiles(home),
+			 consented);
 	}
 
 	/**

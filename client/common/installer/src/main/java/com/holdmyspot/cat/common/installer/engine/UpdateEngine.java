@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.ConsentRequest;
+import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
@@ -33,6 +34,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 
@@ -511,8 +513,10 @@ public final class UpdateEngine
 		{
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
-			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks(), request.formerLauncherState(), request.startupFiles(), consented);
+			entries = steps.installEntries(policy.command(integration.harness()).map(HarnessCommand::environment).
+				orElse(Map.of()), home,
+				PluginInstall.installer(versionFolder, windows), installation, request.others(), request.catLocks(),
+				request.formerLauncherState(), request.startupFiles(), consented);
 		}
 		catch (IOException e)
 		{
@@ -602,8 +606,10 @@ public final class UpdateEngine
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			startupCache = trainer.train(versionFolder);
-			entries = steps.installEntries(home, PluginInstall.installer(versionFolder, windows), installation,
-				request.others(), request.catLocks(), request.formerLauncherState(), request.startupFiles(), consented);
+			entries = steps.installEntries(policy.command(integration.harness()).map(HarnessCommand::environment).
+				orElse(Map.of()), home,
+				PluginInstall.installer(versionFolder, windows), installation, request.others(), request.catLocks(),
+				request.formerLauncherState(), request.startupFiles(), consented);
 		}
 		catch (IOException e)
 		{

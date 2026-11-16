@@ -511,9 +511,10 @@ public final class Integration implements HarnessIntegration
 	 * sandbox; install into Claude Code, of the latest or a named release, and status are also allowed without asking
 	 * the user, while uninstall keeps Claude Code's approval prompt.
 	 *
-	 * @param home      the absolute Claude Code configuration directory recorded in policy
-	 * @param installer the absolute path of the installer launcher in the plugin's version folder
-	 * @param replacer  replaces {@code settings.json}
+	 * @param environment the Claude Code environment recorded in the trust policy
+	 * @param home        the absolute Claude Code configuration directory recorded in policy
+	 * @param installer   the absolute path of the installer launcher in the plugin's version folder
+	 * @param replacer    replaces {@code settings.json}
 	 * @return the added entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}; a key is absent when nothing was added to it
 	 * @throws NullPointerException     if any of the arguments are null
@@ -522,9 +523,11 @@ public final class Integration implements HarnessIntegration
 	 *                                  holds a character that the shell would expand inside double quotes
 	 */
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer)
 		throws IOException
 	{
+		requireThat(environment, "environment").isNotNull();
 		requireThat(installer, "installer").isAbsolute();
 		requireThat(replacer, "replacer").isNotNull();
 		return addEntries(home, entries(installer), replacer);
@@ -576,19 +579,39 @@ public final class Integration implements HarnessIntegration
 	 * Returns the sandbox exclusions and prompt-free permissions that {@link #installPermissions} merges into
 	 * {@code settings.json}.
 	 *
-	 * @param installer the absolute path of the installer launcher in the plugin's version folder
+	 * @param environment the Claude Code environment recorded in the trust policy
+	 * @param installer   the absolute path of the installer launcher in the plugin's version folder
 	 * @return the entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}
-	 * @throws NullPointerException     if {@code installer} is null
+	 * @throws NullPointerException     if any required argument is null
 	 * @throws IllegalArgumentException if {@code installer} is relative
 	 * @throws IOException              if, on Windows, the launcher path holds a character that the shell would expand
 	 *                                  inside double quotes
 	 */
 	@Override
-	public Map<String, List<String>> permissions(Path installer) throws IOException
+	public Map<String, List<String>> permissions(Map<String, String> environment, Path installer) throws IOException
 	{
+		requireThat(environment, "environment").isNotNull();
 		requireThat(installer, "installer").isAbsolute();
 		return keyed(entries(installer));
+	}
+
+	/**
+	 * Returns the complete command that installs this harness's latest approved CAT release.
+	 *
+	 * @param environment the Claude Code environment recorded in the trust policy
+	 * @param installer   the absolute installer launcher in the plugin's version folder
+	 * @return the latest-install command
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code installer} is relative
+	 * @throws IOException              if the launcher cannot be represented in the shell command
+	 */
+	@Override
+	public String latestUpdateCommand(Map<String, String> environment, Path installer) throws IOException
+	{
+		requireThat(environment, "environment").isNotNull();
+		requireThat(installer, "installer").isAbsolute();
+		return launcherCommand(installer) + " install --harness claude";
 	}
 
 	/**

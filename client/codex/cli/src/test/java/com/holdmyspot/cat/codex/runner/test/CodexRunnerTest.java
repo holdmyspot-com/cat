@@ -175,7 +175,8 @@ public final class CodexRunnerTest
 
 			Path withCat = root.resolve("with");
 			SetupCommands codex = codexAdds(withCat, "1.0+b0123456789ab");
-			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat, Map.of(),
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat,
+				permissionEnvironment(root),
 				Yielding.executableFiles(), Yielding.fileReplacer(), (command, step) ->
 				{
 					steps.add(step);
@@ -202,7 +203,8 @@ public final class CodexRunnerTest
 			CodexInstallation installation = CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", home.toString()),
 				root.resolve("user"));
 
-			CodexRunner.installPlugins("codex", artifact(root), true, List.of(), root.resolve("host"), home, Map.of(),
+			CodexRunner.installPlugins("codex", artifact(root), true, List.of(), root.resolve("host"), home,
+				permissionEnvironment(root),
 				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
 
 			requireThat(installation.marketplacePlugin().resolve("README.md"), "plugin").isRegularFile();
@@ -245,7 +247,8 @@ public final class CodexRunnerTest
 			Path home = root.resolve("isolated");
 
 			CodexRunner.installPlugins("codex", artifact(root), true, List.of(plugin(root, "release-docs"),
-				plugin(root, "tools")), host, home, Map.of(), Yielding.executableFiles(), Yielding.fileReplacer(),
+				plugin(root, "tools")), host, home, permissionEnvironment(root), Yielding.executableFiles(),
+				Yielding.fileReplacer(),
 				codexAdds(home, "1.0+b0123456789ab"));
 
 			String configuration = Files.readString(home.resolve("config.toml"));
@@ -284,12 +287,12 @@ public final class CodexRunnerTest
 			CodexConnectionConfiguration.copy(host.resolve("config.toml"), home.resolve("config.toml"),
 				root.resolve("project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, Platform.current());
 
-			CodexRunner.installPlugins("codex", artifact, true, List.of(), host, home, Map.of(),
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), host, home, permissionEnvironment(root),
 				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
 
 			Path installer = home.resolve("plugins/cache/cat/cat/1.0+b0123456789ab").
 				resolve(PluginDirectory.INSTALLER);
-			Map<String, List<String>> entries = new CodexIntegration().permissions(installer);
+			Map<String, List<String>> entries = new CodexIntegration().permissions(permissionEnvironment(root), installer);
 			String rules = Files.readString(home.resolve("rules/cat-installer.rules"));
 			requireThat(rules, "rules").isEqualTo(entries.get("rules/cat-installer.rules#").get(0));
 			if (!Platform.current().isWindows())
@@ -331,7 +334,7 @@ public final class CodexRunnerTest
 			{
 				Path home = root.resolve("isolated" + versions.length);
 				IOException e = expectThrows(IOException.class, () -> CodexRunner.installPlugins("codex", artifact(root),
-					true, List.of(), root.resolve("host"), home, Map.of(), Yielding.executableFiles(),
+					true, List.of(), root.resolve("host"), home, permissionEnvironment(root), Yielding.executableFiles(),
 					Yielding.fileReplacer(), codexAdds(home, versions)));
 
 				requireThat(e.getMessage(), "message").contains("Codex did not install exactly one copy of cat@cat");
@@ -448,6 +451,41 @@ public final class CodexRunnerTest
 
 			requireThat(shellTemporaryDirectory, "shellTemporaryDirectory").isEqualTo(temporaryDirectory.toString());
 			requireThat(appServer.get("TMPDIR"), "appServerTemporaryDirectory").isEqualTo(shellTemporaryDirectory);
+		}
+	}
+
+	/**
+	 * Verifies the isolated process environment keeps the supplied Windows system binding for both Windows targets,
+	 * omits it for Linux, and retains the supplied {@code PATH} on every target.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void retainsWindowsUpdateBindings() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-environment-"));
+			Path home = Files.createDirectories(root.resolve("home"));
+			Path run = Files.createDirectories(root.resolve("run"));
+			Path temporaryDirectory = Files.createDirectories(root.resolve("tmp"));
+			Map<String, String> environment = permissionEnvironment(root);
+
+			Map<String, String> windowsX64 = CodexRunner.processEnvironment(environment, HarnessDependencyCaches.NONE,
+				home, run, temporaryDirectory, Platform.WINDOWS_X64);
+			Map<String, String> windowsArm64 = CodexRunner.processEnvironment(environment, HarnessDependencyCaches.NONE,
+				home, run, temporaryDirectory, Platform.WINDOWS_ARM64);
+			Map<String, String> linux = CodexRunner.processEnvironment(environment, HarnessDependencyCaches.NONE, home,
+				run, temporaryDirectory, Platform.LINUX_X64);
+
+			requireThat(windowsX64.get("SystemRoot"), "windowsX64SystemRoot").
+				isEqualTo(environment.get("SystemRoot"));
+			requireThat(windowsArm64.get("SystemRoot"), "windowsArm64SystemRoot").
+				isEqualTo(environment.get("SystemRoot"));
+			requireThat(linux.get("SystemRoot"), "linuxSystemRoot").isNull();
+			requireThat(windowsX64.get("PATH"), "windowsX64Path").isEqualTo(environment.get("PATH"));
+			requireThat(windowsArm64.get("PATH"), "windowsArm64Path").isEqualTo(environment.get("PATH"));
+			requireThat(linux.get("PATH"), "linuxPath").isEqualTo(environment.get("PATH"));
 		}
 	}
 
@@ -1308,5 +1346,17 @@ public final class CodexRunnerTest
 		requireThat(refusal, "refusal").isInstanceOf(SessionRefusedException.class);
 		requireThat(refusal.getMessage(), "message").contains("bwrap: setting up uid map: Permission denied");
 		requireThat(refusal.getCause(), "cause").isReferenceEqualTo(uidMap, "uidMap");
+	}
+
+	/**
+	 * Returns controlled process bindings rooted below the supplied fixture directory.
+	 *
+	 * @param fixtureRoot the owned directory that bounds the path values
+	 * @return Windows bindings and a path shared with every tested platform
+	 */
+	private static Map<String, String> permissionEnvironment(Path fixtureRoot)
+	{
+		return Map.of("SystemRoot", fixtureRoot.resolve("bound-system").toString(),
+			"PATH", fixtureRoot.resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
 	}
 }

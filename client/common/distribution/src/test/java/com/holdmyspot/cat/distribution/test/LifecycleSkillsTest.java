@@ -102,7 +102,9 @@ public final class LifecycleSkillsTest
 			String updateBody = Files.readString(plugin.resolve("skills/update/first-use.md")).replaceAll("\\s+", " ");
 			requireThat(updateBody, "updateBody").contains("version folder of CAT's plugin that holds this skill").
 				contains("`bin/installer`").contains("`bin\\installer.ps1`").
-				contains("`<launcher> install --harness <h>`").contains("`<launcher> install --harness <h> <tag>`").
+				doesNotContain("`<launcher> install --harness <h>`").
+				contains("`<launcher> install --harness <h> <tag>`").
+				contains("the latest-update permission does not authorize a named release").
 				doesNotContain("cat-updater").doesNotContain("XDG_DATA_HOME").doesNotContain("LOCALAPPDATA").
 				doesNotContain("<launcher> update").doesNotContain("`setup`").
 				doesNotContain("rollback").doesNotContain("roll back").doesNotContain("rolled_back").
@@ -193,8 +195,8 @@ public final class LifecycleSkillsTest
 	}
 
 	/**
-	 * Verifies that every installer command that the {@code update} and {@code uninstall} skills tell an agent to run
-	 * matches a permission entry that install adds for the harness, so that the harness lets the agent run it.
+	 * Verifies that installer commands from the {@code update} and {@code uninstall} skills match their installed
+	 * permissions, except a Codex install naming a release, which is outside its latest-update permission.
 	 *
 	 * @param harness the harness whose permission entries to install
 	 * @throws IOException if a skill cannot be read or the permission entries cannot be installed
@@ -217,7 +219,9 @@ public final class LifecycleSkillsTest
 			HarnessIntegration integration = ServiceLoader.load(HarnessIntegration.class).stream().
 				map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals(harness)).findFirst().
 				orElseThrow();
-			Map<String, List<String>> entries = integration.installPermissions(home, launcher,
+			Map<String, String> environment = Map.of("SystemRoot", home.resolve("bound-system").toString(),
+				"PATH", home.resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
+			Map<String, List<String>> entries = integration.installPermissions(environment, home, launcher,
 				new FileReplacer(Platform.current(), () ->
 				{
 				}, Clock.systemUTC()));
@@ -242,8 +246,14 @@ public final class LifecycleSkillsTest
 					requireThat(exclusions.stream().anyMatch(exclusion -> matches(exclusion, command)),
 						"isExcluded").withContext(command, "command").withContext(exclusions, "exclusions").isTrue();
 				}
-				requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
-					withContext(entries, "entries").isTrue();
+				if (harness.equals("codex") && command.startsWith(launcherCommand + " install --harness codex "))
+				{
+					requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
+						withContext(entries, "entries").isFalse();
+				}
+				else
+					requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
+						withContext(entries, "entries").isTrue();
 			}
 		}
 	}

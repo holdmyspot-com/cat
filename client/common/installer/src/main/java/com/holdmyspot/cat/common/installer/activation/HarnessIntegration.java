@@ -166,20 +166,23 @@ public interface HarnessIntegration
 	void unregister(Path home, HarnessCli cli, boolean keepData) throws IOException;
 
 	/**
-	 * Adds the entries that let an agent run the installer's routine operations without a permission prompt or sandbox,
-	 * and that let the harness's sessions run the request server beside the installer outside the sandbox without a
-	 * prompt, so that it can start the sessions that they request inside that harness's own sandbox. Idempotent.
-	 *
-	 * @param home      the absolute, normalized harness home from the trust policy
-	 * @param installer the absolute path of the installer launcher in the active version folder
-	 * @param replacer  replaces each configuration file that this call writes, retrying while Windows refuses the
-	 *                  replacement
+	 * Adds entries derived from the recorded harness environment that let an agent run the latest-update command for
+	 * this installer without a permission prompt or sandbox, while status is allowed and uninstall asks the user. On
+	 * POSIX, also lets the harness's sessions run the request server beside the installer outside the sandbox without
+	 * a prompt. Idempotent.
+ *
+	 * @param environment the harness environment recorded in the trust policy
+	 * @param home        the absolute, normalized harness home from the trust policy
+	 * @param installer   the absolute path of the installer launcher in the active version folder
+	 * @param replacer    replaces each configuration file that this call writes, retrying while Windows refuses the
+	 *                    replacement
 	 * @return the entries that this call added, keyed by {@code <path relative to home>#<setting>}, with an empty
 	 * 	setting for a whole CAT-owned file; entries that already existed are not returned
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the configuration cannot be changed
 	 */
-	Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+	Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer)
 		throws IOException;
 
 	/**
@@ -187,13 +190,27 @@ public interface HarnessIntegration
 	 * configuration already holds it. An entry that the installer recorded and that neither this set nor
 	 * {@link #sandboxEntries} holds is obsolete, and install removes it.
 	 *
-	 * @param installer the absolute path of the installer launcher in the active version folder
+	 * @param environment the harness environment recorded in the trust policy
+	 * @param installer   the absolute path of the installer launcher in the active version folder
 	 * @return the entries keyed as {@link #installPermissions} returns them
-	 * @throws NullPointerException     if {@code installer} is null
+	 * @throws NullPointerException     if any required argument is null
 	 * @throws IllegalArgumentException if {@code installer} is relative
 	 * @throws IOException              if the launcher path cannot be named in an entry
 	 */
-	Map<String, List<String>> permissions(Path installer) throws IOException;
+	Map<String, List<String>> permissions(Map<String, String> environment, Path installer) throws IOException;
+
+	/**
+	 * Returns the complete shell command for updating this installation to the latest approved release.
+	 * The caller executes the returned text unchanged, including its output wrapper when present.
+	 *
+	 * @param environment the harness environment recorded in the trust policy
+	 * @param installer   the absolute, normalized installer launcher in the installed version folder
+	 * @return the latest-update command, with JSON output requested
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if the launcher or required recorded bindings are invalid
+	 * @throws IOException              if the command cannot be represented for the harness
+	 */
+	String latestUpdateCommand(Map<String, String> environment, Path installer) throws IOException;
 
 	/**
 	 * Returns the question that install must put to the user before it changes a setting that is not CAT's alone,
