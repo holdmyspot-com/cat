@@ -176,6 +176,7 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 	`choose <campaign> retry` is step 2's guard pilot, which `start` continues.)
 4. **Decide.** When `status` is `awaiting_user` and `proposal_file` is null, show the `summary` and each choice's
 	`label`, then ask the user to choose. Never choose on the user's behalf.
+	- When the pause offers no `choices`, such as an infrastructure failure, show the user its pending text verbatim, including the way forward that the text names, and act on that way forward only after the user answers.
 	- Pass the chosen entry of `choices` as `choose <campaign> <id>`. Add `--attempt <attempt>` when the entry has an
 		`attempt`. For `more_evidence`, ask the user for a review point above the entry's `review_point_above` and add
 		`--review-point <N>`. A review point is the trial count at which the campaign next pauses the entry's category
