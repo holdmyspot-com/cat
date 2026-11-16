@@ -87,7 +87,11 @@ A failed exit notice does not change the outcome; the next `status` reports the 
 		can change what the model receives, and a plugin that trials add can supply guidance that the prompt's users
 		lack. For each chosen plugin that the project builds, ask the user for the command that builds it, run from the
 		project root, and the directory, relative to the project root, where the build writes the plugin; a plugin whose
-		directory in the project is the plugin itself has no command. Never choose plugins on the user's behalf.
+		directory in the project is the plugin itself has no command. Tell the user that the command runs in the
+		campaign's copy of the project inside this session's sandbox, where a command that writes the copy's own Git
+		state, such as `git add`, `git commit` or `git checkout`, fails because the sandbox keeps that state read-only,
+		so a build that needs such a command cannot be optimized in a sandboxed session. Never choose plugins on the
+		user's behalf.
 	- Write the configuration file that the `message` names. Give it the key that the `message` names for this harness
 		and keep every other key that the file already holds. List each chosen installed plugin by the name that the
 		`message` shows, and each chosen plugin that the project builds by its name with a `build` that holds the
