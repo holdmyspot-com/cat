@@ -31,9 +31,9 @@ public final class FailureJson
 	 * @param id the scoped identifier of the supplied failure
 	 * @param evidenceSection the failing trial's evidence section, or {@code null} if the trial's harness events are
 	 *   no longer retained
-	 * @return the failing test case with the reason for its failure in {@code rationale}: the judge's rationale, or
-	 *   the record of each failed built-in tool; each assertion that it failed with its behavior in
-	 *   {@code failed_assertions}; the failure's {@code impact}, or {@code null} if no triage
+	 * @return the failing test case with the reason for its failure in {@code rationale}: the judge's rationale,
+	 *   preceded by the record of each failed built-in tool, if any; each assertion that it failed with its behavior
+	 *   in {@code failed_assertions}; the failure's {@code impact}, or {@code null} if no triage
 	 *   decided one; and the trial's {@code evidence_section}, or {@code null} if its events are no longer retained
 	 * @throws NullPointerException if any of the arguments other than {@code evidenceSection} are null
 	 */

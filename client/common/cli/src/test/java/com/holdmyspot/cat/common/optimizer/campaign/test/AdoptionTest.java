@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CellCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing.UnpairedTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
+import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Reference;
@@ -16,7 +17,12 @@ import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialAdoption;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
+import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
+import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -142,6 +148,36 @@ public final class AdoptionTest
 		requireThat(adopted.comparisons().get("uses_requested_tone"), "pairs").isEqualTo(new PairCounts(0, 7, 0, 0));
 		requireThat(adopted.unpaired().size(), "unpaired").isEqualTo(1);
 		requireThat(campaign.trials(), "trials").isEmpty();
+	}
+
+	/**
+	 * Verifies that a candidate formal trial that failed a built-in tool under {@code on_tool_failure: fail} waits for
+	 * its control trial having failed only that tool's assertion: the assertions that its judge decided count as the
+	 * judge decided them, with nothing imputed.
+	 */
+	@Test
+	public void failedToolFailsOnlyItsAssertion()
+	{
+		// Requirement: R-E5
+		MappedAssertion intact = new MappedAssertion(new Assertion("tone_intact", AssertionKind.GUARD,
+			"forbidden-text BROKEN", "No reply says BROKEN."), "r1");
+		MappedAssertion tone = ContractFixtures.contract().findTest("formatting").orElseThrow().assertions().getFirst();
+		Contract contract = ContractFixtures.withAssertions(ContractFixtures.contract(),
+			Map.of("formatting", List.of(tone, intact)));
+		Campaign campaign = new Builder().confirmed(contract, 1).working(1).certificationAttempt(1).
+			boundaries(Boundaries.standard(3, Boundaries.PAIRED_MINIMUM_PASS_RATE)).cell("formatting", 0, 0).
+			cell("safety", 0, 0).build();
+		campaign = TransitionSteps.assign(campaign, Purpose.FORMAL, "formatting");
+		TrialKey key = TransitionSteps.last(campaign);
+		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
+		campaign = Transitions.apply(campaign, new CampaignEvent.Complete(key, Verdict.FAIL, "",
+			List.of(new FailedAssertion("tone_intact", "forbidden_text_in_reply")), null, campaign.identity(), null,
+			List.of(), Builder.FILES));
+
+		Pairing pairing = campaign.attempt(1).pairing(Reference.CONTROL, "formatting");
+		requireThat(pairing.unpaired().size(), "unpaired").isEqualTo(1);
+		requireThat(pairing.unpaired().getFirst().passed(), "passed").
+			isEqualTo(Set.of("uses_requested_tone", TestCase.EXPECTED_OUTCOME));
 	}
 
 	/**

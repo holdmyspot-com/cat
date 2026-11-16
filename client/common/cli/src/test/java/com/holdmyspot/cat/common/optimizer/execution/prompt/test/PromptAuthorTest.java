@@ -810,9 +810,9 @@ public final class PromptAuthorTest
 		String turn = prompt.request(brief, COPY).turns().getFirst();
 
 		requireThat(turn, "turn").
-			contains("when no judge ran, the record of CAT's built-in tools that failed").
-			contains("No judge runs when a built-in tool fails the").
-			contains("a tool whose `on_tool_failure` is `judge` never fails it.");
+			contains("preceded when a built-in tool failed by the record of CAT's built-in tools that failed").
+			contains("A failed built-in tool fails only its own assertion, so the judge still decides the").
+			contains("other assertions; a tool whose `on_tool_failure` is `judge` never fails its assertion.");
 		JsonNode failures = json.readTree(section(turn, "failed for the working candidate",
 			"\n\nThe development counts"));
 		requireThat(failures.get(0).get("rationale").asString(), "rationale").

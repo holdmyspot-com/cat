@@ -184,10 +184,10 @@ public sealed interface CampaignEvent
 	 *
 	 * @param key the trial
 	 * @param verdict the trial's label
-	 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
-	 *   built-in tools
+	 * @param rationale the judge's explanation of the label, preceded by the record of the trial's failed
+	 *   built-in tools when any failed, or that record of its built-in tools when no judge ran
 	 * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its
-	 *   failed built-in tools or, when its judge failed it, those that the judge named; empty for a pass
+	 *   failed built-in tools, then those that its judge named; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 	 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
@@ -207,10 +207,10 @@ public sealed interface CampaignEvent
 		 *
 		 * @param key the trial
 		 * @param verdict the trial's label
-		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
-		 *   built-in tools
+		 * @param rationale the judge's explanation of the label, preceded by the record of the trial's failed
+		 *   built-in tools when any failed, or that record of its built-in tools when no judge ran
 		 * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its
-		 *   failed built-in tools or, when its judge failed it, those that the judge named; empty for a pass
+		 *   failed built-in tools, then those that its judge named; empty for a pass
 		 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed
 		 * @param inputTokens the trial session's input tokens, or {@code null} if unavailable
@@ -281,8 +281,8 @@ public sealed interface CampaignEvent
 		 *
 		 * @param key the trial
 		 * @param verdict the trial's label
-		 * @param rationale the judge's explanation of the label or, when no judge ran, the record of the trial's
-		 *   built-in tools
+		 * @param rationale the judge's explanation of the label, preceded by the record of the trial's failed
+		 *   built-in tools when any failed, or that record of its built-in tools when no judge ran
 		 * @param failedAssertions the assertions that a failed trial failed, each with its behavior
 		 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 		 * @param observed the conditions that the trial session and, if one ran, the judge session observed

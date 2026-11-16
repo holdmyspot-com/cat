@@ -133,6 +133,7 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletionException;
+import java.util.stream.Stream;
 
 /**
  * Advances one campaign during one bounded run, called a slice.
@@ -786,13 +787,14 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Runs a completed trial's built-in tools first. A failed tool whose {@code on_tool_failure} is {@code fail}
-	 * fails the trial with the record of each such tool and no judge runs; a failed development trial waits for its
-	 * triage before the failure is recorded. Otherwise the trial waits for a judge of the assertions without a
-	 * {@code tool}, of the assertions whose failed tool leaves them to the judge, and of the assertion
-	 * {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed, which receive the tool
-	 * results as evidence. A trial whose passing tools decide every assertion starts no judge: it passes with the record
-	 * of its tools. A tool that the record cannot decide, or evidence that cannot be rendered, makes the run an
-	 * infrastructure failure; a failure to read required trial evidence escapes.
+	 * fails its own assertion and no other, so the trial waits for a judge of every assertion that no passing or
+	 * failing tool decided: the assertions without a {@code tool}, the assertions whose failed tool leaves them to the
+	 * judge, and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed
+	 * or failed. The judge receives the tool results as evidence. A trial whose tools decide every assertion starts no
+	 * judge: it passes with the record of its tools, or fails with the record of each failed tool, and a failed
+	 * development trial waits for its triage before the failure is recorded. A tool that the record cannot decide, or
+	 * evidence that cannot be rendered, makes the run an infrastructure failure; a failure to read required trial
+	 * evidence escapes.
 	 *
 	 * @param trial the trial session
 	 * @param completed the trial session's result
@@ -817,31 +819,10 @@ public final class Driver implements AutoCloseable
 				describe(e), now);
 			return;
 		}
-		List<BuiltInToolResult> failed = results.stream().filter(BuiltInToolResult::failsTrial).toList();
-		if (!failed.isEmpty())
-		{
-			String record = turnEndNote(toolRecord("Failed built-in tools:", failed), completed);
-			List<FailedAssertion> failures = failed.stream().
-				map(result -> new FailedAssertion(result.assertion().id(), result.behavior())).
-				toList();
-			if (trial.key().purpose() != Purpose.DEVELOPMENT && trial.key().purpose() != Purpose.RACE)
-			{
-				complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
-				return;
-			}
-			Optional<String> section = renderEvidence(trial.key(), completed, now);
-			if (section.isPresent())
-			{
-				triageQueue.add(new Triaging(trial.key(), testCase, completed, section.get(), results, record, failures,
-					1, trial.concurrency(), Optional.empty(), List.of()));
-			}
-			return;
-		}
 		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements(), results);
 		if (judged.isEmpty())
 		{
-			complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.PASS,
-				turnEndNote(toolRecord("Passed built-in tools:", results), completed), List.of(), null);
+			decideWithoutJudge(trial, completed, results, now);
 			return;
 		}
 		String section = "";
@@ -853,6 +834,64 @@ public final class Driver implements AutoCloseable
 			section = rendered.get();
 		}
 		queueJudging(trial, completed, section, judged, results);
+	}
+
+	/**
+	 * Records a trial whose built-in tools decided every assertion. A failed development or race trial waits for its
+	 * triage before the failure is recorded.
+	 *
+	 * @param trial the trial session
+	 * @param completed the trial session's result
+	 * @param results the results of the test's built-in tools
+	 * @param now the current time
+	 * @throws IOException if retained trial evidence, the store or the worktree cannot be read or written
+	 */
+	private void decideWithoutJudge(InFlight.Trial trial, SessionResult.Completed completed,
+		List<BuiltInToolResult> results, Instant now) throws IOException
+	{
+		DrawnTestCase testCase = trial.testCase();
+		List<BuiltInToolResult> failed = failedTools(results);
+		if (failed.isEmpty())
+		{
+			complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.PASS,
+				turnEndNote(toolRecord("Passed built-in tools:", results), completed), List.of(), null);
+			return;
+		}
+		String record = turnEndNote(toolRecord("Failed built-in tools:", failed), completed);
+		List<FailedAssertion> failures = failedAssertions(failed);
+		if (trial.key().purpose() != Purpose.DEVELOPMENT && trial.key().purpose() != Purpose.RACE)
+		{
+			complete(trial.key(), testCase, trial.concurrency(), completed, Verdict.FAIL, record, failures, null);
+			return;
+		}
+		Optional<String> section = renderEvidence(trial.key(), completed, now);
+		if (section.isPresent())
+		{
+			triageQueue.add(new Triaging(trial.key(), testCase, completed, section.get(), results, record, failures,
+				1, trial.concurrency(), Optional.empty(), List.of()));
+		}
+	}
+
+	/**
+	 * Returns the results of the tools that failed their assertion under {@code on_tool_failure: fail}.
+	 *
+	 * @param results the results of a trial's built-in tools
+	 * @return the results that fail their trial, in order
+	 */
+	static List<BuiltInToolResult> failedTools(List<BuiltInToolResult> results)
+	{
+		return results.stream().filter(BuiltInToolResult::failsTrial).toList();
+	}
+
+	/**
+	 * Returns the assertions that failed built-in tools failed.
+	 *
+	 * @param failed the results of the tools that failed their trial
+	 * @return each tool's assertion with the behavior that the tool detected
+	 */
+	private static List<FailedAssertion> failedAssertions(List<BuiltInToolResult> failed)
+	{
+		return failed.stream().map(result -> new FailedAssertion(result.assertion().id(), result.behavior())).toList();
 	}
 
 	/**
@@ -1005,7 +1044,7 @@ public final class Driver implements AutoCloseable
 	 * @return the record: the heading, then one line per tool naming its assertion, its {@code tool}, its
 	 *   behavior and its observed value
 	 */
-	private static String toolRecord(String heading, List<BuiltInToolResult> results)
+	static String toolRecord(String heading, List<BuiltInToolResult> results)
 	{
 		StringBuilder record = new StringBuilder(heading);
 		for (BuiltInToolResult result : results)
@@ -1167,7 +1206,9 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Completes a judged trial, or queues the triage of a failed development trial.
+	 * Completes a judged trial, or queues the triage of a failed development trial. A trial whose built-in tool failed
+	 * under {@code on_tool_failure: fail} fails whatever the judge decided, with the tool's assertion among its
+	 * failures and the judge's own failures after it.
 	 *
 	 * @param judging the judged trial
 	 * @param judgment the judge's verdict and rationale
@@ -1179,11 +1220,23 @@ public final class Driver implements AutoCloseable
 	private void judged(Judging judging, Judgment judgment, TrialProfile judge, List<ShadowResult> shadows,
 		Instant now) throws IOException
 	{
-		if (judgment.verdict() != Verdict.FAIL || (judging.key().purpose() != Purpose.DEVELOPMENT &&
+		List<BuiltInToolResult> failedTools = failedTools(judging.results());
+		Verdict verdict = judgment.verdict();
+		String rationale = judgment.rationale();
+		List<FailedAssertion> failures = judgment.failures();
+		if (!failedTools.isEmpty())
+		{
+			// A failed tool fails its own assertion, and the judge's verdicts on the others stand as they are
+			verdict = Verdict.FAIL;
+			rationale = turnEndNote(toolRecord("Failed built-in tools:", failedTools), judging.evidence()) + "\n\n" +
+				rationale;
+			failures = Stream.concat(failedAssertions(failedTools).stream(), failures.stream()).toList();
+		}
+		if (verdict != Verdict.FAIL || (judging.key().purpose() != Purpose.DEVELOPMENT &&
 			judging.key().purpose() != Purpose.RACE))
 		{
-			complete(judging.key(), judging.testCase(), judging.concurrency(), judging.evidence(), judgment.verdict(),
-				judgment.rationale(), judgment.failures(), null, Optional.of(judge), shadows);
+			complete(judging.key(), judging.testCase(), judging.concurrency(), judging.evidence(), verdict, rationale,
+				failures, null, Optional.of(judge), shadows);
 			return;
 		}
 		String section = judging.evidenceSection();
@@ -1195,7 +1248,7 @@ public final class Driver implements AutoCloseable
 			section = rendered.get();
 		}
 		triageQueue.add(new Triaging(judging.key(), judging.testCase(), judging.evidence(), section, judging.results(),
-			judgment.rationale(), judgment.failures(), 1, judging.concurrency(), Optional.of(judge), shadows));
+			rationale, failures, 1, judging.concurrency(), Optional.of(judge), shadows));
 	}
 
 	/**
@@ -1600,7 +1653,8 @@ public final class Driver implements AutoCloseable
 	 * @param concurrency the number of trial sessions that ran once the trial's session started
 	 * @param trial the trial session's result
 	 * @param verdict the trial's label
-	 * @param rationale the judge's rationale or, when a built-in tool failed, the record of the failed tools
+	 * @param rationale the judge's rationale, preceded by the record of the failed tools when a built-in tool failed,
+	 *   or that record alone when no judge ran
 	 * @param failures the assertions that a failed trial failed, each with its behavior; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @throws IOException if the store or the worktree cannot be read or written, or a passing trial's project copies
@@ -1623,7 +1677,8 @@ public final class Driver implements AutoCloseable
 	 * @param concurrency the number of trial sessions that ran once the trial's session started
 	 * @param trial the trial session's result
 	 * @param verdict the trial's label
-	 * @param rationale the judge's rationale or, when a built-in tool failed, the record of the failed tools
+	 * @param rationale the judge's rationale, preceded by the record of the failed tools when a built-in tool failed,
+	 *   or that record alone when no judge ran
 	 * @param failures the assertions that a failed trial failed, each with its behavior; empty for a pass
 	 * @param triage the impact of a failed development trial, or {@code null} for any other trial
 	 * @param judge the profile of the judge whose verdict decided the trial, or empty if built-in tools did

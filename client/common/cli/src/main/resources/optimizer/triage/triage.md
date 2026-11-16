@@ -33,7 +33,7 @@
 
 ### Failure
 
-Why the trial failed: the judge's rationale, or the built-in tools that failed the trial.
+Why the trial failed: the built-in tools that failed, then the judge's rationale for the assertions that it decided.
 
 {{failure}}
 

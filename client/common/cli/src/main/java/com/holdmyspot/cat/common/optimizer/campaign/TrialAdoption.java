@@ -1298,7 +1298,7 @@ public final class TrialAdoption
 		if (!PairedComparison.isImpliedBy(boundaries.minimumPassRate()))
 		{
 			PromptTest test = testOf(draft, cell);
-			UnpairedTrial unpaired = new UnpairedTrial(trial.testCase(), passedAssertions(test, trial, true));
+			UnpairedTrial unpaired = new UnpairedTrial(trial.testCase(), passedAssertions(test, trial));
 			boolean minimumCertified = DecisionTable.minimumDecision(boundaries, cellCounts) ==
 				DecisionTable.CellDecision.CERTIFIED;
 			List<String> assertionIds = test.allAssertions().stream().map(Assertion::id).toList();
@@ -1368,7 +1368,7 @@ public final class TrialAdoption
 		CertificationAttempt attempt = draft.attempt(trial.key().series());
 		String cell = trial.key().cell();
 		Pairing before = attempt.pairing(reference, cell);
-		Pairing pairing = before.withReference(trial.testCase(), passedAssertions(testOf(draft, cell), trial, false));
+		Pairing pairing = before.withReference(trial.testCase(), passedAssertions(testOf(draft, cell), trial));
 		CertificationAttempt updated = attempt.withPairing(reference, cell, pairing);
 		// A pair that only the reference trial passed moves a comparison toward below its reference or out of reach
 		boolean unfavourable = false;
@@ -1406,17 +1406,14 @@ public final class TrialAdoption
 
 	/**
 	 * Returns the assertions that a trial passed. A passing trial passed every assertion, and a failed trial every
-	 * assertion that it did not fail. A failed built-in tool decides its trial without a judge, so the trial's judged
-	 * assertions were never decided: both sides count them against the candidate, failed for a candidate trial and
-	 * passed for a control or incumbent trial, so that the missing evidence cannot favour the candidate. A failure
-	 * that names no assertion passed none.
+	 * assertion that it did not fail, whichever built-in tool or judge decided each. A failure that names no assertion
+	 * passed none.
 	 *
 	 * @param test the trial's prompt test
 	 * @param trial the judged trial
-	 * @param candidate {@code true} for a candidate formal trial, {@code false} for a control or incumbent trial
 	 * @return the identifiers of the assertions that the trial passed, in the prompt test's assertion order
 	 */
-	private static Set<String> passedAssertions(PromptTest test, LogicalTrial trial, boolean candidate)
+	private static Set<String> passedAssertions(PromptTest test, LogicalTrial trial)
 	{
 		Set<String> passed = new LinkedHashSet<>();
 		for (Assertion assertion : test.allAssertions())
@@ -1425,21 +1422,8 @@ public final class TrialAdoption
 			return passed;
 		if (trial.failedAssertions().isEmpty())
 			return Set.of();
-		boolean checkFailed = false;
 		for (FailedAssertion failed : trial.failedAssertions())
-		{
 			passed.remove(failed.assertionId());
-			for (Assertion assertion : test.allAssertions())
-			{
-				if (assertion.id().equals(failed.assertionId()) && assertion.tool() != null)
-					checkFailed = true;
-			}
-		}
-		if (checkFailed && candidate)
-		{
-			for (Assertion assertion : test.judgedAssertions())
-				passed.remove(assertion.id());
-		}
 		return passed;
 	}
 

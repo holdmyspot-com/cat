@@ -183,7 +183,8 @@ sealed interface InFlight
 	 * @param evidence the trial session's result, which every triage attempt receives unchanged
 	 * @param evidenceSection the rendered trial activity and file changes, unchanged across triage attempts
 	 * @param results the results of the test's built-in tools
-	 * @param rationale the judge's rationale or, when a built-in tool failed, the record of the failed tools
+	 * @param rationale the judge's rationale, preceded by the record of the failed tools when a built-in tool failed,
+	 *   or that record alone when no judge ran
 	 * @param failures the assertions that the trial failed, each with its behavior
 	 * @param attempt the triage attempt, from 1
 	 * @param concurrency the number of trial sessions running immediately after the trial's session started

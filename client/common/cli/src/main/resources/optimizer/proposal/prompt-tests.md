@@ -171,8 +171,9 @@ a trial whose tools decide every assertion needs no judge session. Every other a
 	effect;
 - `tool`, when a built-in tool decides the assertion: its name and arguments in one code span, such as
 	`` `read-in-full logs/service.log` ``. Leave the pair out when the judge decides the assertion;
-- `on_tool_failure`, only with `tool`: what a failure of the tool means: `fail` when the failure fails the trial,
-	which is the meaning when the pair is absent; `judge` when the judge then decides the assertion from its description;
+- `on_tool_failure`, only with `tool`: what a failure of the tool means: `fail` when the failure fails the assertion,
+	and so the trial, without the judge deciding it, which is the meaning when the pair is absent; `judge` when the
+	judge then decides the assertion from its description;
 - `description`: what the assertion requires, in words that the judge can decide from the trial's record.
 - `judge_reason`, when the judge decides any part of an assertion (no `tool`, or `on_tool_failure: judge`): one
 	sentence explaining why no built-in tool can decide the whole assertion.

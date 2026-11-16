@@ -306,6 +306,28 @@ public final class ContractFixtures
 	}
 
 	/**
+	 * Returns a contract in which some prompt tests have other assertions.
+	 *
+	 * @param contract         the contract
+	 * @param assertionsByTest every assertion of each test whose assertions change, by test identifier
+	 * @return the contract with the assertions
+	 */
+	public static Contract withAssertions(Contract contract, Map<String, List<MappedAssertion>> assertionsByTest)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			List<MappedAssertion> assertions = assertionsByTest.getOrDefault(test.id(), test.assertions());
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(), assertions,
+				test.regressionScenarios(), List.of()));
+		}
+		return new Contract(contract.requirements(), tests, profiles(contract.requirements(), tests), contract.judge(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
 	 * Returns a contract that lists dependents of the target prompt file.
 	 *
 	 * @param contract the contract

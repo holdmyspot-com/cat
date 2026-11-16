@@ -15,9 +15,9 @@ import java.util.List;
  *
  * @param testCase the test case that failed: the targeted copy of a development failure's test case, or the held-out
  *   test case of a certification failure
- * @param rationale the judge's explanation of the failure, or the record of each failed built-in tool
+ * @param rationale the judge's explanation of the failure, preceded by the record of each failed built-in tool, if any
  * @param failedAssertions the assertions that the failure failed, each with its behavior: those of its failed
- *   built-in tools or, when its judge failed it, those that the judge named
+ *   built-in tools, then those that its judge named
  * @param triage the impact of a development failure, or {@code null} for a certification failure or a development
  *   failure that a build without impacts recorded
  * @param reruns the targeted diagnostic reruns of the test case, in the order they were adopted; empty if none ran
@@ -32,9 +32,9 @@ public record Failure(DrawnTestCase testCase, String rationale, List<FailedAsser
 	 *
 	 * @param testCase the test case that failed: the targeted copy of a development failure's test case, or the
 	 *   held-out test case of a certification failure
-	 * @param rationale the judge's explanation of the failure, or the record of each failed built-in tool
+	 * @param rationale the judge's explanation of the failure, preceded by the record of each failed tool
 	 * @param failedAssertions the assertions that the failure failed, each with its behavior: those of its
-	 *   failed built-in tools or, when its judge failed it, those that the judge named
+	 *   failed built-in tools, then those that its judge named
 	 * @param triage the impact of a development failure, or {@code null} for a certification failure or a development
 	 *   failure that a build without impacts recorded
 	 * @param reruns the targeted diagnostic reruns of the test case, in the order they were adopted; empty if none ran

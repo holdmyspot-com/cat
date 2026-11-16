@@ -1027,13 +1027,13 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Runs a completed trial's built-in tools. Unlike a campaign's trial, a pilot trial whose tool failed under
-		 * {@code on_tool_failure: fail} still waits for a judge, so that every guard has a pass rate: the judge
-		 * decides the assertions without a {@code tool}, the assertions whose failed tool leaves them to the judge,
-		 * and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool, while the
-		 * failed tool's own assertion stays failed. A trial whose tools decide every assertion starts no judge. A
-		 * tool that the trial's record cannot decide makes the trial a failed run that records why; evidence that
-		 * cannot be read or rendered makes the run an infrastructure attempt.
+		 * Runs a completed trial's built-in tools, as {@link Driver} does for a campaign's trial: a tool that failed
+		 * under {@code on_tool_failure: fail} fails its own assertion and no other, so the trial still waits for a
+		 * judge of the assertions without a {@code tool}, the assertions whose failed tool leaves them to the judge,
+		 * and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool. A trial whose
+		 * tools decide every assertion starts no judge. A tool that the trial's record cannot decide makes the trial a
+		 * failed run that records why; evidence that cannot be read or rendered makes the run an infrastructure
+		 * attempt.
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
@@ -1067,18 +1067,14 @@ public final class GuardPilot
 				// Every assertion has a tool that decided it, so no judge has anything to decide
 				boolean failed = results.stream().anyMatch(BuiltInToolResult::failsTrial);
 				Map<String, Boolean> assertions = new LinkedHashMap<>();
-				StringBuilder record;
-				if (failed)
-					record = new StringBuilder("Failed built-in tools:");
-				else
-					record = new StringBuilder("Passed built-in tools:");
 				for (BuiltInToolResult result : results)
-				{
 					assertions.put(result.assertion().id(), result.passed());
-					if (result.failsTrial() || !failed)
-						record.append("\n- ").append(result.describe());
-				}
-				pilot.decided(trial.position(), testCase, assertions, record.toString());
+				String record;
+				if (failed)
+					record = Driver.toolRecord("Failed built-in tools:", Driver.failedTools(results));
+				else
+					record = Driver.toolRecord("Passed built-in tools:", results);
+				pilot.decided(trial.position(), testCase, assertions, record);
 				if (!failed)
 					deleteProjects(completed);
 				return;
@@ -1139,20 +1135,11 @@ public final class GuardPilot
 				String id = assertion.assertion().id();
 				assertions.put(id, !failed.contains(id));
 			}
-			StringBuilder record = new StringBuilder(128);
-			for (BuiltInToolResult result : judging.results())
-			{
-				if (result.failsTrial())
-				{
-					if (record.isEmpty())
-						record.append("Failed built-in tools:");
-					record.append("\n- ").append(result.describe());
-				}
-			}
-			if (!record.isEmpty())
-				record.append("\n\n");
-			record.append(judgment.rationale());
-			judging.pilot().decided(judging.position(), judging.testCase(), assertions, record.toString());
+			List<BuiltInToolResult> failedTools = Driver.failedTools(judging.results());
+			String record = judgment.rationale();
+			if (!failedTools.isEmpty())
+				record = Driver.toolRecord("Failed built-in tools:", failedTools) + "\n\n" + record;
+			judging.pilot().decided(judging.position(), judging.testCase(), assertions, record);
 			if (assertions.containsValue(false))
 				return;
 			deleteProjects(judging.trial());

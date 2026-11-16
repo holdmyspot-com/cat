@@ -31,7 +31,7 @@ public interface TriageProtocol
 	 * @param results the results of the test's built-in tools; empty if the test has none or a tool could not
 	 *   run before the failure
 	 * @param evidenceSection the rendered trial activity and file changes
-	 * @param failure the judge's rationale for the failure, or the record of each failed built-in tool
+	 * @param failure the judge's rationale for the failure, preceded by the record of each failed built-in tool, if any
 	 * @return a request whose role is {@link SessionRole#TRIAGE}
 	 * @throws NullPointerException if any of the arguments are null
 	 */

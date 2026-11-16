@@ -159,6 +159,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
@@ -5565,19 +5566,7 @@ public final class DriverTest
 	 */
 	private static Contract withAssertions(Map<String, List<MappedAssertion>> assertionsByTest)
 	{
-		Contract fixture = ContractFixtures.contract();
-		List<PromptTest> tests = new ArrayList<>();
-		for (PromptTest test : fixture.tests())
-		{
-			List<MappedAssertion> assertions = assertionsByTest.getOrDefault(test.id(), test.assertions());
-			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
-				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
-				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(), assertions,
-				test.regressionScenarios(), List.of()));
-		}
-		return new Contract(fixture.requirements(), tests,
-			ContractFixtures.profiles(fixture.requirements(), tests), fixture.judge(),
-			fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+		return ContractFixtures.withAssertions(ContractFixtures.contract(), assertionsByTest);
 	}
 
 	/**
@@ -5607,15 +5596,16 @@ public final class DriverTest
 	}
 
 	/**
-	 * A trial fails a built-in tool because forbidden text appears only in its interim message. No judge session
-	 * runs, and every message plus the failed check's record, which names the assertion, its check, its behavior and
-	 * its observed value, reaches the prompt author brief in place of a judge rationale, for the failure and for the
-	 * rerun that reproduced it.
+	 * A trial fails a built-in tool because forbidden text appears only in its interim message. That failed tool fails
+	 * only its own assertion: the judge still decides the assertions that no tool decided, receives the failed tool's
+	 * result as evidence, and passes them, so the trial fails exactly the tool's assertion. Every message plus the
+	 * failed check's record, which names the assertion, its check, its behavior and its observed value, followed by the
+	 * judge's rationale, reaches the prompt author brief, for the failure and for the rerun that reproduced it.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void failedCheckRunsNoJudge() throws IOException
+	public void failedCheckStillRunsJudge() throws IOException
 	{
 		// Requirement: R-E21
 		// Requirement: R-C9
@@ -5639,6 +5629,7 @@ public final class DriverTest
 				}
 				return compliant(harness, request);
 			});
+			harness.judges(request -> harness.judged(request, Verdict.PASS, "The tone is kept."));
 			try (Driver driver = harness.open())
 			{
 				harness.runUntil(driver, () -> !harness.promptAuthor().briefs().isEmpty());
@@ -5649,30 +5640,136 @@ public final class DriverTest
 			requireThat(failure.testCase().testId(), "testId").isEqualTo("plain_list");
 			String record = failure.rationale();
 			requireThat(record, "rationale").startsWith("Failed built-in tools:\n- Assertion `list_intact`, " +
-				"`tool: forbidden-text " + BROKEN + "`: failed (forbidden_text_in_reply). Observed: ").contains(BROKEN);
+				"`tool: forbidden-text " + BROKEN + "`: failed (forbidden_text_in_reply). Observed: ").contains(BROKEN).
+				contains("\n\n- `keeps_requested_tone`: pass. The tone is kept.");
+			requireThat(failure.failedAssertions(), "failedAssertions").
+				isEqualTo(List.of(new FailedAssertion("list_intact", "forbidden_text_in_reply")));
 			requireThat(failure.responses(), "responses").isEqualTo(List.of(List.of(BROKEN, "red, green, blue")));
 			requireThat(failure.reruns(), "reruns").isEqualTo(List.of(new DiagnosticRerun(Verdict.FAIL, record)));
 			requireThat(failure.triage().impact(), "impact").isEqualTo(Impact.SELF_RECOVERING);
 			requireThat(triageRequests(harness).getFirst().turns().getFirst(), "triageTurn").contains(record).
 				contains(BROKEN);
-			for (FakeSession session : harness.sessions().sessions())
+			SessionRequest judge = judgeRequests(harness).stream().
+				filter(request -> judgeTest(request).equals("plain_list")).findFirst().orElseThrow();
+			List<String> decided = new ArrayList<>();
+			for (JsonNode assertion : harness.decidedAssertions(judge))
+				decided.add(assertion.get("id").asString());
+			requireThat(decided, "decided").containsExactly(List.of("keeps_requested_tone",
+				TestCase.EXPECTED_OUTCOME));
+			String turn = judge.turns().getFirst();
+			String resultsSection = turn.substring(turn.indexOf("### Built-in tool results"),
+				turn.indexOf("### How to judge"));
+			requireThat(resultsSection, "resultsSection").contains("\"assertion_id\" : \"list_intact\"").
+				contains("\"passed\" : false");
+		}
+	}
+
+	/**
+	 * A control, incumbent or candidate formal trial that fails a built-in tool under {@code on_tool_failure: fail}
+	 * is still judged for the assertions that no tool decided, and the judge's verdict on each counts: the trial fails
+	 * the failed tool's assertion and each assertion that the judge failed, and nothing is imputed.
+	 *
+	 * @param purpose the purpose of the trial whose tool fails
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test(dataProvider = "referenceAndFormalPurposes")
+	public void failedToolIsJudged(Purpose purpose) throws IOException
+	{
+		// Requirement: R-E21
+		// Requirement: R-C9
+		Contract contract = checkedContract();
+		Builder start = new Builder().confirmed(contract, 1).working(1).readyBaseline();
+		for (String cell : contract.cellIds())
+			start.development(cell, CommitGate.MINIMUM_TRIALS, 0);
+		DecisionBoundaries boundaries = Boundaries.paired(contract.cellIds().size());
+		Builder.AttemptBuilder running = start.certificationAttempt(1).boundaries(boundaries);
+		for (String cell : contract.cellIds())
+			oneReferencePairShort(running, boundaries, contract, cell);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = runningAttemptHarness(cleanup, running.build());
+			Map<TrialKey, Boolean> broken = new ConcurrentHashMap<>();
+			harness.trials(request ->
 			{
-				SessionRequest request = session.request();
-				if (request.role() == SessionRole.JUDGE)
+				if (isPlainList(request) && runningTrial(harness, request).key().purpose() == purpose)
 				{
-					String turn = request.turns().getFirst();
-					String responsesSection = turn.substring(turn.indexOf("The trial agent's reply to each turn"),
-						turn.indexOf("The trial's tool calls"));
-					JsonNode responses = JsonMapper.builder().build().readTree(responsesSection.substring(
-						responsesSection.indexOf('[')));
-					for (JsonNode response : responses)
-					{
-						for (JsonNode message : response)
-							requireThat(message.asString(), "judgedMessage").isNotEqualTo(BROKEN);
-					}
+					broken.put(runningTrial(harness, request).key(), true);
+					SessionResult.Completed completed = harness.completed("red, green, blue", DriverHarness.MODEL);
+					return new SessionResult.Completed(completed.transcript(), List.of(List.of(BROKEN,
+						"red, green, blue")), completed.effects(), completed.initialProject(), completed.model(),
+						completed.reasoning(), completed.usage(), completed.windows(), completed.promptSources(),
+						completed.toolCalls());
 				}
+				return compliant(harness, request);
+			});
+			harness.judges(request ->
+			{
+				if (judgeTest(request).equals("plain_list") && repliedBroken(request))
+					return harness.judged(request, Verdict.FAIL, "The tone is lost.");
+				return harness.judged(request, Verdict.PASS, "The trial met the requirements.");
+			});
+			try (Driver driver = harness.open())
+			{
+				harness.runUntil(driver, () -> broken.keySet().stream().
+					anyMatch(key -> recordedOutcome(harness, key).isPresent()));
+			}
+			long judged = judgeRequests(harness).stream().filter(DriverTest::repliedBroken).count();
+			requireThat(judged, "judgedBrokenTrials").isGreaterThanOrEqualTo(1L);
+			for (TrialKey key : broken.keySet())
+			{
+				Optional<CampaignEvent.Complete> recorded = recordedOutcome(harness, key);
+				if (recorded.isEmpty())
+					continue;
+				CampaignEvent.Complete outcome = recorded.get();
+				requireThat(outcome.verdict(), "verdict").isEqualTo(Verdict.FAIL);
+				requireThat(outcome.failedAssertions(), "failedAssertions").isEqualTo(List.of(
+					new FailedAssertion("list_intact", "forbidden_text_in_reply"),
+					new FailedAssertion("keeps_requested_tone", "wrong_tone")));
+				requireThat(outcome.rationale(), "rationale").startsWith("Failed built-in tools:").
+					contains("\n\n- `keeps_requested_tone`: fail (wrong_tone). The tone is lost.");
 			}
 		}
+	}
+
+	/**
+	 * Returns the recorded outcome of a trial.
+	 *
+	 * @param harness the test's harness
+	 * @param key the trial
+	 * @return the outcome, or empty if the trial has none yet
+	 */
+	private static Optional<CampaignEvent.Complete> recordedOutcome(DriverHarness harness, TrialKey key)
+	{
+		return harness.store().readRecord(DriverHarness.CAMPAIGN, key).map(TrialRecord::outcome);
+	}
+
+	/**
+	 * Returns the purposes of the certification trials whose failed built-in tool still gets a judge.
+	 *
+	 * @return the purposes
+	 */
+	@DataProvider
+	public Object[][] referenceAndFormalPurposes()
+	{
+		return new Object[][]
+		{
+			{Purpose.FORMAL},
+			{Purpose.CONTROL},
+			{Purpose.INCUMBENT}
+		};
+	}
+
+	/**
+	 * Indicates whether a judge request judges a trial whose reply holds {@value #BROKEN}.
+	 *
+	 * @param request the judge session's request
+	 * @return {@code true} if the trial agent's reply, as the request shows it, holds the text
+	 */
+	private static boolean repliedBroken(SessionRequest request)
+	{
+		String turn = request.turns().getFirst();
+		int start = turn.indexOf("The trial agent's reply to each turn");
+		return start >= 0 && turn.substring(start, turn.indexOf("The trial's tool calls")).contains(BROKEN);
 	}
 
 	/**

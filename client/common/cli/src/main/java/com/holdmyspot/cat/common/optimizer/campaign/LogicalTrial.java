@@ -23,7 +23,7 @@ import java.util.Optional;
  * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
  *   built-in tools, or {@code null} if the trial is not judged
  * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its failed
- *   built-in tools or, when its judge failed it, those that the judge named; empty unless the trial failed
+ *   built-in tools, then those that its judge named; empty unless the trial failed
  * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
  *   another purpose or was judged by a build that did not decide impacts
  * @param infrastructureFailures the runs that ended without an outcome and count toward
@@ -54,7 +54,7 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	 * @param rationale the judge's explanation of {@code verdict} or, when no judge ran, the record of the trial's
 	 *   built-in tools, or {@code null} if the trial is not judged
 	 * @param failedAssertions the assertions that a failed trial failed, each with its behavior: those of its
-	 *   failed built-in tools or, when its judge failed it, those that the judge named; empty unless the trial
+	 *   failed built-in tools, then those that its judge named; empty unless the trial
 	 *   failed
 	 * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
 	 *   another purpose or was judged by a build that did not decide impacts
