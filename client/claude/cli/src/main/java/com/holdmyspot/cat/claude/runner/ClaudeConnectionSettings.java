@@ -260,9 +260,9 @@ public final class ClaudeConnectionSettings
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String)}
 	 * does, except that the sandbox also lets the instance's commands write the run's requests directory when the
 	 * session may request sessions. It also permits the literal launcher command with any arguments and reads of
-	 * the run's responses directory and its descendants. When {@code project} is not null, the sandbox also lets the
-	 * instance's commands write {@code .git/worktrees} in it, which this method creates, so that Git can register the
-	 * linked worktrees that the instance adds; no other path under {@code .git} becomes writable.
+	 * the run's responses directory and its descendants. The sandbox lets the instance's commands write no path
+	 * under the project's {@code .git}: Claude Code keeps the directory in which Git registers linked worktrees
+	 * read-only over any grant, so the commands register no worktree themselves.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -276,8 +276,8 @@ public final class ClaudeConnectionSettings
 	 *                                 empty string to keep the parent's choice
 	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
 	 *                                 none
-	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
-	 *                                 {@code null} if the instance may register no linked worktree
+	 * @param project                  the instance's project, which Claude Code lets its commands write, or
+	 *                                 {@code null} if the instance has none
 	 * @throws NullPointerException if {@code instructionFilesMode} is null
 	 * @throws IOException          if settings I/O fails
 	 */
@@ -298,7 +298,7 @@ public final class ClaudeConnectionSettings
 	 * {@code bound}, and its commands reach {@code modelHost} if {@code bound} lets them.
 	 * <p>
 	 * The instance needs to write {@code claudeHome}, which is always writable, the dependency caches, the requests
-	 * directory and the worktree registrations; a cache or directory that {@code bound} does not let it write is not
+	 * directory; a cache or directory that {@code bound} does not let it write is not
 	 * writable. Claude Code lets the instance's commands write the project and {@code claudeTemporaryDirectory}
 	 * without a setting, so the session is refused unless {@code bound} lets them write those and
 	 * {@code claudeHome}. {@code bound} always lets the instance write inside {@code runFolder}, so the session is
@@ -325,8 +325,8 @@ public final class ClaudeConnectionSettings
 	 *                                 empty string to keep the parent's choice
 	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
 	 *                                 none
-	 * @param project                  the instance's Git repository, whose {@code .git} is a directory, or
-	 *                                 {@code null} if the instance may register no linked worktree
+	 * @param project                  the instance's project, which Claude Code lets its commands write, or
+	 *                                 {@code null} if the instance has none
 	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
@@ -370,8 +370,8 @@ public final class ClaudeConnectionSettings
 	 *                                 parent's choice
 	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
 	 *                                 none
-	 * @param project                  the instance's Git repository, or {@code null} if the instance may register no
-	 *                                 linked worktree
+	 * @param project                  the instance's project, which Claude Code lets its commands write, or
+	 *                                 {@code null} if the instance has none
 	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
@@ -427,8 +427,8 @@ public final class ClaudeConnectionSettings
 	 *                                 parent's choice
 	 * @param requestAccess            the session's access to requested sessions, or {@code null} if it may request
 	 *                                 none
-	 * @param project                  the instance's Git repository, or {@code null} if the instance may register no
-	 *                                 linked worktree
+	 * @param project                  the instance's project, which Claude Code lets its commands write, or
+	 *                                 {@code null} if the instance has none
 	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
@@ -470,17 +470,9 @@ public final class ClaudeConnectionSettings
 			if (refusal.isPresent())
 				throw new SessionRefusedException(refusal.get());
 		}
-		Path worktreeRegistrations = null;
-		if (project != null)
-		{
-			// Git registers each linked worktree below this directory; the sandbox grants only a path that exists
-			worktreeRegistrations = project.toAbsolutePath().normalize().resolve(".git").resolve("worktrees");
-		}
 		List<Path> sessionWrites = new ArrayList<>(dependencyCaches);
 		if (requestAccess != null)
 			sessionWrites.add(requestAccess.requests());
-		if (worktreeRegistrations != null)
-			sessionWrites.add(worktreeRegistrations);
 		List<Path> implicitWrites = new ArrayList<>();
 		implicitWrites.add(claudeTemporaryDirectory);
 		if (project != null)
@@ -537,8 +529,6 @@ public final class ClaudeConnectionSettings
 
 		Files.createDirectories(claudeTemporaryDirectory);
 		Files.createDirectories(claudeHome);
-		if (worktreeRegistrations != null)
-			Files.createDirectories(worktreeRegistrations);
 		Files.createDirectories(destination.getParent());
 		Files.writeString(destination, mapper.writeValueAsString(settings));
 		return policy;

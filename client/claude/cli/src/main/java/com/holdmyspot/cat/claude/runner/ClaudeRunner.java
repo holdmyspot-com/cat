@@ -460,8 +460,9 @@ public final class ClaudeRunner
 	 * inherited. The class is all that the variable carries: no value of a variable or of the login file is read.
 	 * <p>
 	 * The environment never sets {@code CLAUDE_CODE_SUBPROCESS_ENV_SCRUB}, so Claude Code passes its credentials and
-	 * its configuration directory's variable to the commands and hooks that it starts, and keeps protecting the
-	 * project's {@code .git/worktrees} at the lower priority that the session's settings grant overrides. The caller's
+	 * its configuration directory's variable to the commands and hooks that it starts. Claude Code keeps the project's
+	 * {@code .git/worktrees} read-only in its sandbox whether or not that mode is set, so the session's commands
+	 * register no worktree; the prompt optimizer's registration operations run outside the sandbox. The caller's
 	 * value of the variable is not inherited, because the environment copies only generic operating-system variables,
 	 * Claude's connection variables and its subagent settings from the caller's environment.
 	 *

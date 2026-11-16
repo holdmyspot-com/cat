@@ -449,14 +449,16 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that the isolated settings let the session's commands write the directory in which Git registers the
-	 * linked worktrees of its project, which the settings create, and no other path in the project's Git directory.
+	 * Verifies that the isolated settings let the session's commands write no path in its project's Git directory and
+	 * create none there: Claude Code keeps the directory in which Git registers linked worktrees read-only over any
+	 * grant, so the prompt optimizer's registration operations run outside the sandbox instead.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void permitsOnlyGitWorktreeWrites() throws IOException
+	public void grantsNoGitWrites() throws IOException
 	{
+		// Requirement: R-W17
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -470,11 +472,12 @@ public final class ClaudeConnectionSettingsTest
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				claudeTemporaryDirectory, claudeHome, List.of(), root.resolve("run"), List.of(), "", null, project);
 
-			List<String> writablePaths = strings(scope.json().readTree(Files.readString(destination)).
-				path("sandbox").path("filesystem").path("allowWrite"));
-			requireThat(writablePaths, "allowWrite").isEqualTo(List.of(claudeHome.toString(),
-				registrations.toString()));
-			requireThat(registrations, "registrations").isDirectory();
+			String settings = Files.readString(destination);
+			List<String> writablePaths = strings(scope.json().readTree(settings).path("sandbox").path("filesystem").
+				path("allowWrite"));
+			requireThat(writablePaths, "allowWrite").isEqualTo(List.of(claudeHome.toString()));
+			requireThat(settings, "settings").doesNotContain(".git/worktrees");
+			requireThat(Files.exists(registrations), "registrations").isFalse();
 		}
 	}
 
@@ -1139,7 +1142,7 @@ public final class ClaudeConnectionSettingsTest
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").isEqualTo(
-				List.of(home.toString(), cache.toString(), project.resolve("worktrees").toString()));
+				List.of(home.toString(), cache.toString()));
 			requireThat(effective.writeRoots(), "writeRoots").doesNotContain(run);
 		}
 	}

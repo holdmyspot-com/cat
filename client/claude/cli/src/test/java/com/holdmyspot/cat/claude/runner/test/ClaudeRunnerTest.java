@@ -80,7 +80,7 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that the Claude process environment does not ask Claude Code to scrub the environment and sandbox
 	 * paths of its commands, even if the caller's environment does, so that the session's settings do not depend on
-	 * the caller and Claude Code leaves the project's {@code .git/worktrees} to the session's grant.
+	 * the caller.
 	 *
 	 * @throws IOException if the environment cannot be built
 	 */
@@ -1565,8 +1565,7 @@ public final class ClaudeRunnerTest
 			for (JsonNode path : sandbox.path("filesystem").path("allowWrite"))
 				allowWrite.add(path.asString());
 			requireThat(allowWrite, "allowWrite").isEqualTo(List.of(nested.directory().resolve("home").toString(),
-				cache.toString(), nestedAccess.requests().toString(),
-				nestedProject.resolve(".git/worktrees").toString()));
+				cache.toString(), nestedAccess.requests().toString()));
 			requireThat(nestedPolicy.writeRoots(), "writeRoots").doesNotContain(nested.directory());
 		}
 	}
