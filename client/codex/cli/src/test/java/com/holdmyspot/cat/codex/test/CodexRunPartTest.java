@@ -102,6 +102,28 @@ public final class CodexRunPartTest
 	}
 
 	/**
+	 * Verifies that a command that starts with a byte-order mark, as Windows PowerShell 5.1 prefixes the text that it
+	 * pipes, runs and saves the same output as the command without one.
+	 *
+	 * @throws IOException if the temporary folder cannot be created or read
+	 */
+	@Test
+	public void leadingByteOrderMarkIsIgnored() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path temporary = cleanup.add(Files.createTempDirectory("run-part-test-"));
+			String command = script("printf 'out\\n'\nexit 3\n", "Write-Output out\nexit 3\n");
+
+			Call call = runPart("\uFEFF" + command, false, OUTSIDE_PROJECT, Map.of("TMPDIR", temporary.toString()));
+
+			requireThat(call.output(), "output").startsWith("out" + EOL + "[End of ");
+			requireThat(call.status(), "status").isEqualTo(3);
+			requireThat(call.commandError(), "commandError").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that the output of a command is saved in a new, empty {@code output.txt} under {@code TMPDIR} when no
 	 * CAT project contains the folder that the command runs in.
 	 *

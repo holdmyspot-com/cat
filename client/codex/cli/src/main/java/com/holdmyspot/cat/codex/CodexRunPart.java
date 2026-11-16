@@ -36,10 +36,12 @@ import java.util.Optional;
  * <p>
  * Usage: {@code run-part <<'EOF'}, then the shell command on the lines that follow, as it would be written without
  * {@code run-part}, then {@code EOF}. On Windows, the command is a PowerShell here-string piped to {@code run-part}: a
- * {@code @'} line, the command, then a {@code '@ | run-part} line. It runs the command in the shell that Codex runs
- * commands in, {@code bash} or PowerShell, and saves what it writes to standard output and standard error. It saves
- * the command's exit status in {@code <file>.exit-status}, so that whichever call prints the last part,
- * {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits with status 0.
+ * {@code @'} line, the command, then a {@code '@ | run-part} line. A byte-order mark at the very start of the
+ * command, which Windows PowerShell 5.1 adds to the text that it pipes, is ignored. It runs the command in the
+ * shell that Codex runs commands in, {@code bash} or PowerShell, and saves what it writes to standard output and
+ * standard error. It saves the command's exit status in {@code <file>.exit-status}, so that whichever call prints
+ * the last part, {@code run-part} or {@code read-part}, exits with that status; a part that more parts follow exits
+ * with status 0.
  * The output stays inside the project: in a Codex thread, which names its ID in {@code CODEX_THREAD_ID}, it is saved
  * in the temporary folder of the thread's CAT session directory (see {@link SessionDirectory}) in the nearest CAT
  * project that contains the folder that the command runs in. Outside a CAT project, or without
@@ -97,6 +99,11 @@ public final class CodexRunPart
 		});
 	}
 
+	/**
+	 * The byte-order mark that Windows PowerShell 5.1 puts before the text that it pipes, whatever the output
+	 * encoding. {@code run-part} ignores one at the very start of the command.
+	 */
+	private static final String BYTE_ORDER_MARK = "\uFEFF";
 	/**
 	 * The locale variables that the launcher changes for the JVM and saves for the programs that it starts.
 	 */
@@ -194,7 +201,11 @@ public final class CodexRunPart
 		{
 			String command = "";
 			if (args.length == 0 && !terminal)
+			{
 				command = new String(input.readAllBytes(), UTF_8);
+				if (command.startsWith(BYTE_ORDER_MARK))
+					command = command.substring(BYTE_ORDER_MARK.length());
+			}
 			if (command.isBlank())
 			{
 				error.println(shell.runPartUsage());
