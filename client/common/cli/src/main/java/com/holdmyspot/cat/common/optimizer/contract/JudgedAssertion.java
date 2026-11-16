@@ -8,6 +8,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * An assertion that the judge decides, with the requirement that it checks and the behaviors through which a trial
@@ -63,19 +64,55 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 		requireThat(test, "test").isNotNull();
 		requireThat(requirements, "requirements").isNotNull();
 		requireThat(results, "results").isNotNull();
-		Map<String, Requirement> requirementById = new HashMap<>();
-		for (Requirement requirement : requirements)
-			requirementById.put(requirement.id(), requirement);
 		Set<String> leftToJudge = new HashSet<>();
 		for (BuiltInToolResult result : results)
 		{
 			if (result.leftToJudge())
 				leftToJudge.add(result.assertion().id());
 		}
+		return select(test, requirements, assertion -> assertion.tool() == null || leftToJudge.contains(assertion.id()));
+	}
+
+	/**
+	 * Returns every assertion of a test that the judge may decide, whatever a trial's built-in tools found: those
+	 * without a {@code tool}, and those whose {@code tool} leaves its failure to the judge. A reply that is judged
+	 * without a trial, such as a near miss, is judged against these.
+	 *
+	 * @param test         the prompt test
+	 * @param requirements every requirement of the contract
+	 * @return the assertions, in the order of {@link #of}; empty if every assertion has a tool whose failure fails the
+	 *   trial
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if an assertion checks a requirement that {@code requirements} does not list
+	 */
+	public static List<JudgedAssertion> ofJudgeable(PromptTest test, List<Requirement> requirements)
+	{
+		requireThat(test, "test").isNotNull();
+		requireThat(requirements, "requirements").isNotNull();
+		return select(test, requirements,
+			assertion -> assertion.tool() == null || assertion.onToolFailure() == OnToolFailure.JUDGE);
+	}
+
+	/**
+	 * Returns the assertions of a test that a filter selects.
+	 *
+	 * @param test         the prompt test
+	 * @param requirements every requirement of the contract
+	 * @param decided      returns {@code true} for an assertion that the judge decides
+	 * @return the selected declared assertions in the test's order, then {@value TestCase#EXPECTED_OUTCOME} if selected
+	 * @throws IllegalArgumentException if a selected assertion checks a requirement that {@code requirements} does not
+	 *                                  list
+	 */
+	private static List<JudgedAssertion> select(PromptTest test, List<Requirement> requirements,
+		Predicate<Assertion> decided)
+	{
+		Map<String, Requirement> requirementById = new HashMap<>();
+		for (Requirement requirement : requirements)
+			requirementById.put(requirement.id(), requirement);
 		List<JudgedAssertion> judged = new ArrayList<>();
 		for (MappedAssertion mapped : test.assertions())
 		{
-			if (mapped.assertion().tool() != null && !leftToJudge.contains(mapped.assertion().id()))
+			if (!decided.test(mapped.assertion()))
 				continue;
 			Requirement requirement = requirementById.get(mapped.requirementId());
 			if (requirement == null)
@@ -86,7 +123,7 @@ public record JudgedAssertion(Assertion assertion, Requirement requirement)
 			judged.add(new JudgedAssertion(mapped.assertion(), requirement));
 		}
 		Assertion expectedOutcome = test.expectedOutcome();
-		if (expectedOutcome.tool() == null || leftToJudge.contains(expectedOutcome.id()))
+		if (decided.test(expectedOutcome))
 			judged.add(new JudgedAssertion(expectedOutcome, null));
 		return judged;
 	}

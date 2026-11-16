@@ -1326,7 +1326,7 @@ public final class Driver implements AutoCloseable
 		if (testCase.isEmpty())
 			return;
 		List<NearMisses.Reply> replies = test.nearMissReplies(testCase.get().testCase());
-		List<JudgedAssertion> judged = JudgedAssertion.of(test, campaign.contract().requirements(), List.of());
+		List<JudgedAssertion> judged = JudgedAssertion.ofJudgeable(test, campaign.contract().requirements());
 		NearMissBatch batch = new NearMissBatch(test.id(), judge, labeling, replies.size());
 		List<NearMissJob> jobs = new ArrayList<>();
 		for (NearMisses.Reply reply : replies)

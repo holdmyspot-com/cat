@@ -6,10 +6,12 @@ import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
+import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
+import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileBinding;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -33,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import tools.jackson.databind.json.JsonMapper;
@@ -263,6 +266,39 @@ public final class ContractFixtures
 				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
 				test.assertions(), test.regressionScenarios(), test.workspaceFiles(), test.draft(),
 				test.expectedOutcomeTool(), nearMisses));
+		}
+		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
+			contract.referencedFiles());
+	}
+
+	/**
+	 * Returns a contract in which a built-in tool decides every assertion of every prompt test, including
+	 * {@value TestCase#EXPECTED_OUTCOME}, and hands the assertion to the judge when it fails. Each such assertion is
+	 * one that the judge may decide.
+	 *
+	 * @param contract the contract
+	 * @return the contract whose assertions all have a tool that leaves a failure to the judge
+	 */
+	public static Contract withToolsLeftToJudge(Contract contract)
+	{
+		List<PromptTest> tests = new ArrayList<>();
+		for (PromptTest test : contract.tests())
+		{
+			List<MappedAssertion> assertions = new ArrayList<>();
+			for (MappedAssertion mapped : test.assertions())
+			{
+				Assertion assertion = mapped.assertion();
+				assertions.add(new MappedAssertion(new Assertion(assertion.id(), assertion.kind(),
+					"forbidden-text UNLISTED", OnToolFailure.JUDGE, assertion.statement(), "A pattern cannot tell."),
+					mapped.requirementId()));
+			}
+			tests.add(new PromptTest(test.id(), test.riskRank(), test.requirementIds(), test.absentTriggers(),
+				test.applicability(), test.turns(), test.timeLimit(), test.expectedBehaviour(),
+				test.uncoveredInteractions(), test.variables(), test.committedTestCases(), test.testCases(),
+				assertions, test.regressionScenarios(), test.workspaceFiles(), test.draft(),
+				Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}", OnToolFailure.JUDGE)),
+				test.nearMisses()));
 		}
 		return new Contract(contract.requirements(), tests, contract.profiles(), contract.judge(),
 			contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),

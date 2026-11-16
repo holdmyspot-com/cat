@@ -175,6 +175,52 @@ public final class DevelopmentJudgeDriverTest
 	}
 
 	/**
+	 * Verifies that the frozen judge labels the near-miss replies of assertions that a built-in tool decides first and
+	 * leaves to the judge when it fails, and that the labels are kept with each test.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void nearMissesOfToolAssertionsAreLabeled() throws IOException
+	{
+		Contract contract = ContractFixtures.withNearMisses(ContractFixtures.withToolsLeftToJudge(
+			ContractFixtures.contract()));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("near-miss-tools")),
+				developing(contract).build());
+			harness.candidateJudges(List.of(CHEAP));
+			Fixture fixture = new Fixture(harness);
+			fixture.judges(_ -> Verdict.PASS, (_, satisfying) ->
+			{
+				if (satisfying)
+					return Verdict.PASS;
+				return Verdict.FAIL;
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver, state ->
+				{
+					for (String test : TESTS)
+					{
+						DevelopmentJudge judge = state.judges().get(test);
+						if (judge == null || judge.stage() != Stage.SHADOWING)
+							return false;
+					}
+					return true;
+				});
+				int replies = 0;
+				for (PromptTest test : contract.tests())
+				{
+					replies += test.judgedAssertions().size() * 2 * NearMisses.REPLIES_PER_SIDE;
+					requireThat(campaign.judges().get(test.id()).labels(), "labels").isEqualTo(labels(test));
+				}
+				requireThat(fixture.uses(frozen(contract), true).size(), "frozenLabels").isEqualTo(replies);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that shadowing is judged by both judges, that the frozen judge's verdict counts, that a disagreement is
 	 * counted, and that the candidate qualifies when its fourth trial after 295 shadowed trials makes 299.
 	 *
