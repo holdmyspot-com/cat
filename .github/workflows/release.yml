@@ -74,32 +74,46 @@ jobs:
           if os.name == "nt":
               acl_script = r'''
           $ErrorActionPreference = 'Stop'
-          $acl = Get-Acl -LiteralPath $env:DIAGNOSTIC_ACL_PATH
-          $currentSid = [Security.Principal.WindowsIdentity]::GetCurrent().User.Value
-          $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object {
-              [pscustomobject]@{
-                  identity_sid = $_.IdentityReference.Value
-                  rights = $_.FileSystemRights.ToString()
-                  access_type = $_.AccessControlType.ToString()
-                  inherited = $_.IsInherited
+          try {
+              $currentSidObject = [Security.Principal.WindowsIdentity]::GetCurrent().User
+              $currentSid = $currentSidObject.Value
+              $administratorsSid = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')
+              $privateAcl = [Security.AccessControl.DirectorySecurity]::new()
+              $privateAcl.SetOwner($currentSidObject)
+              $privateAcl.SetAccessRuleProtection($true, $false)
+              $inheritance = [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit
+              foreach ($sid in @($currentSidObject, $administratorsSid)) {
+                  $rule = [Security.AccessControl.FileSystemAccessRule]::new(
+                      $sid,
+                      [Security.AccessControl.FileSystemRights]::FullControl,
+                      $inheritance,
+                      [Security.AccessControl.PropagationFlags]::None,
+                      [Security.AccessControl.AccessControlType]::Allow)
+                  [void]$privateAcl.AddAccessRule($rule)
               }
-          })
-          [pscustomobject]@{
-              owner_sid = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
-              protected = $acl.AreAccessRulesProtected
-              current_sid = $currentSid
-              rules = $rules
-          } | ConvertTo-Json -Depth 5 -Compress
+              Set-Acl -LiteralPath $env:DIAGNOSTIC_ACL_PATH -AclObject $privateAcl -ErrorAction Stop
+              $acl = Get-Acl -LiteralPath $env:DIAGNOSTIC_ACL_PATH
+              $rules = @($acl.GetAccessRules($true, $true, [Security.Principal.SecurityIdentifier]) | ForEach-Object {
+                  [pscustomobject]@{
+                      identity_sid = $_.IdentityReference.Value
+                      rights = $_.FileSystemRights.ToString()
+                      access_type = $_.AccessControlType.ToString()
+                      inherited = $_.IsInherited
+                  }
+              })
+              [pscustomobject]@{
+                  owner_sid = $acl.GetOwner([Security.Principal.SecurityIdentifier]).Value
+                  protected = $acl.AreAccessRulesProtected
+                  current_sid = $currentSid
+                  rules = $rules
+              } | ConvertTo-Json -Depth 5 -Compress
+          } catch {
+              [Console]::Error.WriteLine($_.ToString())
+              exit 1
+          }
           '''
               acl_environment = dict(os.environ)
               acl_environment["DIAGNOSTIC_ACL_PATH"] = str(directory)
-              control_acl = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive", "-Command", "-"],
-                                           input=acl_script, text=True, capture_output=True, env=acl_environment)
-              control_stdout = directory / "acl-control.stdout"
-              control_stderr = directory / "acl-control.stderr"
-              control_stdout.write_text(control_acl.stdout, encoding="utf-8")
-              control_stderr.write_text(control_acl.stderr, encoding="utf-8")
-
               encoded_acl_script = base64.b64encode(acl_script.encode("utf-16le")).decode("ascii")
               acl = subprocess.run(["powershell.exe", "-NoProfile", "-NonInteractive",
                                     "-EncodedCommand", encoded_acl_script], stdin=subprocess.DEVNULL,
@@ -110,8 +124,7 @@ jobs:
               acl_stderr.write_text(acl.stderr, encoding="utf-8")
               observations = []
               for transport, result, stdout_path, stderr_path in (
-                      ("stdin_statements", control_acl, control_stdout, control_stderr),
-                      ("encoded_whole_script", acl, acl_stdout, acl_stderr)):
+                      ("encoded_whole_script", acl, acl_stdout, acl_stderr),):
                   observations.append({"transport": transport, "exit_status": result.returncode,
                                       "stdout_file": stdout_path.name, "stderr_file": stderr_path.name,
                                       "stdout_bytes": stdout_path.stat().st_size,
