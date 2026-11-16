@@ -6422,6 +6422,35 @@ public final class DriverTest
 	}
 
 	/**
+	 * Verifies that a foreground slice that stops on an infrastructure failure ends awaiting the user, not
+	 * {@code running}, and says what the failure was and how to go on. A {@code running} status tells the host agent
+	 * to call {@code run} again at once, which repeats a failure that nothing in the campaign changes.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void foregroundFailureAwaitsTheUser() throws IOException
+	{
+		// Requirement: R-D3
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
+				developing().development("safety", 50, 1).failure(Builder.testCase("safety", "logs")).
+					round(new Round(Map.of("safety", 0))).build());
+			harness.promptAuthors(request -> harness.edit(request, Path.of("README.md")));
+			try (Driver driver = harness.open())
+			{
+				SliceResult result = harness.runSlice(driver);
+				requireThat(result.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(result.status().status().label(), "status").isEqualTo("awaiting_user");
+				requireThat(result.status().pending(), "pending").contains(result.status().outcomeDetail()).
+					contains("`run`").contains("`cancel`");
+				requireThat(result.status().choices(), "choices").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a prompt author attempt that changes a file outside the prompt sources is never submitted, and that
 	 * repeated prompt author failures stop the slice with an infrastructure failure.
 	 *
@@ -6467,7 +6496,7 @@ public final class DriverTest
 
 	/**
 	 * Verifies that a slice stopped by prompt author sessions that cannot start reports the infrastructure failure and
-	 * its text with the status of a campaign that has no outcome, whether or not an earlier certification attempt left
+	 * its text with the status of a campaign that awaits the user, whether or not an earlier certification attempt left
 	 * the campaign an outcome, and that the earlier attempt's outcome stays reported.
 	 *
 	 * @param earlier the outcome that an earlier certification attempt left, or {@code null} if none ended
@@ -6490,7 +6519,7 @@ public final class DriverTest
 				StatusReport report = harness.runSlice(driver).status();
 				requireThat(harness.promptAuthor().briefs().size(), "briefs").
 					isEqualTo(Driver.PROMPT_AUTHOR_FAILURE_LIMIT);
-				requireThat(report.status(), "status").isEqualTo(new ReportStatus.Active(Status.RUNNING));
+				requireThat(report.status(), "status").isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
 				requireThat(report.outcome(), "outcome").isEqualTo("infrastructure failure");
 				requireThat(report.outcomeDetail(), "outcomeDetail").
 					startsWith("The prompt author session failed " + Driver.PROMPT_AUTHOR_FAILURE_LIMIT + " times. " +

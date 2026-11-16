@@ -111,7 +111,11 @@ What follows an open outcome depends on the outcome:
 - `not certified: stopped for contract revision`, `not certified: stopped for test revision` and
 	`not certified: testing environment changed` end the running certification attempt.
 - Each `certification unavailable` outcome pauses for the user's choice ([§2.8](#28-decision-table)).
-- `interrupted` and an infrastructure failure pause until the user resumes.
+- `interrupted` and an infrastructure failure pause until the user resumes. A slice that stops on an infrastructure
+	failure returns `awaiting_user` with the failure as its pending text and no choices, never `running`, because
+	`running` sends the host agent to call `run` again at once and meet the same failure (end-to-end finding,
+	2026-11-16: in E7, E3 and E1 three prompt author failures left the status `running`, with no process running). The
+	pending text names the way forward: `run` retries, `cancel` stops.
 
 ### 1.1 Scope
 

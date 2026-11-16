@@ -2863,12 +2863,16 @@ public final class Driver implements AutoCloseable
 		boolean revisionPending = campaign.lifecycle() == Lifecycle.ACTIVE && campaign.revisionRequested() &&
 			isDrained();
 		report = SliceReports.ofSlice(report, delivered, revisionPending);
-		if (context.settings().background() && report.status().label().equals("running"))
+		if (infrastructureFailure != null && report.status().label().equals("running"))
 		{
-			String reason = infrastructureFailure;
-			if (reason == null)
-				reason = "The background run paused because no work could be admitted. Use `status` or `cancel`.";
-			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER), reason);
+			// A running status sends the host agent to run the campaign again at once, which meets the same failure
+			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER),
+				infrastructureFailure + " Run the campaign again with `run` to retry, or stop it with `cancel`.");
+		}
+		else if (context.settings().background() && report.status().label().equals("running"))
+		{
+			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER),
+				"The background run paused because no work could be admitted. Use `status` or `cancel`.");
 		}
 		if (!context.settings().background() && report.status().label().equals("running"))
 		{
