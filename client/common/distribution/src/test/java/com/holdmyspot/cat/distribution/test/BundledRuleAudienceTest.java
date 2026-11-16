@@ -249,6 +249,9 @@ public final class BundledRuleAudienceTest
 	 * while the route for choosing a Java API, which arises while designing before any Java file exists, stays
 	 * reachable from the always-loaded routing through the interface-design area index. The main agent of either harness
 	 * receives that routing.
+	 * <p>
+	 * The case copies the bundled rule tree, routes it and parses the routing YAML, which takes about 0.3 s alone
+	 * and over a second during a parallel build.
 	 *
 	 * @throws IOException if the bundled rules cannot be copied, routed, or loaded
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -583,6 +586,9 @@ public final class BundledRuleAudienceTest
 
 	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
+	 * <p>
+	 * The case routes a rule and loads it through the YAML-backed loader, which takes about 0.25 s alone when it
+	 * runs first in its JVM and over a second during a parallel build.
 	 */
 	@Test
 	public void packagedPathRulesMatchOnlyInsideProject() throws IOException

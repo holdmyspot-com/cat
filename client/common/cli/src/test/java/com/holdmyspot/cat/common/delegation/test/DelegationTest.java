@@ -187,6 +187,9 @@ public final class DelegationTest
 	 * The initial preparation and audit authenticate the interrupted integration. Recovery must restore the retained
 	 * source and invalidate the work; a second audit and successful integration prove that session-local storage also
 	 * supports resumption after recovery.
+	 * Preparation, two audits, an interrupted replay, its recovery and the final integration snapshot and journal
+	 * real files, and each store-capability query reads the kernel mount table, which makes the case last seconds.
+	 * The test keeps that boundary because it asserts the restored source and retained journal on disk.
 	 *
 	 * @throws IOException if the nested recovery fixture cannot be created
 	 */
@@ -282,6 +285,9 @@ public final class DelegationTest
 	 * <p>
 	 * Two work items distinguish the selected work's outputs from the complete output set. Preparation and audit must
 	 * succeed before integration can reject storage beneath the other work's output without changing the parent.
+	 * Two work items are prepared, audited and integrated against the real filesystem, and each store-capability
+	 * query reads the kernel mount table, which makes the case last over a second. The test keeps that boundary
+	 * because it asserts that the parent stays unchanged on disk.
 	 *
 	 * @throws IOException if the nested output fixture cannot be created
 	 */
@@ -495,6 +501,9 @@ public final class DelegationTest
 	 * A real link with distinct target metadata is needed to detect accidental target inspection. Preparation and one
 	 * successful audit establish preservation; changing only the link timestamp and auditing again establishes metadata
 	 * invalidation without changing the target's bytes or timestamp.
+	 * Preparation and two audits snapshot real files and a real link, and each store-capability query reads the
+	 * kernel mount table, which makes the case take over a second. The test keeps that boundary because it asserts
+	 * the link's own metadata, not its target's.
 	 *
 	 * @throws IOException if the isolated fixture cannot be created
 	 */
@@ -743,6 +752,8 @@ public final class DelegationTest
 	 * <p>
 	 * A successful preparation supplies the otherwise valid receipt. Replacing only its execution profile and updating
 	 * the receipt checksums isolates profile rejection; the refused audit must not run another verification gate.
+	 * A real preparation snapshots files and each store-capability query reads the kernel mount table, which makes
+	 * the case take about a second. The test keeps that boundary because it rewrites the receipt it wrote to disk.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -795,6 +806,10 @@ public final class DelegationTest
 
 	/**
 	 * Verifies missing, tampered, mismatched, and nonterminal preparation evidence rejects audit.
+	 * <p>
+	 * Each variant prepares and audits against the real filesystem, and each store-capability query reads the
+	 * kernel mount table, so the case takes about a second. The test keeps that boundary because it rewrites the
+	 * receipts written to disk.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */

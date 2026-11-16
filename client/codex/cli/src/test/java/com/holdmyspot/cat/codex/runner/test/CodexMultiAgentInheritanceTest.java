@@ -643,6 +643,8 @@ public final class CodexMultiAgentInheritanceTest
 	 * The inherited state precedes more than 64 MiB of included events so that a reader limited to the segment's tail
 	 * would lose it. This case writes and reads that segment, then checks the copied feature configuration; a small
 	 * history would not distinguish a complete reader from a tail-only reader.
+	 * Writing and reading the 65 MiB of events takes over a second; a smaller segment would not exceed the old
+	 * reader's window.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */

@@ -1006,6 +1006,10 @@ public final class InvocationTest
 	/**
 	 * Install from an extracted plugin archive into a harness that has another CAT version updates it: the harness
 	 * installs the archive's version, and the installation's policy stays as it was.
+	 * <p>
+	 * The case generates an Ed25519 key, writes a plugin tree and runs the install command, which takes about
+	 * 0.7 seconds alone and over a second during a parallel build, where the first test of a JVM to do so also
+	 * loads the installer's classes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -1041,6 +1045,10 @@ public final class InvocationTest
 	/**
 	 * Running the local install command from a tree with the active version replaces the installed payload and reports
 	 * the version as updated.
+	 * <p>
+	 * The case generates an Ed25519 key, writes a plugin tree and runs the install command, which takes about
+	 * 0.7 seconds alone and over a second during a parallel build, where the first test of a JVM to do so also
+	 * loads the installer's classes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the test policy is invalid
@@ -1102,6 +1110,10 @@ public final class InvocationTest
 	/**
 	 * Install from an extracted plugin archive into a harness that has no CAT version deletes the version folders that
 	 * an earlier installation left behind, as every later install does.
+	 * <p>
+	 * The case generates an Ed25519 key, writes a plugin tree and runs the install command, which takes about
+	 * 0.7 seconds alone and over a second during a parallel build, where the first test of a JVM to do so also
+	 * loads the installer's classes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the release's policy is invalid
@@ -1128,6 +1140,10 @@ public final class InvocationTest
 	/**
 	 * Install from an extracted plugin archive discards the progress of an uninstall that stopped, so that a later
 	 * uninstall runs every step again.
+	 * <p>
+	 * The case generates an Ed25519 key, writes a plugin tree and runs the install command, which takes about
+	 * 0.7 seconds alone and over a second during a parallel build, where the first test of a JVM to do so also
+	 * loads the installer's classes.
 	 *
 	 * @throws IOException    if the fixture cannot be created or the output cannot be read
 	 * @throws TrustException if the release's policy is invalid

@@ -353,6 +353,9 @@ public final class WaitUntilTest
 
 	/**
 	 * Verifies that the shell starter's live child JVM remains pending, publishes completion and releases its output.
+	 * <p>
+	 * The case starts a real child JVM and waits for it to be ready and to complete, which takes seconds. The test
+	 * keeps it because the shell starter's live process is the boundary it checks.
 	 *
 	 * @throws IOException if child setup, completion or cleanup fails
 	 * @throws InterruptedException if process startup or completion is interrupted

@@ -1108,6 +1108,9 @@ public final class DriverTest
 	 * The three prompt-author attempts share one working reference, then each completes regression and paired reruns
 	 * before the round ends. Retaining those transitions and the persisted campaign lets this test check the single
 	 * reference plan, each attempt's own evidence, and the eventual decisions together.
+	 * The three attempts each run regression and paired reruns, and every transition persists the campaign to
+	 * disk, so the case takes about a second, longer during a parallel build. The test keeps the real persistence
+	 * because it asserts the persisted campaign.
 	 *
 	 * @param referenceVerdict the working candidate's verdict on the regression test case
 	 * @param accepted         indicates whether every attempt fixes the failure without introducing a regression
