@@ -27,14 +27,19 @@ import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
+import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
+import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
@@ -42,6 +47,11 @@ import java.io.IOException;
 import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardWatchEventKinds;
+import java.nio.file.WatchEvent;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
+import java.nio.file.attribute.PosixFilePermission;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -56,11 +66,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
 
 /**
  * Tests {@link RunnerSessions} over the real runner bridge with a scripted harness.
@@ -83,6 +97,213 @@ public final class RunnerSessionsTest
 	 * driver sees the advanced clock at once instead of after the production interval.
 	 */
 	private static final Duration TIME_LIMIT_POLL = Duration.ofMillis(1);
+
+	/**
+	 * Verifies that reading malformed present configuration reports an I/O failure.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test(expectedExceptions = IOException.class)
+	public void rejectsInvalidConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempFile("cat-invalid-configuration-", ".json"));
+			Files.writeString(file, "{not json");
+
+			RunnerSessions.readConfigurationFile(file, JsonMapper.builder().build());
+		}
+	}
+
+	/**
+	 * Verifies that only absent files and one JSON object are accepted as configuration.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void readsOptionalJsonObjects() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-configuration-objects-"));
+			Path absent = root.resolve("absent.json");
+			JsonMapper json = JsonMapper.builder().build();
+			requireThat(RunnerSessions.readConfigurationFile(absent, json).isEmpty(), "absent").isTrue();
+
+			Path object = root.resolve("object.json");
+			Files.writeString(object, "{\"unknown\":true}");
+			JsonNode parsed = RunnerSessions.readConfigurationFile(object, json).orElseThrow();
+			requireThat(parsed.path("unknown").asBoolean(), "unknownField").isTrue();
+
+			for (String invalid : List.of("", " \n", "null", "1", "true", "\"text\"", "[]"))
+			{
+				Files.writeString(object, invalid);
+				IOException failure = null;
+				try
+				{
+					RunnerSessions.readConfigurationFile(object, json);
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				requireThat(failure, "failure").isNotNull();
+				requireThat(failure.getMessage(), "message").contains(object.toAbsolutePath().normalize().toString());
+				requireThat(failure.getMessage(), "message").contains("line 1, column 1");
+				requireThat(failure.getCause(), "parserCause").isNull();
+			}
+
+			for (String invalid : List.of("{not json", "{} {}"))
+			{
+				Files.writeString(object, invalid);
+				IOException failure = null;
+				try
+				{
+					RunnerSessions.readConfigurationFile(object, json);
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				requireThat(failure, "failure").isNotNull();
+				requireThat(failure.getMessage(), "message").contains(object.toAbsolutePath().normalize().toString());
+				requireThat(failure.getMessage(), "message").contains("line ");
+				requireThat(failure.getMessage(), "message").contains(", column ");
+				requireThat(failure.getCause(), "parserCause").isInstanceOf(JacksonException.class);
+			}
+
+			Path directory = Files.createDirectory(root.resolve("directory"));
+			IOException nonregular = null;
+			try
+			{
+				RunnerSessions.readConfigurationFile(directory, json);
+			}
+			catch (IOException e)
+			{
+				nonregular = e;
+			}
+			requireThat(nonregular, "nonregularFailure").isNotNull();
+			requireThat(nonregular.getMessage(), "message").contains(directory.toAbsolutePath().normalize().toString());
+
+			Path link = root.resolve("object-link.json");
+			Files.writeString(object, "{}");
+			Files.createSymbolicLink(link, object.getFileName());
+			requireThat(RunnerSessions.readConfigurationFile(link, json).isPresent(), "validLink").isTrue();
+			Path dangling = root.resolve("dangling.json");
+			Files.createSymbolicLink(dangling, Path.of("missing.json"));
+			IOException danglingFailure = null;
+			try
+			{
+				RunnerSessions.readConfigurationFile(dangling, json);
+			}
+			catch (IOException e)
+			{
+				danglingFailure = e;
+			}
+			requireThat(danglingFailure, "danglingFailure").isNotNull();
+			requireThat(danglingFailure.getCause(), "danglingCause").isInstanceOf(IOException.class);
+
+			Files.writeString(object, "{}");
+			requireThat(RunnerSessions.readConfigurationFile(object, json, 2).isPresent(), "boundedSuccess").isTrue();
+			IOException oversized = null;
+			try
+			{
+				RunnerSessions.readConfigurationFile(object, json, 1);
+			}
+			catch (IOException e)
+			{
+				oversized = e;
+			}
+			requireThat(oversized, "oversizedFailure").isNotNull();
+			requireThat(oversized.getMessage(), "message").contains(object.toAbsolutePath().normalize().toString());
+		}
+	}
+
+	/**
+	 * Verifies that the null device laid over an absent configuration path reads as an absent file, while an
+	 * empty regular file is still a parse error.
+	 *
+	 * @throws IOException if the fixture cannot be written
+	 */
+	@Test
+	public void readsNullDeviceAsAbsentConfiguration() throws IOException
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		requireThat(RunnerSessions.readConfigurationFile(Path.of("/dev/null"), json).isEmpty(), "nullDevice").
+			isTrue();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path empty = Files.createTempFile(cleanup.add(Files.createTempDirectory("cat-null-device-")), "empty",
+				".json");
+			IOException failure = null;
+			try
+			{
+				RunnerSessions.readConfigurationFile(empty, json);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+			requireThat(failure, "emptyFileFailure").isNotNull();
+		}
+	}
+
+	/**
+	 * Verifies that unreadable configuration fails with its path and the underlying filesystem exception.
+	 *
+	 * @throws IOException if the fixture cannot be written or permissions cannot be restored
+	 */
+	@Test
+	public void rejectsUnreadableConfiguration() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempFile("cat-unreadable-configuration-", ".json"));
+			Files.writeString(file, "{}");
+			Set<PosixFilePermission> originalPermissions;
+			try
+			{
+				originalPermissions = Files.getPosixFilePermissions(file);
+			}
+			catch (UnsupportedOperationException e)
+			{
+				throw new SkipException("The filesystem does not support POSIX permissions", e);
+			}
+
+			boolean permissionsRemoved = false;
+			try
+			{
+				try
+				{
+					Files.setPosixFilePermissions(file, Set.of());
+					permissionsRemoved = true;
+				}
+				catch (UnsupportedOperationException e)
+				{
+					throw new SkipException("The filesystem does not support changing POSIX permissions", e);
+				}
+
+				IOException failure = null;
+				try
+				{
+					RunnerSessions.readConfigurationFile(file, JsonMapper.builder().build());
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				if (failure == null)
+					throw new SkipException("The process can read a file with all POSIX permissions removed");
+				requireThat(failure.getMessage(), "message").contains(file.toAbsolutePath().normalize().toString());
+				requireThat(failure.getCause(), "filesystemCause").isInstanceOf(IOException.class);
+			}
+			finally
+			{
+				if (permissionsRemoved)
+					Files.setPosixFilePermissions(file, originalPermissions);
+			}
+		}
+	}
 
 	/**
 	 * Creates the test.
@@ -589,15 +810,17 @@ public final class RunnerSessionsTest
 	 * Verifies rule overlays use the process scope's temporary directory and remove their own child directory.
 	 *
 	 * @throws IOException if fixture files or loaded sources cannot be read or written
+	 * @throws InterruptedException if waiting for the overlay creation event is interrupted
 	 */
-	@Test
-	public void createsOverlayInProcessDirectory() throws IOException
+	@Test(timeOut = 120_000)
+	public void createsOverlayInProcessDirectory() throws IOException, InterruptedException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "overlay-location-"));
 			Path temporary = root.resolve("process-temporary");
+			Files.createDirectories(temporary);
 			try (TestJvmScope process = new TestJvmScope(temporary))
 			{
 				Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
@@ -613,7 +836,33 @@ public final class RunnerSessionsTest
 				{
 				});
 
-				sessions.loadedSources(project, List.of(new PluginBase(plugin, base)));
+				try (WatchService watchService = temporary.getFileSystem().newWatchService())
+				{
+					temporary.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
+					List<DerivedSource> trialSources = sessions.loadedSources(project,
+						List.of(new PluginBase(plugin, base))).trials();
+					WatchKey watchKey = watchService.poll(5, TimeUnit.SECONDS);
+					requireThat(watchKey, "watchKey").isNotNull();
+					List<Path> overlayNames = new ArrayList<>();
+					for (WatchEvent<?> event : watchKey.pollEvents())
+					{
+						requireThat(event.kind(), "event.kind").isNotEqualTo(StandardWatchEventKinds.OVERFLOW);
+						if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE)
+						{
+							Path created = (Path) event.context();
+							if (created.getFileName().toString().startsWith("cat-plugin-rules-"))
+								overlayNames.add(created);
+						}
+					}
+					requireThat(overlayNames.size(), "overlayCount").isEqualTo(1);
+					Path observedOverlay = temporary.resolve(overlayNames.get(0)).normalize();
+					requireThat(observedOverlay.getParent(), "overlayParent").isEqualTo(
+						temporary.toAbsolutePath().normalize());
+					requireThat(trialSources, "trialSources").contains(new DerivedSource(
+						base.resolve("rules/common/default.md").toString(),
+						"CAT injects this rule into every session"));
+					requireThat(Files.notExists(observedOverlay), "overlayRemoved").isTrue();
+				}
 
 				requireThat(temporary, "temporary").isDirectory();
 				try (Stream<Path> children = Files.list(temporary))
@@ -1070,6 +1319,72 @@ public final class RunnerSessionsTest
 	}
 
 	/**
+	 * Verifies an observer failure stops the bridge after the completed first turn and preserves the observer's error.
+	 *
+	 * @throws IOException if a fixture cannot be created
+	 * @throws InterruptedException if the test or bridge shutdown is interrupted
+	 * @throws TimeoutException if the bridge does not return
+	 */
+	@Test(timeOut = 120_000)
+	public void closesRunnerOnObserverFailure() throws IOException, InterruptedException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-observer-failure-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			List<String> received = new CopyOnWriteArrayList<>();
+			AtomicReference<Thread> bridgeThread = new AtomicReference<>();
+			CountDownLatch bridgeReturned = new CountDownLatch(1);
+			List<Turn> script = List.of(Turn.replies("one"), Turn.replies("two"));
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				bridgeThread.set(Thread.currentThread());
+				try
+				{
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")),
+						TestSessions.HARNESS, script, input, output, received);
+				}
+				finally
+				{
+					bridgeReturned.countDown();
+				}
+			});
+			IOException observerFailure = new IOException("retained evidence could not be read");
+			TurnObserver observer = (_, _) ->
+			{
+				throw observerFailure;
+			};
+			SessionHandle handle = sessions.start(request(source, List.of(), "one", "two").withTurnObserver(observer));
+			try
+			{
+				try
+				{
+					await(handle);
+					throw new AssertionError("The observer failure was not reported");
+				}
+				catch (ExecutionException e)
+				{
+					requireThat(e.getCause() == observerFailure, "sameCause").isTrue();
+				}
+				requireThat(bridgeReturned.await(5, TimeUnit.SECONDS), "bridgeReturned").isTrue();
+				requireThat(received, "receivedTurns").isEqualTo(List.of("one"));
+			}
+			finally
+			{
+				Thread runner = bridgeThread.get();
+				if (runner != null && runner.isAlive())
+				{
+					runner.interrupt();
+					runner.join(5_000);
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies that CAT classifies an expired trial session as Completed and excludes the late terminal response supplied
 	 * after its stop request, retaining only replies observed before the limit. The turn that reaches the limit has
 	 * produced model output.
@@ -1164,6 +1479,87 @@ public final class RunnerSessionsTest
 				requireThat(result, "result").isEqualTo(new SessionResult.Failed("The " + word +
 					" session reached its 5-minute time limit", List.of()));
 			}
+		}
+	}
+
+	/**
+	 * Verifies a contract author's partial files stay in its retained runner project after CAT times out and prunes the
+	 * terminal runtime.
+	 *
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(timeOut = 120_000)
+	public void authorTimeoutKeepsPartialDraft()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-author-timeout-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Files.writeString(source.resolve("README.md"), "original source\n");
+			Path draft = Path.of(DraftDirectory.name(source), ".cat/tests/target/test");
+			String scenarioPath = draft.resolve("scenario.md").toString();
+			TestWorkspace workspaceFiles = new TestWorkspace(Map.of(scenarioPath,
+				new WorkspaceFile(scenarioPath, "seeded scenario\n")), Map.of(), "timeout retention");
+			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
+			ManualClock clock = new ManualClock(START);
+			CountDownLatch partialDraftWritten = new CountDownLatch(1);
+			AtomicReference<HarnessRun> ownedRun = new AtomicReference<>();
+			AtomicReference<Path> authorProject = new AtomicReference<>();
+			AtomicReference<Path> workspaceInput = new AtomicReference<>();
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
+				false, Map.of(), root, HarnessCapacity.unlimited(), clock, Yielding.fileReplacer());
+			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
+			{
+				Path runRoot = Path.of(ScriptedHarness.optionValue(options, "--run-root"));
+				Path project = Path.of(ScriptedHarness.optionValue(options, "--project"));
+				Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
+				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, clock,
+					Yielding.fileReplacer());
+				HarnessRun run = manager.create(TestSessions.HARNESS);
+				manager.initialize(run, artifact, project, "scripted", options);
+				manager.copyProject(project, run);
+				manager.copyWorkspace(workspace, run);
+				ownedRun.set(run);
+				authorProject.set(run.directory().resolve("project"));
+				workspaceInput.set(workspace);
+
+				ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted().withCheckpoint(_ ->
+				{
+					Path testDirectory = authorProject.get().resolve(draft);
+					Files.createDirectories(testDirectory);
+					Files.writeString(testDirectory.resolve("scenario.md"), "partial author scenario\n");
+					Files.writeString(testDirectory.resolve("proposal.md"), "partial author proposal\n");
+					partialDraftWritten.countDown();
+				})), new ArrayList<>());
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+					options.contains("--keep-run"), input, output);
+			});
+			SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, source,
+				List.of("write a draft"), List.of(), LIMIT, SESSION_PROFILE, workspaceFiles);
+			SessionHandle handle = startPollingOften(sessions, request);
+			requireThat(partialDraftWritten.await(60, TimeUnit.SECONDS), "partialDraftWritten").isTrue();
+
+			clock.advance(LIMIT.plusSeconds(1));
+
+			SessionResult result = await(handle);
+			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
+				"The contract author session reached its 5-minute time limit", List.of()));
+			HarnessRun run = ownedRun.get();
+			requireThat(run, "ownedRun").isNotNull();
+			requireThat(Files.isDirectory(run.directory()), "retainedRun").isTrue();
+			Path project = authorProject.get();
+			requireThat(Files.readString(project.resolve(draft).resolve("scenario.md")), "seededScenario").isEqualTo(
+				"partial author scenario\n");
+			requireThat(Files.readString(project.resolve(draft).resolve("proposal.md")), "partialProposal").isEqualTo(
+				"partial author proposal\n");
+			requireThat(Files.readString(source.resolve("README.md")), "source").isEqualTo("original source\n");
+			requireThat(Files.exists(source.resolve(draft).resolve("proposal.md")), "sourceProposal").isFalse();
+			requireThat(Files.exists(workspaceInput.get()), "temporaryWorkspace").isFalse();
 		}
 	}
 

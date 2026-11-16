@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.adapter;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
@@ -38,6 +39,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -56,7 +58,11 @@ import java.util.regex.PatternSyntaxException;
 import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
+import tools.jackson.core.JsonParser;
+import tools.jackson.core.TokenStreamLocation;
+import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.dataformat.yaml.YAMLMapper;
@@ -376,7 +382,7 @@ public abstract class RunnerSessions implements SessionPort
 	{
 		UserConfiguration user = userConfiguration();
 		Set<String> entries = new LinkedHashSet<>();
-		Optional<JsonNode> content = readHooksFile(user.hooksFile(), JsonMapper.builder().build());
+		Optional<JsonNode> content = readConfigurationFile(user.hooksFile(), JsonMapper.builder().build());
 		if (content.isPresent())
 		{
 			String file = PortablePaths.text(user.hooksFile());
@@ -482,7 +488,7 @@ public abstract class RunnerSessions implements SessionPort
 		List<DerivedSource> files = new ArrayList<>();
 		for (Path file : projectHookFiles())
 		{
-			Optional<JsonNode> content = readHooksFile(project.resolve(file), json);
+			Optional<JsonNode> content = readConfigurationFile(project.resolve(file), json);
 			if (content.isEmpty())
 				continue;
 			String fileText = PortablePaths.text(file.normalize());
@@ -966,7 +972,7 @@ public abstract class RunnerSessions implements SessionPort
 		List<HookRegistration> registrations = new ArrayList<>();
 		for (Path file : projectHookFiles())
 		{
-			Optional<JsonNode> content = readHooksFile(project.resolve(file), json);
+			Optional<JsonNode> content = readConfigurationFile(project.resolve(file), json);
 			if (content.isPresent())
 				addRegistrations("", file, content.get().path("hooks"), registrations);
 		}
@@ -1032,7 +1038,7 @@ public abstract class RunnerSessions implements SessionPort
 		List<HookInvocation> invocations = new ArrayList<>();
 		for (Path file : projectHookFiles())
 		{
-			Optional<JsonNode> content = readHooksFile(project.resolve(file), json);
+			Optional<JsonNode> content = readConfigurationFile(project.resolve(file), json);
 			if (content.isPresent())
 			{
 				addEarlyHooks("`" + PortablePaths.text(file.normalize()) + "`", content.get().path("hooks"),
@@ -1217,30 +1223,125 @@ public abstract class RunnerSessions implements SessionPort
 	protected abstract List<HookDeclaration> pluginHooks(PluginFiles plugin, JsonMapper json) throws IOException;
 
 	/**
-	 * Reads a hooks file.
+	 * Reads an optional configuration object, following symbolic links.
 	 *
-	 * @param file the file
-	 * @param json the JSON mapper
-	 * @return the file's JSON value, or empty if the file is not a regular file or is not valid JSON
+	 * @param file   the configuration file
+	 * @param mapper the format's mapper
+	 * @return the configuration object, or empty when the path is absent or is the null device
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the file exists but cannot be read
+	 * @throws IOException          if a present file is not regular, cannot be read, or is not one object
 	 */
-	protected static Optional<JsonNode> readHooksFile(Path file, JsonMapper json) throws IOException
+	public static Optional<JsonNode> readConfigurationFile(Path file, ObjectMapper mapper) throws IOException
+	{
+		return readConfigurationFile(file, mapper, Files::readString);
+	}
+
+	/**
+	 * Reads an optional configuration object within a caller-owned input limit, following symbolic links.
+	 *
+	 * @param file         the configuration file
+	 * @param mapper       the format's mapper
+	 * @param maximumBytes the largest supported UTF-8 input, in bytes
+	 * @return the configuration object, or empty when the path is absent or is the null device
+	 * @throws NullPointerException     if any required argument is null
+	 * @throws IllegalArgumentException if {@code maximumBytes} is not between 1 and 2,147,483,646
+	 * @throws IOException              if a present file is not regular, cannot be read, exceeds the limit,
+	 *                                  or is not one object
+	 */
+	public static Optional<JsonNode> readConfigurationFile(Path file, ObjectMapper mapper, int maximumBytes)
+		throws IOException
+	{
+		requireThat(maximumBytes, "maximumBytes").isPositive().isLessThan(Integer.MAX_VALUE);
+		return readConfigurationFile(file, mapper,
+			path -> BoundedInput.readUtf8(path, maximumBytes, "Configuration file"));
+	}
+
+	/**
+	 * Reads and parses one optional configuration with its caller's text reader.
+	 *
+	 * @param file   the configuration file
+	 * @param mapper the format's mapper
+	 * @param read   reads the complete configuration text
+	 * @return the configuration object, or empty when the path is absent or is the null device
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if the present file cannot supply one readable configuration object
+	 */
+	private static Optional<JsonNode> readConfigurationFile(Path file, ObjectMapper mapper, ConfigurationText read)
+		throws IOException
 	{
 		requireThat(file, "file").isNotNull();
-		requireThat(json, "json").isNotNull();
-		if (!Files.isRegularFile(file))
+		requireThat(mapper, "mapper").isNotNull();
+		requireThat(read, "read").isNotNull();
+		Path source = file.toAbsolutePath().normalize();
+		if (Files.notExists(source, LinkOption.NOFOLLOW_LINKS))
 			return Optional.empty();
-		String text = Files.readString(file);
+		String text;
 		try
 		{
-			return Optional.of(json.readTree(text));
+			if (!Files.readAttributes(source, BasicFileAttributes.class).isRegularFile())
+			{
+				// A sandbox lays the null device over protected paths that do not exist
+				if (isNullDevice(source))
+					return Optional.empty();
+				throw new IOException("Configuration path is not a regular file: " + source);
+			}
+			text = read.read(source);
 		}
-		catch (JacksonException _)
+		catch (IOException failure)
 		{
-			// The harness ignores a hooks file that it cannot parse
-			return Optional.empty();
+			throw new IOException("Cannot read configuration file " + source + ": " + failure.getMessage() +
+				". Fix the file and retry.", failure);
 		}
+		try (JsonParser parser = mapper.createParser(text))
+		{
+			parser.nextToken();
+			TokenStreamLocation location = parser.currentTokenLocation();
+			JsonNode root = mapper.reader().with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(parser);
+			if (root == null || !root.isObject())
+			{
+				throw new IOException("Configuration must contain one object at " + source + " (line " +
+					Math.max(1, location.getLineNr()) + ", column " + Math.max(1, location.getColumnNr()) +
+					"). Fix the file and retry.");
+			}
+			return Optional.of(root);
+		}
+		catch (JacksonException failure)
+		{
+			TokenStreamLocation location = failure.getLocation();
+			throw new IOException("Invalid configuration at " + source + " (line " + location.getLineNr() +
+				", column " + location.getColumnNr() + "): " + failure.getOriginalMessage() +
+				". Fix the file and retry.", failure);
+		}
+	}
+
+	/**
+	 * Indicates whether a path is the platform's null device. A platform without a null device at {@code /dev/null},
+	 * such as Windows, has none.
+	 *
+	 * @param source the path to test
+	 * @return {@code true} if {@code source} is the null device
+	 * @throws IOException if the file system cannot compare the paths
+	 */
+	private static boolean isNullDevice(Path source) throws IOException
+	{
+		Path nullDevice = Path.of("/dev/null");
+		return Files.exists(nullDevice) && Files.isSameFile(source, nullDevice);
+	}
+
+	/**
+	 * Reads complete configuration text for a selected input-size policy.
+	 */
+	@FunctionalInterface
+	private interface ConfigurationText
+	{
+		/**
+		 * Reads a configuration file's complete text.
+		 *
+		 * @param file the regular configuration file
+		 * @return the configuration text
+		 * @throws IOException if the file cannot be read
+		 */
+		String read(Path file) throws IOException;
 	}
 
 	/**
