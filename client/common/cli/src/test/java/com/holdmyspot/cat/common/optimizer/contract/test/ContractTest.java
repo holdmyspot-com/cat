@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ExpectedBehavior;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.JudgeProfile;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.NearMisses;
 import com.holdmyspot.cat.common.optimizer.contract.OnToolFailure;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
@@ -417,6 +418,35 @@ public final class ContractTest
 	}
 
 	/**
+	 * Verifies that a test cannot have near misses for a declared assertion that a built-in tool decides without a
+	 * judge fallback, and that the refusal names the test and the assertion.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*Test 't' has near misses for the assertion 'kept', which its judge " +
+			"does not decide.*")
+	public void toolAssertionNearMissesAreRefused()
+	{
+		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
+		MappedAssertion kept = mapped("kept", AssertionKind.GUARD, "file-exists {{dir}}/keep.txt",
+			"The {{dir}} directory keeps keep.txt.", "r2");
+		withNearMisses(List.of(tone, kept), Optional.empty(), "kept");
+	}
+
+	/**
+	 * Verifies that a test cannot have near misses for {@code expected_outcome} when its built-in tool decides it
+	 * without a judge fallback, and that the refusal names the test and the assertion.
+	 */
+	@Test(expectedExceptions = IllegalArgumentException.class,
+		expectedExceptionsMessageRegExp = ".*Test 't' has near misses for the assertion 'expected_outcome', which " +
+			"its judge does not decide.*")
+	public void toolOutcomeNearMissesAreRefused()
+	{
+		MappedAssertion tone = mapped("tone", AssertionKind.EFFECT, null, "The reply keeps the tone.", "r1");
+		withNearMisses(List.of(tone), Optional.of(new ExpectedOutcomeTool("exact-text {{expected_outcome}}")),
+			TestCase.EXPECTED_OUTCOME);
+	}
+
+	/**
 	 * Verifies that a test may give the assertion {@code expected_outcome} a built-in tool: it is then no longer an
 	 * assertion without a tool, CAT still supplies its description and kind, the tool's {@code on_tool_failure}
 	 * applies, and the tool must suit the test.
@@ -487,6 +517,26 @@ public final class ContractTest
 			Duration.ofMinutes(1), "Complies.", List.of(), List.of(new VariableDeclaration("dir", "The directory.")),
 			List.of(), List.of(ContractFixtures.testCase("cleans build", Map.of("dir", "build"))), assertions,
 			List.of(), List.of(), Optional.empty(), Optional.of(tool));
+	}
+
+	/**
+	 * Returns a test with near misses for one assertion.
+	 *
+	 * @param assertions          the declared assertions
+	 * @param expectedOutcomeTool the built-in tool of {@code expected_outcome}, or empty
+	 * @param nearMissAssertion   the assertion that the near misses are for
+	 * @return the test
+	 * @throws IllegalArgumentException if the judge does not decide {@code nearMissAssertion}
+	 */
+	private static PromptTest withNearMisses(List<MappedAssertion> assertions,
+		Optional<ExpectedOutcomeTool> expectedOutcomeTool, String nearMissAssertion)
+	{
+		NearMisses nearMisses = new NearMisses(nearMissAssertion, List.of("Just meets (1)", "Just meets (2)"),
+			List.of("Just misses (1)", "Just misses (2)"));
+		return new PromptTest("t", new RiskRank(1), List.of("r1", "r2"), List.of(), "Always.", List.of("Clean {{dir}}."),
+			Duration.ofMinutes(1), "Complies.", List.of(), List.of(new VariableDeclaration("dir", "The directory.")),
+			List.of(), List.of(ContractFixtures.testCase("cleans build", Map.of("dir", "build"))), assertions,
+			List.of(), List.of(), Optional.empty(), expectedOutcomeTool, List.of(nearMisses));
 	}
 
 	/**
