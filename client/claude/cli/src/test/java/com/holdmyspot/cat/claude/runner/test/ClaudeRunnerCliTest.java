@@ -35,6 +35,7 @@ import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -699,8 +700,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch whose requester holds the session's capacity slot takes none, so that it starts even
-	 * while every slot is taken.
+	 * Verifies that a launch whose requester holds the session's capacity slot reaches bridge input opening without
+	 * taking another slot or starting a runner.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -711,20 +712,28 @@ public final class ClaudeRunnerCliTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path home = Files.createDirectory(root.resolve("home"));
+			Path configuration = Files.createDirectory(home.resolve(".claude"));
+			Path input = root.resolve("missing-input.jsonl");
+			Map<String, String> environment = Map.of(Platform.current().homeVariable(), home.toString(),
+				"CLAUDE_CONFIG_DIR", configuration.toString(), "CLAUDE_CODE_OAUTH_TOKEN",
+				LOGIN.get("CLAUDE_CODE_OAUTH_TOKEN"));
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
 				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
-				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
+				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held", "--input",
+				input.toString()};
+
 			try
 			{
-				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(), _ ->
+				ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), environment, _ ->
 				{
 					throw new AssertionError("The launch took a capacity slot");
 				});
-				throw new AssertionError("The launch started a session without a CAT artifact");
+				throw new AssertionError("The bridge opened a missing input file");
 			}
-			catch (IOException _)
+			catch (NoSuchFileException e)
 			{
-				// The session starts without a slot, and fails only because the test runs no CAT artifact
+				requireThat(Path.of(e.getFile()), "missingInput").isEqualTo(input);
 			}
 		}
 	}

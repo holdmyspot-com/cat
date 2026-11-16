@@ -187,6 +187,19 @@ public final class CodexParentSession
 	}
 
 	/**
+	 * Reads the policy when a Codex sandbox helper precedes the outer Codex process.
+	 *
+	 * @param arguments the arguments of the outer Codex process after its executable
+	 * @return the policy
+	 * @throws IOException   if a file cannot be read
+	 * @throws PolicyRefusal if the reader refuses
+	 */
+	public ParentPolicy readForCommandWithSandboxHelper(String... arguments) throws IOException, PolicyRefusal
+	{
+		return reader().readForCommand(sessionWithSandboxHelper(arguments), Optional.empty());
+	}
+
+	/**
 	 * Returns the session when Codex runs with some arguments.
 	 *
 	 * @param arguments the arguments of the Codex process after its executable
@@ -196,10 +209,32 @@ public final class CodexParentSession
 	{
 		List<ProcessDescription> ancestors = List.of(
 			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"),
+				Optional.empty(), Optional.of(List.of("-c", "hook"))),
+			new ProcessDescription(102, Optional.empty(), Optional.of("/opt/codex/vendor/bin/codex"),
+				Optional.empty(), Optional.of(List.of(arguments))),
+			new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/node"),
+				Optional.empty(), Optional.of(List.of("/opt/codex/bin/codex.js"))));
+		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
+		return new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);
+	}
+
+	/**
+	 * Returns a session whose nearest Codex executable uses the sandbox helper as argv[0], followed by the outer Codex
+	 * process that owns the command line.
+	 *
+	 * @param arguments the arguments of the outer Codex process after its executable
+	 * @return the session
+	 */
+	private CodexSession sessionWithSandboxHelper(String... arguments)
+	{
+		List<ProcessDescription> ancestors = List.of(
+			new ProcessDescription(101, Optional.empty(), Optional.of("/bin/sh"), Optional.empty(),
 				Optional.of(List.of("-c", "hook"))),
 			new ProcessDescription(102, Optional.empty(), Optional.of("/opt/codex/vendor/bin/codex"),
-				Optional.of(List.of(arguments))),
-			new ProcessDescription(103, Optional.empty(), Optional.of("/usr/bin/node"),
+				Optional.of("/usr/libexec/codex-linux-sandbox"), Optional.of(List.of("--sandbox-helper-option"))),
+			new ProcessDescription(103, Optional.empty(), Optional.of("/opt/codex/vendor/bin/codex"),
+				Optional.of("codex"), Optional.of(List.of(arguments))),
+			new ProcessDescription(104, Optional.empty(), Optional.of("/usr/bin/node"), Optional.empty(),
 				Optional.of(List.of("/opt/codex/bin/codex.js"))));
 		Map<String, String> environment = Map.of("HOME", home.toString(), "TMPDIR", root.resolve("tmp").toString());
 		return new CodexSession(ancestors, environment, home, project, transcript, SESSION_ID);

@@ -107,6 +107,14 @@ public final class CodexServerPolicyTest extends ParentPolicySourceContract
 			requireThat(policy.sandboxed(), "sandboxed").isTrue();
 			requireThat(policy.writeRoots(), "writeRoots").contains(fixture.project);
 			requireThat(policy.hosts(), "hosts").isEqualTo(HostAccess.ALL);
+
+			Path extra = Files.createDirectory(fixture.project.resolveSibling("live-extra"));
+			ParentPolicySource liveSource = fixture.source(() -> Optional.of(CODEX_START),
+				List.of("--add-dir", extra.toString()));
+			ParentPolicy livePolicy = liveSource.read(Optional.empty());
+
+			requireThat(livePolicy.writeRoots(), "liveWriteRoots").contains(extra);
+			requireThat(livePolicy.writeRoots(), "liveWriteRoots").contains(fixture.project);
 		}
 	}
 
@@ -492,13 +500,25 @@ public final class CodexServerPolicyTest extends ParentPolicySourceContract
 		 */
 		ParentPolicySource source(Supplier<Optional<String>> reportedStart)
 		{
+			return source(reportedStart, List.of());
+		}
+
+		/**
+		 * Returns the policy source with the supplied running-process arguments, independently of saved session ancestry.
+		 *
+		 * @param reportedStart returns the process start at each reading, or empty if it is no longer running
+		 * @param liveArguments arguments reported by the running Codex process
+		 * @return the source that reads the recorded session's live process policy
+		 */
+		private ParentPolicySource source(Supplier<Optional<String>> reportedStart, List<String> liveArguments)
+		{
 			HarnessProcesses processes = pid ->
 			{
 				Optional<String> start = reportedStart.get();
 				if (pid != CODEX_PID || start.isEmpty())
 					return Optional.empty();
 				return Optional.of(new ProcessDescription(pid, start, Optional.of("/usr/lib/codex/bin/codex"),
-					Optional.of(List.of())));
+					Optional.empty(), Optional.of(liveArguments)));
 			};
 			CodexSession session = new CodexSession(List.of(), Map.of("HOME", home.toString()), home, project,
 				Optional.empty(), SESSION_ID);

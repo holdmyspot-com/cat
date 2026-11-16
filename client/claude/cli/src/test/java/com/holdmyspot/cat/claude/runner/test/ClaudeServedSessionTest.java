@@ -293,10 +293,10 @@ public final class ClaudeServedSessionTest
 		static List<ProcessDescription> ancestors()
 		{
 			return List.of(
-				new ProcessDescription(4300, Optional.empty(), Optional.of("/bin/bash"), Optional.of(List.of("-c",
-					"request-server"))),
+				new ProcessDescription(4300, Optional.empty(), Optional.of("/bin/bash"), Optional.empty(),
+					Optional.of(List.of("-c", "request-server"))),
 				new ProcessDescription(PROCESS_ID, Optional.of(PROCESS_START), Optional.of("/opt/claude/claude"),
-					Optional.of(List.of())));
+					Optional.empty(), Optional.of(List.of())));
 		}
 
 		@Override

@@ -211,6 +211,8 @@ public final class CodexSessionStartHookTest
 			Files.writeString(Files.createDirectories(project.resolve(".cat/rules/codex")).resolve("a.md"), "project codex");
 			String rules = sessionRules(invoke(event(project),
 				Map.of("PLUGIN_ROOT", plugin.toString()), project));
+			requireThat(rules, "rules").contains("plugin common").contains("plugin codex").
+				contains("project common").contains("project codex");
 			requireThat(rules.indexOf("plugin common"), "pluginCommonIndex").
 				isLessThan(rules.indexOf("plugin codex"));
 			requireThat(rules.indexOf("plugin codex"), "pluginCodexIndex").

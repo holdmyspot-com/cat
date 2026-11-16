@@ -12,6 +12,7 @@ import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.HarnessRun;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -20,6 +21,7 @@ import java.time.Clock;
 import java.util.List;
 import java.util.Map;
 import org.testng.annotations.Test;
+import tools.jackson.core.JacksonException;
 
 /**
  * Tests that the evidence read from a Codex trial holds the tool results that the trial's agents received, as the
@@ -41,7 +43,7 @@ public final class CodexReceivedResultsTest
 
 	/**
 	 * Verifies that a result whose output is a string, an array of text items or an object with content is received
-	 * as that text, and that rollout lines that hold no tool result, or are not JSON, add nothing.
+	 * as that text, and that rollout lines that hold no tool result add nothing.
 	 *
 	 * @throws IOException if the trial cannot be written or read
 	 */
@@ -55,7 +57,6 @@ public final class CodexReceivedResultsTest
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(
 				"{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\"}}",
 				"{\"type\":\"response_item\",\"payload\":{\"type\":\"message\",\"content\":\"not a result\"}}",
-				"not JSON",
 				RecordedTrial.toolResult("plain text"),
 				"{\"type\":\"response_item\",\"payload\":{\"type\":\"custom_tool_call_output\",\"call_id\":\"call_2\"," +
 					"\"output\":[{\"type\":\"input_text\",\"text\":\"first item\"},{\"type\":\"input_image\"}," +
@@ -65,6 +66,39 @@ public final class CodexReceivedResultsTest
 
 			requireThat(sessions(jvm, root).readEvidence(transcript).received(), "received").
 				isEqualTo(List.of("plain text", "first item", "second item", "object content"));
+		}
+	}
+
+	/**
+	 * Verifies that reading retained evidence reports a malformed rollout's filename and physical line, with Jackson's
+	 * parse failure preserved as the cause.
+	 *
+	 * @throws IOException if the trial cannot be written or read
+	 */
+	@Test
+	public void rejectsMalformedRolloutRecord() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
+			Path transcript = RecordedTrial.write(root, EVENTS, List.of(
+				"{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\"}}", "", "{"));
+			Path rollout = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS).
+				resolve("rollout-2026-10-15T12-00-00-root.jsonl");
+			IOException failure = null;
+			try
+			{
+				sessions(jvm, root).readEvidence(transcript);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "failure.message").contains(rollout.toAbsolutePath() + ":3:");
+			requireThat(failure.getCause(), "failure.cause").isInstanceOf(JacksonException.class);
 		}
 	}
 

@@ -2,6 +2,7 @@ package com.holdmyspot.cat.claude.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.claude.runner.ClaudeProcess.LineEffect;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess.TurnBoundary;
@@ -19,6 +20,13 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.stream.Stream;
 
 import org.testng.annotations.DataProvider;
@@ -753,29 +761,51 @@ public final class ClaudeProcessTest
 	}
 
 	/**
-	 * Verifies a turn whose child output ends waits for termination before reading its exit status. The in-memory
-	 * child models stdout closing before termination is observed; reading its exit status before waiting fails.
+	 * Verifies an incomplete turn remains pending after child stdout EOF until the child exits with status 37.
 	 *
-	 * @throws IOException if the turn fails
+	 * @throws IOException            if the turn fails
+	 * @throws InterruptedException   if waiting for the turn is interrupted
+	 * @throws ExecutionException     if processing the turn fails
+	 * @throws TimeoutException       if the turn does not finish after the child exits
 	 */
 	@Test(timeOut = 10_000)
-	public void waitsForExitAfterOutputEnds() throws IOException
+	public void waitsForExitAfterOutputEnds() throws IOException, InterruptedException, ExecutionException,
+		TimeoutException
 	{
 		// Requirement: R-E14
-		FakeHarnessCli claude = new FakeHarnessCli(_ ->
+		try (ExecutorService executor = Executors.newSingleThreadExecutor())
 		{
-		});
-		try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
-		{
-			claude.emit(STATE_RUNNING, INIT);
-			claude.closeOutputThenExitWhenAwaited();
-
-			HarnessProcessResult result = process.sendTurn("Launch a background child.", _ ->
+			CountDownLatch turnSubmitted = new CountDownLatch(1);
+			try (FakeHarnessCli claude = new FakeHarnessCli(_ -> turnSubmitted.countDown(), 37))
 			{
-			});
+				try (ClaudeProcess process = new ClaudeProcess(new TestHarnessRunnerScope(), claude))
+				{
+					try
+					{
+						claude.emit(STATE_RUNNING, INIT);
+						Future<HarnessProcessResult> turn = executor.submit(() ->
+							process.sendTurn("Launch a background child.", _ -> {}));
+						requireThat(turnSubmitted.await(5, TimeUnit.SECONDS), "turnSubmitted").isTrue();
+						claude.closeOutput();
+						expectThrows(TimeoutException.class, () -> turn.get(100, TimeUnit.MILLISECONDS));
+						requireThat(claude.isAlive(), "childAliveAfterOutputEnds").isTrue();
+						claude.exit();
+						HarnessProcessResult result = turn.get(5, TimeUnit.SECONDS);
 
-			requireThat(result.completed(), "completed").isFalse();
-			requireThat(result.standardError(), "standardError").contains("Claude process ended before result");
+						requireThat(result.completed(), "completed").isFalse();
+						requireThat(result.standardError(), "standardError").contains("Claude process ended before result");
+						requireThat(result.exitCode(), "exitCode").isEqualTo(37);
+					}
+					finally
+					{
+						claude.exit();
+					}
+				}
+				finally
+				{
+					claude.exit();
+				}
+			}
 		}
 	}
 

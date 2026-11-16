@@ -281,9 +281,9 @@ public final class ClaudeCommandSessionTest
 		{
 			List<ProcessDescription> ancestors = List.of(
 				new ProcessDescription(4300, Optional.empty(), Optional.of("/bin/bash"),
-					Optional.of(List.of("-c", "launcher"))),
+					Optional.empty(), Optional.of(List.of("-c", "launcher"))),
 				new ProcessDescription(PROCESS_ID, Optional.empty(), Optional.of("/opt/claude/claude"),
-					Optional.of(List.of())));
+					Optional.empty(), Optional.of(List.of())));
 			return ClaudeCommandSession.find(environment, home, "user", ancestors, JSON);
 		}
 

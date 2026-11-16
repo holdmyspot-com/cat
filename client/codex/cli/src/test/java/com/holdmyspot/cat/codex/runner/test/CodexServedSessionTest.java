@@ -53,7 +53,7 @@ public final class CodexServedSessionTest
 
 	/**
 	 * Verifies that the server identifies the session by the thread's rollout, takes the project from it, and takes
-	 * the harness process that it outlives no longer than from the nearest Codex process among its ancestors.
+	 * the harness process that it outlives no longer than from the outer Codex process after the sandbox helper.
 	 *
 	 * @throws IOException   if the fixture cannot be written
 	 * @throws PolicyRefusal if the session cannot be identified
@@ -66,9 +66,11 @@ public final class CodexServedSessionTest
 			fixture.rollout("", "");
 			List<ProcessDescription> ancestors = List.of(
 				new ProcessDescription(4300, Optional.of("1731067201"), Optional.of("/bin/bash"),
-					Optional.of(List.of("-c", fixture.server.toString()))),
+					Optional.empty(), Optional.of(List.of("-c", fixture.server.toString()))),
+				new ProcessDescription(4210, Optional.of("1731067202"), Optional.of("/opt/codex/bin/codex"),
+					Optional.of("/usr/libexec/codex-linux-sandbox"), Optional.of(List.of("--sandbox-helper-option"))),
 				new ProcessDescription(4200, Optional.of("1731067200"), Optional.of("/opt/codex/bin/codex"),
-					Optional.of(List.of())));
+					Optional.of("codex"), Optional.of(List.of())));
 
 			RequestServer.Session session = CodexServedSession.sessions(fixture.environment(), fixture.home,
 				NO_PROCESSES, ancestors, fixture.reader()).find();
@@ -93,7 +95,7 @@ public final class CodexServedSessionTest
 		{
 			fixture.rollout("", "");
 			List<ProcessDescription> ancestors = List.of(new ProcessDescription(4300, Optional.of("1731067201"),
-				Optional.of("/bin/bash"), Optional.of(List.of("-c", fixture.server.toString()))));
+				Optional.of("/bin/bash"), Optional.empty(), Optional.of(List.of("-c", fixture.server.toString()))));
 			RequestServer.SessionFinder finder = CodexServedSession.sessions(fixture.environment(), fixture.home,
 				NO_PROCESSES, ancestors, fixture.reader());
 			try

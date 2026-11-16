@@ -15,7 +15,9 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import tools.jackson.core.JacksonException;
 
 /**
  * Tests {@link CodexGetHistory}.
@@ -228,6 +230,66 @@ public final class CodexGetHistoryTest
 
 			requireThat(result, "result").contains("records=5\n").contains("types=event_msg:3,session_meta:2\n").
 				contains("first_timestamp=2026-11-06T10:00:00Z\nlast_timestamp=2026-11-06T10:04:00Z\n");
+		}
+	}
+
+	/**
+	 * Returns which rollout contains malformed JSON in the inherited history.
+	 *
+	 * @return the rollout to corrupt
+	 */
+	@DataProvider
+	public static Object[][] malformedRollouts()
+	{
+		return new Object[][]
+		{
+			{"parent"},
+			{"child"}
+		};
+	}
+
+	/**
+	 * Verifies malformed JSON in either rollout reports that file's physical line despite the inherited history.
+	 *
+	 * @param location the rollout to corrupt
+	 * @throws IOException if the history contains malformed JSON
+	 */
+	@Test(dataProvider = "malformedRollouts", expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "(?s).*rollout-.*\\.jsonl:3.*")
+	public void reportsMalformedRolloutLocation(String location) throws IOException
+	{
+		try (TestJvmScope scope = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-history-"));
+			writeForkedThread(codexHome);
+			Path parent = rolloutOf(codexHome, PARENT_ID);
+			Path child = rolloutOf(codexHome, FORK_ID);
+			Path malformedRollout;
+			if (location.equals("parent"))
+			{
+				malformedRollout = parent;
+				Files.writeString(parent, record(0, "session_meta", "\"id\":\"" + PARENT_ID + "\"") + "\n \n{\n");
+			}
+			else
+			{
+				malformedRollout = child;
+				Files.writeString(child, record(3, "session_meta", "\"id\":\"" + FORK_ID +
+					"\",\"history_base\":{\"thread_id\":\"" + PARENT_ID +
+					"\",\"end_ordinal_exclusive\":3}") + "\n \n{\n");
+			}
+
+			try
+			{
+				history(scope, codexHome, "analyze");
+				throw new AssertionError("Malformed rollout JSON was accepted");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains(malformedRollout + ":3");
+				requireThat(e.getCause(), "cause").isInstanceOf(JacksonException.class);
+				throw e;
+			}
 		}
 	}
 

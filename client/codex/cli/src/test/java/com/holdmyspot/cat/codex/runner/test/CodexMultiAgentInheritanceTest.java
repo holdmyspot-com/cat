@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
@@ -11,6 +12,8 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -287,7 +290,7 @@ public final class CodexMultiAgentInheritanceTest
 	}
 
 	/**
-	 * Returns parent threads whose recorded state is unavailable.
+	 * Returns a standalone parent and a valid thread rollout that omits multi-agent state.
 	 *
 	 * @return the thread identifier, and the rollout's content or {@code null} if the thread has none
 	 */
@@ -298,15 +301,12 @@ public final class CodexMultiAgentInheritanceTest
 		{
 			{null, null},
 			{"", null},
-			{THREAD, null},
-			{THREAD, "{\"type\":\"turn_context\",\"payload\":{\"multi_agent_version\":\n"},
 			{THREAD, "{\"type\":\"session_meta\",\"payload\":{}}\n"}
 		};
 	}
 
 	/**
-	 * Verifies that a session whose parent thread is absent, has no rollout, or has a rollout without a readable state
-	 * gets only the parent configuration's entries.
+	 * Verifies that a standalone parent or valid rollout without multi-agent state gets only the configured entries.
 	 *
 	 * @param threadId the parent thread's identifier, or {@code null} if no Codex thread starts the session
 	 * @param rollout  the parent thread's rollout, or {@code null} if it has none
@@ -331,13 +331,12 @@ public final class CodexMultiAgentInheritanceTest
 	}
 
 	/**
-	 * Verifies that a session whose parent thread's rollout cannot be opened gets only the parent configuration's
-	 * entries.
+	 * Verifies that a supplied parent whose rollout cannot be opened is rejected.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void unreadableRolloutKeepsConfiguration() throws IOException
+	public void unreadableRolloutIsRejected() throws Exception
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -353,12 +352,68 @@ public final class CodexMultiAgentInheritanceTest
 				Files.createDirectories(rollout);
 			}
 
-			CodexParentMultiAgentState state = CodexParentMultiAgentState.read(JSON, codexHome, THREAD);
-			JsonNode session = session(root, "[features]\nmulti_agent_v2 = true\n", state, Platform.LINUX_X64);
-
-			requireTable(session, "features", "multi_agent_v2 = true");
-			requireTable(session, "agents", "");
+			assertRequiredReadFails(codexHome, THREAD, rollout);
 		}
+	}
+
+	/**
+	 * Verifies that a supplied parent thread with no rollout cannot silently inherit standalone defaults.
+	 *
+	 * @throws Exception if the public operation fails for a reason other than the required contextual refusal
+	 */
+	@Test
+	public void missingRequiredRolloutIsRejected() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			assertRequiredReadFails(codexHome, THREAD, codexHome);
+		}
+	}
+
+	/**
+	 * Invokes the public read operation as the runner does and verifies its contextual failure contract.
+	 *
+	 * @param codexHome the host Codex home
+	 * @param threadId the supplied parent thread
+	 * @param source the rollout expected in the failure
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	private static void assertRequiredReadFails(Path codexHome, String threadId, Path source) throws Exception
+	{
+		assertRequiredReadFails(codexHome, threadId, source.toString());
+	}
+
+	/**
+	 * Invokes the required public read operation and checks the exception type and message.
+	 *
+	 * @param codexHome the host Codex home
+	 * @param threadId the supplied parent thread
+	 * @param expectedMessage the message fragment expected
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	private static void assertRequiredReadFails(Path codexHome, String threadId, String expectedMessage)
+		throws Exception
+	{
+		Method read = CodexParentMultiAgentState.class.getMethod("read", JsonMapper.class, Path.class, String.class);
+		IllegalStateException invocation = expectThrows(IllegalStateException.class, () ->
+		{
+			try
+			{
+				read.invoke(null, JSON, codexHome, threadId);
+			}
+			catch (InvocationTargetException e)
+			{
+				throw new IllegalStateException(e);
+			}
+			catch (ReflectiveOperationException e)
+			{
+				throw new AssertionError(e);
+			}
+		});
+		Throwable failure = invocation.getCause().getCause();
+		requireThat(failure, "failure").isInstanceOf(IOException.class);
+		requireThat(failure.getMessage(), "failureMessage").contains(expectedMessage);
 	}
 
 	/**
@@ -435,53 +490,181 @@ public final class CodexMultiAgentInheritanceTest
 	}
 
 	/**
-	 * Verifies that a session started from a forked Codex thread whose parent's rollout is gone runs the state that the
-	 * fork recorded itself.
+	 * Verifies that a fork whose required parent rollout is gone is refused.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void missingParentKeepsForkState() throws IOException
+	public void missingRequiredParentIsRejected() throws Exception
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
 			Path codexHome = root.resolve("host");
 			writeFork(codexHome, turnContext("v1"));
-
-			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
-				Platform.LINUX_X64);
-
-			requireTable(session, "features", "multi_agent = true");
-			requireTable(session, "agents", "");
+			Path child = rolloutOf(codexHome, THREAD);
+			assertRequiredReadFails(codexHome, THREAD, child);
 		}
 	}
 
 	/**
-	 * Verifies that a session started from a forked Codex thread reads the end of the part of its parent's rollout that
-	 * the fork inherited, however much the parent recorded after the fork point, as it reads the end of a large rollout
-	 * of any other thread.
+	 * Verifies that malformed bytes after a fork's authoritative byte cutoff do not contaminate its included history.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void forkReadsEndOfInheritedPartOfLargeParent() throws IOException
+	public void forkIgnoresBadAfterCutoff() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
 			Path codexHome = root.resolve("host");
 			writeParent(codexHome);
-			long inheritedBytes = Files.size(rolloutOf(codexHome, PARENT));
-			// What the parent recorded after the fork point fills more than the part of a rollout that is read
-			String filler = "{\"ordinal\":" + FORK_POINT + ",\"type\":\"event_msg\",\"payload\":{\"text\":\"" +
+			Path parent = rolloutOf(codexHome, PARENT);
+			long inheritedBytes = Files.size(parent);
+			Files.writeString(parent, "{\"type\":\"world_state\",", UTF_8, StandardOpenOption.APPEND);
+			writeForkWithBase(codexHome, ",\"end_byte_offset\":" + inheritedBytes);
+
+			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
+				Platform.LINUX_X64);
+
+			requireTable(session, "features", proactiveFeatures());
+		}
+	}
+
+	/**
+	 * Verifies that an included unfinished final record refuses required parent reconstruction with its physical line.
+	 *
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	@Test
+	public void includedUnfinishedRecordIsRejected() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-")).resolve("host");
+			Path rollout = writeRollout(codexHome, "{\"type\":\"session_meta\",\"payload\":{}}\n" +
+				turnContext("v2"));
+			assertRequiredReadFails(codexHome, THREAD, rollout);
+		}
+	}
+
+	/**
+	 * Verifies that present null history metadata is rejected rather than treated as an omitted state.
+	 *
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	@Test
+	public void nullHistoryBaseIsRejected() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path rollout = writeRollout(codexHome,
+				"{\"type\":\"session_meta\",\"payload\":{\"history_base\":null}}\n");
+			assertRequiredReadFails(codexHome, THREAD, rollout);
+		}
+	}
+
+	/**
+	 * Returns present parent-state values that cannot be reconstructed.
+	 *
+	 * @return a JSON value for {@code multi_agent_version}
+	 */
+	@DataProvider
+	public Object[][] invalidParentStateValues()
+	{
+		return new Object[][]
+		{
+			{"null"},
+			{"7"},
+			{"\"future\""}
+		};
+	}
+
+	/**
+	 * Verifies that a present null, wrong-type, or unsupported state value is not treated as absence.
+	 *
+	 * @param value the invalid JSON version value
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	@Test(dataProvider = "invalidParentStateValues")
+	public void invalidParentStateIsRejected(String value) throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path rollout = writeRollout(codexHome, "{\"type\":\"turn_context\",\"payload\":{" +
+				"\"multi_agent_version\":" + value + "}}\n");
+			assertRequiredReadFails(codexHome, THREAD, rollout);
+		}
+	}
+
+	/**
+	 * Verifies that a cyclic required parent lineage is rejected.
+	 *
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	@Test
+	public void cyclicRequiredLineageIsRejected() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path child = writeRollout(codexHome, "{\"type\":\"session_meta\",\"payload\":{" +
+				"\"history_base\":{\"thread_id\":\"" + PARENT + "\",\"end_ordinal_exclusive\":0}}}\n");
+			Path parent = rolloutOf(codexHome, PARENT);
+			Files.writeString(parent, "{\"type\":\"session_meta\",\"payload\":{" +
+				"\"history_base\":{\"thread_id\":\"" + THREAD + "\",\"end_ordinal_exclusive\":0}}}\n");
+			assertRequiredReadFails(codexHome, THREAD, child);
+		}
+	}
+
+	/**
+	 * Verifies that diagnostics count blank physical lines before malformed included records.
+	 *
+	 * @throws Exception if reflection or fixture operations fail
+	 */
+	@Test
+	public void malformedRecordCountsBlankLines() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path codexHome = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path rollout = writeRollout(codexHome,
+				"{\"type\":\"session_meta\",\"payload\":{}}\n\n{\n");
+			assertRequiredReadFails(codexHome, THREAD, rollout + ":3:");
+		}
+	}
+
+	/**
+	 * Verifies that a large required parent segment retains state recorded at its start.
+	 * <p>
+	 * The inherited state precedes more than 64 MiB of included events so that a reader limited to the segment's tail
+	 * would lose it. This case writes and reads that segment, then checks the copied feature configuration; a small
+	 * history would not distinguish a complete reader from a tail-only reader.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void forkReadsLargeIncludedHistory() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
+			Path codexHome = root.resolve("host");
+			writeParent(codexHome);
+			Path parent = rolloutOf(codexHome, PARENT);
+			// Included non-state events push the inherited state beyond the former tail reader's 64-MiB window
+			String filler = "{\"ordinal\":2,\"type\":\"event_msg\",\"payload\":{\"text\":\"" +
 				"x".repeat(1000) + "\"}}\n";
-			try (BufferedWriter parent = Files.newBufferedWriter(rolloutOf(codexHome, PARENT), UTF_8,
+			try (BufferedWriter writer = Files.newBufferedWriter(parent, UTF_8,
 				StandardOpenOption.APPEND))
 			{
 				for (long written = 0; written < 65L * 1024 * 1024; written += filler.length())
-					parent.write(filler);
+					writer.write(filler);
 			}
+			long inheritedBytes = Files.size(parent);
 			writeForkWithBase(codexHome, ",\"end_byte_offset\":" + inheritedBytes);
 
 			JsonNode session = session(root, "", CodexParentMultiAgentState.read(JSON, codexHome, THREAD),
@@ -629,6 +812,9 @@ public final class CodexMultiAgentInheritanceTest
 	private static Path writeRollout(Path codexHome, String content) throws IOException
 	{
 		Path day = Files.createDirectories(codexHome.resolve("sessions/2026/11/02"));
+		String metadata = "{\"type\":\"session_meta\",\"payload\":{\"id\":\"" + THREAD + "\"}}\n";
+		if (!content.startsWith("{\"type\":\"session_meta\""))
+			content = metadata + content;
 		return Files.writeString(day.resolve("rollout-2026-11-02T10-00-00-" + THREAD + ".jsonl"), content, UTF_8);
 	}
 

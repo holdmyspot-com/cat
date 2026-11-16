@@ -185,7 +185,7 @@ final class ClaudeSessionFixture implements AutoCloseable
 			if (processId != PROCESS_ID || !running)
 				return Optional.empty();
 			return Optional.of(new ProcessDescription(processId, Optional.of(reportedStart),
-				Optional.of("/usr/local/bin/claude"), Optional.of(arguments)));
+				Optional.of("/usr/local/bin/claude"), Optional.empty(), Optional.of(arguments)));
 		});
 	}
 
