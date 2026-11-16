@@ -38,6 +38,10 @@ public final class KeptRunCopy
 	 * The directory of a kept run that holds the copy of the project as it was before the child's first turn.
 	 */
 	private static final String RUN_INITIAL_PROJECT = "initial-project";
+	/**
+	 * The manifest of a run, which {@link #copy(Path, Path, String)} writes after the rest of the run.
+	 */
+	private static final Path MANIFEST = Path.of("run.json");
 	private static final String RUN_ARTIFACTS = "artifacts";
 	private static final String RUN_TRANSCRIPTS = "session-transcripts";
 	/**
@@ -85,6 +89,29 @@ public final class KeptRunCopy
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
 		return copy(source, target, _ -> true);
+	}
+
+	/**
+	 * Copies a kept run as {@link #copy(Path, Path)} does and gives the copy the identifier under which it is kept. The
+	 * copy's manifest appears last and whole, already naming {@code id}, so that a process that lists the folder of the
+	 * kept runs while the copy is under way never reads a manifest that is partial or names the run's slot.
+	 *
+	 * @param source the kept run
+	 * @param target the copy, which need not exist
+	 * @param id     the identifier under which the copy is kept
+	 * @return how the copy ended
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code id} is not a run identifier
+	 * @throws IOException              if the run's manifest is malformed or cannot be written
+	 */
+	public static Result copy(Path source, Path target, String id) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
+		requireThat(target, "target").isNotNull();
+		requireThat(id, "id").isNotNull();
+		Result result = copy(source, target, relative -> !relative.equals(MANIFEST));
+		HarnessRunManager.copyManifest(source, target, id);
+		return result;
 	}
 
 	/**

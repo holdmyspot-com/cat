@@ -248,9 +248,7 @@ public final class SessionRequestForwarder
 		String kept = keptId;
 		if (kept.isEmpty())
 			kept = HarnessRunManager.newRunId(Clock.systemUTC());
-		Optional<String> incomplete = KeptRunCopy.copy(Path.of(run), runs.resolve(kept)).incomplete();
-		HarnessRunManager.renameCopy(runs.resolve(kept), kept);
-		return incomplete;
+		return KeptRunCopy.copy(Path.of(run), runs.resolve(kept), kept).incomplete();
 	}
 
 	/**

@@ -257,19 +257,38 @@ public final class HarnessRunManager
 	 */
 	public static void renameCopy(Path directory, String id) throws IOException
 	{
+		copyManifest(directory, directory, id);
+	}
+
+	/**
+	 * Writes the manifest of a run into the directory of its copy under the identifier by which the copy is kept. The
+	 * copy's manifest is replaced in one step, so a reader sees either no manifest, the manifest that was there, or the
+	 * new one. A run that has no manifest leaves the copy without one.
+	 *
+	 * @param source    the directory of the run
+	 * @param directory the directory of the copy, which exists
+	 * @param id        the identifier under which the copy is kept
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code id} is not a run identifier
+	 * @throws IOException              if the run's manifest is malformed or the copy's cannot be written
+	 */
+	public static void copyManifest(Path source, Path directory, String id) throws IOException
+	{
+		requireThat(source, "source").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		requireThat(id, "id").matches(RUN_ID);
-		Path manifest = directory.resolve("run.json");
+		Path manifest = source.resolve("run.json");
 		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 			return;
 		String content = Files.readString(manifest);
 		Matcher matcher = MANIFEST.matcher(content);
 		if (!matcher.matches())
 			throw new IOException("Run manifest is malformed or unsupported: " + manifest);
+		Files.createDirectories(directory);
 		Path replacement = Files.createTempFile(directory, "run-", ".json");
 		Files.writeString(replacement, content.substring(0, matcher.start("id")) + id +
 			content.substring(matcher.end("id")));
-		Files.move(replacement, manifest, REPLACE_EXISTING);
+		Files.move(replacement, directory.resolve("run.json"), REPLACE_EXISTING);
 	}
 
 	/**

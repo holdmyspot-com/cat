@@ -4,11 +4,18 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.StandardOpenOption.APPEND;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.KeptRunCopy;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 import org.testng.annotations.Test;
 
@@ -133,6 +140,67 @@ public final class KeptRunCopyTest
 				requireThat(Files.readString(target.resolve("artifacts/result.jsonl")), "finalArtifact").
 					isEqualTo("result\n");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a session's pass over the runs of its run root never meets another session's kept run while that
+	 * run is being copied, when a manifest that does not yet identify its directory, or is partly copied, would make
+	 * the pass fail the session.
+	 *
+	 * @throws IOException if fixture files cannot be created or copied
+	 * @throws InterruptedException if the test thread is interrupted
+	 */
+	@Test
+	public void copyNeverShowsAnotherIdentity() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path slots = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "kept-slot-"));
+			HarnessRunManager slot = new HarnessRunManager(jvm.fileLocks(), slots, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			HarnessRun child = slot.create("harness");
+			for (int i = 0; i < 800; ++i)
+				Files.writeString(Files.createDirectories(child.directory().resolve("project/d" + (i % 40))).
+					resolve("f" + i), "content");
+			slot.markCompleted(child);
+			Path kept = Files.createTempDirectory(jvm.temporaryDirectory(), "kept-root-");
+			cleanup.add(kept);
+			HarnessRunManager keptRuns = new HarnessRunManager(jvm.fileLocks(), kept, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			AtomicBoolean done = new AtomicBoolean();
+			AtomicReference<IOException> seen = new AtomicReference<>();
+			Thread pass = new Thread(() ->
+			{
+				while (!done.get())
+				{
+					try
+					{
+						keptRuns.pruneTerminalRuntimes("harness");
+					}
+					catch (IOException e)
+					{
+						seen.compareAndSet(null, e);
+						return;
+					}
+				}
+			});
+			pass.start();
+			try
+			{
+				for (int round = 0; round < 6 && seen.get() == null; ++round)
+				{
+					String id = "kept-" + round;
+					KeptRunCopy.copy(child.directory(), kept.resolve("harness").resolve(id), id);
+				}
+			}
+			finally
+			{
+				done.set(true);
+				pass.join();
+			}
+			requireThat(seen.get(), "failureOfPass").isNull();
 		}
 	}
 }
