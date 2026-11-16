@@ -1363,6 +1363,14 @@ the skill does not repeat them.
 	running nor queue its message. The launcher already confirms that it runs outside the sandbox (D133); when it does
 	not, `--background` returns a status that names the reason, and the skill falls back to foreground slices.
 - **Driver lock.** The background driver holds the campaign lock for the whole run.
+	- The lock alone says whether a driver is alive. A process that reads the driver's identity file
+		(`background-driver.json`: the driver's start time and its cancellation address) tries the lock without
+		waiting. If it cannot take the lock, a driver holds it and is alive; if it can, it releases it at once and the
+		driver is gone. The file records no process identifier: a driver in another sandbox has its own process
+		namespace, so a number that it records cannot be resolved by the process that reads it, and that process would
+		judge a live driver dead. A command that takes the lock discards any identity left by an earlier driver before
+		it works, so a stale file never passes for the new holder's. Only a lock with no holder is reported as "no
+		longer alive".
 	- `status` stays read-only. It reports from the latest snapshot and says that a driver holds the campaign, with the
 		driver's start time.
 	- A second `run` returns `busy` immediately, as in a foreground slice.
