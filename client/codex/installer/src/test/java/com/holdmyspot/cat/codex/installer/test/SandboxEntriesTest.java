@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.installer.test;
 
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
@@ -563,11 +564,12 @@ public final class SandboxEntriesTest
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
 			HarnessInstallation installation = provider.installation(home);
-			install.installEntries(home, launcher, installation, List.of(other()), wrongLocks,
+			install.installEntries(permissionEnvironment(home), home, launcher, installation, List.of(other()), wrongLocks,
 				launcherState(wrongLocks), List.of(), false);
 			requireThat(Files.readString(configuration), "granted").contains(quote(wrongLocks));
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
+			PluginInstall.InstalledEntries entries = install.installEntries(permissionEnvironment(home),
+				home, launcher, installation,
 				List.of(other()), locks, launcherState(locks), List.of(), false);
 
 			requireThat(Files.readString(configuration), "reinstalled").contains(quote(locks)).
@@ -608,7 +610,8 @@ public final class SandboxEntriesTest
 			if (Platform.current().isWindows())
 				launcher = launcher.resolveSibling("installer.ps1");
 
-			PluginInstall.InstalledEntries entries = install.installEntries(home, launcher, installation,
+			PluginInstall.InstalledEntries entries = install.installEntries(permissionEnvironment(home),
+				home, launcher, installation,
 				List.of(other()), locks, state, List.of(), false);
 
 			requireThat(Files.readString(configuration), "reinstalled").doesNotContain(quote(state)).

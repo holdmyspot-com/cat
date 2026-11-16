@@ -49,7 +49,18 @@ final class CodexProgram implements HarnessProgram.Answers
 	 */
 	static HarnessCli cli(Path home)
 	{
-		return HarnessProgram.cli(new CodexProgram(home));
+		return HarnessProgram.cli(answers(home));
+	}
+
+	/**
+	 * Creates the stateful answers for Codex in one home directory.
+	 *
+	 * @param home the Codex home
+	 * @return the stateful answers
+	 */
+	static HarnessProgram.Answers answers(Path home)
+	{
+		return new CodexProgram(home);
 	}
 
 	/**

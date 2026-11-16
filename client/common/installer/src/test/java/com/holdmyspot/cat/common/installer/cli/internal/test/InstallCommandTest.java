@@ -213,8 +213,7 @@ public final class InstallCommandTest
 	}
 
 	/**
-	 * Once the harness has installed the archive's plugin into its version folder, install has the provider place
-	 * CAT's companion files from that folder.
+	 * Verifies installation dispatches the selected version folder to the provider for companion installation.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if install refuses

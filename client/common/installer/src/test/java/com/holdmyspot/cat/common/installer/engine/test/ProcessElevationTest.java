@@ -174,13 +174,14 @@ public final class ProcessElevationTest
 	}
 
 	/**
-	 * The check reports the user ID that a fake {@code id} program prints, although other threads start processes
-	 * while the program is written. A process that another thread starts inherits the file that this thread is writing
-	 * until the new process closes its inherited descriptors, and Linux refuses to run a file that a process holds
-	 * open for writing. A check whose program could not be run reports administrative rights, which is correct for a
-	 * program that fails, so the fixtures must hand the check a program that can run. The threads that write a
-	 * program and check it, and the threads that only start processes, run for a bounded time and each result must
-	 * be the printed unprivileged ID.
+	 * The check reports the unprivileged user ID that each completed fake {@code id} program prints while other
+	 * threads create programs and start checks. Four writers each use a child JVM to write and close a new program
+	 * before checking it; four starters repeatedly check an already completed program. The child writers own their
+	 * file descriptors, so unrelated processes that this JVM starts cannot inherit a fixture's open writer.
+	 * <p>
+	 * This process integration deliberately exercises the concurrent writers and starters for two seconds and waits
+	 * for their current operations to finish. Real writer JVMs and elevation checks preserve the concurrent process
+	 * boundary and its zero-incorrect-results assertion, so the case exceeds the one-second unit-test target.
 	 *
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the test is interrupted
@@ -225,8 +226,7 @@ public final class ProcessElevationTest
 							while (System.nanoTime() < end)
 							{
 								count += 1;
-								Path id = fakeId(Files.createDirectories(own.resolve(Integer.toString(count))),
-									"echo 1000", "@echo 1000");
+								Path id = writeIdInChild(Files.createDirectories(own.resolve(Integer.toString(count))));
 								countWrong(id, wrong, checks);
 							}
 							return null;
@@ -251,6 +251,43 @@ public final class ProcessElevationTest
 			requireThat(checks.get(), "checks").isGreaterThan(0);
 			requireThat(wrong.get(), "wrong").isEqualTo(0);
 		}
+	}
+
+	/**
+	 * Writes an unprivileged fake {@code id} in a child JVM and returns it after the writer has ended.
+	 *
+	 * @param directory owns the program and its writer's isolated process state
+	 * @return the completed executable program
+	 * @throws IOException          if the program cannot be written or made executable
+	 * @throws InterruptedException if the writer wait is interrupted
+	 */
+	private static Path writeIdInChild(Path directory) throws IOException, InterruptedException
+	{
+		boolean windows = Platform.current().isWindows();
+		Path id;
+		String body;
+		if (windows)
+		{
+			id = directory.resolve("id.cmd");
+			body = """
+				@if not "%~1"=="-u" exit /b 2
+				@if not "%~2"=="" exit /b 2
+				@echo 1000
+				""";
+		}
+		else
+		{
+			id = directory.resolve("id");
+			body = """
+				#!/bin/sh
+				[ $# = 1 ] && [ "$1" = -u ] || exit 2
+				echo 1000
+				""";
+		}
+		ExecutableWriter.write(id, body);
+		if (!windows)
+			requireThat(id.toFile().setExecutable(true), "executable").isTrue();
+		return id;
 	}
 
 	/**

@@ -218,6 +218,119 @@ public final class UpdateTest
 	}
 
 	/**
+	 * Installing an extracted plugin tree with the active version replaces that version's files with the supplied
+	 * tree and reports the active version as both the new and previous version.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void localSameVersionReplacesPayload() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-local-same-version-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
+			Path active = fixture.installActive("1.1");
+			Path payload = active.resolve("bin/plugin-info");
+			Files.writeString(payload, "active payload");
+			Path tree = fixture.extract("1.1");
+			Files.writeString(tree.resolve("bin/plugin-info"), "supplied payload");
+
+			UpdateResult result = fixture.engine().installFrom(tree, fixture.request(tree));
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").isEqualTo(Result.UPDATED);
+			requireThat(result.version(), "version").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+			requireThat(result.previousVersion(), "previousVersion").
+				isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+			requireThat(Files.readString(payload), "installedPayload").isEqualTo("supplied payload");
+		}
+	}
+
+	/**
+	 * Reinstalling the active local version preserves harness data and does not rerun completed data migrations.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void localSameVersionKeepsData() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String registry = "1.1\tsplit.sh\n";
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-local-keeps-data-")),
+				new ReleaseCatalog("1.0", NO_MIGRATION).add("1.1", registry));
+			fixture.installActive("1.0");
+			fixture.install("v1.1");
+			int completedMigrations = fixture.migrations.runs().size();
+			Path marker = Files.writeString(Files.createDirectories(fixture.data()).resolve("local-data"), "preserve");
+			Path tree = fixture.extract("1.1");
+
+			UpdateResult result = fixture.engine().installFrom(tree, fixture.request(tree));
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(marker), "data").isEqualTo("preserve");
+			requireThat(fixture.migrations.runs().size(), "migrationRuns").isEqualTo(completedMigrations);
+		}
+	}
+
+	/**
+	 * Retrying a failed local reinstall of the active version installs the supplied tree after registration succeeds.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void localSameVersionRetriesFailure() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-local-retry-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
+			fixture.installActive("1.1");
+			Path tree = fixture.extract("1.1");
+			Files.writeString(tree.resolve("bin/plugin-info"), "supplied payload");
+			fixture.integration.fail("register");
+
+			UpdateResult failed = fixture.engine().installFrom(tree, fixture.request(tree));
+
+			requireThat(failed.result(), "failed").withContext(failed.message(), "message").isEqualTo(Result.FAILED);
+			fixture.integration.succeed("register");
+
+			UpdateResult retried = fixture.engine().installFrom(tree, fixture.request(tree));
+
+			requireThat(retried.result(), "retried").withContext(retried.message(), "message").isEqualTo(Result.UPDATED);
+			requireThat(Files.readString(fixture.versionFolder("1.1").resolve("bin/plugin-info")), "installedPayload").
+				isEqualTo("supplied payload");
+		}
+	}
+
+	/**
+	 * Reinstalling a local tree refuses the active version folder when the installer itself runs from that folder.
+	 *
+	 * @throws IOException    if the fixture cannot be created or inspected
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void localSameVersionRefusesOwnImage() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-local-own-image-")),
+				new ReleaseCatalog("1.1", NO_MIGRATION));
+			Path active = fixture.installActive("1.1");
+			Path tree = fixture.extract("1.1");
+			Map<String, String> before = Releases.snapshot(fixture.home);
+
+			UpdateResult result = fixture.engine().installFrom(tree, fixture.request(active));
+
+			requireThat(result.result(), "result").withContext(result.message(), "message").isEqualTo(Result.REFUSED);
+			requireThat(Releases.snapshot(fixture.home), "home").isEqualTo(before);
+		}
+	}
+
+	/**
 	 * Returns signed releases 1.0 and 1.1 of one key, neither of which registers a data migration.
 	 *
 	 * @return the releases

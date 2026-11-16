@@ -605,7 +605,8 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public Map<String, List<String>> installPermissions(Path home, Path installer, FileReplacer replacer)
+	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer)
 		throws IOException
 	{
 		record("installPermissions", installer);
@@ -613,9 +614,15 @@ public final class RecordingIntegration implements HarnessIntegration
 	}
 
 	@Override
-	public Map<String, List<String>> permissions(Path installer)
+	public Map<String, List<String>> permissions(Map<String, String> environment, Path installer)
 	{
 		return Map.copyOf(maintained);
+	}
+
+	@Override
+	public String latestUpdateCommand(Map<String, String> environment, Path installer)
+	{
+		return "recorded latest update";
 	}
 
 	/**
@@ -748,6 +755,17 @@ public final class RecordingIntegration implements HarnessIntegration
 			else
 				configuration.put(entry.getKey(), List.copyOf(values));
 		}
+	}
+
+	/**
+	 * Returns a copy of the entries that a home's configuration holds.
+	 *
+	 * @param home the harness home
+	 * @return the entries currently held by the home
+	 */
+	public Map<String, List<String>> installedEntries(Path home)
+	{
+		return Map.copyOf(configuration(home));
 	}
 
 	/**

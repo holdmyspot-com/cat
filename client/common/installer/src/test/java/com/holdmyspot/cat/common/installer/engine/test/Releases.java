@@ -6,6 +6,7 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tru
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.installation.PluginVersion;
+import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -134,7 +135,7 @@ public final class Releases
 
 	/**
 	 * Creates a policy that trusts this fixture's key, approves releases from a minimum version and records only the
-	 * supplied home.
+	 * supplied home and its test-owned harness command.
 	 *
 	 * @param home    the test-owned harness home
 	 * @param minimum the lowest release version that the policy approves
@@ -143,8 +144,9 @@ public final class Releases
 	 */
 	TrustPolicy policy(Path home, String minimum) throws TrustException
 	{
+		HarnessCommand command = new HarnessCommand(List.of(home.resolve("harness-program").toString()), Map.of());
 		return TrustPolicy.of(List.of(trusted("test-key", key)), ReleaseFixtures.RELEASE_BASE_URL,
-			ReleaseVersion.parse(minimum), 1, Map.of("harness-a", home));
+			ReleaseVersion.parse(minimum), 1, Map.of("harness-a", home), Map.of("harness-a", command));
 	}
 
 	/**

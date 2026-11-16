@@ -51,6 +51,27 @@ public final class HarnessProgram
 	}
 
 	/**
+	 * Supplies a harness program's stateful answers for one home directory.
+	 */
+	public interface Factory
+	{
+		/**
+		 * Returns the harness identifier used to select this factory.
+		 *
+		 * @return the harness identifier
+		 */
+		String harness();
+
+		/**
+		 * Creates the answers for a harness program in one home directory.
+		 *
+		 * @param home the harness home
+		 * @return the stateful answers
+		 */
+		Answers answers(Path home);
+	}
+
+	/**
 	 * Answers the harness program's command lines.
 	 */
 	@FunctionalInterface

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.codex.installer.test;
 
+import static com.holdmyspot.cat.common.installer.contract.test.HarnessIntegrationContract.permissionEnvironment;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
@@ -345,11 +346,21 @@ public final class SandboxModeProfileTest
 			Path configuration = home.resolve("config.toml");
 			Files.writeString(configuration, "sandbox_mode = \"read-only\"\n");
 			InstalledEntries entries = install(home, true);
+			for (Path path : startupFiles(home))
+			{
+				requireThat(Files.readString(configuration), "installedStartupRead").
+					contains(quote(path) + " = \"read\"\n");
+			}
+			requireThat(entries.recorded().get("config.toml#permissions.cat-sandbox-read-only.filesystem.read"),
+				"recordedStartupReads").isEqualTo(startupFiles(home).stream().map(Path::toString).toList());
 			String profile = "[permissions.cat-sandbox-read-only.filesystem]\n";
 			Files.writeString(configuration, Files.readString(configuration).
 				replace(profile, profile + "\"/mine\" = \"write\"\n"));
 
 			provider().removePermissions(home, entries.recorded(), replacer());
+
+			for (Path path : startupFiles(home))
+				requireThat(Files.readString(configuration), "removedStartupRead").doesNotContain(quote(path));
 
 			requireThat(Files.readString(configuration), "removed").doesNotContain("default_permissions").
 				contains("[permissions.cat-sandbox-read-only]\nextends = \":read-only\"\n").
@@ -421,7 +432,8 @@ public final class SandboxModeProfileTest
 		provider.validateConfiguration(home);
 		PluginInstall install = new PluginInstall(provider, CodexProgram.cli(home), replacer(), NO_WAIT);
 		HarnessInstallation installation = provider.installation(home);
-		return install.installEntries(home, installer(home), installation, List.of(other()), locks(home),
+		return install.installEntries(permissionEnvironment(home),
+			home, installer(home), installation, List.of(other()), locks(home),
 			launcherState(home), startupFiles(home), consented);
 	}
 

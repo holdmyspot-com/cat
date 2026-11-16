@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -38,6 +39,15 @@ public final class CodexActivationContractTest
 			public HarnessInstallation installation(Path home)
 			{
 				return new CodexInstallation(home);
+			}
+
+			@Override
+			public Map<Path, Path> companionFiles(Path home, Path versionFolder) throws IOException
+			{
+				Path source = versionFolder.resolve("agents/codex/contract.toml");
+				Files.createDirectories(source.getParent());
+				Files.writeString(source, "contract companion\n");
+				return Map.of(source, home.resolve("agents/cat-contract.toml"));
 			}
 
 			@Override

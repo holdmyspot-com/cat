@@ -8,10 +8,13 @@ import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
 import com.holdmyspot.cat.common.installer.activation.PluginActivation;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.regex.Pattern;
 
@@ -171,7 +174,7 @@ public final class PluginActivationContract
 	}
 
 	/**
-	 * Verifies that the companion files of an installed version can be installed again.
+	 * Verifies companion files are installed and updated when an installed version is activated repeatedly.
 	 *
 	 * @param home an empty absolute directory
 	 * @throws IOException if the home cannot be written or read
@@ -181,9 +184,42 @@ public final class PluginActivationContract
 		PluginActivation activation = subject.activation();
 		subject.install(home, VERSION);
 		Path versionFolder = subject.installation(home).versionFolder(VERSION);
+		Map<Path, Path> companionFiles = subject.companionFiles(home, versionFolder);
+		Map<Path, byte[]> companionContents = new HashMap<>();
+
+		for (Map.Entry<Path, Path> companion : companionFiles.entrySet())
+		{
+			Path source = companion.getKey();
+			Path target = companion.getValue();
+			requireThat(Files.notExists(target, LinkOption.NOFOLLOW_LINKS), "target").isTrue();
+			companionContents.put(source, Files.readAllBytes(source));
+		}
 
 		activation.installCompanions(home, versionFolder);
+		for (Map.Entry<Path, Path> companion : companionFiles.entrySet())
+		{
+			requireThat(ByteBuffer.wrap(Files.readAllBytes(companion.getValue())), "installedContents").
+				isEqualTo(ByteBuffer.wrap(companionContents.get(companion.getKey())));
+		}
+
 		activation.installCompanions(home, versionFolder);
+		for (Map.Entry<Path, Path> companion : companionFiles.entrySet())
+		{
+			requireThat(ByteBuffer.wrap(Files.readAllBytes(companion.getValue())), "installedContents").
+				isEqualTo(ByteBuffer.wrap(companionContents.get(companion.getKey())));
+		}
+
+		for (Path source : companionFiles.keySet())
+		{
+			Files.writeString(source, "replacement companion\n");
+			companionContents.put(source, Files.readAllBytes(source));
+		}
+		activation.installCompanions(home, versionFolder);
+		for (Map.Entry<Path, Path> companion : companionFiles.entrySet())
+		{
+			requireThat(ByteBuffer.wrap(Files.readAllBytes(companion.getValue())), "installedContents").
+				isEqualTo(ByteBuffer.wrap(companionContents.get(companion.getKey())));
+		}
 
 		requireThat(activation.installed(home), "installed").
 			isEqualTo(new InstalledState(Optional.of(VERSION.toString()), true));
@@ -200,6 +236,20 @@ public final class PluginActivationContract
 		 * @return the activation
 		 */
 		PluginActivation activation();
+
+		/**
+		 * Returns companion source files and their expected installation destinations. An empty map means this subject
+		 * has no companion files.
+		 *
+		 * @param home          the absolute harness home
+		 * @param versionFolder the installed version folder
+		 * @return companion source paths mapped to their installation destinations
+		 * @throws IOException if companion files cannot be prepared
+		 */
+		default Map<Path, Path> companionFiles(Path home, Path versionFolder) throws IOException
+		{
+			return Map.of();
+		}
 
 		/**
 		 * Returns where the activation's harness keeps CAT's installation.

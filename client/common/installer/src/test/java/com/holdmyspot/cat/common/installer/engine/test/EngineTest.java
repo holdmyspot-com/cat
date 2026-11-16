@@ -129,8 +129,7 @@ public final class EngineTest
 	}
 
 	/**
-	 * Each time the harness installs a release into its version folder, install has the provider place CAT's
-	 * companion files from that folder.
+	 * Verifies the update dispatches each selected version folder to the provider for companion installation.
 	 *
 	 * @throws IOException    if fixture creation or inspection fails
 	 * @throws TrustException if the test policy is invalid

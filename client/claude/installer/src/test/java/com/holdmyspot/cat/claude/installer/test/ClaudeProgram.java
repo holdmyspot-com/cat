@@ -53,7 +53,18 @@ final class ClaudeProgram implements HarnessProgram.Answers
 	 */
 	static HarnessCli cli(Path home)
 	{
-		return HarnessProgram.cli(new ClaudeProgram(home));
+		return HarnessProgram.cli(answers(home));
+	}
+
+	/**
+	 * Creates the stateful answers for Claude Code in one configuration directory.
+	 *
+	 * @param home the configuration directory
+	 * @return the stateful answers
+	 */
+	static HarnessProgram.Answers answers(Path home)
+	{
+		return new ClaudeProgram(home);
 	}
 
 	/**
