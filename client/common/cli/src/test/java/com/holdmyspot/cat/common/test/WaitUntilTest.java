@@ -11,8 +11,10 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InterruptedIOException;
 import java.io.OutputStream;
 import java.io.PrintStream;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -27,7 +29,9 @@ import java.util.Queue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Supplier;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -38,8 +42,9 @@ import org.testng.annotations.Test;
  * Every test of a wait except {@link #systemTimerRunsCheckAgain()} measures the wait's time through a
  * {@link ManualTimer}, so that a deadline or an interval passes when the wait would otherwise block, without waiting in
  * real time, and starts its commands through a {@link FakeStarter}. The {@link WaitUntilTimerContract} runs on both the
- * manual timer and the timer of a real wait, and the {@link CommandStarterContract} on both the fake starter and the
- * shell starter, whose shell process is replaced by one that has already exited.
+ * manual timer and the timer of a real wait. The {@link CommandStarterContract} checks the command adapter with an
+ * already-exited process, while {@link CommandProcessContract} checks the same live-process behavior through the fake
+ * and shell starters.
  */
 public final class WaitUntilTest
 {
@@ -96,7 +101,7 @@ public final class WaitUntilTest
 		starter.add("status", FakeProcess.exits(75, "running"), FakeProcess.exits(0, "deployed"));
 		run(starter, "--deadline", "5s", "--interval", "10ms", "--check", "status");
 
-		requireThat(starter.allClosed("status"), "allClosed").isTrue();
+		requireThat(starter.allOutputEndpointsClosed("status"), "allOutputEndpointsClosed").isTrue();
 	}
 
 	/**
@@ -335,6 +340,30 @@ public final class WaitUntilTest
 	}
 
 	/**
+	 * Verifies that the fake starter's live process remains pending, publishes completion and releases its output.
+	 *
+	 * @throws IOException if a process stream cannot be read or closed
+	 * @throws InterruptedException if a process wait is interrupted
+	 */
+	@Test
+	public void fakeStarterRunsLiveProcessContract() throws IOException, InterruptedException
+	{
+		new CommandProcessContract(FakeProcess::running).verify();
+	}
+
+	/**
+	 * Verifies that the shell starter's live child JVM remains pending, publishes completion and releases its output.
+	 *
+	 * @throws IOException if child setup, completion or cleanup fails
+	 * @throws InterruptedException if process startup or completion is interrupted
+	 */
+	@Test
+	public void shellStarterRunsLiveProcessContract() throws IOException, InterruptedException
+	{
+		new CommandProcessContract(ShellProcessFixture::start).verify();
+	}
+
+	/**
 	 * Runs every case of the timer contract.
 	 *
 	 * @param contract the contract of one timer
@@ -372,6 +401,237 @@ public final class WaitUntilTest
 	 */
 	private record Outcome(int status, String output)
 	{
+	}
+
+	/**
+	 * Starts and owns a live child JVM through the shell starter.
+	 */
+	private static final class ShellProcessFixture implements CommandProcessContract.Fixture
+	{
+		/**
+		 * Bounds child startup, completion and cleanup waits.
+		 */
+		private static final Duration PROCESS_WAIT = Duration.ofSeconds(10);
+		/**
+		 * The prefix of the private folder that contains this fixture's completion file.
+		 */
+		private static final String DIRECTORY_PREFIX = "wait-until-command-";
+		/**
+		 * The file that the test creates to release the child from its ready state.
+		 */
+		private static final String COMPLETION_FILE_NAME = "completion";
+		private final TemporaryDirectories cleanup;
+		private final Path completionFile;
+		private final Process process;
+
+		/**
+		 * Creates a fixture that owns its child and completion file.
+		 *
+		 * @param cleanup removes the fixture's temporary folder
+		 * @param completionFile the file that releases the child
+		 * @param process the child started by the shell starter
+		 */
+		private ShellProcessFixture(TemporaryDirectories cleanup, Path completionFile, Process process)
+		{
+			this.cleanup = cleanup;
+			this.completionFile = completionFile;
+			this.process = process;
+		}
+
+		/**
+		 * Starts a child JVM that announces readiness before waiting for the completion file.
+		 *
+		 * @param status the child's selected exit status
+		 * @param stdout the child's standard-output payload
+		 * @param stderr the child's standard-error payload
+		 * @return an owned, ready child process fixture
+		 * @throws IOException if the child cannot start or announce readiness
+		 * @throws InterruptedException if readiness is interrupted
+		 */
+		private static ShellProcessFixture start(int status, String stdout, String stderr) throws IOException,
+			InterruptedException
+		{
+			TemporaryDirectories cleanup = new TemporaryDirectories();
+			Process process = null;
+			try
+			{
+				Path directory = cleanup.add(Files.createTempDirectory(DIRECTORY_PREFIX)).toAbsolutePath();
+				Path completionFile = directory.resolve(COMPLETION_FILE_NAME);
+				String javaExecutable = ProcessHandle.current().info().command().orElseThrow();
+				String modulePath = System.getProperty("jdk.module.path");
+				requireThat(modulePath, "modulePath").isNotNull();
+				List<String> command = List.of(javaExecutable, "-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
+					"-Duser.home=", "--module-path", modulePath, "--module",
+					"com.holdmyspot.cat.common.cli.test/" + WaitUntilCommandProcess.class.getName(),
+					completionFile.toString(), stdout, stderr, Integer.toString(status));
+				WaitUntil.CommandStarter starter = WaitUntil.shellStarter(ignored -> command, directory);
+				process = starter.start("fixture");
+				awaitReady(process);
+				return new ShellProcessFixture(cleanup, completionFile, process);
+			}
+			catch (IOException | InterruptedException | RuntimeException failure)
+			{
+				stopAfterSetupFailure(process, failure);
+				try
+				{
+					cleanup.close();
+				}
+				catch (IOException cleanupFailure)
+				{
+					failure.addSuppressed(cleanupFailure);
+				}
+				throw failure;
+			}
+		}
+
+		/**
+		 * Returns the child whose readiness line was consumed.
+		 *
+		 * @return the ready child
+		 */
+		@Override
+		public Process process()
+		{
+			return process;
+		}
+
+		/**
+		 * Creates the completion file that releases the child to write its output and exit.
+		 *
+		 * @throws IOException if the completion file cannot be created
+		 */
+		@Override
+		public void complete() throws IOException
+		{
+			Files.createFile(completionFile);
+		}
+
+		/**
+		 * Kills the child, waits for it to stop and removes its private folder.
+		 *
+		 * @throws IOException if the child does not stop or its private folder cannot be removed
+		 */
+		@Override
+		public void close() throws IOException
+		{
+			IOException failure = null;
+			process.destroyForcibly();
+			try
+			{
+				if (!process.waitFor(PROCESS_WAIT.toMillis(), TimeUnit.MILLISECONDS))
+					failure = new IOException("The process fixture did not stop during cleanup");
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				failure = new InterruptedIOException("Interrupted while stopping the process fixture");
+				failure.initCause(e);
+			}
+			try
+			{
+				cleanup.close();
+			}
+			catch (IOException cleanupFailure)
+			{
+				if (failure == null)
+					failure = cleanupFailure;
+				else
+					failure.addSuppressed(cleanupFailure);
+			}
+			if (failure != null)
+				throw failure;
+		}
+
+		/**
+		 * Reads exactly the child's readiness line before the contract receives its process.
+		 *
+		 * @param process the child whose stdout carries the readiness line
+		 * @throws IOException if the child exits early, announces another line or exceeds the wait
+		 * @throws InterruptedException if readiness is interrupted
+		 */
+		private static void awaitReady(Process process) throws IOException, InterruptedException
+		{
+			CompletableFuture<Void> ready = CompletableFuture.runAsync(() ->
+			{
+				try
+				{
+					readReadyLine(process.getInputStream());
+				}
+				catch (IOException e)
+				{
+					throw new UncheckedIOException(e);
+				}
+			}, Thread::startVirtualThread);
+			try
+			{
+				ready.get(PROCESS_WAIT.toMillis(), TimeUnit.MILLISECONDS);
+			}
+			catch (ExecutionException e)
+			{
+				Throwable cause = e.getCause();
+				if (cause instanceof UncheckedIOException ioFailure)
+					throw ioFailure.getCause();
+				throw new IOException("The process fixture failed before readiness", cause);
+			}
+			catch (TimeoutException e)
+			{
+				throw new IOException("The process fixture did not become ready", e);
+			}
+		}
+
+		/**
+		 * Stops a child whose setup did not finish and records any failed cleanup on the setup error.
+		 *
+		 * @param process the child to stop
+		 * @param failure the setup error receiving cleanup details
+		 */
+		private static void stopAfterSetupFailure(Process process, Exception failure)
+		{
+			if (process == null)
+				return;
+			process.destroyForcibly();
+			try
+			{
+				if (!process.waitFor(PROCESS_WAIT.toMillis(), TimeUnit.MILLISECONDS))
+					failure.addSuppressed(new IOException("The process fixture did not stop after setup failed"));
+				process.close();
+			}
+			catch (InterruptedException e)
+			{
+				failure.addSuppressed(e);
+				Thread.currentThread().interrupt();
+			}
+			catch (IOException e)
+			{
+				failure.addSuppressed(e);
+			}
+		}
+
+		/**
+		 * Reads only the readiness line, leaving the later process output available to the contract.
+		 *
+		 * @param output the child's standard output
+		 * @throws IOException if the readiness line is missing or differs from the fixture protocol
+		 */
+		private static void readReadyLine(InputStream output) throws IOException
+		{
+			ByteArrayOutputStream line = new ByteArrayOutputStream();
+			while (true)
+			{
+				int next = output.read();
+				if (next < 0)
+					throw new IOException("The process fixture exited before readiness");
+				if (next == '\n')
+					break;
+				line.write(next);
+			}
+			byte[] bytes = line.toByteArray();
+			int contentLength = bytes.length;
+			if (contentLength > 0 && bytes[contentLength - 1] == '\r')
+				contentLength -= 1;
+			String actual = new String(bytes, 0, contentLength, UTF_8);
+			requireThat(actual, "readiness").isEqualTo(WaitUntilCommandProcess.READY);
+		}
 	}
 
 	/**
@@ -542,17 +802,17 @@ public final class WaitUntilTest
 		}
 
 		/**
-		 * Returns whether the wait closed every run of a command.
+		 * Returns whether the wait closed every run's retained output endpoint.
 		 *
 		 * @param command the command
-		 * @return {@code true} if the command started and each of its runs was closed
+		 * @return {@code true} if the command started and each of its output endpoints is closed
 		 */
-		boolean allClosed(String command)
+		boolean allOutputEndpointsClosed(String command)
 		{
 			synchronized (starts)
 			{
 				List<FakeProcess> runs = started.getOrDefault(command, List.of());
-				return !runs.isEmpty() && runs.stream().allMatch(process -> process.closed);
+				return !runs.isEmpty() && runs.stream().allMatch(process -> process.output.isClosed());
 			}
 		}
 
@@ -581,40 +841,57 @@ public final class WaitUntilTest
 	}
 
 	/**
-	 * A process whose output, exit status and duration a test scripts.
+	 * A process whose output, exit status and duration a test controls.
 	 */
-	private static final class FakeProcess extends Process
+	private static final class FakeProcess extends Process implements CommandProcessContract.Fixture
 	{
 		/**
 		 * The longest that a delayed reader waits for the process to be destroyed.
 		 */
 		private static final Duration READER_WAIT = Duration.ofSeconds(10);
-		private final byte[] output;
+		/**
+		 * The stable merged output endpoint that the wait reads.
+		 */
+		private final FakeOutputEndpoint output;
+		/**
+		 * The stable endpoint through which a caller writes to the child process.
+		 */
+		private final OutputStream childInput = OutputStream.nullOutputStream();
+		/**
+		 * The stable standard-error endpoint when the fake has no separate error stream.
+		 */
+		private final InputStream error = InputStream.nullInputStream();
 		/**
 		 * {@code true} if the process wrote its output but nothing can read it until the process is destroyed.
 		 */
-		private final boolean outputUnread;
 		private final CompletableFuture<Process> exit = new CompletableFuture<>();
 		/**
 		 * Released when the process is destroyed.
 		 */
 		private final CountDownLatch destroyedLatch = new CountDownLatch(1);
+		/**
+		 * The status published by the fixture's normal completion operation.
+		 */
+		private final int completionStatus;
 		private volatile int status;
+		/**
+		 * Records whether a test stopped this fake process.
+		 */
 		volatile boolean destroyed;
-		volatile boolean closed;
 
 		/**
 		 * Creates a process.
 		 *
-		 * @param output the process's output
+		 * @param output the process's combined stdout and stderr
 		 * @param status the exit status
 		 * @param outputUnread {@code true} if the output can be read only once the process is destroyed
+		 * @param completionStatus the status the fixture publishes on normal completion
 		 */
-		private FakeProcess(String output, int status, boolean outputUnread)
+		private FakeProcess(String output, int status, boolean outputUnread, int completionStatus)
 		{
-			this.output = output.getBytes(UTF_8);
+			this.output = new FakeOutputEndpoint(output.getBytes(UTF_8), outputUnread, this);
 			this.status = status;
-			this.outputUnread = outputUnread;
+			this.completionStatus = completionStatus;
 		}
 
 		/**
@@ -626,8 +903,8 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess exits(int status, String output)
 		{
-			FakeProcess process = new FakeProcess(output, status, false);
-			process.exit.complete(process);
+			FakeProcess process = new FakeProcess(output, status, false, status);
+			process.complete(status);
 			return process;
 		}
 
@@ -642,8 +919,8 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess exitsAfter(ManualTimer timer, Duration delay, int status, String output)
 		{
-			FakeProcess process = new FakeProcess(output, status, false);
-			timer.schedule(delay, () -> process.exit.complete(process));
+			FakeProcess process = new FakeProcess(output, status, false, status);
+			timer.schedule(delay, () -> process.complete(status));
 			return process;
 		}
 
@@ -655,7 +932,20 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess running(String output)
 		{
-			return new FakeProcess(output, 143, false);
+			return new FakeProcess(output, 143, false, 143);
+		}
+
+		/**
+		 * Returns a live process with selected output and normal completion status.
+		 *
+		 * @param status the terminal status
+		 * @param stdout the standard-output payload
+		 * @param stderr the standard-error payload
+		 * @return a live process fixture
+		 */
+		static FakeProcess running(int status, String stdout, String stderr)
+		{
+			return new FakeProcess(stdout + stderr, 143, false, status);
 		}
 
 		/**
@@ -668,37 +958,19 @@ public final class WaitUntilTest
 		 */
 		static FakeProcess runningWithUnreadOutput(String output)
 		{
-			return new FakeProcess(output, 143, true);
+			return new FakeProcess(output, 143, true, 143);
 		}
 
 		@Override
 		public OutputStream getOutputStream()
 		{
-			return OutputStream.nullOutputStream();
+			return childInput;
 		}
 
 		@Override
 		public InputStream getInputStream()
 		{
-			InputStream pipe = new ByteArrayInputStream(output);
-			if (outputUnread)
-				return new InputStream()
-				{
-					@Override
-					public int read() throws IOException
-					{
-						awaitDestroyed();
-						return pipe.read();
-					}
-
-					@Override
-					public int read(byte[] buffer, int offset, int length) throws IOException
-					{
-						awaitDestroyed();
-						return pipe.read(buffer, offset, length);
-					}
-				};
-			return pipe;
+			return output;
 		}
 
 		/**
@@ -723,7 +995,7 @@ public final class WaitUntilTest
 		@Override
 		public InputStream getErrorStream()
 		{
-			return InputStream.nullInputStream();
+			return error;
 		}
 
 		@Override
@@ -750,11 +1022,37 @@ public final class WaitUntilTest
 			destroyedLatch.countDown();
 		}
 
+		/**
+		 * Returns this fixture's process to the live-process contract.
+		 *
+		 * @return this process
+		 */
 		@Override
-		public void close() throws IOException
+		public Process process()
 		{
-			closed = true;
-			super.close();
+			return this;
+		}
+
+		/**
+		 * Publishes the status selected when this process fixture was created.
+		 *
+		 * @throws IOException if this fixture cannot be completed
+		 */
+		@Override
+		public void complete() throws IOException
+		{
+			complete(completionStatus);
+		}
+
+		/**
+		 * Publishes a process's terminal status.
+		 *
+		 * @param status the status to publish
+		 */
+		void complete(int status)
+		{
+			this.status = status;
+			exit.complete(this);
 		}
 
 		@Override
@@ -779,6 +1077,79 @@ public final class WaitUntilTest
 		public Stream<ProcessHandle> children()
 		{
 			return Stream.empty();
+		}
+
+		/**
+		 * A stable process output endpoint that reports closure through its read behavior.
+		 */
+		private static final class FakeOutputEndpoint extends InputStream
+		{
+			/**
+			 * The bytes written by this fake process.
+			 */
+			private final ByteArrayInputStream bytes;
+			/**
+			 * Whether this endpoint delays reads until process termination.
+			 */
+			private final boolean outputUnread;
+			/**
+			 * The process whose termination releases delayed reads.
+			 */
+			private final FakeProcess process;
+			/**
+			 * The endpoint's readable state after its owner closes it.
+			 */
+			private boolean closed;
+
+			/**
+			 * Creates the endpoint for one process.
+			 *
+			 * @param bytes the process output
+			 * @param outputUnread whether reads wait until process termination
+			 * @param process the process that owns this endpoint
+			 */
+			private FakeOutputEndpoint(byte[] bytes, boolean outputUnread, FakeProcess process)
+			{
+				this.bytes = new ByteArrayInputStream(bytes);
+				this.outputUnread = outputUnread;
+				this.process = process;
+			}
+
+			/**
+			 * Indicates whether process closure closed this output endpoint.
+			 *
+			 * @return {@code true} if the endpoint is closed
+			 */
+			boolean isClosed()
+			{
+				return closed;
+			}
+
+			@Override
+			public int read() throws IOException
+			{
+				if (closed)
+					throw new IOException("Stream closed");
+				if (outputUnread)
+					process.awaitDestroyed();
+				return bytes.read();
+			}
+
+			@Override
+			public int read(byte[] buffer, int offset, int length) throws IOException
+			{
+				if (closed)
+					throw new IOException("Stream closed");
+				if (outputUnread)
+					process.awaitDestroyed();
+				return bytes.read(buffer, offset, length);
+			}
+
+			@Override
+			public void close()
+			{
+				closed = true;
+			}
 		}
 	}
 }
