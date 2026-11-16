@@ -13,6 +13,89 @@ Preserve the dirty worktree and its untracked sources. Do not reset, clean, stas
 whole checkout to make transfer easier. No new implementation or verification run was started during
 wind-down, and the known formatting failure below has deliberately been left for the receiver.
 
+### Handoff at the end of session `990cbfa9` (2026-11-16, 17:50 Toronto)
+
+This section supersedes the next-action and build statements of the sections below it. The goal is still
+**implement `design.md` and `plan.md`**, and it is not complete. The session wound down on the user's request: every
+subagent reported, and no new work was started.
+
+**Tree.** `/home/gili/cat/worktrees/v1.0`, branch `v1.0`, HEAD `9e2ac59eb`. All work is committed locally; nothing is
+pushed ("do not push" stands). No tracked change is uncommitted; the untracked dotfiles and `client/common/distribution/.cat/`
+are sandbox placeholders, never commit them. The session's temp folder is
+`.cat/sessions/990cbfa9-12a1-4fa6-9a10-7c8990b17f8e/temp/` (E-run briefs in `e-runs/`: `claude-e-run.md`,
+`codex-e-run.md`, `round-4-notes.md`).
+
+**Installed build.** Both harnesses run `1.0+b13e913dc00f0` (commit `13e913dc0`). The request server runs from that
+version's `bin/request-server` (this session's background task). The commits after it are not installed:
+
+| Commit | Change |
+|---|---|
+| `ce57bd2cf` | The prompt author edits when no contract test must stay free of the new guidance: it names the test its edit most risks disturbing, which may be the failing test (design rule 4, D40). Fixes Codex E1/E3/E7, whose author was refused 3 times ("classified routing/guidance but names no hunk"). |
+| `7bebf4fb1` | A foreground slice that stops on an infrastructure failure returns `awaiting_user` (retry with `run` or stop with `cancel`) instead of `running`. The failure is not persisted: a later standalone `status` still says `running`. |
+| `067020804`, `48a034a40`, `fcc05a024` | User ruling 2026-11-16 (D149): a failed fail-mode built-in tool fails only its own assertion; the judge still decides every other assertion in every trial purpose, guard pilot included; nothing is imputed. Costs one judge session per such trial. Stored campaigns are not migrated. |
+| `bc8064d9b` | Superseded by `48a034a40` (its imputation paragraph was removed). |
+| `95ceaddf0` | A conversation launcher writes its last `{"ended": …}` line only after the kept run is copied into `--run-root`. |
+| `7e9fa82e6` | The delivery report lists `delivered_changes` (path and kind) and renames `changed_prompt_sources` to `base_only_prompt_source_changes`. |
+| `7c895e08f`, `9e2ac59eb` | User ruling 2026-11-16 (D150, H41): in a runner conversation a Claude turn ends at the first `idle` after its reply, whatever background work is listed; later replies are late follow-ups. Trials keep the old rule (idle with an empty task list, or interrupted). |
+
+**First actions for the receiver.**
+1. Run the full build (`env -u JAVA_TOOL_OPTIONS client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml clean
+   verify`, TMPDIR under the session temp). The last full build (`build-16`, 6,048 tests, 0 failures) was at `7bebf4fb1`;
+   the four later changes passed only targeted suites. `RunnerSessionsTest.createsOverlayInProcessDirectory` and three
+   `CodexSessionsTest` tests failed with "User limit of inotify watches reached" while many jobs ran; rerun them alone on an
+   idle machine. Flag every test of 1 s or more without a Javadoc reason.
+2. Check whether Claude E1's kept run reached `/home/gili/cat/worktrees/E1-claude-s990d/runs/`. Its runner finished
+   (`run.json` state `completed`) but `runs/` was still empty about 15 minutes after `{"end": true}`, and its run (4.4 GB)
+   is still in the slot `slots/d8/claude/s-8`. The installed build copies after writing the conversation's end, so this is
+   probably the slow copy that `95ceaddf0` makes visible; confirm, and look for a stuck launcher if it never arrives.
+3. When no run uses the installed plugin, ask the user to install the new build in both harnesses and `/reload-plugins`,
+   then restart the request server bare from the new version folder (stop the old one first). Never reinstall while runs or
+   probes use the plugin.
+4. Ask the user the open decision below, then rerun the E scenarios.
+
+**Open decision for the user.** Design D124: when a `start` states a goal, requirements come only from the goal, so a
+target instruction that contradicts it (the `deficient` fixture's AGENTS.md no-slogans line against the motto) cannot be a
+listed conflict; the contract author puts it under limitations and the prompt author resolves it as a guidance failure.
+WI-15 E1 and `client/common/cli/src/test/resources/optimizer/e2e/README.md` expect a listed conflict and a refused confirm
+for goal-stated starts. Recommended: keep D124 and change E1 and the README so the conflict case starts without a goal.
+The alternative is to express such a contradiction as a conflict (a target-sourced requirement, or a conflict that pairs a
+requirement with quoted target text), which reopens D124 and changes the conflict schema. Note that live runs disagree:
+round-4 Claude E1 and Codex E1 listed the conflict, Claude E3 did not.
+
+**Round-4 E results (suffix `s990d`, build `1.0+b13e913dc00f0`).** Receipts are in
+`/home/gili/cat/worktrees/<scenario>-<harness>-s990d/receipts/receipt.md`.
+
+| Scenario | Claude Code | Codex |
+|---|---|---|
+| E1 | Conflict listed with 3 resolutions; confirm refused until chosen (from the session's reply, not the raw refusal); confirmed. Certification, Git-diff delivery and the disjoint base edit not reached (campaign stopped on candidate 3, ≥579 trials left). Trial-record checks not examined. | Conflict listed; confirm refused with exit 1 naming the conflict; confirmed after choosing. Blocked by the author defect (`ce57bd2cf`). Disjoint base edit `docs/parking.md` committed, untested. |
+| E2 | **Pass** (rerun `s990e`, foreground slices): interrupt mid-slice stopped in 0.3 s; recorded; resume continued the same campaign, 342 distinct trial ids, none lost or duplicated. The `s990d` run interrupted only the turn: a background run ignores host interrupts by design. | **Pass**: stopped in 5.7 s; recorded. |
+| E3 | **Pass** both paths: stop leaves the base unchanged; uncertified acceptance delivered with label `not certified`. | Stop **pass** (after a finished trial); accept blocked by the author defect. |
+| E4 | **Pass** (round 3, `s990c`). | **Pass** (round 3, `s990c`). |
+| E5 | Host tool and child worktrees **pass**. No contract test wrote a file, so "a trial writes a file its judge decides on" is not covered. Judge runs are kept under `optimizer-runs/<harness>-held_out/<harness>/<run>/` (191 in that copy); nothing links a trial record to its judge run, so pair them by prompt text and time. A trial's effects are deleted after its verdict, so copy the file-writing trial's files while the campaign runs. | Not run: account limit until 2026-11-19 21:56 Toronto. |
+| E6 | **Pass** (round 3, `s990c`). | **Pass**: refused on a live run, no state change, no workaround. |
+| E7 | Link report and authority warning **pass**; delivery not reached (turn never ended, interrupted in development). External sha256 unchanged `476f03e1…7d13a`. | Same two **pass**; delivery blocked by the author defect. |
+| E8 | Not run. | Not run. |
+
+Every trial record seen gives `login` `subscription` (Claude) or `api_key` (Codex). No proposal was confirmable before
+its guard pilot finished. On `deficient` the emptied prompt fails the motto tool in every control trial, so the installed
+build left the judged guards "decided in no trial"; D149 now judges them.
+
+**Rerun plan on the new build.** Claude E1 (to delivery), E5 (turn 1 asks for a test whose trial writes a file; copy that
+trial's files and its judge run while the campaign runs), E7 (to delivery); Codex E1, E3 (accept path), E7; Codex E5 after
+2026-11-19 21:56 Toronto; then E8 alone per harness; then the failure-reporting optimizer runs in both harnesses (ask before
+delivering any rule change). Fixture note: the `link` fixture ships only `external/`; each run must create
+`docs/reply-rules.md` as a link to it (one round-4 attempt missed it). Brief notes for operators: a background run ignores
+interrupts, so E2 asks for foreground slices; wait-until loops must poll for strings exactly as the runner writes them
+(`"turn_end":2`, no space).
+
+**Still open after the reruns.** §9 gates 2 (semantic re-review; WI-15 receipts for the 34 E-proof rows including R-I1),
+5 (recheck G3/G5/G8/G9/G10 and the G7 values map), 6 (final disposition) and 7 (close §2 rows WI-15, WI-96, WI-111,
+WI-120, WI-142 and WI-145; record P12/P13 in design §12 and the candidate rows); a replay unit test for the E2 recording
+(check one exists); then the gate-8 commit removing `// Requirement:` tags and design/plan references. Optional: a runner
+that exits non-zero could quote the last lines of `runner.stderr`. Claude Code's own background time limit stopped a
+`--background` driver after about 2 hours in E1 and E3 (the session restarted it); design D142 assumes no time cap, so
+record this as a host limit.
+
 ### Receiving session `990cbfa9` (2026-11-16)
 
 Session `990cbfa9-12a1-4fa6-9a10-7c8990b17f8e` adopted the goal, the cleanup ownership above and the installer
