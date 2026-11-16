@@ -156,6 +156,10 @@ public final class PluginArtifactBuilderTest
 
 	/**
 	 * Verifies each harness-specific skill header is combined with its shared body before the artifact is installed.
+	 * <p>
+	 * This test can take over one second: it assembles both harness variants from their layer JARs. Both
+	 * assemblies are needed to check that each header reaches its artifact with the shared body and that a
+	 * harness-specific header field does not reach the other artifact.
 	 */
 	@Test
 	public void assemblesHarnessSpecificSkillHeaders() throws IOException

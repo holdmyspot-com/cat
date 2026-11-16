@@ -14,8 +14,7 @@ import java.util.List;
 import org.testng.annotations.Test;
 
 /**
- * Tests that the installer accepts the release's migration registry, and that every migration it registers ships with
- * its scripts.
+ * Tests that the installer accepts the release's migration registry and returns its pending migrations.
  */
 public final class MigrationRegistryTest
 {
@@ -52,8 +51,7 @@ public final class MigrationRegistryTest
 	}
 
 	/**
-	 * The installer reads the release's registry without refusing it, and every migration that it reads there has its
-	 * POSIX script and its PowerShell script in the release's migration directory.
+	 * The installer accepts the release's empty registry and returns no pending migrations.
 	 *
 	 * @throws IOException    if the fixture cannot be written
 	 * @throws TrustException if the installer refuses the registry
@@ -70,12 +68,7 @@ public final class MigrationRegistryTest
 			List<String> scripts = StagedRelease.migrationsAfter(tree, ReleaseVersion.parse("0.0"),
 				ReleaseVersion.parse("999999999.0"));
 
-			for (String script : scripts)
-			{
-				requireThat(Files.isRegularFile(MIGRATIONS.resolve(script)), script).isTrue();
-				String powerShell = script.substring(0, script.length() - ".sh".length()) + ".ps1";
-				requireThat(Files.isRegularFile(MIGRATIONS.resolve(powerShell)), powerShell).isTrue();
-			}
+			requireThat(scripts, "scripts").isEmpty();
 		}
 	}
 }

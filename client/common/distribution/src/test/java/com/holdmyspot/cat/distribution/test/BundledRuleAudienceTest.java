@@ -537,7 +537,7 @@ public final class BundledRuleAudienceTest
 					"`${CAT_PLUGIN_ROOT}/rules/include/common/install-running-work.md`.");
 
 			String rule = oneLine(Files.readString(include.resolve("install-running-work.md")));
-			requireThat(rule, "installRunningWork").startsWith("# Installing While Work Is Running ").
+			requireThat(rule, "installRunningWork").startsWith("# Installing Plugins ").
 				contains("probe, screen or runner sessions").
 				contains("wait for it to finish before you install").
 				contains("uses its own copied runtime").

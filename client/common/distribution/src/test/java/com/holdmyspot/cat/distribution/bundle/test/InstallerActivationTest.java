@@ -18,6 +18,7 @@ import com.holdmyspot.cat.common.installer.cli.internal.Invocation;
 import com.holdmyspot.cat.common.installer.cli.internal.ProcessHarnessCli;
 import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
+import com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram;
 import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
@@ -44,7 +45,6 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.jar.JarEntry;
 import java.util.jar.JarOutputStream;
-import java.util.stream.Stream;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -126,6 +126,10 @@ public final class InstallerActivationTest
 	 * harness's version folder reports the installed build, uninstall unregisters CAT and keeps its plugin data, and
 	 * an uninstall with {@code --delete-data} also deletes that data. The installer's own version folder is deleted
 	 * once the uninstalling installer exits.
+	 * <p>
+	 * This test can take over one second: it assembles two plugin versions and exercises the complete
+	 * install, update and uninstall lifecycle. Both versions and both data-retention choices are needed to check
+	 * replacement and cleanup through the assembled installer's entry point.
 	 *
 	 * @param harness the packaged harness to exercise
 	 * @throws IOException if a fixture file cannot be written or read
@@ -150,7 +154,6 @@ public final class InstallerActivationTest
 			Path second = assemble(scope, harness, platform, SECOND, root.resolve("second"));
 			Path home = fake.home;
 			Path data = activation.dataDirectory(home);
-			fake.dataDirectory = data;
 
 			JsonNode installed = fake.run(first, "--home", home.toString(), "install", "--harness", harness);
 			requireThat(installed.path("result").asString(), "installed").withContext(installed, "output").
@@ -191,6 +194,10 @@ public final class InstallerActivationTest
 	 * effect, with the installer's operations and the runner launchers by name, the paths in the user's home directory
 	 * relative to {@code ~} and the command that lists the entries exactly. That command lists each entry as the
 	 * harness configuration holds it.
+	 * <p>
+	 * This test can take over one second because it assembles and installs a plugin before reading its
+	 * verbose status. The installed harness integration must supply the reported entries; supplying report entries
+	 * directly would omit that connection between installation and reporting.
 	 *
 	 * @param harness the packaged harness to exercise
 	 * @throws IOException if a fixture file cannot be written or read
@@ -212,7 +219,6 @@ public final class InstallerActivationTest
 			FakeHarness fake = new FakeHarness(harness, platform, root);
 			Path first = assemble(scope, harness, platform, FIRST, root.resolve("first"));
 			Path home = fake.home;
-			fake.dataDirectory = provider(PluginActivation.class, harness).dataDirectory(home);
 
 			String installed = fake.report(first, "--home", home.toString(), "install", "--harness", harness);
 			Path versionFolder = integration.installation(home).versionFolder(FIRST);
@@ -275,6 +281,9 @@ public final class InstallerActivationTest
 	 * there, with its status and output and the environment to run the installer with. Install refuses, because the
 	 * same environment fails the same way, and the report does not call it another program, ask the user to reinstall
 	 * the harness, or ask the user to run the entry command again.
+	 * <p>
+	 * This test can take over one second: it assembles a plugin and calls its installer with a simulated
+	 * program result. The assembled installer must translate that result into the refusal and recovery report.
 	 *
 	 * @param harness the packaged harness to exercise
 	 * @param status  the program's exit status
@@ -525,21 +534,16 @@ public final class InstallerActivationTest
 		private final Platform platform;
 		private final Path home;
 		private final Path user;
+		private final HarnessProgram.Answers answers;
 		/**
 		 * The folder that the search path names, which holds the harness program.
 		 */
 		private final Path tools;
 		private final Map<String, String> environment = new HashMap<>();
 		/**
-		 * The plugin data directory, which Claude Code's {@code plugin uninstall} deletes unless the command passes
-		 * {@code --keep-data}.
-		 */
-		private Path dataDirectory;
-		/**
 		 * The commands that the installer started to delete folders once it exits.
 		 */
 		private final List<List<String>> started = new ArrayList<>();
-		private Path marketplace;
 
 		/**
 		 * Creates the harness's home, the user's home and the fake program.
@@ -556,6 +560,12 @@ public final class InstallerActivationTest
 			this.home = Files.createDirectories(root.resolve("harness-home"));
 			this.user = Files.createDirectories(root.resolve("user"));
 			this.tools = Files.createDirectories(root.resolve("tools"));
+			List<HarnessProgram.Factory> factories = ServiceLoader.load(HarnessProgram.Factory.class).stream().
+				map(ServiceLoader.Provider::get).filter(factory -> factory.harness().equals(harness)).toList();
+			if (factories.size() != 1)
+				throw new IllegalStateException("Expected one harness program factory for " + harness + ", found " +
+					factories.size());
+			this.answers = factories.getFirst().answers(home);
 			environment.put("PATH", tools.toString());
 			if (platform.isWindows())
 			{
@@ -736,98 +746,8 @@ public final class InstallerActivationTest
 			return ProcessHarnessCliSecrets.getProcessHarnessCliAccess().create(command, directory, builder ->
 			{
 				List<String> line = builder.command();
-				return new ExitedProgram(answer(line.subList(prefix, line.size())));
+				return new ExitedProgram(answers.answer(line.subList(prefix, line.size())));
 			});
-		}
-
-		/**
-		 * Answers a command as the harness program does.
-		 *
-		 * @param arguments the arguments after the recorded program
-		 * @return the exit status and output
-		 * @throws IOException if the harness's files cannot be read or written
-		 */
-		private CommandResult answer(List<String> arguments) throws IOException
-		{
-			String command = String.join(" ", arguments);
-			if (command.equals("--version"))
-			{
-				if (harness.equals("claude"))
-					return new CommandResult(0, "2.1.0 (Claude Code)\n");
-				return new CommandResult(0, "codex-cli 0.130.0\n");
-			}
-			if (arguments.size() == 4 && command.startsWith("plugin marketplace add "))
-			{
-				marketplace = Path.of(arguments.get(3));
-				return new CommandResult(0, "Added marketplace cat\n");
-			}
-			if (command.equals("plugin marketplace remove cat"))
-				return new CommandResult(0, "Removed marketplace cat\n");
-			return switch (command)
-			{
-				case "plugin install cat@cat", "plugin update cat@cat" -> loadClaude();
-				case "plugin add cat@cat" -> loadCodex();
-				case "plugin uninstall --keep-data cat@cat", "plugin uninstall cat@cat", "plugin remove cat@cat" ->
-				{
-					if (harness.equals("claude") && !arguments.contains("--keep-data"))
-						TemporaryDirectories.deleteRecursively(dataDirectory);
-					Files.deleteIfExists(home.resolve("plugins/installed_plugins.json"));
-					yield new CommandResult(0, "Removed cat@cat\n");
-				}
-				default -> throw new AssertionError("Unexpected " + harness + " command: " + arguments);
-			};
-		}
-
-		/**
-		 * Loads CAT from the marketplace as Claude Code does: it records the marketplace entry's version as the
-		 * installed version.
-		 *
-		 * @return the command's result
-		 * @throws IOException if the marketplace cannot be read or the record cannot be written
-		 */
-		private CommandResult loadClaude() throws IOException
-		{
-			String version = "";
-			for (JsonNode entry : MAPPER.readTree(Files.readString(marketplace.resolve(
-				".claude-plugin/marketplace.json"))).path("plugins"))
-			{
-				if (entry.path("name").asString().equals("cat"))
-					version = entry.path("version").asString();
-			}
-			Path record = home.resolve("plugins/installed_plugins.json");
-			Files.writeString(record, MAPPER.writeValueAsString(MAPPER.createObjectNode().put("version", 2).
-				set("plugins", MAPPER.createObjectNode().set("cat@cat", MAPPER.createArrayNode().
-					add(MAPPER.createObjectNode().put("scope", "user").put("version", version))))));
-			return new CommandResult(0, "Installed cat@cat\n");
-		}
-
-		/**
-		 * Loads CAT from the marketplace as Codex does: it replaces its cache of CAT with a copy of the marketplace's
-		 * plugin, named after the plugin's version.
-		 *
-		 * @return the command's result
-		 * @throws IOException if the plugin cannot be copied
-		 */
-		private CommandResult loadCodex() throws IOException
-		{
-			Path source = home.resolve("plugins/cat-marketplace/plugins/cat");
-			String version = MAPPER.readTree(Files.readString(source.resolve(".codex-plugin/plugin.json"))).
-				path("version").asString();
-			Path cache = home.resolve("plugins/cache/cat/cat");
-			TemporaryDirectories.deleteRecursively(cache);
-			Path copy = cache.resolve(version);
-			try (Stream<Path> files = Files.walk(source))
-			{
-				for (Path file : files.toList())
-				{
-					Path target = copy.resolve(source.relativize(file).toString());
-					if (Files.isDirectory(file))
-						Files.createDirectories(target);
-					else
-						Files.copy(file, target);
-				}
-			}
-			return new CommandResult(0, "Added cat@cat\n");
 		}
 	}
 

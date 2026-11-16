@@ -147,18 +147,21 @@ public final class ReleasePackagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = cleanup.add(Files.createTempDirectory("cat-checksums-"));
-			Path codex = Files.writeString(temporary.resolve("cat-codex-linux-x64-v1.0.tar.gz"), "codex");
-			Path claude = Files.writeString(temporary.resolve("cat-claude-linux-x64-v1.0.tar.gz"), "claude");
-			Path manifest = new ReleasePackager(PluginInfo.CAT_VERSION).writeChecksumManifest(List.of(codex, claude),
+			Path archiveB = Files.writeString(temporary.resolve("cat-harness-b-linux-x64-v1.0.tar.gz"), "archive-b");
+			Path archiveA = Files.writeString(temporary.resolve("cat-harness-a-linux-x64-v1.0.tar.gz"), "archive-a");
+			Path manifest = new ReleasePackager(PluginInfo.CAT_VERSION).writeChecksumManifest(List.of(archiveB, archiveA),
 				temporary.resolve("SHA256SUMS.txt"));
 			List<String> lines = Files.readAllLines(manifest);
 
 			requireThat(lines, "checksumLines").size().isEqualTo(2);
-			requireThat(lines.get(0), "firstChecksumLine").endsWith("  cat-claude-linux-x64-v1.0.tar.gz");
-			requireThat(lines.get(1), "secondChecksumLine").endsWith("  cat-codex-linux-x64-v1.0.tar.gz");
+			requireThat(lines.get(0), "firstChecksumLine").endsWith("  cat-harness-a-linux-x64-v1.0.tar.gz");
+			requireThat(lines.get(1), "secondChecksumLine").endsWith("  cat-harness-b-linux-x64-v1.0.tar.gz");
 			requireThat(lines.stream().allMatch(
-				line -> line.matches("[0-9a-f]{64}  cat-(claude|codex)-linux-x64-v1\\.0\\.tar\\.gz")),
+				line -> line.matches("[0-9a-f]{64}  cat-harness-(a|b)-linux-x64-v1\\.0\\.tar\\.gz")),
 				"checksumLineFormat").isTrue();
+			requireThat(lines, "checksumLines").isEqualTo(List.of(
+				"8f8cac92726d3995070e1b30735305e64cfa914631534d3f9c902efbc88252d7  cat-harness-a-linux-x64-v1.0.tar.gz",
+				"d0cc99daa50e475e94d10d23669481467a40642292445ab51c94cfc920105f22  cat-harness-b-linux-x64-v1.0.tar.gz"));
 		}
 	}
 

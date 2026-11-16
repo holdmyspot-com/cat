@@ -166,7 +166,7 @@ public final class CatPs1Test
 	}
 
 	/**
-	 * Verifies that a plugin archive whose digest differs from the pinned one is refused before extraction or install.
+	 * Verifies that a plugin archive whose digest differs from the pinned one is refused before running the installer.
 	 *
 	 * @throws IOException          if the fixture cannot be written or PowerShell cannot run
 	 * @throws InterruptedException if PowerShell is interrupted

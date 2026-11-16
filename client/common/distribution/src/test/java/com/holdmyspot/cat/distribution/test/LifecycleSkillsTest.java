@@ -195,7 +195,8 @@ public final class LifecycleSkillsTest
 
 	/**
 	 * Verifies that every installer command that the {@code update} and {@code uninstall} skills tell an agent to run
-	 * matches a permission entry that install adds for the harness, so that the harness lets the agent run it.
+	 * matches a permission entry that install adds for the harness, except a Codex {@code install} command, which matches
+	 * none because Codex exempts only the exact latest-update script, so that the harness lets the agent run it.
 	 *
 	 * @param harness the harness whose permission entries to install
 	 * @throws IOException if a skill cannot be read or the permission entries cannot be installed
@@ -218,7 +219,9 @@ public final class LifecycleSkillsTest
 			HarnessIntegration integration = ServiceLoader.load(HarnessIntegration.class).stream().
 				map(ServiceLoader.Provider::get).filter(provider -> provider.harness().equals(harness)).findFirst().
 				orElseThrow();
-			Map<String, List<String>> entries = integration.installPermissions(home, launcher,
+			Map<String, String> environment = Map.of("SystemRoot", launcher.getRoot().resolve("bound-system").toString(),
+				"PATH", launcher.getRoot().resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
+			Map<String, List<String>> entries = integration.installPermissions(environment, home, launcher,
 				new FileReplacer(Platform.current(), () ->
 				{
 				}, Clock.systemUTC()));
@@ -248,8 +251,19 @@ public final class LifecycleSkillsTest
 					requireThat(exclusions.stream().anyMatch(exclusion -> matches(exclusion, command)),
 						"isExcluded").withContext(command, "command").withContext(exclusions, "exclusions").isTrue();
 				}
-				requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
-					withContext(entries, "entries").isTrue();
+				String operation = command.substring(launcherCommand.length() + 1).split(" ")[0];
+				if (harness.equals("codex") && operation.equals("install"))
+				{
+					// Codex exempts only the exact latest-update script; an install command that a skill names runs with
+					// ordinary authorization
+					requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
+						withContext(entries, "entries").isFalse();
+				}
+				else
+				{
+					requireThat(isPermitted(command, entries), "isPermitted").withContext(command, "command").
+						withContext(entries, "entries").isTrue();
+				}
 			}
 		}
 	}
