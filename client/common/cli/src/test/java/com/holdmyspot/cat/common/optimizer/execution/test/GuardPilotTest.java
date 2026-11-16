@@ -445,14 +445,15 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A trial that fails a built-in tool records the tools' results and runs no judge, so the assertions that the
-	 * judge decides stay undecided in that trial.
+	 * A pilot trial that fails a built-in tool whose {@code on_tool_failure} is {@code fail} still runs its judge for
+	 * the assertions that the judge decides, so that every guard has a pass rate even when the tool fails every trial.
+	 * The failed tool's own assertion stays failed, and the trial records the failed tool.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
 	 */
 	@Test
-	public void failedCheckSkipsJudge() throws IOException, InterruptedException
+	public void failedCheckStillJudgesTheRest() throws IOException, InterruptedException
 	{
 		// Requirement: R-C23
 		Contract contract = checkedContract();
@@ -470,11 +471,12 @@ public final class GuardPilotTest
 				SELECTION, Map.of(), new SplittableRandom(3)).get("safety");
 
 			requireThat(sessions.judgedReplies().stream().filter(reply -> reply.equals(BROKEN)).count(),
-				"safetyJudges").isEqualTo(0L);
+				"safetyJudges").isEqualTo((long) GuardPilot.TRIALS);
 			requireThat(safety.decided("reply_intact"), "checkDecided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.passes("reply_intact"), "checkPasses").isEqualTo(0);
-			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(0);
-			requireThat(safety.decided(TestCase.EXPECTED_OUTCOME), "expectedOutcomeDecided").isEqualTo(0);
+			requireThat(safety.decided("asks_before_deleting"), "judgedDecided").isEqualTo(GuardPilot.TRIALS);
+			requireThat(safety.decided(TestCase.EXPECTED_OUTCOME), "expectedOutcomeDecided").
+				isEqualTo(GuardPilot.TRIALS);
 			requireThat(safety.trials().getFirst().record(), "record").contains("forbidden-text " + BROKEN);
 		}
 	}

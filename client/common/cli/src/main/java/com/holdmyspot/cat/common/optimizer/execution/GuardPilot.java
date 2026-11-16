@@ -1027,13 +1027,13 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Runs a completed trial's built-in tools. A failed tool whose {@code on_tool_failure} is {@code fail} decides
-		 * the trial without a judge; otherwise the trial waits for a judge of the assertions without a {@code tool}, of
-		 * the assertions whose failed tool leaves them to the judge, and of the assertion
-		 * {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool that passed. A trial whose passing
-		 * tools decide every assertion passes without a judge. A tool that the trial's record cannot decide makes the
-		 * trial a failed run that records why; evidence that cannot be read or rendered makes the run an infrastructure
-		 * attempt.
+		 * Runs a completed trial's built-in tools. Unlike a campaign's trial, a pilot trial whose tool failed under
+		 * {@code on_tool_failure: fail} still waits for a judge, so that every guard has a pass rate: the judge
+		 * decides the assertions without a {@code tool}, the assertions whose failed tool leaves them to the judge,
+		 * and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool, while the
+		 * failed tool's own assertion stays failed. A trial whose tools decide every assertion starts no judge. A
+		 * tool that the trial's record cannot decide makes the trial a failed run that records why; evidence that
+		 * cannot be read or rendered makes the run an infrastructure attempt.
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
@@ -1061,36 +1061,26 @@ public final class GuardPilot
 				infrastructureFailed(trial, "The built-in tools could not be decided: " + Driver.describe(e));
 				return;
 			}
-			if (results.stream().anyMatch(BuiltInToolResult::failsTrial))
-			{
-				// An assertion that a failed tool leaves to the judge stays undecided, because no judge runs
-				Map<String, Boolean> assertions = new LinkedHashMap<>();
-				for (BuiltInToolResult result : results)
-				{
-					if (!result.leftToJudge())
-						assertions.put(result.assertion().id(), result.passed());
-				}
-				StringBuilder record = new StringBuilder("Failed built-in tools:");
-				for (BuiltInToolResult result : results)
-				{
-					if (result.failsTrial())
-						record.append("\n- ").append(result.describe());
-				}
-				pilot.decided(trial.position(), testCase, assertions, record.toString());
-				return;
-			}
 			List<JudgedAssertion> judged = JudgedAssertion.of(pilot.test, contract.requirements(), results);
 			if (judged.isEmpty())
 			{
+				// Every assertion has a tool that decided it, so no judge has anything to decide
+				boolean failed = results.stream().anyMatch(BuiltInToolResult::failsTrial);
 				Map<String, Boolean> assertions = new LinkedHashMap<>();
-				StringBuilder record = new StringBuilder("Passed built-in tools:");
+				StringBuilder record;
+				if (failed)
+					record = new StringBuilder("Failed built-in tools:");
+				else
+					record = new StringBuilder("Passed built-in tools:");
 				for (BuiltInToolResult result : results)
 				{
-					assertions.put(result.assertion().id(), true);
-					record.append("\n- ").append(result.describe());
+					assertions.put(result.assertion().id(), result.passed());
+					if (result.failsTrial() || !failed)
+						record.append("\n- ").append(result.describe());
 				}
 				pilot.decided(trial.position(), testCase, assertions, record.toString());
-				deleteProjects(completed);
+				if (!failed)
+					deleteProjects(completed);
 				return;
 			}
 			queue.addFirst(new JudgeJob(pilot, trial.position(), testCase, completed, judged, results, section, 1));
@@ -1149,7 +1139,20 @@ public final class GuardPilot
 				String id = assertion.assertion().id();
 				assertions.put(id, !failed.contains(id));
 			}
-			judging.pilot().decided(judging.position(), judging.testCase(), assertions, judgment.rationale());
+			StringBuilder record = new StringBuilder(128);
+			for (BuiltInToolResult result : judging.results())
+			{
+				if (result.failsTrial())
+				{
+					if (record.isEmpty())
+						record.append("Failed built-in tools:");
+					record.append("\n- ").append(result.describe());
+				}
+			}
+			if (!record.isEmpty())
+				record.append("\n\n");
+			record.append(judgment.rationale());
+			judging.pilot().decided(judging.position(), judging.testCase(), assertions, record.toString());
 			if (assertions.containsValue(false))
 				return;
 			deleteProjects(judging.trial());
