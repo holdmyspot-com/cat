@@ -31,7 +31,8 @@ Each item of `tests` gives:
 	take the action they oblige, or an empty list. Name only requirements that have a trigger;
 - `applicability`: the conditions under which those requirements apply to a trial;
 - `assertions`: one item for each assertion of the test's `scenario.md`, giving its `id` and the `requirement_id`
-	whose compliance it shows. Give each requirement that the test proves at least one assertion;
+	whose compliance it shows. Give each requirement that the test proves at least one assertion; the CAT-added
+		`expected_outcome` checks no requirement, so a requirement that the test proves needs a declared assertion of its own;
 - `near_misses`: for each assertion that the judge decides, replies that test how closely a judge applies it, as
 	Near misses below describes. Give it for every such assertion, or CAT looks for no cheaper development judge for this
 	test;
