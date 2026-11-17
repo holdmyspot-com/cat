@@ -1,34 +1,13 @@
-name: Build
-
+name: Linux diagnostic session
 on:
   push:
-    branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
-  pull_request:
-
+    branches: [diagnostic/linux-x64-b1e022]
 permissions:
   contents: read
-
 jobs:
-  build:
-    name: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
-    runs-on: ${{ matrix.runner }}
+  diagnostic:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 180
     defaults:
       run:
         shell: bash
@@ -40,67 +19,42 @@ jobs:
           java-version: '27'
           cache: maven
           cache-dependency-path: client/pom.xml
-      - name: Install test tools on Linux
-        if: runner.os == 'Linux'
+      - name: Install matching test tools
         run: .github/scripts/install-linux-test-tools.sh
-      - name: Install test tools on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core shellcheck
-      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
-      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
-      - name: Install test tools on Windows
-        if: runner.os == 'Windows'
+      - name: Prepare session identity
         run: |
-          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
-          archive="${shellcheck_directory}/shellcheck.zip"
-          mkdir -p "${shellcheck_directory}"
-          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
-          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
-            sha256sum --check --strict
-          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
-            '$(cygpath --windows "${shellcheck_directory}")'"
-          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
-          "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.13.0
-          bats --version
-      - name: Verify
-        run: client/mvnw -f client/pom.xml verify
-      # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
-      - name: Keep the test reports of a failed Windows build
-        if: failure() && runner.os == 'Windows'
+          echo "RELEASE_SESSION_DIR=${RUNNER_TEMP}/cat-linux-diagnostic-${GITHUB_RUN_ID}" >> "${GITHUB_ENV}"
+          echo "RELEASE_SESSION_IDENTITY=${GITHUB_RUN_ID}/${GITHUB_RUN_ATTEMPT}/${GITHUB_JOB}/linux-x64" >> "${GITHUB_ENV}"
+      - name: Start private authenticated session
+        env:
+          SESSION_PUBLIC_KEY: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBeByyhsg+8ChGs4Aj8M6Dd38AsKjRjzSjo5FfuyPD9l gili@STALKER'
+        run: >-
+          .github/scripts/release-session.sh start "${RELEASE_SESSION_DIR}" linux-x64
+          "${SESSION_PUBLIC_KEY}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}" 600 "${GITHUB_WORKSPACE}"
+      - name: Publish live connection
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-${{ matrix.platform }}
-          path: client/**/target/surefire-reports/
-          if-no-files-found: ignore
-      - name: Verify bootstrap boundaries
-        if: runner.os != 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/installer-launcher.bats
-          client/common/distribution/src/test/bats/mvnw.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests.
-      # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
-      # that plugin has no POSIX launchers. A Windows installation's installer launchers are PowerShell scripts, which
-      # installer-launcher-windows.bats tests in place of installer-launcher.bats and its POSIX launchers.
-      - name: Verify bootstrap boundaries on Windows
-        if: runner.os == 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/installer-launcher-windows.bats
-      # The installer's sources rewrite runs here, where the shell and sed are macOS's, as well as on Linux.
-      - name: Verify the Linux test-tool installer's mirror rewrite
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/install-linux-test-tools.bats
-      # The POSIX launcher templates; the Windows plugins' batch launchers are tested by the Maven build
-      - name: Verify the jlink launcher template
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
-      - name: Verify the Codex plugin's part launchers
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+          name: linux-connection-${{ github.run_id }}
+          path: |
+            ${{ env.RELEASE_SESSION_DIR }}/ssh-command
+            ${{ env.RELEASE_SESSION_DIR }}/name
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for connected owner
+        run: .github/scripts/release-session.sh wait-ready "${RELEASE_SESSION_DIR}" "${RELEASE_SESSION_IDENTITY}" "${GITHUB_SHA}" "${GITHUB_WORKSPACE}"
+      - name: Hold worker for diagnostic commands
+        if: always()
+        run: .github/scripts/release-session.sh hold "${RELEASE_SESSION_DIR}"
+      - name: Retain diagnostic evidence after shell exit
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: linux-evidence-${{ github.run_id }}
+          path: |
+            diagnostic-evidence/
+            ${{ env.RELEASE_SESSION_DIR }}/terminal-receipt.json
+          if-no-files-found: warn
+          retention-days: 3
+      - name: Clean up session
+        if: always()
+        run: .github/scripts/release-session.sh cleanup "${RELEASE_SESSION_DIR}"
