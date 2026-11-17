@@ -125,6 +125,27 @@ public final class HookScopeTest
 	}
 
 	/**
+	 * Verifies a hook in a harness launched through run-part accepts its inherited output-file variable.
+	 *
+	 * @throws IOException if the fixture cannot be created or the hook environment is rejected
+	 */
+	@Test
+	public void acceptsTheRunPartOutput() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
+			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
+				"CAT_RUN_PART_OUTPUT", plugin.resolve("output.txt").toString());
+			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A,
+				Yielding.waiting()))
+			{
+				requireThat(scope.pluginRoot(), "pluginRoot").isEqualTo(plugin.toAbsolutePath().normalize());
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a scope accepts the variable that marks a session of a CAT run, which a runner sets in every
 	 * session that it starts, so that CAT's hooks run in those sessions.
 	 *
@@ -173,6 +194,19 @@ public final class HookScopeTest
 	public void rejectsAConflictingCatVariable() throws IOException
 	{
 		HookScope.fromEnvironment(Map.of("ROOT", "plugin", "USER_HOME", "home", "CAT_INSTALL_DIR", "other"), "Harness",
+			"ROOT", "USER_HOME", HARNESS_A, Yielding.waiting());
+	}
+
+	/**
+	 * Verifies accepting known launcher variables does not allow an unrelated CAT variable.
+	 *
+	 * @throws IOException always
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "CAT_UNEXPECTED conflicts with Harness ROOT")
+	public void rejectsAnUnknownCatVariable() throws IOException
+	{
+		HookScope.fromEnvironment(Map.of("ROOT", "plugin", "USER_HOME", "home", "CAT_UNEXPECTED", "value"), "Harness",
 			"ROOT", "USER_HOME", HARNESS_A, Yielding.waiting());
 	}
 

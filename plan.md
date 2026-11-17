@@ -321,9 +321,30 @@ retained before cleanup. The original Windows grandchild timeout's cause remains
 and terminates descendants, then joins descendants and wrapper before deleting scratch; this closes the documented
 termination ownership gap without claiming it caused the original Windows input-sharing violation.
 
-The CLI repair is committed locally but not pushed; subsequent repairs and this evidence update are prepared for an
-intermediate commit. Windows complete final checks, final macOS affected checks and the production publication gates
-remain open.
+Commit `e44b1c202` contains the subsequent lifecycle repairs and passes whole-client local verification on its committed
+source, with no source drift. The retained macOS worker first reports two readiness timeouts on those exact 35 files;
+an observed normal-gate rerun passes BuildWorker, reservations, process-stop and trainer checks (42 tests, zero
+failures/errors, one skip). The original readiness cause remains unproven. The old Windows worker ended before final
+source transfer and complete verification. Its replacement verifies the exact 35 hashes and reproduces two process-stop
+readiness timeouts plus reservation ledger-lock readiness timeout; complete Maven/Bats checks were still running at
+the owner's last observation. Preserve both failed and passing receipts rather than treating the rerun as a causal
+explanation. The publication state and exact receipt locations remain in the root session's
+`temp/v1-republish-kTxH04/publication-state.json`.
+
+Separate native acceptance diagnosis confirms a shipped helper/hook incompatibility: run-part exports
+`CAT_RUN_PART_OUTPUT`, but SessionStart's environment validator rejects that legitimate CAT variable and stops before
+prompt admission. A text-only native comparison with identical command and prompt admits the prompt after removing only
+that diagnostic variable; direct installed-hook output records the precise conflict. The shared hook validator now
+accepts the known launcher variable, while a new regression preserves rejection of an unrelated `CAT_*` variable.
+The positive regression first fails with the expected conflict; whole-client verification then passes with normal gates
+and cache enabled, and the rebuilt packaged hook accepts the real run-part environment with no stderr output. Exact
+receipts are in the root session's `temp/hook-run-part-regression-qcm8mkoq/` and causal native evidence in
+`temp/wi142-text-admission-f2w2ifgr/`. These two source files extend the candidate beyond the frozen 35-file receipts.
+They have not been transferred to native workers or installed in the parent cache. The denied-read gate remains
+unproven because the native bootstrap still uses profile `cat` rather than the requested narrowed profile.
+
+The current repairs are intermediate work. Native readiness diagnosis, final whole-job native verification on the
+resulting source, and the production publication gates remain open.
 The repaired candidate still requires a successful five-platform Build, Release workflow and published-asset verifier.
 No production push, tag replacement or release mutation has occurred after `b1e022adc`. Parent installation recovery and
 optimizer acceptance remain separate open work.

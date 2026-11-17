@@ -20,9 +20,10 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 {
 	private static final int MAXIMUM_EVENT_BYTES = 1_048_576;
 	/**
-	 * The variables in which a jlink launcher saves the caller's locale, whenever that locale is not UTF-8.
+	 * The variables in which CAT launchers save the caller's locale and the output file of a run-part command.
 	 */
-	private static final Set<String> SAVED_LOCALE = Set.of("CAT_CALLER_LC_ALL", "CAT_CALLER_LC_CTYPE");
+	private static final Set<String> LAUNCHER_VARIABLES = Set.of("CAT_CALLER_LC_ALL", "CAT_CALLER_LC_CTYPE",
+		"CAT_RUN_PART_OUTPUT");
 	private final Path pluginRoot;
 	private final Path userRulesRoot;
 	private final SessionHarness harness;
@@ -75,8 +76,8 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 	 *   blank
 	 * @throws IOException if either variable is unset or blank, or if the environment sets a {@code CAT_} variable
 	 *   other than a {@code CAT_INSTALL_DIR} that names the plugin root, a variable in which the hook's launcher
-	 *   saved the caller's locale, or a variable that a CAT runner sets in a session that it starts
-	 *   ({@link HarnessEnvironment#RUNNER_VARIABLES})
+	 *   saved the caller's locale or run-part output file, or a variable that a CAT runner sets in a session that it
+	 *   starts ({@link HarnessEnvironment#RUNNER_VARIABLES})
 	 */
 	public static HookScope fromEnvironment(Map<String, String> environment, String harness, String pluginRootVariable,
 		String homeVariable, SessionHarness sessionHarness, Waiting waiting) throws IOException
@@ -126,7 +127,7 @@ public abstract class AbstractHookScope extends AbstractJvmScope implements Hook
 		for (Map.Entry<String, String> entry : environment.entrySet())
 		{
 			String name = entry.getKey();
-			if (!name.startsWith("CAT_") || SAVED_LOCALE.contains(name) ||
+			if (!name.startsWith("CAT_") || LAUNCHER_VARIABLES.contains(name) ||
 				HarnessEnvironment.RUNNER_VARIABLES.contains(name))
 				continue;
 			if (name.equals("CAT_INSTALL_DIR") &&
