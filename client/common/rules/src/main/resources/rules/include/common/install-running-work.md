@@ -17,15 +17,26 @@ This rule applies before you install, update or uninstall CAT or any plugin, inc
 
 Before invoking the installer, establish its intended harness home and the execution context its documented procedure
 requires. Use the supported outside execution route when the installation needs access beyond the session's sandbox.
+Match that route to the actual launcher's absolute path, arguments, target home and artifact before any mutating call.
+An exception for an installed launcher does not establish a route for a generated, downloaded or differently located
+launcher. When the match is unknown, inspect the documented route before invoking the installer; when no authorized
+route supports that artifact and operation, report the specific prerequisite. Preserve the requested artifact: a release
+update is not a substitute for installing a locally built tree.
+
 Check the actual operation that a launcher or outside service supports: a server running outside the sandbox does not
 give its sandboxed children that access, and a session-launch service need not support installation. Follow the route's
 invocation requirements so the installer actually runs in the required context.
+Directory writability or successful file creation proves neither outside execution nor the ability to replace that
+directory; a writable sandbox mount can still prevent the installer's rename or removal. Establish the required context
+before attempting installation rather than using a mutating attempt to discover it.
 
 If a sandboxed attempt is refused, check the documented outside installation routes and any existing service before
 concluding that this session cannot complete the update. Use an available authorized route that supports the operation;
 do not weaken sandbox settings or invent an unsupported service operation. When no such route is available, report the
 specific unmet prerequisite and the observed refusals. A copied artifact or an accepted service request is intermediate
-evidence: verify the active installed version in the intended harness home before reporting completion.
+evidence: verify the active installed version and installation consistency in the intended harness home before reporting
+completion. After a partial failure, retain incomplete-installation markers and use the supported installation route to
+finish the operation. A restart, unchanged version identity or manually cleared marker does not establish completion.
 
 First look for running work that uses the installed copy: sessions that you or a runner started, such as probe,
 screen or runner sessions, subagents, and test copies of a plugin that are bound to the installed runtime or version

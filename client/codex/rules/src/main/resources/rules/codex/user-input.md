@@ -15,8 +15,9 @@ depends-on:
 - Never use the user-input tool to ask again for a decision that an earlier question in the conversation asked, whether
 	or not the user has answered it yet, or to ask whether to continue, pause or keep working on an active goal or work
 	that the user told the agent to continue.
-- Make every start of a subagent, and every message for a subagent or the parent agent, reach that agent through a
-	collaboration tool, since the user-input tool reaches only the user.
+- Make every start of a subagent, and every message for a subagent or the parent agent, reach that agent through an
+	available native collaboration operation. When that operation is unavailable, preserve the pending action and
+	report the limitation in response text without substituting a user-input call.
 - Make the agent handle a message from a subagent or the parent agent by replying to that agent through a
 	collaboration tool when it needs a reply, by asking the user only when it leaves a decision that only the user can
 	make, and otherwise by continuing its work, so that no user-input call acknowledges, dismisses or answers it.
@@ -25,21 +26,39 @@ depends-on:
 
 ## Guidance
 
-This rule governs only calls to a user-input tool, such as `request_user_input` or `request_user_input_async`. A
-user-input tool reaches only the user. In each situation below, take the action that it names.
+Choose the recipient and delivery operation for each outbound communication before composing it. A turn may need
+separate communications for the user and an agent; select each independently:
+
+1. A status update, progress report or correction that needs no user answer goes in response text. This branch needs
+   no tool selection or tool payload, even when the note is phrased as a question.
+2. A message, update, follow-up, correction or progress question for another agent goes through the native
+   collaboration operation addressed to that agent. Select `send_message` or `followup_task` for an existing agent;
+   when starting a new agent, make `spawn_agent` the next tool call. A question for an agent remains an agent message.
+3. Apply the eligibility checks below to a question that requires the user's answer. Ask an eligible question through
+   an available user-input tool, or in response text when no such tool is exposed. An eligible user question remains
+   eligible while another agent runs.
+
+For a tool-delivered communication, bind the operation to the exact tool identifier and argument schema exposed in the
+current interface before constructing its payload. For example, if the interface exposes `collaboration.send_message`
+with `target` and `message`, select that identifier and then fill those fields; a tool taking `questions` cannot
+deliver that agent message. Use the namespace actually exposed, rather than guessing one from these examples. Native
+collaboration tools are called directly; `exec`'s `ALL_TOOLS` and `tools` do not list them. If a required collaboration
+operation is unavailable, report that limitation in response text and preserve the pending agent action instead of
+substituting a user-input call or sending a probe through it.
 
 Before selecting a user-input tool or constructing its payload, identify the unresolved decision or missing information
 that requires the user's answer, and the concrete action that depends on that answer. Apply Request Execution's
 question eligibility to that decision. An answer changing your next action is not sufficient eligibility:
 implementation alternatives also change actions and remain yours to resolve.
 
-If there is no eligible question to ask, put any status update, progress report or other note in your response text and
-keep working, even when the note is worded as a question. Otherwise, call the tool with one complete question naming the
-missing input and the action that depends on it. Immediately before sending, inspect the actual selected tool's
-recipient and the actual question item, rather than the operation you intended to invoke. Both must match the eligible
-user decision: the tool reaches the user, and the item requests the missing answer. If either check fails, discard the
-pending call and select the proper response or collaboration channel. Do not send a placeholder or status note to test
-the tool or repair a selection mistake.
+If there is no eligible question, continue through the appropriate response-text or collaboration branch above.
+Otherwise, construct one complete question naming the missing input and the action that depends on it.
+
+Immediately before any communication tool call, compare the actual selected identifier, recipient and payload with
+the branch chosen above. An agent message must address that agent using the collaboration tool's schema. A user-input
+call must reach the user and request the missing answer to the eligible decision. If they do not match, discard the
+pending call and construct the invocation for the correct branch. Do not send a placeholder or status note to test a
+tool or repair a selection mistake.
 
 When the user has already given information or authorization in this conversation, such as the option to use, the
 scope of a change, or permission to go ahead, act on it as given.
@@ -50,12 +69,8 @@ The answer to a `request_user_input_async` call arrives later as a user message,
 reason to ask again. An active goal or an instruction to continue authorizes continuing that work: never ask whether to
 continue, pause or keep working on it.
 
-When you decide to start a subagent, make `spawn_agent` your next tool call. When you have a message, update,
-follow-up, correction or progress question for a subagent or the parent agent, send it to that agent with
-`send_message` or `followup_task`. This includes telling a subagent about a change to a file it works from, following
-up on a result it sent, and asking about its progress after a wait times out. These collaboration tools are direct
-function tools that you call like any other function tool; `exec`'s `ALL_TOOLS` and `tools` do not list them, so call
-them directly.
+The agent-message branch includes telling an agent about a change to a file it works from, following up on its result,
+and asking about its progress after a wait times out. It applies to both subagents and the parent agent.
 
 When a message from a subagent or the parent agent arrives, such as a `MESSAGE` or a `FINAL_ANSWER`, it comes from that
 agent. If it needs a reply, send the reply to that agent with `send_message` or `followup_task`. If it leaves a

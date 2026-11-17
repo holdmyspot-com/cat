@@ -30,7 +30,18 @@ installation, so run it once for each harness you test. Install copies the tree 
 registers it through the harness's program, which must be on your `PATH`. It writes the policy in the harness's CAT data
 directory, with the release key from the tree's `bin/conf/installer/default-policy.json`, and adds the permission
 entries that name the installed version folder's `bin/installer`. Pass `--home` with the harness home before the
-operation (`--home` is an option of `install`, and it comes before the word `install`):
+operation (`--home` is an option of `install`, and it comes before the word `install`).
+
+Run these mutating installation commands in a terminal outside the agent's sandbox, or through a documented authorized
+route that runs this exact local artifact outside it. Before invoking them from an agent, establish that the route
+covers the generated launcher's absolute path, arguments and intended harness home. Permission entries for an installed
+launcher do not cover the checkout's generated launcher. If no supported route is available, leave installation pending
+and report the required outside invocation. The installed launcher's release-update command installs release content;
+use the local tree's installer for this developer workflow.
+
+A writable plugin directory is insufficient evidence: a sandbox bind mount may allow file writes while preventing the
+directory rename that Codex uses to back up an existing same-version cache. Do not use an installation attempt as a
+probe of execution context.
 
 Each local install replaces the files in the version folder, even when the folder already has the tree's version. Before
 repeating an install, wait for sessions using that folder to finish or confirm they use independent copies of its files.
@@ -49,7 +60,16 @@ powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "<absolu
 	--home "<absolute path to the harness home>" install --harness <harness>
 ```
 
-Use a different `--home` for a throwaway harness home; the home must be an absolute path.
+Use a different `--home` for a throwaway harness home; the home must be an absolute path. The examples use the terminal's
+home directory; when targeting a particular agent installation, replace `~/.claude` or `~/.codex` with that installation's
+actual absolute harness-home path.
+
+After installation, locate the installed version folder inside the intended harness home and run its installer launcher
+with `status --harness <harness> --json`, using the platform invocation above. Status derives its installation from the
+launcher location and does not accept `--home`. Verify both the expected version and `consistent: true`. A partial
+failure can leave the marketplace updated while the active cache remains unchanged. Preserve pending-permissions markers
+and finish installation through the supported outside route; restarting alone or clearing a marker does not repair that
+state.
 
 The built plugin trees' launchers run without installation, from
 `client/common/distribution/target/runtime/<harness>/bin/<launcher>`, for example

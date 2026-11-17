@@ -36,7 +36,7 @@ continue the campaign as the end of this skill describes for a session that is g
 
 Run the launcher that this skill's `SKILL.md` names. Each command prints one JSON object. Exit code 0 means its `status`
 is the campaign's state. Exit code 1 or 2 means a refusal, an error or invalid input; show its `message` to the user
-and stop, unless step 1 says how to continue.
+and stop, unless this skill explicitly says how to continue after that result.
 
 For requests about an existing campaign, use the status, cancellation or acceptance procedure below as the request
 requires. Do not start another campaign to answer such a request.
