@@ -1,0 +1,67 @@
+name: Windows interactive security probe
+on:
+  push:
+    branches: [probe/windows-ci-qhuddf]
+permissions:
+  contents: read
+jobs:
+  session:
+    runs-on: windows-2025
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: zulu
+          java-version: '27'
+          cache: maven
+          cache-dependency-path: probe/session.ps1
+      - name: Start retained diagnostic worker
+        shell: pwsh
+        run: |
+          $process = Start-Process pwsh -ArgumentList '-NoProfile', '-File', 'probe/session.ps1' -PassThru -RedirectStandardOutput "$env:RUNNER_TEMP/session.log" -RedirectStandardError "$env:RUNNER_TEMP/session-error.log"
+          $process.Id | Set-Content "$env:RUNNER_TEMP/session.pid"
+          $deadline = [DateTime]::UtcNow.AddMinutes(3)
+          while (!(Test-Path "$env:RUNNER_TEMP/cat-remote/connection.json")) {
+            if ($process.HasExited) { Get-Content "$env:RUNNER_TEMP/session-error.log"; throw 'Session setup exited before publishing' }
+            if ([DateTime]::UtcNow -ge $deadline) { throw 'Session setup did not publish connection details' }
+            Start-Sleep -Seconds 1
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-connection
+          path: ${{ runner.temp }}/cat-remote/connection.json
+      - name: Wait until the diagnostic shell exits
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP/session.pid") {
+            $sessionProcessId = [int](Get-Content "$env:RUNNER_TEMP/session.pid")
+            Wait-Process -Id $sessionProcessId -ErrorAction SilentlyContinue
+          }
+          if (Test-Path "$env:RUNNER_TEMP/cat-remote/upterm.exe") {
+            & "$env:RUNNER_TEMP/cat-remote/upterm.exe" session wait cat-windows
+            & "$env:RUNNER_TEMP/cat-remote/upterm.exe" session info cat-windows --output json | Set-Content "$env:RUNNER_TEMP/cat-remote/terminal.json"
+          }
+          Get-Content "$env:RUNNER_TEMP/session.log" -ErrorAction SilentlyContinue
+          Get-Content "$env:RUNNER_TEMP/session-error.log" -ErrorAction SilentlyContinue
+          if (!(Test-Path "$env:RUNNER_TEMP/cat-remote/terminal.json")) { throw 'No terminal session receipt' }
+          $terminal = Get-Content "$env:RUNNER_TEMP/cat-remote/terminal.json" -Raw | ConvertFrom-Json
+          if ($terminal.status -ne 'ended') { throw 'Remote session is not terminal' }
+          if ($terminal.reason -ne 'exited') { throw "Remote session ended without an explicit shell exit: $($terminal.reason)" }
+          exit $terminal.exitCode
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-session-result
+          path: |
+            ${{ runner.temp }}/cat-remote/terminal.json
+            ${{ runner.temp }}/cat-remote/*result*
+            ${{ runner.temp }}/session*.log
+      - name: Remove task access after session wait
+        if: always()
+        shell: pwsh
+        run: |
+          Remove-Item -LiteralPath "$env:RUNNER_TEMP/cat-remote" -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -LiteralPath $env:GITHUB_WORKSPACE -Force | Remove-Item -Recurse -Force
+          Write-Output 'CAT_REMOTE_CLEANUP_FINISHED'
