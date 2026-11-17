@@ -286,7 +286,7 @@ public final class CodexGetHistoryTest
 			}
 			catch (IOException e)
 			{
-				requireThat(e.getMessage(), "message").contains(malformedRollout + ":3");
+				requireThat(e.getMessage(), "message").contains(malformedRollout.toRealPath() + ":3");
 				requireThat(e.getCause(), "cause").isInstanceOf(JacksonException.class);
 				throw e;
 			}
