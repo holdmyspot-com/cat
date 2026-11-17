@@ -257,9 +257,12 @@ public final class WorkspaceContract
 		requireThat(subject.stagedContent(staged, ContractWorkspace.DIRECTORY_ALIAS.
 			resolve(ContractWorkspace.DIRECTORY_TARGET.getFileName())), "directoryAliasTarget").
 			isEqualTo("candidate directory target");
-		requireThat(Files.getPosixFilePermissions(staged.resolve(ContractWorkspace.FILE_ALIAS),
-			LinkOption.NOFOLLOW_LINKS), "fileAliasMode").isEqualTo(
-			PosixFilePermissions.fromString("rw-r--r--"));
+		if (Files.getFileStore(staged).supportsFileAttributeView("posix"))
+		{
+			requireThat(Files.getPosixFilePermissions(staged.resolve(ContractWorkspace.FILE_ALIAS),
+				LinkOption.NOFOLLOW_LINKS), "fileAliasMode").isEqualTo(
+				PosixFilePermissions.fromString("rw-r--r--"));
+		}
 
 		Path selected = port.stage(candidate, Set.of(),
 			new SourceSelection(Set.of(ContractWorkspace.FILE_ALIAS, ContractWorkspace.CHAINED_ALIAS,

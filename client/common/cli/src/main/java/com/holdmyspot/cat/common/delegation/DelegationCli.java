@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.build.BuildObservations;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
+import com.holdmyspot.cat.common.secrets.DelegationCliSecrets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -16,6 +17,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -26,6 +28,11 @@ public final class DelegationCli
 	private static final String USAGE = "prepare --plan <file> --build-context <file> | " +
 		"audit --cohort <directory> --work <id> --build-context <file> | " +
 		"integrate --cohort <directory> --work <id> --build-context <file> | help";
+
+	static
+	{
+		DelegationCliSecrets.setDelegationCliAccess(DelegationCli::execute);
+	}
 
 	/**
 	 * Prevents construction of the command boundary.
@@ -45,6 +52,22 @@ public final class DelegationCli
 	 */
 	public static Result execute(JvmScope scope, Path project, Map<String, String> environment, String[] arguments)
 	{
+		return execute(scope, project, environment, context -> systemAdmission(scope, context, environment), arguments);
+	}
+
+	/**
+	 * Executes a delegation operation using the supplied admission construction policy.
+	 *
+	 * @param scope            process services
+	 * @param project          project directory
+	 * @param environment      complete environment supplied to child processes
+	 * @param admissionFactory creates the admission controller after the host context is read
+	 * @param arguments        command line
+	 * @return structured result
+	 */
+	private static Result execute(JvmScope scope, Path project, Map<String, String> environment,
+		Function<BuildAdmission.HostContext, BuildAdmission> admissionFactory, String[] arguments)
+	{
 		String operation;
 		if (arguments.length == 0)
 			operation = "help";
@@ -57,17 +80,7 @@ public final class DelegationCli
 			Map<String, String> options = parseOptions(operation, arguments);
 			BuildAdmission.HostContext context = BuildAdmission.HostContext.read(scope.json(),
 				Path.of(options.get("build-context")));
-			BuildObservations.IdentityLookup identities = pid ->
-			{
-				java.util.Optional<ProcessDescription> process = HarnessProcesses.system().find(pid);
-				if (process.isEmpty())
-					return java.util.Optional.empty();
-				String start = process.orElseThrow().start().orElseThrow(() -> new IOException(
-					"Present process lacks stable start identity: " + pid));
-				return java.util.Optional.of(new ProcessIdentity(pid, start));
-			};
-			BuildAdmission admission = new BuildAdmission(scope, context, BuildObservations.system(identities),
-				scope.clock(), environment);
+			BuildAdmission admission = admissionFactory.apply(context);
 			if (operation.equals("prepare"))
 			{
 				Plan plan = Plan.read(scope.json(), Path.of(options.get("plan")));
@@ -102,6 +115,30 @@ public final class DelegationCli
 			return new Result(operation, result, exitCode, null, 0, null, null, e.getMessage(),
 				failureWork(scope, arguments, result));
 		}
+	}
+
+	/**
+	 * Creates admission from the current host's Linux resource observations.
+	 *
+	 * @param scope       process services
+	 * @param context     validated host admission context
+	 * @param environment complete environment supplied to child processes
+	 * @return admission controller observing the current host
+	 */
+	private static BuildAdmission systemAdmission(JvmScope scope, BuildAdmission.HostContext context,
+		Map<String, String> environment)
+	{
+		BuildObservations.IdentityLookup identities = pid ->
+		{
+			java.util.Optional<ProcessDescription> process = HarnessProcesses.system().find(pid);
+			if (process.isEmpty())
+				return java.util.Optional.empty();
+			String start = process.orElseThrow().start().orElseThrow(() -> new IOException(
+				"Present process lacks stable start identity: " + pid));
+			return java.util.Optional.of(new ProcessIdentity(pid, start));
+		};
+		return new BuildAdmission(scope, context, BuildObservations.system(identities),
+			scope.clock(), environment);
 	}
 
 	/**

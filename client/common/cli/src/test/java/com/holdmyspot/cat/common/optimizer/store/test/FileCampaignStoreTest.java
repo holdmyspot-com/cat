@@ -1318,7 +1318,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path record = onlyRecord(campaigns);
 			JsonNode stored = JSON.readTree(Files.readString(snapshot, UTF_8));
 			requireThat(stored.get("header").get("target").asString(), "storedTarget").isEqualTo("AGENTS.md");
-			String originalText = original.toString();
+			String originalJson = JSON.writeValueAsString(original.toString());
+			String originalText = originalJson.substring(1, originalJson.length() - 1);
 			requireThat(Files.readString(record, UTF_8), "storedRecord").doesNotContain(originalText);
 			requireThat(JSON.writeValueAsString(stored.get("trials")), "storedTrials").doesNotContain(originalText);
 

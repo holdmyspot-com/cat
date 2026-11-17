@@ -10,6 +10,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.nio.file.attribute.DosFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.List;
 import java.util.Set;
@@ -37,16 +38,21 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-"));
-			Path transaction = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-"));
+			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-")).toRealPath();
+			Path transaction =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-")).toRealPath();
 			Files.writeString(project.resolve("unit.txt"), "before");
 			Files.writeString(candidate.resolve("unit.txt"), "after");
 			Files.writeString(candidate.resolve("new.txt"), "new candidate file");
 			BasicFileAttributes beforeAttributes = Files.readAttributes(project.resolve("unit.txt"),
 				BasicFileAttributes.class);
 			String beforeMetadata = SourceSnapshot.metadataIdentity(project.resolve("unit.txt"));
-			Set<PosixFilePermission> beforePermissions = Files.getPosixFilePermissions(project.resolve("unit.txt"));
+			boolean posix = Files.getFileStore(project).supportsFileAttributeView("posix");
+			Set<PosixFilePermission> beforePermissions = Set.of();
+			if (posix)
+				beforePermissions = Files.getPosixFilePermissions(project.resolve("unit.txt"));
 			SourceSnapshot snapshot = SourceSnapshot.capture(project, transaction.resolve("snapshot"),
 				List.of("unit.txt"));
 
@@ -60,8 +66,11 @@ public final class ReplayTest
 			requireThat(outcome.restoredPaths(), "restoredPaths").contains("unit.txt");
 			requireThat(Files.readAttributes(project.resolve("unit.txt"), BasicFileAttributes.class).fileKey(),
 				"originalEntryRetained").isEqualTo(beforeAttributes.fileKey());
-			requireThat(Files.getPosixFilePermissions(project.resolve("unit.txt")), "permissionsRestored").
-				isEqualTo(beforePermissions);
+			if (posix)
+			{
+				requireThat(Files.getPosixFilePermissions(project.resolve("unit.txt")), "permissionsRestored").
+					isEqualTo(beforePermissions);
+			}
 			requireThat(Files.getLastModifiedTime(project.resolve("unit.txt")), "modifiedTimeRestored").
 				isEqualTo(beforeAttributes.lastModifiedTime());
 			requireThat(SourceSnapshot.metadataIdentity(project.resolve("unit.txt")), "supportedMetadataRestored").
@@ -81,9 +90,11 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-"));
-			Path transaction = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-"));
+			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-")).toRealPath();
+			Path transaction =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-")).toRealPath();
 			Files.writeString(project.resolve("unit.txt"), "before");
 			Files.writeString(candidate.resolve("unit.txt"), "after");
 			SourceSnapshot snapshot = SourceSnapshot.capture(project, transaction.resolve("snapshot"),
@@ -111,9 +122,11 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-"));
-			Path transaction = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-"));
+			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-")).toRealPath();
+			Path transaction =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-")).toRealPath();
 			Files.writeString(project.resolve("unit.txt"), "before");
 			Files.writeString(candidate.resolve("unit.txt"), "delegate");
 			SourceSnapshot snapshot = SourceSnapshot.capture(project, transaction.resolve("snapshot"),
@@ -137,7 +150,7 @@ public final class ReplayTest
 	}
 
 	/**
-	 * Verifies changed ancestor permissions are stale before replay.
+	 * Verifies changed supported ancestor metadata is stale before replay.
 	 *
 	 * @throws IOException if the temporary fixture cannot be created
 	 */
@@ -146,34 +159,53 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-"));
-			Path transaction = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-"));
+			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-")).toRealPath();
+			Path transaction =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-")).toRealPath();
 			Files.writeString(project.resolve("unit.txt"), "before");
 			Files.writeString(candidate.resolve("unit.txt"), "after");
 			SourceSnapshot snapshot = SourceSnapshot.capture(project, transaction.resolve("snapshot"), List.of("unit.txt"));
+			String originalMetadata = SourceSnapshot.metadataIdentity(project);
 			boolean posix = Files.getFileStore(project).supportsFileAttributeView("posix");
 			Set<PosixFilePermission> originalPermissions = Set.of();
+			boolean originallyHidden = false;
 			if (posix)
-			{
 				originalPermissions = Files.getPosixFilePermissions(project);
-				Files.setPosixFilePermissions(project, Set.of(PosixFilePermission.OWNER_READ,
-					PosixFilePermission.OWNER_EXECUTE));
-			}
-			IOException failure = null;
+			else
+				originallyHidden = Files.readAttributes(project, DosFileAttributes.class).isHidden();
 			try
 			{
-				Replay.integrate(project, candidate, snapshot, List.of("unit.txt"), transaction, List.of(), List.of(),
-					_ -> true);
+				if (posix)
+				{
+					Files.setPosixFilePermissions(project, Set.of(PosixFilePermission.OWNER_READ,
+						PosixFilePermission.OWNER_EXECUTE));
+				}
+				else
+					Files.setAttribute(project, "dos:hidden", !originallyHidden);
+				requireThat(SourceSnapshot.metadataIdentity(project), "ancestorMetadataChanged").isNotEqualTo(originalMetadata);
+				IOException failure = null;
+				try
+				{
+					Replay.integrate(project, candidate, snapshot, List.of("unit.txt"), transaction, List.of(), List.of(),
+						_ -> true);
+				}
+				catch (IOException e)
+				{
+					failure = e;
+				}
+				requireThat(failure, "staleDirectoryMetadataRejected").isNotNull();
+				requireThat(failure.getMessage(), "staleDirectoryMetadataReason").contains("Stale parent directory metadata");
+				requireThat(Files.readString(project.resolve("unit.txt")), "sourceNotReplayed").isEqualTo("before");
 			}
-			catch (IOException e)
+			finally
 			{
-				failure = e;
+				if (posix)
+					Files.setPosixFilePermissions(project, originalPermissions);
+				else
+					Files.setAttribute(project, "dos:hidden", originallyHidden);
 			}
-			requireThat(failure, "staleDirectoryMetadataRejected").isNotNull();
-			requireThat(Files.readString(project.resolve("unit.txt")), "sourceNotReplayed").isEqualTo("before");
-			if (posix)
-				Files.setPosixFilePermissions(project, originalPermissions);
 		}
 	}
 
@@ -187,9 +219,11 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-"));
-			Path transaction = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-"));
+			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-candidate-")).toRealPath();
+			Path transaction =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-transaction-")).toRealPath();
 			Files.writeString(project.resolve("unit.txt"), "before");
 			Files.writeString(candidate.resolve("unit.txt"), "after");
 			java.nio.file.attribute.FileTime directoryTime = Files.getLastModifiedTime(project);
@@ -249,9 +283,12 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-unsafe-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-unsafe-candidate-"));
-			Path evidence = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-safe-evidence-"));
+			Path project =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-unsafe-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-unsafe-candidate-")).toRealPath();
+			Path evidence =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-safe-evidence-")).toRealPath();
 			Files.createDirectories(project.resolve("src"));
 			Files.createDirectories(candidate.resolve("src"));
 			Files.writeString(project.resolve("src/unit.txt"), "before");
@@ -309,15 +346,20 @@ public final class ReplayTest
 	{
 		try (TestJvmScope scope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-session-project-"));
-			Path candidate = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-session-candidate-"));
+			Path project =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-session-project-")).toRealPath();
+			Path candidate =
+				cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "replay-session-candidate-")).toRealPath();
 			Path transaction = Files.createDirectories(project.resolve(".cat/sessions/session/temp/transaction"));
 			Path parentFile = project.resolve("unit.txt");
 			Path candidateFile = candidate.resolve("unit.txt");
 			Files.writeString(parentFile, "before");
 			Files.writeString(candidateFile, "after");
 			BasicFileAttributes beforeAttributes = Files.readAttributes(parentFile, BasicFileAttributes.class);
-			Set<PosixFilePermission> beforePermissions = Files.getPosixFilePermissions(parentFile);
+			boolean posix = Files.getFileStore(project).supportsFileAttributeView("posix");
+			Set<PosixFilePermission> beforePermissions = Set.of();
+			if (posix)
+				beforePermissions = Files.getPosixFilePermissions(parentFile);
 			String beforeMetadata = SourceSnapshot.metadataIdentity(parentFile);
 			SourceSnapshot snapshot = SourceSnapshot.capture(project, transaction.resolve("snapshot"), List.of("unit.txt"));
 
@@ -328,7 +370,8 @@ public final class ReplayTest
 			requireThat(Files.readString(parentFile), "restoredBytes").isEqualTo("before");
 			requireThat(Files.readAttributes(parentFile, BasicFileAttributes.class).fileKey(), "originalEntryRetained").
 				isEqualTo(beforeAttributes.fileKey());
-			requireThat(Files.getPosixFilePermissions(parentFile), "permissionsRestored").isEqualTo(beforePermissions);
+			if (posix)
+				requireThat(Files.getPosixFilePermissions(parentFile), "permissionsRestored").isEqualTo(beforePermissions);
 			requireThat(Files.getLastModifiedTime(parentFile), "modifiedTimeRestored").
 				isEqualTo(beforeAttributes.lastModifiedTime());
 			requireThat(SourceSnapshot.metadataIdentity(parentFile), "supportedMetadataRestored").

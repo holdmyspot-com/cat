@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.delegation.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.delegation.SourceSnapshot;
 import java.io.IOException;
@@ -209,8 +210,12 @@ public final class SourceSnapshotTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory(Path.of("/tmp"), "p-"));
-			Path cohort = cleanup.add(Files.createTempDirectory(Path.of("/tmp"), "c-"));
+			// Unix socket addresses need a short path even when the build owns a deeply nested temporary root.
+			Path temporary = Path.of("/tmp");
+			if (Platform.current().isWindows())
+				temporary = Path.of(System.getenv("TEMP"));
+			Path project = cleanup.add(Files.createTempDirectory(temporary, "p-")).toRealPath();
+			Path cohort = cleanup.add(Files.createTempDirectory(temporary, "c-")).toRealPath();
 			Path socket = project.resolve("special.sock");
 			try (ServerSocketChannel server = ServerSocketChannel.open(StandardProtocolFamily.UNIX))
 			{

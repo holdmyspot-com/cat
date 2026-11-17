@@ -431,8 +431,8 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Verifies that a session requested in a slot of its requester's run is denied the directories that stand for the
-	 * requester's requested sessions as one path, which holds them all and none of the session's own files, however
-	 * many groups of them there are, and that the denial still covers each of them.
+	 * requester's requested sessions with one covering denial, however many groups there are, while its own project
+	 * and home remain readable through the sandbox's grants.
 	 * <p>
 	 * Creates the requested roots through the first group boundary so that the single denial must cover two groups.
 	 * The child occupies a separate broker slot: constructing both runs and their command limits lets the same
@@ -468,8 +468,9 @@ public abstract class SessionCommandLimitsContract
 				if (denied.startsWith(roots) || roots.startsWith(denied))
 					covering.add(denied);
 			}
-			requireThat(covering, "covering").withContext(childLimits.deniedReads(), "deniedReads").
-				isEqualTo(List.of(roots));
+			requireThat(covering.size(), "coveringCount").withContext(childLimits.deniedReads(), "deniedReads").
+				isEqualTo(1);
+			requireThat(roots.startsWith(covering.getFirst()), "coveringContainsAllRequestedRoots").isTrue();
 			for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
 			{
 				Path root = SessionRequestAccess.requestedRunRoot(requested, ordinal);

@@ -1,5 +1,6 @@
 package com.holdmyspot.cat.common.delegation;
 
+import com.holdmyspot.cat.common.FileLinks;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.BufferedReader;
@@ -425,7 +426,7 @@ public final class SourceSnapshot
 					before.lastModifiedTime().toMillis(), "", metadataIdentity(path));
 			throw new IOException("Selected source is not a regular file, directory, or leaf symlink: " + source);
 		}
-		long linkCount = linkCount(path);
+		long linkCount = FileLinks.linkCount(path);
 		if (linkCount > 1)
 			throw new IOException("Selected source is hard linked: " + source);
 		MessageDigest messageDigest = newDigest();
@@ -557,25 +558,6 @@ public final class SourceSnapshot
 		if (Files.exists(object))
 			return;
 		Files.write(object, bytes);
-	}
-
-	/**
-	 * Returns a regular file's link count on filesystems that expose it.
-	 *
-	 * @param path source file
-	 * @return observed link count
-	 * @throws IOException if link count cannot be verified
-	 */
-	private static long linkCount(Path path) throws IOException
-	{
-		try
-		{
-			return ((Number) Files.getAttribute(path, "unix:nlink", NO_FOLLOW)).longValue();
-		}
-		catch (IOException | UnsupportedOperationException | ClassCastException e)
-		{
-			throw new IOException("Cannot verify hard-link status for " + path, e);
-		}
 	}
 
 	/**

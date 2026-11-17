@@ -45,12 +45,9 @@ import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.StringWriter;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
 import java.nio.file.attribute.PosixFilePermission;
 import java.time.Clock;
 import java.time.Duration;
@@ -807,13 +804,12 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies rule overlays use the process scope's temporary directory and remove their own child directory.
+	 * Verifies loading a trial plugin's overlaid rules leaves the process temporary directory empty.
 	 *
 	 * @throws IOException if fixture files or loaded sources cannot be read or written
-	 * @throws InterruptedException if waiting for the overlay creation event is interrupted
 	 */
 	@Test(timeOut = 120_000)
-	public void createsOverlayInProcessDirectory() throws IOException, InterruptedException
+	public void loadingOverlayLeavesNoTemporaryFiles() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -836,39 +832,50 @@ public final class RunnerSessionsTest
 				{
 				});
 
-				try (WatchService watchService = temporary.getFileSystem().newWatchService())
-				{
-					temporary.register(watchService, StandardWatchEventKinds.ENTRY_CREATE);
-					List<DerivedSource> trialSources = sessions.loadedSources(project,
-						List.of(new PluginBase(plugin, base))).trials();
-					WatchKey watchKey = watchService.poll(5, TimeUnit.SECONDS);
-					requireThat(watchKey, "watchKey").isNotNull();
-					List<Path> overlayNames = new ArrayList<>();
-					for (WatchEvent<?> event : watchKey.pollEvents())
-					{
-						requireThat(event.kind(), "event.kind").isNotEqualTo(StandardWatchEventKinds.OVERFLOW);
-						if (event.kind() == StandardWatchEventKinds.ENTRY_CREATE)
-						{
-							Path created = (Path) event.context();
-							if (created.getFileName().toString().startsWith("cat-plugin-rules-"))
-								overlayNames.add(created);
-						}
-					}
-					requireThat(overlayNames.size(), "overlayCount").isEqualTo(1);
-					Path observedOverlay = temporary.resolve(overlayNames.get(0)).normalize();
-					requireThat(observedOverlay.getParent(), "overlayParent").isEqualTo(
-						temporary.toAbsolutePath().normalize());
-					requireThat(trialSources, "trialSources").contains(new DerivedSource(
-						base.resolve("rules/common/default.md").toString(),
-						"CAT injects this rule into every session"));
-					requireThat(Files.notExists(observedOverlay), "overlayRemoved").isTrue();
-				}
+				List<DerivedSource> trialSources = sessions.loadedSources(project,
+					List.of(new PluginBase(plugin, base))).trials();
+				requireThat(trialSources, "trialSources").contains(new DerivedSource(
+					base.resolve("rules/common/default.md").toString(),
+					"CAT injects this rule into every session"));
 
 				requireThat(temporary, "temporary").isDirectory();
 				try (Stream<Path> children = Files.list(temporary))
 				{
 					requireThat(children.toList(), "children").isEmpty();
 				}
+			}
+		}
+	}
+
+	/**
+	 * Verifies rule overlay loading rejects an unusable process temporary root instead of using another directory.
+	 *
+	 * @throws IOException if fixture setup or overlay creation fails
+	 */
+	@Test(expectedExceptions = FileAlreadyExistsException.class)
+	public void rejectsUnusableOverlayTemporaryRoot() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "overlay-root-"));
+			Path temporary = Files.writeString(root.resolve("process-temporary"), "a file cannot hold temporary children");
+			try (TestJvmScope process = new TestJvmScope(temporary))
+			{
+				Path artifact = manifest(root.resolve("artifact"), "cat", PluginInfo.CAT_REPOSITORY);
+				Path base = manifest(root.resolve("base"), "cat", PluginInfo.CAT_REPOSITORY);
+				Path project = Files.createDirectories(root.resolve("project"));
+				write(base.resolve("rules/common/default.md"), "Guidance");
+				TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
+					Path.of("out")), List.of(), null);
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(process, artifact, root.resolve("runs"),
+					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				TestSessions sessions = new TestSessions(settings, (_, _, _) ->
+				{
+				});
+
+				sessions.loadedSources(project, List.of(new PluginBase(plugin, base)));
 			}
 		}
 	}
@@ -1502,7 +1509,7 @@ public final class RunnerSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			Files.writeString(source.resolve("README.md"), "original source\n");
 			Path draft = Path.of(DraftDirectory.name(source), ".cat/tests/target/test");
-			String scenarioPath = draft.resolve("scenario.md").toString();
+			String scenarioPath = draft.resolve("scenario.md").toString().replace('\\', '/');
 			TestWorkspace workspaceFiles = new TestWorkspace(Map.of(scenarioPath,
 				new WorkspaceFile(scenarioPath, "seeded scenario\n")), Map.of(), "timeout retention");
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));

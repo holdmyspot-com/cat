@@ -61,16 +61,19 @@ public final class VerificationTest
 			Map.entry("all_proxy", "http://lower-all"), Map.entry("ALL_PROXY", "http://upper-all"),
 			Map.entry("no_proxy", "lower-host"), Map.entry("NO_PROXY", "upper-host"),
 			Map.entry("HOME", "/caller"), Map.entry("MAVEN_OPTS", "unsafe"), Map.entry("OTHER", "ignored"));
-		Map<String, String> environment = Verification.environment(Path.of("/owned/invocation"), inherited);
+		Path invocation = Path.of("/owned/invocation");
+		String home = invocation.resolve("home").toString();
+		String temporary = invocation.resolve("temporary").toString();
+		Map<String, String> environment = Verification.environment(invocation, inherited);
 		requireThat(environment, "environment").isEqualTo(Map.ofEntries(Map.entry("PATH", "/bin"),
 			Map.entry("http_proxy", "http://lower-http"), Map.entry("HTTP_PROXY", "http://upper-http"),
 			Map.entry("https_proxy", "http://lower-https"), Map.entry("HTTPS_PROXY", ""),
 			Map.entry("all_proxy", "http://lower-all"), Map.entry("ALL_PROXY", "http://upper-all"),
 			Map.entry("no_proxy", "lower-host"), Map.entry("NO_PROXY", "upper-host"),
-			Map.entry("HOME", "/owned/invocation/home"), Map.entry("MAVEN_USER_HOME", "/owned/invocation/home"),
-			Map.entry("TMPDIR", "/owned/invocation/temporary"), Map.entry("TMP", "/owned/invocation/temporary"),
-			Map.entry("TEMP", "/owned/invocation/temporary"),
-			Map.entry("MAVEN_OPTS", "-Djava.io.tmpdir=/owned/invocation/temporary")));
+			Map.entry("HOME", home), Map.entry("MAVEN_USER_HOME", home),
+			Map.entry("TMPDIR", temporary), Map.entry("TMP", temporary),
+			Map.entry("TEMP", temporary),
+			Map.entry("MAVEN_OPTS", "-Djava.io.tmpdir=" + temporary)));
 	}
 
 	/**
@@ -92,7 +95,7 @@ public final class VerificationTest
 			}
 			requireThat(failure, "missingLog" + exit).isNotNull();
 			requireThat(failure.getMessage(), "failureDetails" + exit).contains("Maven did not create its diagnostic log");
-			requireThat(failure.getMessage(), "wrapperLog" + exit).contains("/retained/wrapper.log");
+			requireThat(failure.getMessage(), "wrapperLog" + exit).contains(Path.of("/retained/wrapper.log").toString());
 			requireThat(failure.getMessage(), "terminalExit" + exit).contains(Integer.toString(exit));
 		}
 	}
@@ -146,7 +149,7 @@ public final class VerificationTest
 		try (TestJvmScope baseScope = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path testRoot = cleanup.add(Files.createTempDirectory(baseScope.temporaryDirectory(),
-				"verification-settings-"));
+				"verification-settings-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(testRoot);
 			Path project = Files.createDirectory(testRoot.resolve("project"));
 			Path scopeTemporary = Files.createDirectory(testRoot.resolve("scope-temporary"));

@@ -41,7 +41,7 @@ final class DelegationFixture
 	 */
 	DelegationFixture(Path root) throws IOException
 	{
-		this.root = root.toAbsolutePath().normalize();
+		this.root = root.toRealPath();
 		this.controllerPid = ProcessHandle.current().pid();
 		Path admissionRoot = this.root.resolve("admission");
 		Path procRoot = admissionRoot.resolve("proc");

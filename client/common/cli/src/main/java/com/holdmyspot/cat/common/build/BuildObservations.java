@@ -62,8 +62,17 @@ public final class BuildObservations
 		if (!"Linux".equals(operatingSystem))
 			throw new UnsupportedOperationException("Build resource observations require Linux");
 
-		SystemInfoProvider system = SystemInfoFactory.create();
-		return new BuildObservations(Path.of("/proc"), new SystemMetrics(system), identities);
+		return new BuildObservations(Path.of("/proc"), systemMetrics(), identities);
+	}
+
+	/**
+	 * Creates the system metric provider for composing resource and process observations.
+	 *
+	 * @return fresh OSHI metrics using the native-free system provider
+	 */
+	public static Metrics systemMetrics()
+	{
+		return new SystemMetrics(SystemInfoFactory.create());
 	}
 
 	/**

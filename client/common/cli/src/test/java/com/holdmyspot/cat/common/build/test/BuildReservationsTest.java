@@ -45,7 +45,7 @@ public final class BuildReservationsTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory("reservation-family-"));
+			Path project = cleanup.add(Files.createTempDirectory("reservation-family-")).toRealPath();
 			Files.writeString(project.resolve("pom.xml"), "test project\n");
 			Path pom = Path.of("pom.xml");
 			BuildAdmission.MavenGate first = BuildAdmission.MavenGate.of(project, List.of("common/cli"),
@@ -71,7 +71,7 @@ public final class BuildReservationsTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); TestJvmScope scope = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-reservations-race-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-reservations-race-")).toRealPath();
 			Path proc = Files.createDirectories(root.resolve("proc"));
 			UUID boot = UUID.randomUUID();
 			Files.createDirectories(proc.resolve("sys/kernel/random"));
@@ -236,8 +236,8 @@ public final class BuildReservationsTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); TestJvmScope scope = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-reservation-recovery-"));
-			UUID boot = UUID.fromString(Files.readString(Path.of("/proc/sys/kernel/random/boot_id")).strip());
+			Path root = cleanup.add(Files.createTempDirectory("build-reservation-recovery-")).toRealPath();
+			UUID boot = UUID.fromString("0f8fad5b-d9cb-469f-a165-70867728950e");
 			Path contextFile = root.resolve("context.json");
 			UUID contextId = UUID.randomUUID();
 			Files.writeString(root.resolve("authority.txt"), "reviewed test authority");

@@ -120,7 +120,7 @@ public final class ExecutableProcessContractTest extends ProcessEofContract
 	 */
 	private static void readReadyLine(InputStream output) throws IOException
 	{
-		byte[] ready = (LifecycleProcess.READY + "\n").getBytes(StandardCharsets.UTF_8);
+		byte[] ready = (LifecycleProcess.READY + System.lineSeparator()).getBytes(StandardCharsets.UTF_8);
 		for (byte expected : ready)
 		{
 			int actual = output.read();

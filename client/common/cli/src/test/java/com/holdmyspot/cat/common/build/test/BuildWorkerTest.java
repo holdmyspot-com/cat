@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.test.ProcessCompletionContract;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.build.BuildAdmission;
@@ -22,6 +23,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.WatchKey;
+import java.nio.file.WatchService;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -36,6 +39,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 import tools.jackson.databind.JsonNode;
 
 /**
@@ -313,7 +317,7 @@ public final class BuildWorkerTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-worker-test-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-worker-test-")).toRealPath();
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path invocation = root.resolve("invocation");
 			Path evidence = root.resolve("evidence");
@@ -946,7 +950,7 @@ public final class BuildWorkerTest
 	}
 
 	/**
-	 * Launches the real Java fixture and proves the worker samples and reaps its child JVM process tree.
+	 * Launches the real Java fixture on Linux and proves the worker samples and reaps its child JVM process tree.
 	 * <p>
 	 * The case starts a real fixture JVM and its grandchild and waits for the worker to sample and reap them, which
 	 * takes seconds. The test keeps them because the real process tree is the boundary it checks.
@@ -957,9 +961,11 @@ public final class BuildWorkerTest
 	@Test
 	public void realTreeIsSampledAndReaped() throws IOException, InterruptedException
 	{
+		if (!Platform.current().isLinux())
+			throw new SkipException("Real process-tree resource observations require Linux");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-worker-real-tree-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-worker-real-tree-")).toRealPath();
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path invocation = root.resolve("invocation");
 			Path evidence = root.resolve("evidence");
@@ -989,9 +995,12 @@ public final class BuildWorkerTest
 			{
 				BuildAdmission.HostContext context = BuildAdmission.HostContext.read(scope.json(), contextFile);
 				HarnessProcesses processAuthority = HarnessProcesses.system();
-				BuildObservations observations = BuildObservations.system(pid ->
-					processAuthority.find(pid).map(description -> description.start().map(start ->
-						new ProcessIdentity(pid, start)).orElse(null)));
+				// This boundary checks real process discovery, RSS sampling and reaping.
+				// Host CPU admission is tested separately.
+				BuildObservations observations = new BuildObservations(Path.of("/proc"),
+					new IdleCpuMetrics(BuildObservations.systemMetrics()), pid ->
+						processAuthority.find(pid).map(description -> description.start().map(start ->
+							new ProcessIdentity(pid, start)).orElse(null)));
 				BuildAdmission admission = new BuildAdmission(scope, context, observations, scope.clock(),
 					Map.of("PATH", "/bin"));
 				BuildAdmission.MavenGate gate = BuildAdmission.MavenGate.of(project, List.of("common/cli"),
@@ -1001,8 +1010,8 @@ public final class BuildWorkerTest
 				Files.createDirectories(context.ledgerPath());
 				Path grandchildReady = childDirectory.resolve("grandchild.ready");
 				Path ledger = context.ledgerPath().resolve("ledger.json");
-				try (java.nio.file.WatchService fixtureWatch = BuildChild.watchFor(childDirectory);
-					java.nio.file.WatchService ledgerWatch = BuildChild.watchFor(context.ledgerPath()))
+				try (WatchService fixtureWatch = BuildChild.watchFor(childDirectory);
+					WatchService ledgerWatch = BuildChild.watchFor(context.ledgerPath()))
 				{
 				AtomicReference<BuildAdmission.JobResult> result = new AtomicReference<>();
 				AtomicReference<Throwable> failure = new AtomicReference<>();
@@ -1019,7 +1028,7 @@ public final class BuildWorkerTest
 				});
 			try
 			{
-					BuildChild.awaitNonEmptyFile(fixtureWatch, grandchildReady, java.time.Duration.ofSeconds(20));
+				awaitFixtureReady(worker, failure, fixtureWatch, grandchildReady);
 				requireThat(Files.size(grandchildReady) > 0, "grandchildStarted").isTrue();
 				long grandchildPid = Long.parseLong(Files.readString(grandchildReady));
 				long observedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
@@ -1036,7 +1045,7 @@ public final class BuildWorkerTest
 					if (!observed)
 					{
 						long remaining = observedDeadline - System.nanoTime();
-						java.nio.file.WatchKey key = ledgerWatch.poll(remaining, TimeUnit.NANOSECONDS);
+						WatchKey key = ledgerWatch.poll(remaining, TimeUnit.NANOSECONDS);
 						if (key != null)
 							key.reset();
 					}
@@ -1062,6 +1071,133 @@ public final class BuildWorkerTest
 				cleanupWorker(worker, childDirectory.resolve("release"), childPid);
 			}
 				}
+			}
+		}
+	}
+
+	/**
+	 * Keeps native process observations while making this fixture independent of unrelated host CPU load.
+	 *
+	 * @param system metric provider for native process state and processor counts
+	 */
+	private record IdleCpuMetrics(BuildObservations.Metrics system) implements BuildObservations.Metrics
+	{
+		@Override
+		public double cpuLoad()
+		{
+			return 0.0;
+		}
+
+		@Override
+		public int logicalProcessors()
+		{
+			return system.logicalProcessors();
+		}
+
+		@Override
+		public int availableProcessors()
+		{
+			return system.availableProcessors();
+		}
+
+		@Override
+		public Optional<BuildObservations.RawProcess> process(long pid)
+		{
+			return system.process(pid);
+		}
+
+		@Override
+		public Set<Long> descendants(long pid)
+		{
+			return system.descendants(pid);
+		}
+	}
+
+	/**
+	 * Reports a worker's original failure when its fixture never becomes ready.
+	 *
+	 * @throws IOException          if fixture creation fails or the expected worker failure is reported
+	 * @throws InterruptedException if fixture synchronization is interrupted
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Build worker failed before fixture readiness: .*")
+	public void readinessReportsWorkerFailure() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("build-worker-readiness-")).toRealPath();
+			IOException expected = new IOException("Controlled worker failure");
+			AtomicReference<Throwable> failure = new AtomicReference<>();
+			Thread worker = Thread.ofPlatform().start(() -> failure.set(expected));
+			worker.join();
+			try (WatchService watch = BuildChild.watchFor(directory))
+			{
+				try
+				{
+					awaitFixtureReady(worker, failure, watch, directory.resolve("grandchild.ready"));
+				}
+				catch (IOException exception)
+				{
+					requireThat(exception.getCause(), "workerFailureCause").isEqualTo(expected);
+					throw exception;
+				}
+			}
+		}
+	}
+
+	/**
+	 * Reports an exited worker when no fixture readiness or worker exception was published.
+	 *
+	 * @throws IOException          if fixture creation fails or the expected early exit is reported
+	 * @throws InterruptedException if fixture synchronization is interrupted
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Build worker exited before fixture readiness: .*")
+	public void readinessReportsWorkerExit() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("build-worker-readiness-")).toRealPath();
+			Thread worker = Thread.ofPlatform().start(() ->
+			{
+			});
+			worker.join();
+			try (WatchService watch = BuildChild.watchFor(directory))
+			{
+				awaitFixtureReady(worker, new AtomicReference<>(), watch, directory.resolve("grandchild.ready"));
+			}
+		}
+	}
+
+	/**
+	 * Waits up to twenty seconds for fixture readiness and reports a worker failure as soon as it is observed.
+	 *
+	 * @param worker  thread launching and observing the fixture process tree
+	 * @param failure worker exception published before the thread exits
+	 * @param watch   fixture directory watcher owned by the caller
+	 * @param ready   file containing the grandchild process identifier when ready
+	 * @throws IOException          if the worker fails, exits before readiness, or readiness times out
+	 * @throws InterruptedException if the readiness wait is interrupted
+	 */
+	private static void awaitFixtureReady(Thread worker, AtomicReference<Throwable> failure, WatchService watch,
+		Path ready) throws IOException, InterruptedException
+	{
+		long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20);
+		while (!(Files.isRegularFile(ready) && Files.size(ready) > 0))
+		{
+			Throwable workerFailure = failure.get();
+			if (workerFailure != null)
+				throw new IOException("Build worker failed before fixture readiness: " + ready, workerFailure);
+			if (!worker.isAlive())
+				throw new IOException("Build worker exited before fixture readiness: " + ready, failure.get());
+			long remaining = deadline - System.nanoTime();
+			if (remaining <= 0)
+				throw new IOException("Timed out waiting for fixture readiness: " + ready + "; worker=" + worker.getState());
+			WatchKey key = watch.poll(Math.min(remaining, TimeUnit.MILLISECONDS.toNanos(100)), TimeUnit.NANOSECONDS);
+			if (key != null)
+			{
+				key.pollEvents();
+				key.reset();
 			}
 		}
 	}
@@ -1661,7 +1797,7 @@ public final class BuildWorkerTest
 		 */
 		private ScopedWaitFixture(TemporaryDirectories cleanup) throws IOException
 		{
-			root = cleanup.add(Files.createTempDirectory("build-scoped-wait-"));
+			root = cleanup.add(Files.createTempDirectory("build-scoped-wait-")).toRealPath();
 			project = Files.createDirectories(root.resolve("project"));
 			Path proc = Files.createDirectories(root.resolve("proc"));
 			java.util.UUID boot = java.util.UUID.randomUUID();

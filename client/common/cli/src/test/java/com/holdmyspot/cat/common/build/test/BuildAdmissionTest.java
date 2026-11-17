@@ -59,7 +59,7 @@ public final class BuildAdmissionTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path project = cleanup.add(Files.createTempDirectory("reviewed-gate-"));
+			Path project = cleanup.add(Files.createTempDirectory("reviewed-gate-")).toRealPath();
 			BuildAdmission.MavenGate gate = BuildAdmission.MavenGate.of(project, List.of("common/cli"),
 				List.of("BuildAdmissionTest"), List.of(), "review-1", "reviewer");
 			List<String> command = BuildAdmission.command(gate);
@@ -95,7 +95,7 @@ public final class BuildAdmissionTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); TestJvmScope scope = new TestJvmScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-admission-paths-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-admission-paths-")).toRealPath();
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path contextFile = root.resolve("context.json");
 			UUID boot = UUID.randomUUID();
@@ -640,7 +640,7 @@ public final class BuildAdmissionTest
 		 */
 		private BatchFixture(TemporaryDirectories cleanup) throws IOException
 		{
-			root = cleanup.add(Files.createTempDirectory("build-admission-batch-"));
+			root = cleanup.add(Files.createTempDirectory("build-admission-batch-")).toRealPath();
 			project = Files.createDirectories(root.resolve("project"));
 			evidence = root.resolve("evidence");
 			proc = Files.createDirectories(root.resolve("proc"));

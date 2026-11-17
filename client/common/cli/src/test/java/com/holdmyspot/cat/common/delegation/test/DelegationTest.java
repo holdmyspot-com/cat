@@ -67,7 +67,8 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DelegationFixture fixture = new DelegationFixture(cleanup.add(Files.createTempDirectory("delegation-process-")));
+			DelegationFixture fixture = new DelegationFixture(
+				cleanup.add(Files.createTempDirectory("delegation-process-")).toRealPath());
 			try (Process process = fixture.completed(7, "fixture output"))
 			{
 				requireThat(process.isAlive(), "completedProcessIsNotAlive").isFalse();
@@ -92,7 +93,8 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DelegationFixture fixture = new DelegationFixture(cleanup.add(Files.createTempDirectory("delegation-process-")));
+			DelegationFixture fixture = new DelegationFixture(
+				cleanup.add(Files.createTempDirectory("delegation-process-")).toRealPath());
 			ProcessCompletionContract.waitDoesNotCompleteRunningProcess(fixture::processFixture);
 		}
 	}
@@ -108,7 +110,8 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			DelegationFixture fixture = new DelegationFixture(cleanup.add(Files.createTempDirectory("delegation-process-")));
+			DelegationFixture fixture = new DelegationFixture(
+				cleanup.add(Files.createTempDirectory("delegation-process-")).toRealPath());
 			ProcessCompletionContract.explicitCompletionPublishesStatus(fixture::processFixture);
 		}
 	}
@@ -130,9 +133,9 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path outerTemporary = cleanup.add(Files.createTempDirectory("delegation-session-storage-"));
+			Path outerTemporary = cleanup.add(Files.createTempDirectory("delegation-session-storage-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(outerTemporary);
-			Path project = cleanup.add(Files.createTempDirectory(outerTemporary, "delegation-project-"));
+			Path project = cleanup.add(Files.createTempDirectory(outerTemporary, "delegation-project-")).toRealPath();
 			Files.createDirectories(project.resolve("client/common/cli"));
 			Files.createDirectories(project.resolve("client"));
 			Files.writeString(project.resolve("client/mvnw"), "fixture wrapper");
@@ -198,9 +201,9 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path outerTemporary = cleanup.add(Files.createTempDirectory("delegation-session-recovery-"));
+			Path outerTemporary = cleanup.add(Files.createTempDirectory("delegation-session-recovery-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(outerTemporary);
-			Path project = cleanup.add(Files.createTempDirectory(outerTemporary, "delegation-project-"));
+			Path project = cleanup.add(Files.createTempDirectory(outerTemporary, "delegation-project-")).toRealPath();
 			Files.createDirectories(project.resolve("client/common/cli"));
 			Files.createDirectories(project.resolve("client"));
 			Files.writeString(project.resolve("client/mvnw"), "fixture wrapper");
@@ -296,9 +299,9 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path outerTemporary = cleanup.add(Files.createTempDirectory("delegation-other-output-"));
+			Path outerTemporary = cleanup.add(Files.createTempDirectory("delegation-other-output-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(outerTemporary);
-			Path project = cleanup.add(Files.createTempDirectory(outerTemporary, "delegation-project-"));
+			Path project = cleanup.add(Files.createTempDirectory(outerTemporary, "delegation-project-")).toRealPath();
 			Files.createDirectories(project.resolve("client/common/cli"));
 			Files.createDirectories(project.resolve("client"));
 			Files.writeString(project.resolve("client/mvnw"), "fixture wrapper");
@@ -367,13 +370,14 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-scope-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-scope-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(Thread::yield,
 				Clock.systemUTC(), fixture::start);
 			try (TestJvmScope scope = new TestJvmScope(temporaryDirectory, executableFiles))
 			{
-			Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "delegation-project-"));
+			Path project = cleanup.add(Files.createTempDirectory(
+				scope.temporaryDirectory(), "delegation-project-")).toRealPath();
 			Files.createDirectories(project.resolve("client/common/cli"));
 			Files.createDirectories(project.resolve("client"));
 			Files.writeString(project.resolve("client/mvnw"), "fixture wrapper");
@@ -384,7 +388,8 @@ public final class DelegationTest
 			Plan plan = plan(scope, project);
 
 			Delegation.Prepared prepared = delegation(fixture, scope, project, environment).prepare(plan);
-			Path relocation = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "delegation-move-"));
+			Path relocation = cleanup.add(Files.createTempDirectory(
+				scope.temporaryDirectory(), "delegation-move-")).toRealPath();
 			Path movedProject = relocation.resolve("project");
 			Path movedCohort = relocation.resolve("cohort");
 			Files.move(project, movedProject);
@@ -512,7 +517,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-link-audit-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-link-audit-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executables = fixtureExecutables(fixture::start);
 			try (TestJvmScope scope = new TestJvmScope(temporaryDirectory, executables))
@@ -570,13 +575,14 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-failure-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-failure-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(Thread::yield,
 				Clock.systemUTC(), fixture::failMaven);
 			try (TestJvmScope scope = new TestJvmScope(temporaryDirectory, executableFiles))
 			{
-				Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "delegation-project-"));
+				Path project = cleanup.add(Files.createTempDirectory(
+					scope.temporaryDirectory(), "delegation-project-")).toRealPath();
 				Files.createDirectories(project.resolve("client/common/cli"));
 				Files.createDirectories(project.resolve("client"));
 				Files.writeString(project.resolve("client/mvnw"), "fixture wrapper");
@@ -630,7 +636,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-wrapper-failure-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-wrapper-failure-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executables = fixtureExecutables(builder ->
 			{
@@ -676,7 +682,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-unexercised-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-unexercised-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executables = fixtureExecutables(builder ->
 			{
@@ -718,7 +724,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-nonzero-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-nonzero-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executables = fixtureExecutables(builder -> fixture.start(builder, false, true));
 			try (TestJvmScope scope = new TestJvmScope(temporaryDirectory, executables))
@@ -762,7 +768,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-old-profile-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-old-profile-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			AtomicInteger mavenCalls = new AtomicInteger();
 			ExecutableFiles executables = fixtureExecutables(builder ->
@@ -818,7 +824,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-receipt-variants-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-receipt-variants-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			ExecutableFiles executables = fixtureExecutables(fixture::start);
 			try (TestJvmScope scope = new TestJvmScope(temporaryDirectory, executables))
@@ -914,7 +920,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-definition-probe-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-definition-probe-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			AtomicReference<String> observedModulePom = new AtomicReference<>();
 			AtomicReference<String> observedSource = new AtomicReference<>();
@@ -960,7 +966,7 @@ public final class DelegationTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-undeclared-output-"));
+			Path temporaryDirectory = cleanup.add(Files.createTempDirectory("delegation-undeclared-output-")).toRealPath();
 			DelegationFixture fixture = new DelegationFixture(temporaryDirectory);
 			try (TestJvmScope scope = new TestJvmScope(temporaryDirectory,
 				fixtureExecutables(builder -> fixture.start(builder, true, false))))
@@ -1090,7 +1096,8 @@ public final class DelegationTest
 	 */
 	private static Path fixtureProject(TemporaryDirectories cleanup, TestJvmScope scope) throws IOException
 	{
-		Path project = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "delegation-project-"));
+		Path project = cleanup.add(Files.createTempDirectory(
+			scope.temporaryDirectory(), "delegation-project-")).toRealPath();
 		Files.createDirectories(project.resolve("client/common/cli"));
 		Files.createDirectories(project.resolve("client"));
 		Files.writeString(project.resolve("client/mvnw"), "fixture wrapper");

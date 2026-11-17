@@ -6,6 +6,8 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.delegation.DelegationCli;
 import com.holdmyspot.cat.common.delegation.Plan;
+import com.holdmyspot.cat.common.build.BuildAdmission;
+import com.holdmyspot.cat.common.secrets.DelegationCliSecrets;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -41,7 +43,7 @@ public final class DelegationCliTest
 				Path cohort = Files.createDirectory(root.resolve("cohort"));
 				Path project = Files.createDirectory(root.resolve("project"));
 				DelegationFixture fixture = new DelegationFixture(root);
-				fixture.admission(scope);
+				BuildAdmission admission = fixture.admission(scope);
 				Path context = fixture.contextPath();
 				Files.writeString(cohort.resolve("plan.json"), """
 					{"format_version":1,"project_path":".","source_paths":["client/mvnw"],
@@ -53,9 +55,9 @@ public final class DelegationCliTest
 					"permitted_owned_roots":["home","repository","temporary","diagnostics"]}}}],
 					"cleanup_owner":"parent"}
 					""");
-				DelegationCli.Result result = DelegationCli.execute(scope, project, Map.of(),
-					new String[]{"audit", "--cohort", cohort.toString(), "--work", "runtime", "--build-context",
-						context.toString()});
+				DelegationCli.Result result = DelegationCliSecrets.getDelegationCliAccess().execute(scope, project,
+					Map.of(), ignored -> admission, new String[]{"audit", "--cohort", cohort.toString(), "--work",
+						"runtime", "--build-context", context.toString()});
 
 				requireThat(result.work().size(), "failedWorkContext").isEqualTo(1);
 				requireThat(result.work().getFirst().assignmentId(), "assignmentContext").isEqualTo("assignment-1");

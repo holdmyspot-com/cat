@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
+import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
@@ -534,9 +535,8 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that two sessions that the server serves one after the other build their run at the same paths, in
-	 * the one slot of the session's server, so that the paths that the harness puts into its instructions repeat from
-	 * one session to the next.
+	 * Verifies that sessions that reuse a server slot build their runs at the same paths, so that the paths that
+	 * the harness puts into its instructions repeat when that slot is reused.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -549,13 +549,11 @@ public final class RequestServerTest
 			List<ServedRun> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
+			ServedRun first;
 			try (Fixture.Running server = fixture.start())
 			{
-				serve(fixture, server, runRoot);
-				serve(fixture, server, runRoot);
+				first = serveUntilSlotReuse(fixture, server, runRoot, served).earlier();
 			}
-			requireThat(served, "served").size().isEqualTo(2);
-			ServedRun first = served.getFirst();
 			ServedRun second = served.getLast();
 			requireThat(second.runRoot(), "runRoot").isEqualTo(first.runRoot());
 			requireThat(second.run().directory(), "directory").isEqualTo(first.run().directory());
@@ -563,8 +561,8 @@ public final class RequestServerTest
 				isEqualTo(first.run().directory().resolve("home"));
 			requireThat(second.run().directory().resolve("project"), "project").
 				isEqualTo(first.run().directory().resolve("project"));
-			requireThat(first.runRoot(), "runRoot").isEqualTo(fixture.sessionDirectory().resolve("slots").
-				resolve("d1"));
+			requireThat(first.runRoot().getParent(), "slots").
+				isEqualTo(fixture.sessionDirectory().resolve("slots"));
 		}
 	}
 
@@ -584,10 +582,8 @@ public final class RequestServerTest
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
-				serve(fixture, server, runRoot);
-				serve(fixture, server, runRoot);
+				serveUntilSlotReuse(fixture, server, runRoot, served);
 			}
-			requireThat(served, "served").size().isEqualTo(2);
 			requireThat(served.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
 		}
 	}
@@ -636,17 +632,49 @@ public final class RequestServerTest
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
-				String first = serve(fixture, server, runRoot);
-				String second = serve(fixture, server, runRoot);
-				requireThat(second, "secondRunId").isNotEqualTo(first);
-				requireThat(Files.readString(runRoot.resolve("claude").resolve(first).resolve("result.txt")),
-					"first").isEqualTo("1");
-				requireThat(Files.readString(runRoot.resolve("claude").resolve(second).resolve("result.txt")),
-					"second").isEqualTo("2");
-				requireThat(Files.readString(runRoot.resolve("claude").resolve(first).resolve("run.json")),
-					"manifest").contains("\"id\": \"" + first + "\"");
+				SlotReuse reuse = serveUntilSlotReuse(fixture, server, runRoot, served);
+				ServedRun first = reuse.earlier();
+				String firstId = reuse.earlierId();
+				String secondId = reuse.currentId();
+				requireThat(secondId, "secondRunId").isNotEqualTo(firstId);
+				requireThat(Files.readString(runRoot.resolve("claude").resolve(firstId).resolve("result.txt")),
+					"first").isEqualTo(String.valueOf(served.indexOf(first) + 1));
+				requireThat(Files.readString(runRoot.resolve("claude").resolve(secondId).resolve("result.txt")),
+					"second").isEqualTo(String.valueOf(served.size()));
+				requireThat(Files.readString(runRoot.resolve("claude").resolve(firstId).resolve("run.json")),
+					"manifest").contains("\"id\": \"" + firstId + "\"");
 			}
 		}
+	}
+
+	/**
+	 * Serves sessions until one reuses an earlier session's slot and returns that earlier session.
+	 *
+	 * @param fixture the session that runs the server
+	 * @param server  the running server
+	 * @param runRoot the command's run root
+	 * @param served  initially empty list that the child populates with the served sessions
+	 * @return the earlier session and both retained run identifiers for the reused slot
+	 * @throws IOException if a session does not complete
+	 */
+	private static SlotReuse serveUntilSlotReuse(Fixture fixture, Fixture.Running server, Path runRoot,
+		List<ServedRun> served) throws IOException
+	{
+		// A response can arrive before cleanup releases its slot. One more session than the fixed pool's size
+		// must reuse a slot, without requiring the immediately preceding session's cleanup to have finished.
+		List<String> retainedIds = new ArrayList<>();
+		for (int request = 0; request <= HarnessCapacity.MAXIMUM_CONCURRENCY; ++request)
+		{
+			retainedIds.add(serve(fixture, server, runRoot));
+			ServedRun current = served.getLast();
+			for (int previous = 0; previous < served.size() - 1; ++previous)
+			{
+				ServedRun earlier = served.get(previous);
+				if (earlier.runRoot().equals(current.runRoot()))
+					return new SlotReuse(earlier, retainedIds.get(previous), retainedIds.getLast());
+			}
+		}
+		throw new AssertionError("The fixed server slot pool did not reuse a slot");
 	}
 
 	/**
@@ -756,6 +784,17 @@ public final class RequestServerTest
 	 * @param entriesAtStart the names of the entries of the run root when the session started
 	 */
 	private record ServedRun(Path runRoot, HarnessRun run, List<String> entriesAtStart)
+	{
+	}
+
+	/**
+	 * Identifies two kept sessions that used the same reusable slot.
+	 *
+	 * @param earlier   earlier session whose slot was reused
+	 * @param earlierId identifier of its retained copy
+	 * @param currentId identifier of the latest retained copy
+	 */
+	private record SlotReuse(ServedRun earlier, String earlierId, String currentId)
 	{
 	}
 

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.build.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.build.BuildAdmission;
 import com.holdmyspot.cat.common.build.BuildAdmissionCli;
 import com.holdmyspot.cat.common.build.BuildObservations;
@@ -18,6 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import org.testng.annotations.Test;
+import org.testng.SkipException;
 
 /**
  * Tests build-admission CLI request validation, composition and result mapping.
@@ -82,7 +84,7 @@ public final class BuildAdmissionCliTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-cli-invalid-plan-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-cli-invalid-plan-")).toRealPath();
 			try (TestJvmScope scope = new TestJvmScope(root.resolve("scope")))
 			{
 				Path project = Files.createDirectories(root.resolve("project"));
@@ -114,7 +116,7 @@ public final class BuildAdmissionCliTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-cli-real-operation-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-cli-real-operation-")).toRealPath();
 			try (TestJvmScope scope = new TestJvmScope(root.resolve("scope")))
 			{
 				Path project = Files.createDirectories(root.resolve("project"));
@@ -145,7 +147,7 @@ public final class BuildAdmissionCliTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-cli-invalid-batch-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-cli-invalid-batch-")).toRealPath();
 			try (TestJvmScope scope = new TestJvmScope(root.resolve("scope")))
 			{
 				Path project = Files.createDirectories(root.resolve("project"));
@@ -173,7 +175,7 @@ public final class BuildAdmissionCliTest
 	}
 
 	/**
-	 * Runs the actual modular CLI entry point against a valid serialized request.
+	 * Runs the actual modular CLI entry point on Linux against a valid serialized request.
 	 * <p>
 	 * The case starts a real child JVM through the module path and waits for it to exit, which takes seconds. The
 	 * test keeps it because the modular entry point is the boundary it checks.
@@ -184,9 +186,11 @@ public final class BuildAdmissionCliTest
 	@Test
 	public void modularMainRunsControllerOperation() throws IOException, InterruptedException
 	{
+		if (!Platform.current().isLinux())
+			throw new SkipException("The controller's system observation provider requires Linux");
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-cli-main-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-cli-main-")).toRealPath();
 			String modulePath = System.getProperty("jdk.module.path");
 			if (modulePath == null || modulePath.isBlank())
 				throw new IllegalStateException("The test JVM did not expose jdk.module.path");
@@ -247,7 +251,7 @@ public final class BuildAdmissionCliTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("build-cli-failed-batch-"));
+			Path root = cleanup.add(Files.createTempDirectory("build-cli-failed-batch-")).toRealPath();
 			Path evidence = Files.createDirectory(root.resolve("evidence"));
 			BuildAdmission.JobResult failed = new BuildAdmission.JobResult("failing-child", "failed", 7,
 				Path.of("diagnostics/maven.log"), "admission", "terminal", Path.of("terminal.json"));

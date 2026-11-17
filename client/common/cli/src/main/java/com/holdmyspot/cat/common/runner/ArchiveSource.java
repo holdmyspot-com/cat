@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.FileLinks;
 import java.io.IOException;
 import java.io.Closeable;
 import java.io.OutputStream;
@@ -242,24 +243,10 @@ final class ArchiveSource
 		Closeable cleanup = () -> closeWindows(symbols, handle, source);
 		try (cleanup)
 		{
-			MethodHandle stat = function(symbols, "GetFileInformationByHandle", FunctionDescriptor.of(
-				ValueLayout.JAVA_INT, ValueLayout.ADDRESS, ValueLayout.ADDRESS));
-			MemorySegment attributes = arena.allocate(52, 4);
-			int status;
-			try
-			{
-				status = (int) stat.invokeExact(handle, attributes);
-			}
-			catch (Throwable exception)
-			{
-				throw invocationFailure(exception);
-			}
-			if (status == 0)
-				throw new IOException("Cannot read request archive handle attributes");
-			int type = attributes.get(ValueLayout.JAVA_INT, 0);
-			int links = attributes.get(ValueLayout.JAVA_INT, 40);
-			if ((type & 0x410) != 0 || links != 1)
+			FileLinks.WindowsInformation information = FileLinks.windowsInformation(arena, symbols, handle);
+			if ((information.attributes() & 0x410) != 0 || information.linkCount() != 1)
 				throw new IOException("Request archive must be a regular file with exactly one hard link");
+			int status;
 			MethodHandle read = function(symbols, "ReadFile", FunctionDescriptor.of(ValueLayout.JAVA_INT,
 				ValueLayout.ADDRESS, ValueLayout.ADDRESS, ValueLayout.JAVA_INT, ValueLayout.ADDRESS,
 				ValueLayout.ADDRESS));

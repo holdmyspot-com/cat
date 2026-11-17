@@ -2452,11 +2452,12 @@ public final class DriverTest
 			{"hooks": {"%1$s": [{"hooks": [{"type": "command", "command": "%2$s"}]}],
 			  "%3$s": [{"hooks": [{"type": "command", "command": "start.sh"}]}]}}
 			""";
-		hooksText = hooksText.formatted(eventA, script, eventB);
+		String scriptCommand = "bin/repair.sh";
+		hooksText = hooksText.formatted(eventA, scriptCommand, eventB);
 		Contract contract = ContractFixtures.withDependents(ContractFixtures.contract(), List.of(
 			new Dependent(script, new Dependent.WholeFile(), "Repairs read output."),
 			new Dependent(hooks,
-				new Dependent.HookRegistration(eventA, script.toString()), "Runs the repair script."),
+				new Dependent.HookRegistration(eventA, scriptCommand), "Runs the repair script."),
 			new Dependent(routing, new Dependent.Span("Read the target first.\n"),
 				"Routes the agent to the target.")));
 		Set<PosixFilePermission> permissions = PosixFilePermissions.fromString("rw-r--r--");

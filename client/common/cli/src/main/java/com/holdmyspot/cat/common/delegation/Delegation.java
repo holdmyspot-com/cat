@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.delegation;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileLinks;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.build.BuildAdmission;
@@ -1064,7 +1065,7 @@ public final class Delegation
 				}
 				else if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS))
 				{
-					if (linkCount(path) > 1)
+					if (FileLinks.linkCount(path) > 1)
 						throw new IOException("Candidate contains a hard-linked file: " + relative);
 					BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class,
 						LinkOption.NOFOLLOW_LINKS);
@@ -1139,28 +1140,6 @@ public final class Delegation
 		{
 			for (Path path : paths.sorted(java.util.Comparator.reverseOrder()).toList())
 				Files.delete(path);
-		}
-	}
-
-	/**
-	 * Returns a file's hard-link count where the platform exposes it.
-	 *
-	 * @param path regular file
-	 * @return observed number of directory links
-	 * @throws IOException if the link count is unavailable or invalid
-	 */
-	private static long linkCount(Path path) throws IOException
-	{
-		try
-		{
-			Object value = Files.getAttribute(path, "unix:nlink", LinkOption.NOFOLLOW_LINKS);
-			if (!(value instanceof Number count) || count.longValue() < 1)
-				throw new IOException("Unable to verify hard-link count: " + path);
-			return count.longValue();
-		}
-		catch (UnsupportedOperationException | IllegalArgumentException e)
-		{
-			throw new IOException("Unable to verify hard-link count: " + path, e);
 		}
 	}
 

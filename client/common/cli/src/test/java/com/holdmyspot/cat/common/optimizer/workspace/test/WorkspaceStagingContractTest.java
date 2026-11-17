@@ -62,7 +62,7 @@ public final class WorkspaceStagingContractTest
 	 * @throws IOException if the fixture or refusal check fails
 	 */
 	@Test(expectedExceptions = WorkspaceException.class,
-		expectedExceptionsMessageRegExp = ".*links/cycle-one: link cycle.*")
+		expectedExceptionsMessageRegExp = ".*links[/\\\\]cycle-one: link cycle.*")
 	public void rejectsCyclicLinksWithoutCachingSource() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -79,7 +79,7 @@ public final class WorkspaceStagingContractTest
 	 * @throws IOException if the fixture or refusal check fails
 	 */
 	@Test(expectedExceptions = WorkspaceException.class,
-		expectedExceptionsMessageRegExp = ".*links/missing-alias.*missing target.*")
+		expectedExceptionsMessageRegExp = ".*links[/\\\\]missing-alias.*missing target.*")
 	public void rejectsMissingLinksWithoutCachingSource() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
