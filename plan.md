@@ -3581,6 +3581,18 @@ exposed tools provide no outside-shell execution operation. No sandbox setting w
 Claude installation and the new installed acceptance runs remain unrun. The user chose to keep
 D124 and run E1 without a goal; its procedure is updated below. Gates 2–8 remain open.
 
+A bounded execution-reference check reused the existing G3/G5/G8 acceptance maps against the
+frozen clean-build reports: all 40 distinct G3 methods and 71 distinct G5 methods pass; 66 of
+73 distinct G8 methods pass directly. Six retired G8 concurrency methods already have accepted
+replacements in the interim map. D149 supersedes the seventh, `DriverTest.failedCheckRunsNoJudge`:
+its replacement `failedCheckStillRunsJudge` and all three `failedToolIsJudged` cases pass.
+Inspection confirms that the failed tool affects only its own assertion, the judge decides the
+remaining assertions, and formal, control and incumbent outcomes preserve both failed assertions
+and their rationale. Scheduler admission and pairing claims remain mapped to the existing
+scheduler tests. The scoped receipt is `temp/continuation-dVKKLk/local-map-execution-check.json`.
+This check does not close final gate 5: source changes affecting other map claims still need
+reconciliation, alongside the outstanding installed acceptance.
+
 Rows marked done keep only their first sentence here. Their full records, unchanged, are in [`plan-history.md`](plan-history.md), which is deleted with this plan.
 
 | Work item | State |
