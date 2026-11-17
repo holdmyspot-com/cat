@@ -1,7 +1,7 @@
 name: Windows interactive security probe
 on:
   push:
-    branches: [probe/windows-final35-nnspwi]
+    branches: [probe/windows-history-jziepn]
 permissions:
   contents: read
 jobs:
