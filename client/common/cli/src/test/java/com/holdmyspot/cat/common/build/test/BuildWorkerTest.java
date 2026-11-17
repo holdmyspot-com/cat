@@ -493,7 +493,7 @@ public final class BuildWorkerTest
 					preparationFailure = exception;
 				}
 				requireThat(preparationFailure, "preparationFailureReported").isNotNull();
-				JsonNode failedLedger = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode failedLedger = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(failedLedger.path("reservations").size(), "preparationReservationReleased").isEqualTo(0);
 				try (java.util.stream.Stream<Path> terminalFiles = Files.list(failedEvidence))
 				{
@@ -528,7 +528,7 @@ public final class BuildWorkerTest
 				if (failure.get() != null)
 					throw new AssertionError("Worker failed", failure.get());
 				requireThat(result.get().passed(), "jobPassed").isTrue();
-				JsonNode ledger = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode ledger = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				JsonNode calibration = ledger.path("calibrations").get(0);
 				requireThat(calibration.path("peak_rss_bytes").longValue(), "aggregatePeakRss").isEqualTo(60L * 1024L);
 				requireThat(calibration.path("reservation_bytes").longValue(), "ceilPeakPlusQuarter").
@@ -568,7 +568,7 @@ public final class BuildWorkerTest
 					"ordinaryWorkerRemainsOwnedWhileChildLives").isTrue();
 				requireThat(ordinaryWorker.isAlive(), "ordinaryWorkerWaitsForRetainedChild").isTrue();
 				requireThat(ordinaryRootExited.await(5, TimeUnit.SECONDS), "ordinaryRootExitedWithChildRetained").isTrue();
-				JsonNode ordinaryActiveLedger = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode ordinaryActiveLedger = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(ordinaryActiveLedger.path("reservations").size(), "ordinaryReservationHeldUntilChildExit").
 					isEqualTo(1);
 				try (java.util.stream.Stream<Path> terminalFiles = Files.list(ordinaryEvidence))
@@ -582,7 +582,7 @@ public final class BuildWorkerTest
 				if (ordinaryFailure.get() != null)
 					throw new AssertionError("Ordinary worker failed without calibration RSS", ordinaryFailure.get());
 				requireThat(ordinaryResult.get().passed(), "ordinaryJobPassedWithoutRss").isTrue();
-				JsonNode ordinaryLedger = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode ordinaryLedger = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(ordinaryLedger.path("reservations").size(), "ordinaryReservationReleasedAfterChildExit").
 					isEqualTo(0);
 				requireThat(Files.isRegularFile(ordinaryEvidence.resolve(ordinaryResult.get().terminalReceiptPath())),
@@ -635,7 +635,7 @@ public final class BuildWorkerTest
 					requireThat(childWasPersistedBeforeObservationFailure.get(), "childIdentityPersistedBeforeFailure").
 						isTrue();
 					requireThat(cleanupStarted.await(5, TimeUnit.SECONDS), "observationFailureCleanupStarted").isTrue();
-					JsonNode duringCleanupLedger = scope.json().readTree(ledgerPath.get().toFile());
+					JsonNode duringCleanupLedger = readLedger(scope, ledgerPath.get());
 					requireThat(duringCleanupLedger.path("reservations").size(), "reservationHeldDuringCleanup").
 						isEqualTo(1);
 					try (java.util.stream.Stream<Path> terminalFiles = Files.list(observationFailureEvidence))
@@ -651,7 +651,7 @@ public final class BuildWorkerTest
 					requireThat(observationFailureWorker.isAlive(), "observationFailureWorkerReaped").isFalse();
 					requireThat(observationFailure.get() instanceof BuildAdmission.Failure,
 						"observationFailureReportedAfterCleanup").isTrue();
-					JsonNode observationFailureLedger = scope.json().readTree(ledgerPath.get().toFile());
+					JsonNode observationFailureLedger = readLedger(scope, ledgerPath.get());
 					requireThat(observationFailureLedger.path("reservations").size(), "observationFailureReleased").
 						isEqualTo(0);
 					try (java.util.stream.Stream<Path> terminalFiles = Files.list(observationFailureEvidence))
@@ -722,7 +722,7 @@ public final class BuildWorkerTest
 				requireThat(live.contains(childPid), "guardedChildRequestStoppedRetainedChild").isFalse();
 				requireThat(live.contains(unrelatedPid), "guardedChildRequestPreservedUnrequestedActor").isTrue();
 				JsonNode interruptedOrdinaryLedger =
-					scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+					readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(interruptedOrdinaryLedger.path("reservations").size(),
 					"interruptedOrdinaryReservationReleased").isEqualTo(0);
 				try (java.util.stream.Stream<Path> terminalFiles = Files.list(interruptedOrdinaryEvidence))
@@ -766,7 +766,7 @@ public final class BuildWorkerTest
 					"interruptionPropagatedAfterTerminalization").isTrue();
 				requireThat(interruptRestored.get(), "interruptStatusRestoredAfterCleanup").isTrue();
 				requireThat(live.contains(childPid), "interruptedChildReaped").isFalse();
-				JsonNode interruptedLedger = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode interruptedLedger = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(interruptedLedger.path("reservations").size(), "interruptedReservationReleased").
 					isEqualTo(0);
 				try (java.util.stream.Stream<Path> terminalFiles = Files.list(interruptedEvidence))
@@ -788,7 +788,7 @@ public final class BuildWorkerTest
 					requireThat(expected.kind(), "launchFailureKind").
 						isEqualTo(BuildAdmission.Failure.Kind.PROCESS_START_FAILED);
 				}
-				JsonNode afterLaunchFailure = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode afterLaunchFailure = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(afterLaunchFailure.path("reservations").size(), "launchFailureReservationReleased").
 					isEqualTo(0);
 				try (java.util.stream.Stream<Path> terminalFiles = Files.list(launchFailureEvidence))
@@ -828,7 +828,7 @@ public final class BuildWorkerTest
 					"rootWaitInterruptionPropagatedAfterTerminalization").isTrue();
 				requireThat(rootWaitInterruptRestored.get(), "rootWaitInterruptStatusRestored").isTrue();
 				requireThat(live.contains(rootPid) || live.contains(childPid), "rootAndChildReapedAfterInterrupt").isFalse();
-				JsonNode afterRootWait = scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+				JsonNode afterRootWait = readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 				requireThat(afterRootWait.path("reservations").size(), "rootWaitReservationReleased").isEqualTo(0);
 				Path publicationEvidence = root.resolve("terminal-publication-evidence");
 				BuildAdmission.Job publicationJob = new BuildAdmission.Job("terminal-publication-failure",
@@ -866,7 +866,7 @@ public final class BuildWorkerTest
 				publicationFailure = exception;
 			}
 			requireThat(publicationFailure, "terminalPublicationFailureReported").isNotNull();
-			JsonNode publicationLedger = scope.json().readTree(ledgerPath.get().toFile());
+			JsonNode publicationLedger = readLedger(scope, ledgerPath.get());
 			requireThat(publicationLedger.path("reservations").size(), "publicationFailureRetainsReservation").
 				isEqualTo(1);
 			requireThat(publicationLedger.path("reservations").get(0).path("terminal_receipt_path").isNull(),
@@ -932,7 +932,7 @@ public final class BuildWorkerTest
 			requireThat(cleanupObservationWorker.isAlive(), "cleanupFailureWorkerFinishedReporting").isFalse();
 			requireThat(cleanupObservationFailure.get() instanceof BuildAdmission.Failure,
 				"cleanupObservationFailureReported").isTrue();
-			JsonNode recoveryLedger = scope.json().readTree(cleanupLedgerPath.toFile());
+			JsonNode recoveryLedger = readLedger(scope, cleanupLedgerPath);
 			requireThat(recoveryLedger.path("reservations").size(), "cleanupFailureRetainsReservation").
 				isEqualTo(1);
 			boolean recoveryOwned = false;
@@ -1037,7 +1037,7 @@ public final class BuildWorkerTest
 				{
 					if (Files.exists(ledger))
 					{
-						JsonNode state = scope.json().readTree(ledger.toFile());
+						JsonNode state = readLedger(scope, ledger);
 						for (JsonNode identity : state.path("reservations").path(0).path("descendants"))
 							if (identity.path("pid").longValue() == grandchildPid)
 								observed = true;
@@ -1073,6 +1073,20 @@ public final class BuildWorkerTest
 				}
 			}
 		}
+	}
+
+	/**
+	 * Reads one complete ledger generation through NIO, whose Windows handle permits atomic replacement while open.
+	 * A parser opened directly on a {@code File} uses a stream that prevents the worker from replacing its ledger.
+	 *
+	 * @param scope the JSON parser owner
+	 * @param ledger the ledger path
+	 * @return the parsed generation
+	 * @throws IOException if the ledger cannot be read
+	 */
+	private static JsonNode readLedger(JvmScope scope, Path ledger) throws IOException
+	{
+		return scope.json().readTree(Files.readAllBytes(ledger));
 	}
 
 	/**
@@ -2002,7 +2016,7 @@ public final class BuildWorkerTest
 		 */
 		private JsonNode ledger() throws IOException
 		{
-			return scope.json().readTree(context.ledgerPath().resolve("ledger.json").toFile());
+			return readLedger(scope, context.ledgerPath().resolve("ledger.json"));
 		}
 
 		/**

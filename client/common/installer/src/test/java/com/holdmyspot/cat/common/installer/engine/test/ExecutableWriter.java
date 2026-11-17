@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.CommandLineArguments;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -18,8 +19,8 @@ public final class ExecutableWriter
 	/**
 	 * Writes the supplied body as UTF-8 and closes the file before this fixture process exits.
 	 *
-	 * @param arguments the output path followed by the complete file body; the parent directory must exist
-	 * @throws IllegalArgumentException if there are not exactly two arguments
+	 * @param arguments the output path followed by the Base64-encoded UTF-8 file body; the parent directory must exist
+	 * @throws IllegalArgumentException if there are not exactly two arguments or the body is not valid Base64
 	 * @throws IOException              if the output cannot be written
 	 */
 	public static void main(String[] arguments) throws IOException
@@ -27,11 +28,13 @@ public final class ExecutableWriter
 		String[] recovered = CommandLineArguments.recover(arguments);
 		if (recovered.length != 2)
 			throw new IllegalArgumentException("Expected an output path and file body");
-		Files.writeString(Path.of(recovered[0]), recovered[1], UTF_8);
+		String body = new String(Base64.getDecoder().decode(recovered[1]), UTF_8);
+		Files.writeString(Path.of(recovered[0]), body, UTF_8);
 	}
 
 	/**
 	 * Writes a program in an isolated child JVM and waits for successful termination before returning.
+	 * The body is encoded for transport so Windows command-line quoting cannot alter its quotes or newlines.
 	 * The caller owns removal of the program's parent directory, including the writer's working, home, temporary and
 	 * output paths. The process scope terminates and joins the writer on failure or interruption.
 	 *
@@ -57,7 +60,7 @@ public final class ExecutableWriter
 			"-Djava.io.tmpdir=" + temporary, "--enable-native-access=com.holdmyspot.cat.common.cli",
 			"--module-path", modulePath, "--module",
 			ExecutableWriter.class.getModule().getName() + "/" + ExecutableWriter.class.getName(),
-			program.toAbsolutePath().toString(), body);
+			program.toAbsolutePath().toString(), Base64.getEncoder().encodeToString(body.getBytes(UTF_8)));
 		builder.directory(working.toFile());
 		builder.redirectErrorStream(true);
 		builder.redirectOutput(output.toFile());

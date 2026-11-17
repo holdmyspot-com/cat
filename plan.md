@@ -253,6 +253,81 @@ is mutable and has 15 assets; preserve its tag and release metadata before repla
 launcher installation evidence only within its recorded scope. Report republishing separately from installation
 recovery and the still-unmet goal acceptance gates.
 
+Current candidate evidence: `cf0ff9c3e` commits the installer/question-routing/foreground-recovery guidance and
+`b1e022adc` records the accepted scope; both are pushed. Whole-client verification passed on that committed source.
+Build run `44157810081` passed Linux ARM, failed Linux x64, Windows and macOS x64 during common CLI verification,
+and cancelled the queued macOS ARM job; the run is terminal with conclusion `cancelled`. This is a failed publication
+gate. The original release metadata and all 15 assets are backed up under the root session's
+`temp/v1-republish-kTxH04/`; every archive matches the old checksum list. The public tag and release remain untouched.
+
+Commit `7166aa172` contains the 27-file native CLI repair. It controls unrelated host CPU in the real process-tree
+fixture, observes actual request-slot reuse rather than assuming immediate reuse, supports Windows hard-link checks,
+and repairs native path, permission and temporary-file test boundaries. Full local CLI verification passes 3,765 tests
+with no failures, errors or skips; whole-client verification also passes with cache enabled and every normal quality
+gate retained. Source identities and command receipts are in the root session's `temp/ci-portability-verify-UlXaav/`.
+The forced response-before-cleanup reproduction fails the original request-slot assertion and passes the corrected tests
+against identical production inputs. Independent review accepted the final Replay metadata fixture and common-contract
+correction; the latter retains one covering denial, all requested-root unreadability checks, and child project/home
+readability without changing sandbox behavior.
+
+Retained Linux worker passed full Maven verification (6,080 tests, zero failures/errors) and all 67 original Bats checks,
+then passed all seven Replay tests and both ten-case harness command-limit suites after the final fixture corrections.
+Its persisted 27-file native source manifest exactly matches the root receipt. Retained Windows worker passed the common
+CLI checks and both ten-case command-limit suites without skips. Its full retry exposed four installer errors involving
+sharing-violation retry, training-input cleanup and elevation-fixture script transport; these remain under investigation
+on the same worker. Retained macOS worker passed the complete Maven reactor and the affected contracts with all 27
+source hashes verified, plus Linux-tool, jlink and Codex-part Bats checks. Four bootstrap failures were traced to an
+Upterm diagnostic-only `CAT_RELEASE_SESSION_PUBLIC_KEY` variable conflicting with hook plugin scope; the original Bats
+groups passed with only that owned diagnostic variable removed from their child environment. Native final receipt:
+`temp/macos-ci-ENHhX1/final-receipt.json` in session `01a1eafe-f51a-77a3-b569-2a58e22fba6d`; every check is zero
+and all 27 source hashes match. Windows also passes all 18 elevation tests after Base64 transport preserves the exact
+fixture script body. Linux passes the focused installer checks on the subsequent frozen 32-file source: five deletion,
+18 elevation and 15 training tests, without skips. Whole-client local verification passes on that same frozen source;
+its receipt is `temp/ci-portability-verify-UlXaav/final-32-source-verification.json` in the root session.
+
+The subsequent complete Windows attempt on the frozen 32-file source fails earlier in common CLI: 3,789 tests report
+one failure, two errors and three skips. Two failures concern concurrent ledger access in the BuildWorker fixture;
+the third concerns grandchild readiness in the process-stop fixture. The installer is unexecuted in that attempt.
+Its 11 Bats failures follow from the absent runtime after Maven failed, rather than establishing separate installer
+causes. Exact receipts are retained in `temp/windows-ci-QHUDdf/release32-receipt.json` and
+`release32-final-evidence.tar.gz` in session `01a1eafe-c92b-72d3-a742-87d9a0ebcbab`.
+Those three CLI failures are assigned for diagnosis on the retained worker.
+
+The training-cleanup cause remains unproven. Its stronger fixture now observes all captured owned process handles
+before invoking actual deletion; the focused Windows case passes with source SHA-256
+`04359b83525a6712365b4821b86973b607022cf5063db58719872a211b75990c`.
+That newer test is outside the frozen local 32-file receipt. Separate Windows verification of all 38 installer classes
+passes 496 tests with no failures, errors or skips on its exact bytes; receipt `installer-tree-all-receipt.json`
+records archive SHA-256 `20db68f04dbe26a84b8451b24290b603beeab3de4ce0660f323fc1660d6c3de7`.
+The retained macOS transport recovered on the same worker. Its focused installer verification passes on all five
+installer files including the stronger trainer test, with all 32 source hashes verified; native log SHA-256 is
+`9baca0e27979550a6ead9668c41f53c01b7583c88a8dca59e8e8f93c7ccebed2`. Linux also passes the stronger trainer test
+15/15 without skips. These receipts exclude the newer Windows CLI fixture edits and any subsequent trainer production
+repair; the observed source gap between requesting descendant termination and awaiting termination is being addressed
+separately, without attributing the original Windows sharing violation to it.
+
+Final frozen source contains 35 files: the original 27 CLI repairs, six installer files, and the shared BuildChild
+and process-stop fixtures. Whole-client local verification passes with cache enabled, every normal quality gate,
+and no source drift; root receipt `temp/ci-portability-verify-UlXaav/final-35-source-verification.json` records
+all 35 hashes and the log identity. Native Linux independently matches all 35 hashes and passes BuildWorker 20/20,
+BuildReservations 4/4, process-stop contract 3/3 and trainer 15/15, without skips. Its receipt is
+`temp/linux-ci-session-3ACP72/final-fixes-receipt/` in session `01a1eb00-eec4-79d1-a38a-fdc9412fbb30`.
+
+The Windows ledger failures have a source-backed cause: Jackson's FileInputStream reader omits delete sharing and
+can block the worker's atomic ledger replacement. Fixture readers now parse NIO byte snapshots while preserving
+concurrent inspection and every lifecycle assertion; production ledger behavior is unchanged. The shared readiness
+wait now rechecks its predicate when a timed watch returns null, with a deterministic regression and startup diagnostics
+retained before cleanup. The original Windows grandchild timeout's cause remains unproven. Trainer cleanup captures
+and terminates descendants, then joins descendants and wrapper before deleting scratch; this closes the documented
+termination ownership gap without claiming it caused the original Windows input-sharing violation.
+
+The CLI repair is committed locally but not pushed; subsequent repairs and this evidence update are prepared for an
+intermediate commit. Windows complete final checks, final macOS affected checks and the production publication gates
+remain open.
+The repaired candidate still requires a successful five-platform Build, Release workflow and published-asset verifier.
+No production push, tag replacement or release mutation has occurred after `b1e022adc`. Parent installation recovery and
+optimizer acceptance remain separate open work.
+
 - macOS connection details, transcripts, native API/checksum evidence and marker-reader reports:
   `.cat/sessions/01a1e356-3f1d-7ef0-94a8-b56ac94d22b3/temp/macos-arm64-client-MvKYn6/`.
   The published connection artifact is `connection-artifact/ssh-command`. Read it as arguments,

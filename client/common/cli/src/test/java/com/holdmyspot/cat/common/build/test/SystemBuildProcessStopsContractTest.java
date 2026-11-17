@@ -1,11 +1,16 @@
 package com.holdmyspot.cat.common.build.test;
 
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.secrets.BuildAdmissionSecrets;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.WatchService;
+import java.nio.file.WatchKey;
+import org.testng.annotations.Test;
 import java.time.Duration;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongConsumer;
@@ -15,6 +20,59 @@ import java.util.function.LongConsumer;
  */
 public final class SystemBuildProcessStopsContractTest extends BuildProcessStopsContract
 {
+	/**
+	 * Verifies readiness wins when a timed watch returns after the readiness file is published.
+	 *
+	 * @throws IOException if the owned readiness fixture cannot be written
+	 * @throws InterruptedException if readiness observation is interrupted
+	 */
+	@Test
+	public void observesReadyAfterWatchTimeout() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("build-child-deadline-"));
+			Path ready = directory.resolve("ready");
+			try (WatchService watch = new WatchService()
+			{
+				@Override
+				public WatchKey poll(long timeout, TimeUnit unit)
+				{
+					try
+					{
+						Files.createFile(ready);
+					}
+					catch (IOException failure)
+					{
+						throw new UncheckedIOException(failure);
+					}
+					return null;
+				}
+
+				@Override
+				public WatchKey poll()
+				{
+					throw new UnsupportedOperationException();
+				}
+
+				@Override
+				public WatchKey take()
+				{
+					throw new UnsupportedOperationException();
+				}
+
+				@Override
+				public void close()
+				{
+				}
+			})
+			{
+				BuildChild.awaitFile(watch, ready, Duration.ofSeconds(5));
+				requireThat(ready, "publishedReadiness").isRegularFile();
+			}
+		}
+	}
+
 	/**
 	 * Starts selected and peer leaf processes for the production stop adapter.
 	 *
@@ -120,6 +178,18 @@ public final class SystemBuildProcessStopsContractTest extends BuildProcessStops
 				}
 				catch (IOException | InterruptedException | RuntimeException failure)
 				{
+					try
+					{
+						failure.addSuppressed(new IOException("Fixture readiness state: pid=" + process.pid() +
+							", alive=" + process.isAlive() + ", ready=" +
+							Files.exists(directory.resolve("grandchild.ready")) + ", stdout=" +
+							Files.readString(directory.resolve("stdout.log")) + ", stderr=" +
+							Files.readString(directory.resolve("stderr.log"))));
+					}
+					catch (IOException diagnosticFailure)
+					{
+						failure.addSuppressed(diagnosticFailure);
+					}
 					stopAfterFailedReadiness(process, failure);
 					throw failure;
 				}

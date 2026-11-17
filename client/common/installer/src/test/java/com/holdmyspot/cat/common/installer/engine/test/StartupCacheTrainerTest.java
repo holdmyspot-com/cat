@@ -32,6 +32,7 @@ import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -238,10 +239,17 @@ public final class StartupCacheTrainerTest
 			Path plugin = javaPlugin(root.resolve("plugin"));
 			Path scratch = root.resolve("scratch");
 			Path readyPath = root.resolve("fixture-process.pid");
+			AtomicReference<List<ProcessHandle>> ownedProcesses = new AtomicReference<>(List.of());
 			Files.writeString(plugin.resolve(StartupCache.TRAINING),
 				StartupCacheFixtures.description(List.of(StartupProgram.class.getName(), "--hold", readyPath.toString())),
 				UTF_8);
-			StartupCacheTrainer trainer = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED);
+			StartupCacheTrainer trainer = trainer(scratch, path ->
+			{
+				List<Long> running = ownedProcesses.get().stream().filter(ProcessHandle::isAlive).
+					map(ProcessHandle::pid).toList();
+				requireThat(running, "processesAliveBeforeDeleting").isEmpty();
+				TemporaryDirectories.deleteRecursively(path);
+			});
 			FutureTask<Boolean> trainingResult = new FutureTask<>(() -> trainer.train(plugin));
 			Thread trainingThread = new Thread(trainingResult, "startup-cache-training");
 			ProcessHandle fixtureProcess = null;
@@ -251,7 +259,9 @@ public final class StartupCacheTrainerTest
 				root.register(readiness, StandardWatchEventKinds.ENTRY_CREATE);
 				trainingThread.start();
 				fixtureProcess = awaitFixtureProcess(readiness, readyPath);
+				ownedProcesses.set(List.of(fixtureProcess));
 				requireThat(fixtureProcess.isAlive(), "fixtureProcess").isTrue();
+				ownedProcesses.set(fixtureTree(fixtureProcess));
 
 				trainingThread.interrupt();
 				boolean written = trainingResult.get(10, TimeUnit.SECONDS);
@@ -269,16 +279,41 @@ public final class StartupCacheTrainerTest
 			{
 				trainingThread.interrupt();
 				trainingThread.join(10_000);
-				if (fixtureProcess != null && fixtureProcess.isAlive())
-				{
-					fixtureProcess.destroyForcibly();
-					fixtureProcess.onExit().get(10, TimeUnit.SECONDS);
-				}
+				for (ProcessHandle process : ownedProcesses.get())
+					process.destroyForcibly();
+				for (ProcessHandle process : ownedProcesses.get())
+					process.onExit().get(10, TimeUnit.SECONDS);
 				requireThat(trainingThread.isAlive(), "trainingThread").isFalse();
 				if (fixtureProcess != null)
 					requireThat(fixtureProcess.isAlive(), "fixtureProcess").isFalse();
 			}
 		}
+	}
+
+	/**
+	 * Captures the fixture's wrapper and its descendants while the published fixture process is held running.
+	 * The highest ancestor below this test JVM owns the entire training process tree, including Windows command
+	 * interpreters between the launched wrapper and Java.
+	 *
+	 * @param fixture the Java process that published readiness
+	 * @return the owned wrapper and descendants
+	 * @throws IOException if the fixture cannot be traced back to this test JVM
+	 */
+	private static List<ProcessHandle> fixtureTree(ProcessHandle fixture) throws IOException
+	{
+		ProcessHandle root = fixture;
+		while (true)
+		{
+			ProcessHandle parent = root.parent().orElseThrow(
+				() -> new IOException("Fixture process has no ancestor in this test JVM"));
+			if (parent.pid() == ProcessHandle.current().pid())
+				break;
+			root = parent;
+		}
+		List<ProcessHandle> owned = new ArrayList<>();
+		owned.add(root);
+		owned.addAll(root.descendants().toList());
+		return List.copyOf(owned);
 	}
 
 	/**

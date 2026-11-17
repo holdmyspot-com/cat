@@ -174,7 +174,11 @@ public final class BuildChild
 				throw new IOException(message);
 			java.nio.file.WatchKey key = watch.poll(remaining, TimeUnit.NANOSECONDS);
 			if (key == null)
+			{
+				if (condition.test())
+					return;
 				throw new IOException(message);
+			}
 			key.reset();
 		}
 	}
@@ -194,7 +198,7 @@ public final class BuildChild
 		JsonNode state;
 		try
 		{
-			state = JSON.readTree(ledger.toFile());
+			state = JSON.readTree(Files.readAllBytes(ledger));
 		}
 		catch (tools.jackson.core.JacksonException _)
 		{

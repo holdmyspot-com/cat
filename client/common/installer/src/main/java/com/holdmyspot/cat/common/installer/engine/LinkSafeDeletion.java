@@ -4,11 +4,13 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
+import java.nio.file.FileSystemException;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
@@ -23,9 +25,10 @@ import java.util.stream.Stream;
  * <p>
  * A deletion that fails because another program briefly holds a file open is retried for a short time. Antivirus
  * software, the search indexer and sync tools open files in the folders that they watch, and Windows then refuses to
- * delete the file or its folder with {@link AccessDeniedException} or {@link DirectoryNotEmptyException} until that
- * program lets go. The retry is not limited to Windows: telling a transient lock from a permanent denial by the error
- * alone is impossible on any OS, and a permanent denial only costs {@link #RETRY_DEADLINE} before it is reported.
+ * delete the file or its folder with {@link FileSystemException}, including {@link AccessDeniedException} and
+ * {@link DirectoryNotEmptyException}, until that program lets go. Other systems retry access-denied and
+ * directory-not-empty errors too: those errors cannot distinguish a transient lock from a permanent denial. A
+ * permanent failure only costs {@link #RETRY_DEADLINE} before it is reported.
  */
 public final class LinkSafeDeletion
 {
@@ -61,8 +64,8 @@ public final class LinkSafeDeletion
 	 * @throws IllegalArgumentException if {@code path} is not absolute and normalized or is not inside {@code boundary}
 	 * @throws Refused                  if the path or one of its checked ancestors is a link
 	 * @throws IOException              if the tree cannot be deleted. An {@link AccessDeniedException} or
-	 *                                  {@link DirectoryNotEmptyException} is thrown only after the deletion was retried
-	 *                                  for {@link #RETRY_DEADLINE}.
+	 *                                  {@link DirectoryNotEmptyException}, or another {@link FileSystemException} on
+	 *                                  Windows, is thrown only after retrying for {@link #RETRY_DEADLINE}.
 	 */
 	public static void delete(Path path, Path boundary, Waiting waiting) throws IOException
 	{
@@ -141,6 +144,12 @@ public final class LinkSafeDeletion
 			catch (AccessDeniedException | DirectoryNotEmptyException e)
 			{
 				if (!retry.pause())
+					throw e;
+			}
+			catch (FileSystemException e)
+			{
+				// Windows reports a sharing violation as the base type, with only a localized reason string.
+				if (!Platform.current().isWindows() || !retry.pause())
 					throw e;
 			}
 		}

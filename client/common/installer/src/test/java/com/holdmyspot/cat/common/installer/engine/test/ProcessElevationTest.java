@@ -285,6 +285,7 @@ public final class ProcessElevationTest
 				""";
 		}
 		ExecutableWriter.write(id, body);
+		requireThat(Files.readString(id), "completedProgram").isEqualTo(body);
 		if (!windows)
 			requireThat(id.toFile().setExecutable(true), "executable").isTrue();
 		return id;

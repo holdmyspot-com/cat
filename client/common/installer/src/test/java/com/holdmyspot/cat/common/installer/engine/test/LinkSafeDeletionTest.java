@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import java.io.IOException;
 import java.io.RandomAccessFile;
 import java.nio.file.AccessDeniedException;
-import java.nio.file.DirectoryNotEmptyException;
+import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -173,6 +173,16 @@ public final class LinkSafeDeletionTest
 			{
 				if (!held.blocksDeletion())
 					return;
+				FileSystemException original = null;
+				try
+				{
+					Files.delete(folder.resolve("held"));
+				}
+				catch (FileSystemException e)
+				{
+					original = e;
+				}
+				requireThat(original, "heldFileDeletionError").isNotNull();
 				List<Duration> waits = new ArrayList<>();
 				Waiting recording = interval -> () -> waits.add(interval);
 				try
@@ -180,8 +190,11 @@ public final class LinkSafeDeletionTest
 					LinkSafeDeletion.delete(home.resolve("plugin"), home, recording);
 					throw new AssertionError("The deletion succeeded although a file was held");
 				}
-				catch (AccessDeniedException | DirectoryNotEmptyException _)
+				catch (FileSystemException e)
 				{
+					requireThat(e.getClass().getName(), "errorType").isEqualTo(original.getClass().getName());
+					requireThat(e.getFile(), "errorFile").isEqualTo(original.getFile());
+					requireThat(e.getReason(), "errorReason").isEqualTo(original.getReason());
 					requireThat(Files.exists(folder, NOFOLLOW_LINKS), "folder").isTrue();
 					Duration total = waits.stream().reduce(Duration.ZERO, Duration::plus);
 					requireThat(total, "total").isEqualTo(LinkSafeDeletion.RETRY_DEADLINE);

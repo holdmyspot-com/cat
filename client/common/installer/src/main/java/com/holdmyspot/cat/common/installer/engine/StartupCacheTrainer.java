@@ -302,7 +302,7 @@ public final class StartupCacheTrainer
 
 	/**
 	 * Runs a planned run once, discarding its output and stopping it, with every process that it started, when it takes
-	 * too long.
+	 * too long. It waits for those processes to terminate before the training's scratch files can be removed.
 	 *
 	 * @param run the run
 	 * @return the status that the program ended with, or empty if it did not end within the time limit
@@ -330,9 +330,13 @@ public final class StartupCacheTrainer
 			{
 				if (process.isAlive())
 				{
-					process.descendants().forEach(ProcessHandle::destroyForcibly);
+					List<ProcessHandle> descendants = process.descendants().toList();
+					descendants.forEach(ProcessHandle::destroyForcibly);
 					process.destroyForcibly();
-					process.waitFor();
+					// Forced termination can return before a descendant releases its redirected input.
+					for (ProcessHandle descendant : descendants)
+						descendant.onExit().join();
+					process.onExit().join();
 				}
 			}
 		}
