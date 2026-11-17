@@ -3791,8 +3791,9 @@ outcomes or certification attempt; the existing eligible `unsupported_output` co
 pilots. Root accepted that completed assignment and replayed only the two allowed source
 changes, preserving the prior Javadocs. Decisive patch, commands, exits and XML are in session
 `01a1e71d` at `temp/g7-red-kABP7R/`; root owns cleanup after final acceptance. This proves
-handling of an already classified risk, not model classification of read-only credentials or
-disposable fixtures. Root's combined affected verify passed 489 tests with zero failures,
+handling of an already classified risk. Positive read-only-credential and disposable-fixture
+admission require the unit evidence assigned by WI-15 under D91; semantic model classification
+is not an additional native acceptance gate. Root's combined affected verify passed 489 tests with zero failures,
 errors or skips, with cache reuse and all quality checks enabled. The six frozen test reports
 all record the requested absent home. Commands, exits, selected reports and summary are in
 `temp/g7-integrated-JvcJIx/`. The subsequent required whole-client uncached clean build passed:
@@ -3812,7 +3813,30 @@ The no-model audit remains applicable: the integrated regression uses the existi
 repository/session fixtures, and the two reduced fixtures add no process or harness boundary.
 Installed acceptance and the terminal goal remain open.
 
-Current terminal-gate reconciliation after this build:
+Positive G7 admission now has the unit evidence required by WI-15 and D91 (commit `979ebcd81`):
+`OptimizerCoreTest.startAdmitsEligibleExternalEffects` covers both an already-classified
+read-only credential and an acceptance-owned disposable fixture. Each case starts with one
+requirement and one prompt test, observes fresh pilot dispatch and its stored receipt,
+verifies that certification has not begun, then confirms successfully with no unavailable
+outcome. This establishes public admission, not model classification or real-service effects.
+The persistent-risk no-dispatch regression remains passing. The earlier service-fixture
+preparation was superseded without integration or a live acceptance run; the design is unchanged.
+
+The final focused verify passed all 178 optimizer-core cases with all quality checks enabled.
+The subsequent whole-client uncached clean verify passed 6,065 tests in 455 reports, with zero
+failures/errors and six skips. All 455 reports record the requested absent home, which remains
+absent. Twenty quality reports have no active findings or PMD processing/configuration errors;
+fifteen suppressed PMD violations remain disclosed. Frozen reports, commands, exits and summaries
+are in session `01a1e6ba` at `temp/g7-eligible-final-ezD2Mu/`; root owns cleanup after final acceptance.
+Its slow-case record reviews the twenty-two cases at or above one second: fourteen reuse
+accepted dispositions and eight retain the documented command, persisted-state or installation
+boundary. No runtime-cause or speedup claim is inferred. Both new admission cases finish below
+one second in this build.
+The attribution refresh finds 2,512 passing tag mappings across 597 sources and 140 requirements,
+with no unknown tags or method issues; R-I1 still needs its installed receipt. The new tests use
+the existing scripted session fixture and introduce no process or harness boundary.
+
+Current terminal-gate reconciliation after this admission check:
 
 | Gate | State | Remaining evidence |
 |---|---|---|
@@ -3820,7 +3844,7 @@ Current terminal-gate reconciliation after this build:
 | 2: traceability | Unmet | Local attribution and bounded semantics accepted; 35 E-proof rows and R-I1 still require applicable installed receipts. |
 | 3: no model in Java tests | Passed at the source-audit boundary | No new launch boundary in this delta. |
 | 4: installed E1–E8 | Unmet | Actual refreshed installation/reload, both harnesses; E1 without a supplied goal. |
-| 5: G1–G10 | Unmet | Accepted local maps retained; native clauses, including positive G7 eligibility classification, remain. |
+| 5: G1–G10 | Unmet | Accepted local maps and positive G7 unit admission evidence retained; the existing native clauses remain. |
 | 6: testability | Unmet | Absent-home, slow-case, fixture and local audit evidence accepted; native T3/T6 qualifications remain. |
 | 7: documentation closure | Unmet | WI-15, WI-96, WI-111, WI-120, WI-142, WI-145 and P12/P13 depend on their remaining live evidence. |
 | 8: standalone codebase | Unrun | Remove tags/design/plan references only after gates 1–7 pass. |
@@ -7038,7 +7062,8 @@ selection and download it describes are unchanged.
 	`DriverTest.failedToolLeftToJudge`); paired control trials (`SchedulerTest.controlTrialsPairInAssignmentOrder`,
 	`GuardPilotTest.runsControlTrialsInWeakestCell`, `DriverTest.certify`); resuming a certification attempt after a host
 	interrupt (`DriverTest.hostInterruptResumesAttempt`, with the contract tests replaying each harness's recorded
-	interrupted turn); and the eligible read-only-credential and disposable-fixture trials.
+	interrupted turn); and the eligible read-only-credential and disposable-fixture trials
+	(`OptimizerCoreTest.startAdmitsEligibleExternalEffects`, using already-classified author output).
 - **Recordings:** each run saves its harness event streams, untrimmed, with the harness version. They replace the
 	contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
 	completed multi-turn session per role and an interrupted turn (from E2) per harness.
