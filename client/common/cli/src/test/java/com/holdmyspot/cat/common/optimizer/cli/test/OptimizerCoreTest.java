@@ -1702,6 +1702,74 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that public {@code start} and {@code confirm} admit a proposal whose contract author describes either a
+	 * read-only service credential or an acceptance-owned disposable fixture.
+	 * <p>
+	 * The description is supplied as an already-admitted contract-author classification. This test checks the public
+	 * admission flow; it does not use a real credential or service and does not establish model classification. The
+	 * repository fixture tracks {@code CLAUDE.md} as its target.
+	 * <p>
+	 * One prompt test exercises fresh pilot dispatch and persistence before confirmation; loading a stored proposal
+	 * would skip that admission path.
+	 *
+	 * @param effect the contract author's eligible external-effect classification
+	 * @throws IOException             if the owned repository cannot be read or written
+	 * @throws CommandRefusedException if the public start or confirmation command is refused
+	 * @throws InterruptedException    if the contract-author session is interrupted
+	 */
+	@Test(dataProvider = "eligibleExternalEffects")
+	public void startAdmitsEligibleExternalEffects(String effect)
+		throws IOException, CommandRefusedException, InterruptedException
+	{
+		// Requirement: R-C6
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(output ->
+			{
+				ArrayNode requirements = (ArrayNode) output.get("requirements");
+				ObjectNode requirement = (ObjectNode) requirements.get(0);
+				requirements.removeAll().add(requirement);
+				requirement.put("description", effect);
+				ArrayNode tests = (ArrayNode) output.get("tests");
+				JsonNode test = tests.get(0);
+				tests.removeAll().add(test);
+				output.putArray("scope_conditions");
+			}));
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+			String id = result.status().campaignId();
+
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "pilotTrials").
+				isEqualTo(GuardPilot.TRIALS);
+			requireThat(repository.directory(id).resolve("held_out/pilot.json"), "pilotFile").isRegularFile();
+			Campaign proposal = repository.load(id);
+			requireThat(proposal.isConfirmed(), "confirmedBeforeConfirmation").isFalse();
+			requireThat(proposal.attempts(), "certificationAttempts").isEmpty();
+			requireThat(proposal.trials(), "countedTrials").isEmpty();
+
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+
+			Campaign confirmed = repository.load(id);
+			requireThat(confirmed.isConfirmed(), "confirmed").isTrue();
+			requireThat(confirmed.lineage().unavailable(), "unavailable").isEmpty();
+		}
+	}
+
+	/**
+	 * Supplies the two external-effect classes that may be eligible for trial admission.
+	 *
+	 * @return a read-only credential case and a disposable fixture case
+	 */
+	@DataProvider
+	public Object[][] eligibleExternalEffects()
+	{
+		return new Object[][]
+		{
+			{"The trial reads task data from a service with a confirmed read-only credential."},
+			{"The trial writes only to an acceptance-owned disposable external fixture removed by its owner after the trial."}
+		};
+	}
+
+	/**
 	 * Verifies that {@code start}, its retry and {@code revise} present a known ineligible trial effect without
 	 * dispatching a trial or recording trial outcomes.
 	 */
