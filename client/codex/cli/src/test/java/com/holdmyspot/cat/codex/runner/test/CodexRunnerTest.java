@@ -185,7 +185,8 @@ public final class CodexRunnerTest
 
 			Path withCat = root.resolve("with");
 			SetupCommands codex = codexAdds(withCat, "1.0+b0123456789ab");
-			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat, Map.of(),
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), root.resolve("host"), withCat,
+				installationEnvironment(root),
 				Yielding.executableFiles(), Yielding.fileReplacer(), (command, step) ->
 				{
 					steps.add(step);
@@ -212,7 +213,8 @@ public final class CodexRunnerTest
 			CodexInstallation installation = CodexInstallation.fromEnvironment(Map.of("CODEX_HOME", home.toString()),
 				root.resolve("user"));
 
-			CodexRunner.installPlugins("codex", artifact(root), true, List.of(), root.resolve("host"), home, Map.of(),
+			CodexRunner.installPlugins("codex", artifact(root), true, List.of(), root.resolve("host"), home,
+				installationEnvironment(root),
 				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
 
 			requireThat(installation.marketplacePlugin().resolve("README.md"), "plugin").isRegularFile();
@@ -255,7 +257,8 @@ public final class CodexRunnerTest
 			Path home = root.resolve("isolated");
 
 			CodexRunner.installPlugins("codex", artifact(root), true, List.of(plugin(root, "release-docs"),
-				plugin(root, "tools")), host, home, Map.of(), Yielding.executableFiles(), Yielding.fileReplacer(),
+				plugin(root, "tools")), host, home, installationEnvironment(root), Yielding.executableFiles(),
+				Yielding.fileReplacer(),
 				codexAdds(home, "1.0+b0123456789ab"));
 
 			String configuration = Files.readString(home.resolve("config.toml"));
@@ -294,8 +297,7 @@ public final class CodexRunnerTest
 			CodexConnectionConfiguration.copy(host.resolve("config.toml"), home.resolve("config.toml"),
 				root.resolve("project"), HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, Platform.current());
 
-			Map<String, String> environment = Map.of("SystemRoot", root.resolve("bound-system").toString(),
-				"PATH", root.resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
+			Map<String, String> environment = installationEnvironment(root);
 			CodexRunner.installPlugins("codex", artifact, true, List.of(), host, home, environment,
 				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
 
@@ -350,6 +352,18 @@ public final class CodexRunnerTest
 				requireThat(Files.notExists(home.resolve("rules")), "rules").isTrue();
 			}
 		}
+	}
+
+	/**
+	 * Returns test-owned installer bindings, including the Windows system and executable paths.
+	 *
+	 * @param root the fixture root containing the bound paths
+	 * @return the installer environment
+	 */
+	private static Map<String, String> installationEnvironment(Path root)
+	{
+		return Map.of("SystemRoot", root.resolve("bound-system").toString(),
+			"PATH", root.resolve("bound-tools").toString(), "PATHEXT", ".EXE;.CMD");
 	}
 
 	/**

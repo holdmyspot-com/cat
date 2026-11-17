@@ -14,6 +14,8 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -343,16 +345,20 @@ public final class CodexMultiAgentInheritanceTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-multi-agent-"));
 			Path codexHome = root.resolve("host");
 			Path rollout = writeRollout(codexHome, turnContext("disabled") + "\n");
-			// Only a file system with POSIX permissions can deny its owner reading a file
 			if (PortableFiles.hasModes(rollout))
+			{
 				Files.setPosixFilePermissions(rollout, Set.of(PosixFilePermission.OWNER_WRITE));
+				assertRequiredReadFails(codexHome, THREAD, rollout);
+			}
 			else
 			{
-				Files.delete(rollout);
-				Files.createDirectories(rollout);
+				try (FileChannel channel = FileChannel.open(rollout, StandardOpenOption.WRITE);
+					FileLock lock = channel.lock())
+				{
+					requireThat(lock.isValid(), "exclusiveRolloutLock").isTrue();
+					assertRequiredReadFails(codexHome, THREAD, rollout);
+				}
 			}
-
-			assertRequiredReadFails(codexHome, THREAD, rollout);
 		}
 	}
 

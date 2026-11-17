@@ -464,6 +464,9 @@ public final class CatPs1Test
 			String encoded = Base64.getEncoder().encodeToString(script.getBytes(UTF_16LE));
 			ProcessBuilder builder = new ProcessBuilder("powershell.exe", "-NoProfile", "-NonInteractive",
 				"-EncodedCommand", encoded).directory(root.toFile()).redirectErrorStream(true);
+			// PowerShell 7's inherited module paths make Windows PowerShell resolve incompatible utility modules,
+			// hiding Get-FileHash. Let Windows PowerShell construct its own default module path for this fixture.
+			builder.environment().keySet().removeIf("PSModulePath"::equalsIgnoreCase);
 			try (Process process = builder.start())
 			{
 				process.getOutputStream().close();
