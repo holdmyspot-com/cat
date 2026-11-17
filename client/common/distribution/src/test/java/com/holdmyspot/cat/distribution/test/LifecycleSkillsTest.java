@@ -176,10 +176,17 @@ public final class LifecycleSkillsTest
 				String flattened = body.replaceAll("\\s+", " ");
 				requireThat(flattened, skill + "Body").contains("status 77").contains("outside the sandbox").
 					contains("end your turn with a reply that names that path").
-					contains("in a code block character for character as printed").
-					contains("never as a summary or a description of it").contains("prefixed with `! `").
+					contains("prefixed with `! `").
 					contains("Do no other work in that turn").contains("Do not run it again").
 					doesNotContain("${CAT_PLUGIN_ROOT}");
+				if (skill.equals("update"))
+					requireThat(flattened, skill + "Recovery").
+						contains("shows that entry command in its own code block").
+						contains("Ask them to restart the harness after repair");
+				else
+					requireThat(flattened, skill + "Recovery").
+						contains("in a code block character for character as printed").
+						contains("never as a summary or a description of it");
 				if (harness.equals("claude"))
 					requireThat(manifest, skill).contains("allowed-tools: [Bash]");
 				else
@@ -224,7 +231,9 @@ public final class LifecycleSkillsTest
 			Map<String, List<String>> entries = integration.installPermissions(environment, home, launcher,
 				new FileReplacer(Platform.current(), () ->
 				{
-				}, Clock.systemUTC()));
+				}, Clock.systemUTC()), recorded ->
+				{
+				});
 
 			List<String> commands = new ArrayList<>();
 			for (String skill : SKILLS)

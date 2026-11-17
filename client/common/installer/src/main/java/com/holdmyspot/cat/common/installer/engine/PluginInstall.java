@@ -84,6 +84,27 @@ public final class PluginInstall
 	}
 
 	/**
+	 * Prepares and records incoming permissions before any marketplace publication or registration.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param home        the harness home
+	 * @param installer   the incoming launcher
+	 * @throws IOException if permissions or ownership cannot be written
+	 */
+	public void preparePermissions(Map<String, String> environment, Path home, Path installer) throws IOException
+	{
+		InstallerState state = InstallerState.of(integration.installation(home).dataDirectory(), integration.harness());
+		Path record = state.permissions();
+		if (Files.notExists(state.pendingPermissions()))
+			StateFiles.write(state.pendingPermissions(), new byte[]{'{', '}'});
+		integration.preparePermissions(environment, home, installer, replacer, entries ->
+		{
+			PermissionRecord.add(record, entries);
+			PermissionRecord.add(state.pendingPermissions(), entries);
+		});
+	}
+
+	/**
 	 * Writes a plugin tree into CAT's marketplace in the harness home, bound to the Java runtime that the plugin will
 	 * have in its version folder, and asks the harness to install it into that version folder.
 	 *
@@ -136,11 +157,10 @@ public final class PluginInstall
 	}
 
 	/**
-	 * Makes the change that the user allowed, when {@code consented}, removes the recorded entries that the
-	 * integration no longer maintains and the folder in which the session launcher of earlier releases kept its state,
-	 * then adds the permission entries, the sandbox entries and the entries that keep the harness's sessions from
-	 * changing the shell startup files, and records the added ones. The recorded write denial of that folder is among
-	 * the removed entries.
+	 * Makes the change that the user allowed, when {@code consented}, removes the former session-launcher state
+	 * folder, installs and records permission, sandbox and startup-file protections, then verifies final permissions.
+	 * Only after verification does it retire obsolete recorded entries, including prepared rules, and remove the
+	 * pending-permission record. A failure retains ownership and pending state for recovery.
 	 *
 	 * @param environment         the harness environment recorded in the trust policy
 	 * @param home                the harness home
@@ -171,27 +191,38 @@ public final class PluginInstall
 		requireThat(formerLauncherState, "formerLauncherState").isAbsolute();
 		requireThat(startupFiles, "startupFiles").isNotNull();
 		Path record = InstallerState.of(installation.dataDirectory(), integration.harness()).permissions();
-		Map<String, List<String>> added = new LinkedHashMap<>();
+		Path pending = InstallerState.of(installation.dataDirectory(), integration.harness()).pendingPermissions();
+		Map<String, List<String>> added = new LinkedHashMap<>(PermissionRecord.read(pending));
+		Map<String, List<String>> consentedEntries = Map.of();
 		if (consented)
-			merge(added, integration.installConsentedEntries(home, replacer));
+		{
+			consentedEntries = integration.installConsentedEntries(home, replacer);
+			merge(added, consentedEntries);
+		}
 
 		Map<String, List<String>> maintained = new LinkedHashMap<>(integration.permissions(environment, installer));
+		merge(maintained, consentedEntries);
 		for (HarnessInstallation other : others)
 			merge(maintained, integration.sandboxEntries(home, other, catLocks));
 		merge(maintained, integration.readOnlyEntries(home, startupFiles));
+		Path stateParent = LinkSafeDeletion.resolveRoot(formerLauncherState.getParent());
+		LinkSafeDeletion.delete(stateParent.resolve(formerLauncherState.getFileName()), stateParent, waiting);
+		merge(added, integration.installPermissions(environment, home, installer, replacer,
+			entries -> PermissionRecord.add(record, entries)));
+		for (HarnessInstallation other : others)
+			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));
+		merge(added, integration.installReadOnlyEntries(home, startupFiles, replacer));
+		PermissionRecord.add(record, added);
+		if (!integration.permissionsInstalled(environment, home, installer))
+			throw new IOException("The installed permissions do not match " + installer + "; rerun install to repair them.");
 		Map<String, List<String>> obsolete = PermissionRecord.obsolete(record, maintained);
 		if (!obsolete.isEmpty())
 		{
 			integration.removePermissions(home, obsolete, replacer);
 			PermissionRecord.remove(record, obsolete);
 		}
-		Path stateParent = LinkSafeDeletion.resolveRoot(formerLauncherState.getParent());
-		LinkSafeDeletion.delete(stateParent.resolve(formerLauncherState.getFileName()), stateParent, waiting);
-		merge(added, integration.installPermissions(environment, home, installer, replacer));
-		for (HarnessInstallation other : others)
-			merge(added, integration.installSandboxEntries(home, other, catLocks, replacer));
-		merge(added, integration.installReadOnlyEntries(home, startupFiles, replacer));
-		Map<String, List<String>> recorded = PermissionRecord.add(record, added);
+		Map<String, List<String>> recorded = PermissionRecord.read(record);
+		Files.deleteIfExists(InstallerState.of(installation.dataDirectory(), integration.harness()).pendingPermissions());
 		return new InstalledEntries(recorded, integration.describeAdded(home, added));
 	}
 

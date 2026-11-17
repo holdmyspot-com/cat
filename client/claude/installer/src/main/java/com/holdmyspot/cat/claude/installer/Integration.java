@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installer.activation.PermissionRecorder;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -509,6 +510,7 @@ public final class Integration implements HarnessIntegration
 	 * @param home        the absolute Claude Code configuration directory recorded in policy
 	 * @param installer   the absolute path of the installer launcher in the plugin's version folder
 	 * @param replacer    replaces {@code settings.json}
+	 * @param recorder    records additions before replacing {@code settings.json}
 	 * @return the added entries, keyed {@code settings.json#sandbox.excludedCommands} and
 	 * 	{@code settings.json#permissions.allow}; a key is absent when nothing was added to it
 	 * @throws NullPointerException     if any of the arguments are null
@@ -518,13 +520,61 @@ public final class Integration implements HarnessIntegration
 	 */
 	@Override
 	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
-		FileReplacer replacer)
+		FileReplacer replacer, PermissionRecorder recorder)
 		throws IOException
 	{
 		requireThat(environment, "environment").isNotNull();
 		requireThat(installer, "installer").isAbsolute();
 		requireThat(replacer, "replacer").isNotNull();
-		return addEntries(home, entries(installer), replacer);
+		requireThat(recorder, "recorder").isNotNull();
+		return addEntries(home, entries(installer), replacer, recorder);
+	}
+
+	@Override
+	public Map<String, List<String>> preparePermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer, PermissionRecorder recorder) throws IOException
+	{
+		return installPermissions(environment, home, installer, replacer, recorder);
+	}
+
+	@Override
+	public boolean permissionsInstalled(Map<String, String> environment, Path home, Path installer) throws IOException
+	{
+		return containsPermissions(home, entries(installer));
+	}
+
+	@Override
+	public boolean updatePermitted(Map<String, String> environment, Path home, Path installer) throws IOException
+	{
+		String install = launcherCommand(installer) + " install --harness claude";
+		String pattern = versionPattern(install);
+		return containsPermissions(home, Map.of(EXCLUDED_COMMANDS, List.of(pattern), ALLOWED_TOOLS,
+			List.of("Bash(" + pattern + ")")));
+	}
+
+	/**
+	 * Checks that settings contain each requested permission without changing the file.
+	 *
+	 * @param home the Claude configuration directory
+	 * @param expected required entries by setting name
+	 * @return true when every entry is present
+	 * @throws IOException if settings cannot be read
+	 */
+	private static boolean containsPermissions(Path home, Map<String, List<String>> expected) throws IOException
+	{
+		ObjectNode root = readSettings(home);
+		for (Map.Entry<String, List<String>> entry : expected.entrySet())
+		{
+			List<String> present = new ArrayList<>();
+			for (JsonNode value : settingArray(root, entry.getKey()))
+			{
+				if (value.isString())
+					present.add(value.stringValue());
+			}
+			if (!present.containsAll(entry.getValue()))
+				return false;
+		}
+		return true;
 	}
 
 	/**
@@ -539,6 +589,24 @@ public final class Integration implements HarnessIntegration
 	 */
 	private static Map<String, List<String>> addEntries(Path home, Map<String, List<String>> entries,
 		FileReplacer replacer) throws IOException
+	{
+		return addEntries(home, entries, replacer, _ ->
+		{
+		});
+	}
+
+	/**
+	 * Records calculated additions before replacing settings, preserving ownership across interrupted writes.
+	 *
+	 * @param home     the Claude configuration directory
+	 * @param entries  the desired settings
+	 * @param replacer replaces settings
+	 * @param recorder records missing entries before replacement
+	 * @return the added entries
+	 * @throws IOException if settings or ownership cannot be written
+	 */
+	private static Map<String, List<String>> addEntries(Path home, Map<String, List<String>> entries,
+		FileReplacer replacer, PermissionRecorder recorder) throws IOException
 	{
 		ObjectNode root = readSettings(home);
 
@@ -565,7 +633,10 @@ public final class Integration implements HarnessIntegration
 				added.put(SETTINGS + "#" + setting.getKey(), List.copyOf(addedToSetting));
 		}
 		if (!added.isEmpty())
+		{
+			recorder.record(Map.copyOf(added));
 			writeSettings(home, root, replacer);
+		}
 		return Map.copyOf(added);
 	}
 

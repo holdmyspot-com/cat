@@ -72,4 +72,16 @@ public record InstallerState(Path directory)
 	{
 		return directory.resolveSibling("permissions").resolve(directory.getFileName() + ".json");
 	}
+
+	/**
+	 * Returns the record of prepared permission additions, created before preparation and removed only after final
+	 * permission installation and retirement succeed. Its presence alone means completion is unverified; its entries
+	 * preserve install notices across interrupted attempts.
+	 *
+	 * @return the marker path
+	 */
+	public Path pendingPermissions()
+	{
+		return directory.resolve("pending-permissions");
+	}
 }

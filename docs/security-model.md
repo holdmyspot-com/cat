@@ -37,7 +37,10 @@ version's installer. That follow-up run asks nothing: a change that you declined
 not offered again. The installer does not restore the previous version when an install fails; the failure names the
 command that repeats the steps that did not finish, and every step can be repeated. `status` reads the active version,
 whether the installation is consistent and the policy key IDs without creating state or recovering an unfinished
-install.
+install. Consistency includes agreement between the selected plugin copies and their permission configuration. An
+unfinished permission handoff is inconsistent even when those copies agree. Status supplies an update command only
+when its installed launchers exist and configuration permits that command. Otherwise, repair through the installation
+entry command in your terminal and restart the harness to load the repaired permissions.
 
 ### First-download trust
 
@@ -96,9 +99,14 @@ An install refuses, before changing anything, a harness configuration that it ca
 
 ### Entries each harness gets
 
-Each install writes the permission entries for exactly the three operations above on the active version folder's
-installer, records the entries it added so that uninstall removes only those, and removes the entries that name an
-older version folder. Each harness's entries name that harness's own installer. Earlier versions also added exceptions
+Before publishing or activating a version, install prepares permissions for its installer while retaining the selected
+version's permissions. Ownership is recorded before each permission configuration replacement. After installing and
+checking the final permissions, install retires obsolete recorded entries and prepared rules. A failed attempt retains
+prepared permissions for recovery, including permissions for earlier failed targets. Codex uses separate
+`cat-installer-pending-<version>.rules` files during this handoff; Claude Code merges incoming entries into settings.
+Uninstall removes recorded additions whose contents still match and preserves user changes.
+
+Each harness's entries name that harness's own installer. Earlier versions also added exceptions
 for the runner launchers' absolute paths; an install now removes those entries and leaves an entry that you added
 yourself. `status --verbose` lists each recorded entry exactly as your harness configuration holds it, under the file
 and the setting that hold it; with `--json`, the result's `permissions` field holds the same entries.

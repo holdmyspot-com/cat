@@ -926,7 +926,10 @@ public final class CodexRunner
 				": " + copies);
 		}
 		new CodexIntegration().installPermissions(isolatedEnvironment, home,
-			copies.get(0).resolve(PluginDirectory.INSTALLER), replacer);
+			copies.get(0).resolve(PluginDirectory.INSTALLER), replacer, entries ->
+			{
+				// The run owns and removes this entire isolated configuration.
+			});
 	}
 
 	/**

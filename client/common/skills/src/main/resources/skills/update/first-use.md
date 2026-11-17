@@ -90,6 +90,9 @@
 		was removed by other means, first run `<launcher> status --harness <h> --json`. When its successful installed
 		status supplies `update_command`, execute that complete shell text character for character, without adding
 		another output wrapper, arguments or commands. It installs the latest approved release or repairs the active one.
+		When installed status omits `update_command`, report its `message` and give the user the entry command from
+		step 2 to run in their terminal, then ask them to restart the harness after repair. Do not construct an update
+		command from a launcher path in that case.
 		When status reports `installed` as false, run `<launcher> install --harness <h> --json` through the harness's
 		normal authorization. A named-release install uses the named-release command above and its normal authorization;
 		do not modify `update_command` to select a release. Handle a failed status as step 4 directs.
@@ -119,8 +122,8 @@
 		message to the user as it is, and do not retry the install or go back in any other way.
 	- `download_failed`: report its `message`.
 	- `failed`: an unexpected error stopped the operation after it may have changed the installation. Report its
-		`message`, and that running the same command again continues the operation; run it again only when the user
-		asks.
+		`message` and the selected `version`, when present. Retry only when the user asks, starting at step 1 so that a
+		removed launcher uses the entry-command recovery in step 2.
 	- `locked`: report that another operation on CAT is running, and that the user can ask again once it finishes.
 	- `usage`: report its `message` as a defect in CAT.
 
@@ -132,8 +135,9 @@
 
 When the launcher exits with status 77, or its `result` is `not_writable`, or the harness refuses to run the launcher
 command, the user's sandbox or permission settings block the operation, at a path that the result's `paths` may name.
-Say that running the entry command from step 2 again restores the permission entries that let you run it. Then end your turn with a reply that names that path, if the result names one, shows the command you ran in a code
-block character for character as printed, never as a summary or a description of it, and asks the user to run it in a
-terminal outside the sandbox or, in Claude Code only, to type it at the prompt prefixed with `! `. Do no other work in
+Say that running the entry command from step 2 again repairs the installation and its permission entries. Then end
+your turn with a reply that names that path, if the result names one, shows that entry command in its own code block,
+and asks the user to run it in a terminal outside the sandbox or, in Claude Code only, to type it at the prompt prefixed
+with `! `. Ask them to restart the harness after repair. Do no other work in
 that turn, including work the user asked for earlier. Do not run it again, with other permissions, or in any other way
 to get around the sandbox.

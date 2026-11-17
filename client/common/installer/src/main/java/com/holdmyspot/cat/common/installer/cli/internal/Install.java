@@ -201,6 +201,8 @@ public final class Install
 		}
 
 		PluginInstall steps = new PluginInstall(integration, cliFactory.create(command, home), replacer, waiting);
+		steps.preparePermissions(command.environment(), home,
+			PluginInstall.installer(installation.versionFolder(version), platform.isWindows()));
 		Path versionFolder = steps.deliver(home, plugin, version);
 		activation.installCompanions(home, versionFolder);
 		migration.apply(versionFolder, migrationFile.getParent(), migrations, platform.isWindows());

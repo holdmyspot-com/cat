@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.EntryEffect;
 import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
+import com.holdmyspot.cat.common.installer.activation.PermissionRecorder;
 import com.holdmyspot.cat.common.installation.HarnessInstallation;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.engine.HarnessSession;
@@ -64,7 +65,7 @@ public final class RecordingIntegration implements HarnessIntegration
 	/**
 	 * The calls that throw an {@code IOException}, as a harness program that fails would.
 	 */
-	private final Set<String> failing = new HashSet<>();
+	private final Map<String, IOException> failing = new HashMap<>();
 	/**
 	 * The calls that throw an unchecked exception, standing in for a process that stops mid-operation.
 	 */
@@ -165,7 +166,19 @@ public final class RecordingIntegration implements HarnessIntegration
 	 */
 	public RecordingIntegration fail(String call)
 	{
-		failing.add(call);
+		return fail(call, new IOException(harness + " refused " + call));
+	}
+
+	/**
+	 * Makes a call report a specific configuration failure until {@link #succeed(String)} is called.
+	 *
+	 * @param call the call's name
+	 * @param failure the exception to throw
+	 * @return this integration
+	 */
+	public RecordingIntegration fail(String call, IOException failure)
+	{
+		failing.put(call, failure);
 		return this;
 	}
 
@@ -606,11 +619,64 @@ public final class RecordingIntegration implements HarnessIntegration
 
 	@Override
 	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
-		FileReplacer replacer)
+		FileReplacer replacer, PermissionRecorder recorder)
 		throws IOException
 	{
 		record("installPermissions", installer);
+		recordAdditions(home, recorder);
 		return add(home, maintained);
+	}
+
+	/**
+	 * Adds incoming permissions without retiring those of the selected version; failure represents a configuration
+	 * write rejected before registration.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param home        the harness home
+	 * @param installer   the incoming launcher
+	 * @param replacer    the configuration replacer
+	 * @param recorder    records ownership before configuration replacement
+	 * @return the added entries
+	 * @throws IOException if the test rejects preparation
+	 */
+	@Override
+	public Map<String, List<String>> preparePermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer, PermissionRecorder recorder) throws IOException
+	{
+		record("preparePermissions", installer);
+		recordAdditions(home, recorder);
+		return add(home, maintained);
+	}
+
+	/**
+	 * Records only absent entries, before the fake configuration changes.
+	 *
+	 * @param home     the harness home
+	 * @param recorder records additions
+	 * @throws IOException if recording fails
+	 */
+	private void recordAdditions(Path home, PermissionRecorder recorder) throws IOException
+	{
+		Map<String, List<String>> missing = new LinkedHashMap<>();
+		for (Map.Entry<String, List<String>> entry : maintained.entrySet())
+		{
+			List<String> present = configuration(home).getOrDefault(entry.getKey(), List.of());
+			missing.put(entry.getKey(), entry.getValue().stream().filter(value -> !present.contains(value)).toList());
+		}
+		recorder.record(missing);
+	}
+
+	@Override
+	public boolean permissionsInstalled(Map<String, String> environment, Path home, Path installer)
+	{
+		return updatePermitted(environment, home, installer);
+	}
+
+	@Override
+	public boolean updatePermitted(Map<String, String> environment, Path home, Path installer)
+	{
+		return maintained.entrySet().stream().allMatch(entry -> configuration(home).
+			getOrDefault(entry.getKey(), List.of()).containsAll(entry.getValue()));
 	}
 
 	@Override
@@ -830,8 +896,9 @@ public final class RecordingIntegration implements HarnessIntegration
 		calls.add(call + " " + subject);
 		if (crashing.contains(call))
 			throw new IllegalStateException(harness + " stopped during " + call);
-		if (failing.contains(call))
-			throw new IOException(harness + " refused " + call);
+		IOException failure = failing.get(call);
+		if (failure != null)
+			throw failure;
 	}
 
 	/**

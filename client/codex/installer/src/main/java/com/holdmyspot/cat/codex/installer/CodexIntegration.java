@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.installer.activation.EntryGroup;
 import com.holdmyspot.cat.common.installer.activation.HarnessCli;
 import com.holdmyspot.cat.common.installer.activation.HarnessIntegration;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
+import com.holdmyspot.cat.common.installer.activation.PermissionRecorder;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
@@ -30,6 +31,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -80,6 +82,10 @@ public final class CodexIntegration implements HarnessIntegration
 	 * The permission key of the CAT-owned execution-policy file: its path relative to the home and an empty setting.
 	 */
 	private static final String RULES_KEY = "rules/cat-installer.rules#";
+	/**
+	 * Names exact incoming-version permissions retained until final configuration is recorded.
+	 */
+	private static final String PENDING_PREFIX = "cat-installer-pending-";
 	/**
 	 * The execution-policy file, in Codex's rules directory, that CAT wrote before its installer was called the
 	 * installer.
@@ -242,6 +248,7 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void validateRules(Path home) throws IOException
 	{
+		pendingRules(home);
 		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
 		Path directory = file.getParent();
 		if (Files.isSymbolicLink(home) || Files.isSymbolicLink(directory))
@@ -396,24 +403,143 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	@Override
 	public Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
-		FileReplacer replacer)
+		FileReplacer replacer, PermissionRecorder recorder)
 		throws IOException
 	{
 		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
 		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
 		requireThat(replacer, "replacer").isNotNull();
+		requireThat(recorder, "recorder").isNotNull();
 		String content = InstallerRules.render(environment, installer, isWindows());
 		validateConfiguration(home);
 		deleteUpdaterLeftover(home);
 		Map<String, List<String>> added = new LinkedHashMap<>();
 		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
+		// Exact generated files belong to CAT, including files left behind before ownership recording was durable.
+		recorder.record(Map.of(RULES_KEY, List.of(content)));
 		if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS) || !read(file).equals(content))
 		{
-			write(file, content, replacer);
 			added.put(RULES_KEY, List.of(content));
+			write(file, content, replacer);
 		}
-		added.putAll(trustHooks(home, installer, replacer));
+		added.putAll(trustHooks(home, installer, replacer, recorder));
 		return Map.copyOf(added);
+	}
+
+	@Override
+	public Map<String, List<String>> preparePermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer, PermissionRecorder recorder) throws IOException
+	{
+		requireThat(home, "home").isAbsolute().isEqualTo(home.normalize());
+		requireThat(installer, "installer").isAbsolute().isEqualTo(installer.normalize());
+		requireThat(replacer, "replacer").isNotNull();
+		requireThat(recorder, "recorder").isNotNull();
+		validateConfiguration(home);
+		PluginVersion version = PluginVersion.parse(installer.getParent().getParent().getFileName().toString());
+		Path expected = launcher(home, version);
+		requireThat(installer, "installer").isEqualTo(expected, "expected");
+		Path file = new CodexInstallation(home).rules().resolve(PENDING_PREFIX + version + ".rules");
+		String content = InstallerRules.render(environment, installer, isWindows());
+		if (Files.exists(file, LinkOption.NOFOLLOW_LINKS) &&
+			(!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) ||
+				!InstallerRules.isForLauncher(read(file), installer, isWindows())))
+		{
+			throw new IOException("CAT did not write " + file + "; move it out of the rules directory and rerun install.");
+		}
+		Map<String, List<String>> prepared = new LinkedHashMap<>(pendingRules(home));
+		prepared.put("rules/" + file.getFileName() + "#", List.of(content));
+		recorder.record(Map.copyOf(prepared));
+		if (!Files.exists(file, LinkOption.NOFOLLOW_LINKS) || !read(file).equals(content))
+			write(file, content, replacer);
+		return Map.copyOf(prepared);
+	}
+
+	@Override
+	public boolean permissionsInstalled(Map<String, String> environment, Path home, Path installer) throws IOException
+	{
+		validateConfiguration(home);
+		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
+		boolean finalRules = Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) &&
+			read(file).equals(InstallerRules.render(environment, installer, isWindows()));
+		if (!finalRules)
+			return false;
+		Path configuration = new CodexInstallation(home).configuration();
+		ObjectNode document = MAPPER.createObjectNode();
+		if (Files.exists(configuration, LinkOption.NOFOLLOW_LINKS))
+			document = TomlText.parse(read(configuration), configuration);
+		for (Map.Entry<String, String> hook : hookHashes(installer).entrySet())
+		{
+			if (!HookTrust.trusted(document, hook.getKey()).equals(Optional.of(hook.getValue())))
+				return false;
+		}
+		return true;
+	}
+
+	@Override
+	public boolean updatePermitted(Map<String, String> environment, Path home, Path installer) throws IOException
+	{
+		validateConfiguration(home);
+		String expected = InstallerRules.render(environment, installer, isWindows());
+		Path main = new CodexInstallation(home).rules().resolve(RULES_FILE);
+		boolean mainMatches = Files.isRegularFile(main, LinkOption.NOFOLLOW_LINKS) && read(main).equals(expected);
+		return mainMatches || pendingRules(home).values().stream().anyMatch(contents -> contents.equals(List.of(expected)));
+	}
+
+	/**
+	 * Reads only CAT pending files whose complete rendering names the version identified by their filename.
+	 *
+	 * @param home the Codex home
+	 * @return owned pending contents, keyed for permission recording
+	 * @throws IOException if a pending file is modified, linked, malformed or unreadable
+	 */
+	private static Map<String, List<String>> pendingRules(Path home) throws IOException
+	{
+		Path directory = new CodexInstallation(home).rules();
+		if (Files.isSymbolicLink(home) || Files.isSymbolicLink(directory))
+			throw new IOException("The Codex rules directory must not be a symbolic link: " + directory);
+		if (Files.notExists(directory, LinkOption.NOFOLLOW_LINKS))
+			return Map.of();
+		Map<String, List<String>> result = new TreeMap<>();
+		try (Stream<Path> files = Files.list(directory))
+		{
+			for (Path file : files.filter(path -> path.getFileName().toString().toLowerCase(Locale.ROOT).
+				startsWith(PENDING_PREFIX)).toList())
+			{
+				String name = file.getFileName().toString();
+				try
+				{
+					if (!name.endsWith(".rules") || !Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+						throw new IllegalArgumentException("Not a regular pending rules file");
+					PluginVersion version = PluginVersion.parse(name.substring(PENDING_PREFIX.length(), name.length() -
+						".rules".length()));
+					String content = read(file);
+					if (!InstallerRules.isForLauncher(content, launcher(home, version), isWindows()))
+						throw new IllegalArgumentException("Pending rules do not match their version");
+					result.put("rules/" + name + "#", List.of(content));
+				}
+				catch (IllegalArgumentException e)
+				{
+					throw new IOException("CAT did not write " + file + "; move it out of the rules directory and rerun " +
+						"this command.", e);
+				}
+			}
+		}
+		return Map.copyOf(result);
+	}
+
+	/**
+	 * Locates the installer for one version under the protected Codex home.
+	 *
+	 * @param home    the Codex home
+	 * @param version the plugin version
+	 * @return the absolute launcher path
+	 */
+	private static Path launcher(Path home, PluginVersion version)
+	{
+		Path folder = new CodexInstallation(home).versionFolder(version);
+		if (isWindows())
+			return folder.resolve("bin/installer.ps1");
+		return folder.resolve("bin/installer");
 	}
 
 	/**
@@ -422,11 +548,13 @@ public final class CodexIntegration implements HarnessIntegration
 	 * @param home      the Codex home
 	 * @param installer the installer launcher in the plugin's version folder
 	 * @param replacer  replaces Codex's configuration
+	 * @param recorder  records ownership before configuration replacement
 	 * @return each recorded or replaced hash, by record key
 	 * @throws IOException if {@code config.toml} or a hooks file cannot be read, or {@code config.toml} cannot be
 	 *                     written or holds a hook's state in a form that CAT does not edit
 	 */
-	private static Map<String, List<String>> trustHooks(Path home, Path installer, FileReplacer replacer)
+	private static Map<String, List<String>> trustHooks(Path home, Path installer, FileReplacer replacer,
+		PermissionRecorder recorder)
 		throws IOException
 	{
 		Map<String, String> hashes = hookHashes(installer);
@@ -446,7 +574,10 @@ public final class CodexIntegration implements HarnessIntegration
 			edited = trusted;
 		}
 		if (!edited.equals(content))
+		{
+			recorder.record(Map.copyOf(added));
 			write(file, edited, replacer);
+		}
 		return added;
 	}
 
@@ -503,6 +634,15 @@ public final class CodexIntegration implements HarnessIntegration
 	public String latestUpdateCommand(Map<String, String> environment, Path installer)
 	{
 		return InstallerRules.latestUpdateCommand(environment, installer, isWindows());
+	}
+
+	@Override
+	public List<Path> updateLaunchers(Path installer)
+	{
+		String wrapper = "run-part";
+		if (isWindows())
+			wrapper = "run-part.cmd";
+		return List.of(installer, installer.resolveSibling(wrapper));
 	}
 
 	/**
@@ -1098,7 +1238,7 @@ public final class CodexIntegration implements HarnessIntegration
 			Path file = Path.of(key.substring(0, separator));
 			String setting = key.substring(separator + 1);
 			Optional<String> hook = HookTrust.hookOf(key);
-			if (key.equals(RULES_KEY))
+			if (key.equals(RULES_KEY) || key.toLowerCase(Locale.ROOT).startsWith("rules/" + PENDING_PREFIX))
 			{
 				for (String content : values)
 					groups.addAll(InstallerRules.describe(content, file, installer, isWindows()));
@@ -1300,6 +1440,15 @@ public final class CodexIntegration implements HarnessIntegration
 		requireThat(added, "added").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		removeRules(home, added.getOrDefault(RULES_KEY, List.of()));
+		for (Map.Entry<String, List<String>> entry : added.entrySet())
+		{
+			String key = entry.getKey();
+			if (!key.toLowerCase(Locale.ROOT).startsWith("rules/" + PENDING_PREFIX) || !key.endsWith(".rules#"))
+				continue;
+			Path relative = Path.of(key.substring(0, key.length() - 1));
+			if (relative.getNameCount() == 2)
+				removeRuleFile(home, relative.getFileName().toString(), entry.getValue());
+		}
 		removeSandboxEntries(home, added, replacer);
 	}
 
@@ -1312,7 +1461,20 @@ public final class CodexIntegration implements HarnessIntegration
 	 */
 	private static void removeRules(Path home, List<String> contents) throws IOException
 	{
-		Path file = new CodexInstallation(home).rules().resolve(RULES_FILE);
+		removeRuleFile(home, RULES_FILE, contents);
+	}
+
+	/**
+	 * Deletes one recorded CAT rule only while its bytes still match the recorded ownership.
+	 *
+	 * @param home     the Codex home
+	 * @param name     the rules filename
+	 * @param contents the recorded contents
+	 * @throws IOException if the file cannot be read or removed
+	 */
+	private static void removeRuleFile(Path home, String name, List<String> contents) throws IOException
+	{
+		Path file = new CodexInstallation(home).rules().resolve(name);
 		if (contents.isEmpty() || Files.isSymbolicLink(home) || Files.isSymbolicLink(file.getParent()) ||
 			!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
 		{

@@ -279,6 +279,7 @@ public final class Uninstaller
 					retained.addAll(session.integration().describeRetained(home, recorded));
 				}
 				Files.deleteIfExists(state.permissions());
+				Files.deleteIfExists(state.pendingPermissions());
 			}
 			case UNREGISTER -> session.integration().unregister(home, session.cli(), !deleteData);
 			case PLUGIN -> deletePlugin(home);

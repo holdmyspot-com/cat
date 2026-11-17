@@ -383,6 +383,26 @@ public final class InstallerRules
 	}
 
 	/**
+	 * Checks the complete current rendering for a particular launcher, including its recorded shell bindings.
+	 *
+	 * @param content  the candidate rules
+	 * @param launcher the expected launcher
+	 * @param windows  true for Windows rules
+	 * @return true if the rules name only the expected launcher and its maintained siblings
+	 */
+	public static boolean isForLauncher(String content, Path launcher, boolean windows)
+	{
+		try
+		{
+			return content.equals(render(readBindings(content), launcher, windows));
+		}
+		catch (IllegalArgumentException _)
+		{
+			return false;
+		}
+	}
+
+	/**
 	 * Recognizes current ownership only by regenerating and comparing the complete permission file.
 	 *
 	 * @param content the candidate file content

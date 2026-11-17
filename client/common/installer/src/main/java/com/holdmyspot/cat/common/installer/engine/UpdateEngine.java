@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.installer.engine;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.Platform;
@@ -33,6 +34,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
 
@@ -41,8 +43,9 @@ import java.util.function.BooleanSupplier;
  * from the extracted plugin archive that the running installer belongs to. It runs no code of the release other than
  * the data migration scripts that the release registers and, to train the startup cache, the plugin's Java runtime.
  * Where the harness has a CAT version, the install updates it under the release and downgrade rules. The installer
- * writes the plugin into CAT's marketplace in the harness home and asks the harness to install it into the version's
- * own version folder; it then trains the plugin's startup cache there and rewrites the permission entries to name the
+ * prepares incoming permissions before writing the plugin into CAT's marketplace in the harness home and asking the
+ * harness to install it into the version's own version folder; it then trains the plugin's startup cache there and
+ * verifies final permissions before retiring obsolete entries. The final permission entries name the
  * installer in that folder. Those entries are the ones that the running installer's code writes; where the install
  * activated another version, the installer then runs that version's installer, which rewrites them with its own code.
  * Every install that succeeds, including one that finds the harness up to date, then deletes the version folders
@@ -219,17 +222,45 @@ public final class UpdateEngine
 	/**
 	 * Reports the active version without writes.
 	 *
+	 * @param integration inspects actual permission configuration for this harness
 	 * @return the status outcome; its version is empty when the harness has no plugin
 	 * @throws IOException if provider state is unreadable
 	 */
-	public UpdateResult status() throws IOException
+	public UpdateResult status(HarnessIntegration integration) throws IOException
 	{
+		requireThat(integration, "integration").isNotNull();
 		Path home = policy.harnesses().get(activation.harness());
 		if (home == null)
 			return result(Result.STATUS, null, null, "Run the explicit CAT install command for this harness.", List.of());
 		InstalledState installed = activation.installed(home);
+		boolean consistent = installed.consistent() && Files.notExists(state.pendingPermissions(),
+			NOFOLLOW_LINKS);
+		if (consistent && installed.version().isPresent())
+		{
+			try
+			{
+				PluginVersion plugin = PluginVersion.parse(installed.version().get());
+				Path installer = PluginInstall.installer(integration.installation(home).versionFolder(plugin), windows);
+				Map<String, String> environment = policy.command(integration.harness()).orElseThrow().environment();
+				Map<String, List<String>> expected = integration.permissions(environment, installer);
+				Map<String, List<String>> recorded = PermissionRecord.read(state.permissions());
+				boolean ownedFilesRecorded = expected.entrySet().stream().filter(entry -> entry.getKey().endsWith("#")).
+					allMatch(entry -> recorded.getOrDefault(entry.getKey(), List.of()).containsAll(entry.getValue()));
+				consistent = integration.permissionsInstalled(environment, home, installer) && ownedFilesRecorded &&
+					PermissionRecord.obsolete(state.permissions(), expected).entrySet().stream().
+						filter(entry -> entry.getKey().endsWith("#")).findAny().isEmpty();
+			}
+			catch (IllegalArgumentException _)
+			{
+				consistent = false;
+			}
+		}
+		String message = "The installation state was read.";
+		if (!consistent)
+			message = "CAT's installation is incomplete or its permissions do not match the selected version; " +
+				"run install to repair it, then restart the harness to load changed permissions.";
 		return new UpdateResult(Result.STATUS, activation.harness(), installed.version(), Optional.empty(),
-			"The installation state was read.", List.of(), installed.consistent(), keyIds());
+			message, List.of(), consistent, keyIds());
 	}
 
 	/**
@@ -509,6 +540,8 @@ public final class UpdateEngine
 		PluginInstall.InstalledEntries entries;
 		try
 		{
+			steps.preparePermissions(policy.command(integration.harness()).orElseThrow().environment(), home,
+				PluginInstall.installer(versionFolder, windows));
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);
 			entries = steps.installEntries(policy.command(integration.harness()).orElseThrow().environment(), home,
@@ -533,18 +566,32 @@ public final class UpdateEngine
 	 * @param failure       why the install stopped
 	 * @param versionFolder the version folder of the plugin version
 	 * @return the outcome
+	 * @throws IOException if the selected version cannot be read after failure
 	 */
 	private UpdateResult stopped(PluginVersion plugin, Active active, IOException failure, Path versionFolder)
+		throws IOException
 	{
+		InstalledState selected = activation.installed(policy.harnesses().get(activation.harness()));
+		String detail;
+		List<Path> paths;
+		Result outcome;
 		if (failure instanceof AccessDeniedException denied)
 		{
-			return result(Result.NOT_WRITABLE, active.version(), null, "Installing CAT " + plugin + " stopped because " +
+			outcome = Result.NOT_WRITABLE;
+			detail = "Installing CAT " + plugin + " stopped because " +
 				denied.getFile() + " is not writable or is in use, perhaps by a running CAT session; run the same install " +
-				"command again after closing the session or fixing its permissions.",
-				List.of(Path.of(denied.getFile())));
+				"command again after closing the session or fixing its permissions.";
+			paths = List.of(Path.of(denied.getFile()));
 		}
-		return result(Result.FAILED, active.version(), null, "Installing CAT " + plugin + " stopped: " +
-			failure.getMessage() + "; run the same install command again to complete it.", List.of(versionFolder));
+		else
+		{
+			outcome = Result.FAILED;
+			detail = "Installing CAT " + plugin + " stopped: " + failure.getMessage() +
+				"; run install again to complete it. Restart the harness to load prepared permissions.";
+			paths = List.of(versionFolder);
+		}
+		return new UpdateResult(outcome, activation.harness(), selected.version(), Optional.ofNullable(active.version()),
+			detail, paths, false, keyIds());
 	}
 
 	/**
@@ -600,6 +647,8 @@ public final class UpdateEngine
 		PluginInstall.InstalledEntries entries;
 		try
 		{
+			steps.preparePermissions(policy.command(integration.harness()).orElseThrow().environment(), home,
+				PluginInstall.installer(versionFolder, windows));
 			steps.deliver(home, tree, plugin);
 			activation.installCompanions(home, versionFolder);
 			migration.apply(versionFolder, migrationFile.getParent(), migrations, windows);

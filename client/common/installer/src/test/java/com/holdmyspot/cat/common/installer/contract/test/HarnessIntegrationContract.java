@@ -288,14 +288,23 @@ public final class HarnessIntegrationContract
 		requireThat(maintained, "maintained").isNotEmpty();
 
 		Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-			home, installer, REPLACER);
+			home, installer, REPLACER,
+				entries ->
+				{
+				});
 		requireThat(added, "added").isEqualTo(maintained);
 		requireThat(integration.installPermissions(permissionEnvironment(home),
-			home, installer, REPLACER), "again").isEmpty();
+			home, installer, REPLACER,
+				entries ->
+				{
+				}), "again").isEmpty();
 		integration.removePermissions(home, added, REPLACER);
 		requireThat(integration.describeRetained(home, added), "retained").isEmpty();
 		requireThat(integration.installPermissions(permissionEnvironment(home),
-			home, installer, REPLACER), "restored").isEqualTo(added);
+			home, installer, REPLACER,
+				entries ->
+				{
+				}), "restored").isEqualTo(added);
 	}
 
 	/**
@@ -421,7 +430,10 @@ public final class HarnessIntegrationContract
 			Platform.current().isWindows());
 		Map<String, List<String>> recorded = new LinkedHashMap<>(integration.installPermissions(permissionEnvironment(home),
 			home, installer,
-			REPLACER));
+			REPLACER,
+				entries ->
+				{
+				}));
 		Map<String, List<String>> sandbox = integration.installSandboxEntries(home, integration.installation(otherHome),
 			otherHome.resolve("locks"), REPLACER);
 		sandbox = new LinkedHashMap<>(sandbox);

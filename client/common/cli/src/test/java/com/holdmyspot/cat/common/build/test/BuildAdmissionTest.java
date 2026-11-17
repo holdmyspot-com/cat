@@ -349,11 +349,12 @@ public final class BuildAdmissionTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); BatchFixture fixture = new BatchFixture(cleanup))
 		{
 			fixture.seedCalibration();
-			fixture.enqueue(LaunchPlan.completeWithExit(7), LaunchPlan.complete());
 			BuildAdmission.Job first = fixture.job("first-fails", fixture.project, fixture.gate, "source",
 				fixture.root.resolve("first-invocation"));
 			BuildAdmission.Job second = fixture.job("second-passes", fixture.project, fixture.gate, "source",
 				fixture.root.resolve("second-invocation"));
+			fixture.launchPlansByInvocation.put(first.invocation(), LaunchPlan.completeWithExit(7));
+			fixture.launchPlansByInvocation.put(second.invocation(), LaunchPlan.complete());
 			BuildAdmission.BatchResult result = fixture.admission.run(List.of(first, second), fixture.evidence);
 			requireThat(result.results().stream().map(JobResult::jobId).toList(), "inputOrder").
 				isEqualTo(List.of("first-fails", "second-passes"));
@@ -392,11 +393,13 @@ public final class BuildAdmissionTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); BatchFixture fixture = new BatchFixture(cleanup))
 		{
 			fixture.seedCalibration();
-			fixture.enqueue(LaunchPlan.blocked(), LaunchPlan.blocked(), LaunchPlan.failToStart());
 			List<BuildAdmission.Job> jobs = List.of(
 				fixture.job("first", fixture.project, fixture.gate, "source", fixture.root.resolve("first-invocation")),
 				fixture.job("second", fixture.project, fixture.gate, "source", fixture.root.resolve("second-invocation")),
 				fixture.job("third", fixture.project, fixture.gate, "source", fixture.root.resolve("third-invocation")));
+			fixture.launchPlansByInvocation.put(jobs.get(0).invocation(), LaunchPlan.blocked());
+			fixture.launchPlansByInvocation.put(jobs.get(1).invocation(), LaunchPlan.blocked());
+			fixture.launchPlansByInvocation.put(jobs.get(2).invocation(), LaunchPlan.failToStart());
 			ControllerCall call = fixture.start(() -> fixture.admission.run(jobs, fixture.evidence));
 			List<Long> processes = fixture.awaitProcesses(2);
 			try
@@ -623,6 +626,7 @@ public final class BuildAdmissionTest
 		private final Map<Long, BatchProcess> registeredProcessesByPid = new ConcurrentHashMap<>();
 		private final Map<Long, Path> processStatusPaths = new ConcurrentHashMap<>();
 		private final BlockingQueue<LaunchPlan> launchPlans = new LinkedBlockingQueue<>();
+		private final Map<Path, LaunchPlan> launchPlansByInvocation = new ConcurrentHashMap<>();
 		private final BlockingQueue<Long> launchedProcesses = new LinkedBlockingQueue<>();
 		private final Semaphore hostSamples = new Semaphore(0);
 		private final List<ControllerCall> controllers = new java.util.concurrent.CopyOnWriteArrayList<>();
@@ -719,13 +723,15 @@ public final class BuildAdmissionTest
 				Clock.systemUTC(), builder ->
 				{
 					launchAttempts.incrementAndGet();
-					LaunchPlan plan = launchPlans.poll();
+					List<String> command = builder.command();
+					Path mavenLog = Path.of(command.get(command.indexOf("--log-file") + 1));
+					LaunchPlan plan = launchPlansByInvocation.remove(mavenLog.getParent().getParent());
+					if (plan == null)
+						plan = launchPlans.poll();
 					if (plan == null)
 						plan = LaunchPlan.complete();
 					if (plan.startFailure())
 						throw new IOException("controlled worker start failure");
-					List<String> command = builder.command();
-					Path mavenLog = Path.of(command.get(command.indexOf("--log-file") + 1));
 					Files.createDirectories(mavenLog.getParent());
 					Files.createFile(mavenLog);
 					long pid = nextPid.incrementAndGet();

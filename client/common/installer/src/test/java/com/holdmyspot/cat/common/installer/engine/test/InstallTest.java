@@ -303,7 +303,7 @@ public final class InstallTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("install-old-layout-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
 			Files.writeString(RecordingIntegration.registeredVersion(fixture.home), "1.0");
-			requireThat(fixture.engine().status().consistent(), "consistentBefore").isFalse();
+			requireThat(fixture.engine().status(fixture.integration).consistent(), "consistentBefore").isFalse();
 
 			UpdateResult result = fixture.install("v1.1");
 
@@ -330,7 +330,7 @@ public final class InstallTest
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("status-absent-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
 
-			UpdateResult result = fixture.engine().status();
+			UpdateResult result = fixture.engine().status(fixture.integration);
 
 			requireThat(result.result(), "result").isEqualTo(Result.STATUS);
 			requireThat(result.version(), "version").isEmpty();

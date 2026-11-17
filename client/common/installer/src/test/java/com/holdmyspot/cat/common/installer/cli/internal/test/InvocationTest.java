@@ -100,6 +100,8 @@ public final class InvocationTest
 				"LOCALAPPDATA", fakeHome.toString(), "HARNESS_A_HOME", fakeHome.toString());
 
 			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Files.createDirectories(installation.image.resolve("bin"));
+			Files.writeString(installation.image.resolve("bin/installer"), "installed launcher");
 			Run run = installation.run(environment, List.of(new RegisteredProvider()),
 				new RecordingIntegration(), "status", "--harness", "harness-a");
 
@@ -136,6 +138,33 @@ public final class InvocationTest
 			requireThat(run.result().path("result").stringValue(), "result").isEqualTo("status");
 			requireThat(run.result().path("installed").booleanValue(), "installed").isFalse();
 			requireThat(run.result().path("version").stringValue(), "version").isEqualTo("");
+		}
+	}
+
+	/**
+	 * Status omits an update command when the only installed launcher is missing or has no matching permission.
+	 *
+	 * @throws IOException if the fixture or output cannot be read
+	 * @throws TrustException if the test policy is invalid
+	 */
+	@Test
+	public void statusRequiresExistingPermittedLauncher() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Installation installation = new Installation(cleanup.add(testDirectory("invocation-recovery-")));
+			installation.writePolicy(installation.trustPolicy());
+			Files.writeString(RecordingIntegration.registeredVersion(installation.home), "1.2");
+			Run missing = installation.run(Map.of(), List.of(new RegisteredProvider()), new RecordingIntegration(),
+				"status");
+			requireThat(missing.result().has("update_command"), "missingCommand").isFalse();
+			requireThat(missing.result().path("message").stringValue(), "message").contains("repair");
+			Files.createDirectories(installation.image.resolve("bin"));
+			Files.writeString(installation.image.resolve("bin/installer"), "installed launcher");
+			RecordingIntegration integration = new RecordingIntegration().
+				maintain(Map.of("settings.json", List.of("missing permission")));
+			Run denied = installation.run(Map.of(), List.of(new RegisteredProvider()), integration, "status");
+			requireThat(denied.result().has("update_command"), "deniedCommand").isFalse();
 		}
 	}
 

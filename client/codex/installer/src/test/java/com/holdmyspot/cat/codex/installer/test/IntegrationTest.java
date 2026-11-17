@@ -424,7 +424,10 @@ public final class IntegrationTest
 			String expected = rules(launcher);
 
 			Map<String, List<String>> added = provider().installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 			requireThat(added, "added").isEqualTo(Map.of("rules/cat-installer.rules#", List.of(expected)));
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").isEqualTo(expected).
 				doesNotContain("-runner");
@@ -437,8 +440,138 @@ public final class IntegrationTest
 				}
 			}
 			requireThat(provider().installPermissions(permissionEnvironment(home),
-				home, launcher, replacer()), "repeated").isEmpty();
+				home, launcher, replacer(),
+					entries ->
+					{
+					}), "repeated").isEmpty();
 			provider().validateConfiguration(home);
+		}
+	}
+
+	/**
+	 * Preparing another version keeps both recovery commands permitted until final installation retires the
+	 * prepared rules, and records ownership before writing.
+	 *
+	 * @throws IOException if configuration cannot be written
+	 */
+	@Test
+	public void preparedRulesPreserveRecoveryCommands() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "codex-prepared-rules-"));
+			HarnessIntegration integration = provider();
+			Path previous = installer(home, EARLIER_VERSION);
+			Path incoming = installer(home, VERSION);
+			Map<String, String> environment = permissionEnvironment(home);
+			integration.installPermissions(environment, home, previous, replacer(),
+				entries ->
+				{
+				});
+			Map<String, List<String>> recorded = new TreeMap<>();
+			Path pending = home.resolve("rules/cat-installer-pending-" + VERSION + ".rules");
+
+			integration.preparePermissions(environment, home, incoming, replacer(), entries ->
+			{
+				requireThat(Files.exists(pending), "writtenBeforeRecording").isFalse();
+				recorded.putAll(entries);
+			});
+
+			requireThat(integration.updatePermitted(environment, home, previous), "previousPermitted").isTrue();
+			requireThat(integration.updatePermitted(environment, home, incoming), "incomingPermitted").isTrue();
+			requireThat(integration.permissionsInstalled(environment, home, incoming), "complete").isFalse();
+			integration.installPermissions(environment, home, incoming, replacer(),
+				entries ->
+				{
+				});
+			integration.removePermissions(home, recorded, replacer());
+			requireThat(integration.permissionsInstalled(environment, home, incoming), "completed").isTrue();
+			requireThat(integration.updatePermitted(environment, home, previous), "previousRetired").isFalse();
+		}
+	}
+
+	/**
+	 * Same-version repair records an exact generated main file left without ownership by an earlier installer.
+	 *
+	 * @throws IOException if configuration cannot be written
+	 */
+	@Test
+	public void repairReconcilesUnrecordedMainRules() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "codex-rule-ownership-"));
+			HarnessIntegration integration = provider();
+			Path launcher = installer(home, VERSION);
+			Map<String, String> environment = permissionEnvironment(home);
+			integration.installPermissions(environment, home, launcher, replacer(), _ ->
+			{
+			});
+			Map<String, List<String>> recorded = new TreeMap<>();
+			Map<String, List<String>> added = integration.installPermissions(environment, home, launcher, replacer(),
+				recorded::putAll);
+			requireThat(added, "added").isEmpty();
+			requireThat(recorded.get("rules/cat-installer.rules#"), "recorded").
+				isEqualTo(List.of(Files.readString(home.resolve("rules/cat-installer.rules"))));
+		}
+	}
+
+	/**
+	 * A rejected ownership record prevents preparation from changing permission files.
+	 *
+	 * @throws IOException if configuration cannot be written or the record is rejected
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "record rejected")
+	public void rejectedRecordPreventsPreparation() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "codex-rejected-record-"));
+			Path pending = home.resolve("rules/cat-installer-pending-" + VERSION + ".rules");
+			try
+			{
+				provider().preparePermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+					entries ->
+					{
+						throw new IOException("record rejected");
+					});
+			}
+			finally
+			{
+				requireThat(Files.exists(pending), "pendingExists").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Preparation for another target preserves earlier recovery permissions; uninstall preserves an edited pending
+	 * file while deleting unchanged owned files.
+	 *
+	 * @throws IOException if configuration cannot be written
+	 */
+	@Test
+	public void preparationRetryPreservesPriorTarget() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "codex-prepared-retry-"));
+			HarnessIntegration integration = provider();
+			Map<String, String> environment = permissionEnvironment(home);
+			Map<String, List<String>> recorded = new TreeMap<>();
+			integration.preparePermissions(environment, home, installer(home, VERSION), replacer(), recorded::putAll);
+			Path alias = home.resolve("rules/CAT-INSTALLER-PENDING-" + VERSION + ".rules");
+			Files.move(home.resolve("rules/cat-installer-pending-" + VERSION + ".rules"), alias);
+			integration.preparePermissions(environment, home, installer(home, EARLIER_VERSION), replacer(),
+				recorded::putAll);
+			requireThat(integration.updatePermitted(environment, home, installer(home, VERSION)), "firstTarget").isTrue();
+			requireThat(integration.updatePermitted(environment, home, installer(home, EARLIER_VERSION)), "nextTarget").
+				isTrue();
+
+			Path edited = home.resolve("rules/cat-installer-pending-" + EARLIER_VERSION + ".rules");
+			Files.writeString(edited, Files.readString(edited) + "# user edit\n");
+			integration.removePermissions(home, recorded, replacer());
+			requireThat(edited, "edited").isRegularFile();
+			requireThat(Files.exists(alias), "ownedAliasExists").isFalse();
 		}
 	}
 
@@ -455,7 +588,10 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			List<String> launcher = launcherCommand(installer(home, VERSION));
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+				entries ->
+				{
+				});
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 
 			requireThat(decisions(content, command(launcher, "install", "--harness", "claude")), "otherHarness").
@@ -484,7 +620,10 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			Path launcher = installer(home, VERSION);
-			provider().installPermissions(permissionEnvironment(home), home, launcher, replacer());
+			provider().installPermissions(permissionEnvironment(home), home, launcher, replacer(),
+				entries ->
+				{
+				});
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 			String script = """
 				PATH=/usr/bin:/bin '%s' <<'EOF'
@@ -597,7 +736,10 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			List<String> launcher = launcherCommand(installer(home, VERSION));
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+				entries ->
+				{
+				});
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 			String other = home.resolveSibling("other-home").toString();
 
@@ -631,7 +773,10 @@ public final class IntegrationTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
 			List<String> launcher = launcherCommand(installer(home, VERSION));
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+				entries ->
+				{
+				});
 			String content = Files.readString(home.resolve("rules/cat-installer.rules"));
 
 			for (List<String> operation : List.of(List.of("status"), List.of("status", "--harness", "codex")))
@@ -673,7 +818,10 @@ public final class IntegrationTest
 			Path leftover = home.resolve("rules/cat-updater.rules");
 			write(leftover, updaterRules(home.resolveSibling(".local/share/cat-updater/codex/bin/cat-updater")));
 
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+				entries ->
+				{
+				});
 			requireThat(Files.exists(leftover), "leftoverExists").isFalse();
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(installer(home, VERSION)));
@@ -697,7 +845,10 @@ public final class IntegrationTest
 			write(file, content);
 
 			provider().validateConfiguration(home);
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+				entries ->
+				{
+				});
 			requireThat(Files.readString(file), "content").isEqualTo(content);
 		}
 	}
@@ -729,11 +880,17 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, EARLIER_VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, EARLIER_VERSION), replacer(),
+				entries ->
+				{
+				});
 			Path launcher = installer(home, VERSION);
 			TransientRefusal refusal = new TransientRefusal(home.resolve("rules/cat-installer.rules"));
 
-			provider().installPermissions(permissionEnvironment(home), home, launcher, refusal.replacer());
+			provider().installPermissions(permissionEnvironment(home), home, launcher, refusal.replacer(),
+				entries ->
+				{
+				});
 
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -753,10 +910,16 @@ public final class IntegrationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			provider().installPermissions(permissionEnvironment(home), home, installer(home, EARLIER_VERSION), replacer());
+			provider().installPermissions(permissionEnvironment(home), home, installer(home, EARLIER_VERSION), replacer(),
+				entries ->
+				{
+				});
 			Path launcher = installer(home, VERSION);
 
-			requireThat(provider().installPermissions(permissionEnvironment(home), home, launcher, replacer()), "added").
+			requireThat(provider().installPermissions(permissionEnvironment(home), home, launcher, replacer(),
+				entries ->
+				{
+				}), "added").
 				isEqualTo(Map.of("rules/cat-installer.rules#", List.of(rules(launcher))));
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -781,7 +944,10 @@ public final class IntegrationTest
 			write(home.resolve("rules/cat-installer.rules"), earlierRules(launcher));
 			provider().validateConfiguration(home);
 
-			provider().installPermissions(permissionEnvironment(home), home, launcher, replacer());
+			provider().installPermissions(permissionEnvironment(home), home, launcher, replacer(),
+				entries ->
+				{
+				});
 
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -806,7 +972,10 @@ public final class IntegrationTest
 			write(home.resolve("rules/cat-installer.rules"), runnerRules(launcher));
 			provider().validateConfiguration(home);
 
-			provider().installPermissions(permissionEnvironment(home), home, launcher, replacer());
+			provider().installPermissions(permissionEnvironment(home), home, launcher, replacer(),
+				entries ->
+				{
+				});
 
 			requireThat(Files.readString(home.resolve("rules/cat-installer.rules")), "content").
 				isEqualTo(rules(launcher));
@@ -837,7 +1006,10 @@ public final class IntegrationTest
 					if (attempt == 0)
 						provider().validateConfiguration(home);
 					else
-						provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer());
+						provider().installPermissions(permissionEnvironment(home), home, installer(home, VERSION), replacer(),
+							entries ->
+							{
+							});
 					throw new AssertionError("Accepted a rules file that CAT did not write");
 				}
 				catch (IOException e)
@@ -912,7 +1084,10 @@ public final class IntegrationTest
 			Path file = home.resolve("rules/cat-installer.rules");
 			Path userRules = home.resolve("rules/default.rules");
 			Map<String, List<String>> added = provider().installPermissions(permissionEnvironment(home),
-				home, installer(home, VERSION), replacer());
+				home, installer(home, VERSION), replacer(),
+					entries ->
+					{
+					});
 			Files.writeString(userRules, "prefix_rule(pattern=[\"git\", \"status\"], decision=\"allow\")\n");
 			Files.writeString(file, Files.readString(file) + "# edited\n");
 
@@ -948,7 +1123,10 @@ public final class IntegrationTest
 				toString()));
 			write(userRules, content);
 			Map<String, List<String>> added = provider().installPermissions(permissionEnvironment(home),
-				home, installer(home, VERSION), replacer());
+				home, installer(home, VERSION), replacer(),
+					entries ->
+					{
+					});
 
 			provider().removePermissions(home, added, replacer());
 			List<String> retained = provider().describeRetained(home, added);

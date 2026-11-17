@@ -1154,7 +1154,13 @@ public final class ClaudeRunner
 		copies.addAll(InstalledPlugins.of(configuration, "cat@cat", json));
 		Integration integration = new Integration();
 		for (Path copy : copies)
-			integration.installPermissions(environment, configuration, copy.resolve(PluginDirectory.INSTALLER), replacer);
+		{
+			integration.installPermissions(environment, configuration, copy.resolve(PluginDirectory.INSTALLER), replacer,
+				entries ->
+				{
+					// The run owns and removes this entire isolated configuration.
+				});
+		}
 	}
 
 	/**

@@ -150,7 +150,9 @@ public final class MigrationTest
 
 			requireThat(failed.result(), "failed").withContext(failed.message(), "message").isEqualTo(Result.FAILED);
 			requireThat(failed.message(), "failedMessage").contains("merge.sh").contains("exit status 3").
-				contains("disk full").contains("run the same install command again");
+				contains("disk full").contains("run install again").contains("Restart the harness");
+			requireThat(failed.version(), "selectedVersion").isEqualTo(Optional.of(Releases.pluginVersion("1.3")));
+			requireThat(failed.consistent(), "consistent").isFalse();
 			requireThat(Files.readString(fixture.migrationVersion()), "failedDataVersion").isEqualTo("1.1\n");
 
 			fixture.migrations.heal("merge.sh");

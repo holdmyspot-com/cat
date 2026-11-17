@@ -164,6 +164,7 @@ public interface HarnessIntegration
 	 * @param environment the harness environment recorded in the trust policy
 	 * @param home        the absolute, normalized harness home from the trust policy
 	 * @param installer   the absolute path of the installer launcher in the active version folder
+	 * @param recorder    records calculated additions before each configuration replacement
 	 * @param replacer    replaces each configuration file that this call writes, retrying while Windows refuses the
 	 *                    replacement
 	 * @return the entries that this call added, keyed by {@code <path relative to home>#<setting>}, with an empty
@@ -172,8 +173,47 @@ public interface HarnessIntegration
 	 * @throws IOException          if the configuration cannot be changed
 	 */
 	Map<String, List<String>> installPermissions(Map<String, String> environment, Path home, Path installer,
-		FileReplacer replacer)
+		FileReplacer replacer, PermissionRecorder recorder)
 		throws IOException;
+
+	/**
+	 * Prepares exact permissions for an incoming launcher before publishing its plugin. Keeps existing permissions
+	 * usable until final installation succeeds, and records additions before each configuration replacement. Does not
+	 * read files of the incoming plugin, whose version folder may not exist yet. Repeating preparation is harmless.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param home        the protected harness home
+	 * @param installer   the incoming absolute installer path
+	 * @param replacer    replaces configuration files
+	 * @param recorder    records additions before replacement
+	 * @return the prepared additions
+	 * @throws IOException if preparation or recording fails
+	 */
+	Map<String, List<String>> preparePermissions(Map<String, String> environment, Path home, Path installer,
+		FileReplacer replacer, PermissionRecorder recorder) throws IOException;
+
+	/**
+	 * Checks actual configuration against the final permissions of an installed launcher, without writes.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param home        the protected harness home
+	 * @param installer   the installed launcher
+	 * @return true if final permissions match, even while prepared permissions await retirement
+	 * @throws IOException if configuration cannot be read
+	 */
+	boolean permissionsInstalled(Map<String, String> environment, Path home, Path installer) throws IOException;
+
+	/**
+	 * Checks whether actual configuration grants the exact routine update command for a launcher. Prepared
+	 * permissions qualify. This checks configuration on disk, not whether a running harness has reloaded it.
+	 *
+	 * @param environment the recorded harness environment
+	 * @param home        the protected harness home
+	 * @param installer   the launcher to check
+	 * @return true if the command has matching configured permissions
+	 * @throws IOException if configuration cannot be read
+	 */
+	boolean updatePermitted(Map<String, String> environment, Path home, Path installer) throws IOException;
 
 	/**
 	 * Returns every entry that {@link #installPermissions} maintains for an installer launcher, whether or not the
@@ -201,6 +241,18 @@ public interface HarnessIntegration
 	 * @throws IOException              if the command cannot be represented for the harness
 	 */
 	String latestUpdateCommand(Map<String, String> environment, Path installer) throws IOException;
+
+	/**
+	 * Returns the installed launchers that must exist to execute {@link #latestUpdateCommand}.
+	 *
+	 * @param installer the installed installer launcher
+	 * @return the installer and any output wrapper that its update command invokes
+	 * @throws NullPointerException if {@code installer} is null
+	 */
+	default List<Path> updateLaunchers(Path installer)
+	{
+		return List.of(installer);
+	}
 
 	/**
 	 * Returns the question that install must put to the user before it changes a setting that is not CAT's alone,

@@ -16,7 +16,7 @@ import java.util.Optional;
  * @param previousVersion the recorded previous version, or empty when absent
  * @param message         one sentence describing the outcome or recovery action
  * @param paths           affected paths, including every recovery path on an activation failure
- * @param consistent      indicates whether the provider's installation copies agree
+ * @param consistent      indicates whether the installation state is consistent
  * @param keyIds          the policy's trusted key identifiers
  * @param aotCache        indicates whether the operation wrote the startup cache of every plugin directory that it
  *                        activated, or empty when the operation activated no plugin directory
@@ -36,7 +36,7 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 	 * @param previousVersion previous version, or empty
 	 * @param message         user-facing explanation
 	 * @param paths           affected paths
-	 * @param consistent      indicates whether installation copies agree
+	 * @param consistent      indicates whether the installation state is consistent
 	 * @param keyIds          trusted key identifiers
 	 * @throws NullPointerException if any argument or list element is null
 	 * @throws IllegalArgumentException if {@code harness} or {@code message} are blank
@@ -57,7 +57,7 @@ public record UpdateResult(Result result, String harness, Optional<String> versi
 	 * @param previousVersion previous version, or empty
 	 * @param message         user-facing explanation
 	 * @param paths           affected paths
-	 * @param consistent      indicates whether installation copies agree
+	 * @param consistent      indicates whether the installation state is consistent
 	 * @param keyIds          trusted key identifiers
 	 * @param aotCache        indicates whether every activated plugin directory got its startup cache, or empty
 	 * @param exitDeletions   the folders to delete once the installer no longer needs its own files

@@ -319,15 +319,21 @@ public final class Invocation
 			{
 				UpdateEngine engine = new UpdateEngine(locations.data(), managed.policy(), source, managed.activation(),
 					platform.id(), clock, waiting);
-				UpdateResult status = engine.status();
+				HarnessIntegration integration = integrations.stream().
+					filter(candidate -> candidate.harness().equals(own)).findFirst().orElseThrow();
+				UpdateResult status = engine.status(integration);
 				ObjectNode object = encode(status);
 				if (status.result() == Result.STATUS && status.version().isPresent())
 				{
-					HarnessIntegration integration = integrations.stream().
-						filter(candidate -> candidate.harness().equals(own)).findFirst().orElseThrow();
-					object.put("update_command", integration.latestUpdateCommand(
-						managed.policy().command(own).orElseThrow().environment(),
-						PluginInstall.installer(locations.image(), platform.isWindows())));
+					Optional<String> update = findUpdateCommand(managed, locations, status, integration);
+					if (update.isPresent())
+						object.put("update_command", update.get());
+					else
+					{
+						object.put("message", status.message() + " No existing installed launcher has matching configured " +
+							"update permissions. Run the CAT installation entry command in your own terminal to repair " +
+							"the installation, then restart the harness.");
+					}
 				}
 				if (arguments.verbose() && status.version().isPresent())
 				{
@@ -344,6 +350,44 @@ public final class Invocation
 		UninstallResult result = new Uninstaller(locations.data(), managed.policy(), managed.activation(), session,
 			locations.image(), clock, waiting).uninstall(arguments.deleteData());
 		return printUninstall(result, arguments, locations);
+	}
+
+	/**
+	 * Selects a configured update command for the selected version, then the running installed image. Missing
+	 * launchers and commands without matching permissions do not qualify.
+	 *
+	 * @param managed     the protected installation
+	 * @param locations   the running installer's locations
+	 * @param status      the selected version
+	 * @param integration checks actual permissions
+	 * @return the command, or empty when repair requires an external installation entry command
+	 * @throws IOException if permission configuration cannot be read
+	 */
+	private Optional<String> findUpdateCommand(Managed managed, Locations locations, UpdateResult status,
+		HarnessIntegration integration) throws IOException
+	{
+		List<Path> candidates = new ArrayList<>();
+		try
+		{
+			PluginVersion selected = PluginVersion.parse(status.version().orElseThrow());
+			candidates.add(integration.installation(managed.home()).versionFolder(selected));
+		}
+		catch (IllegalArgumentException _)
+		{
+			// A version without a build cannot identify an installed launcher.
+		}
+		candidates.add(locations.image());
+		Map<String, String> recorded = managed.policy().command(integration.harness()).orElseThrow().environment();
+		for (Path candidate : candidates)
+		{
+			Path installer = PluginInstall.installer(candidate, platform.isWindows());
+			if (integration.updateLaunchers(installer).stream().allMatch(path -> Files.isRegularFile(path, NOFOLLOW_LINKS)) &&
+				integration.updatePermitted(recorded, managed.home(), installer))
+			{
+				return Optional.of(integration.latestUpdateCommand(recorded, installer));
+			}
+		}
+		return Optional.empty();
 	}
 
 	/**

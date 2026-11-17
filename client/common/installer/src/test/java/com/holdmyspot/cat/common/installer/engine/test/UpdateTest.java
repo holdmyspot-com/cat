@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
@@ -20,6 +21,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.TreeMap;
 import java.util.stream.Stream;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 /**
@@ -156,6 +158,105 @@ public final class UpdateTest
 			requireThat(installed.version(), "installed").isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
 			requireThat(installed.consistent(), "consistent").isTrue();
 			requireThat(Files.readString(fixture.permissionRecord()), "record").isEqualTo(record);
+		}
+	}
+
+	/**
+	 * A rejected permission preparation leaves the selected version and marketplace unchanged.
+	 *
+	 * @throws IOException    if the fixture cannot be inspected
+	 * @throws TrustException if the policy is invalid
+	 */
+	@Test
+	public void permissionFailurePreventsActivation() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("prepare-failure-")), catalog());
+			Path active = fixture.installActive("1.0");
+			Path marketplace = fixture.integration.marketplaceFolder(fixture.home,
+				PluginVersion.parse(Releases.pluginVersion("1.0")));
+			Map<String, String> before = Releases.snapshot(marketplace);
+			fixture.integration.fail("preparePermissions");
+
+			UpdateResult result = fixture.install("v1.1", active);
+
+			requireThat(result.result(), "result").isEqualTo(Result.FAILED);
+			requireThat(fixture.provider.installed(fixture.home).version(), "selectedVersion").
+				isEqualTo(Optional.of(Releases.pluginVersion("1.0")));
+			requireThat(Releases.snapshot(marketplace), "marketplace").isEqualTo(before);
+		}
+	}
+
+	/**
+	 * A final permission-write failure after activation preserves the incoming entries and their ownership record.
+	 *
+	 * @param denied indicates whether configuration replacement reports access denial
+	 * @throws IOException    if the fixture cannot be inspected
+	 * @throws TrustException if the policy is invalid
+	 */
+	@Test(dataProvider = "permissionFailures")
+	public void partialUpdateKeepsIncomingPermissions(boolean denied) throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("partial-permissions-")), catalog());
+			fixture.integration.maintain(Map.of("settings.json", List.of("active-entry")));
+			Path active = fixture.installActive("1.0");
+			fixture.integration.maintain(Map.of("settings.json", List.of("incoming-entry")));
+			fixture.integration.fail("installPermissions");
+			Result expected = Result.FAILED;
+			if (denied)
+			{
+				fixture.integration.fail("installPermissions",
+					new AccessDeniedException(fixture.permissionRecord().toString()));
+				expected = Result.NOT_WRITABLE;
+			}
+
+			UpdateResult result = fixture.install("v1.1", active);
+
+			requireThat(result.result(), "result").isEqualTo(expected);
+			requireThat(fixture.integration.installedEntries(fixture.home).get("settings.json"), "permissions").
+				containsAll(List.of("active-entry", "incoming-entry"));
+			requireThat(Files.readString(fixture.permissionRecord()), "ownership").contains("incoming-entry");
+			requireThat(result.version(), "selectedVersion").isEqualTo(Optional.of(Releases.pluginVersion("1.1")));
+			requireThat(result.consistent(), "consistent").isFalse();
+		}
+	}
+
+	/**
+	 * Supplies ordinary I/O failure and access denial after activation.
+	 *
+	 * @return whether each failure reports access denial
+	 */
+	@DataProvider
+	public Object[][] permissionFailures()
+	{
+		return new Object[][]{{false}, {true}};
+	}
+
+	/**
+	 * Status detects missing maintained permissions even when the selected plugin copies agree.
+	 *
+	 * @throws IOException    if the fixture cannot be inspected
+	 * @throws TrustException if the policy is invalid
+	 */
+	@Test
+	public void statusDetectsMissingPermissions() throws IOException, TrustException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("status-permissions-")), catalog());
+			fixture.installActive("1.0");
+			fixture.integration.maintain(Map.of("settings.json", List.of("missing-entry")));
+
+			UpdateResult result = fixture.engine().status(fixture.integration);
+
+			requireThat(result.consistent(), "consistent").isFalse();
+			UpdateResult repaired = fixture.install("v1.0", fixture.versionFolder("1.0"));
+			requireThat(repaired.result(), "repaired").withContext(repaired.message(), "message").
+				isEqualTo(Result.UP_TO_DATE);
+			requireThat(fixture.engine().status(fixture.integration).consistent(), "repairedConsistent").isTrue();
 		}
 	}
 

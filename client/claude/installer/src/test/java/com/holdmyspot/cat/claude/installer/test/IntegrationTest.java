@@ -400,7 +400,10 @@ public final class IntegrationTest
 			TransientRefusal adding = new TransientRefusal(settings);
 
 			Map<String, List<String>> added = integration().installPermissions(permissionEnvironment(home), home, launcher,
-				adding.replacer());
+				adding.replacer(),
+					entries ->
+					{
+					});
 
 			requireThat(added, "added").isEqualTo(platformEntries(launcher));
 			requireThat(Files.readString(settings), "settings").contains("excludedCommands");
@@ -528,6 +531,64 @@ public final class IntegrationTest
 	}
 
 	/**
+	 * Missing unrelated permissions make the installation incomplete while its update command remains permitted.
+	 *
+	 * @throws IOException if settings cannot be written
+	 */
+	@Test
+	public void updateNeedsOnlyInstallPermissions() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = launcher(home);
+			Map<String, List<String>> expected = platformEntries(launcher);
+			List<String> excluded = expected.get(SETTINGS_KEY_EXCLUDED).stream().
+				filter(entry -> entry.contains(" install --harness claude")).toList();
+			List<String> allowed = expected.get(SETTINGS_KEY_ALLOW).stream().
+				filter(entry -> entry.contains(" install --harness claude")).toList();
+			Files.writeString(home.resolve("settings.json"), new JsonMapper().writeValueAsString(Map.of(
+				"sandbox", Map.of("excludedCommands", excluded), "permissions", Map.of("allow", allowed))));
+			requireThat(integration().permissionsInstalled(permissionEnvironment(home), home, launcher), "complete").
+				isFalse();
+			requireThat(integration().updatePermitted(permissionEnvironment(home), home, launcher), "updatePermitted").
+				isTrue();
+		}
+	}
+
+	/**
+	 * Recording failure leaves settings unchanged and does not claim a permission that the user already supplied.
+	 *
+	 * @throws IOException if settings cannot be written or recording is rejected
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "record rejected")
+	public void preparationRecordsBeforeWrite() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path home = cleanup.add(testDirectory());
+			Path launcher = launcher(home);
+			String supplied = platformEntries(launcher).get(SETTINGS_KEY_ALLOW).getFirst();
+			String settings = new JsonMapper().writeValueAsString(Map.of("permissions",
+				Map.of("allow", List.of(supplied, "Bash(user-command)"))));
+			Files.writeString(home.resolve("settings.json"), settings);
+			try
+			{
+				integration().preparePermissions(permissionEnvironment(home), home, launcher, replacer(), entries ->
+				{
+					requireThat(entries.getOrDefault(SETTINGS_KEY_ALLOW, List.of()), "claimed").doesNotContain(supplied);
+					requireThat(Files.readString(home.resolve("settings.json")), "beforeWrite").isEqualTo(settings);
+					throw new IOException("record rejected");
+				});
+			}
+			finally
+			{
+				requireThat(Files.readString(home.resolve("settings.json")), "settings").isEqualTo(settings);
+			}
+		}
+	}
+
+	/**
 	 * Permission installation creates {@code settings.json} with exactly the entries for the agent operations, in
 	 * Claude Code's two-space layout, and returns every entry as added.
 	 *
@@ -543,7 +604,10 @@ public final class IntegrationTest
 			Map<String, List<String>> expected = platformEntries(launcher);
 
 			Map<String, List<String>> added = integration().installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			requireThat(added, "added").isEqualTo(expected);
 			StringJoiner excluded = new StringJoiner(",\n", "", "\n");
@@ -580,7 +644,10 @@ public final class IntegrationTest
 			Path launcher = launcher(home);
 
 			Map<String, List<String>> added = integration().installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			String quoted = launcherCommand(launcher);
 			List<String> allowed = added.get(SETTINGS_KEY_ALLOW);
@@ -625,7 +692,10 @@ public final class IntegrationTest
 			Path launcher = launcher(home);
 
 			Map<String, List<String>> added = integration().installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			String quoted = launcherCommand(launcher);
 			String installWildcard = pattern(quoted + " install --harness claude");
@@ -665,11 +735,17 @@ public final class IntegrationTest
 			Path next = launcher(home, NEW_VERSION);
 			Integration integration = integration();
 			Map<String, List<String>> recorded = integration.installPermissions(permissionEnvironment(home),
-				home, earlier, replacer());
+				home, earlier, replacer(),
+					entries ->
+					{
+					});
 
 			integration.removePermissions(home, recorded, replacer());
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, next, replacer());
+				home, next, replacer(),
+					entries ->
+					{
+					});
 
 			requireThat(added, "added").isEqualTo(platformEntries(next));
 			String settings = Files.readString(home.resolve("settings.json"));
@@ -1134,7 +1210,10 @@ public final class IntegrationTest
 			Path launcher = home.resolve("plugins\\cache/bin/installer");
 			Integration integration = new Integration(Platform.LINUX_X64);
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			List<EntryGroup> groups = integration.describeEntries(added, launcher);
 
@@ -1166,7 +1245,10 @@ public final class IntegrationTest
 			Path launcher = home.resolve("plugins/cache/cat/cat/1.0/bin/installer");
 			Integration integration = new Integration(Platform.LINUX_X64);
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			List<EntryGroup> groups = integration.describeEntries(added, launcher);
 
@@ -1199,7 +1281,10 @@ public final class IntegrationTest
 			Integration integration = new Integration(Platform.WINDOWS_X64);
 
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			String prefix = "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File \"" + launcher +
 				"\"";
@@ -1249,7 +1334,10 @@ public final class IntegrationTest
 			Path home = cleanup.add(testDirectory());
 
 			Map<String, List<String>> added = new Integration(Platform.LINUX_X64).
-				installPermissions(permissionEnvironment(home), home, launcher, replacer());
+				installPermissions(permissionEnvironment(home), home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			requireThat(added, "added").isEqualTo(posixEntries(launcher));
 		}
@@ -1276,11 +1364,17 @@ public final class IntegrationTest
 			Integration integration = integration();
 
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 			String merged = Files.readString(settings);
 			FileTime modified = Files.getLastModifiedTime(settings);
 			Map<String, List<String>> repeated = integration.installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 
 			List<String> expectedAllowed = new ArrayList<>(expected.get(SETTINGS_KEY_ALLOW));
 			expectedAllowed.removeFirst();
@@ -1313,7 +1407,10 @@ public final class IntegrationTest
 				"{\"permissions\":{\"allow\":[\"Bash(ls)\"]},\"theme\":\"dark\"}");
 			Integration integration = integration();
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, launcher, replacer());
+				home, launcher, replacer(),
+					entries ->
+					{
+					});
 			String removedByUser = added.get(SETTINGS_KEY_ALLOW).getFirst();
 			Files.writeString(settings, Files.readString(settings).replace(json(removedByUser) + ",", ""));
 
@@ -1371,7 +1468,10 @@ public final class IntegrationTest
 				json(server) + "]},\"permissions\":{\"allow\":[" + json("Bash(" + server + ")") + "]}}");
 			Integration integration = integration();
 			Map<String, List<String>> added = integration.installPermissions(permissionEnvironment(home),
-				home, launcher(home), replacer());
+				home, launcher(home), replacer(),
+					entries ->
+					{
+					});
 
 			integration.removePermissions(home, added, replacer());
 			List<String> retained = integration.describeRetained(home, added);
@@ -1445,7 +1545,10 @@ public final class IntegrationTest
 
 			requireRefusal(() -> integration.validateConfiguration(home));
 			requireRefusal(() -> integration.installPermissions(permissionEnvironment(home),
-				home, launcher(home), replacer()));
+				home, launcher(home), replacer(),
+					entries ->
+					{
+					}));
 			requireRefusal(() -> integration.installSandboxEntries(home, new CodexInstallation(home.resolve("codex")),
 				home.resolve("locks"), replacer()));
 			requireThat(Files.readString(settings), "settings").isEqualTo(content);
