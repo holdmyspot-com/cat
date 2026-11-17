@@ -66,6 +66,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
+import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.optimizer.report.AttemptSummary;
 import com.holdmyspot.cat.common.optimizer.report.Benchmark;
@@ -2014,7 +2015,7 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Verifies the JSON status carries the labelled outputs and no forecast.
+	 * Verifies JSON and human-readable status retain minimum trials and observed per-session usage without forecasts.
 	 */
 	@Test
 	public void jsonStatusHasNoForecast()
@@ -2022,7 +2023,8 @@ public final class StatusReportTest
 		// Requirement: R-E12
 		// Requirement: R-P1
 		Campaign campaign = confirmed().development("formatting", 60, 0).development("plain_list", 100, 0).
-			development("safety", 100, 0).build();
+			development("safety", 100, 0).optimization(OptimizationEvidence.EMPTY.
+				addUsage(SessionRole.TRIAL, new TokenUsage(30, 10, 1, 0))).build();
 		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
 		ObjectNode json = report.toJson(JsonMapper.builder().build());
 		requireThat(json.path("status").asString(), "status").isEqualTo("running");
@@ -2035,6 +2037,12 @@ public final class StatusReportTest
 		String text = json.toString().toLowerCase(java.util.Locale.ROOT);
 		requireThat(text, "text").doesNotContain("\"token_total\":").doesNotContain("\"time_estimate\":").
 			doesNotContain("\"completion_probability\":").doesNotContain("\"remaining_time\":");
+		String summary = report.summary(ZoneOffset.UTC).toLowerCase(java.util.Locale.ROOT);
+		requireThat(summary, "summary").contains("minimum remaining trials if every remaining trial passes: 319").
+			contains("token usage per session (median / 90th percentile):").contains("trial (1 sessions): input 30 / 30").
+			doesNotContain("token total").doesNotContain("total tokens").doesNotContain("time estimate").
+			doesNotContain("estimated time").doesNotContain("completion probability").doesNotContain("remaining time").
+			doesNotContain("time remaining");
 	}
 
 	/**

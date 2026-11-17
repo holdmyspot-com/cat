@@ -3655,9 +3655,29 @@ directories through final acceptance. G5 source review supports 14 of 15 claims 
 material gap in claim 14: `StatusReportTest` checks only JSON for absent token totals and
 forecasts, not the separate human-readable summary. The finding and 71-method reconciliation
 are retained in session `01a1e700` at `temp/g5-semantic-audit-pmGgex/g5-semantic-audit.json`;
-root owns this evidence through final acceptance. A bounded assertion repair is next. G10 source
-reconciliation is in progress; G9, the G7 values map, installed acceptance and other final gates
-remain open. None of these local commits completes the goal or authorizes pushing.
+root owns this evidence through final acceptance. The bounded repair retains the mapped method
+`StatusReportTest.jsonStatusHasNoForecast` and checks the separate human-readable summary:
+exact minimum remaining trials and observed per-session median/p90 remain visible, while token
+totals, time estimates and completion forecasts remain absent. All prior JSON assertions remain.
+The focused suite passed all 76 tests with zero quality findings. The uncached whole-client
+`clean verify` then passed on `abad5a56c` plus this repair: 455 reports, 6,062 tests, zero
+failures or errors, six skips and zero findings in 20 quality reports. All 455 JVM reports name
+the requested absent home, which remained absent. Commands, terminal exits, focused and clean
+frozen reports and summaries are retained in `temp/g5-summary-wAUOG9/`; root owns cleanup after
+final acceptance. Both artifacts identify as `1.0+babad5a56c539`. The 25 cases at or above one
+second in this independent invocation remain under source disposition; no timing cause or
+cross-run performance claim is inferred. This repairs the G5 assertion gap, not native acceptance.
+
+The G10 source/artifact review supports its current local claims: both built harness artifacts
+contain the optimizer skill and launcher, their packaged first-use text agrees after the intentional
+Design Goals stripping, the bounded shipped-source search finds no old procedure, and recorded
+regression scenarios remain untested until a covering campaign. The historical map below now
+names the actual refusal paths: two `ProposalTest` methods and two `OptimizerCoreTest` methods;
+the other two optimizer cases prove successful inclusion and delivery retention. Findings are
+retained in session `01a1e6c3` at `temp/g10-source-audit-M30vRC/findings.json`, using the
+integrated replay reports; root owns that evidence through final acceptance. G9, the G7 values
+map, installed acceptance and other final gates remain open. None of these local commits
+completes the goal or authorizes pushing.
 
 Rows marked done keep only their first sentence here. Their full records, unchanged, are in [`plan-history.md`](plan-history.md), which is deleted with this plan.
 
@@ -8123,4 +8143,4 @@ session `01a16de4-2163-75d0-9e45-481a1850fb3e`.
 | G7 | Partial (feasibility mapping) | Local: fixtures with generated values, failed built-in tools, paired control trials, the shared capacity bound across two JVMs (`HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry`), two-plugin trial installs and project-built plugins pass. Remaining: E1 (all roles through the runners, observed profile), E5 (host tool, replay recordings with judge sessions), E4 (persistent-write refusal), E8 (two concurrent processes, user-deferred); trial-plugin loading is proven by E1's loading record in both harnesses; delivery of values files and the eligibility cases need a method-level map. |
 | G8 | Passed locally on the 2026-11-07 build | `temp/tracked-link-checkout-gN9ItB/g8-acceptance.json`: 67 of 73 references pass; the six removed concurrency methods are replaced against the new design text by `ConcurrencyPolicyTest` (starting windows, drop at a consuming failure, unchanged window at other failures, halving after infrastructure attempts, cell limit, ceilings) and `SchedulerTest.promotionRunsAreAdmitted`. E8 is required in both harnesses (user ruling, 2026-11-16), run alone per harness. |
 | G9 | Passed locally on the 2026-11-09 build | Fresh clean build of `5e9a6a7a4` on 2026-11-09 (142 s): 5,276 tests, 0 failures, 6 skipped, all 413 reports at a nonexistent `user.home` with `HOME` pointing at the same missing folder; no test created it (only the Maven wrapper's download cache appeared there); `TestabilityAuditTest` (22) passes. The calibration clause is fixed by `2d2d9513a`: the optimizer fixtures use `FixedCalibrator`, which shares `CapCalibratorContract` with `CapCalibrationTest`, and only `CapCalibrationTest` runs `CapCalibration`. PMD record errors and R-I1 native review not re-derived. |
-| G10 | Passed locally on the 2026-11-07 build | Re-derived because the earlier evidence file is gone: `PromptOptimizerLauncherTest` (2) and the built `runtime/claude` and `runtime/codex` artifacts hold the skill (identical `first-use.md`) and the launcher; no reference to the old procedure; `failure-regression-promotion.md` unchanged and follows D13; `RegressionScenariosTest` (13) passes; `ProposalTest.refusesMissingRecordedPromptTests` and four `OptimizerCoreTest` methods refuse a proposal that omits a recorded scenario. |
+| G10 | Passed locally on the 2026-11-07 build | Re-derived because the earlier evidence file is gone: `PromptOptimizerLauncherTest` (2) and the built `runtime/claude` and `runtime/codex` artifacts hold the skill (identical `first-use.md`) and the launcher; no reference to the old procedure; `failure-regression-promotion.md` unchanged and follows D13; `RegressionScenariosTest` (13) passes; `ProposalTest.refusesMissingRecordedPromptTests` and `requiresEveryScenarioOfTheTarget`, plus `OptimizerCoreTest.startRequiresOnlyTargetScenarios` and `confirmChecksNewRecordedScenario`, refuse omission of a recorded scenario at their respective proposal/start/confirmation boundaries. The other two optimizer cases establish inclusion and delivery retention. |
