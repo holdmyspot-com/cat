@@ -2984,6 +2984,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that the start command emits no notice when the fork boundary reports that Git already ignores
 	 * CAT's session directories. Real Git's ignore check is covered by fork tests.
+	 * <p>
+	 * Runs the public start command through proposal derivation and its persisted campaign so the assertion observes
+	 * the final command output after the fork boundary supplies its ignore decision.
 	 */
 	@Test
 	public void startDoesNotReportExistingIgnore() throws Exception
@@ -3161,6 +3164,9 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code start} derives when a staged binding file binds a model that the harness supports.
+	 * <p>
+	 * Keeps the staged agent file, persisted campaign and scripted derivation because accepting the binding must
+	 * reach the contract author and appear in the proposal returned by the public start command.
 	 */
 	@Test
 	public void startDerivesWithSupportedModelBinding() throws Exception
@@ -3177,6 +3183,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code start} derives when a staged binding file binds only an effort, even though the harness
 	 * rejects a model.
+	 * <p>
+	 * Keeps the staged agent file, persisted campaign and scripted derivation because an effort-only binding must
+	 * reach the contract author and produce a proposal through the public start command.
 	 */
 	@Test
 	public void startDerivesWithEffortOnlyBinding() throws Exception
@@ -4766,6 +4775,9 @@ public final class OptimizerCoreTest
 	 * Verifies that a {@code start} that the host ends in the middle of its guard pilot, as a failed host turn or a
 	 * killed command does, keeps the pilot trials that were decided, and that the next {@code start} presents the
 	 * stored proposal after running only the trials that were not decided.
+	 * <p>
+	 * Retains the interrupted pilot, resumed start and confirmation against one persisted campaign. A prebuilt
+	 * proposal would bypass the decided-trial reuse that this command sequence must verify.
 	 */
 	@Test
 	public void startEndedMidPilotKeepsDecidedTrials() throws Exception

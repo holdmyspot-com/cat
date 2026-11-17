@@ -15,6 +15,7 @@ import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.optimizer.execution.contract.test.DriverInterruptReplayContract;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
@@ -193,6 +194,36 @@ public final class ClaudeSessionsContractTest
 				requireThat(requests.size(), "controlRequests.size").isEqualTo(1);
 				requireThat(requests.getFirst().path("request").path("subtype").asString(""), "subtype").
 					isEqualTo("interrupt");
+			}
+		}
+	}
+
+	/**
+	 * Replays a recorded adapter interruption through a real driver, then reopens and resumes the same campaign.
+	 * The replay gate waits for the recorded turn to start before the driver requests interruption.
+	 *
+	 * @throws IOException          if replay fixtures or campaign state cannot be read or written
+	 * @throws InterruptedException if the test thread is interrupted
+	 * @throws ExecutionException   if the adapter cannot classify the recorded turn
+	 * @throws TimeoutException     if the adapter does not classify the recorded turn within 30 seconds
+	 */
+	@Test(timeOut = 60_000)
+	public void recordedInterruptResumesTrials()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E10
+			// Requirement: R-E15
+			Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "claude-driver-interrupt-replay-");
+			RecordedClaude claude = new RecordedClaude(List.of(recorded("interrupted-judge-turn-1.jsonl")));
+			try
+			{
+				DriverInterruptReplayContract.replaysInterruptedAttempt(port(jvm, root, claude), claude::awaitTurnStarted);
+			}
+			finally
+			{
+				claude.close();
 			}
 		}
 	}

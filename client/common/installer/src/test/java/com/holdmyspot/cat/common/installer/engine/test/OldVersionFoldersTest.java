@@ -284,6 +284,9 @@ public final class OldVersionFoldersTest
 	/**
 	 * The copies that the harness keeps of the plugin versions in another folder, under other names, are deleted
 	 * along with the version folders, except for the active version's and the replaced version's.
+	 * <p>
+	 * Keeps three physical harness copies through an install so pruning must distinguish obsolete, previous and
+	 * active versions in the actual directory layout; a version-list check would not observe deletion.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid

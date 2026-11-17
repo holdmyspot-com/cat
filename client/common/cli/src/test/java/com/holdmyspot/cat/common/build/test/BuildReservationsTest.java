@@ -59,6 +59,9 @@ public final class BuildReservationsTest
 
 	/**
 	 * Confirms two scheduler instances serialize one shared calibration claim and retain both decisions.
+	 * <p>
+	 * Keeps a child JVM holding the ledger lock and two competing scheduler threads because both cross-process
+	 * exclusion and the shared persisted claim must be observed; a single scheduler cannot exercise those races.
 	 *
 	 * @throws IOException if ledger fixtures cannot be created or read
 	 * @throws InterruptedException if the competing scheduler threads are interrupted

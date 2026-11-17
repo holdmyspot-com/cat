@@ -1151,6 +1151,9 @@ public final class ClaudeConnectionSettingsTest
 	 * Verifies that the runner refuses a session whose read denials total more paths than Claude Code can sandbox its
 	 * commands with, rather than start a session in which every command waits for an approval that no one can give,
 	 * and writes no settings for it.
+	 * <p>
+	 * Keeps 6,000 long denial paths through the settings writer to exercise the sandbox size refusal before any
+	 * settings are written. A small path list would not reach the refusal this test verifies.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */

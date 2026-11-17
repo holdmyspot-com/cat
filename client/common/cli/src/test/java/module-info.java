@@ -30,7 +30,8 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.optimizer.evidence.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.execution.prompt.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.execution.test to org.testng;
-	exports com.holdmyspot.cat.common.optimizer.execution.contract.test to com.holdmyspot.cat.codex.cli.test;
+	exports com.holdmyspot.cat.common.optimizer.execution.contract.test to com.holdmyspot.cat.claude.cli.test,
+		com.holdmyspot.cat.codex.cli.test;
 	exports com.holdmyspot.cat.common.optimizer.hooks.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.inventory.test to org.testng;
 	exports com.holdmyspot.cat.common.optimizer.port.contract.test to org.testng, com.holdmyspot.cat.claude.cli.test,

@@ -15,6 +15,7 @@ import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.optimizer.execution.contract.test.DriverInterruptReplayContract;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
@@ -315,6 +316,35 @@ public final class CodexSessionsContractTest
 				JsonNode terminal = JsonMapper.builder().build().readTree(events.getLast()).path("params");
 				requireThat(params.path("threadId"), "threadId").isEqualTo(terminal.path("threadId"));
 				requireThat(params.path("turnId"), "turnId").isEqualTo(terminal.path("turn").path("id"));
+			}
+		}
+	}
+
+	/**
+	 * Replays a recorded adapter interruption through a real driver, then reopens and resumes the same campaign.
+	 * The replay gate waits for the recorded turn to start before the driver requests interruption.
+	 *
+	 * @throws IOException          if replay fixtures or campaign state cannot be read or written
+	 * @throws InterruptedException if the test thread is interrupted
+	 * @throws ExecutionException   if the adapter cannot classify the recorded turn
+	 * @throws TimeoutException     if the adapter does not classify the recorded turn within 30 seconds
+	 */
+	@Test(timeOut = 60_000)
+	public void recordedInterruptResumesTrials()
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			// Requirement: R-E10
+			Path root = Files.createTempDirectory(jvm.temporaryDirectory(), "codex-driver-interrupt-replay-");
+			RecordedAppServer server = new RecordedAppServer(List.of(recorded("interrupt-turn-1.jsonl")));
+			try
+			{
+				DriverInterruptReplayContract.replaysInterruptedAttempt(port(jvm, root, server), server::awaitTurnInProgress);
+			}
+			finally
+			{
+				server.close();
 			}
 		}
 	}

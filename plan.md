@@ -3593,6 +3593,72 @@ scheduler tests. The scoped receipt is `temp/continuation-dVKKLk/local-map-execu
 This check does not close final gate 5: source changes affecting other map claims still need
 reconciliation, alongside the outstanding installed acceptance.
 
+A separate current-source G3 review now confirms all 10 claims and 40 distinct mapped methods
+remain supported by their assertions; no retired or materially weak assertion was found. Its
+claim-by-claim observations are retained in session `01a1e6c3` at
+`temp/g3-semantic-audit-Tcrb2m/findings.json`. This source review and the earlier frozen execution
+evidence remain distinct; the integrated replay build will provide the next execution result.
+
+The E2 replay audit found a remaining composition gap: the recorded adapter checks establish
+`SessionResult.Interrupted`, while `DriverTest.hostInterruptResumesAttempt` proves campaign
+resumption using a fake session port. Neither runs the recording through the driver and resumes
+that campaign. A bounded test-only follow-up is assigned to `optimize-high` in the isolated
+`temp/e2-composed-replay-pX2krx/repo` at snapshot `23fd9e1bd`. It adds a neutral shared driver
+contract and wires both harnesses' recorded adapters to prove retained outcomes and assignments,
+reruns with the same logical trial keys, no duplicate outcomes and an unchanged certification
+index. It may extend only the common test-module export and the named replay test helpers;
+production code and recordings stay unchanged. The delegate owns focused adapter suites and
+configured quality checks; root accepts the result and runs the integrated whole-client build.
+The first delegate reported two scheduling failures, so ownership moved to `optimize-xhigh`
+under §1.1. At takeover, however, the handed-off source already captured every running key
+after refill, and its named receipt and both suite reports passed. The cause of that stale
+failure summary is unobserved. The successor preserved those incoming receipts, added explicit
+initial-index and stopped-state assertions, and passed the required gate on its final source:
+31 tests, zero failures, errors or skips, and zero findings in all six configured quality reports.
+Root accepted the four-file patch and integrated it after `git apply --check`; the exact patch,
+terminal receipt, reports and limitations are retained in session `01a1e6fb` at
+`temp/e2-replay-final-X0p4ir/`. Root owns this evidence and the isolated clone through final
+acceptance. Combined affected checks passed (83 tests), followed by the uncached whole-client
+`clean verify`: 455 reports, 6,062 tests, zero failures or errors, six skips and zero findings in
+20 quality reports. All test JVMs used the requested absent home, which remained absent.
+Root retains commands, terminal exits and frozen reports in
+`temp/integrated-replay-TaoPTT/`. The source is `23fd9e1bd` plus the accepted replay patch and
+documentation edits; both built artifacts identify as `1.0+b23fd9e1bd68e`. This closes only
+the local replay subclaim; installed E2 remains separate, and the installation prerequisite above
+still applies to the newly built artifacts.
+
+The documentation verification invocation independently recorded 24 cases at or above one
+second. Their source Javadoc is accounted for in
+`temp/continuation-dVKKLk/documentation-run-slow-test-disposition.md`; it makes no cross-run
+performance claim. One missing explanation was added to
+`ClaudeConnectionSettingsTest.refusesDenialsTooManyToSandbox`: its 6,000 long denial paths must
+reach the settings writer's sandbox size refusal. That additional Javadoc passed the combined
+checks and integrated clean verification. The integrated clean run independently recorded 24
+cases at or above one second. Nine needed explanations, now added for the ledger lock race,
+public start/guard-pilot recovery, migration state and physical harness-copy pruning. The
+documentation-only whole-client `verify` then passed with the same 6,062 tests, six skips and
+zero test or quality failures. Its 22 slow cases include five additional documentation flags:
+`CommandsTest.passesTheGoal`, `printsDelivery`, `printsCertifiedEnvironment`,
+`printsFailedDelivery`, and `BundledRuleAudienceTest.installRunningWorkRuleIsRouted`. Their
+Javadoc states the assertions but does not explain the retained runtime work; no timing cause
+is claimed. They remain in the broader final gate 6 disposition. The per-invocation populations,
+repairs and flags are recorded in `temp/integrated-replay-TaoPTT/slow-test-documentation.md`.
+
+The current-source G8 review supports all 13 mapped claims through current assertions and the
+accepted seven-reference replacement record. Its observations and reuse limits are retained
+in session `01a1e6c3` at `temp/g8-source-audit-DMO8TV/findings.json`. The fresh integrated clean
+reports again execute all 40 G3 and 71 G5 direct references and 66 G8 direct references; the
+same seven retired G8 references retain their accepted replacements, including all four D149
+replacement cases passing. The new execution receipt is
+`temp/integrated-replay-TaoPTT/local-map-execution-check.json`. Root owns both source-audit
+directories through final acceptance. G5 source review supports 14 of 15 claims but found a
+material gap in claim 14: `StatusReportTest` checks only JSON for absent token totals and
+forecasts, not the separate human-readable summary. The finding and 71-method reconciliation
+are retained in session `01a1e700` at `temp/g5-semantic-audit-pmGgex/g5-semantic-audit.json`;
+root owns this evidence through final acceptance. A bounded assertion repair is next. G10 source
+reconciliation is in progress; G9, the G7 values map, installed acceptance and other final gates
+remain open. None of these local commits completes the goal or authorizes pushing.
+
 Rows marked done keep only their first sentence here. Their full records, unchanged, are in [`plan-history.md`](plan-history.md), which is deleted with this plan.
 
 | Work item | State |

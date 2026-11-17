@@ -20,6 +20,9 @@ import org.testng.annotations.Test;
 /**
  * Install brings CAT's data to the data structures of the release that it installs by running the data migrations
  * that the release registers after the recorded data version.
+ * <p>
+ * Keeps release folders and data-version files through the install engine to verify the selected script paths and
+ * persisted migration progress. Registry-only checks cannot exercise installation, failure and retry with that state.
  */
 public final class MigrationTest
 {
