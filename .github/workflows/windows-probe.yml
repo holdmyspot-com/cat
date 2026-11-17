@@ -1,7 +1,7 @@
 name: Windows interactive security probe
 on:
   push:
-    branches: [probe/windows-ci-qhuddf]
+    branches: [probe/windows-final35-nnspwi]
 permissions:
   contents: read
 jobs:
