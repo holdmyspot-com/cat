@@ -521,6 +521,10 @@ public final class BundledRuleAudienceTest
 	 * that decision: the workflow area index routes to the install-running-work rule, whose guidance has the agent
 	 * check for running work that uses the installed copy, wait for it or confirm that it uses its own copied runtime,
 	 * and tell the user what an install they requested waits for.
+	 * <p>
+	 * The test copies the bundled rule tree to a temporary plugin and applies the real artifact router before
+	 * reading the workflow index and routed rule. This physical packaging boundary verifies that the references
+	 * reach the shipped files rather than only checking the source text.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location

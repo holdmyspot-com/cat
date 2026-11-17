@@ -442,6 +442,10 @@ public final class CommandsTest
 	/**
 	 * Verifies that {@code start} passes the user's goal to the core in either option order, and no goal when the
 	 * option is absent.
+	 * <p>
+	 * Each of the four invocations creates a physical project and a fresh command scope, then runs argument parsing
+	 * through the real core's refusal path. This retains the boundary that records the goal actually received by
+	 * the core; the missing campaign and configuration prevent session dispatch.
 	 */
 	@Test
 	public void passesTheGoal() throws IOException
@@ -754,6 +758,10 @@ public final class CommandsTest
 	/**
 	 * Verifies that a delivery appears with its diff, the paths it wrote, base-only changes and applicability, and with
 	 * no other field.
+	 * <p>
+	 * Rendering uses a physical project and the real command scope so the supplied delivery result passes through
+	 * the command's JSON renderer with its normal collaborators. The result is supplied directly; no delivery or
+	 * trial runs.
 	 */
 	@Test
 	public void printsDelivery() throws IOException
@@ -792,6 +800,9 @@ public final class CommandsTest
 
 	/**
 	 * Verifies that a certified delivery shows the environment that the certification was measured in.
+	 * <p>
+	 * A physical project and fresh command scope provide the real command renderer. The certification record and
+	 * delivery result are supplied directly, preserving the environment-to-output boundary without a campaign run.
 	 */
 	@Test
 	public void printsCertifiedEnvironment() throws IOException
@@ -913,6 +924,9 @@ public final class CommandsTest
 
 	/**
 	 * Verifies that a failed delivery names why nothing was delivered.
+	 * <p>
+	 * A physical project and fresh command scope provide the real command renderer. The supplied verification
+	 * failure exercises its JSON output without attempting delivery or starting a session.
 	 */
 	@Test
 	public void printsFailedDelivery() throws IOException

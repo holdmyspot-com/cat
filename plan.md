@@ -3764,10 +3764,70 @@ the XML and quality reports under `clean-reports/`; `clean-summary.json` lists t
 or above one second. The existing slow-test reviewer is reconciling newly appearing cases;
 no before/after performance conclusion is claimed. Root retains these records through final
 acceptance. The installer worker returned its bounded handoff using these completed root checks.
-No G7 dispatch repair has been integrated; its isolated writer is running. No build/source
+The G7 dispatch repair was subsequently accepted and integrated as recorded below. No build/source
 process should be inferred from a nonexistent
 exec-cell wait: failed wait calls are recorded separately as operational facts in
 `temp/g5-summary-wAUOG9/invalid-wait-facts.json`, without a claimed tool-availability cause.
+
+The twenty-case reconciliation is accepted from session `01a1e6fb` at
+`temp/installer-slow-review-1NR2SP/report.md`: thirteen cases reuse prior dispositions, and
+seven newly appearing methods were inspected. Root applied its two concrete fixture reductions:
+`ActivationTest.reportsLocalInstallation` creates only the competing cache directories, and
+`DriverTest.foregroundFailureAwaitsTheUser` uses the existing unstartable-author trigger while
+retaining every reporting assertion. Three Driver Javadocs explain retained multi-round,
+forbidden-edit/retry/cleanup, and tool/judge/adoption work with seeded campaigns and manual
+time. These bounded edits are smaller than a separate implementation handoff and passed the
+combined and clean verification below. The optional base-tree simplification for `failedToolIsJudged`
+has no established equivalent helper; no speculative replacement was applied. Root owns the
+report through final gate 6 acceptance and cleanup. No timing cause or improvement is claimed.
+
+The G7 public-start regression confirmed a dispatch gap: the author supplied
+`ineligible_trial_effect`, but the trial callback ran. Its focused red exited 1 with that
+single failure among 176 tests. The bounded repair now stops the guard pilot at the derived
+scope-condition boundary while preserving the proposal/refusal path. Focused green exited 0:
+176 tests, no failures/errors/skips, no CLI Checkstyle or PMD findings. The regression covers
+start, repeated start and revision, with no trial/judge role usage, stored pilot, counted
+outcomes or certification attempt; the existing eligible `unsupported_output` control still
+pilots. Root accepted that completed assignment and replayed only the two allowed source
+changes, preserving the prior Javadocs. Decisive patch, commands, exits and XML are in session
+`01a1e71d` at `temp/g7-red-kABP7R/`; root owns cleanup after final acceptance. This proves
+handling of an already classified risk, not model classification of read-only credentials or
+disposable fixtures. Root's combined affected verify passed 489 tests with zero failures,
+errors or skips, with cache reuse and all quality checks enabled. The six frozen test reports
+all record the requested absent home. Commands, exits, selected reports and summary are in
+`temp/g7-integrated-JvcJIx/`. The subsequent required whole-client uncached clean build passed:
+455 reports, 6,063 tests, zero failures/errors, six skips, twenty quality reports with no
+active findings or PMD processing/configuration errors, and fifteen disclosed suppressed
+PMD violations. All 455 reports use the requested absent home, which remains absent. Frozen
+reports and `clean-summary.json` are in that directory. Both runtime artifacts report
+`1.0+b81bba57e686f` (the source tree includes the integrated changes pending commit).
+`slow-test-disposition.json` accepts all seventeen cases at or above one second: fifteen
+reuse preceding dispositions, and the existing method explanations and assertions in
+`DelegationTest.changedDefinitionGetsCandidateProbe` and `nonzeroMavenStillPrepares` establish
+their retained physical preparation/audit/receipt boundary. No further source change is needed.
+The exact frozen-report attribution refresh also passed: 597 sources, 455 reports, 2,511
+passing mappings, 140 requirements, no unknown tags or method issues, and only R-I1 lacking
+a passing tagged method. Its receipt and mappings are in `trace-audit/` below that directory.
+The no-model audit remains applicable: the integrated regression uses the existing scripted
+repository/session fixtures, and the two reduced fixtures add no process or harness boundary.
+Installed acceptance and the terminal goal remain open.
+
+Current terminal-gate reconciliation after this build:
+
+| Gate | State | Remaining evidence |
+|---|---|---|
+| 1: whole-client build | Passed on the integrated source | Repeat only if determining source changes. |
+| 2: traceability | Unmet | Local attribution and bounded semantics accepted; 35 E-proof rows and R-I1 still require applicable installed receipts. |
+| 3: no model in Java tests | Passed at the source-audit boundary | No new launch boundary in this delta. |
+| 4: installed E1–E8 | Unmet | Actual refreshed installation/reload, both harnesses; E1 without a supplied goal. |
+| 5: G1–G10 | Unmet | Accepted local maps retained; native clauses, including positive G7 eligibility classification, remain. |
+| 6: testability | Unmet | Absent-home, slow-case, fixture and local audit evidence accepted; native T3/T6 qualifications remain. |
+| 7: documentation closure | Unmet | WI-15, WI-96, WI-111, WI-120, WI-142, WI-145 and P12/P13 depend on their remaining live evidence. |
+| 8: standalone codebase | Unrun | Remove tags/design/plan references only after gates 1–7 pass. |
+
+The installed failure-reporting optimizer runs in both harnesses follow WI-15, and guidance
+delivery still requires the user's approval. No local commit or passing build substitutes
+for those outcomes; nothing is pushed.
 
 Rows marked done keep only their first sentence here. Their full records, unchanged, are in [`plan-history.md`](plan-history.md), which is deleted with this plan.
 

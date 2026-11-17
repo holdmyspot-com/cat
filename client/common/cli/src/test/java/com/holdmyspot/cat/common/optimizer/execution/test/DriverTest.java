@@ -1758,6 +1758,10 @@ public final class DriverTest
 	 * A working candidate that keeps failing goes through one round after another, each ending without a promotion,
 	 * until its test reaches the review checkpoint. Development stops there and offers to accept the candidate
 	 * without certification.
+	 * <p>
+	 * Development counts start near the checkpoint, while scripted failed trials run multiple real rounds through
+	 * adoption and stopping. Seeding the checkpoint itself would omit the round transitions asserted here; the
+	 * harness advances its manual clock instead of waiting for trial sessions.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -5668,6 +5672,10 @@ public final class DriverTest
 	 * A control, incumbent or candidate formal trial that fails a built-in tool under {@code on_tool_failure: fail}
 	 * is still judged for the assertions that no tool decided, and the judge's verdict on each counts: the trial fails
 	 * the failed tool's assertion and each assertion that the judge failed, and nothing is imputed.
+	 * <p>
+	 * The attempt starts one reference pair short of its boundary and stops after the first broken outcome is
+	 * recorded. Scripted trial and judge sessions retain the real tool, judgment and outcome-adoption composition
+	 * for each supplied purpose without running a complete certification campaign.
 	 *
 	 * @param purpose the purpose of the trial whose tool fails
 	 * @throws IOException if the test directory cannot be used
@@ -6522,6 +6530,10 @@ public final class DriverTest
 	 * Verifies that a foreground slice that stops on an infrastructure failure ends awaiting the user, not
 	 * {@code running}, and says what the failure was and how to go on. A {@code running} status tells the host agent
 	 * to call {@code run} again at once, which repeats a failure that nothing in the campaign changes.
+	 * <p>
+	 * A seeded authoring round and a session that cannot start reach the real slice-result reporting boundary
+	 * directly. The separate forbidden-edit test retains effect validation and cleanup; this case checks the
+	 * failure detail, continuation commands and absence of choices.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -6534,7 +6546,7 @@ public final class DriverTest
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")),
 				developing().development("safety", 50, 1).failure(Builder.testCase("safety", "logs")).
 					round(new Round(Map.of("safety", 0))).build());
-			harness.promptAuthors(request -> harness.edit(request, Path.of("README.md")));
+			harness.sessions().unstartable(request -> request.role() == SessionRole.PROMPT_AUTHOR);
 			try (Driver driver = harness.open())
 			{
 				SliceResult result = harness.runSlice(driver);
@@ -6550,6 +6562,10 @@ public final class DriverTest
 	/**
 	 * Verifies that a prompt author attempt that changes a file outside the prompt sources is never submitted, and that
 	 * repeated prompt author failures stop the slice with an infrastructure failure.
+	 * <p>
+	 * The seeded authoring round skips pilot and baseline setup, while scripted forbidden edits exercise real
+	 * effect validation, inventory checks, retries and authoring-copy cleanup through the asserted failure limit.
+	 * Sessions and elapsed time are controlled by the harness and its manual clock.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */

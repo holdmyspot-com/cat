@@ -191,6 +191,8 @@ public final class ActivationTest
 
 	/**
 	 * A developer's local directory wins over numeric releases and makes the installation inconsistent.
+	 * The two cache directories retain the real version-selection boundary; the local result returns before
+	 * marketplace or installation-manifest consistency checks, so no completed installation is needed.
 	 *
 	 * @throws IOException if a fixture cannot be written or read
 	 */
@@ -200,7 +202,7 @@ public final class ActivationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory(testRoot(), "home-"));
-			install(home, "1.0", "1.0", "1.0");
+			cache(home, "1.0", "1.0");
 			cache(home, "local", "1.0");
 
 			requireThat(provider().installed(home), "installed").

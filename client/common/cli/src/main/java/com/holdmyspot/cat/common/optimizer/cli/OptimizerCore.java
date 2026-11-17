@@ -3133,13 +3133,18 @@ public final class OptimizerCore implements Core
 	 * @param plugin the check of the campaign's trial plugins
 	 * @param slice the time bound of the command that runs the pilot, or {@code null} if the pilot runs until every
 	 *   trial ends or it stops
-	 * @return the pilot of each prompt test, by prompt test, or none if control trials cannot remove the dependents
+	 * @return the pilot of each prompt test, by prompt test, or none when a scope condition identifies an ineligible
+	 *   trial effect or control trials cannot remove the dependents
 	 * @throws IOException if the stored pilot or the workspace cannot be read, or the pilot cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while it waits for a pilot session
 	 */
 	private Map<String, PilotResult> pilot(Path root, Campaign campaign, ForkView fork, DerivedProposal derived,
 		PluginCheck plugin, PilotSlice slice) throws IOException, InterruptedException
 	{
+		boolean hasIneligibleTrialEffect = derived.scopeConditions().stream().
+			anyMatch(condition -> condition.outcome() == Outcome.INELIGIBLE_TRIAL_EFFECT);
+		if (hasIneligibleTrialEffect)
+			return Map.of();
 		// Control trials cannot run without dependents that they cannot remove
 		if (!controlRefusals(campaign, fork, derived, plugin).isEmpty())
 			return Map.of();

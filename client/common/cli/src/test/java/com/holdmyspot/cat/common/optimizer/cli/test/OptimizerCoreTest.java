@@ -1702,6 +1702,52 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that {@code start}, its retry and {@code revise} present a known ineligible trial effect without
+	 * dispatching a trial or recording trial outcomes.
+	 */
+	@Test
+	public void startAndReviseSkipIneligibleTrialEffect()
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			String evidence = "CLAUDE.md asks to rotate the production database password, which needs a live credential.";
+			Repository repository = repository(scope, _ -> derivation(output ->
+			{
+				ObjectNode condition = (ObjectNode) ((ArrayNode) output.get("scope_conditions")).get(0);
+				condition.put("condition", "ineligible_trial_effect");
+				condition.put("evidence", evidence);
+			}));
+			repository.trialEnd().set(_ ->
+			{
+				throw new AssertionError("start dispatched a trial for an ineligible trial effect");
+			});
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(proposalText(result), "proposal").contains(Outcome.INELIGIBLE_TRIAL_EFFECT.label()).
+				contains(evidence);
+			String id = result.status().campaignId();
+			requireThat(result.status().tokens().roles().keySet(), "tokens").doesNotContain(SessionRole.TRIAL).
+				doesNotContain(SessionRole.JUDGE);
+			CommandResult retry = repository.core().start(Path.of("CLAUDE.md"));
+			requireThat(proposalText(retry), "retryProposal").contains(Outcome.INELIGIBLE_TRIAL_EFFECT.label()).
+				contains(evidence);
+			CommandResult revised = repository.core().revise(id, "Keep the production credential out of trial effects.");
+			requireThat(proposalText(revised), "revisedProposal").contains(Outcome.INELIGIBLE_TRIAL_EFFECT.label()).
+				contains(evidence);
+			requireThat(revised.status().tokens().roles().keySet(), "revisedTokens").doesNotContain(SessionRole.TRIAL).
+				doesNotContain(SessionRole.JUDGE);
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.isConfirmed(), "confirmed").isFalse();
+			requireThat(campaign.attempts(), "certificationAttempts").isEmpty();
+			requireThat(campaign.trials(), "countedTrials").isEmpty();
+			requireThat(campaign.development().counts(), "developmentCounts").isEmpty();
+			requireThat(Files.exists(repository.directory(id).resolve("held_out/pilot.json")), "pilotStored").isFalse();
+		}
+	}
+
+	/**
 	 * Verifies that {@code start} moves the contract author's draft directory into the campaign's held-out directory
 	 * and that the stored proposal names it there.
 	 * <p>
