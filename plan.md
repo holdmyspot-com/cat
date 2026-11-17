@@ -3679,6 +3679,96 @@ integrated replay reports; root owns that evidence through final acceptance. G9,
 map, installed acceptance and other final gates remain open. None of these local commits
 completes the goal or authorizes pushing.
 
+
+The bounded G9 refresh confirms the current absent-home execution, all 22 source-audit tests,
+and the shared real/fixed calibration checks. Its scope and limitations are retained in session
+`01a1e6c3` at `temp/g9-source-audit-2gPUVV/findings.json`. Parent inspection additionally
+confirms parallel methods with four threads in the unchanged reactor configuration and no
+command override. All ten frozen PMD XML reports contain no active violation, processing error
+or configuration error; fifteen suppressed violations remain disclosed in the XML. This
+resolves the historical PMD-diagnostic check, not a new PMD-parser test requirement. R-I1 is the
+separate installed skill-loop proof in gates 2 and 4, and remains open. The parent follow-up is
+`temp/g5-summary-wAUOG9/g9-parent-follow-up.json`. Root owns both records through final
+acceptance. G9's Git-operation ownership and final no-model source reconciliation remain
+subject to their accepted baseline and bounded current-source checks.
+
+The bounded G7 map accepts values-file delivery through
+`DeliveryTest.certifiedDeliveryWritesPromptTests`, `everyLabelWritesPromptTests` and
+`deliversPromptTestsFromTheDraft`, with their frozen passing execution. Its eligibility proof
+is incomplete: the existing negative proposal/transition checks do not establish a known
+persistent-write refusal before dispatch. The contract-author prompt owns the semantic
+classification, so injected author findings cannot prove that read-only service credentials
+and disposable fixtures are classified correctly; those positive cases remain native acceptance
+work. The map is retained in session `01a1e700` at
+`temp/g7-semantic-audit-UvKt8W/g7-semantic-audit.json`. Root's source inspection identified no
+explicit scope-condition gate before `OptimizerCore.pilot` invokes the guard pilot. A bounded
+`optimize-high` follow-up in `temp/g7-eligibility-zttpAP/repo` at `9be69d895` must first
+prove a public-start behavioral red, then repair the dispatch boundary if confirmed, preserve
+unavailable-proposal behavior, and pass focused tests and quality checks. Root owns integration,
+the subsequent whole-client build and cleanup of the clone/evidence after final acceptance.
+No new behavior is accepted from this source observation alone.
+
+
+The independent 25-case slow-test source disposition is retained in session `01a1e6fb` at
+`temp/g5-slow-review-vqoVbz/report.md`. Fifteen cases reuse accepted explanations; the real-hook
+case already explains its process boundary. Root added six method-local Javadoc explanations
+for persisted public-command/file flows and manual-clock pilot resumption, with executable-source
+equality confirmed after removing Javadoc. An `optimize-medium` follow-up owns only
+`UpdateTest`: two same-version local-install cases register their predecessor directly through
+the existing fixture helper, retaining the real local installation and failure/retry assertions;
+the migration/data case retains its completed two-version migration setup and explains it.
+Root's focused installer verification and subsequent uncached whole-client clean build passed
+as recorded below. Root then added method-local fixture explanations to the four flagged
+`CommandsTest` methods and `BundledRuleAudienceTest.installRunningWorkRuleIsRouted`, confirming
+executable-source equality after removing Javadoc. Those documentation changes await compilation
+and quality checks with the next integrated build; their text does not establish a runtime cause.
+Root retains this review and the focused receipt through final gate 6 acceptance.
+
+The G7 writer stopped before source inspection after trying a misresolved rule path with an
+extra `common/` segment. Root read the owning interface route and successfully read its exact
+literal target, `rules/include/class-design/constructor-parameters.md`, in the installed plugin.
+No route or guidance change is needed. Root resumed the same bounded writer with that literal-path
+correction; no source or verification result was produced by its first attempt. The no-model
+delta audit and tagged-method execution refresh are accepted at their boundaries below.
+
+
+The no-model delta audit is accepted at the static-source boundary: 601 Java test sources
+and 28 reactor POMs, with no material runner/harness/model launch gap and no native test
+group/profile. Changed/new runner tests use recorded in-memory bridges or explicit refusal
+paths, and real children remain test/build fixtures. Unchanged files reuse the earlier accepted
+source audit. The decisive report and inventory are retained in session `01a1e71a` at
+`temp/no-model-audit-xkkXI8/`; root owns cleanup after final acceptance. Its prose lists two
+changed installer POMs while its inventory counts three changed POMs; the full reactor/profile
+inspection remains its stated scope. Runtime traces and other testability claims remain separate.
+
+The attribution delegate reported the requested frozen-report tree empty and substituted live
+reports. Root observed all 455 requested frozen XML files present, so accepted no inference that
+matching aggregate counts establish the same build. Root reran the retained AST/reconciliation
+command against the explicit frozen tree. It completed with 597 inventoried sources, 455 reports,
+2,511 passing tagged-method mappings, 140 requirements, no unknown tags and no method issues.
+Only R-I1 lacks a passing tagged method, as its proof is E in both harnesses. There are now
+35 rows declaring E proof, including R-W17; the older 34-row count is historical. The decisive
+receipt and mappings are `temp/g5-summary-wAUOG9/trace-audit/`. The delegate's comparison remains
+supporting context in session `01a1e6d6` at `temp/tagged-attribution-refresh/`, with its report
+substitution disclosed. Root owns both through final gate 2 acceptance. Counts establish
+execution attribution only, not assertion adequacy or any native receipt.
+
+Root's focused installer verify passed all ten UpdateTest cases with zero failures, errors,
+skips or quality findings; commands, exit, frozen XML and quality reports are in
+`temp/g5-summary-wAUOG9/installer-focused-*`. The integrated uncached whole-client clean
+verification on the fixture/Javadoc changes passed in `temp/installer-fixture-clean-tdTI8C/`:
+455 reports, 6,062 tests, zero failures/errors, six skipped, and twenty quality reports with no
+active findings or PMD processing/configuration errors. Fifteen suppressed PMD violations remain
+disclosed. All 455 reports record the requested absent home, which remains absent. Root froze
+the XML and quality reports under `clean-reports/`; `clean-summary.json` lists twenty cases at
+or above one second. The existing slow-test reviewer is reconciling newly appearing cases;
+no before/after performance conclusion is claimed. Root retains these records through final
+acceptance. The installer worker returned its bounded handoff using these completed root checks.
+No G7 dispatch repair has been integrated; its isolated writer is running. No build/source
+process should be inferred from a nonexistent
+exec-cell wait: failed wait calls are recorded separately as operational facts in
+`temp/g5-summary-wAUOG9/invalid-wait-facts.json`, without a claimed tool-availability cause.
+
 Rows marked done keep only their first sentence here. Their full records, unchanged, are in [`plan-history.md`](plan-history.md), which is deleted with this plan.
 
 | Work item | State |
@@ -8125,6 +8215,18 @@ Reuse accepted local semantic receipts and repeat the full build only after inte
 remaining verification-closed source changes.
 
 ### Interim design acceptance mapping
+
+Current local reconciliation supersedes the historical source/report dates for G3, G5, G8,
+G9 and G10 in the table below. The accepted session `01a1e6c3` reports are
+`temp/g3-semantic-audit-Tcrb2m/findings.json`, `temp/g8-source-audit-DMO8TV/findings.json`,
+`temp/g9-source-audit-2gPUVV/findings.json` and `temp/g10-source-audit-M30vRC/findings.json`.
+G5's session `01a1e700` report at `temp/g5-semantic-audit-pmGgex/g5-semantic-audit.json`
+identified the human-readable forecast-exclusion gap repaired by `9be69d895`; that repair
+passes both focused verification and the subsequent two whole-client clean builds recorded
+above. G9's PMD diagnostics are resolved by the root follow-up above; its R-I1 native proof
+remains open. G7 values-file delivery has a current accepted map, while the dispatch boundary
+and native eligibility cases remain open as recorded above. These bounded local results do
+not close the native portions of this table or final gate 5.
 
 This map records reviewed evidence on the named source tree. A passed row stays accepted on the final tree: recheck only
 the method references whose test or production sources changed after the row's tree, against the final build's test

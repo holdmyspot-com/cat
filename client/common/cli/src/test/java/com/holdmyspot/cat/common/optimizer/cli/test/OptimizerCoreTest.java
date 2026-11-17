@@ -1536,6 +1536,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code start} reports a contract author session that did not complete by its kind and reason, not
 	 * by the result's record text.
+	 * <p>
+	 * The public start flow retains repository, fork and campaign setup to reach the command reporting boundary.
+	 * The supplied session result is immediate; its hold duration advances no real clock and runs no pilot.
 	 *
 	 * @param end how the contract author session ends
 	 * @param message the message that {@code start} reports
@@ -1701,6 +1704,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that {@code start} moves the contract author's draft directory into the campaign's held-out directory
 	 * and that the stored proposal names it there.
+	 * <p>
+	 * The scripted author writes a physical draft so the public start flow can relocate it and preserve the
+	 * proposal path, scenario bytes and values file in campaign storage.
 	 *
 	 * @throws IOException if the project cannot be written
 	 * @throws CommandRefusedException if the project cannot start a campaign
@@ -2899,6 +2905,9 @@ public final class OptimizerCoreTest
 	 * Verifies that {@code start} writes the proposal that the user reviews to a file of the campaign and that its
 	 * output names the file's path without carrying the proposal's text, so that the output stays short however long
 	 * the proposal is, and that {@code revise} replaces the file's text under the same path.
+	 * <p>
+	 * The two public commands retain one persisted campaign and its physical proposal file to observe the output
+	 * path and replacement bytes after revision; author and pilot sessions are scripted.
 	 */
 	@Test
 	public void proposalReachesTheUserThroughItsFile() throws Exception
@@ -3801,6 +3810,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that the proposal that {@code start} presents lists every file that trials receive from the incumbent:
 	 * the instruction file, a file that it imports and the project rules, but no other project file.
+	 * <p>
+	 * The public start flow retains the imported, rule and unrelated files to verify source selection in the
+	 * persisted proposal; author and pilot sessions are scripted.
 	 */
 	@Test
 	public void proposalListsTheFilesThatTrialsReceive() throws Exception
@@ -4156,6 +4168,9 @@ public final class OptimizerCoreTest
 	/**
 	 * Verifies that the proposal names the hooks of a trial plugin that the harness reports the user has not
 	 * approved, by the plugin's name.
+	 * <p>
+	 * The public start flow retains the configured plugin, captured base digest and persisted proposal to verify
+	 * propagation of the unapproved-hook finding from the session port.
 	 */
 	@Test
 	public void proposalNamesUnapprovedHooks() throws Exception
@@ -4828,6 +4843,9 @@ public final class OptimizerCoreTest
 	 * and the command to repeat, and presents no proposal; the trials that a slice decided are stored, so repeating
 	 * {@code start} runs only the others; the slice that ends the pilot presents the proposal, which the user can
 	 * confirm; and a proposal whose pilot is unfinished cannot be confirmed.
+	 * <p>
+	 * The same persisted campaign retains three sets of twenty scripted pilot trials across public start calls
+	 * and confirmation. A manual clock advances the slices without a wall-clock wait.
 	 */
 	@Test
 	public void startRunsPilotInSlicesUntilItEnds() throws Exception

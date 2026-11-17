@@ -219,7 +219,8 @@ public final class UpdateTest
 
 	/**
 	 * Installing an extracted plugin tree with the active version replaces that version's files with the supplied
-	 * tree and reports the active version as both the new and previous version.
+	 * tree and reports the active version as both the new and previous version. The fixture registers the existing
+	 * version directly so this test spends its setup on the local tree and the real installFrom operation it checks.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -231,7 +232,7 @@ public final class UpdateTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-local-same-version-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
-			Path active = fixture.installActive("1.1");
+			Path active = fixture.registerExisting(Releases.pluginVersion("1.1"));
 			Path payload = active.resolve("bin/plugin-info");
 			Files.writeString(payload, "active payload");
 			Path tree = fixture.extract("1.1");
@@ -248,7 +249,8 @@ public final class UpdateTest
 	}
 
 	/**
-	 * Reinstalling the active local version preserves harness data and does not rerun completed data migrations.
+	 * Reinstalling the active local version preserves harness data and does not rerun completed data migrations. The
+	 * two-version install establishes a completed 1.0-to-1.1 migration before the local reinstall checks that state.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -277,6 +279,8 @@ public final class UpdateTest
 
 	/**
 	 * Retrying a failed local reinstall of the active version installs the supplied tree after registration succeeds.
+	 * Registering the existing version directly keeps setup at the active-version boundary while both real installFrom
+	 * attempts exercise the registration failure and retry.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if the test policy is invalid
@@ -288,7 +292,7 @@ public final class UpdateTest
 		{
 			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("update-local-retry-")),
 				new ReleaseCatalog("1.1", NO_MIGRATION));
-			fixture.installActive("1.1");
+			fixture.registerExisting(Releases.pluginVersion("1.1"));
 			Path tree = fixture.extract("1.1");
 			Files.writeString(tree.resolve("bin/plugin-info"), "supplied payload");
 			fixture.integration.fail("register");
