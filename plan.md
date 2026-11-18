@@ -4,7 +4,210 @@ This plan turns `design.md` into code and acceptance evidence. It is written for
 `design.md` is the product and technical authority; this plan is the execution and acceptance authority. If they
 disagree, fix `design.md` first, then this plan, before dependent work continues.
 
-## Current transfer handoff (2026-11-16)
+## Current transfer handoff: session `01a1e6ba`
+
+The user requested wind-down and transfer to another agent. The goal **implement `design.md` and `plan.md`** remains
+incomplete. This section supersedes every older current-status, ownership, next-action, publication and build-currency
+statement below it; older sections remain evidence within their recorded scope. No new repair or verification run was
+started during this wind-down. Resume in the same checkout, preserving all tracked and unrelated untracked changes.
+The user authorized subagents, commits/pushes and republishing v1.0 from the current branch plus recent fixes and necessary
+repairs. Older statements saying “do not push” or limiting publication to the sandbox/run-part patch are superseded.
+
+### Continuation (2026-11-17, session `25d7df4d`)
+
+The receiving session resumed the goal from this handoff. It preserved the failed log and the `BuildWorkerTest`
+Surefire reports in `.cat/sessions/25d7df4d-0d16-472f-8332-113e1022bcf9/temp/buildworker-diag-08t8ok/` (step 1 below).
+Step 2 is delegated to a `cat:claude:optimize-high` subagent in the isolated clone
+`/home/gili/cat/worktrees/buildworker-diag` at the exact HEAD below; its brief is `brief.md` in that evidence directory
+and its report will be `report.md` in the clone. **Step 2 accepted:** the delegate changed only `BuildWorkerTest.java`
+(`runThenCleanup` keeps the body failure primary and suppresses cleanup failures; cleanup captures worker state/stack,
+published failure and process-tree liveness before termination and fixture deletion; ledger and join stages name
+themselves; three controlled tests). The orchestrator's rerun of the focused cache-disabled `-pl common/cli -am verify
+-Dtest=BuildWorkerTest` exited 0 with 23 tests, no failures, errors or skips (`accept-verify.log`). The real-tree test
+passed in about 1 s, so the original 390 s failure did not reproduce in isolation. The patch (`accepted.patch`) is
+applied to this checkout beside the seven pending paths; the full uncached clean verify of the combined tree (step 4)
+then ran (`full-verify.log`, exit 1, 2026-11-18 04:24–04:26 UTC). `BuildWorkerTest` passed there
+(`realTreeIsSampledAndReaped` 1.03 s), but `CodexEvidenceTest` failed 6 tests: it reads the refreshed
+`trial/judge/author-turn-1.jsonl` recordings and still asserts the old recordings' counts and texts. The refresh's
+acceptance gate had covered only `CodexSessionsContractTest`, so the refresh is not accepted for the combined tree. The
+new E1 trial has no session-start hook (its fixture prompt system is not CAT), so R-E21's hook assertion moves to
+`deriver-turn-1.jsonl`. That test-only repair is delegated to `cat:claude:optimize-medium` in the clone
+`/home/gili/cat/worktrees/codex-evidence` (snapshot `30dd333be` = HEAD plus the pending refresh); its brief is
+`.cat/sessions/25d7df4d-0d16-472f-8332-113e1022bcf9/temp/codex-evidence-w6fWJa/brief.md`. Modules after
+`client-codex-cli` did not run in that build. **Accepted:** the delegate changed only
+`CodexEvidenceTest.java` (counts derived from raw events; R-E21's hook check moved to the deriver recording; command
+pairing by item id in invocation order, because the new author recording completes parallel commands out of order;
+reconnect `error`/`warning` notifications asserted absent from the rendering). The orchestrator's rerun of the
+cache-disabled `-pl codex/cli -am verify` passed: 738 tests, no failures or errors, 1 existing skip. The patch is
+applied to this checkout (`accepted.patch` in `codex-evidence-w6fWJa/`), and a second full uncached clean verify of the
+combined tree ran (`full-verify.log` there, exit 1, 2026-11-18 04:36–04:38 UTC). Its only failure was
+`PluginLaunchersTest.wrapperTrainsAndPassesStartupCache`: the trained run printed `WARNING: java.io.tmpdir directory
+does not exist` before `jar 27.0.1.1`. It fails the same way at clean HEAD, so it predates these patches. Cause,
+established by a probe inside the test fork: `client/mvnw` reruns Maven under `bwrap --tmpfs /tmp`, which hides the
+Claude Code sandbox's `TMPDIR=/tmp/claude-1000`, and CAT's launcher passes that missing folder as `java.io.tmpdir`. CI
+sets no `TMPDIR`, so it passes there. Settled fix: when `TMPDIR` is an existing folder strictly below `/tmp`, `mvnw`
+also binds it at the same path inside the private `/tmp`, tested in `mvnw.bats`. Delegated to `cat:claude:optimize-high`
+in the clone `/home/gili/cat/worktrees/mvnw-tmpdir` at HEAD; brief
+`.cat/sessions/25d7df4d-0d16-472f-8332-113e1022bcf9/temp/mvnw-tmpdir-iEy0D6/brief.md`. **Delegate result verified,
+not integrated:** 8/8 bats cases (2 red before the change), shellcheck clean, focused `PluginLaunchersTest` 10/10 from
+the sandbox; the orchestrator's bats rerun passed (`accept-bats.txt`), and `accepted.patch` applies cleanly to v1.0.
+Open user choice (asked 2026-11-17): keep the `mvnw` fix, fix only the test (`runWrapper` sets its own `TMPDIR`), or both.
+Whatever the choice, tighten the `/tmp/?*` match so a value such as `/tmp//` cannot bind the host `/tmp` back.
+
+A third full uncached clean verify ran with `TMPDIR` set to a folder outside `/tmp` (build command unchanged), so the
+wrapper could not hide it: exit 0, 2026-11-18 04:50–04:52 UTC, 6,092 tests, no failures or errors, 6 skips
+(`full-verify3-*/` in this session's temp directory). On that evidence the three verified topics were committed:
+`ec9f2b00c` (BuildWorkerTest diagnostics), `fead357cc` (Codex recordings and their tests), `bc00cdc18` (Javadoc
+Markdown links). Git's automatic `gc` fails after each commit because other worktrees' refs are read-only in the
+sandbox; the commits are intact.
+
+**Queued user request (2026-11-17, after this goal):** add a plugin rule to each harness's plugin: when the agent
+runs commands in the shell, avoid, when possible, the shell features that *its own harness's* automatic approval cannot
+evaluate. Each harness gets its own rule, matched to its own limitations; do not merge them into one lowest-common-
+denominator rule (user ruling, 2026-11-17). Claude Code: its auto-mode classifier cannot evaluate dynamic shell
+variables and similar constructs. Codex: it judges no command inside its sandbox; it parses commands into literal words
+only to match its safe-command list and allow rules, so variable expansion and command substitution matter only for
+commands that need approval or must match a rule. Confirm the Codex behaviour in its source before writing that rule. It is unrelated to this goal's terminal outcome and runs
+after the goal completes, unless the user reprioritizes it. The user ruled on 2026-11-17 that delegation is now Claude-first, with
+Codex as the fallback; this replaces the earlier Codex-first preference.
+
+### Checkout and uncommitted work
+
+Branch `v1.0`, HEAD `da5016eadd7cee8645ea6eb2da3af7351bcf94a0`, also the last pushed candidate. Its startup-training
+cleanup repair is committed. Seven tracked paths are modified and unstaged:
+
+- `client/codex/cli/src/test/java/com/holdmyspot/cat/codex/optimizer/test/CodexSessionsContractTest.java`.
+- `client/codex/cli/src/test/resources/optimizer/sessions/README.md` and the three recordings
+  `author-turn-1.jsonl`, `judge-turn-1.jsonl`, `trial-turn-1.jsonl` in that directory.
+- `client/common/rules/src/main/resources/rules/include/java/javadoc.md`.
+- This `plan.md`, including previously integrated T6 and G6 preparation/qualification updates.
+
+The Javadoc rule now defaults to HTML and `<a href="URL">descriptive text</a>`. Markdown links are allowed when user rules
+request Markdown Javadoc and the rest of the comment uses Markdown; bare URLs remain disallowed. This clarification is
+not yet committed or packaged. Do not stage sandbox dotfiles, `.cat-tmp/`, `goal.md`, `ci-watch-scenario/`, or
+`client/common/distribution/.cat/`; preserve unrelated untracked state. Do not reset, clean or stash the checkout.
+
+### Verification failure and exact next repair
+
+The earlier full uncached clean verification passed on committed HEAD, before the seven pending paths above. Its receipt
+is `training-fixture-acceptance-Hm4wrn/final-ten-clean-terminal.json` below the outgoing session temp root defined below.
+It does not accept the current combined tree. The subsequent command
+`client/mvnw -q -f client/pom.xml -Dmaven.build.cache.enabled=false clean verify` recorded one error in
+`BuildWorkerTest.realTreeIsSampledAndReaped`: `Worker thread remained alive after fixture cleanup`, with a suppressed
+`DirectoryNotEmptyException`. The retained log is `integrated-source-acceptance-5wbqFe/clean-verify.log`.
+Its expected `clean-terminal.json` is absent; tool cell `1541` and process session `21476` no longer resolve.
+The controller's terminal result and reason for losing those handles remain unknown. Do not report this attempt as passed
+or infer host-wide process absence from a process scan inside a different namespace.
+
+Read-only delegate `/root/ci_buildworker_failure` established a diagnostic defect, without editing or rerunning:
+`BuildWorkerTest.java` calls `cleanupWorker` directly from `finally`, so its exception replaces an earlier body failure.
+A successful body would already observe the worker terminated, which cannot become live again. The original failure
+therefore occurred at or before that assertion, but its stage and exception were lost. The worker's wait phase and the
+original production cause are unknown. The directory-deletion error is secondary. The known fixture
+`/tmp/build-worker-real-tree-4950311361070645448` was absent in the outgoing agent's current namespace; do not assume it
+exists in the receiving namespace or invent evidence from it.
+
+The next coherent assignment is **test diagnostics only**, not a guessed production fix:
+
+1. Reconcile the retained controller/log state before repeating the expensive full command. Preserve the failed log and
+   current Surefire reports for `BuildWorkerTest` in `client/common/cli/target/surefire-reports/` before another build
+   overwrites them. No terminal controller receipt has been recovered.
+2. Give one isolated owner only
+   `client/common/cli/src/test/java/com/holdmyspot/cat/common/build/test/BuildWorkerTest.java`, based on exact HEAD above.
+   Preserve the original body exception, always perform cleanup, and attach cleanup failure as suppressed when a body
+   failure already exists. Capture worker state/stack and its published failure before fixture deletion. This repair
+   was proposed and accepted in scope but **not started**; no repair clone or source edit exists.
+3. Prove simultaneous body/cleanup failures retain the primary body exception and cleanup evidence with a controlled
+   test; then run the focused real-tree boundary with retained diagnostics. Use normal quality gates and fresh owned
+   temporary state. The relevant Maven scope is `-pl common/cli -am`, with
+   `-Dtest=BuildWorkerTest#realTreeIsSampledAndReaped -Dsurefire.failIfNoSpecifiedTests=false` and cache disabled.
+   Do not lengthen timeouts, skip assertions, disable concurrency, or repair production without decisive new evidence.
+   If the run reveals another cause, record it and assign the smallest justified repair separately.
+4. Integrate accepted changes without overwriting the seven pending paths. Run complete uncached clean verification on
+   stable final inputs, retaining a terminal receipt. Then commit/push the reviewed authorized scope.
+
+### Accepted recording refresh
+
+The five pending Codex files were accepted from `/root/codex_recording_refresh` and integrated with per-file preconditions
+against HEAD. Evidence is `codex-recording-refresh-8ykfnh/`: `final-receipt.json`, `maven-gate-final.log`,
+`changes-final.patch`, and the isolated `repo/` with its Surefire XML. The focused `CodexSessionsContractTest` gate passed
+17 tests, zero failures/errors/skips, with cache disabled and normal quality checks. The refreshed native 0.160.0
+recordings cover one completed turn for trial, judge and author. Model/token/message expectations were updated from raw
+events. Requested effort stays `low`: later root settings override the initial thread default `medium`; no adapter fix
+was justified. This is bounded progress on T3, not proof of its missing fresh multi-turn deriver and interrupt coverage.
+
+### Publication and native workers
+
+**v1.0 has not been republished.** Normal five-platform Build `44225076892` on exact HEAD failed macOS Intel verification;
+the other four platforms passed. Diagnostic macOS worker `44226602548` subsequently passed an uninstrumented complete
+reactor verification and all four original Bats groups on unchanged source: 6,089 test records, zero failures/errors,
+eight skips, 67 Bats cases with two existing skips. The original readiness-timeout cause remains unconfirmed; no source
+repair was selected. That diagnostic pass does not make the failed production Build green.
+
+The macOS diagnostic owner exited normally, reaped SSH/controller, observed provider success and integration-directory
+cleanup, and removed client keys. Separate explicit native-checkout removal was unobserved. Its accepted evidence is
+`.cat/sessions/01a1eafe-f51a-77a3-b569-2a58e22fba6d/temp/da501-macos-diagnosis-k37teicv/`, especially
+`bounded-decision.json`, `unobserved-full-receipt.json`, and `lifecycle-closeout.json`. Native Windows verification and
+its worker are also closed; its final receipt is
+`.cat/sessions/01a1eafe-c92b-72d3-a742-87d9a0ebcbab/temp/windows-training-safe-hP9KMQ/final-native-acceptance-receipt.json`.
+Do not reconnect to, cancel or repeat completed workers merely because older sections describe them as live.
+
+Last verified remote publication state: tag `v1.0` points to `7a7749cf4f33f961cdea2a26e65c913f6fca9350`; the release API
+returns 404 after authorized removal of the old release. Its 15 assets and metadata are backed up in
+`v1-republish-kTxH04/`. Revalidate remote state immediately before mutation. Publication order remains: stable local
+clean pass, reviewed commit/push, successful normal five-platform Build on that exact commit, lease-protected tag update,
+successful signed Release including cleanup, then verification of all 15 actual published assets. No replacement tag or
+new Release was launched during wind-down.
+
+Reuse the hosted-run checker at
+`.cat/sessions/01a1eaf5-b66f-7fe0-86d7-20b76546b779/temp/republish-build-yRyIb2/check-hosted-run.py` and published-asset
+verifier at `.cat/sessions/01a1eaf4-bdce-73d2-bbad-260518469b9f/temp/republish-verifier-3iGJKp/verify-release.py`.
+Their invocation contracts and expected identity are in the publication ledger; the asset verifier remains unrun.
+
+### Broader acceptance and agent wind-down
+
+Publication is intermediate to the full goal. Reconcile all eight §9 gates on final inputs: complete client verification;
+all 35 E-proof traceability rows including installed R-I1; no-model Java/source audit; installed E1–E8 in both harnesses;
+G1–G10; T3/T6 and other testability requirements; documentation rows WI-15/96/111/120/142/145 and P12/P13; then the
+standalone transition. Do not remove requirement tags or design/plan references before gates 1–7 pass. E1 must start
+without a goal under the accepted sole-source-of-requirements design. Earlier native successes retain their recorded
+scope and artifact identity; they do not establish acceptance of the next published artifact.
+
+Claude E1/E5/E7 hit a monthly 429 and need account recovery before a new attempt. Codex E5 has a recorded account-reset
+prerequisite in the scenario notes; inspect it before scheduling. Keep at most one campaign per harness. G6 background
+acceptance is prepared, not executed, in
+`.cat/sessions/01a1ec8a-48e6-7081-a2d7-67fe44da3e0d/temp/g6_background_packet-cgOjQK/`; preserve real host idle wakeup,
+ESC and cancellation evidence requirements instead of replacing them with polling or a shell background process.
+
+The accepted T6 preparation contract is
+`.cat/sessions/01a1ec8a-82d2-7811-8605-69c1ea496010/temp/t6_native_acceptance-XZ39Je/stable_group_contract.md`
+with `report_v2.json` and `packet.md` beside it. Earlier `capture_comparison_contract.md`/`report.json` are superseded.
+The contract requires actual owned-driver termination and public recovery, stable development-group comparisons, full
+trial identities/outcomes and attributable process termination; changed groups or missing attribution remain unproved.
+`/root/t6_stable_support` had been assigned disposable offline helper preparation only. At wind-down it was `pending_init`;
+the parent sent a stop/handoff request and interrupted it before any new task was launched. Do not count its helper or
+offline checks as completed without reading a terminal receipt. Native T6 remains unrun. No new diagnostic-repair agent
+was launched. The BuildWorker diagnosis agent is completed. No live root execution handle is known; the missing clean
+controller result remains explicitly unresolved above.
+
+The parent installation last reported `consistent: false` after a sandboxed installer encountered a bind-mount rename
+failure. Preserve the pending-permissions marker. Never run the installer inside this sandbox or manually clear that
+marker; recovery requires the supported outside-sandbox installer route and subsequent verification. The installed
+cache is still `1.0+bc4a725d5f39e`, separate from current source and pending publication.
+
+### Evidence ownership on transfer
+
+Unless a path above starts with `.cat/sessions/`, evidence directory names resolve relative to
+`.cat/sessions/01a1e6ba-c063-78b0-9d33-7420983dae1e/temp/` in this checkout. The publication transition record is
+`v1-republish-kTxH04/publication-state.json` there. This handoff supersedes any stale active-owner/next-action fields
+in that record; reconcile them before dispatching new work. The receiving agent assumes the next-work claim and cleanup
+custody when it resumes, preserving accepted evidence until its last comparison, recovery or publication consumer ends.
+Session temp evidence can be removed by CAT after its transcript is no longer retained; the receiver should read it
+in place promptly or move required directories under its own session temp and update references before that lifecycle
+boundary. Do not delete referenced receipts or scratch clones during transfer. This plan preserves the essential
+decisions even if a receipt later becomes unavailable; unavailable receipts cannot establish a passed gate.
+
+## Earlier transfer handoff (2026-11-16)
 
 The user requested that this agent wind down and transfer the work. Resume the full goal, **implement
 `design.md` and `plan.md`**; it is not complete. This handoff supersedes older statements of current
@@ -7283,6 +7486,17 @@ selection and download it describes are unchanged.
 		external file raises an authority warning that offers no way to edit it, and delivery leaves every external file
 		unchanged.
 	- **E8:** two concurrent CAT processes are bounded by the shared capacity.
+- **T6 driver crash:** once per harness, run an acceptance-owned copy of the `easy` fixture through that harness's
+	installed final-artifact `prompt-optimizer` skill. Keep the owning host session alive. After campaign records
+	contain a completed outcome and a running logical trial with a durable assignment, record the driver and nested
+	processes by PID and process-start identity. Send SIGKILL only to that driver, wait for its abnormal exit, and
+	preserve an independent copy of its campaign and run records. In the same host session, invoke `run` again.
+	Record recovery of the abandoned runs, retention of completed outcomes, rerun of the in-flight logical keys
+	without duplicate adoption, and retention of the certification-attempt index. Distinguish processes that exited
+	with the driver from surviving orphans that CAT terminates during recovery. Preserve the complete native events,
+	command results, identity observations and before/after records until final acceptance. The check passes only
+	when its required crash and recovery outcomes are observed; an untriggered kill condition or uncertain process
+	identity is unrun. Existing E2 ESC/replay and local persistence-fault receipts remain separate accepted evidence.
 - **Unit evidence instead of live runs (user ruling, 2026-10-20, D91):** these §14 claims are proven by Java tests,
 	not by an E scenario: the dirty-base refusal (`ForkTest`, on a real repository); removing a campaign's files after
 	the incumbent is kept and finishing an interrupted removal (driver and delivery tests); a prompt test's fixtures with
@@ -7294,6 +7508,25 @@ selection and download it describes are unchanged.
 	interrupt (`DriverTest.hostInterruptResumesAttempt`, with the contract tests replaying each harness's recorded
 	interrupted turn); and the eligible read-only-credential and disposable-fixture trials
 	(`OptimizerCoreTest.startAdmitsEligibleExternalEffects`, using already-classified author output).
+- **G6 background acceptance:** on the applicable final installed artifact, assign one otherwise idle native host
+	per supporting harness and an isolated clean fixture; record the artifact, host, campaign and actual driver/child
+	identities. The owning controller stays live to observe and reap every handle. Use the host shell tool's own
+	background mode for `start <target> --background`, then end the host turn. Without a user message or manual wakeup,
+	the completed optimizer command must wake that same idle host through its native exit notice or queued message;
+	the callback calls `status <target>` and reads the stored proposal. A standalone queue probe, foreground E2
+	interruption or background refusal does not pass this native branch.
+	After reading the acceptable proposal, use `confirm <campaign>` and `run <campaign> --background`. While its recorded
+	driver is live, interrupt a later unrelated host turn through real ESC and observe that the same background driver
+	survives. Use `cancel <campaign>` and observe its actual driver and children through terminal exit within the grace
+	period plus 30 seconds, retaining cancelled/resumable status. If it ends before the selecting action, record that
+	branch as unproved. Do not race live `revise`, `choose` or `confirm` probes against a naturally ending driver;
+	the controlled-lock unit checks prove those refusals. Reuse the final passing unit mappings in the G6 row for
+	notification ordering, queue-write failure reporting, snapshot/driver status, busy/refusal policy, bounded
+	cancellation and admission beyond eight minutes. In a separately owned sandbox-bound Codex host, retain the actual
+	background refusal reason and absence of a new campaign; never treat refusal as successful queued wakeup. Preserve
+	untrimmed native events, actual background tool invocation and the idle interval showing no turn-start checks.
+	Record successful wakeup, unrelated-ESC survival, native cancellation and each conditional refusal independently;
+	leave unavailable host-policy, UI-key or queue prerequisites explicit until observed.
 - **Recordings:** each run saves its harness event streams, untrimmed, with the harness version. They replace the
 	contract tests' recordings, and the contract tests then pass on them (`design.md` §10 T3). Save at least one
 	completed multi-turn session per role and an interrupted turn (from E2) per harness.
@@ -8498,8 +8731,9 @@ execution reports. No additional source defect was found. Root accepts these loc
 T1/T2/T4 dispositions; native qualifications below remain separate.
 T3's current fake/real shared-contract checks pass; installed E1–E8 execution and new native
 recordings remain unrun. T5's accepted clock/completion/blocking-boundary evidence is retained.
-T6's 20 file-store fault points and crash-after-assignment/outcome checks pass, while the required
-real-process-kill receipt remains unrun per harness. These native qualifications remain unmet.
+T6's accepted 20 file-store fault points and crash-after-assignment/outcome checks remain the local
+persistence evidence. WI-15's T6 driver-crash check supplies the separate real-kill qualification once per harness;
+record its two native receipts here before passing that qualification. These native qualifications remain unmet.
 
 The consolidation identified five additional T7 unit methods needing setup rationale. The
 exclusive repair writer added method-local explanations to four public-confirmation refusal
@@ -8556,7 +8790,7 @@ session `01a16de4-2163-75d0-9e45-481a1850fb3e`.
 | G3 | Passed | `temp/tracked-link-checkout-gN9ItB/g3-acceptance.json`: 42 references pass on the 2026-11-07 reports with no changed body in effect. Design row unchanged. |
 | G4 | Partial on the 2026-11-07 build | Local clauses pass on the 2026-11-07 reports (35 of 37 references plus replacements): the two detector methods are removed by the isolation ruling and replaced by `DriverTest.judgesSeeOnlyTheirOwnTrial` and `StagedSourceRunnerCopyTest.trialsKeepProjectsAndHomesPrivate`; `failedAttemptReproducesBeforeDevelopment` shrank and its removed assertions are proven by `ReproductionTest`, `SchedulerTest.reproductionRunsBeforeDevelopment`, `CommitGateTest.gateWaitsForReproduction`, `GeneratorTest` and `ValuesPromptTest`. The native held-out denial receipts (Claude 2026-10-28 on `598cfbed13`, Codex 2026-11-02 on `8f0d5bbce7`, session `3184ae68-7dad-45b6-b48f-c68707926440`) predate the runner launcher, policy and deny-read changes: rerun the native held-out denial check in both harnesses on the gate 4 artifact, alongside E1. |
 | G5 | Passed locally on the 2026-11-07 build | `temp/tracked-link-checkout-gN9ItB/g5-acceptance.json`: 72 references pass; six changed bodies (typed size records, cap-unreachable wording, `Commands` platform argument) prove the same outcomes. The native campaigns remain gate 4. |
-| G6 | Partial (feasibility mapping) | Local: persistence fault recovery (`ReconciliationTest`, `CleanupTest.nextCommandCompletesInterruptedStep`, `OptimizerCoreTest.commandCompletesInterruptedRemoval`), host interrupt resume (`DriverTest.hostInterrupt`, `hostInterruptResumesAttempt`, `RoundEndTest.interruptionNeverCompletesRound`) and the other-harness refusal (`OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange`, `RegistryTest.refusesOtherHarness`) pass. Remaining: E2 in both harnesses (real ESC recording; Codex stops admissions within 15 s; replay of each recording) and E6 for the installed cross-harness refusal. |
+| G6 | Partial; background native acceptance remains | Retain the accepted E2 real-ESC receipts and composed recorded-adapter-to-driver resume checks, including Codex stopping admissions within 15 seconds, retained outcomes/assignments and the unchanged certification index; revalidate only changed determining inputs. Retain persistence-fault recovery and the unit cross-harness refusal (`OptimizerCoreTest.refusesOtherHarnessBeforeAnyChange`, `RegistryTest.refusesOtherHarness`). WI-15 E6 proves same-harness live-session refusal; it does not require an installed cross-harness run. Remaining: one recorded optimizer background execution per supporting harness on an applicable final artifact, showing automatic idle-session wakeup through the Claude host exit notice or the Codex queued message, and a host ESC during a later unrelated turn leaving its background driver running. Map the remaining background clauses to passing final unit evidence: notice only after state/delivery storage and lock release (`OptimizerCoreTest.backgroundNoticeAfterPilot`, `removalIsReported(true)`); queue refusal visible in the next status (`CodexExitNoticeTest.queueFailureIsExplicit` and those core checks); sandbox-bound Codex background refusal (`CodexOptimizerBoundaryTest.sandboxedBackgroundNamesReason`, with a native refusal observation when that host condition applies); snapshot/driver status, second-run busy, mutator refusal and bounded resumable cancellation (`OptimizerCoreTest.backgroundLockAndCancellation`, `backgroundCancelWaitIsBounded`, `DriverTest.backgroundIgnoresSliceAndInterrupt`); and admission beyond the foreground slice limit (`DriverTest.backgroundIgnoresSliceAndInterrupt`, `GuardPilotTest.backgroundPilotHasNoTimeCutoff`, `OptimizerCoreTest.backgroundRunsUntilDecision`). The recorded host invocation must use the shell tool own background mode without shell ampersand/nohup, contain no unsolicited turn-start tests, and follow the shared harness-neutral skill. Native cancellation retains and reaps the actual driver/child handles; the default grace plus 30 seconds is 90 seconds. Record unrun or inconclusive branches explicitly; H38/H39 feasibility or a sandbox refusal cannot substitute for successful optimizer idle wakeup. |
 | G7 | Partial (feasibility mapping) | Local: fixtures with generated values, failed built-in tools, paired control trials, the shared capacity bound across two JVMs (`HarnessCapacityTest.holdBlocksAnotherJvmUntilExpiry`), two-plugin trial installs and project-built plugins pass. Remaining: E1 (all roles through the runners, observed profile), E5 (host tool, replay recordings with judge sessions), E4 (persistent-write refusal), E8 (two concurrent processes, user-deferred); trial-plugin loading is proven by E1's loading record in both harnesses; delivery of values files and the eligibility cases need a method-level map. |
 | G8 | Passed locally on the 2026-11-07 build | `temp/tracked-link-checkout-gN9ItB/g8-acceptance.json`: 67 of 73 references pass; the six removed concurrency methods are replaced against the new design text by `ConcurrencyPolicyTest` (starting windows, drop at a consuming failure, unchanged window at other failures, halving after infrastructure attempts, cell limit, ceilings) and `SchedulerTest.promotionRunsAreAdmitted`. E8 is required in both harnesses (user ruling, 2026-11-16), run alone per harness. |
 | G9 | Passed locally on the 2026-11-09 build | Fresh clean build of `5e9a6a7a4` on 2026-11-09 (142 s): 5,276 tests, 0 failures, 6 skipped, all 413 reports at a nonexistent `user.home` with `HOME` pointing at the same missing folder; no test created it (only the Maven wrapper's download cache appeared there); `TestabilityAuditTest` (22) passes. The calibration clause is fixed by `2d2d9513a`: the optimizer fixtures use `FixedCalibrator`, which shares `CapCalibratorContract` with `CapCalibrationTest`, and only `CapCalibrationTest` runs `CapCalibration`. PMD record errors and R-I1 native review not re-derived. |
