@@ -2,8 +2,10 @@ package com.holdmyspot.cat.common.runner.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.UndeletableDirectory;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessRun;
@@ -254,6 +256,40 @@ public final class SessionSlotsTest
 			requireThat(failure.getMessage(), "failureMessage").contains(manifest.toString());
 			requireThat(manifest, "manifest").isRegularFile();
 			requireThat(sentinel, "sentinel").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that emptying a slot removes each run's manifest after everything else in the run: a deletion that stops
+	 * partway, at an entry of the run that cannot be removed, leaves the run's manifest, which names the processes
+	 * that a later attempt must check.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void keepsManifestUntilRunIsEmpty() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1,
+				new Liveness());
+			SessionSlots.Slot slot = slots.acquire(false);
+			HarnessRun run = new HarnessRunManager(new FileLocks(), slot.root(), Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId(slot.runId()).create("claude");
+			Path manifest = run.directory().resolve("run.json");
+			IOException failure = null;
+			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "run.json"))
+			{
+				slots.release(slot);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(manifest, "manifest").isRegularFile();
 		}
 	}
 

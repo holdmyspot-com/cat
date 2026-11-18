@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.fakes.test.ProcessFolder;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.UndeletableDirectory;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
@@ -451,6 +452,40 @@ public final class HarnessRunManagerTest
 			manager.deleteRun(run);
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that deleting a run removes its manifest after everything else in it: a deletion that stops partway, at
+	 * an entry of the run that cannot be removed, leaves the run's manifest, which names the processes that a later
+	 * cleanup must check.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void deleteRunKeepsManifestUntilRunIsEmpty() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			manager.fail(run, "test cleanup");
+			Path manifest = run.directory().resolve("run.json");
+			IOException failure = null;
+			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "run.json"))
+			{
+				manager.deleteRun(run);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(manifest, "manifest").isRegularFile();
 		}
 	}
 
@@ -1516,6 +1551,44 @@ public final class HarnessRunManagerTest
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that deleting a stale run removes its manifest after everything else in it: a deletion that stops
+	 * partway, at an entry of the run that cannot be removed, leaves the run's manifest, which names the processes that
+	 * a later cleanup must check.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void staleRunKeepsManifestUntilRunIsEmpty() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
+			HarnessRunManager oldManager = new HarnessRunManager(jvm.fileLocks(), root, oldClock,
+				Yielding.fileReplacer());
+			HarnessRun run = oldManager.create("harness");
+			oldManager.fail(run, "failed");
+			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, currentClock,
+				Yielding.fileReplacer());
+			Path manifest = run.directory().resolve("run.json");
+			IOException failure = null;
+			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "run.json"))
+			{
+				manager.deleteStaleRuns(Duration.ofDays(7));
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(manifest, "manifest").isRegularFile();
 		}
 	}
 

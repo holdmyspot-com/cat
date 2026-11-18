@@ -292,6 +292,42 @@ public final class HarnessRunManager
 	}
 
 	/**
+	 * Deletes a run's directory, including its read-only files and directories, and deletes the run's manifest after
+	 * everything else in it. A deletion that stops partway, such as one whose process is killed, then leaves the
+	 * manifest, which names the run's processes for the cleanup that comes after it. Entries that a concurrent cleanup
+	 * removes first are skipped.
+	 *
+	 * @param directory the run's directory
+	 * @throws NullPointerException if {@code directory} is null
+	 * @throws IOException          if the directory cannot be deleted
+	 */
+	public static void deleteRunDirectory(Path directory) throws IOException
+	{
+		requireThat(directory, "directory").isNotNull();
+		Path manifest = directory.resolve("run.json");
+		List<Path> entries;
+		try
+		{
+			// Removing an entry needs the right to write its directory
+			if (PortableFiles.isReadOnly(directory))
+				PortableFiles.clearReadOnly(directory);
+			try (Stream<Path> listed = Files.list(directory))
+			{
+				entries = listed.filter(entry -> !entry.equals(manifest)).toList();
+			}
+		}
+		catch (NoSuchFileException _)
+		{
+			// A concurrent cleanup already removed the run
+			return;
+		}
+		for (Path entry : entries)
+			delete(entry);
+		delete(manifest);
+		delete(directory);
+	}
+
+	/**
 	 * Returns the directory of a run that holds the read-only copies of the targets of the project's symbolic links
 	 * outside the project, each copy in a folder of its own beside the project. The directory exists only in a run whose
 	 * copied project has such a link.
@@ -1055,7 +1091,7 @@ public final class HarnessRunManager
 				if (isHarnessProcessAlive(manifest))
 					throw new IOException("Harness process remains alive; refusing to delete run: " + run.id());
 			}
-			delete(directory);
+			deleteRunDirectory(directory);
 		}
 		deleteIfEmpty(harnessDirectory);
 		deleteIfEmpty(root);
@@ -1197,7 +1233,7 @@ public final class HarnessRunManager
 						try (HarnessRunLock lock = acquireLock(ownedRun))
 						{
 							if (lock.isHeld())
-								delete(run);
+								deleteRunDirectory(run);
 						}
 						catch (IOException e)
 						{
@@ -1685,9 +1721,10 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Deletes a run directory after its output has been persisted, including its read-only files and directories.
+	 * Deletes a file, or a directory with everything in it, including its read-only files and directories. Entries
+	 * that a concurrent cleanup removes first are skipped.
 	 *
-	 * @param directory the directory to delete
+	 * @param directory the file or directory to delete
 	 * @throws IOException if deletion fails
 	 */
 	private static void delete(Path directory) throws IOException

@@ -241,7 +241,8 @@ public final class SessionSlots
 
 	/**
 	 * Stops the processes that the slot's previous session recorded, and if none remains alive, removes the slot's
-	 * directory.
+	 * directory. Each run's manifest is removed after everything else in the run, so that a removal that stops partway
+	 * leaves the record of the run's processes for the next attempt.
 	 *
 	 * @param slot the slot
 	 * @return {@code true} if the slot has no directory, or {@code false} if a recorded process remains alive
@@ -249,8 +250,11 @@ public final class SessionSlots
 	 */
 	private boolean empty(Slot slot) throws IOException
 	{
-		if (!stopRecordedProcesses(slot.root()))
+		List<RecordedRun> records = manifests(slot.root());
+		if (!stopRecordedProcesses(records))
 			return false;
+		for (RecordedRun record : records)
+			HarnessRunManager.deleteRunDirectory(record.manifest().getParent());
 		TemporaryDirectories.deleteRecursively(slot.root());
 		return true;
 	}
@@ -258,13 +262,12 @@ public final class SessionSlots
 	/**
 	 * Asks every process that the manifests of the slot's runs record to end, and checks whether any remains.
 	 *
-	 * @param root the slot's directory
+	 * @param records the runs of the slot
 	 * @return {@code true} if no recorded process remains alive
-	 * @throws IOException if the slot's directories cannot be read
+	 * @throws IOException if a run's manifest cannot be read or does not match its run
 	 */
-	private boolean stopRecordedProcesses(Path root) throws IOException
+	private boolean stopRecordedProcesses(List<RecordedRun> records) throws IOException
 	{
-		List<RecordedRun> records = manifests(root);
 		List<ValidatedRun> validated = new ArrayList<>();
 		for (RecordedRun record : records)
 		{

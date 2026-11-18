@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.SessionDirectory;
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
@@ -13,9 +12,9 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
+import com.holdmyspot.cat.common.runner.HarnessRunManager;
 
 import java.io.IOException;
-import java.nio.file.DirectoryStream;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
@@ -316,7 +315,7 @@ public final class Cleanup
 			{
 				Optional<Path> project = projectPath(run.resolve(MANIFEST));
 				if (project.isPresent() && owners.stream().anyMatch(project.get()::startsWith))
-					deleteRun(run);
+					HarnessRunManager.deleteRunDirectory(run);
 			}
 		}
 	}
@@ -359,30 +358,6 @@ public final class Cleanup
 		if (!path.isAbsolute())
 			return Optional.empty();
 		return Optional.of(path.normalize());
-	}
-
-	/**
-	 * Deletes a run directory, deleting its manifest after everything else.
-	 *
-	 * @param run the run directory
-	 * @throws IOException if the run cannot be deleted
-	 */
-	private static void deleteRun(Path run) throws IOException
-	{
-		Path manifest = run.resolve(MANIFEST);
-		List<Path> children = new ArrayList<>();
-		try (DirectoryStream<Path> stream = Files.newDirectoryStream(run))
-		{
-			for (Path child : stream)
-			{
-				if (!child.equals(manifest))
-					children.add(child);
-			}
-		}
-		for (Path child : children)
-			TemporaryDirectories.deleteRecursively(child);
-		Files.deleteIfExists(manifest);
-		Files.deleteIfExists(run);
 	}
 
 	/**
