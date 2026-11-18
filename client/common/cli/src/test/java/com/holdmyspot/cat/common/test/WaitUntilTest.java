@@ -232,7 +232,8 @@ public final class WaitUntilTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path folder = cleanup.add(Files.createTempDirectory("wait-until-shell-")).toAbsolutePath();
-			WaitUntil.CommandStarter starter = WaitUntil.shellStarter(command -> List.of(java, "-version"), folder);
+			WaitUntil.CommandStarter starter = WaitUntil.shellStarter(
+				command -> List.of(java, "-XX:+PerfDisableSharedMem", "-version"), folder);
 			try (Process process = starter.start("ignored"))
 			{
 				String output = new String(process.getInputStream().readAllBytes(), UTF_8);
@@ -463,7 +464,8 @@ public final class WaitUntilTest
 				String javaExecutable = ProcessHandle.current().info().command().orElseThrow();
 				String modulePath = System.getProperty("jdk.module.path");
 				requireThat(modulePath, "modulePath").isNotNull();
-				List<String> command = List.of(javaExecutable, "-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
+				List<String> command = List.of(javaExecutable, "-XX:+PerfDisableSharedMem",
+					"-Djava.io.tmpdir=" + System.getProperty("java.io.tmpdir"),
 					"-Duser.home=", "--module-path", modulePath, "--module",
 					"com.holdmyspot.cat.common.cli.test/" + WaitUntilCommandProcess.class.getName(),
 					completionFile.toString(), stdout, stderr, Integer.toString(status));

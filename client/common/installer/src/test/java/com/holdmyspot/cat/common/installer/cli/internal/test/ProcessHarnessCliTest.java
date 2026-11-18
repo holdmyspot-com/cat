@@ -47,7 +47,8 @@ public final class ProcessHarnessCliTest
 			if (systemRoot != null)
 				environment.put("SystemRoot", systemRoot);
 			Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-			HarnessCommand command = new HarnessCommand(List.of(java.toString(), "-cp", testClasses().toString(),
+			HarnessCommand command = new HarnessCommand(List.of(java.toString(), "-XX:+PerfDisableSharedMem", "-cp",
+				testClasses().toString(),
 				FakeHarnessProgram.class.getName(), "fixed"), environment);
 
 			CommandResult result = new ProcessHarnessCli(command, home).run(List.of("plugin", "a b"));

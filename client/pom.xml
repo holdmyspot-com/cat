@@ -30,6 +30,13 @@
 			fixtures to the tests that read the project's prompt tests, while the fixtures are created and deleted.
 		-->
 		<cat.session.temp>${java.io.tmpdir}</cat.session.temp>
+		<!--
+			The options that every Surefire test JVM gets before the caller's. Without -XX:+PerfDisableSharedMem, each JVM
+			writes its performance counters to /tmp/hsperfdata_<user>/<pid>. Builds in separate PID namespaces that share
+			/tmp reuse PIDs, so two JVMs would overwrite each other's file. A module that sets its own argLine for Surefire
+			must start it with ${cat.test.jvm.options} ${argLine}.
+		-->
+		<cat.test.jvm.options>-XX:+PerfDisableSharedMem</cat.test.jvm.options>
 		<checkstyle.version>14.4.0</checkstyle.version>
 		<commons-compress.version>1.28.0</commons-compress.version>
 		<exec-maven-plugin.version>3.6.4</exec-maven-plugin.version>
@@ -328,6 +335,7 @@
 					<artifactId>maven-surefire-plugin</artifactId>
 					<version>${maven-surefire-plugin.version}</version>
 					<configuration>
+						<argLine>${cat.test.jvm.options} ${argLine}</argLine>
 						<classpathDependencyExcludes>
 							<classpathDependencyExclude>org.slf4j:slf4j-nop</classpathDependencyExclude>
 						</classpathDependencyExcludes>

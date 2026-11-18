@@ -100,6 +100,7 @@ public final class BuildChild
 			throw new IllegalStateException("The test JVM did not expose jdk.module.path");
 		List<String> command = new ArrayList<>();
 		command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
+		command.add("-XX:+PerfDisableSharedMem");
 		command.add("--module-path");
 		command.add(modulePath);
 		command.add("--module");

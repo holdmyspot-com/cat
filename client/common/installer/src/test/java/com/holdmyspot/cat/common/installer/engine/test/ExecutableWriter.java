@@ -56,7 +56,8 @@ public final class ExecutableWriter
 		Path temporary = Files.createDirectory(working.resolve("temporary"));
 		Path output = working.resolve("output.log");
 		Path java = Path.of(System.getProperty("java.home"), "bin", "java");
-		ProcessBuilder builder = new ProcessBuilder(java.toString(), "-Duser.home=" + home,
+		ProcessBuilder builder = new ProcessBuilder(java.toString(), "-XX:+PerfDisableSharedMem",
+			"-Duser.home=" + home,
 			"-Djava.io.tmpdir=" + temporary, "--enable-native-access=com.holdmyspot.cat.common.cli",
 			"--module-path", modulePath, "--module",
 			ExecutableWriter.class.getModule().getName() + "/" + ExecutableWriter.class.getName(),

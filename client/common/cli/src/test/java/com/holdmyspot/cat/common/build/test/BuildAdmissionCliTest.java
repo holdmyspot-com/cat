@@ -205,6 +205,7 @@ public final class BuildAdmissionCliTest
 			Path output = root.resolve("cli-output.txt");
 			Path javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java");
 			ProcessBuilder builder = new ProcessBuilder(javaExecutable.toString(),
+				"-XX:+PerfDisableSharedMem",
 				"-Djava.io.tmpdir=" + temporary,
 				"-Duser.home=" + home,
 				"--enable-native-access=com.holdmyspot.cat.common.cli",

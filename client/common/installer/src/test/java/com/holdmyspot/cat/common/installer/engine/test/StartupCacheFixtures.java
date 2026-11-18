@@ -73,7 +73,7 @@ public final class StartupCacheFixtures
 		return "#!/bin/sh\n" +
 			"bin=$(CDPATH= cd -P -- \"$(dirname -- \"$0\")\" && pwd -P)\n" +
 			"IFS= read -r runtime < \"$bin/runtime-binding\"\n" +
-			"exec \"$runtime/bin/java\" -cp \"$bin/modules/fixture.jar\" \"$@\"\n";
+			"exec \"$runtime/bin/java\" -XX:+PerfDisableSharedMem -cp \"$bin/modules/fixture.jar\" \"$@\"\n";
 	}
 
 	/**
@@ -87,7 +87,7 @@ public final class StartupCacheFixtures
 		return "@echo off\r\n" +
 			"for %%I in (\"%~dp0.\") do set \"BIN=%%~fI\"\r\n" +
 			"set /p RUNTIME=<\"%BIN%\\runtime-binding\"\r\n" +
-			"call \"%RUNTIME%\\bin\\java.exe\" -cp \"%BIN%\\modules\\fixture.jar\" %*\r\n";
+			"call \"%RUNTIME%\\bin\\java.exe\" -XX:+PerfDisableSharedMem -cp \"%BIN%\\modules\\fixture.jar\" %*\r\n";
 	}
 
 	/**
