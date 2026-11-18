@@ -166,14 +166,16 @@ public final class UpdateEntriesTest
 
 	/**
 	 * When the harness deletes the folder of the version that the update replaces, which holds the running installer's
-	 * Java runtime, while it registers the new version, the runtime's program that starts processes still exists when
-	 * the new version's installer is started, and nothing of the old folder is left afterwards.
+	 * Java runtime, while it registers the new version, the update still starts the new version's installer and
+	 * nothing of the old folder is left afterwards. On Linux and macOS the runtime's program that starts processes
+	 * exists again when that installer is started, because the runtime starts every process through it; on Windows,
+	 * where the runtime starts processes without it, nothing of the old folder is put back.
 	 *
 	 * @throws IOException    if the fixture cannot be created or inspected
 	 * @throws TrustException if a test policy is invalid
 	 */
 	@Test
-	public void deletedFolderKeepsSpawnHelper() throws IOException, TrustException
+	public void deletedFolderStillStartsNewInstaller() throws IOException, TrustException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -185,7 +187,8 @@ public final class UpdateEntriesTest
 			requireThat(update.status, "status").withContext(update.output, "output").
 				withContext(update.diagnostics, "diagnostics").isEqualTo(0);
 			requireThat(fixture.started, "started").size().isEqualTo(1);
-			requireThat(fixture.spawnHelperExisted, "spawnHelperExisted").containsExactly(List.of(true));
+			requireThat(fixture.spawnHelperExisted, "spawnHelperExisted").
+				containsExactly(List.of(!Platform.current().isWindows()));
 			requireThat(Files.exists(fixture.versionFolder(Fixture.ACTIVE)), "oldFolderExists").isFalse();
 		}
 	}

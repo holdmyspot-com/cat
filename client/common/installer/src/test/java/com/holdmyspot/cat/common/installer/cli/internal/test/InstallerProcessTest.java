@@ -167,6 +167,117 @@ public final class InstallerProcessTest
 	}
 
 	/**
+	 * On Linux and macOS, where the Java runtime starts every process through its program that starts processes, a
+	 * run that finds that program deleted puts it back while the launcher is started, starts the launcher through a
+	 * shell that holds it back until what was put back is removed, and leaves nothing of it after the run.
+	 *
+	 * @throws IOException if the fixture cannot be created or the run fails
+	 */
+	@Test
+	public void deletedSpawnHelperIsPutBackOnPosix() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("installer-process-posix-restored-")).toRealPath();
+			Path launcher = root.resolve("cache/cat/cat/1.0+b043121dfc2e7/bin/installer");
+			DeletedRuntimeRun run = runWithDeletedRuntime(Platform.LINUX_X64, Map.of("PATH", root.toString()),
+				root.resolve("cache/cat/cat/1.0+b96abd7d44d4b"), launcher);
+
+			requireThat(run.spawnHelperExisted(), "spawnHelperExisted").isTrue();
+			requireThat(run.command().subList(0, 2), "shell").isEqualTo(List.of("/bin/sh", "-c"));
+			requireThat(run.command().subList(3, run.command().size()), "launcherCommand").
+				isEqualTo(List.of(launcher.toString(), "install", "--harness", "codex"));
+			requireThat(run.replacedExists(), "replacedExists").isFalse();
+		}
+	}
+
+	/**
+	 * On Windows, where the Java runtime starts processes without a program that starts them, a run that finds the
+	 * runtime's folder deleted puts nothing back and starts the launcher through Windows PowerShell without a shell.
+	 *
+	 * @throws IOException if the fixture cannot be created or the run fails
+	 */
+	@Test
+	public void deletedRuntimeIsNotPutBackOnWindows() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("installer-process-windows-restored-")).toRealPath();
+			Path systemRoot = root.resolve("Windows");
+			Path launcher = root.resolve("cache/cat/cat/1.0+b043121dfc2e7/bin/installer.ps1");
+			DeletedRuntimeRun run = runWithDeletedRuntime(Platform.WINDOWS_X64,
+				Map.of("SystemRoot", systemRoot.toString()), root.resolve("cache/cat/cat/1.0+b96abd7d44d4b"), launcher);
+
+			requireThat(run.spawnHelperExisted(), "spawnHelperExisted").isFalse();
+			Path powershell = systemRoot.resolve("System32/WindowsPowerShell/v1.0/powershell.exe");
+			requireThat(run.command(), "command").isEqualTo(List.of(powershell.toString(), "-NoProfile",
+				"-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", launcher.toString(), "install", "--harness",
+				"codex"));
+			requireThat(run.replacedExists(), "replacedExists").isFalse();
+		}
+	}
+
+	/**
+	 * Runs a launcher with a runner whose Java runtime, inside a version folder, has a program that starts processes
+	 * when the runner is created and is deleted with that folder before the run.
+	 *
+	 * @param platform    the platform that the runner runs on
+	 * @param environment the installer's environment
+	 * @param replaced    the version folder that holds the runtime
+	 * @param launcher    the launcher
+	 * @return what the process starter observed and whether the version folder exists after the run
+	 * @throws IOException if the fixture cannot be created or the run fails
+	 */
+	private static DeletedRuntimeRun runWithDeletedRuntime(Platform platform, Map<String, String> environment,
+		Path replaced, Path launcher) throws IOException
+	{
+		Path spawnHelper = Files.createDirectories(replaced.resolve("runtime/lib")).resolve("jspawnhelper");
+		Files.writeString(spawnHelper, "spawn helper");
+		if (!spawnHelper.toFile().setExecutable(true))
+			throw new IOException("Could not make " + spawnHelper + " executable");
+		List<Boolean> existed = new ArrayList<>();
+		List<List<String>> started = new ArrayList<>();
+		InstallerProcess installers = InstallerProcessSecrets.getInstallerProcessAccess().create(platform,
+			environment, builder ->
+			{
+				existed.add(Files.exists(spawnHelper));
+				started.add(List.copyOf(builder.command()));
+				return new ExitedProgram(new CommandResult(0, ""));
+			}, replaced.resolve("runtime"));
+		TemporaryDirectories.deleteRecursively(replaced);
+
+		installers.run(launcher, List.of("install", "--harness", "codex"));
+
+		requireThat(started, "started").size().isEqualTo(1);
+		return new DeletedRuntimeRun(existed.getFirst(), started.getFirst(), Files.exists(replaced));
+	}
+
+	/**
+	 * What a run whose runtime folder was deleted showed.
+	 *
+	 * @param spawnHelperExisted whether the runtime's program that starts processes existed when the process was
+	 *                           started
+	 * @param command            the command line of the process
+	 * @param replacedExists     whether the version folder that held the runtime existed after the run
+	 */
+	private record DeletedRuntimeRun(boolean spawnHelperExisted, List<String> command, boolean replacedExists)
+	{
+		/**
+		 * Creates a run.
+		 *
+		 * @param spawnHelperExisted whether the runtime's program that starts processes existed when the process was
+		 *                           started
+		 * @param command            the command line of the process
+		 * @param replacedExists     whether the version folder that held the runtime existed after the run
+		 * @throws NullPointerException if {@code command} is null
+		 */
+		private DeletedRuntimeRun
+		{
+			requireThat(command, "command").isNotNull();
+		}
+	}
+
+	/**
 	 * Writes an installer launcher that prints whether a folder exists when it runs.
 	 *
 	 * @param bin    the folder of the launcher
