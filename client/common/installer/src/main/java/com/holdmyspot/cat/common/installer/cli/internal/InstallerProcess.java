@@ -20,18 +20,22 @@ import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Runs the installer launcher of a version folder in a new process, without a shell: on Linux and macOS the launcher
- * itself, and on Windows its PowerShell launcher through Windows PowerShell, the way the installer's permission entries
- * name it. The process gets the installer's environment with {@link #NO_QUESTIONS} set, so that it asks the user
- * nothing even where it could reach the terminal that the installer shares with it; the installer's working
- * directory; its standard input closed and the installer's standard error; and its standard output is read as its
- * result.
+ * Runs the installer launcher of a version folder in a new process, without a shell unless as described below: on Linux
+ * and macOS the launcher itself, and on Windows its PowerShell launcher through Windows PowerShell, the way the
+ * installer's permission entries name it. The process gets the installer's environment with {@link #NO_QUESTIONS} set,
+ * so that it asks the user nothing even where it could reach the terminal that the installer shares with it; the
+ * installer's working directory; its standard input closed and the installer's standard error; and its standard output
+ * is read as its result.
  * <p>
- * The Java runtime starts every process through its {@code lib/jspawnhelper} program, which a harness can delete
- * before the installer starts the launcher: Codex deletes the version folder that an update replaces while it
- * registers the new one, and the installer's bundled runtime is in that folder. The runner reads the program when it
- * is created, before any harness runs, and puts it back for the duration of a run that finds it missing, then removes
- * what it put back.
+ * The Java runtime starts every process through its {@code lib/jspawnhelper} program, which a harness can delete before
+ * the installer starts the launcher: Codex deletes the version folder that an update replaces while it registers the
+ * new one, and the installer's bundled runtime is in that folder. The runner reads the program when it is created,
+ * before any harness runs, and on Linux and macOS puts it back to start a run that finds it missing. What it puts back
+ * recreates the replaced version's folder, and Codex selects the folder that it loads by name, so while that folder
+ * exists Codex would load it whenever its name sorts after the installed version's; the installer that the run starts
+ * would then find the installed version inactive and refuse to replace its own folder. So that run starts through
+ * {@code /bin/sh}, which waits for its standard input to end before it executes the launcher, and the runner removes
+ * what it put back once the process has started and only then ends that input.
  */
 public final class InstallerProcess
 {
@@ -55,6 +59,15 @@ public final class InstallerProcess
 	 * The most output that is kept; further output is read and discarded so that the installer never blocks.
 	 */
 	private static final int MAXIMUM_OUTPUT_BYTES = 1024 * 1024;
+	/**
+	 * The shell that holds a run back until the runner has removed the program that it put back.
+	 */
+	private static final String SHELL = "/bin/sh";
+	/**
+	 * The script with which {@link #SHELL} waits for its standard input to end, then executes the launcher, which is
+	 * its {@code $0}, with the arguments that follow it.
+	 */
+	private static final String AFTER_INPUT_ENDS = "IFS= read -r ignored; exec \"$0\" \"$@\"";
 	/**
 	 * The name of the runtime's program that starts processes, in the runtime's {@code lib} folder.
 	 */
@@ -142,7 +155,8 @@ public final class InstallerProcess
 	 */
 	private Path restoreSpawnHelper() throws IOException
 	{
-		if (spawnHelperContents.length == 0 || Files.exists(spawnHelper))
+		// Windows starts processes without the program
+		if (platform.isWindows() || spawnHelperContents.length == 0 || Files.exists(spawnHelper))
 			return null;
 		Path created = spawnHelper;
 		for (Path parent = spawnHelper.getParent(); parent != null && Files.notExists(parent);
@@ -183,42 +197,71 @@ public final class InstallerProcess
 	 * @throws IllegalArgumentException if {@code launcher} is relative
 	 * @throws IOException              if the launcher cannot be started, does not finish in time or its output
 	 *                                  cannot be read, the runtime's program that starts processes was deleted and
-	 *                                  cannot be put back, or, on Windows, if the environment does not name the Windows
-	 *                                  folder
+	 *                                  cannot be put back or removed again, or, on Windows, if the environment
+	 *                                  does not name the Windows folder
 	 */
 	public CommandResult run(Path launcher, List<String> arguments) throws IOException
 	{
 		requireThat(launcher, "launcher").isAbsolute();
 		requireThat(arguments, "arguments").isNotNull();
 		List<String> line = command(launcher);
+		Path restored = restoreSpawnHelper();
+		if (restored != null)
+		{
+			List<String> held = new ArrayList<>(List.of(SHELL, "-c", AFTER_INPUT_ENDS));
+			held.addAll(line);
+			line = held;
+		}
 		line.addAll(arguments);
 		ProcessBuilder builder = new ProcessBuilder(line).redirectError(ProcessBuilder.Redirect.INHERIT);
 		builder.environment().clear();
 		builder.environment().putAll(environment);
 		builder.environment().put(NO_QUESTIONS, "1");
-		Path restored = restoreSpawnHelper();
-		try
-		{
-			return start(launcher, builder);
-		}
-		finally
-		{
-			deleteRestored(restored);
-		}
+		return start(launcher, builder, restored);
 	}
 
 	/**
-	 * Starts the launcher and waits for it to exit.
+	 * Starts the launcher, removes what was put back to start it, and waits for it to exit.
 	 *
 	 * @param launcher the launcher
 	 * @param builder  describes the process
+	 * @param restored the file or folder that was put back to start the process, or null if nothing was
 	 * @return the exit status and the standard output
-	 * @throws IOException if the launcher cannot be started, does not finish in time or its output cannot be read
+	 * @throws IOException if the launcher cannot be started, does not finish in time or its output cannot be read, or
+	 *                     what was put back cannot be removed
 	 */
-	private CommandResult start(Path launcher, ProcessBuilder builder) throws IOException
+	private CommandResult start(Path launcher, ProcessBuilder builder, Path restored) throws IOException
 	{
-		try (Process process = starter.start(builder))
+		Process started;
+		try
 		{
+			started = starter.start(builder);
+		}
+		catch (IOException e)
+		{
+			try
+			{
+				deleteRestored(restored);
+			}
+			catch (IOException suppressed)
+			{
+				e.addSuppressed(suppressed);
+			}
+			throw e;
+		}
+		try (Process process = started)
+		{
+			try
+			{
+				deleteRestored(restored);
+			}
+			catch (IOException e)
+			{
+				// The launcher would otherwise run while the replaced version's folder can still win Codex's selection
+				process.destroyForcibly();
+				throw e;
+			}
+			// A launcher held back by the shell runs only once this input ends
 			process.getOutputStream().close();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 			List<IOException> failures = new ArrayList<>(1);
