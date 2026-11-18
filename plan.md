@@ -125,6 +125,21 @@ the old rules until Claude Code restarts; nested sessions get the new plugin.
 - Gate 4, round 7 (`e-runs/round-5-notes.md`): E1 in both harnesses with `--session-requests 20000`, folders
   `E1-codex-s407` and `E1-claude-s407b` (`E1-claude-s407` never started).
 
+**Request server crash and slot ruling (2026-11-18 UTC).** On build `407cae6a2` the request server exited on its first
+launch: a slot held a run folder without `run.json` (its deletion was interrupted by a Claude Code restart), acquiring
+the slot failed, and the broker's kept failure was then added to itself as suppressed. Both E1 attempts stopped before
+any turn (receipts in their folders).
+- `8b5abf987`: a request whose slot cannot be emptied fails with its reason, and the server keeps serving.
+- `e49f4ead1`, `1373e1f85`, `9e0421467`: a later answer failure no longer replaces a kept one; a slot release failure
+  no longer ends the server (the next acquire reports it); shutdown answers only requests whose folder still awaits one.
+- `7d7b461b6`: every deletion of a run folder removes its `run.json` last.
+- **User ruling (2026-11-18):** a run folder in a session slot without `run.json` records no process; acquire empties
+  it and signals nothing, while a malformed or unreadable `run.json` still refuses cleanup (`design.md` §3.8 and
+  "Reusable session slots"). Implemented in `523468e16`.
+- The sandbox has had no `/sys` since the restart, so `BuildWorkerTest.realTreeIsSampledAndReaped` and
+  `BuildAdmissionCliTest.modularMainRunsControllerOperation` fail locally in OSHI's initializer; every other test of
+  the full build passes. The hosted Build covers them.
+
 Earlier next-step list: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
 traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
 429 account recovery; inspect Codex E5's account-reset prerequisite first), G1–G10, T3/T6 and the documentation rows.

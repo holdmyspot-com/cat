@@ -1023,7 +1023,8 @@ denial between the parts is unchanged. A request waits for a free slot, and the 
 concurrency limit. A kept run's artifacts are copied out of its slot to the driver's kept location before the slot is
 emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12). Each kept copy
 gets a run id of its own, since slot run ids repeat. A slot is not handed on while a process that its previous run
-recorded, the runner or the harness, is alive; the runner already ends the rest of the run's process tree.
+recorded, the runner or the harness, is alive; the runner already ends the rest of the run's process tree. A run
+folder without its `run.json` records no process and does not keep its slot (user ruling, 2026-11-18).
 
 The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
 and project into the instructions they send before the conversation. In a Claude session the memory path sits in the
@@ -1439,6 +1440,9 @@ below describes.
 - **Process ownership during recovery:** A recorded PID is actionable only with its recorded process start identity.
 	Confirmed exit or replacement permits reuse; unavailable identity for a live PID reports an `IOException` and
 	preserves the affected run and slot. Malformed or unreadable lifecycle records likewise refuse destructive cleanup.
+	A run folder in a session slot that has no `run.json` records no process: emptying the slot deletes it without
+	signalling anything, while a `run.json` that exists but is malformed or unreadable still refuses (user ruling,
+	2026-11-18). Every deletion of a run folder removes its `run.json` last, so an interrupted deletion keeps the record.
 	Each launch records that a child may exist before spawning it, then records its complete identity. Only a proven
 	failed start or confirmed child exit can clear that uncertainty. A historical record without child identity does
 	not prove that no child exists. Historical complete identities remain usable for the same identity checks.
