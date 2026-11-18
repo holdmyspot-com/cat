@@ -14,7 +14,10 @@ import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -39,17 +42,17 @@ public final class CodexEvidenceTest
 	/**
 	 * Provides complete role recordings and their independently counted command and response totals.
 	 *
-	 * @return the recording name, command count and response count
+	 * @return the recording name, command count, response count and session-start hook count
 	 */
 	@DataProvider
 	public Object[][] roleRecordings()
 	{
 		return new Object[][]
 		{
-			{"trial-turn-1.jsonl", 1, 1},
-			{"judge-turn-1.jsonl", 4, 2},
-			{"author-turn-1.jsonl", 11, 3},
-			{"deriver-turn-1.jsonl", 12, 2}
+			{"trial-turn-1.jsonl", 0, 1, 0},
+			{"judge-turn-1.jsonl", 0, 1, 0},
+			{"author-turn-1.jsonl", 5, 3, 0},
+			{"deriver-turn-1.jsonl", 12, 2, 1}
 		};
 	}
 
@@ -61,10 +64,12 @@ public final class CodexEvidenceTest
 	 * @param recording the complete recording
 	 * @param commandCount the number of completed shell calls
 	 * @param responseCount the number of root responses
+	 * @param sessionStartHookCount the number of completed session-start hooks
 	 * @throws IOException if the recording cannot be read
 	 */
 	@Test(dataProvider = "roleRecordings")
-	public void rendersRecordedRoleEvidence(String recording, int commandCount, int responseCount) throws IOException
+	public void rendersRecordedRoleEvidence(String recording, int commandCount, int responseCount,
+		int sessionStartHookCount) throws IOException
 	{
 		// Requirement: R-E21
 		List<String> lines = recorded(recording);
@@ -72,10 +77,23 @@ public final class CodexEvidenceTest
 		List<Tool> commands = evidence.entries().stream().filter(Tool.class::isInstance).map(Tool.class::cast).
 			filter(tool -> tool.tool().equals("commandExecution")).toList();
 		requireThat(commands.size(), "commands.size").isEqualTo(commandCount);
-		List<JsonNode> completed = lines.stream().map(JSON::readTree).
-			filter(event -> event.path("method").asString("").equals("item/completed")).
+		// Commands appear at their invocation position, and parallel commands may complete in another order
+		List<JsonNode> events = lines.stream().map(JSON::readTree).toList();
+		Map<String, JsonNode> completedById = new HashMap<>();
+		for (JsonNode event : events)
+		{
+			JsonNode item = event.path("params").path("item");
+			if (event.path("method").asString("").equals("item/completed") &&
+				item.path("type").asString("").equals("commandExecution"))
+			{
+				completedById.put(item.path("id").asString(""), item);
+			}
+		}
+		List<JsonNode> completed = events.stream().
+			filter(event -> event.path("method").asString("").equals("item/started")).
 			map(event -> event.path("params").path("item")).
-			filter(item -> item.path("type").asString("").equals("commandExecution")).toList();
+			filter(item -> item.path("type").asString("").equals("commandExecution")).
+			map(item -> completedById.get(item.path("id").asString(""))).toList();
 		String rendered = evidence.render();
 		for (int i = 0; i < commands.size(); ++i)
 		{
@@ -101,7 +119,10 @@ public final class CodexEvidenceTest
 			requireThat(responses.get(i), "response").isEqualTo(new Assistant(1, "root", i + 1, ""));
 		}
 		List<Hook> hooks = evidence.entries().stream().filter(Hook.class::isInstance).map(Hook.class::cast).toList();
-		requireThat(hooks, "hooks").isEqualTo(List.of(new Hook(1, "root", "sessionStart", "completed")));
+		requireThat(hooks, "hooks").isEqualTo(Collections.nCopies(sessionStartHookCount,
+			new Hook(1, "root", "sessionStart", "completed")));
+		if (sessionStartHookCount > 0)
+			requireThat(rendered, "rendered").contains("sessionStart");
 	}
 
 	/**
@@ -136,12 +157,14 @@ public final class CodexEvidenceTest
 		// Requirement: R-E21
 		String rendered = parse(recorded("trial-turn-1.jsonl")).render();
 		for (String omitted : List.of("# Design Quality", "\"emittedAtMs\"", "\"delta\"", "tokenUsage",
-			"rateLimits", "The capital of Japan is Tokyo."))
+			"rateLimits", "Photosynthesis is the process by which plants, algae, and some bacteria use sunlight"))
 		{
 			requireThat(rendered.contains(omitted), "containsOmittedText").isFalse();
 		}
-		requireThat(rendered, "rendered").contains("sessionStart");
-		requireThat(rendered, "rendered").contains("completed");
+		requireThat(rendered, "rendered").contains("Assistant response position: 1");
+		requireThat(rendered, "rendered").contains("No tool or hook activity was recorded.");
+		requireThat(rendered.contains("Reconnecting"), "containsReconnectError").isFalse();
+		requireThat(rendered.contains("Falling back from WebSockets"), "containsTransportWarning").isFalse();
 	}
 
 	/**
@@ -157,7 +180,7 @@ public final class CodexEvidenceTest
 		List<String> turnArchive = lines.stream().filter(line ->
 			!JSON.readTree(line).path("method").asString("").equals("thread/started")).toList();
 		requireThat(parse(turnArchive), "turnEvidence").isEqualTo(parse(lines));
-		requireThat(parse(turnArchive).entries().size(), "entries.size").isEqualTo(3);
+		requireThat(parse(turnArchive).entries().size(), "entries.size").isEqualTo(1);
 	}
 
 	/**
@@ -241,7 +264,8 @@ public final class CodexEvidenceTest
 		Tool edit = promptAuthor.entries().stream().filter(Tool.class::isInstance).map(Tool.class::cast).
 			filter(tool -> tool.tool().equals("fileChange")).findFirst().orElseThrow();
 		requireThat(edit.input(), "edit.input").contains("/project/AGENTS.md");
-		requireThat(edit.input(), "edit.input").contains("+- Answer in one or two sentences total");
+		requireThat(edit.input(), "edit.input").
+			contains("+- Give correct answers to short general-knowledge questions in one or two sentences per reply.");
 		requireThat(edit.exitStatus(), "edit.exitStatus").isNull();
 		requireThat(edit.output(), "edit.output").contains("completed");
 

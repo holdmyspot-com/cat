@@ -68,7 +68,8 @@ public final class CodexSessionsContractTest
 	 */
 	private static final long HANG_SECONDS = 30;
 	private static final List<RateLimitWindow> WINDOWS = List.of(
-		new RateLimitWindow(0.45, Instant.ofEpochSecond(1_791_046_710L)));
+		new RateLimitWindow(0.0, Instant.ofEpochSecond(1_794_955_338L)),
+		new RateLimitWindow(1.0, Instant.ofEpochSecond(1_795_143_402L)));
 
 	/**
 	 * Creates the test.
@@ -457,9 +458,9 @@ public final class CodexSessionsContractTest
 
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				SessionResult.Completed completed = (SessionResult.Completed) result;
-				requireThat(completed.model(), "model").isEqualTo("gpt-6.1-sol");
+				requireThat(completed.model(), "model").isEqualTo("gpt-6-luna");
 				requireThat(completed.reasoning(), "reasoning").isEqualTo("low");
-				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(62_269, 29_312, 113, 0));
+				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(13_977, 10_112, 46, 0));
 				requireThat(completed.windows(), "windows").isEqualTo(WINDOWS);
 			}
 		}
@@ -546,8 +547,8 @@ public final class CodexSessionsContractTest
 					SessionRole.APPROACH_RANKER, recorded("judge-turn-1.jsonl"),
 					SessionRole.PROMPT_AUTHOR, recorded("author-turn-1.jsonl"), SessionRole.CONTRACT_AUTHOR,
 					recorded("deriver-turn-1.jsonl"));
-				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 2,
-					SessionRole.TRIAGE, 2, SessionRole.APPROACH_RANKER, 2, SessionRole.PROMPT_AUTHOR, 3,
+				Map<SessionRole, Integer> messages = Map.of(SessionRole.TRIAL, 1, SessionRole.JUDGE, 1,
+					SessionRole.TRIAGE, 1, SessionRole.APPROACH_RANKER, 1, SessionRole.PROMPT_AUTHOR, 3,
 					SessionRole.CONTRACT_AUTHOR, 2);
 				List<RecordedAppServer> servers = Arrays.stream(SessionRole.values()).
 					map(role -> new RecordedAppServer(List.of(events.get(role)))).toList();
