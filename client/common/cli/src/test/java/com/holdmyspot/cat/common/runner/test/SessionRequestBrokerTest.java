@@ -1500,34 +1500,77 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that a failure that the broker reports to the caller of {@code scan()} is not thrown again when the
 	 * caller's try-with-resources statement closes the broker, as the request server's statement does, so that the
-	 * caller receives that failure. The failure is the release of a slot after its session ended: the session's runner
-	 * recorded that it was about to start a harness and recorded nothing more, so the broker refuses to empty the slot.
+	 * caller receives that failure. The failure is the broker's failure to answer a request whose runner did not start:
+	 * a directory in the place of the request's response file stands for whatever keeps the broker from writing it.
 	 *
-	 * @throws IOException if the broker reports the failed release, as expected
+	 * @throws IOException if the broker reports the failed answer, as expected
 	 */
 	@Test(timeOut = 30_000, expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "Harness launch state is unknown; refusing to empty slot: .*")
+		expectedExceptionsMessageRegExp = ".*response\\.json.*")
 	public void closeDoesNotRepeatScanFailure() throws IOException
 	{
-		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture())
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
-				(_, options, _) -> inSlotWithUnknownLaunch(fixture, fileLocks, options, runs)))
+				(_, _, directory) ->
+				{
+					Files.createDirectory(directory.resolve("response.json"));
+					throw new IOException("The runner did not start");
+				}))
 			{
 				fixture.request("first");
-				broker.scan();
-				fixture.await("first");
-				// The broker releases the slot after it answers the request, so a later scan reports the failed release
+				// The broker answers the request on a thread of its own, so a later scan reports the failed answer
 				long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
 				while (System.nanoTime() < deadline)
 				{
 					broker.scan();
 					Thread.yield();
 				}
-				throw new AssertionError("The broker did not report that it could not empty the slot");
+				throw new AssertionError("The broker did not report that it could not answer the request");
 			}
+		}
+	}
+
+	/**
+	 * Verifies that the broker goes on serving after it cannot empty a slot that a session gives back: the first
+	 * session's runner recorded that it was about to start a harness and recorded nothing more, so the slot cannot be
+	 * emptied once that session ends. The next request, which waits for that slot, fails with the reason, the scans that
+	 * follow report no failure, and once the run records that no harness started, a third request runs in the slot.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test(timeOut = 30_000)
+	public void servesAfterSlotCannotBeReleased() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "3", "--max-concurrency", "1"))
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					if (runs.isEmpty())
+						return inSlotWithUnknownLaunch(fixture, fileLocks, options, runs);
+					return inSlot(fixture, fileLocks, options, runs, 0);
+				}))
+			{
+				fixture.request("first");
+				broker.scan();
+				requireThat(fixture.await("first").path("status").asString(), "first").isEqualTo("completed");
+				fixture.request("second");
+				broker.scan();
+				JsonNode refused = fixture.await("second");
+				requireThat(refused.path("status").asString(), "second").isEqualTo("failed");
+				requireThat(refused.path("reason").asString(), "reason").contains("Harness launch state is unknown");
+
+				SlotRun leftover = runs.getFirst();
+				new HarnessRunManager(fileLocks, leftover.runRoot(), Clock.systemUTC(), Yielding.fileReplacer()).
+					recordNoHarnessProcess(leftover.run());
+				fixture.request("third");
+				broker.scan();
+				requireThat(fixture.await("third").path("status").asString(), "third").isEqualTo("completed");
+			}
+			requireThat(runs, "runs").size().isEqualTo(2);
 		}
 	}
 

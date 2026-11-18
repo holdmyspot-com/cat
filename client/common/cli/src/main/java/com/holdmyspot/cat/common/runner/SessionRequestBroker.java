@@ -196,8 +196,8 @@ public final class SessionRequestBroker implements Closeable
 	 * A request whose archive another handle still holds open on Windows gets no response and is taken by a later scan.
 	 *
 	 * @throws IOException if discovery or response publication fails, or if the broker failed while it served an
-	 *                     earlier request, such as when a slot cannot be emptied once its session has ended. Each such
-	 *                     failure is thrown once, either here or by {@link #close()}.
+	 *                     earlier request, such as when it could not write that request's answer. Each such failure is
+	 *                     thrown once, either here or by {@link #close()}.
 	 */
 	public void scan() throws IOException
 	{
@@ -591,12 +591,11 @@ public final class SessionRequestBroker implements Closeable
 					// The session has ended and its response is published, with its results copied out of the slot
 					site.slots().release(slot);
 				}
-				catch (IOException e)
+				catch (IOException _)
 				{
-					synchronized (this)
-					{
-						recordFailure(e);
-					}
+					// The request has its answer, and the slot is free again. The next request to take the slot checks it
+					// again and fails with this reason if it still holds; kept as the broker's failure, it would end the
+					// broker's service of every later request.
 				}
 			}
 		}
