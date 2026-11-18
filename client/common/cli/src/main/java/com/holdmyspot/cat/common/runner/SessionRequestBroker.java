@@ -783,7 +783,7 @@ public final class SessionRequestBroker implements Closeable
 			}
 			catch (IOException e)
 			{
-				failure = e;
+				recordFailure(e);
 			}
 		}
 	}

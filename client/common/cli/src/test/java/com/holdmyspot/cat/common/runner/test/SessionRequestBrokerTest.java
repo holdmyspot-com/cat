@@ -1532,6 +1532,75 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that the broker keeps every failure to answer a request, not only the last one: two requests whose
+	 * runners cannot start each fail to receive their answer, and the next scan reports both failures. A directory in
+	 * the place of each request's response file stands for whatever keeps the broker from writing the answer.
+	 *
+	 * @throws IOException if the fixture cannot be created
+	 */
+	@Test(timeOut = 30_000)
+	public void keepsEveryFailedAnswer() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "2"))
+		{
+			AtomicInteger started = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, directory) ->
+				{
+					Files.createDirectory(directory.resolve("response.json"));
+					started.incrementAndGet();
+					throw new IOException("The runner did not start");
+				}))
+			{
+				fixture.request("first");
+				fixture.request("second");
+				broker.scan();
+				// Each request gives its slot back after the broker tried to answer it
+				Path slots = SessionRequestAccess.requestedRunsDirectory(fixture.run);
+				long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+				while (started.get() < 2 || hasEntries(slots))
+				{
+					if (System.nanoTime() > deadline)
+						throw new AssertionError("The broker did not try to answer both requests");
+					Thread.yield();
+				}
+				List<String> failures = new ArrayList<>();
+				try
+				{
+					broker.scan();
+				}
+				catch (IOException e)
+				{
+					failures.add(e.getMessage());
+					for (Throwable suppressed : e.getSuppressed())
+						failures.add(suppressed.getMessage());
+				}
+				requireThat(failures, "failures").size().isEqualTo(2);
+				requireThat(String.join("\n", failures), "failures").
+					contains(fixture.responses.resolve("first").toString()).
+					contains(fixture.responses.resolve("second").toString());
+			}
+		}
+	}
+
+	/**
+	 * Indicates whether a directory has entries.
+	 *
+	 * @param directory the directory
+	 * @return {@code true} if it has an entry, or {@code false} if it is empty or does not exist
+	 * @throws IOException if the directory cannot be listed
+	 */
+	private static boolean hasEntries(Path directory) throws IOException
+	{
+		if (!Files.isDirectory(directory))
+			return false;
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			return entries.findAny().isPresent();
+		}
+	}
+
+	/**
 	 * Starts a double of a requested runner that builds its run in its slot and completes, as {@code inSlot} does, and
 	 * leaves the run recording that the runner was about to start a harness, as a runner killed at that moment leaves
 	 * it.
