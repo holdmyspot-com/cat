@@ -62,7 +62,7 @@ public final class CodexProfileInventoryTest
 	/**
 	 * Returns a launcher that answers {@code codex --version} and {@code codex debug models}.
 	 *
-	 * @param models the output of {@code codex debug models}
+	 * @param models the stdout of {@code codex debug models}
 	 * @param commands receives each command that runs
 	 * @return the launcher
 	 */
@@ -72,9 +72,9 @@ public final class CodexProfileInventoryTest
 		{
 			commands.add(command);
 			if (command.equals(List.of("codex", "--version")))
-				return VERSION + "\n";
+				return new HarnessVersion.Output(VERSION + "\n", "");
 			if (command.equals(List.of("codex", "debug", "models")))
-				return models;
+				return new HarnessVersion.Output(models, "");
 			throw new IOException("Unexpected command: " + command);
 		};
 	}

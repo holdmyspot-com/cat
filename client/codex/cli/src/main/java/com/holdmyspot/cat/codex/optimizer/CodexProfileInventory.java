@@ -59,6 +59,10 @@ public final class CodexProfileInventory implements ProfileInventory
 	 * output.
 	 */
 	private static final long BYTES_PER_TOKEN = 4;
+	/**
+	 * The number of characters that a failure message keeps from each end of a long output.
+	 */
+	private static final int EXCERPT_CHARACTERS = 500;
 	private final Path artifact;
 	private final String executable;
 	private final HarnessVersion.Launcher launcher;
@@ -85,15 +89,16 @@ public final class CodexProfileInventory implements ProfileInventory
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * The model list is one JSON document that the command prints whole, so it is parsed whole. Output before the
-	 * document's opening brace and after the document, such as a warning, is skipped.
+	 * The model list is one JSON document that the command prints whole to stdout, so it is parsed whole; stderr
+	 * never enters it. Output on stdout before the document's opening brace and after the document, such as a
+	 * warning, is skipped. A failure names what stdout held and what the command wrote to stderr.
 	 *
 	 * @throws IOException if the command fails, prints no model list, or lists no model of version 6 or later
 	 */
 	@Override
 	public ProfileCatalog inventory() throws IOException
 	{
-		String output;
+		HarnessVersion.Output output;
 		try
 		{
 			output = launcher.run(List.of(executable, "debug", "models"));
@@ -103,22 +108,23 @@ public final class CodexProfileInventory implements ProfileInventory
 			Thread.currentThread().interrupt();
 			throw new IOException(COMMAND + " was interrupted.", e);
 		}
-		int start = output.indexOf('{');
+		String stdout = output.stdout();
+		int start = stdout.indexOf('{');
 		if (start < 0)
-			throw new IOException(COMMAND + " printed no model list: " + output.strip());
+			throw new IOException(COMMAND + " printed no model list." + describe(output));
 		JsonMapper json = JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 		JsonNode root;
 		try
 		{
-			root = json.readTree(output.substring(start));
+			root = json.readTree(stdout.substring(start));
 		}
 		catch (JacksonException e)
 		{
-			throw new IOException(COMMAND + " printed a malformed model list.", e);
+			throw new IOException(COMMAND + " printed a malformed model list: " + e.getMessage() + describe(output), e);
 		}
 		JsonNode models = root.path("models");
 		if (!models.isArray())
-			throw new IOException(COMMAND + " printed no model list: " + output.strip());
+			throw new IOException(COMMAND + " printed no model list." + describe(output));
 		List<TrialProfile> profiles = new ArrayList<>();
 		for (JsonNode model : models)
 		{
@@ -145,6 +151,34 @@ public final class CodexProfileInventory implements ProfileInventory
 				" and no listed model is of version 6 or later.");
 		}
 		return new ProfileCatalog(COMMAND + " of " + HarnessVersion.read(executable, launcher), profiles);
+	}
+
+	/**
+	 * Describes the output of {@code codex debug models} for a failure message.
+	 *
+	 * @param output the output
+	 * @return the number of characters on stdout, then a bounded excerpt of stdout and of stderr, each on its own line
+	 */
+	private static String describe(HarnessVersion.Output output)
+	{
+		return "\nstdout (" + output.stdout().length() + " characters): " + excerpt(output.stdout()) +
+			"\nstderr: " + excerpt(output.stderr());
+	}
+
+	/**
+	 * Returns a stripped text, or its start and end around a note of how many characters are left out if it is longer
+	 * than twice {@link #EXCERPT_CHARACTERS}.
+	 *
+	 * @param text the text
+	 * @return the excerpt
+	 */
+	private static String excerpt(String text)
+	{
+		String stripped = text.strip();
+		if (stripped.length() <= 2 * EXCERPT_CHARACTERS)
+			return stripped;
+		return stripped.substring(0, EXCERPT_CHARACTERS) + " [" + (stripped.length() - 2 * EXCERPT_CHARACTERS) +
+			" characters left out] " + stripped.substring(stripped.length() - EXCERPT_CHARACTERS);
 	}
 
 	/**

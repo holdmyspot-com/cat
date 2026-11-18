@@ -32,10 +32,23 @@ public final class HarnessVersionTest
 		String version = HarnessVersion.read("claude", command ->
 		{
 			commands.add(command);
-			return "\n  2.1.3 (Claude Code)\nmore\n";
+			return new HarnessVersion.Output("\n  2.1.3 (Claude Code)\nmore\n", "");
 		});
 		requireThat(version, "version").isEqualTo("2.1.3 (Claude Code)");
 		requireThat(commands, "commands").isEqualTo(List.of(List.of("claude", "--version")));
+	}
+
+	/**
+	 * Verifies that a diagnostic on stderr is not read as the version when stdout holds one, and that stderr supplies
+	 * the version when stdout is blank.
+	 */
+	@Test
+	public void prefersStdoutToStderr()
+	{
+		requireThat(HarnessVersion.read("codex", _ -> new HarnessVersion.Output("codex-cli 0.169.0\n",
+			"WARNING: could not update PATH\n")), "stdout").isEqualTo("codex-cli 0.169.0");
+		requireThat(HarnessVersion.read("codex", _ -> new HarnessVersion.Output("\n", "codex-cli 0.169.0\n")),
+			"stderr").isEqualTo("codex-cli 0.169.0");
 	}
 
 	/**
@@ -46,7 +59,7 @@ public final class HarnessVersionTest
 	public void fallsBackToUnknown()
 	{
 		// Requirement: R-I4
-		requireThat(HarnessVersion.read("codex", _ -> " \n"), "blank").isEqualTo("unknown");
+		requireThat(HarnessVersion.read("codex", _ -> new HarnessVersion.Output(" \n", " ")), "blank").isEqualTo("unknown");
 		requireThat(HarnessVersion.read("codex", _ ->
 		{
 			throw new IOException("No such file");

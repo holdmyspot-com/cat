@@ -437,7 +437,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 		return _ ->
 		{
 			versionReads.incrementAndGet();
-			return "1.0";
+			return new HarnessVersion.Output("1.0", "");
 		};
 	}
 

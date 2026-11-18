@@ -7,7 +7,13 @@ import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.io.InputStream;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
 /**
@@ -22,6 +28,28 @@ public final class HarnessVersion
 	private static final long TIMEOUT_SECONDS = 30;
 
 	/**
+	 * The output of a command.
+	 *
+	 * @param stdout the text that the command wrote to stdout
+	 * @param stderr the text that the command wrote to stderr
+	 */
+	public record Output(String stdout, String stderr)
+	{
+		/**
+		 * Creates the output of a command.
+		 *
+		 * @param stdout the text that the command wrote to stdout
+		 * @param stderr the text that the command wrote to stderr
+		 * @throws NullPointerException if any of the arguments are null
+		 */
+		public Output
+		{
+			requireThat(stdout, "stdout").isNotNull();
+			requireThat(stderr, "stderr").isNotNull();
+		}
+	}
+
+	/**
 	 * Runs a command and returns its output.
 	 */
 	@FunctionalInterface
@@ -31,11 +59,11 @@ public final class HarnessVersion
 		 * Runs a command.
 		 *
 		 * @param command the executable and its arguments
-		 * @return the combined standard output and standard error
+		 * @return the command's stdout and stderr, each read separately
 		 * @throws IOException if the process cannot start, fails to run or does not end in time
 		 * @throws InterruptedException if the thread is interrupted while it waits
 		 */
-		String run(List<String> command) throws IOException, InterruptedException;
+		Output run(List<String> command) throws IOException, InterruptedException;
 	}
 
 	/**
@@ -47,7 +75,8 @@ public final class HarnessVersion
 
 	/**
 	 * Returns the launcher that starts a real process and waits 30 seconds for it to end. The launcher finds the
-	 * executable as {@link Platform#findProgram} does.
+	 * executable as {@link Platform#findProgram} does, and reads stdout and stderr apart, so that a diagnostic on
+	 * stderr never enters the text that a caller parses from stdout.
 	 *
 	 * @return the launcher
 	 */
@@ -55,17 +84,25 @@ public final class HarnessVersion
 	{
 		return command ->
 		{
-			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
+			ProcessBuilder builder = new ProcessBuilder(command);
 			List<String> resolved = new ArrayList<>(command);
 			resolved.set(0, Platform.current().findProgram(command.getFirst(), builder.environment()));
 			Process process = CodeLoadingVariables.start(builder.command(resolved));
-			String output = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-			if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+			try (ExecutorService readers = Executors.newVirtualThreadPerTaskExecutor())
 			{
-				process.destroyForcibly();
-				throw new IOException("The command " + command + " did not end in " + TIMEOUT_SECONDS + " seconds.");
+				Future<String> stdout = readers.submit(() -> readAll(process.getInputStream()));
+				Future<String> stderr = readers.submit(() -> readAll(process.getErrorStream()));
+				if (!process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS))
+				{
+					process.destroyForcibly();
+					throw new IOException("The command " + command + " did not end in " + TIMEOUT_SECONDS + " seconds.");
+				}
+				return new Output(stdout.get(), stderr.get());
 			}
-			return output;
+			catch (ExecutionException e)
+			{
+				throw new IOException("The output of the command " + command + " could not be read.", e.getCause());
+			}
 		};
 	}
 
@@ -74,7 +111,8 @@ public final class HarnessVersion
 	 *
 	 * @param executable the harness's executable
 	 * @param launcher runs {@code <executable> --version}
-	 * @return the first non-blank line of the output, or {@code unknown} if there is none or the command fails
+	 * @return the first non-blank line of stdout, or of stderr if stdout has none, or {@code unknown} if neither has
+	 *   one or the command fails
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static String read(String executable, Launcher launcher)
@@ -83,8 +121,8 @@ public final class HarnessVersion
 		requireThat(launcher, "launcher").isNotNull();
 		try
 		{
-			return launcher.run(List.of(executable, "--version")).lines().map(String::strip).
-				filter(line -> !line.isEmpty()).findFirst().orElse(UNKNOWN);
+			Output output = launcher.run(List.of(executable, "--version"));
+			return firstLine(output.stdout()).or(() -> firstLine(output.stderr())).orElse(UNKNOWN);
 		}
 		catch (IOException _)
 		{
@@ -95,5 +133,31 @@ public final class HarnessVersion
 			Thread.currentThread().interrupt();
 			return UNKNOWN;
 		}
+	}
+
+	/**
+	 * Reads a process stream to its end.
+	 *
+	 * @param stream the stream
+	 * @return the stream's text
+	 * @throws IOException if the stream cannot be read
+	 */
+	private static String readAll(InputStream stream) throws IOException
+	{
+		try (stream)
+		{
+			return new String(stream.readAllBytes(), StandardCharsets.UTF_8);
+		}
+	}
+
+	/**
+	 * Returns the first non-blank line of a text.
+	 *
+	 * @param text the text
+	 * @return the stripped line, or empty if the text has none
+	 */
+	private static Optional<String> firstLine(String text)
+	{
+		return text.lines().map(String::strip).filter(line -> !line.isEmpty()).findFirst();
 	}
 }
