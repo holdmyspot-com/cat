@@ -105,6 +105,26 @@ the old rules until Claude Code restarts; nested sessions get the new plugin.
   `no-model-delta.tsv`, plus a whole-tree group/profile check.
 - Gate 4: E1 started in both harnesses (round 5, briefs in `e-runs/`, folders `/home/gili/cat/worktrees/E1-*-s25d7/`).
 
+**Releases `043121dfc` and `407cae6a2` (2026-11-18 UTC).** Round 5's E1 runs stopped when their build was superseded.
+- `5c1968ef5`: CAT's strongest Codex agent tiers use `gpt-6.2-sol`; Codex judge version 14.
+- `043121dfc`: the Codex model list is read from stdout only, so stderr warnings no longer break it. Released, then
+  E1 ran as round 6 (`E1-*-s043`). Claude E1 passed every check up to certification (no goal at start, conflict
+  listed, confirmation refused, revised proposal confirmed with `weakest_cell`, trial records with the `login` class),
+  then used up `--session-requests 4000` after 1,691 trial records. Open question: the proposal's estimate of at least
+  1,458 nested sessions appears to count trials only. Codex E1 was killed by a Claude Code restart.
+- `cec8bbf42`, `ace6211e1`: plugin rule and test, stop or restart a long run once a landed change makes its result
+  unusable. `114ff789a`: plugin rule, concurrent delegates that build, test or edit get their own worktrees.
+  `7b7d75a72`: project rule, a lesson goes into a plugin rule, then a project rule, before a memory.
+- `2c5a6de2a`: a Codex update's new installer no longer refuses its own folder (exit 10) when `codex plugin add` had
+  deleted the old one and the old installer restored its spawn helper.
+- Build of `114ff789a` failed on windows-x64 (test expected the spawn-helper restore on Windows, where none happens)
+  and linux-arm64 (a pre-existing race: a test walked a slot folder that the broker deletes). Fixed in `41009a456`
+  and `407cae6a2`, tests only; Build `44386409540` passed on all five platforms.
+- v1.0 republished at `407cae6a2` (lease from `043121dfc`); Release `44389148040` published 15 assets;
+  `verify-release.py` passed (`verify-release-407cae6a2/`). Both harnesses report `1.0+b407cae6a2d00`.
+- Gate 4, round 7 (`e-runs/round-5-notes.md`): E1 in both harnesses with `--session-requests 20000`, folders
+  `E1-codex-s407` and `E1-claude-s407b` (`E1-claude-s407` never started).
+
 Earlier next-step list: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
 traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
 429 account recovery; inspect Codex E5's account-reset prerequisite first), G1–G10, T3/T6 and the documentation rows.
