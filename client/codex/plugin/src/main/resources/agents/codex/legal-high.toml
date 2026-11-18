@@ -1,7 +1,7 @@
 name = "cat-legal-high"
 nickname_candidates = ["legal-high"]
 description = "High-tier CAT Legal reviewer."
-model = "gpt-6.1-sol"
+model = "gpt-6.2-sol"
 model_reasoning_effort = "high"
 developer_instructions = '''
 Reviewer tier: high.
