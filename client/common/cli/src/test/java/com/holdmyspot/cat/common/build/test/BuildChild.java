@@ -19,6 +19,17 @@ public final class BuildChild
 {
 	private static final String TEST_MODULE = "com.holdmyspot.cat.common.cli.test";
 	private static final JsonMapper JSON = JsonMapper.builder().build();
+	/**
+	 * How long a fixture process may stay live without publishing its readiness before the wait for it fails.
+	 * <p>
+	 * A fixture's start takes longer the busier the host is, and a wait does not fail while the fixture starts, so this
+	 * limit only stops a fixture that hangs.
+	 */
+	private static final Duration HANG_LIMIT = Duration.ofMinutes(2);
+	/**
+	 * How often a wait checks its condition when no file system event arrives, such as when a process ends.
+	 */
+	private static final Duration CHECK_INTERVAL = Duration.ofMillis(100);
 
 	/**
 	 * Prevents direct construction.
@@ -139,6 +150,36 @@ public final class BuildChild
 	}
 
 	/**
+	 * Waits until a fixture process publishes a file, failing if the process ends without publishing it.
+	 * <p>
+	 * The wait lasts as long as the process takes to start, however busy the host is, and fails after
+	 * {@link #HANG_LIMIT} only if the process stays live without publishing.
+	 *
+	 * @param watch   registered watcher of the file's directory
+	 * @param path    path whose existence signals readiness
+	 * @param process the fixture process that publishes the file
+	 * @throws IOException if the process ends, or hangs, without publishing the file
+	 * @throws InterruptedException if the wait is interrupted
+	 */
+	public static void awaitFile(WatchService watch, Path path, Process process) throws IOException,
+		InterruptedException
+	{
+		awaitCondition(watch, () ->
+		{
+			if (Files.exists(path))
+				return true;
+			if (process.isAlive())
+				return false;
+			// The process may have published the file between the two checks
+			if (Files.exists(path))
+				return true;
+			throw new IOException("Fixture process " + process.pid() + " exited with " + process.exitValue() +
+				" before publishing " + path);
+		}, HANG_LIMIT, "Fixture process " + process.pid() + " stayed live for " + HANG_LIMIT + " without publishing " +
+			path);
+	}
+
+	/**
 	 * Waits until a fixture has published non-empty file contents.
 	 *
 	 * @param watch registered directory watcher
@@ -155,13 +196,14 @@ public final class BuildChild
 	}
 
 	/**
-	 * Waits for an I/O predicate while processing filesystem events.
+	 * Waits for an I/O predicate, checking it after each file system event and at least every
+	 * {@link #CHECK_INTERVAL}.
 	 *
 	 * @param watch registered event watcher
 	 * @param condition state predicate
 	 * @param timeout maximum duration
 	 * @param message timeout failure message
-	 * @throws IOException if the predicate is not satisfied before timeout
+	 * @throws IOException if the predicate fails, or is not satisfied before timeout
 	 * @throws InterruptedException if the wait is interrupted
 	 */
 	private static void awaitCondition(WatchService watch, IoCondition condition, Duration timeout, String message)
@@ -173,14 +215,14 @@ public final class BuildChild
 			long remaining = deadline - System.nanoTime();
 			if (remaining <= 0)
 				throw new IOException(message);
-			java.nio.file.WatchKey key = watch.poll(remaining, TimeUnit.NANOSECONDS);
-			if (key == null)
+			java.nio.file.WatchKey key = watch.poll(Math.min(remaining, CHECK_INTERVAL.toNanos()),
+				TimeUnit.NANOSECONDS);
+			if (key != null)
 			{
-				if (condition.test())
-					return;
-				throw new IOException(message);
+				// Resetting a key whose events were not taken signals it again at once, which would spin this loop
+				key.pollEvents();
+				key.reset();
 			}
-			key.reset();
 		}
 	}
 

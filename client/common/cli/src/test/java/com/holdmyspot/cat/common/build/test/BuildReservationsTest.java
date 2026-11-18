@@ -138,7 +138,7 @@ public final class BuildReservationsTest
 			{
 				try
 				{
-					BuildChild.awaitFile(lockWatch, lockFixture.resolve("lock.ready"), java.time.Duration.ofSeconds(5));
+					BuildChild.awaitFile(lockWatch, lockFixture.resolve("lock.ready"), externalLock);
 					requireThat(Files.exists(lockFixture.resolve("lock.ready")), "externalLockReady").isTrue();
 					IOException lockFailure = null;
 					try

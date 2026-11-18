@@ -174,7 +174,7 @@ public final class SystemBuildProcessStopsContractTest extends BuildProcessStops
 				process = builder.start();
 				try
 				{
-					BuildChild.awaitFile(watch, directory.resolve("grandchild.ready"), Duration.ofSeconds(5));
+					BuildChild.awaitFile(watch, directory.resolve("grandchild.ready"), process);
 				}
 				catch (IOException | InterruptedException | RuntimeException failure)
 				{
