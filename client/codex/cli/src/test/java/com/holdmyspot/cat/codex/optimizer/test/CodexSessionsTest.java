@@ -10,6 +10,8 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequestFixtures.partOf;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static java.nio.file.FileVisitResult.CONTINUE;
+import static java.nio.file.FileVisitResult.SKIP_SUBTREE;
 
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.CommandShell;
@@ -75,12 +77,15 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
 import java.nio.file.FileSystems;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -2431,6 +2436,9 @@ public final class CodexSessionsTest
 	/**
 	 * Returns the runs that the optimizer's sessions keep, which are the directories that hold an {@code artifacts}
 	 * directory outside the requesting run.
+	 * <p>
+	 * The walk does not enter the requesting run: its broker answers a session before it empties the session's slot,
+	 * so the slot's folders can disappear while the caller looks for runs.
 	 *
 	 * @param home       the folder that holds the optimizer's files
 	 * @param requesting the folder of the requesting run, which is left out
@@ -2439,11 +2447,20 @@ public final class CodexSessionsTest
 	 */
 	private static List<Path> runs(Path home, Path requesting) throws IOException
 	{
-		try (Stream<Path> paths = Files.walk(home))
+		List<Path> runs = new ArrayList<>();
+		Files.walkFileTree(home, new SimpleFileVisitor<>()
 		{
-			return paths.filter(path -> path.getFileName().toString().equals("artifacts") && Files.isDirectory(path) &&
-				!path.startsWith(requesting)).map(Path::getParent).sorted().toList();
-		}
+			@Override
+			public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes)
+			{
+				if (directory.equals(requesting))
+					return SKIP_SUBTREE;
+				if (directory.getFileName().toString().equals("artifacts"))
+					runs.add(directory.getParent());
+				return CONTINUE;
+			}
+		});
+		return runs.stream().sorted().toList();
 	}
 
 	/**
