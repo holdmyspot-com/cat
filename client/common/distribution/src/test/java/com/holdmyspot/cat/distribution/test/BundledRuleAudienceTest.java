@@ -340,6 +340,42 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that is about to delegate work can reach the packaged guidance on concurrent work in one working
+	 * tree: the workflow area index routes delegation to the delegation rule, whose guidance has the agent give each
+	 * concurrent piece of work that builds, tests or edits files its own isolated worktree or run the pieces one after
+	 * another, and not treat a failure caused by another agent's concurrent build or edits as a defect of the change.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void concurrentDelegatesGetOwnWorkingTrees() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/workflows.md"))), "workflowIndex").
+				contains("Before delegating work to a subagent, or when designing, updating, or executing a " +
+					"prompt-driven workflow that delegates work, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/delegation.md`.");
+
+			String rule = oneLine(Files.readString(include.resolve("delegation.md")));
+			requireThat(rule, "delegation").
+				contains("a delegate that only builds or tests counts as write-capable here").
+				contains("When you delegate two or more pieces of work that will build, test, or edit files in the " +
+					"same working tree at the same time, give each its own isolated worktree and bring each one's " +
+					"commits back through that integration; otherwise run them one after another.").
+				contains("A failure that comes from another agent's concurrent build or edits in the same working " +
+					"tree").
+				contains("is not a defect of the change under test");
+		}
+	}
+
+	/**
 	 * Verifies an agent that is about to rerun a failed operation that is expensive to run in full, or to count a
 	 * conclusion that compares separate runs, can reach the packaged rule for that decision: the failure area index
 	 * routes to the diagnostic-run rule, and the rule routing that every agent of either harness receives at startup

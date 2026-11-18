@@ -7,6 +7,12 @@
 	evaluate them.
 - Isolate delegated writes and integrate them through one parent-owned boundary so concurrent verification cannot grant
 	one delegate authority over another delegate's files.
+<!-- Two delegates ran full clean builds at the same time in one checkout: each clean deleted the other's compiled
+     classes and archives, and each built the other's half-edited files, so together they needed about eight full
+     builds instead of two, with no defect behind the failures. -->
+- Keep each delegate's builds and tests from deleting or reading another delegate's unfinished work, so that concurrent
+	delegates neither fail on each other's build output or edits nor spend builds treating such failures as defects of
+	their own change.
 <!-- Parent launch and handoff failures were previously misreported as executor failure or unavailable external state,
      causing recovery to stop at the wrong responsible boundary. -->
 - Require a parent to classify an observed delegated outcome before selecting recovery, so an unreadable handoff or
@@ -209,6 +215,14 @@ repository shares its references, configuration, hooks, and stash, so it is not 
 <worktree root>` followed by a checkout of the snapshot commit is, and a clone without `--shared` is an independent
 copy. The isolated worktree changes only where the delegate works: its result still reaches the parent through the
 integration described below.
+
+A build or test run writes to its working tree too, for example when a clean step deletes compiled output and
+archives, so a delegate that only builds or tests counts as write-capable here. When you delegate two or more pieces of
+work that will build, test, or edit files in the same working tree at the same time, give each its own isolated
+worktree and bring each one's commits back through that integration; otherwise run them one after another. A failure
+that comes from another agent's concurrent build or edits in the same working tree, such as a missing class or archive
+or a half-edited file, is not a defect of the change under test: do not change the work or reject a delegate's result
+for it, and rerun the check once no other agent builds or edits in that tree.
 
 Include each worktree root and snapshot identity in its task contract. Build a scheduling conflict graph from both write
 sets and verification dependencies; file-disjoint tasks are not independent when either task's verification consumes
