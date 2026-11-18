@@ -1,7 +1,7 @@
 name: Windows interactive security probe
 on:
   push:
-    branches: [probe/windows-training-lfkwlf]
+    branches: [probe/windows-training-safe-hp9kmq]
 permissions:
   contents: read
 jobs:

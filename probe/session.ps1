@@ -43,7 +43,7 @@ unset PROMPT_COMMAND
 $bash = 'C:/msys64/usr/bin/bash.exe'
 if (!(Test-Path -LiteralPath $bash)) { throw 'The Windows worker has no MSYS2 Bash' }
 $upterm = Join-Path $root 'upterm.exe'
-$connection = & $upterm host --detach --accept --name cat-windows --output json `
+$connection = & $upterm host --detach --accept --allow-exec --name cat-windows --output json `
     --authorized-keys $key --known-hosts $knownHosts --join-timeout 10m -- `
     $bash --noprofile --rcfile ($rc.Replace('\', '/')) -i
 if ($LASTEXITCODE -ne 0) { throw 'Cannot start Upterm' }
