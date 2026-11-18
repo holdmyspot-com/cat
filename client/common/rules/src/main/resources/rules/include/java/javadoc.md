@@ -9,8 +9,8 @@ depends-on:
 
 ## Design Goals
 
-- Apply Java-specific Javadoc coverage, tags, placement, and syntax without duplicating the language-neutral
-	documentation contract.
+- Apply Java-specific Javadoc coverage, tags, placement, and syntax, including clickable URL references, without
+  duplicating the language-neutral documentation contract.
 
 ## Guidance
 
@@ -33,5 +33,8 @@ result and its condition in the method's main description.
 Use `<p>` alone on its own Javadoc line immediately after the preceding paragraph; do not insert a blank Javadoc line
 before or after it, and do not use a closing `</p>` tag.
 Import every class referenced by `{@link}` or `{@linkplain}` and use its simple name in the tag.
+
+Use `<a href="URL">descriptive text</a>` for URL links in Javadoc so they render as clickable links. Do not use Markdown
+link syntax or bare URLs for those links.
 
 Use `@throws` for each documented exception, and reference parameter names in it using `{@code parameterName}`.
