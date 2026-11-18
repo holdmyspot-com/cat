@@ -616,6 +616,34 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that the server ends without a failure when its session ends after a command received its answer and
+	 * removed the request's response folder, as the prompt optimizer's command does: a requester that has gone needs no
+	 * answer.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void endsAfterRequesterRemovedResponse() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			fixture.child = slotChild(fixture, served);
+			try (Fixture.Running server = fixture.start())
+			{
+				serve(fixture, server, fixture.root.resolve("optimizer-runs"));
+				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
+				{
+					requireThat(responses.toList(), "responses").isEmpty();
+				}
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a request whose slot the server refuses to empty fails with the reason, and that the server goes
 	 * on serving: an earlier session's run, whose runner recorded that it was about to start a harness and recorded
 	 * nothing more, holds the only development slot that the request can take, so the request is answered

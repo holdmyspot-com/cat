@@ -881,7 +881,7 @@ public final class SessionRequestBroker implements Closeable
 				Path directory = site.responses().resolve(entry.getKey());
 				try
 				{
-					if (!Files.exists(directory.resolve("response.json")))
+					if (awaitsAnswer(directory))
 						respond(entry.getKey(), entry.getValue(), site.closedStatus(), site.closedReason(),
 							copyChildEvidence(entry.getKey(), directory), directory);
 				}
@@ -909,6 +909,19 @@ public final class SessionRequestBroker implements Closeable
 			if (failure != null)
 				throw failure;
 		}
+	}
+
+	/**
+	 * Indicates whether a request still waits for its answer. Its requester removes the request's response directory
+	 * once it has read the answer, and a requester that has gone needs no answer.
+	 *
+	 * @param directory the request's response directory
+	 * @return {@code true} if the directory exists and holds no answer
+	 */
+	private static boolean awaitsAnswer(Path directory)
+	{
+		return Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) &&
+			!Files.exists(directory.resolve("response.json"), LinkOption.NOFOLLOW_LINKS);
 	}
 
 	/**
