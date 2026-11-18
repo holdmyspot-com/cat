@@ -36,6 +36,11 @@ operational failure first through the bundled Failure Prevention rule.
 When deciding whether guidance that a confirmed failure involves is user-owned, treat CAT plugin source in this
 repository as user-owned guidance, because its user is that plugin's developer.
 
+Before saving a memory or recording a lesson, decide whom it serves. When it helps people who install CAT and work in
+their own projects, add it to CAT's shipped rules under `client/common/rules`, or to a harness's rules when only that
+harness is affected. Otherwise, when it helps developers working on CAT's own source, build, release, or tests, add it
+as a project rule under `.cat/rules/`. Save it as a memory only when neither applies.
+
 When creating or revising a Git commit message, lazy load `${CAT_PROJECT_ROOT}/.cat/rules/include/commit-messages.md`.
 
 When a CAT workflow creates, retains, hands off, or cleans up uncommitted state or evidence, lazy load
