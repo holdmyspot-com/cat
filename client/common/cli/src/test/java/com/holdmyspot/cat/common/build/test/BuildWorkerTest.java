@@ -25,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -38,6 +39,7 @@ import java.time.Clock;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import org.testng.annotations.Test;
 import org.testng.SkipException;
 import tools.jackson.databind.JsonNode;
@@ -1026,11 +1028,13 @@ public final class BuildWorkerTest
 						failure.set(exception);
 					}
 				});
-			try
+			AtomicReference<Long> grandchildPidReference = new AtomicReference<>();
+			runThenCleanup(() ->
 			{
 				awaitFixtureReady(worker, failure, fixtureWatch, grandchildReady);
 				requireThat(Files.size(grandchildReady) > 0, "grandchildStarted").isTrue();
 				long grandchildPid = Long.parseLong(Files.readString(grandchildReady));
+				grandchildPidReference.set(grandchildPid);
 				long observedDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
 				boolean observed = false;
 				while (!observed && System.nanoTime() < observedDeadline)
@@ -1050,10 +1054,22 @@ public final class BuildWorkerTest
 							key.reset();
 					}
 				}
-				requireThat(observed, "workerRecordedRealGrandchild").isTrue();
+				if (!observed)
+				{
+					throw stageFailure("ledger observation of the grandchild",
+						"workerRecordedRealGrandchild was false for pid " + grandchildPid +
+						" ten seconds after the fixture was ready; ledgerExists=" + Files.exists(ledger),
+						worker, failure);
+				}
 				Files.writeString(childDirectory.resolve("release"), "release");
 				worker.join(TimeUnit.SECONDS.toMillis(20));
-				requireThat(worker.isAlive(), "workerReapedRealTree").isFalse();
+				if (worker.isAlive())
+				{
+					throw stageFailure("worker join",
+						"workerReapedRealTree was false: the worker was still running twenty seconds after the fixture " +
+						"was released; " + describeProcesses(childPid.get(), grandchildPidReference.get()),
+						worker, failure);
+				}
 				if (failure.get() != null)
 					throw new AssertionError("Real process-tree worker failed", failure.get());
 				requireThat(result.get().passed(), "realBuildChildPassed").isTrue();
@@ -1065,11 +1081,8 @@ public final class BuildWorkerTest
 					"rootInPeakRows").isTrue();
 				requireThat(rows.stream().anyMatch(row -> row.contains(Long.toString(grandchildPid))),
 					"grandchildInPeakRows").isTrue();
-			}
-			finally
-			{
-				cleanupWorker(worker, childDirectory.resolve("release"), childPid);
-			}
+			}, () -> cleanupWorker(worker, childDirectory.resolve("release"), childPid, failure,
+				grandchildPidReference));
 				}
 			}
 		}
@@ -1219,12 +1232,21 @@ public final class BuildWorkerTest
 	/**
 	 * Releases the fixture and reaps the worker, forcing its process tree after bounded waits if needed.
 	 *
-	 * @param worker worker thread
-	 * @param release fixture release path
-	 * @param childPid launched process identifier
-	 * @throws IOException if release or worker cleanup fails
+	 * <p>
+	 * If the worker is still running after the first wait, the failure message records its state and stack trace and
+	 * the live or dead state of the child process tree. That snapshot is taken before the worker is interrupted and
+	 * the tree is terminated, because both change the evidence, and before the caller deletes the fixture directory.
+	 *
+	 * @param worker             worker thread
+	 * @param release            fixture release path
+	 * @param childPid           launched process identifier
+	 * @param failure            worker exception published before the thread exits
+	 * @param grandchildPid      holds the process identifier that the fixture's grandchild published, or {@code null}
+	 *                           if it never did
+	 * @throws IOException if release or worker cleanup fails, or the worker is still running after forced termination
 	 */
-	private static void cleanupWorker(Thread worker, Path release, AtomicReference<Long> childPid) throws IOException
+	private static void cleanupWorker(Thread worker, Path release, AtomicReference<Long> childPid,
+		AtomicReference<Throwable> failure, AtomicReference<Long> grandchildPid) throws IOException
 	{
 		Files.writeString(release, "release");
 		boolean restoreInterrupt = Thread.interrupted();
@@ -1239,20 +1261,229 @@ public final class BuildWorkerTest
 				restoreInterrupt = true;
 				worker.interrupt();
 			}
+			String beforeTermination = "";
 			if (worker.isAlive())
 			{
+				beforeTermination = describeWorker(worker, failure) + "; " +
+					describeProcesses(childPid.get(), grandchildPid.get());
 				worker.interrupt();
 				terminateChildTree(childPid.get());
 				joinUninterruptibly(worker, TimeUnit.SECONDS.toMillis(20));
 			}
 			if (worker.isAlive())
-				throw new IOException("Worker thread remained alive after fixture cleanup");
+			{
+				throw new IOException("Worker thread remained alive after fixture cleanup.\nBefore interruption and " +
+					"termination: " + beforeTermination + "\nAfter interruption and termination: " +
+					describeWorker(worker, failure) + "; " + describeProcesses(childPid.get(), grandchildPid.get()),
+					failure.get());
+			}
 		}
 		finally
 		{
 			if (restoreInterrupt)
 				Thread.currentThread().interrupt();
 		}
+	}
+
+	/**
+	 * Runs a test body and then its cleanup, and reports a body failure ahead of a cleanup failure.
+	 * <p>
+	 * Cleanup always runs. When the body fails with any {@code Throwable}, including an {@code AssertionError}, that
+	 * failure is rethrown and a cleanup failure is attached to it with {@code addSuppressed}, so the cleanup cannot
+	 * hide why the body failed. When the body succeeds, a cleanup failure is thrown on its own.
+	 *
+	 * @param body    the test's assertions and waits
+	 * @param cleanup releases the resources that the body used
+	 * @throws IOException          if the body or, when the body succeeded, the cleanup fails with an I/O error
+	 * @throws InterruptedException if the body or, when the body succeeded, the cleanup is interrupted
+	 */
+	private static void runThenCleanup(Step body, Step cleanup) throws IOException, InterruptedException
+	{
+		try
+		{
+			body.run();
+		}
+		catch (Throwable bodyFailure)
+		{
+			try
+			{
+				cleanup.run();
+			}
+			catch (Throwable cleanupFailure)
+			{
+				if (cleanupFailure != bodyFailure)
+					bodyFailure.addSuppressed(cleanupFailure);
+			}
+			throw bodyFailure;
+		}
+		cleanup.run();
+	}
+
+	/**
+	 * Creates the failure for an awaited step of the real-process-tree test, naming the step and the worker's
+	 * condition so that the stage that failed is visible in the test report.
+	 *
+	 * @param stage   the awaited step that failed
+	 * @param detail  what was expected and what was observed
+	 * @param worker  thread launching and observing the fixture process tree
+	 * @param failure worker exception published before the thread exits
+	 * @return the failure, caused by the worker's published exception if there is one
+	 */
+	private static AssertionError stageFailure(String stage, String detail, Thread worker,
+		AtomicReference<Throwable> failure)
+	{
+		return new AssertionError("Real process-tree test failed at stage '" + stage + "': " + detail + "; " +
+			describeWorker(worker, failure), failure.get());
+	}
+
+	/**
+	 * Describes the worker thread's state, its published failure and, while it is running, its stack trace.
+	 *
+	 * @param worker  thread launching and observing the fixture process tree
+	 * @param failure worker exception published before the thread exits
+	 * @return the description
+	 */
+	private static String describeWorker(Thread worker, AtomicReference<Throwable> failure)
+	{
+		String description = "worker state=" + worker.getState() + ", published failure=" + failure.get();
+		if (!worker.isAlive())
+			return description;
+		String stackTrace = Arrays.stream(worker.getStackTrace()).
+			map(frame -> "\n\tat " + frame).collect(Collectors.joining());
+		return description + ", stack trace:" + stackTrace;
+	}
+
+	/**
+	 * Describes whether the fixture's child process, its current descendants and its published grandchild are alive.
+	 *
+	 * @param childPid      launched process identifier, or {@code null} if launch did not complete
+	 * @param grandchildPid process identifier that the fixture's grandchild published, or {@code null} if it never did
+	 * @return the description
+	 */
+	private static String describeProcesses(Long childPid, Long grandchildPid)
+	{
+		if (childPid == null)
+			return "the child process was never launched";
+		String child = "child " + describeProcess(childPid);
+		String descendants = ProcessHandle.of(childPid).stream().flatMap(ProcessHandle::descendants).
+			map(descendant -> "; descendant " + describeProcess(descendant.pid())).collect(Collectors.joining());
+		String grandchild = "";
+		if (grandchildPid != null)
+			grandchild = "; published grandchild " + describeProcess(grandchildPid);
+		return child + descendants + grandchild;
+	}
+
+	/**
+	 * Describes whether one process is alive.
+	 *
+	 * @param pid the process identifier
+	 * @return the identifier, its live or dead state and its command if known
+	 */
+	private static String describeProcess(long pid)
+	{
+		return ProcessHandle.of(pid).map(process -> "pid=" + pid + " alive=" + process.isAlive() + " command=" +
+			process.info().command().orElse("unknown")).orElse("pid=" + pid + " alive=false (no such process)");
+	}
+
+	/**
+	 * Verifies that a failing body is the primary failure and carries the failing cleanup as suppressed.
+	 */
+	@Test
+	public void bodyFailureIsPrimaryOverCleanupFailure()
+	{
+		IOException bodyFailure = new IOException("Controlled body failure");
+		IOException cleanupFailure = new IOException("Controlled cleanup failure");
+		AtomicBoolean cleanupRan = new AtomicBoolean();
+
+		Throwable thrown = failureOf(() ->
+		{
+			throw bodyFailure;
+		}, () ->
+		{
+			cleanupRan.set(true);
+			throw cleanupFailure;
+		});
+
+		requireThat(thrown, "primaryFailure").isEqualTo(bodyFailure);
+		requireThat(List.of(thrown.getSuppressed()), "suppressedFailures").isEqualTo(List.of(cleanupFailure));
+		requireThat(cleanupRan.get(), "cleanupRan").isTrue();
+	}
+
+	/**
+	 * Verifies that an assertion failure in the body is the primary failure and carries the failing cleanup as
+	 * suppressed, as for any other body failure.
+	 */
+	@Test
+	public void assertionFailureIsPrimaryOverCleanup()
+	{
+		AssertionError bodyFailure = new AssertionError("Controlled assertion failure");
+		IOException cleanupFailure = new IOException("Controlled cleanup failure");
+
+		Throwable thrown = failureOf(() ->
+		{
+			throw bodyFailure;
+		}, () ->
+		{
+			throw cleanupFailure;
+		});
+
+		requireThat(thrown, "primaryFailure").isEqualTo(bodyFailure);
+		requireThat(List.of(thrown.getSuppressed()), "suppressedFailures").isEqualTo(List.of(cleanupFailure));
+	}
+
+	/**
+	 * Verifies that a cleanup failure is thrown on its own when the body succeeds.
+	 */
+	@Test
+	public void cleanupFailureIsThrownWhenBodySucceeds()
+	{
+		IOException cleanupFailure = new IOException("Controlled cleanup failure");
+
+		Throwable thrown = failureOf(() ->
+		{
+		}, () ->
+		{
+			throw cleanupFailure;
+		});
+
+		requireThat(thrown, "primaryFailure").isEqualTo(cleanupFailure);
+		requireThat(thrown.getSuppressed().length, "suppressedFailureCount").isEqualTo(0);
+	}
+
+	/**
+	 * Runs a body and cleanup that are expected to fail.
+	 *
+	 * @param body    the body
+	 * @param cleanup the cleanup
+	 * @return the failure that {@code runThenCleanup} threw
+	 * @throws AssertionError if neither the body nor the cleanup failed
+	 */
+	private static Throwable failureOf(Step body, Step cleanup)
+	{
+		try
+		{
+			runThenCleanup(body, cleanup);
+		}
+		catch (Throwable failure)
+		{
+			return failure;
+		}
+		throw new AssertionError("Neither the body nor the cleanup failed");
+	}
+
+	/**
+	 * A test action that may fail with an I/O error or be interrupted.
+	 */
+	@FunctionalInterface
+	private interface Step
+	{
+		/**
+		 * Runs the action.
+		 *
+		 * @throws IOException          if the action fails with an I/O error
+		 * @throws InterruptedException if the action is interrupted
+		 */
+		void run() throws IOException, InterruptedException;
 	}
 
 	/**
