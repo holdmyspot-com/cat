@@ -15,6 +15,9 @@
 	would cost money wait for the user's permission, and no run is started only to fill the limit.
 - A run that a newer run supersedes stops consuming time and resources once nothing needs its result, when the agent
 	started it, while a run that someone else started is left to its owner.
+- A run in progress that a change makes unusable, such as a new build, release or input that it does not use, does not
+	keep running only because it has started: when stopping it is cheap, it is stopped, what it showed is recorded and
+	it starts again on the new version, unless a reason that the user is told, such as diagnostic value, keeps it.
 - A run in which a job has failed keeps using shared capacity only while the rest of the run produces something that
 	the agent needs, such as a cache that does not yet exist, and is cancelled at once otherwise, when the agent started
 	it.
@@ -23,9 +26,9 @@
 
 This rule applies before you start, dispatch or request a run of a build, test suite, workflow or probe that takes
 many minutes or draws on capacity that others share, such as the runners of a hosted workflow, when a job of such a
-run that you started has failed while other jobs of it are queued or running, and when you have other work that needs a
-runner while such a run is in progress. It does not apply to a run that finishes
-in seconds on your own machine.
+run that you started has failed while other jobs of it are queued or running, when you have other work that needs a
+runner while such a run is in progress, and when a change lands while such a run that you started is in progress. It
+does not apply to a run that finishes in seconds on your own machine.
 
 Name the revision that the run verifies. When a change that you have decided to make, or that is in progress, will
 replace that revision, such as a rebase or merge onto a new base, a dependency or upstream update, or a fix you are
@@ -60,6 +63,12 @@ others ask it instead of dispatching their own.
 When a newer run supersedes one that you started, such as a rerun after a fix, cancel the earlier run once nothing needs
 its result, neither the current diagnosis nor other work. Cancel only a superseded run that you started. A run that
 someone else started is theirs to cancel, even when it looks superseded: tell its owner.
+
+When a change lands while a run that you started is in progress and the run does not use it, such as a new build,
+release or input, decide at once whether the run's result still counts. Being already in progress is not a reason to
+keep it. When the result no longer counts and stopping the run is cheap, stop it, record what it has shown, and start it
+again on the new version. Keep it running only for a stated reason, such as its diagnostic value, and tell the user that
+reason.
 
 When a job of a run that you started has failed and the run has other jobs that are queued or running, decide as soon
 as you know which job failed whether the rest of the run has value, because a run that is cancelled sooner frees shared
