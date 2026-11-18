@@ -1498,6 +1498,62 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a failure that the broker reports to the caller of {@code scan()} is not thrown again when the
+	 * caller's try-with-resources statement closes the broker, as the request server's statement does, so that the
+	 * caller receives that failure. The failure is the release of a slot after its session ended: the session's runner
+	 * recorded that it was about to start a harness and recorded nothing more, so the broker refuses to empty the slot.
+	 *
+	 * @throws IOException if the broker reports the failed release, as expected
+	 */
+	@Test(timeOut = 30_000, expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Harness launch state is unknown; refusing to empty slot: .*")
+	public void closeDoesNotRepeatScanFailure() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture())
+		{
+			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) -> inSlotWithUnknownLaunch(fixture, fileLocks, options, runs)))
+			{
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+				// The broker releases the slot after it answers the request, so a later scan reports the failed release
+				long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
+				while (System.nanoTime() < deadline)
+				{
+					broker.scan();
+					Thread.yield();
+				}
+				throw new AssertionError("The broker did not report that it could not empty the slot");
+			}
+		}
+	}
+
+	/**
+	 * Starts a double of a requested runner that builds its run in its slot and completes, as {@code inSlot} does, and
+	 * leaves the run recording that the runner was about to start a harness, as a runner killed at that moment leaves
+	 * it.
+	 *
+	 * @param fixture   the requesting run
+	 * @param fileLocks the file locks of the requested run
+	 * @param options   the requested runner's options
+	 * @param runs      receives what the runner finds in its slot and builds there
+	 * @return the runner
+	 * @throws IOException if the run cannot be created or its launch state cannot be recorded
+	 */
+	private static FakeHarnessCli inSlotWithUnknownLaunch(Fixture fixture, FileLocks fileLocks, List<String> options,
+		List<SlotRun> runs) throws IOException
+	{
+		FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
+		SlotRun slotRun = runs.getLast();
+		new HarnessRunManager(fileLocks, slotRun.runRoot(), Clock.systemUTC(), Yielding.fileReplacer()).
+			markHarnessStarting(slotRun.run());
+		return process;
+	}
+
+	/**
 	 * Starts a double of a requested runner that builds its run in the run root and under the run identifier that the
 	 * broker names, as the real runner does, and completes.
 	 *

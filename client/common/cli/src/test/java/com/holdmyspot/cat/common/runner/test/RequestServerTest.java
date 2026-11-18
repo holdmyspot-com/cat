@@ -616,6 +616,41 @@ public final class RequestServerTest
 	}
 
 	/**
+	 * Verifies that a request whose slot the server refuses to empty fails with the reason, and that the server goes
+	 * on serving: an earlier session's run, whose runner recorded that it was about to start a harness and recorded
+	 * nothing more, holds the only development slot that the request can take, so the request is answered
+	 * {@code failed}; once that run records that no harness started, the next request runs in the slot.
+	 *
+	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 */
+	@Test(timeOut = 60_000)
+	public void servesAfterSlotCannotBeEmptied() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path slot = Files.createDirectories(fixture.sessionDirectory().resolve("slots/d1"));
+			HarnessRunManager earlier = new HarnessRunManager(new FileLocks(), slot, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			HarnessRun leftover = earlier.create("claude");
+			earlier.markHarnessStarting(leftover);
+			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			Path runRoot = fixture.root.resolve("optimizer-runs");
+			try (Fixture.Running server = fixture.start())
+			{
+				JsonNode refused = server.request(fixture.manifest());
+				requireThat(refused.path("status").asString(), "status").isEqualTo("failed");
+				requireThat(refused.path("reason").asString(), "reason").contains("Harness launch state is unknown");
+
+				earlier.recordNoHarnessProcess(leftover);
+				fixture.child = slotChild(fixture, served);
+				serve(fixture, server, runRoot);
+				requireThat(served, "served").size().isEqualTo(1);
+				requireThat(served.getFirst().runRoot(), "runRoot").isEqualTo(slot);
+			}
+		}
+	}
+
+	/**
 	 * Verifies that the kept run that the command receives survives the next session's use of the slot: each session's
 	 * kept run is in the command's run root under an identifier of its own, with the files of its own session.
 	 *

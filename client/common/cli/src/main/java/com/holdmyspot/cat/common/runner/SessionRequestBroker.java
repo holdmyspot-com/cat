@@ -175,15 +175,16 @@ public final class SessionRequestBroker implements Closeable
 			site.accepted(json, accepted);
 			monitor = ticker.start(() ->
 			{
-				try
+				// A failure that scan() hands to this thread must be kept for close() before close() can run
+				synchronized (this)
 				{
-					scan();
-				}
-				catch (IOException e)
-				{
-					synchronized (this)
+					try
 					{
-						failure = e;
+						scan();
+					}
+					catch (IOException e)
+					{
+						recordFailure(e);
 					}
 				}
 			});
@@ -194,14 +195,23 @@ public final class SessionRequestBroker implements Closeable
 	 * Discovers new non-temporary request archives once. Invalid requests receive a refusal without starting a child.
 	 * A request whose archive another handle still holds open on Windows gets no response and is taken by a later scan.
 	 *
-	 * @throws IOException if discovery or response publication fails
+	 * @throws IOException if discovery or response publication fails, or if the broker failed while it served an
+	 *                     earlier request, such as when a slot cannot be emptied once its session has ended. Each such
+	 *                     failure is thrown once, either here or by {@link #close()}.
 	 */
 	public void scan() throws IOException
 	{
 		synchronized (this)
 		{
 			if (failure != null)
-				throw failure;
+			{
+				// A caller that closes the broker in a try-with-resources statement would otherwise receive the same
+				// exception from close(), and adding an exception to itself as suppressed fails with an
+				// IllegalArgumentException that replaces the failure
+				IOException reported = failure;
+				failure = null;
+				throw reported;
+			}
 			Path requests = site.requests();
 			for (String id : RequestArchive.pendingIds(requests, ""))
 			{
@@ -561,15 +571,9 @@ public final class SessionRequestBroker implements Closeable
 		}
 		catch (IOException e)
 		{
-			if (slot == null)
-			{
-				synchronized (this)
-				{
-					recordFailure(e);
-				}
-			}
-			else
-				publishFailure(id, request.harness(), "failed", e.getMessage(), directory);
+			// A slot that cannot be emptied fails only the request that waits for it: kept as the broker's failure, it
+			// would end the request server's service of every later request and leave this requester without its reason
+			publishFailure(id, request.harness(), "failed", e.getMessage(), directory);
 		}
 		finally
 		{
