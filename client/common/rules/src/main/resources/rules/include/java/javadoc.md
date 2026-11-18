@@ -34,7 +34,8 @@ Use `<p>` alone on its own Javadoc line immediately after the preceding paragrap
 before or after it, and do not use a closing `</p>` tag.
 Import every class referenced by `{@link}` or `{@linkplain}` and use its simple name in the tag.
 
-Use `<a href="URL">descriptive text</a>` for URL links in Javadoc so they render as clickable links. Do not use Markdown
-link syntax or bare URLs for those links.
+Use HTML Javadoc by default, with `<a href="URL">descriptive text</a>` for clickable URL links. When the user's rules
+request Markdown Javadoc and the rest of the comment uses Markdown, Markdown link syntax is also permitted. Do not use
+bare URLs for those links.
 
 Use `@throws` for each documented exception, and reference parameter names in it using `{@code parameterName}`.
