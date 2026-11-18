@@ -78,8 +78,23 @@ pending the user: Maven 3.10.0's own `java -version` probe in `bin/mvn` (runs be
 `-Xshare:dump` JVMs from `JlinkImageBuilder`'s `--generate-cds-archive`. Full uncached clean verify passed
 (`full-verify5-*/`, 05:28–05:31 UTC, 6,093 tests, 0 failures/errors, 6 skips). Committed and pushed as `96abd7d44`;
 Build `44244878779` passed on all five platforms. Remote state rechecked: branch `v1.0` = `96abd7d44`, tag `v1.0` =
-`7a7749cf4`, release absent (404). Next: the user confirms what the release omits, then the lease-protected tag update to
-`96abd7d44`, the signed Release, and the 15-asset verification.
+`7a7749cf4`, release absent (404).
+
+**v1.0 republished (2026-11-18 UTC).** The user approved releasing `96abd7d44` without the untracked `goal.md`,
+`.cat-tmp/`, `.cat/.mcp.json`, `ci-watch-scenario/` and `client/common/distribution/.cat/`. The tag `v1.0` moved from
+`7a7749cf4` to `96abd7d44d4bf49d2829c93a10d525035c4c92a7` by a lease-protected push. Release `44304370010` succeeded: all
+seven jobs (five builds, publish, native-file cleanup). Release "CAT v1.0" has 15 assets; its manifest names build
+`96abd7d44d4b`, published 12:39:02 UTC. `verify-release.py` passed against a clean checkout of that commit and
+fingerprint `8be98cd3…d9a8`; its evidence is `verify-release-96abd7d44/` in this session's temp directory. Installed
+through the excluded bare installer commands: Claude Code `1.0+bc4a725d5f39e` → `1.0+b96abd7d44d4b` (settings entries
+rewritten), Codex the same. Codex's first run updated the files but exited 10 because the new installer could not rewrite
+its own version's entries; the printed repair command (the new version's `installer install --harness codex v1.0`)
+reported it up to date. `installer status` reports `1.0+b96abd7d44d4b` for both harnesses. This parent session keeps
+the old rules until Claude Code restarts; nested sessions get the new plugin.
+
+Next: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
+traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
+429 account recovery; inspect Codex E5's account-reset prerequisite first), G1–G10, T3/T6 and the documentation rows.
 
 **Queued user request (2026-11-17, after this goal):** add a plugin rule to each harness's plugin: when the agent
 runs commands in the shell, avoid, when possible, the shell features that *its own harness's* automatic approval cannot
