@@ -92,7 +92,20 @@ its own version's entries; the printed repair command (the new version's `instal
 reported it up to date. `installer status` reports `1.0+b96abd7d44d4b` for both harnesses. This parent session keeps
 the old rules until Claude Code restarts; nested sessions get the new plugin.
 
-Next: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
+**§9 gates on the released tree (2026-11-18 UTC).** Evidence is in this session's `temp/final-gates-Ttbj75/`.
+- Gate 1 passed: uncached clean verify 12:53–12:56 UTC, exit 0, 456 reports, 6,093 tests, 0 failures/errors, 6
+  PowerShell skips (`g6/`). 31 tests took ≥1 s, the longest `DelegationTest.dirtySourceIsFrozen` (4.8 s).
+- Gate 6, missing-home subclaim passed in that same run: `HOME` and Surefire `user.home` named the absent
+  `g6/absent-home`, which still did not exist afterwards. Gate 6's qualitative items (delegation runtime disposition
+  above) stay open.
+- Gate 2, local part passed: the AST audit (`audit/`, reconcile rerun over 599 test sources and the 456 frozen reports
+  in `reports/`) maps 2,512 tags, all passed, no unknown tags; of 140 requirements only R-I1 lacks a passing Java test,
+  as its E proof expects. The E-proof receipts remain open with gate 4.
+- Gate 3 passed: delta no-model audit `no-model-report.md` over the 61 changed sources/POMs listed in
+  `no-model-delta.tsv`, plus a whole-tree group/profile check.
+- Gate 4: E1 started in both harnesses (round 5, briefs in `e-runs/`, folders `/home/gili/cat/worktrees/E1-*-s25d7/`).
+
+Earlier next-step list: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
 traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
 429 account recovery; inspect Codex E5's account-reset prerequisite first), G1–G10, T3/T6 and the documentation rows.
 
