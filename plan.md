@@ -66,7 +66,20 @@ test to remove `TMPDIR`. The test-only alternative was dropped (its patch stays 
 delegate tightened the match so a non-normalized `TMPDIR` (`/tmp//`, `/tmp/..`, trailing `/`) binds nothing; 15/15 bats
 cases (7 new, red first), shellcheck clean. The full uncached clean verify with the sandbox's own
 `TMPDIR=/tmp/claude-1000` passed (`full-verify4-lgo2g7/`, exit 0, 04:59–05:02 UTC, 6,092 tests, 0 failures/errors, 6
-skips, no tmpdir warning). Committed as `bbd03d8e7`. Next: push and the normal five-platform Build on the pushed HEAD.
+skips, no tmpdir warning). Committed as `bbd03d8e7`; pushed with `160944025`, whose Build `44241540022` passed on all
+five platforms.
+
+**Official Maven Wrapper restored (2026-11-18, user instruction):** "restore the official mvnw files across all
+platforms. add -XX:+PerfDisableSharedMem where needed." The `bwrap` block (and `bbd03d8e7` with it) and `mvnw.bats` are
+gone; `client/mvnw` and the new `client/mvnw.cmd` are byte-identical to the checksum-verified 3.3.4 only-script
+distribution. Maven (`.mvn/jvm.config`), every Surefire test JVM (`cat.test.jvm.options` in `argLine`) and the JVMs that
+tests start get `-XX:+PerfDisableSharedMem`; `TestJvmOptionsTest` proves the test JVM has it (red first). Not covered,
+pending the user: Maven 3.10.0's own `java -version` probe in `bin/mvn` (runs before `jvm.config`), and jlink's four
+`-Xshare:dump` JVMs from `JlinkImageBuilder`'s `--generate-cds-archive`. Full uncached clean verify passed
+(`full-verify5-*/`, 05:28–05:31 UTC, 6,093 tests, 0 failures/errors, 6 skips). Committed and pushed as `96abd7d44`;
+Build `44244878779` passed on all five platforms. Remote state rechecked: branch `v1.0` = `96abd7d44`, tag `v1.0` =
+`7a7749cf4`, release absent (404). Next: the user confirms what the release omits, then the lease-protected tag update to
+`96abd7d44`, the signed Release, and the 15-asset verification.
 
 **Queued user request (2026-11-17, after this goal):** add a plugin rule to each harness's plugin: when the agent
 runs commands in the shell, avoid, when possible, the shell features that *its own harness's* automatic approval cannot
