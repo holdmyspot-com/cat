@@ -386,7 +386,9 @@ public final class BundledRuleAudienceTest
 	 * rule, and the expensive-verification-runs rule itself states how to order a run that spans targets of differing
 	 * speed or capacity, without the build-workflow rule repeating that ordering, and how to fill the provider's
 	 * concurrency limit with independent runs: freely when the runner time costs nothing, and only with the user's
-	 * permission when it costs money.
+	 * permission when it costs money. The index also routes a change that lands while such a run is in progress to that
+	 * rule, which then directs the agent to decide at once whether the run's result still counts instead of keeping the
+	 * run only because it has started.
 	 *
 	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
 	 * @throws URISyntaxException if the class path returns a malformed resource location
@@ -401,8 +403,10 @@ public final class BundledRuleAudienceTest
 			RuleArtifactRouter.route(plugin, scope.yaml());
 			Path include = plugin.resolve("rules/include/common");
 
-			requireThat(Files.readString(include.resolve("rule-routing/testing-and-builds.md")), "testingIndex").
-				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/expensive-verification-runs.md`");
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
+				"testingIndex").
+				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/expensive-verification-runs.md`").
+				contains("when a change lands while such a run that you started is in progress");
 			requireThat(Files.readString(include.resolve("rule-routing/failures.md")), "failureIndex").
 				contains("`${CAT_PLUGIN_ROOT}/rules/include/common/run-comparisons/failure-baseline.md`");
 			String expensiveRuns = oneLine(Files.readString(include.resolve("expensive-verification-runs.md")));
@@ -411,6 +415,8 @@ public final class BundledRuleAudienceTest
 				contains("up to the provider's concurrency limit").
 				contains("Fill the limit without asking when the extra runner time is free").
 				contains("treat them as costing money and ask").
+				contains("decide at once whether the run's result still counts. Being already in progress is not a " +
+					"reason to keep it.").
 				doesNotContain("build-workflow.md");
 			String buildWorkflow = oneLine(Files.readString(include.resolve("build-workflow.md")));
 			requireThat(buildWorkflow, "buildWorkflow").doesNotContain("start that target first or in parallel");
