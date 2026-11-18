@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.SessionSlots;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -256,6 +257,68 @@ public final class SessionSlotsTest
 			requireThat(failure.getMessage(), "failureMessage").contains(manifest.toString());
 			requireThat(manifest, "manifest").isRegularFile();
 			requireThat(sentinel, "sentinel").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a run folder without a manifest, which records no process, does not keep its slot: taking the slot
+	 * removes the folder and asks no process to end.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void emptiesRunWithoutManifest() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
+			SessionSlots.Slot first = slots.acquire(false);
+			slots.release(first);
+			Path run = first.root().resolve("claude").resolve(first.runId());
+			for (String entry : List.of("home", "project", "responses"))
+				Files.createDirectories(run.resolve(entry));
+
+			requireThat(slots.acquire(false), "second").isEqualTo(first);
+			requireThat(Files.exists(run, LinkOption.NOFOLLOW_LINKS), "runExists").isFalse();
+			requireThat(liveness.terminations(), "terminations").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Verifies that a run folder left in a free slot whose manifest is malformed keeps its bytes and prevents the slot
+	 * from being taken.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesToTakeSlotWithMalformedManifest() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
+			SessionSlots.Slot first = slots.acquire(false);
+			slots.release(first);
+			Path run = Files.createDirectories(first.root().resolve("claude").resolve(first.runId()));
+			Path manifest = run.resolve("run.json");
+			Files.writeString(manifest, "{not json");
+			IOException failure = null;
+			try
+			{
+				slots.acquire(false);
+			}
+			catch (IOException e)
+			{
+				failure = e;
+			}
+
+			requireThat(failure, "failure").isNotNull();
+			requireThat(failure.getMessage(), "failureMessage").contains(manifest.toString());
+			requireThat(manifest, "manifest").isRegularFile();
+			requireThat(liveness.terminations(), "terminations").isEqualTo(0);
 		}
 	}
 

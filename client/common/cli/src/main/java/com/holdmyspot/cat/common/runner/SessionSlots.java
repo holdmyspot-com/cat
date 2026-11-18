@@ -31,7 +31,9 @@ import java.util.stream.Stream;
  * A slot is emptied before a session takes it, and again once the session has ended, but a slot is never emptied or
  * handed on while a process that its previous session recorded in its run's manifest remains alive: CAT stops each
  * such process, and if one stays alive, the slot waits. The manifest records only the runner's process and the
- * harness process, not the processes below them.
+ * harness process, not the processes below them. A run folder without a manifest records no process, so emptying the
+ * slot removes it without stopping anything; a manifest that cannot be read or is malformed keeps the slot from being
+ * emptied.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -307,11 +309,12 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Returns the manifests of the runs below a slot, which are at {@code <harness>/<run>/run.json}.
+	 * Returns the manifests of the runs below a slot, which are at {@code <harness>/<run>/run.json}. A run folder
+	 * without a manifest records no process and is left out.
 	 *
 	 * @param root the slot's directory
 	 * @return the manifests
-	 * @throws IOException if the slot's directories cannot be read
+	 * @throws IOException if the slot's directories cannot be read, or a run's manifest is not a regular file
 	 */
 	private static List<RecordedRun> manifests(Path root) throws IOException
 	{
@@ -332,8 +335,11 @@ public final class SessionSlots
 							!run.getFileName().toString().startsWith(RUN_ID))
 							continue;
 						Path manifest = run.resolve("run.json");
+						// A run folder without a manifest records no process; emptying the slot removes it
+						if (!Files.exists(manifest, LinkOption.NOFOLLOW_LINKS))
+							continue;
 						if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
-							throw new IOException("Slot run is missing its manifest: " + manifest);
+							throw new IOException("Slot run manifest is not a regular file: " + manifest);
 						manifests.add(new RecordedRun(harness.getFileName().toString(),
 							run.getFileName().toString(), manifest));
 					}
@@ -344,7 +350,7 @@ public final class SessionSlots
 	}
 
 	/**
-	 * A path-derived run whose manifest is required before slot reuse.
+	 * A path-derived run whose manifest is checked before slot reuse.
 	 *
 	 * @param harness the harness directory name
 	 * @param runId the generated run identifier
