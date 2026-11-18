@@ -3,7 +3,9 @@ package com.holdmyspot.cat.common.build.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.AbstractJvmScope;
+import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.ExecutableFiles;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -21,8 +23,10 @@ import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
 import java.util.Arrays;
@@ -1089,17 +1093,29 @@ public final class BuildWorkerTest
 	}
 
 	/**
-	 * Reads one complete ledger generation through NIO, whose Windows handle permits atomic replacement while open.
-	 * A parser opened directly on a {@code File} uses a stream that prevents the worker from replacing its ledger.
+	 * Reads one complete ledger generation while holding the ledger's lock, as the worker does while it replaces the
+	 * ledger. Windows refuses to replace a file that any handle has open, so a read that overlaps the worker's
+	 * replacement would make the worker fail.
 	 *
-	 * @param scope the JSON parser owner
+	 * @param scope the owner of the JSON parser and of the file locks that the worker shares
 	 * @param ledger the ledger path
 	 * @return the parsed generation
-	 * @throws IOException if the ledger cannot be read
+	 * @throws IOException if the ledger cannot be locked or read
 	 */
 	private static JsonNode readLedger(JvmScope scope, Path ledger) throws IOException
 	{
-		return scope.json().readTree(Files.readAllBytes(ledger));
+		FileLocks locks = scope.fileLocks();
+		Path lock = ledger.resolveSibling("ledger.lock");
+		synchronized (locks.monitor(lock))
+		{
+			Optional<ExclusiveFileLock> acquired = locks.tryLock(lock,
+				path -> FileChannel.open(path, StandardOpenOption.WRITE));
+			try (ExclusiveFileLock _ = acquired.orElseThrow(() ->
+				new IOException("Another process holds the build ledger lock: " + lock)))
+			{
+				return scope.json().readTree(Files.readAllBytes(ledger));
+			}
+		}
 	}
 
 	/**
