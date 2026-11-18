@@ -61,6 +61,13 @@ wrapper could not hide it: exit 0, 2026-11-18 04:50–04:52 UTC, 6,092 tests, no
 Markdown links). Git's automatic `gc` fails after each commit because other worktrees' refs are read-only in the
 sandbox; the commits are intact.
 
+**`mvnw` fix integrated (2026-11-18):** the user asked for the invalid `TMPDIR` to be fixed at its source and for no
+test to remove `TMPDIR`. The test-only alternative was dropped (its patch stays in `launcher-tmpdir-HNOb5h/`). The
+delegate tightened the match so a non-normalized `TMPDIR` (`/tmp//`, `/tmp/..`, trailing `/`) binds nothing; 15/15 bats
+cases (7 new, red first), shellcheck clean. The full uncached clean verify with the sandbox's own
+`TMPDIR=/tmp/claude-1000` passed (`full-verify4-lgo2g7/`, exit 0, 04:59–05:02 UTC, 6,092 tests, 0 failures/errors, 6
+skips, no tmpdir warning). Committed as `bbd03d8e7`. Next: push and the normal five-platform Build on the pushed HEAD.
+
 **Queued user request (2026-11-17, after this goal):** add a plugin rule to each harness's plugin: when the agent
 runs commands in the shell, avoid, when possible, the shell features that *its own harness's* automatic approval cannot
 evaluate. Each harness gets its own rule, matched to its own limitations; do not merge them into one lowest-common-
