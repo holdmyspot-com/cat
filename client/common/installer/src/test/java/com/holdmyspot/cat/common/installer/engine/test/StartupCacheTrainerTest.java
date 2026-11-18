@@ -10,29 +10,24 @@ import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.Training;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.TrainingRun;
+import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication;
 import com.holdmyspot.cat.common.installer.secrets.StartupCacheTrainerSecrets;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardWatchEventKinds;
-import java.nio.file.WatchEvent;
-import java.nio.file.WatchKey;
-import java.nio.file.WatchService;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.OptionalInt;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.FutureTask;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
@@ -51,6 +46,12 @@ public final class StartupCacheTrainerTest
 	 * Stands in for the check of a process without administrative rights.
 	 */
 	private static final BooleanSupplier NOT_ELEVATED = () -> false;
+	/**
+	 * Supplies non-blocking pauses while tests exercise the cleanup decisions.
+	 */
+	private static final Waiting NO_WAIT = interval -> () ->
+	{
+	};
 
 	/**
 	 * Creates the test.
@@ -165,10 +166,267 @@ public final class StartupCacheTrainerTest
 			Files.writeString(cacheFolder.resolve(StartupCache.FILE.getFileName() + ".partial"), "part of a cache");
 			Path work = Files.createDirectories(root.resolve("scratch/training-1/tmp"));
 
-			StartupCacheTrainer.cleanUp(false, cacheFolder, work.getParent());
+			StartupCacheTrainer.cleanUp(false, cacheFolder, work.getParent(), NO_WAIT);
 
 			requireThat(Files.exists(cacheFolder, NOFOLLOW_LINKS), "cacheFolder").isFalse();
 			requireThat(Files.exists(work.getParent(), NOFOLLOW_LINKS), "scratchFolder").isFalse();
+		}
+	}
+
+	/**
+	 * Final cleanup retries an eligible temporary refusal through the supplied tree-removal operation.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void cleanupRetriesTransientRefusals() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-retry-")).toRealPath();
+			Path cache = Files.createDirectories(root.resolve("plugin").resolve(StartupCache.DIRECTORY));
+			Path work = Files.createDirectories(root.resolve("scratch/training-1/tmp")).getParent();
+			AtomicBoolean refuseCacheOnce = new AtomicBoolean(true);
+			AtomicBoolean refuseScratchOnce = new AtomicBoolean(true);
+			List<Path> attempts = new ArrayList<>();
+			StartupCacheTrainer.TreeDeleter deleteTree = path ->
+			{
+				attempts.add(path);
+				boolean refuseFirstCacheAttempt = path.equals(cache) && refuseCacheOnce.getAndSet(false);
+				boolean refuseFirstScratchAttempt = path.equals(work) && refuseScratchOnce.getAndSet(false);
+				if (refuseFirstCacheAttempt || refuseFirstScratchAttempt)
+					throw new AccessDeniedException(path.toString());
+				TemporaryDirectories.deleteRecursively(path);
+			};
+
+			StartupCacheTrainerSecrets.getStartupCacheTrainerAccess().
+				cleanUp(false, cache, work, deleteTree, NO_WAIT);
+
+			requireThat(Files.exists(cache, NOFOLLOW_LINKS), "cacheFolder").isFalse();
+			requireThat(Files.exists(work, NOFOLLOW_LINKS), "scratchFolder").isFalse();
+			requireThat(attempts.stream().filter(cache::equals).count(), "cacheAttempts").isEqualTo(2L);
+			requireThat(attempts.stream().filter(work::equals).count(), "scratchAttempts").isEqualTo(2L);
+		}
+	}
+
+	/**
+	 * Persistent eligible refusals exhaust a fresh retry schedule for each root, while cache failure remains primary.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void cleanupExhaustsRetriesBothRoots() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-retry-exhausted-")).toRealPath();
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path work = Files.createDirectories(root.resolve("scratch"));
+			AccessDeniedException cacheFailure = new AccessDeniedException(cache.toString());
+			AccessDeniedException scratchFailure = new AccessDeniedException(work.toString());
+			List<Path> attempts = new ArrayList<>();
+			List<Duration> waits = new ArrayList<>();
+			Waiting recording = interval -> () -> waits.add(interval);
+
+			IOException failure = cleanupFailure(cache, work, path ->
+			{
+				attempts.add(path);
+				if (path.equals(cache))
+					throw cacheFailure;
+				throw scratchFailure;
+			}, recording);
+
+			requireThat(failure, "failure").isEqualTo(cacheFailure);
+			requireThat(List.of(failure.getSuppressed()), "suppressed").contains(scratchFailure);
+			requireThat(attempts.stream().filter(cache::equals).count(), "cacheAttempts").isEqualTo(9L);
+			requireThat(attempts.stream().filter(work::equals).count(), "scratchAttempts").isEqualTo(9L);
+			requireThat(waits.size(), "waits").isEqualTo(16);
+			requireThat(waits.stream().reduce(Duration.ZERO, Duration::plus), "totalWait").
+				isEqualTo(LinkSafeDeletion.RETRY_DEADLINE.multipliedBy(2));
+		}
+	}
+
+	/**
+	 * A generic I/O failure is reported immediately and does not prevent scratch removal.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void cleanupDoesNotRetryGenericIoFailure() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-retry-generic-")).toRealPath();
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path work = Files.createDirectories(root.resolve("scratch"));
+			IOException expected = new IOException("cache read failed");
+			List<Duration> waits = new ArrayList<>();
+			Waiting recording = interval -> () -> waits.add(interval);
+
+			IOException failure = cleanupFailure(cache, work, path ->
+			{
+				if (path.equals(cache))
+					throw expected;
+				TemporaryDirectories.deleteRecursively(path);
+			}, recording);
+
+			requireThat(failure, "failure").isEqualTo(expected);
+			requireThat(waits, "waits").isEmpty();
+			requireThat(Files.isDirectory(cache, NOFOLLOW_LINKS), "cache").isTrue();
+			requireThat(Files.exists(work, NOFOLLOW_LINKS), "scratch").isFalse();
+		}
+	}
+
+	/**
+	 * A pause failure without interruption is reported and does not prevent the other required tree removal.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void cleanupReportsNonInterruptPauseFailure() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-retry-pause-failure-")).toRealPath();
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path work = Files.createDirectories(root.resolve("scratch"));
+			AccessDeniedException deletionFailure = new AccessDeniedException(cache.toString());
+			IOException pauseFailure = new IOException("pause failed");
+			List<Path> attempts = new ArrayList<>();
+			Waiting failing = interval -> () ->
+			{
+				throw pauseFailure;
+			};
+
+			IOException failure = cleanupFailure(cache, work, path ->
+			{
+				attempts.add(path);
+				if (path.equals(cache))
+					throw deletionFailure;
+				TemporaryDirectories.deleteRecursively(path);
+			}, failing);
+
+			requireThat(failure, "failure").isEqualTo(pauseFailure);
+			requireThat(attempts.stream().filter(cache::equals).count(), "cacheAttempts").isEqualTo(1L);
+			requireThat(attempts.stream().filter(work::equals).count(), "scratchAttempts").isEqualTo(1L);
+			requireThat(Files.exists(work, NOFOLLOW_LINKS), "scratch").isFalse();
+		}
+	}
+
+	/**
+	 * Cleanup temporarily clears an existing interruption so both successful and failed cleanup can finish, then
+	 * restores the caller's interruption status.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void cleanupRestoresInterruptStatus() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-retry-interrupted-")).toRealPath();
+			Path successfulCache = Files.createDirectories(root.resolve("successful-cache"));
+			Path successfulWork = Files.createDirectories(root.resolve("successful-scratch"));
+			AtomicBoolean refuseCacheOnce = new AtomicBoolean(true);
+			List<Path> successfulAttempts = new ArrayList<>();
+			List<Duration> successfulWaits = new ArrayList<>();
+			Waiting verifyClearedInterruption = interval -> () ->
+			{
+				requireThat(Thread.currentThread().isInterrupted(), "interruptedDuringPause").isFalse();
+				successfulWaits.add(interval);
+			};
+			try
+			{
+				Thread.currentThread().interrupt();
+				StartupCacheTrainerSecrets.getStartupCacheTrainerAccess().cleanUp(false, successfulCache,
+					successfulWork, path ->
+					{
+						successfulAttempts.add(path);
+						if (path.equals(successfulCache) && refuseCacheOnce.getAndSet(false))
+							throw new AccessDeniedException(path.toString());
+						TemporaryDirectories.deleteRecursively(path);
+					}, verifyClearedInterruption);
+				requireThat(Thread.currentThread().isInterrupted(), "interruptedAfterSuccess").isTrue();
+				requireThat(Files.exists(successfulCache, NOFOLLOW_LINKS), "successfulCache").isFalse();
+				requireThat(Files.exists(successfulWork, NOFOLLOW_LINKS), "successfulWork").isFalse();
+				requireThat(successfulAttempts.stream().filter(successfulCache::equals).count(), "cacheAttempts").
+					isEqualTo(2L);
+				requireThat(successfulAttempts.stream().filter(successfulWork::equals).count(), "scratchAttempts").
+					isEqualTo(1L);
+				requireThat(successfulWaits.size(), "pauseCount").isEqualTo(1);
+			}
+			finally
+			{
+				Thread.interrupted();
+			}
+
+			Path failedCache = Files.createDirectories(root.resolve("failed-cache"));
+			Path failedWork = Files.createDirectories(root.resolve("failed-scratch"));
+			IOException expected = new IOException("cache removal failed");
+			try
+			{
+				Thread.currentThread().interrupt();
+				IOException failure = cleanupFailure(failedCache, failedWork, path ->
+				{
+					if (path.equals(failedCache))
+						throw expected;
+					TemporaryDirectories.deleteRecursively(path);
+				}, NO_WAIT);
+				requireThat(failure, "failure").isEqualTo(expected);
+				requireThat(Thread.currentThread().isInterrupted(), "interruptedAfterFailure").isTrue();
+				requireThat(Files.exists(failedWork, NOFOLLOW_LINKS), "scratch").isFalse();
+			}
+			finally
+			{
+				Thread.interrupted();
+			}
+		}
+	}
+
+	/**
+	 * A new interruption during a retry pause stops that root's retry, remains set, and does not prevent the other root
+	 * from being cleaned.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void cleanupPauseInterruptKeepsFailure() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-retry-new-interrupt-")).toRealPath();
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path work = Files.createDirectories(root.resolve("scratch"));
+			AccessDeniedException expected = new AccessDeniedException(cache.toString());
+			IOException pauseFailure = new IOException("pause interrupted");
+			List<Path> attempts = new ArrayList<>();
+			Waiting interrupting = interval -> () ->
+			{
+				Thread.currentThread().interrupt();
+				throw pauseFailure;
+			};
+
+			try
+			{
+				IOException failure = cleanupFailure(cache, work, path ->
+				{
+					attempts.add(path);
+					if (path.equals(cache))
+						throw expected;
+					TemporaryDirectories.deleteRecursively(path);
+				}, interrupting);
+				requireThat(failure, "failure").isEqualTo(expected);
+				requireThat(Thread.currentThread().isInterrupted(), "interrupted").isTrue();
+				requireThat(attempts.stream().filter(cache::equals).count(), "cacheAttempts").isEqualTo(1L);
+				requireThat(attempts.stream().filter(work::equals).count(), "scratchAttempts").isEqualTo(1L);
+				requireThat(Files.exists(work, NOFOLLOW_LINKS), "scratch").isFalse();
+				requireThat(Files.exists(cache, NOFOLLOW_LINKS), "cache").isTrue();
+				requireThat(List.of(failure.getSuppressed()), "suppressed").containsExactly(new Throwable[] {pauseFailure});
+			}
+			finally
+			{
+				Thread.interrupted();
+			}
 		}
 	}
 
@@ -188,7 +446,7 @@ public final class StartupCacheTrainerTest
 			Files.writeString(cache, "a cache");
 			Path work = Files.createDirectories(root.resolve("scratch/training-1/tmp")).getParent();
 
-			StartupCacheTrainer.cleanUp(true, cache.getParent(), work);
+			StartupCacheTrainer.cleanUp(true, cache.getParent(), work, NO_WAIT);
 
 			requireThat(Files.readString(cache), "cache").isEqualTo("a cache");
 			requireThat(Files.exists(work, NOFOLLOW_LINKS), "scratchFolder").isFalse();
@@ -212,7 +470,7 @@ public final class StartupCacheTrainerTest
 			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED, NO_WAIT).train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
@@ -222,16 +480,13 @@ public final class StartupCacheTrainerTest
 
 	/**
 	 * Interrupting a training after its fixture process publishes its ID and is observed running stops that process and
-	 * leaves the plugin without a startup cache.
+	 * leaves the plugin without a startup cache. A separate test application owns this real process boundary.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 * @throws InterruptedException if the test thread is interrupted while waiting for the fixture
-	 * @throws ExecutionException if training fails while running on its owned thread
-	 * @throws TimeoutException if the fixture or training does not finish within its deadline
 	 */
 	@Test
-	public void stoppedTrainingLeavesNoCache() throws IOException, InterruptedException, ExecutionException,
-		TimeoutException
+	public void stoppedTrainingLeavesNoCache() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -239,81 +494,14 @@ public final class StartupCacheTrainerTest
 			Path plugin = javaPlugin(root.resolve("plugin"));
 			Path scratch = root.resolve("scratch");
 			Path readyPath = root.resolve("fixture-process.pid");
-			AtomicReference<List<ProcessHandle>> ownedProcesses = new AtomicReference<>(List.of());
 			Files.writeString(plugin.resolve(StartupCache.TRAINING),
 				StartupCacheFixtures.description(List.of(StartupProgram.class.getName(), "--hold", readyPath.toString())),
 				UTF_8);
-			StartupCacheTrainer trainer = trainer(scratch, path ->
-			{
-				List<Long> running = ownedProcesses.get().stream().filter(ProcessHandle::isAlive).
-					map(ProcessHandle::pid).toList();
-				requireThat(running, "processesAliveBeforeDeleting").isEmpty();
-				TemporaryDirectories.deleteRecursively(path);
-			});
-			FutureTask<Boolean> trainingResult = new FutureTask<>(() -> trainer.train(plugin));
-			Thread trainingThread = new Thread(trainingResult, "startup-cache-training");
-			ProcessHandle fixtureProcess = null;
+			StartupTrainingApplication.cancel(plugin, scratch, readyPath);
 
-			try (WatchService readiness = root.getFileSystem().newWatchService())
-			{
-				root.register(readiness, StandardWatchEventKinds.ENTRY_CREATE);
-				trainingThread.start();
-				fixtureProcess = awaitFixtureProcess(readiness, readyPath);
-				ownedProcesses.set(List.of(fixtureProcess));
-				requireThat(fixtureProcess.isAlive(), "fixtureProcess").isTrue();
-				ownedProcesses.set(fixtureTree(fixtureProcess));
-
-				trainingThread.interrupt();
-				boolean written = trainingResult.get(10, TimeUnit.SECONDS);
-
-				requireThat(written, "written").isFalse();
-				requireThat(fixtureProcess.isAlive(), "fixtureProcess").isFalse();
-				requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
-				requireThat(entries(scratch), "scratchEntries").isEmpty();
-				String jar = plugin.resolve(StartupCacheFixtures.JAR).toString();
-				List<ProcessHandle> running = ProcessHandle.allProcesses().
-					filter(process -> process.info().commandLine().map(line -> line.contains(jar)).orElse(false)).toList();
-				requireThat(running, "stillRunning").isEmpty();
-			}
-			finally
-			{
-				trainingThread.interrupt();
-				trainingThread.join(10_000);
-				for (ProcessHandle process : ownedProcesses.get())
-					process.destroyForcibly();
-				for (ProcessHandle process : ownedProcesses.get())
-					process.onExit().get(10, TimeUnit.SECONDS);
-				requireThat(trainingThread.isAlive(), "trainingThread").isFalse();
-				if (fixtureProcess != null)
-					requireThat(fixtureProcess.isAlive(), "fixtureProcess").isFalse();
-			}
+			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
+			requireThat(entries(scratch), "scratchEntries").isEmpty();
 		}
-	}
-
-	/**
-	 * Captures the fixture's wrapper and its descendants while the published fixture process is held running.
-	 * The highest ancestor below this test JVM owns the entire training process tree, including Windows command
-	 * interpreters between the launched wrapper and Java.
-	 *
-	 * @param fixture the Java process that published readiness
-	 * @return the owned wrapper and descendants
-	 * @throws IOException if the fixture cannot be traced back to this test JVM
-	 */
-	private static List<ProcessHandle> fixtureTree(ProcessHandle fixture) throws IOException
-	{
-		ProcessHandle root = fixture;
-		while (true)
-		{
-			ProcessHandle parent = root.parent().orElseThrow(
-				() -> new IOException("Fixture process has no ancestor in this test JVM"));
-			if (parent.pid() == ProcessHandle.current().pid())
-				break;
-			root = parent;
-		}
-		List<ProcessHandle> owned = new ArrayList<>();
-		owned.add(root);
-		owned.addAll(root.descendants().toList());
-		return List.copyOf(owned);
 	}
 
 	/**
@@ -338,7 +526,7 @@ public final class StartupCacheTrainerTest
 			// Stands in for the check of a process with administrative rights
 			BooleanSupplier elevated = () -> true;
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), elevated).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), elevated, NO_WAIT).train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(scratch, NOFOLLOW_LINKS), "scratchMade").isFalse();
@@ -364,7 +552,7 @@ public final class StartupCacheTrainerTest
 			Files.writeString(plugin.resolve(StartupCache.FILE), "a cache of an earlier activation");
 			Path scratch = root.resolve("scratch");
 
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED).train(plugin);
+			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED, NO_WAIT).train(plugin);
 
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(scratch, NOFOLLOW_LINKS), "scratchMade").isFalse();
@@ -387,7 +575,7 @@ public final class StartupCacheTrainerTest
 			Path description = plugin.resolve(StartupCache.TRAINING);
 			Files.createDirectories(description.getParent());
 			Files.writeString(description, "{", UTF_8);
-			StartupCacheTrainer trainer = trainer(root.resolve("scratch"), Files::deleteIfExists);
+			StartupCacheTrainer trainer = trainer(root.resolve("scratch"), Files::deleteIfExists, NO_WAIT);
 
 			IOException failure = trainFailure(trainer, plugin);
 
@@ -412,7 +600,7 @@ public final class StartupCacheTrainerTest
 			Files.createDirectories(description.getParent());
 			Files.writeString(description, "{\"format\": 1, \"arguments\": [], \"plugin_root_variable\": " +
 				"\"PLUGIN_ROOT\", \"input\": \"\"}", UTF_8);
-			StartupCacheTrainer trainer = trainer(root.resolve("scratch"), Files::deleteIfExists);
+			StartupCacheTrainer trainer = trainer(root.resolve("scratch"), Files::deleteIfExists, NO_WAIT);
 
 			IOException failure = trainFailure(trainer, plugin);
 
@@ -439,7 +627,7 @@ public final class StartupCacheTrainerTest
 			StartupCacheTrainer trainer = trainer(root.resolve("scratch"), path ->
 			{
 				throw expected;
-			});
+			}, NO_WAIT);
 
 			IOException failure = trainFailure(trainer, plugin);
 
@@ -471,7 +659,7 @@ public final class StartupCacheTrainerTest
 					Files.deleteIfExists(path);
 				else
 					throw expected;
-			});
+			}, NO_WAIT);
 
 			IOException failure = trainFailure(trainer, plugin);
 
@@ -500,7 +688,7 @@ public final class StartupCacheTrainerTest
 				if (path.equals(cache))
 					throw cacheFailure;
 				throw scratchFailure;
-			});
+			}, NO_WAIT);
 
 			requireThat(failure, "failure").isEqualTo(cacheFailure);
 			requireThat(List.of(failure.getSuppressed()), "suppressed").contains(scratchFailure);
@@ -530,7 +718,7 @@ public final class StartupCacheTrainerTest
 					Files.delete(path);
 				else
 					throw expected;
-			});
+			}, NO_WAIT);
 
 			requireThat(failure, "failure").isEqualTo(expected);
 			requireThat(Files.exists(cache, NOFOLLOW_LINKS), "cache").isFalse();
@@ -539,55 +727,18 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * Waits for the fixture process to publish its ID and returns the process handle named by that ID.
-	 *
-	 * @param readiness the watch service registered before training starts
-	 * @param readyPath the path at which the fixture publishes its ID
-	 * @return the observed fixture process
-	 * @throws IOException if readiness is malformed or the fixture does not appear before the deadline
-	 * @throws InterruptedException if the test thread is interrupted while waiting
-	 */
-	private static ProcessHandle awaitFixtureProcess(WatchService readiness, Path readyPath)
-		throws IOException, InterruptedException
-	{
-		long deadline = System.nanoTime() + Duration.ofSeconds(20).toNanos();
-		while (true)
-		{
-			long remaining = deadline - System.nanoTime();
-			if (remaining <= 0)
-				throw new IOException("Fixture process did not publish its ID before the readiness deadline");
-
-			WatchKey event = readiness.poll(remaining, TimeUnit.NANOSECONDS);
-			if (event == null)
-				throw new IOException("Fixture process did not publish its ID before the readiness deadline");
-			for (WatchEvent<?> change : event.pollEvents())
-			{
-				if (change.kind() == StandardWatchEventKinds.OVERFLOW)
-					throw new IOException("Fixture process readiness events overflowed");
-				if (change.kind() == StandardWatchEventKinds.ENTRY_CREATE &&
-					change.context().equals(readyPath.getFileName()))
-				{
-					long pid = Long.parseLong(Files.readString(readyPath, UTF_8));
-					return ProcessHandle.of(pid).orElseThrow(
-						() -> new IOException("Fixture process ID does not identify a running process"));
-				}
-			}
-			if (!event.reset())
-				throw new IOException("Fixture process readiness watch became invalid");
-		}
-	}
-
-	/**
 	 * Creates a trainer whose tree removal is controlled by its test.
 	 *
 	 * @param scratch    the trainer's scratch directory
 	 * @param deleteTree the test's tree-removal operation
+	 * @param waiting    controls pauses between attempts
 	 * @return the trainer
 	 */
-	private static StartupCacheTrainer trainer(Path scratch, StartupCacheTrainer.TreeDeleter deleteTree)
+	private static StartupCacheTrainer trainer(Path scratch, StartupCacheTrainer.TreeDeleter deleteTree,
+		Waiting waiting)
 	{
 		return StartupCacheTrainerSecrets.getStartupCacheTrainerAccess().create(scratch, Duration.ofMinutes(1),
-			NOT_ELEVATED, deleteTree);
+			NOT_ELEVATED, deleteTree, waiting);
 	}
 
 	/**
@@ -608,13 +759,14 @@ public final class StartupCacheTrainerTest
 	 * @param cache      the cache directory
 	 * @param work       the scratch directory
 	 * @param deleteTree the test's tree-removal operation
+	 * @param waiting    controls pauses between attempts
 	 * @return the reported failure
 	 */
 	private static IOException cleanupFailure(Path cache, Path work,
-		StartupCacheTrainer.TreeDeleter deleteTree)
+		StartupCacheTrainer.TreeDeleter deleteTree, Waiting waiting)
 	{
-		return expectThrows(IOException.class,
-			() -> StartupCacheTrainerSecrets.getStartupCacheTrainerAccess().cleanUp(false, cache, work, deleteTree));
+		return expectThrows(IOException.class, () -> StartupCacheTrainerSecrets.getStartupCacheTrainerAccess().
+			cleanUp(false, cache, work, deleteTree, waiting));
 	}
 
 	/**

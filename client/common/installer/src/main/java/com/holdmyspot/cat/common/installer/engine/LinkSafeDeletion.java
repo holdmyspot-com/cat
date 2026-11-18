@@ -4,7 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Waiting;
-import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.DirectoryNotEmptyException;
@@ -15,8 +14,6 @@ import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Duration;
-import java.util.List;
-import java.util.stream.Stream;
 
 /**
  * Deletes a file or directory tree that CAT owns without following links. Every deletion that removes CAT from a
@@ -35,13 +32,7 @@ public final class LinkSafeDeletion
 	/**
 	 * How long one deletion keeps retrying, (the sum of its waits) before it reports its failure.
 	 */
-	public static final Duration RETRY_DEADLINE = Duration.ofSeconds(2);
-	/**
-	 * The waits between attempts: each is twice the one before it, and the last makes them add up to
-	 * {@link #RETRY_DEADLINE}.
-	 */
-	private static final List<Duration> WAITS = Stream.of(10, 20, 40, 80, 160, 320, 640, 730).
-		map(Duration::ofMillis).toList();
+	public static final Duration RETRY_DEADLINE = DeletionRetry.DEADLINE;
 
 	/**
 	 * Prevents instantiation.
@@ -85,7 +76,7 @@ public final class LinkSafeDeletion
 			return;
 		if (isLink(path) || !path.toRealPath().equals(path))
 			throw new Refused("CAT refuses to delete " + path + " because it is a link or is reached through one");
-		deleteEntry(path, new Retry(waiting));
+		deleteEntry(path, new DeletionRetry(waiting));
 	}
 
 	/**
@@ -132,7 +123,7 @@ public final class LinkSafeDeletion
 	 * @param retry the retry budget of the whole deletion
 	 * @throws IOException if the entry cannot be deleted
 	 */
-	private static void deleteEntry(Path path, Retry retry) throws IOException
+	private static void deleteEntry(Path path, DeletionRetry retry) throws IOException
 	{
 		while (true)
 		{
@@ -141,16 +132,19 @@ public final class LinkSafeDeletion
 				deleteOnce(path, retry);
 				return;
 			}
-			catch (AccessDeniedException | DirectoryNotEmptyException e)
+			catch (IOException failure)
 			{
-				if (!retry.pause())
-					throw e;
-			}
-			catch (FileSystemException e)
-			{
-				// Windows reports a sharing violation as the base type, with only a localized reason string.
-				if (!Platform.current().isWindows() || !retry.pause())
-					throw e;
+				try
+				{
+					if (retry.pause(failure))
+						continue;
+				}
+				catch (IOException pauseFailure)
+				{
+					if (pauseFailure != failure)
+						failure.addSuppressed(pauseFailure);
+				}
+				throw failure;
 			}
 		}
 	}
@@ -162,7 +156,7 @@ public final class LinkSafeDeletion
 	 * @param retry the retry budget of the whole deletion
 	 * @throws IOException if the entry cannot be deleted
 	 */
-	private static void deleteOnce(Path path, Retry retry) throws IOException
+	private static void deleteOnce(Path path, DeletionRetry retry) throws IOException
 	{
 		BasicFileAttributes attributes;
 		try
@@ -182,50 +176,6 @@ public final class LinkSafeDeletion
 			}
 		}
 		Files.deleteIfExists(path);
-	}
-
-	/**
-	 * The waits between the attempts of one deletion, which share one schedule so that the whole deletion waits no
-	 * longer than {@link #RETRY_DEADLINE} however many entries fail.
-	 */
-	private static final class Retry
-	{
-		private final Waiting waiting;
-		private int next;
-
-		/**
-		 * Creates the retries of one deletion.
-		 *
-		 * @param waiting creates the pauses
-		 */
-		Retry(Waiting waiting)
-		{
-			this.waiting = waiting;
-		}
-
-		/**
-		 * Waits before the next attempt.
-		 *
-		 * @return false if the schedule is used up or the wait was interrupted, in which case the caller reports its
-		 * 	failure
-		 */
-		boolean pause()
-		{
-			if (next == WAITS.size())
-				return false;
-			Duration wait = WAITS.get(next);
-			next += 1;
-			try
-			{
-				waiting.every(wait).pause();
-			}
-			catch (IOException _)
-			{
-				// The wait was cut short, and the pause kept the thread's interrupt status
-				return false;
-			}
-			return true;
-		}
 	}
 
 	/**

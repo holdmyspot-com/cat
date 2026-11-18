@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.installer.secrets;
 
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.TreeDeleter;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -19,9 +20,11 @@ public interface StartupCacheTrainerAccess
 	 * @param timeout    the longest time allowed for each Java run
 	 * @param elevated   tells whether this process runs with administrative rights
 	 * @param deleteTree removes a cache or scratch tree
+	 * @param waiting    creates pauses between required final cleanup attempts
 	 * @return the trainer
 	 */
-	StartupCacheTrainer create(Path scratch, Duration timeout, BooleanSupplier elevated, TreeDeleter deleteTree);
+	StartupCacheTrainer create(Path scratch, Duration timeout, BooleanSupplier elevated, TreeDeleter deleteTree,
+		Waiting waiting);
 
 	/**
 	 * Ends a training using the supplied tree-removal operation.
@@ -30,7 +33,9 @@ public interface StartupCacheTrainerAccess
 	 * @param cacheDirectory the cache folder, which may be absent
 	 * @param work           the training scratch folder, or {@code null} if no folder was created
 	 * @param deleteTree     removes a cache or scratch tree
-	 * @throws IOException if a required folder cannot be removed
+	 * @param waiting        creates pauses between required cleanup attempts
+	 * @throws IOException if a required folder cannot be removed or a cleanup pause fails
 	 */
-	void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree) throws IOException;
+	void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree, Waiting waiting)
+		throws IOException;
 }

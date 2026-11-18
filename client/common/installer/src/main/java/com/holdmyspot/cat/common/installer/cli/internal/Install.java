@@ -207,7 +207,7 @@ public final class Install
 		activation.installCompanions(home, versionFolder);
 		migration.apply(versionFolder, migrationFile.getParent(), migrations, platform.isWindows());
 		Path scratch = InstallerState.of(installation.dataDirectory(), harness).directory().resolve("startup-cache");
-		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, elevation).
+		boolean startupCache = new StartupCacheTrainer(scratch, TRAINING_LIMIT, elevation, waiting).
 			train(versionFolder);
 
 		TrustPolicy policy = TrustPolicy.of(defaults.keys(), defaults.releaseBaseUrl(), defaults.minimum(),

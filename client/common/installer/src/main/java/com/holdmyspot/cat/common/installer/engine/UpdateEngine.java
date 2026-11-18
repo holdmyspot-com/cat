@@ -155,7 +155,7 @@ public final class UpdateEngine
 		this.lockWait = lockWait;
 		this.migrations = migrations;
 		Path trainingScratch = state.directory().resolve("startup-cache");
-		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1), elevation);
+		this.trainer = new StartupCacheTrainer(trainingScratch, Duration.ofMinutes(1), elevation, waiting);
 	}
 
 	/**

@@ -6,8 +6,8 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication;
 import com.holdmyspot.cat.common.runner.StartupCache;
-import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import java.io.IOException;
@@ -17,7 +17,6 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -366,7 +365,7 @@ public final class PluginLaunchersTest
 
 			String untrainedFlags = runWrapper(bin, "-XX:+PrintCommandLineFlags", "-version");
 			Path scratch = plugin.resolve("scratch");
-			boolean written = new StartupCacheTrainer(scratch, Duration.ofMinutes(1), () -> false).train(plugin);
+			boolean written = StartupTrainingApplication.train(plugin, scratch);
 			String trainedFlags = runWrapper(bin, "-XX:+PrintCommandLineFlags", "-version");
 			// With AOTMode=on, Java fails instead of starting without a cache that it cannot use
 			String trainedRun = runWrapper(bin, "-XX:AOTMode=on", "-m", "jdk.jartool/sun.tools.jar.Main", "--version");

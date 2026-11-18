@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RuntimeRequirement;
@@ -62,6 +63,7 @@ public final class StartupCacheTrainer
 	private final Duration timeout;
 	private final BooleanSupplier elevated;
 	private final TreeDeleter deleteTree;
+	private final Waiting waiting;
 
 	static
 	{
@@ -69,16 +71,16 @@ public final class StartupCacheTrainer
 		{
 			@Override
 			public StartupCacheTrainer create(Path scratch, Duration timeout, BooleanSupplier elevated,
-				TreeDeleter deleteTree)
+				TreeDeleter deleteTree, Waiting waiting)
 			{
-				return new StartupCacheTrainer(scratch, timeout, elevated, deleteTree);
+				return new StartupCacheTrainer(scratch, timeout, elevated, deleteTree, waiting);
 			}
 
 			@Override
-			public void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree)
-				throws IOException
+			public void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree,
+				Waiting waiting) throws IOException
 			{
-				StartupCacheTrainer.cleanUp(written, cacheDirectory, work, deleteTree);
+				StartupCacheTrainer.cleanUp(written, cacheDirectory, work, deleteTree, waiting);
 			}
 		});
 	}
@@ -91,12 +93,13 @@ public final class StartupCacheTrainer
 	 * @param timeout  the longest time that each of a training's two Java runs may take before it is stopped
 	 * @param elevated tells whether this process runs with administrative rights, such as
 	 *                 {@link ProcessElevation#isElevated()}
+	 * @param waiting  creates pauses between required final cleanup attempts
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code timeout} is not positive
 	 */
-	public StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated)
+	public StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated, Waiting waiting)
 	{
-		this(scratch, timeout, elevated, StateFiles::delete);
+		this(scratch, timeout, elevated, StateFiles::delete, waiting);
 	}
 
 	/**
@@ -107,19 +110,23 @@ public final class StartupCacheTrainer
 	 * @param timeout    the longest time that each of a training's two Java runs may take before it is stopped
 	 * @param elevated   tells whether this process runs with administrative rights
 	 * @param deleteTree removes a cache or scratch tree
+	 * @param waiting    creates pauses between required final cleanup attempts
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code timeout} is not positive
 	 */
-	private StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated, TreeDeleter deleteTree)
+	private StartupCacheTrainer(Path scratch, Duration timeout, BooleanSupplier elevated, TreeDeleter deleteTree,
+		Waiting waiting)
 	{
 		requireThat(scratch, "scratch").isNotNull();
 		requireThat(timeout, "timeout").isGreaterThan(Duration.ZERO);
 		requireThat(elevated, "elevated").isNotNull();
 		requireThat(deleteTree, "deleteTree").isNotNull();
+		requireThat(waiting, "waiting").isNotNull();
 		this.scratch = scratch.toAbsolutePath().normalize();
 		this.timeout = timeout;
 		this.elevated = elevated;
 		this.deleteTree = deleteTree;
+		this.waiting = waiting;
 	}
 
 	/**
@@ -204,7 +211,7 @@ public final class StartupCacheTrainer
 		IOException cleanupFailure = null;
 		try
 		{
-			cleanUp(written, cacheDirectory, work, deleteTree);
+			cleanUp(written, cacheDirectory, work, deleteTree, waiting);
 		}
 		catch (IOException failure)
 		{
@@ -349,12 +356,13 @@ public final class StartupCacheTrainer
 	 * @param written        {@code true} if the training wrote the cache
 	 * @param cacheDirectory the plugin's cache folder, which may be absent
 	 * @param work           the training's scratch folder, or {@code null} if the training made none
-	 * @throws NullPointerException if {@code cacheDirectory} is null
-	 * @throws IOException          if a required folder cannot be removed
+	 * @param waiting        creates pauses between required cleanup attempts
+	 * @throws NullPointerException if {@code cacheDirectory} and/or {@code waiting} are null
+	 * @throws IOException          if a required folder cannot be removed or a cleanup pause fails
 	 */
-	public static void cleanUp(boolean written, Path cacheDirectory, Path work) throws IOException
+	public static void cleanUp(boolean written, Path cacheDirectory, Path work, Waiting waiting) throws IOException
 	{
-		cleanUp(written, cacheDirectory, work, StateFiles::delete);
+		cleanUp(written, cacheDirectory, work, StateFiles::delete, waiting);
 	}
 
 	/**
@@ -364,40 +372,80 @@ public final class StartupCacheTrainer
 	 * @param cacheDirectory the plugin's cache folder, which may be absent
 	 * @param work           the training's scratch folder, or {@code null} if the training made none
 	 * @param deleteTree     removes a cache or scratch tree
+	 * @param waiting        creates pauses between required cleanup attempts
+	 * @throws NullPointerException if {@code cacheDirectory}, {@code deleteTree} or {@code waiting} is null
+	 * @throws IOException          if a required folder cannot be removed or a cleanup pause fails
 	 */
-	private static void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree)
-		throws IOException
+	private static void cleanUp(boolean written, Path cacheDirectory, Path work, TreeDeleter deleteTree,
+		Waiting waiting) throws IOException
 	{
 		requireThat(cacheDirectory, "cacheDirectory").isNotNull();
 		requireThat(deleteTree, "deleteTree").isNotNull();
-		IOException failure = null;
-		if (!written)
+		requireThat(waiting, "waiting").isNotNull();
+		boolean interrupted = Thread.interrupted();
+		try
+		{
+			IOException failure = null;
+			if (!written)
+			{
+				try
+				{
+					deleteWithRetry(cacheDirectory, deleteTree, waiting);
+				}
+				catch (IOException cacheFailure)
+				{
+					failure = cacheFailure;
+				}
+			}
+			if (work != null)
+			{
+				try
+				{
+					deleteWithRetry(work, deleteTree, waiting);
+				}
+				catch (IOException scratchFailure)
+				{
+					if (failure == null)
+						failure = scratchFailure;
+					else
+						failure.addSuppressed(scratchFailure);
+				}
+			}
+			if (failure != null)
+				throw failure;
+		}
+		finally
+		{
+			if (interrupted)
+				Thread.currentThread().interrupt();
+		}
+	}
+
+	/**
+	 * Deletes one required final cleanup tree using a fresh bounded retry schedule.
+	 *
+	 * @param path      the tree to remove
+	 * @param deleteTree removes a cache or scratch tree
+	 * @param waiting   creates pauses between attempts
+	 * @throws IOException if deletion or a non-interrupt pause fails
+	 */
+	private static void deleteWithRetry(Path path, TreeDeleter deleteTree, Waiting waiting) throws IOException
+	{
+		DeletionRetry retry = new DeletionRetry(waiting);
+		while (true)
 		{
 			try
 			{
-				deleteTree.delete(cacheDirectory);
+				deleteTree.delete(path);
+				return;
 			}
-			catch (IOException cacheFailure)
+			catch (IOException failure)
 			{
-				failure = cacheFailure;
+				boolean canRetry = retry.pause(failure);
+				if (!canRetry)
+					throw failure;
 			}
 		}
-		if (work != null)
-		{
-			try
-			{
-				deleteTree.delete(work);
-			}
-			catch (IOException scratchFailure)
-			{
-				if (failure == null)
-					failure = scratchFailure;
-				else
-					failure.addSuppressed(scratchFailure);
-			}
-		}
-		if (failure != null)
-			throw failure;
 	}
 
 	/**
