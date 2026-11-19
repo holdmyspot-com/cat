@@ -187,11 +187,16 @@ public final class SessionRequestForwarder
 					prompts = prompts(json, file);
 				}
 			}
-			RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
-				prompts, RequestArchive.NULL_DEVICE, route.limits());
-			response = awaitTranscript(json, responses(requests, id), pause, output, launch.transcript(),
-				Function.identity());
-			incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, response));
+			// The launch holds its lock from before it publishes the request until it ends, so that its server stops the
+			// requested session if the launch ends first
+			try (StreamedRequest.Sender _ = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
+			{
+				RequestArchive.pack(json, requests.toAbsolutePath().resolve(id + RequestArchive.EXTENSION), request,
+					prompts, RequestArchive.NULL_DEVICE, route.limits());
+				response = awaitTranscript(json, responses(requests, id), pause, output, launch.transcript(),
+					Function.identity());
+				incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, response));
+			}
 		}
 		else
 		{

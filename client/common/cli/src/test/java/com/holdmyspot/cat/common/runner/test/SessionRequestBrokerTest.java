@@ -1063,6 +1063,63 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that the run's runner stops a requested session whose records a launcher sent all at once with
+	 * {@code --input} once the launcher ends before the session does, and answers the request as stopped.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void packedLaunchStopsWithLauncher() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			Path records = Files.writeString(fixture.root.resolve("records.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
+			AtomicInteger checks = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					// The requested session works on its turn until it is stopped
+					FakeHarnessCli process = new FakeHarnessCli(_ ->
+					{
+					});
+					child.set(process);
+					return process;
+				}))
+			{
+				String[] launch = {"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
+					"--input", records.toString()};
+				// The launcher's own session stops it while the requested session's turn runs
+				IOException stopped = expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude",
+					launch, new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 1_000_000)
+							throw new IOException("The requested session never received its records");
+						broker.scan();
+						FakeHarnessCli process = child.get();
+						if (process != null && process.requests().size() == 2)
+							throw new IOException("The launcher was stopped");
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+				requireThat(stopped.getMessage(), "stopped").isEqualTo("The launcher was stopped");
+				broker.scan();
+				requireThat(child.get().isAlive(), "childAlive").isFalse();
+				String id;
+				try (Stream<Path> answered = Files.list(fixture.responses))
+				{
+					id = answered.filter(Files::isDirectory).map(file -> file.getFileName().toString()).findFirst().
+						orElseThrow();
+				}
+				JsonNode response = fixture.await(id);
+				requireThat(response.path("status").asString(), "status").isEqualTo("stopped");
+				requireThat(response.path("reason").asString(), "reason").
+					isEqualTo("The launcher that requested the session ended");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that {@code request-session --conversation} exits with status 2 when the run allows no requested
 	 * session, and that the conversation's last line says that the request was refused.
 	 *

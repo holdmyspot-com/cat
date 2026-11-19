@@ -95,6 +95,11 @@ public final class SessionRequestBroker implements Closeable
 	 * The records of each accepted request whose records follow it, by request identifier, until its child ends.
 	 */
 	private final Map<String, Streamed> streams = new HashMap<>();
+	/**
+	 * The response directory of each accepted request whose records came with it and whose launcher holds the
+	 * request's lock while it runs, by request identifier, until its child ends.
+	 */
+	private final Map<String, Path> held = new HashMap<>();
 	private Closeable monitor;
 	private IOException failure;
 	private int accepted;
@@ -270,6 +275,13 @@ public final class SessionRequestBroker implements Closeable
 			List<String> arguments = arguments(request, directory);
 			if (request.streamed())
 				streams.put(id, new Streamed(directory));
+			else if (Files.isRegularFile(site.requests().resolve(StreamedRequest.lockFileName(id)),
+				LinkOption.NOFOLLOW_LINKS))
+			{
+				// A launcher holds the lock of its request until it ends. A request without one, such as one that
+				// request-session makes, may outlive the program that made it.
+				held.put(id, directory);
+			}
 			if (request.keepRun())
 				keptRuns.add(id);
 			children.submit(() -> execute(id, request, arguments, directory));
@@ -394,6 +406,25 @@ public final class SessionRequestBroker implements Closeable
 				HarnessProcessTermination.stopRunner(processes.get(id));
 			stream.records.add(Optional.empty());
 			respond(id, harnesses.get(id), "stopped", stop, copyChildEvidence(id, stream.directory), stream.directory);
+		}
+		for (Iterator<Map.Entry<String, Path>> entries = held.entrySet().iterator(); entries.hasNext();)
+		{
+			Map.Entry<String, Path> entry = entries.next();
+			String id = entry.getKey();
+			if (cancelled.contains(id))
+			{
+				entries.remove();
+				continue;
+			}
+			if (StreamedRequest.senderRuns(requests, id))
+				continue;
+			entries.remove();
+			cancelled.add(id);
+			if (processes.containsKey(id))
+				HarnessProcessTermination.stopRunner(processes.get(id));
+			Path directory = entry.getValue();
+			respond(id, harnesses.get(id), "stopped", "The launcher that requested the session ended",
+				copyChildEvidence(id, directory), directory);
 		}
 	}
 
@@ -583,6 +614,7 @@ public final class SessionRequestBroker implements Closeable
 			{
 				processes.remove(id);
 				streams.remove(id);
+				held.remove(id);
 			}
 			if (slot != null)
 			{
@@ -676,6 +708,7 @@ public final class SessionRequestBroker implements Closeable
 		{
 			// The child has ended, so the end of its request's sender no longer stops it
 			streams.remove(id);
+			held.remove(id);
 			if (stopped || cancelled.contains(id))
 				return;
 			String childRunId = copyChildEvidence(id, directory);
@@ -774,6 +807,7 @@ public final class SessionRequestBroker implements Closeable
 		synchronized (this)
 		{
 			streams.remove(id);
+			held.remove(id);
 			if (stopped || cancelled.contains(id))
 				return;
 			try
