@@ -2,8 +2,8 @@
 
 # Tests how the release's entry script cat.sh runs the installer's install for Codex, from detecting a Codex shell to
 # choosing Codex's home as the harness home, how it refuses Windows, where PowerShell installs Codex, what the
-# generated Codex hooks report when Codex runs them on this platform, and that each command of the hooks' manifest
-# starts its hook.
+# generated Codex hooks report when Codex runs them on this platform, that each command of the hooks' manifest starts
+# its hook, and that the run-part command of the read-file rule reaches the plugin's run-part.
 
 bats_require_minimum_version 1.5.0
 
@@ -17,6 +17,7 @@ load windows-helpers
 # Arguments:
 #   $1 - The hook's name, such as session-start.
 #   $2 - The event, which the hook reads from its standard input.
+#   $3 - The plugin's root directory; the generated Codex plugin when absent.
 #
 # Environment:
 #   GENERATED_RUNTIME_DIRECTORY - The directory of the plugins that the build generated.
@@ -30,7 +31,7 @@ load windows-helpers
 #   Returns the hook's exit status.
 codex_hook()
 {
-	local runtime="${GENERATED_RUNTIME_DIRECTORY}/codex"
+	local runtime="${3:-${GENERATED_RUNTIME_DIRECTORY}/codex}"
 	case "$(current_platform)" in
 		windows-*)
 			printf '%s\n' "$2" | powershell_command "& \"\$env:PLUGIN_ROOT\\hooks\\$1.cmd\"" \
@@ -232,4 +233,33 @@ replace_codex_program()
 
 	[ "${status}" -eq 0 ]
 	[ -z "${output}" ]
+}
+
+@test "the generated Codex read-file rule's run-part command reaches run-part from a path with a quote" {
+	plugin="${TEST_ROOT}/cat-o'brien plugin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${plugin}"
+	project="${TEST_ROOT}/read-file project"
+	mkdir -p "${project}"
+
+	run --separate-stderr codex_hook session-start \
+		"{\"cwd\":\"$(json_path "${project}")\",\"session_id\":\"123e4567-e89b-12d3-a456-426614174000\"}" "${plugin}"
+
+	[ "${status}" -eq 0 ]
+	# The agent writes its command in place of <command> in the rule's first code block, which runs run-part
+	block=$(printf '%s\n' "${output}" | jq -r '.hookSpecificOutput.additionalContext' | tr -d '\r' |
+		awk '/^```/ { if (inside) exit; inside = 1; next } inside')
+	block="${block//<command>/Get-Content notes.md}"
+	case "$(current_platform)" in
+		windows-*)
+			printf '@findstr "^"\r\n' > "${plugin}/bin/run-part.cmd"
+			run --separate-stderr powershell_command "${block}" < /dev/null
+			;;
+		*)
+			printf '#!/bin/sh\ncat\n' > "${plugin}/bin/run-part"
+			run --separate-stderr sh -c "${block}" < /dev/null
+			;;
+	esac
+
+	[ "${status}" -eq 0 ]
+	[ "${output//$'\r'/}" = "Get-Content notes.md" ]
 }
