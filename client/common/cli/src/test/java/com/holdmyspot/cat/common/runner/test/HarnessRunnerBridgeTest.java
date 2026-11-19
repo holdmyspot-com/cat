@@ -94,8 +94,8 @@ public final class HarnessRunnerBridgeTest
 			requireThat(result, "result").isEqualTo(run);
 			requireThat(output.toString(), "output").contains("\"type\":\"started\"").
 				contains("\"type\":\"harness_event\"").contains("\"type\":\"turn_completed\"").
-				contains("\"type\":\"completed\"");
-			requireThat(output.toString().lines().count(), "lineCount").isEqualTo(6L);
+				contains("\"type\":\"session_id\"").contains("\"type\":\"completed\"");
+			requireThat(output.toString().lines().count(), "lineCount").isEqualTo(7L);
 			requireThat(output.toString(), "output").doesNotContain("\"events\":");
 		}
 	}
@@ -1287,7 +1287,6 @@ public final class HarnessRunnerBridgeTest
 				findFirst().orElseThrow();
 			requireThat(reported.path("session_id").asString(), "sessionId").
 				isEqualTo("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
-			requireThat(reported.path("run_id").asString(), "runId").isEqualTo(run.id());
 			requireThat(manager.harnessSessionId(run), "recorded").
 				isEqualTo(Optional.of("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"));
 		}
@@ -1581,7 +1580,6 @@ public final class HarnessRunnerBridgeTest
 					failure = record;
 			}
 			requireThat(failure, "failure").withContext(output, "output").isNotNull();
-			requireThat(failure.path("run_id").asString(), "runId").isEqualTo("run-1");
 			requireThat(failure.path("error").asString(), "error").contains(expected);
 		}
 	}
@@ -1952,15 +1950,12 @@ public final class HarnessRunnerBridgeTest
 				JsonNode record = json.readTree(line);
 				String type = record.path("type").asString();
 				if (type.equals("waiting"))
-				{
-					requireThat(record.path("run_id").asString(), "runId").isEqualTo("run-1");
 					records.add(type + " " + record.path("quiet_seconds").asLong());
-				}
 				else
 					records.add(type);
 			}
 			requireThat(records, "records").isEqualTo(List.of("started", "waiting 30", "waiting 60", "harness_event",
-				"waiting 30", "turn_completed", "completed"));
+				"session_id", "waiting 30", "turn_completed", "completed"));
 		}
 	}
 

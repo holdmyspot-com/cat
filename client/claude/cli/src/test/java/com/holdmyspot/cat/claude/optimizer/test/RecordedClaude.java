@@ -66,6 +66,12 @@ final class RecordedClaude implements Bridge
 	 * turn was not interrupted or those lines were already supplied.
 	 */
 	private List<String> afterInterrupt = List.of();
+	/**
+	 * The identifier of the run that the replay serves, which replaces the recorded session identifier. No launcher
+	 * copies the run, so the session is named after the run, whose folder then holds the session's results where the
+	 * launcher's copy would.
+	 */
+	private volatile String sessionId = "";
 
 	/**
 	 * Creates one replay, owned by one session.
@@ -131,12 +137,45 @@ final class RecordedClaude implements Bridge
 		HarnessRun completed = HarnessRunnerBridge.serve(() ->
 		{
 			HarnessRun run = manager.create("claude");
+			sessionId = run.id();
 			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
 			return new HarnessRunSession(run, new ClaudeProcess(scope, process), scope);
 		}, input, output);
 		manager.markCompleted(completed);
+	}
+
+	/**
+	 * Returns recorded lines as a replay served them: with the run's identifier in place of the recorded session
+	 * identifier.
+	 *
+	 * @param lines      the recorded lines
+	 * @param transcript the transcript of the session that the replay served, which lies in its run's
+	 *                   {@code artifacts} folder
+	 * @return the lines that the session received
+	 */
+	static List<String> asServed(List<String> lines, Path transcript)
+	{
+		return renamed(lines, List.of(lines), transcript.getParent().getParent().getFileName().toString());
+	}
+
+	/**
+	 * Replaces the recorded session identifier in recorded lines.
+	 *
+	 * @param lines     the recorded lines
+	 * @param turns     the recorded turns, whose first line that names a session holds the recorded identifier
+	 * @param sessionId the identifier that replaces it
+	 * @return the lines with {@code sessionId} in place of the recorded identifier
+	 */
+	private static List<String> renamed(List<String> lines, List<List<String>> turns, String sessionId)
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		String recorded = turns.stream().flatMap(List::stream).map(line -> json.readTree(line).path("session_id").
+			asString("")).filter(id -> !id.isEmpty()).findFirst().orElse("");
+		if (recorded.isEmpty())
+			return lines;
+		return lines.stream().map(line -> line.replace("\"" + recorded + "\"", "\"" + sessionId + "\"")).toList();
 	}
 
 	/**
@@ -161,7 +200,7 @@ final class RecordedClaude implements Bridge
 			if (!type.equals("user"))
 				return;
 			requireThat(nextTurn, "nextTurn").isLessThan(turns.size());
-			List<String> turn = turns.get(nextTurn);
+			List<String> turn = renamed(turns.get(nextTurn), turns, sessionId);
 			int interruptAnswer = interruptAnswer(turn);
 			process.emit(turn.subList(0, interruptAnswer).toArray(String[]::new));
 			afterInterrupt = turn.subList(interruptAnswer, turn.size());

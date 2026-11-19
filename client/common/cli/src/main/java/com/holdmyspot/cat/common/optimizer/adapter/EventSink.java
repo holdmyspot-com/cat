@@ -66,7 +66,12 @@ public final class EventSink extends Writer
 	private final BlockingQueue<Message> messages;
 	private final StringBuilder pending = new StringBuilder();
 	/**
-	 * The open transcript of the current run, or {@code null} before a run starts and after the sink closes. It stays
+	 * The harness events that arrived before the runner reported the session's identifier, in arrival order.
+	 */
+	private final List<String> early = new ArrayList<>();
+	/**
+	 * The open transcript of the current session, or {@code null} before the runner reports the session's identifier
+	 * and after the sink closes. It stays
 	 * open because a session writes thousands of events, and opening the file for each one takes about a millisecond
 	 * on Windows.
 	 */
@@ -177,15 +182,16 @@ public final class EventSink extends Writer
 		}
 		switch (response.path("type").asString(""))
 		{
-			case "started" -> start(response.path("run_id").asString(""));
+			case "started" -> messages.add(new Message.Started());
+			case "session_id" -> start(response.path("session_id").asString(""));
 			case "harness_event" ->
 			{
 				String event = response.path("event").asString("");
 				events.accept(event);
-				if (promptSources != null)
-					promptSources.accept(event);
-				if (transcript != null)
-					transcript.write((event + "\n").getBytes(UTF_8));
+				if (transcript == null)
+					early.add(event);
+				else
+					record(event);
 			}
 			case "turn_completed" ->
 			{
@@ -209,20 +215,38 @@ public final class EventSink extends Writer
 	}
 
 	/**
-	 * Begins observing a run.
+	 * Records a harness event in the session's prompt sources and transcript.
 	 *
-	 * @param runId the identifier of the run directory
-	 * @throws IOException if the transcript cannot be created
+	 * @param event the event
+	 * @throws IOException if the transcript cannot be written
 	 */
-	private void start(String runId) throws IOException
+	private void record(String event) throws IOException
 	{
-		Path runDirectory = harnessDirectory.resolve(runId);
+		if (promptSources != null)
+			promptSources.accept(event);
+		transcript.write((event + "\n").getBytes(UTF_8));
+	}
+
+	/**
+	 * Begins observing a session once the runner reports the identifier that the harness gave it, which names the
+	 * session's directory, and records the harness events that arrived before it.
+	 *
+	 * @param sessionId the identifier
+	 * @throws IOException if the transcript cannot be created or written
+	 */
+	private void start(String sessionId) throws IOException
+	{
+		Path sessionDirectory = harnessDirectory.resolve(sessionId);
 		Map<String, Path> directories = new HashMap<>(placeholders);
-		directories.put("run", runDirectory);
+		directories.put("run", sessionDirectory);
 		promptSources = newPromptSources.apply(directories);
 		if (transcript != null)
 			transcript.close();
-		transcript = Files.newOutputStream(runDirectory.resolve("artifacts").resolve(TRANSCRIPT), CREATE, APPEND);
-		messages.add(new Message.Started(runId));
+		Path artifacts = Files.createDirectories(sessionDirectory.resolve("artifacts"));
+		transcript = Files.newOutputStream(artifacts.resolve(TRANSCRIPT), CREATE, APPEND);
+		for (String event : early)
+			record(event);
+		early.clear();
+		messages.add(new Message.Identified(sessionId));
 	}
 }

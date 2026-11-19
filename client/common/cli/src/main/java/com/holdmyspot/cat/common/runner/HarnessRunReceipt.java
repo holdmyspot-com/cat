@@ -114,7 +114,7 @@ public final class HarnessRunReceipt
 			{
 				for (Path directory : directories)
 				{
-					// A worktree request's response names no harness and no child run, because no session served it
+					// A worktree request's response names no harness and no session, because no session served it
 					boolean isWorktreeResponse = directory.getFileName().toString().startsWith(WorktreeRequest.PREFIX);
 					if (!Files.isDirectory(directory) || isWorktreeResponse)
 						continue;
@@ -123,7 +123,7 @@ public final class HarnessRunReceipt
 						throw new IOException("Requested-session response is not retained in its run: " + responsePath);
 					JsonNode resultDocument = json.readTree(responsePath.toFile());
 					ObjectNode entry = sessions.addObject();
-					for (String field : List.of("id", "harness", "status", "child_run_id"))
+					for (String field : List.of("id", "harness", "status", "session_id"))
 					{
 						JsonNode fieldValue = resultDocument.path(field);
 						if (!fieldValue.isString())
@@ -245,7 +245,7 @@ public final class HarnessRunReceipt
 		JsonNode sessions = receipt.path(REQUESTED_SESSIONS);
 		if (!sessions.isArray())
 			throw new IOException("Harness receipt requested_sessions must be an array: " + source);
-		Set<String> fields = Set.of("id", "harness", "status", "child_run_id", "response");
+		Set<String> fields = Set.of("id", "harness", "status", "session_id", "response");
 		Set<String> statuses = Set.of("completed", "failed", "refused", "capacity", "stopped");
 		for (JsonNode session : sessions)
 		{

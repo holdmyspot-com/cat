@@ -88,8 +88,8 @@ public final class HarnessRunnerBridge
 	/**
 	 * Starts one session and serves JSONL messages while applying owned-run lifecycle transitions.
 	 * <p>
-	 * While a turn writes no response for 30 seconds, the bridge writes a {@code waiting} response with the run's
-	 * {@code run_id} and the turn's {@code quiet_seconds}, and repeats it every 30 seconds while the turn stays quiet.
+	 * While a turn writes no response for 30 seconds, the bridge writes a {@code waiting} response with the turn's
+	 * {@code quiet_seconds}, and repeats it every 30 seconds while the turn stays quiet.
 	 * The session's {@link HarnessRunnerScope} supplies the clock that times the quiet turn and the heartbeat that checks
 	 * it.
 	 *
@@ -210,7 +210,7 @@ public final class HarnessRunnerBridge
 					run = session.run();
 					if (manager != null)
 						manager.markIdle(run);
-					ObjectNode started = event(session.scope(), "started").put("run_id", session.run().id());
+					ObjectNode started = event(session.scope(), "started");
 					if (resumes)
 					{
 						// The resumed session's turns continue after the last turn that ended
@@ -295,7 +295,6 @@ public final class HarnessRunnerBridge
 										if (manager != null)
 											manager.markIdle(session.run());
 										ObjectNode response = event(session.scope(), "turn_completed");
-										response.put("run_id", session.run().id());
 										response.put("exit_code", result.exitCode());
 										response.put("error", result.standardError());
 										response.put("assistant_response", result.assistantResponse());
@@ -321,7 +320,7 @@ public final class HarnessRunnerBridge
 									throw new IOException("Bridge has no active turn to steer");
 								awaitRequestedTurnStart(request, activeTurnStarted);
 								session.steer(requiredText(request, "prompt"));
-								client.write(event(session.scope(), "steered").put("run_id", session.run().id()));
+								client.write(event(session.scope(), "steered"));
 							}
 							else if (type.equals("interrupt"))
 							{
@@ -333,8 +332,7 @@ public final class HarnessRunnerBridge
 									activeTurnInterrupted.set(true);
 									// The record precedes the end of the turn that it stops, so a client can tell which turn the
 									// interrupt ended
-									if (client.writeInTurn(event(session.scope(), "interrupted").
-										put("run_id", session.run().id())))
+									if (client.writeInTurn(event(session.scope(), "interrupted")))
 									{
 										if (broker != null)
 											broker.stopChildren();
@@ -348,7 +346,7 @@ public final class HarnessRunnerBridge
 								IOException lastFailure = failedTurn.get();
 								if (lastFailure != null)
 									throw lastFailure;
-								client.write(event(session.scope(), "completed").put("run_id", session.run().id()));
+								client.write(event(session.scope(), "completed"));
 								completed = true;
 								break;
 							}
@@ -480,8 +478,7 @@ public final class HarnessRunnerBridge
 			error = failure.getClass().getSimpleName();
 		try
 		{
-			client.endTurn(event(session.scope(), "turn_failed").put("run_id", session.run().id()).
-				put("error", error));
+			client.endTurn(event(session.scope(), "turn_failed").put("error", error));
 		}
 		catch (IOException e)
 		{
@@ -851,7 +848,6 @@ public final class HarnessRunnerBridge
 		assert client != null;
 		assert harnessEvent != null;
 		ObjectNode response = event(session.scope(), "harness_event");
-		response.put("run_id", session.run().id());
 		response.put("event", harnessEvent);
 		client.write(response);
 	}
@@ -879,7 +875,6 @@ public final class HarnessRunnerBridge
 		if (transcript.isEmpty() || !recorded.compareAndSet(false, true))
 			return;
 		ObjectNode response = event(session.scope(), "session_transcript");
-		response.put("run_id", session.run().id());
 		response.put("path", transcript.get().toString());
 		client.write(response);
 	}
@@ -911,7 +906,6 @@ public final class HarnessRunnerBridge
 		if (!recorded.compareAndSet(false, true))
 			return;
 		ObjectNode response = event(session.scope(), "session_id");
-		response.put("run_id", session.run().id());
 		response.put("session_id", id.get());
 		client.write(response);
 	}
@@ -956,7 +950,6 @@ public final class HarnessRunnerBridge
 		private final HarnessRunnerScope scope;
 		private final Writer output;
 		private final Clock clock;
-		private final String runId;
 		/**
 		 * Indicates whether a turn has been submitted and has not yet ended. Changed only while holding {@link #lock},
 		 * so that no {@code waiting} response follows {@code turn_completed}, and read without it, so that a request
@@ -982,14 +975,12 @@ public final class HarnessRunnerBridge
 		 * @param scope  the live session scope
 		 * @param output the JSONL client output
 		 * @param clock  measures how long a turn has been quiet
-		 * @param runId  the run's identifier
 		 */
-		private ClientOutput(HarnessRunnerScope scope, Writer output, Clock clock, String runId)
+		private ClientOutput(HarnessRunnerScope scope, Writer output, Clock clock)
 		{
 			this.scope = scope;
 			this.output = output;
 			this.clock = clock;
-			this.runId = runId;
 		}
 
 		/**
@@ -1004,8 +995,7 @@ public final class HarnessRunnerBridge
 		{
 			assert session != null;
 			assert output != null;
-			ClientOutput client = new ClientOutput(session.scope(), output, session.scope().clock(),
-				session.run().id());
+			ClientOutput client = new ClientOutput(session.scope(), output, session.scope().clock());
 			client.heartbeat = session.scope().heartbeatTicker().start(() ->
 			{
 				try
@@ -1124,7 +1114,6 @@ public final class HarnessRunnerBridge
 				if (now.isBefore(nextWaiting))
 					return;
 				ObjectNode waiting = event(scope, "waiting");
-				waiting.put("run_id", runId);
 				waiting.put("quiet_seconds", Duration.between(lastResponse, now).toSeconds());
 				writeLine(waiting);
 				while (!nextWaiting.isAfter(now))

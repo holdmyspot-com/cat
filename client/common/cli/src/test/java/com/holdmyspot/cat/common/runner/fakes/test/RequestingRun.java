@@ -48,6 +48,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class RequestingRun implements AutoCloseable
 {
 	/**
+	 * The identifier that the requested session's harness reports.
+	 */
+	public static final String SESSION_ID = "7c2e9a4b-1d3f-4a6e-8b5c-0f9d2e1a3b4c";
+	/**
 	 * The prompt of a turn that the requested session answers only once it is interrupted.
 	 */
 	public static final String HOLD = "hold";
@@ -182,13 +186,16 @@ public final class RequestingRun implements AutoCloseable
 	private FakeHarnessCli child(String harness, List<String> arguments) throws IOException
 	{
 		launches.add(arguments);
-		HarnessRun child = new HarnessRunManager(fileLocks, Path.of(option(arguments, "--run-root")),
-			Clock.systemUTC(), Yielding.fileReplacer()).create(harness);
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(arguments, "--run-root")),
+			Clock.systemUTC(), Yielding.fileReplacer());
+		HarnessRun child = manager.create(harness);
+		manager.recordHarnessSession(child, SESSION_ID);
 		Files.writeString(child.directory().resolve("project").resolve("result.txt"), "result");
 		Files.writeString(Files.createDirectories(child.directory().resolve("home")).resolve("login.json"), "login");
 		Path output = Path.of(option(arguments, "--output"));
 		Files.writeString(output, "");
-		append(output, json.createObjectNode().put("type", "started").put("run_id", child.id()).toString());
+		append(output, json.createObjectNode().put("type", "started").toString());
+		append(output, json.createObjectNode().put("type", "session_id").put("session_id", SESSION_ID).toString());
 		AtomicInteger turns = new AtomicInteger();
 		AtomicReference<FakeHarnessCli> process = new AtomicReference<>();
 		process.set(new FakeHarnessCli(line ->
@@ -212,24 +219,22 @@ public final class RequestingRun implements AutoCloseable
 							KeptRunCopy.copyTurn(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
 						String reply = replyForTurn.apply(turns.incrementAndGet());
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
-							put("run_id", child.id()).put("exit_code", 0).put("error", "").put("assistant_response", reply);
+							put("exit_code", 0).put("error", "").put("assistant_response", reply);
 						completed.putArray("assistant_messages").add(reply);
 						append(output, completed.toString());
 					}
 					case "interrupt" ->
 					{
-						append(output, json.createObjectNode().put("type", "interrupted").put("run_id", child.id()).
-							toString());
+						append(output, json.createObjectNode().put("type", "interrupted").toString());
 						String reply = "[Request interrupted by user]";
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
-							put("run_id", child.id()).put("exit_code", 0).put("error", "").put("assistant_response", reply);
+							put("exit_code", 0).put("error", "").put("assistant_response", reply);
 						completed.putArray("assistant_messages").add(reply);
 						append(output, completed.toString());
 					}
 					case "complete" ->
 					{
-						append(output, json.createObjectNode().put("type", "completed").put("run_id", child.id()).
-							toString());
+						append(output, json.createObjectNode().put("type", "completed").toString());
 						HarnessRunReceipt.write(json, Yielding.fileReplacer(), Path.of(option(arguments, "--receipt")),
 							child, output, List.of());
 						process.get().exit();

@@ -119,6 +119,10 @@ import tools.jackson.databind.json.JsonMapper;
 public final class CodexSessionsTest
 {
 	/**
+	 * The thread ID that the fake Codex reports.
+	 */
+	private static final String THREAD_ID = "019a3c1e-7f2b-7d4a-9c3e-5b6a8d2f1e04";
+	/**
 	 * The model and reasoning effort of a session whose profile the test does not examine.
 	 */
 	private static final TrialProfile SESSION_PROFILE = new TrialProfile("model-a", "low");
@@ -253,6 +257,13 @@ public final class CodexSessionsTest
 		{
 			private int turn;
 			private boolean closed;
+
+			@Override
+			public Optional<String> harnessSessionId()
+			{
+				// No launcher copies the run, so the session is named after the run, whose folder holds its results
+				return Optional.of(run.id());
+			}
 
 			@Override
 			public void prepareTurn()
@@ -487,13 +498,13 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Returns the forwarded started record.
+	 * Returns the forwarded started record and the record that reports the thread's ID.
 	 *
-	 * @return the record
+	 * @return the records
 	 */
 	private static String startedRecord()
 	{
-		return "{\"type\":\"started\",\"run_id\":\"runa-1\"}\n";
+		return "{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" + THREAD_ID + "\"}\n";
 	}
 
 	/**
@@ -504,7 +515,7 @@ public final class CodexSessionsTest
 	 */
 	private static String completedRecord(String reply)
 	{
-		return "{\"type\":\"turn_completed\",\"run_id\":\"runa-1\",\"assistant_response\":\"" + reply +
+		return "{\"type\":\"turn_completed\",\"assistant_response\":\"" + reply +
 			"\",\"assistant_messages\":[\"" + reply + "\"]}\n";
 	}
 
@@ -570,7 +581,7 @@ public final class CodexSessionsTest
 		Path kept = response.resolve("run");
 		requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
 		ObjectNode result = json.createObjectNode().put("format_version", 1).put("id", response.getFileName().toString()).
-			put("harness", "codex").put("status", "completed").put("reason", "").put("child_run_id", "child-run-1").
+			put("harness", "codex").put("status", "completed").put("reason", "").put("session_id", THREAD_ID).
 			put("transcript", response.resolve("transcript.jsonl").toString()).put("receipt", receipt.toString()).
 			put("run", kept.toString());
 		json.writeValue(response.resolve("response.json").toFile(), result);

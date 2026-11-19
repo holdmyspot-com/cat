@@ -984,7 +984,8 @@ public final class RunnerSessionsTest
 					Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
-				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
+				output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
+					run.id() + "\"}\n");
 				BufferedReader requests = new BufferedReader(input);
 				for (int turn = 0; turn < 2; ++turn)
 				{
@@ -1030,7 +1031,8 @@ public final class RunnerSessionsTest
 					Yielding.fileReplacer());
 				HarnessRun run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
-				output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
+				output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
+					run.id() + "\"}\n");
 				BufferedReader requests = new BufferedReader(input);
 				for (int turn = 0; turn < 3; ++turn)
 				{
@@ -1088,7 +1090,8 @@ public final class RunnerSessionsTest
 						Clock.systemUTC(), Yielding.fileReplacer());
 					HarnessRun run = manager.create(TestSessions.HARNESS);
 					manager.initialize(run, root, root, "scripted", List.of("scripted"));
-					output.write("{\"type\":\"started\",\"run_id\":\"" + run.id() + "\"}\n");
+					output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
+						run.id() + "\"}\n");
 					output.flush();
 					BufferedReader lines = new BufferedReader(input);
 					String line = lines.readLine();

@@ -1023,8 +1023,10 @@ that serve a run, so the copy of the user's login in a slot's home stays out of 
 request names whether its session belongs to the held-out part; held-out sessions take slots of their own, so the read
 denial between the parts is unchanged. A request waits for a free slot, and the slot count is the server's or run's
 concurrency limit. A run's results are copied out of its slot to the driver's results location before the slot is
-emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12). Each kept copy
-gets a run id of its own, since slot run ids repeat. A slot is not handed on while a process that its previous run
+emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12). Each copy is named
+by the ID that the harness gave its session, Claude's `session_id` from its `init` event or Codex's thread ID from its
+`thread/start` response, since slot names repeat; the runner's records carry no ID of their own, and a session whose
+harness reported no ID has no copy (user ruling, 2026-11-19). A slot is not handed on while a process that its previous run
 recorded, the runner or the harness, is alive; the runner already ends the rest of the run's process tree. A run
 folder without its `run.json` records no process and does not keep its slot (user ruling, 2026-11-18). A slot whose run
 was interrupted is **retained**: its run keeps its project copy, home, harness session and `run.json` for a resume, and
@@ -3606,8 +3608,8 @@ session: through the session's request server and through a run's runner.
 
 **Results (user ruling, 2026-11-19):** a launch has no `--keep-run`: every run's results, its project, artifacts and
 manifest without its isolated home, are copied once the run ends, and the copy belongs to the owner of the folder that
-receives it. Outside a run, the launcher copies them into its `--run-root`, which defaults to `runner-runs` in the CAT
-session directory of the session that runs the launcher. Inside a run, the run's runner copies them into the request's
+receives it. Outside a run, the launcher copies them into its `--run-root`, which defaults to `runner-runs` in the
+temporary directory of the CAT session that runs the launcher. Inside a run, the run's runner copies them into the request's
 response, which it deletes with its run, and a launch that names `--run-root` copies them from there into that folder
 too; one that names none reads them in its response. The folder's owner deletes a copy once nothing needs it, as the
 plugin rule `temporary-resources/agent-cleanup.md` asks of an agent, and the optimizer's cleanup deletes the copies of
@@ -3621,7 +3623,7 @@ made with `request-session`, which may outlive its launcher through `--await`, i
 requesting session ends. The runner records the
 harness's session ID in the run's `run.json` as soon as the harness reports it, Claude's `session_id` in its `init`
 event and Codex's thread ID in its `thread/start` response, and the launcher publishes it at once as a
-`{"type":"session_id","run_id":"<slot run id>","session_id":"<id>"}` line in `<folder>/from-child.jsonl` or the `--output` transcript. At an interruption the server
+`{"type":"session_id","session_id":"<id>"}` line in `<folder>/from-child.jsonl` or the `--output` transcript. At an interruption the server
 stops the run's processes as for any run and makes no kept copy. If the run recorded its harness session ID, the server
 keeps its slot as a retained slot, with the project copy, which holds the requested session's CAT session directory and
 its campaigns, the isolated home with the harness session, and `run.json`; a run interrupted before its harness reported

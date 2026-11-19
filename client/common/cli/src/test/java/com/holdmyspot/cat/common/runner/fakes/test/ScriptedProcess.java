@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 
@@ -59,7 +60,8 @@ public final class ScriptedProcess implements HarnessProcess
 	private boolean ended;
 	private volatile boolean closed;
 	/**
-	 * The identifier that the harness gave its session, or {@code null} until the harness reports it.
+	 * The identifier that the harness gave its session, or {@code null} until the harness reports it. A harness that
+	 * the script does not have report one reports a random identifier once its first turn starts.
 	 */
 	private volatile String harnessSessionId;
 
@@ -182,6 +184,10 @@ public final class ScriptedProcess implements HarnessProcess
 			received.add(request);
 			turn = script.get(turns);
 			turns += 1;
+			// A harness reports its session's identifier once it works on its first turn, unless the script has it
+			// report one of its own
+			if (harnessSessionId == null)
+				harnessSessionId = UUID.randomUUID().toString();
 			activeTurn = interrupt;
 			if (turnPrepared && interruptPending)
 				interrupt.countDown();

@@ -60,6 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -87,6 +88,10 @@ public final class SessionRequestBrokerTest
 	 * The harness session that an interrupted requested run records.
 	 */
 	private static final String RESUMED_SESSION = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
+	/**
+	 * The harness session that a requested run records.
+	 */
+	private static final String CHILD_SESSION = "0a4e7c3b-9d2f-4b1a-8e6c-5f3d2a1b0c9e";
 	/**
 	 * Creates the test.
 	 */
@@ -134,9 +139,10 @@ public final class SessionRequestBrokerTest
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
 					if (exit != 75)
 					{
-						HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(options, "--run-root")),
-							Clock.systemUTC(),
-							Yielding.fileReplacer()).create("claude");
+						HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(options, "--run-root")),
+							Clock.systemUTC(), Yielding.fileReplacer());
+						HarnessRun run = manager.create("claude");
+						manager.recordHarnessSession(run, CHILD_SESSION);
 						Files.writeString(Files.createDirectories(run.sessionTranscripts()).resolve("native.jsonl"), "native");
 						Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
 						if (exit == 0)
@@ -167,7 +173,7 @@ public final class SessionRequestBrokerTest
 				{
 					requireThat(Files.readString(fixture.responses.resolve("first/session-transcripts/native.jsonl")), "native").
 						isEqualTo("native");
-					requireThat(response.path("child_run_id").asString(), "childRunId").isNotBlank();
+					requireThat(response.path("session_id").asString(), "sessionId").isEqualTo(CHILD_SESSION);
 				}
 				fixture.request("second");
 				broker.scan();
@@ -2041,11 +2047,7 @@ public final class SessionRequestBrokerTest
 	private static FakeHarnessCli inSlotWithUnknownLaunch(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotRun> runs) throws IOException
 	{
-		FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
-		SlotRun slotRun = runs.getLast();
-		new HarnessRunManager(fileLocks, slotRun.runRoot(), Clock.systemUTC(), Yielding.fileReplacer()).
-			markHarnessStarting(slotRun.run());
-		return process;
+		return inSlot(fixture, fileLocks, options, runs, HarnessRunManager::markHarnessStarting);
 	}
 
 	/**
@@ -2063,6 +2065,37 @@ public final class SessionRequestBrokerTest
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotRun> runs, long harnessPid) throws IOException
 	{
+		return inSlot(fixture, fileLocks, options, runs, (manager, run) ->
+		{
+			if (harnessPid != 0)
+			{
+				manager.markHarnessStarting(run);
+				manager.recordHarnessProcess(run, harnessPid, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
+			}
+			else
+			{
+				// The session ends normally, so its harness reported its identifier and its run is complete
+				manager.recordHarnessSession(run, UUID.randomUUID().toString());
+				manager.markCompleted(run);
+			}
+		});
+	}
+
+	/**
+	 * Starts a double of a requested runner that builds its run in the run root and under the run identifier that the
+	 * broker names, records what {@code state} records in the run, and completes.
+	 *
+	 * @param fixture   the requesting run
+	 * @param fileLocks the file locks of the requested run
+	 * @param options   the requested runner's options
+	 * @param runs      receives what the runner finds in its slot and builds there
+	 * @param state     records the run's state
+	 * @return the runner
+	 * @throws IOException if the run cannot be created or the runner refuses to reuse the slot
+	 */
+	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
+		List<SlotRun> runs, RunState state) throws IOException
+	{
 		Path runRoot = Path.of(option(options, "--run-root"));
 		List<String> entries;
 		try (Stream<Path> paths = Files.list(runRoot))
@@ -2072,11 +2105,7 @@ public final class SessionRequestBrokerTest
 		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer()).withFixedRunId(option(options, "--run-id"));
 		HarnessRun run = manager.create("claude");
-		if (harnessPid != 0)
-		{
-			manager.markHarnessStarting(run);
-			manager.recordHarnessProcess(run, harnessPid, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
-		}
+		state.record(manager, run);
 		runs.add(new SlotRun(runRoot, run, entries));
 		Files.writeString(run.directory().resolve("left-behind"), "left behind");
 		Files.writeString(run.directory().resolve("result.txt"), String.valueOf(runs.size()));
@@ -2087,6 +2116,22 @@ public final class SessionRequestBrokerTest
 		FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, processReference));
 		processReference.set(process);
 		return process;
+	}
+
+	/**
+	 * Records the state of a requested runner's run.
+	 */
+	@FunctionalInterface
+	private interface RunState
+	{
+		/**
+		 * Records the run's state.
+		 *
+		 * @param manager the run's manager
+		 * @param run     the run
+		 * @throws IOException if the state cannot be recorded
+		 */
+		void record(HarnessRunManager manager, HarnessRun run) throws IOException;
 	}
 
 	/**
@@ -2111,7 +2156,7 @@ public final class SessionRequestBrokerTest
 		Path nestedResponse = Files.createDirectories(SessionRequestAccess.responsesDirectory(run).resolve("nested")).
 			resolve("response.json");
 		ObjectNode nestedResponseDocument = fixture.json.createObjectNode().put("id", marker).
-			put("harness", "harness").put("status", "completed").put("child_run_id", "child-" + marker);
+			put("harness", "harness").put("status", "completed").put("session_id", "child-" + marker);
 		fixture.json.writeValue(nestedResponse.toFile(), nestedResponseDocument);
 		Path rawResult = Path.of(option(options, "--output"));
 		Files.writeString(rawResult, marker + " response bytes");
@@ -2272,7 +2317,7 @@ public final class SessionRequestBrokerTest
 			{
 				if (fixture.json.readTree(line).path("type").asString().equals("complete"))
 				{
-					append(output, "{\"type\":\"completed\",\"run_id\":\"" + run.id() + "\"}");
+					append(output, "{\"type\":\"completed\"}");
 					manager.markCompleted(run);
 					HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 						run, output, List.of());
@@ -2318,16 +2363,16 @@ public final class SessionRequestBrokerTest
 						int turn = turns.incrementAndGet();
 						String prompt = record.path("prompt").asString();
 						if (!prompt.equals("hold") && !prompt.equals("second"))
-							append(output, turnCompleted(fixture, run, turn));
+							append(output, turnCompleted(fixture, turn));
 					}
 					case "interrupt" ->
 					{
-						append(output, "{\"type\":\"interrupted\",\"run_id\":\"" + run.id() + "\"}");
-						append(output, turnCompleted(fixture, run, turns.get()));
+						append(output, "{\"type\":\"interrupted\"}");
+						append(output, turnCompleted(fixture, turns.get()));
 					}
 					case "complete" ->
 					{
-						append(output, "{\"type\":\"completed\",\"run_id\":\"" + run.id() + "\"}");
+						append(output, "{\"type\":\"completed\"}");
 						HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 							run, output, List.of());
 						child.get().exit();
@@ -2346,13 +2391,12 @@ public final class SessionRequestBrokerTest
 	 * Returns the record with which a requested runner ends a turn.
 	 *
 	 * @param fixture the requesting run
-	 * @param run     the requested run
 	 * @param turn    the turn's number
 	 * @return the record
 	 */
-	private static String turnCompleted(Fixture fixture, HarnessRun run, int turn)
+	private static String turnCompleted(Fixture fixture, int turn)
 	{
-		ObjectNode record = fixture.json.createObjectNode().put("type", "turn_completed").put("run_id", run.id()).
+		ObjectNode record = fixture.json.createObjectNode().put("type", "turn_completed").
 			put("exit_code", 0).put("error", "").put("assistant_response", "reply " + turn);
 		record.putArray("assistant_messages").add("reply " + turn);
 		return record.toString();

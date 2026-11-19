@@ -7,15 +7,22 @@ import java.io.IOException;
  * <p>
  * <b>Thread Safety:</b> Implementations are thread-safe.
  */
-public sealed interface Message permits Message.Started, TurnCompleted, Message.TurnFailed, Message.Ended,
-	Message.Wake
+public sealed interface Message permits Message.Started, Message.Identified, TurnCompleted, Message.TurnFailed,
+	Message.Ended, Message.Wake
 {
 	/**
 	 * The runner started its harness and is ready for turns.
-	 *
-	 * @param runId the identifier of the run directory
 	 */
-	record Started(String runId) implements Message
+	record Started() implements Message
+	{
+	}
+
+	/**
+	 * The runner reported the identifier that the harness gave the session, which names the session's directory.
+	 *
+	 * @param sessionId the identifier
+	 */
+	record Identified(String sessionId) implements Message
 	{
 	}
 

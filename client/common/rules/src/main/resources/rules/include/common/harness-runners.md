@@ -171,8 +171,8 @@ takes this argument list, wrapped here to fit:
 ```
 
 The launcher always copies the session's results, its project, artifacts and receipt, into the run root, which is
-`runner-runs` in this session's CAT session directory when you pass no `--run-root`. Delete that copy once nothing needs
-it.
+`runner-runs` in CAT_TEMP when you pass no `--run-root`. The copy is the folder `<harness>/<session ID>` there, named
+by the ID that the `session_id` record reports (see "Resuming a session"). Delete that copy once nothing needs it.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in the run

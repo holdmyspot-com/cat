@@ -128,8 +128,11 @@ public final class ScriptedHarness
 		{
 			HarnessRun run = manager.create(harness);
 			manager.initialize(run, runRoot, runRoot, "scripted", List.of("scripted"));
-			return new HarnessRunSession(run, new ScriptedProcess(script, requests, interruptedTurn),
-				new TestHarnessRunnerScope());
+			ScriptedProcess process = new ScriptedProcess(script, requests, interruptedTurn);
+			// No launcher copies the run, so the harness names its session after the run, whose folder then holds
+			// the session's results where the launcher's copy would
+			process.reportHarnessSession(run.id());
+			return new HarnessRunSession(run, process, new TestHarnessRunnerScope());
 		}, manager, input, output);
 	}
 

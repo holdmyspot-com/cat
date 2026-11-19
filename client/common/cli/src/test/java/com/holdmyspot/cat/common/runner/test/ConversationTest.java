@@ -102,25 +102,25 @@ public final class ConversationTest
 			try (Conversation conversation = Conversation.open(folder))
 			{
 				requireThat(Files.readString(events), "emptyEvents").isEmpty();
-				String eventOne = "{\"type\":\"harness_event\",\"run_id\":\"r\",\"event\":\"one\"}";
-				String eventTwo = "{\"type\":\"harness_event\",\"run_id\":\"r\",\"event\":\"two\"}";
-				String waiting = "{\"type\":\"waiting\",\"run_id\":\"r\",\"quiet_seconds\":30}";
+				String eventOne = "{\"type\":\"harness_event\",\"event\":\"one\"}";
+				String eventTwo = "{\"type\":\"harness_event\",\"event\":\"two\"}";
+				String waiting = "{\"type\":\"waiting\",\"quiet_seconds\":30}";
 
-				conversation.childRecord("{\"type\":\"started\",\"run_id\":\"r\"}");
+				conversation.childRecord("{\"type\":\"started\"}");
 				conversation.childRecord(eventOne);
 				conversation.childRecord(waiting);
 				conversation.childRecord(eventTwo);
 				conversation.childRecord("not json");
 				requireThat(Files.readAllLines(events), "events").isEqualTo(List.of(eventOne, eventTwo));
 				requireThat(Files.readAllLines(fromChild), "beforeTurnEnd").isEqualTo(List.of(
-					"{\"type\":\"started\",\"run_id\":\"r\"}", waiting, "not json"));
+					"{\"type\":\"started\"}", waiting, "not json"));
 
 				String completed = "{\"type\":\"turn_completed\",\"assistant_response\":\"done\"}";
 				conversation.childRecord(completed);
 
 				requireThat(Files.readAllLines(events), "eventsAtTurnEnd").isEqualTo(List.of(eventOne, eventTwo));
 				requireThat(Files.readAllLines(fromChild), "fromChild").isEqualTo(List.of(
-					"{\"type\":\"started\",\"run_id\":\"r\"}", waiting, "not json", completed,
+					"{\"type\":\"started\"}", waiting, "not json", completed,
 					"{\"turn_end\":1,\"status\":\"completed\"}"));
 				conversation.end("completed");
 				requireThat(Files.readAllLines(fromChild).getLast(), "last").isEqualTo("{\"ended\":\"completed\"}");

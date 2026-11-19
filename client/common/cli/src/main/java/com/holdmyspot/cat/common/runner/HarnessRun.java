@@ -28,7 +28,8 @@ public record HarnessRun(String harness, String id, Path directory)
 	 *
 	 * @param harness the harness name
 	 *
-	 * @param id the generated run identifier
+	 * @param id the run's identifier: a generated or slot identifier, or for a run's copy the identifier that the
+	 *           harness gave its session
 	 *
 	 * @param directory the owned run directory
 	 *
@@ -41,8 +42,8 @@ public record HarnessRun(String harness, String id, Path directory)
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(id, "id").isNotBlank();
 		requireThat(directory, "directory").isNotNull();
-		if (!harness.matches("[a-z0-9]+") || !id.matches("[a-z0-9]+-[a-z0-9]+"))
-			throw new IllegalArgumentException("harness and id must be generated runner identifiers");
+		if (!harness.matches("[a-z0-9]+") || !HarnessRunManager.HARNESS_SESSION_ID.matcher(id).matches())
+			throw new IllegalArgumentException("harness and id must be runner or harness session identifiers");
 	}
 
 	/**

@@ -66,6 +66,11 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	static final String RUN_COPY = "run";
 	/**
+	 * The response's field that holds the identifier that the harness gave the requested session, or an empty string if
+	 * the harness reported none.
+	 */
+	static final String SESSION_ID = "session_id";
+	/**
 	 * The directory of a response directory that holds the copy of a requested session's project and initial project
 	 * as of the end of its last completed turn, for a request that asks for turn copies. The requester may still be
 	 * reading it when the session ends, so it stays with the response, like {@link #RUN_COPY}, until the response
@@ -849,8 +854,12 @@ public final class SessionRequestBroker implements Closeable
 				throw new IOException("Requested runner completed without a retained-evidence receipt");
 			String outcome = status;
 			String diagnostic = reason;
-			// A run whose session could not continue stays retained, so it has no kept copy
-			if (!childRunId.isEmpty() && !status.equals(UNRESUMABLE))
+			String sessionId = "";
+			if (!childRunId.isEmpty())
+				sessionId = HarnessRunManager.harnessSessionId(childRoots.get(id).resolve(childRunId)).orElse("");
+			// A run whose session could not continue stays retained, so it has no copy. Before the harness reports the
+			// session's identifier, nothing names a copy.
+			if (!sessionId.isEmpty() && !status.equals(UNRESUMABLE))
 			{
 				// The requester cannot read the requested runs, whose homes hold their logins, so it reads a copy
 				Optional<String> incomplete = KeptRunCopy.copy(childRoots.get(id).resolve(childRunId),
@@ -870,7 +879,7 @@ public final class SessionRequestBroker implements Closeable
 						directory.resolve(RUN_COPY).resolve("project"));
 				}
 			}
-			respond(id, harness, outcome, diagnostic, childRunId, directory);
+			respond(id, harness, outcome, diagnostic, sessionId, directory);
 		}
 	}
 
@@ -962,15 +971,15 @@ public final class SessionRequestBroker implements Closeable
 	 * @param harness the requested harness, empty for an unparsed request
 	 * @param status the terminal classification
 	 * @param reason the diagnostic
-	 * @param childRunId the child's run identifier, empty if unavailable
+	 * @param sessionId the identifier that the harness gave the child's session, empty if unavailable
 	 * @param directory the private response directory
 	 * @throws IOException if publication fails
 	 */
-	private void respond(String id, String harness, String status, String reason, String childRunId, Path directory)
+	private void respond(String id, String harness, String status, String reason, String sessionId, Path directory)
 		throws IOException
 	{
 		ObjectNode response = json.createObjectNode().put("format_version", 1).put("id", id).put("harness", harness).
-			put("status", status).put("reason", reason).put("child_run_id", childRunId);
+			put("status", status).put("reason", reason).put(SESSION_ID, sessionId);
 		for (String name : List.of("transcript.jsonl", "receipt.json"))
 			if (Files.isRegularFile(directory.resolve(name)))
 				response.put(name.substring(0, name.indexOf('.')), directory.resolve(name).toString());

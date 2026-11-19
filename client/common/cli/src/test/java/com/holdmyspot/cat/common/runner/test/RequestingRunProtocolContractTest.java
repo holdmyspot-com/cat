@@ -11,7 +11,6 @@ import java.io.IOException;
 import java.io.PipedReader;
 import java.io.PipedWriter;
 import java.io.Writer;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import org.testng.annotations.Test;
@@ -57,8 +56,7 @@ public final class RequestingRunProtocolContractTest
 		requireThat(response.path("status").asString(), "responseStatus").isEqualTo("completed");
 		Path transcript = Path.of(response.path("transcript").asString());
 		Path retainedRun = Path.of(response.path("run").asString());
-		String producerRunId = json.readTree(Files.readAllLines(transcript).getFirst()).path("run_id").asString();
-		requireThat(response.path("child_run_id").asString(), "responseChildRunId").isEqualTo(producerRunId);
+		requireThat(response.path("session_id").asString(), "sessionId").isEqualTo(RequestingRun.SESSION_ID);
 		List<String> prompts = runOutput.received().stream().map(record -> readPrompt(json, record)).
 			filter(prompt -> !prompt.isEmpty()).toList();
 		return new Observation(transcript, receipt, retainedRun, prompts);

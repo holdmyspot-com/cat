@@ -89,7 +89,7 @@ final class Session implements SessionHandle
 	private final AtomicBoolean interruptRequested = new AtomicBoolean();
 	private final CompletableFuture<SessionResult> completion = new CompletableFuture<>();
 	private final List<List<String>> responses = new ArrayList<>();
-	private String runId;
+	private String sessionId;
 	private Message.Ended ended;
 	private boolean timedOut;
 	private boolean endedEarly;
@@ -428,14 +428,18 @@ final class Session implements SessionHandle
 		while (true)
 		{
 			Message message = awaitMessage();
-			if (message instanceof Message.Started started)
-			{
-				runId = started.runId();
-				if (turn == 0)
-					return Outcome.STARTED;
-			}
+			if (message instanceof Message.Started && turn == 0)
+				return Outcome.STARTED;
+			if (message instanceof Message.Identified identified)
+				sessionId = identified.sessionId();
 			if (message instanceof TurnCompleted completed)
 			{
+				if (sessionId == null)
+				{
+					if (failure == null)
+						failure = "The runner completed turn " + turn + " before it reported the session's ID";
+					return Outcome.TURN_FAILED;
+				}
 				if (!timedOut)
 					responses.add(completed.assistantMessages());
 				if (turn > 0)
@@ -574,6 +578,8 @@ final class Session implements SessionHandle
 			if (failure != null)
 				return new SessionResult.Failed(failure, windows);
 		}
+		if (sessionId == null)
+			return new SessionResult.Failed("The runner did not report the session's ID", windows);
 		return completed();
 	}
 
@@ -705,13 +711,13 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns the run directory of this session.
+	 * Returns the directory of this session's results, which the identifier that the harness gave the session names.
 	 *
 	 * @return the directory
 	 */
 	private Path runDirectory()
 	{
-		return harnessDirectory().resolve(runId);
+		return harnessDirectory().resolve(sessionId);
 	}
 
 	/**

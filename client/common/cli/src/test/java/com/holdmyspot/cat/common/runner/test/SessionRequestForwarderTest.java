@@ -47,6 +47,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public final class SessionRequestForwarderTest
 {
+	/**
+	 * The identifier that the fake harness gives its session.
+	 */
+	private static final String SESSION_ID = "5d1c0f3e-2a4b-4c6d-8e9f-0a1b2c3d4e5f";
 	private static final String RECORDS = """
 		{"type":"turn","prompt":"first task"}
 		{"type":"turn","prompt":"second task"}
@@ -145,8 +149,8 @@ public final class SessionRequestForwarderTest
 			AtomicInteger pauseCount = new AtomicInteger();
 			List<String> copied = new ArrayList<>();
 			String[] forwardedRunId = {""};
+			String[] slotRunId = {""};
 			Path[] finalResponse = {null};
-			String childRunId = "ab12-cd34";
 			JsonMapper json = JsonMapper.builder().build();
 			try (Writer output = new Writer()
 			{
@@ -164,8 +168,8 @@ public final class SessionRequestForwarderTest
 						}
 						JsonNode record = json.readTree(line.toString());
 						String type = record.path("type").asString();
-						if (type.equals("started"))
-							forwardedRunId[0] = record.path("run_id").asString();
+						if (type.equals("session_id"))
+							forwardedRunId[0] = record.path("session_id").asString();
 						else if (type.equals("turn_completed"))
 						{
 							Path kept = runRoot.resolve("harnessa").resolve(forwardedRunId[0]);
@@ -211,12 +215,14 @@ public final class SessionRequestForwarderTest
 					Files.writeString(turnCopy.resolve("artifacts/session-transcripts/rollout-root.jsonl"), "root-1\n");
 					Files.writeString(sessionTranscripts.resolve("rollout-child.jsonl"), "child-1\n");
 					Path transcript = response.resolve("transcript.jsonl");
-					Files.writeString(transcript, "{\"type\":\"started\",\"run_id\":\"runa-1\"}\n" +
-						"{\"type\":\"turn_completed\",\"run_id\":\"runa-1\"}\n");
+					Files.writeString(transcript, "{\"type\":\"started\"}\n" +
+						"{\"type\":\"session_id\",\"session_id\":\"" + SESSION_ID + "\"}\n" +
+						"{\"type\":\"turn_completed\"}\n");
 
 					HarnessRunManager manager = new HarnessRunManager(new FileLocks(), childRoot, Clock.systemUTC(),
 						Yielding.fileReplacer());
 					HarnessRun child = manager.create("harnessa");
+					slotRunId[0] = child.id();
 					Path childProject = child.directory().resolve("project");
 					Files.writeString(childProject.resolve("marker"), "kept project");
 					Path raw = Files.writeString(child.directory().resolve("artifacts/result.jsonl"), "result\n");
@@ -234,7 +240,6 @@ public final class SessionRequestForwarderTest
 					Path kept = response.resolve("run");
 					KeptRunCopy.Result copyResult = KeptRunCopy.copy(child.directory(), kept);
 					requireThat(copyResult.incomplete(), "keptRun").isEmpty();
-					HarnessRunManager.renameCopy(kept, childRunId);
 				}
 				else
 				{
@@ -250,11 +255,12 @@ public final class SessionRequestForwarderTest
 						turnCopy.resolve("artifacts/session-transcripts/subagents"));
 					Files.writeString(turnCopy.resolve("artifacts/session-transcripts/rollout-root.jsonl"), "root-2\n");
 					Files.writeString(sessionTranscripts.resolve("rollout-child.jsonl"), "child-2\n");
-					Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"started\",\"run_id\":\"runa-1\"}\n" +
-						"{\"type\":\"turn_completed\",\"run_id\":\"runa-1\"}\n" +
-						"{\"type\":\"turn_completed\",\"run_id\":\"runa-1\"}\n" +
-						"{\"type\":\"completed\",\"run_id\":\"runa-1\"}\n");
-					HarnessRun copiedChild = new HarnessRun("harnessa", childRunId, response.resolve("run"));
+					Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"started\"}\n" +
+						"{\"type\":\"session_id\",\"session_id\":\"" + SESSION_ID + "\"}\n" +
+						"{\"type\":\"turn_completed\"}\n" +
+						"{\"type\":\"turn_completed\"}\n" +
+						"{\"type\":\"completed\"}\n");
+					HarnessRun copiedChild = new HarnessRun("harnessa", slotRunId[0], response.resolve("run"));
 					requireThat(Files.isDirectory(copiedChild.directory().resolve("project")), "copiedProject").isTrue();
 					requireThat(Files.isRegularFile(response.resolve("transcript.jsonl")), "externalOutput").isTrue();
 					Path copiedRootTranscript = copiedChild.sessionTranscripts().resolve("rollout-root.jsonl");
@@ -265,7 +271,7 @@ public final class SessionRequestForwarderTest
 						List.of(copiedRootTranscript, copiedChildTranscript));
 					ObjectNode result = json.createObjectNode().put("format_version", 1).
 						put("id", response.getFileName().toString()).put("harness", "harnessa").
-						put("status", "completed").put("reason", "").put("child_run_id", childRunId).
+						put("status", "completed").put("reason", "").put("session_id", SESSION_ID).
 						put("transcript", response.resolve("transcript.jsonl").toString()).
 						put("receipt", copiedChild.directory().resolve("artifacts/receipt.json").toString()).
 						put("run", response.resolve("run").toString());
@@ -281,7 +287,8 @@ public final class SessionRequestForwarderTest
 				requests, pause);
 
 			requireThat(copied, "copied").isEqualTo(List.of("root-1\nchild-1\n", "root-2\nchild-2\n"));
-			Path retained = runRoot.resolve("harnessa").resolve(forwardedRunId[0]);
+			requireThat(forwardedRunId[0], "sessionId").isEqualTo(SESSION_ID);
+			Path retained = runRoot.resolve("harnessa").resolve(SESSION_ID);
 			Path receiptPath = retained.resolve("artifacts/receipt.json");
 			String externalTranscript = Files.readString(finalResponse[0].resolve("transcript.jsonl"));
 			Files.delete(finalResponse[0].resolve("transcript.jsonl"));
@@ -349,11 +356,10 @@ public final class SessionRequestForwarderTest
 				slot.markCompleted(child);
 				Path kept = response.resolve("run");
 				requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
-				HarnessRunManager.renameCopy(kept, "ab12-cd34");
 				Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"completed\"}\n");
 				json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
 					put("format_version", 1).put("id", response.getFileName().toString()).put("harness", "harnessa").
-					put("status", "completed").put("reason", "").put("child_run_id", "ab12-cd34").
+					put("status", "completed").put("reason", "").put("session_id", SESSION_ID).
 					put("transcript", response.resolve("transcript.jsonl").toString()).
 					put("run", kept.toString()));
 			};
@@ -369,8 +375,9 @@ public final class SessionRequestForwarderTest
 			{
 				keptRuns = runs.toList();
 			}
-			requireThat(keptRuns, "keptRuns").size().isEqualTo(1);
+			requireThat(keptRuns, "keptRuns").isEqualTo(List.of(runRoot.resolve("harnessa").resolve(SESSION_ID)));
 			JsonNode manifest = json.readTree(keptRuns.getFirst().resolve("run.json").toFile());
+			requireThat(manifest.path("id").asString(), "id").isEqualTo(SESSION_ID);
 			requireThat(manifest.path("project_path").asString(), "projectPath").isEqualTo(project.toString());
 		}
 	}
@@ -409,12 +416,11 @@ public final class SessionRequestForwarderTest
 				slot.markCompleted(child);
 				Path kept = response[0].resolve("run");
 				requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
-				HarnessRunManager.renameCopy(kept, "ab12-cd34");
 				Files.writeString(response[0].resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
 				json.writeValue(response[0].resolve("response.json").toFile(), json.createObjectNode().
 					put("format_version", 1).put("id", response[0].getFileName().toString()).
 					put("harness", "harnessa").put("status", "completed").put("reason", "").
-					put("child_run_id", "ab12-cd34").put("transcript", response[0].resolve("transcript.jsonl").toString()).
+					put("session_id", SESSION_ID).put("transcript", response[0].resolve("transcript.jsonl").toString()).
 					put("run", kept.toString()));
 			}, new ByteArrayOutputStream(), new PrintWriter(fixture.errors, true));
 
@@ -424,7 +430,7 @@ public final class SessionRequestForwarderTest
 			{
 				copies = runs.toList();
 			}
-			requireThat(copies, "copies").size().isEqualTo(1);
+			requireThat(copies, "copies").isEqualTo(List.of(results.resolve("harnessa").resolve(SESSION_ID)));
 			requireThat(Files.isDirectory(copies.getFirst().resolve("project")), "copiedProject").isTrue();
 			requireThat(Files.isDirectory(response[0].resolve("run")), "responseCopy").isTrue();
 		}
@@ -738,7 +744,7 @@ public final class SessionRequestForwarderTest
 	private static final class Fixture
 	{
 		static final String TRANSCRIPT = "{\"type\":\"started\"}\n{\"type\":\"completed\"}\n";
-		static final String RECEIPT = "{\"run_id\":\"child\"}";
+		static final String RECEIPT = "{\"id\":\"child\"}";
 		final Path root;
 		final Path requests;
 		final Path project;

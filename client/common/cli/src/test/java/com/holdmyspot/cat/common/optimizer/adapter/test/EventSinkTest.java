@@ -60,14 +60,15 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","run_id":"r"}
-					{"type":"waiting","run_id":"r","quiet_seconds":30}
+					{"type":"started"}
+					{"type":"session_id","session_id":"r"}
+					{"type":"waiting","quiet_seconds":30}
 					{"type":"turn_completed","assistant_response":"done","assistant_messages":["done"]}
 					""");
 			}
 
 			List<Message> received = new ArrayList<>(messages);
-			requireThat(received, "received").isEqualTo(List.of(new Message.Started("r"),
+			requireThat(received, "received").isEqualTo(List.of(new Message.Started(), new Message.Identified("r"),
 				new TurnCompleted(List.of("done"))));
 			Path transcript = harnessDirectory.resolve("r").resolve("artifacts").
 				resolve(EventSinkSecrets.getEventSinkAccess().transcript());
@@ -95,12 +96,14 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","run_id":"r"}
+					{"type":"started"}
+					{"type":"session_id","session_id":"r"}
 					{"type":"turn_completed","assistant_response":"final-only","assistant_messages":["interim","done"]}
 					""");
 			}
 
-			requireThat(messages.remove(), "started").isEqualTo(new Message.Started("r"));
+			requireThat(messages.remove(), "started").isEqualTo(new Message.Started());
+			requireThat(messages.remove(), "identified").isEqualTo(new Message.Identified("r"));
 			requireThat(messages.remove(), "completed").
 				isEqualTo(new TurnCompleted(List.of("interim", "done")));
 		}
@@ -125,12 +128,14 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","run_id":"r"}
-					{"type":"turn_failed","run_id":"r","error":"the harness exited"}
+					{"type":"started"}
+					{"type":"session_id","session_id":"r"}
+					{"type":"turn_failed","error":"the harness exited"}
 					""");
 			}
 
-			requireThat(messages.remove(), "started").isEqualTo(new Message.Started("r"));
+			requireThat(messages.remove(), "started").isEqualTo(new Message.Started());
+			requireThat(messages.remove(), "identified").isEqualTo(new Message.Identified("r"));
 			requireThat(messages.remove(), "failed").isEqualTo(new Message.TurnFailed("the harness exited"));
 		}
 	}
@@ -192,7 +197,8 @@ public final class EventSinkTest
 				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
 			{
 				sink.write("""
-					{"type":"started","run_id":"r"}
+					{"type":"started"}
+					{"type":"session_id","session_id":"r"}
 					{"type":"harness_event","event":"{\\"type\\":\\"system\\"}"}
 					""");
 			}
@@ -200,6 +206,41 @@ public final class EventSinkTest
 			Path transcript = harnessDirectory.resolve("r").resolve("artifacts").
 				resolve(EventSinkSecrets.getEventSinkAccess().transcript());
 			requireThat(Files.readString(transcript, UTF_8), "transcript").isEqualTo("{\"type\":\"system\"}\n");
+		}
+	}
+
+	/**
+	 * Verifies that the harness events that arrive before the runner reports the session's ID, such as the event that
+	 * reports it, reach the transcript in the directory that the ID names.
+	 *
+	 * @throws IOException if the run directory cannot be created
+	 */
+	@Test
+	public void keepsEventsBeforeSessionId() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path harnessDirectory = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-event-sink-"));
+			Files.createDirectories(harnessDirectory.resolve("s1").resolve("artifacts"));
+			BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
+			try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
+				directories -> new TestSessions.Sources(JSON, directories), harnessDirectory, Map.of(), messages))
+			{
+				sink.write("""
+					{"type":"started"}
+					{"type":"harness_event","event":"{\\"type\\":\\"init\\"}"}
+					{"type":"session_id","session_id":"s1"}
+					{"type":"harness_event","event":"{\\"type\\":\\"system\\"}"}
+					""");
+			}
+
+			requireThat(new ArrayList<>(messages), "messages").
+				isEqualTo(List.of(new Message.Started(), new Message.Identified("s1")));
+			Path transcript = harnessDirectory.resolve("s1").resolve("artifacts").
+				resolve(EventSinkSecrets.getEventSinkAccess().transcript());
+			requireThat(Files.readString(transcript, UTF_8), "transcript").
+				isEqualTo("{\"type\":\"init\"}\n{\"type\":\"system\"}\n");
 		}
 	}
 }

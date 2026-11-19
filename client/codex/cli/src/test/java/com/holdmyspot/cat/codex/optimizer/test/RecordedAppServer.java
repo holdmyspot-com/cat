@@ -54,6 +54,12 @@ final class RecordedAppServer implements Bridge
 	private final CountDownLatch turnStarted = new CountDownLatch(1);
 	private List<String> interruptEvents = List.of();
 	private volatile Path transcript;
+	/**
+	 * The identifier of the run that the replay serves, which replaces the recorded thread identifier. No launcher
+	 * copies the run, so the thread is named after the run, whose folder then holds the session's results where the
+	 * launcher's copy would.
+	 */
+	private volatile String threadId = "";
 
 	/**
 	 * Creates one replay, owned by one session.
@@ -164,6 +170,7 @@ final class RecordedAppServer implements Bridge
 		HarnessRun completed = HarnessRunnerBridge.serve(() ->
 		{
 			HarnessRun run = manager.create("codex");
+			threadId = run.id();
 			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
@@ -174,6 +181,22 @@ final class RecordedAppServer implements Bridge
 		}, input, output);
 		manager.markCompleted(completed);
 		transcript = completed.directory().resolve("artifacts/transcript.jsonl");
+	}
+
+	/**
+	 * Replaces the recorded thread identifier in a recorded line with the identifier of the run that the replay serves.
+	 *
+	 * @param line the recorded line
+	 * @return the line that names the run's thread
+	 */
+	private String rename(String line)
+	{
+		String started = turns.getFirst().stream().filter(event ->
+			event.startsWith("{\"method\":\"thread/started\"")).findFirst().orElseThrow();
+		String recorded = json.readTree(started).path("params").path("thread").path("id").asString("");
+		if (recorded.isEmpty())
+			return line;
+		return line.replace("\"" + recorded + "\"", "\"" + threadId + "\"");
 	}
 
 	/**
@@ -193,13 +216,13 @@ final class RecordedAppServer implements Bridge
 			{
 				String started = turns.getFirst().stream().filter(event ->
 					event.startsWith("{\"method\":\"thread/started\"")).findFirst().orElseThrow();
-				JsonNode thread = json.readTree(started).path("params").path("thread");
+				JsonNode thread = json.readTree(rename(started)).path("params").path("thread");
 				process.emit(json.createObjectNode().put("id", id).
 					set("result", json.createObjectNode().set("thread", thread)).toString());
 			}
 			case "turn/start" ->
 			{
-				List<String> events = rebindResponse(turns.get(nextTurn), id);
+				List<String> events = rebindResponse(turns.get(nextTurn), id).stream().map(this::rename).toList();
 				turnOutput.addAll(events);
 				JsonNode terminal = json.readTree(events.getLast()).path("params").path("turn");
 				if (terminal.path("status").asString("").equals("interrupted"))

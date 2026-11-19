@@ -54,7 +54,7 @@ public final class HarnessRunReceiptTest
 			Path nestedResponse = Files.createDirectories(run.directory().resolve("responses/nested")).
 				resolve("response.json");
 			ObjectNode response = scope.json().createObjectNode().put("id", "nested").put("harness", "harness").
-				put("status", "completed").put("child_run_id", "child-run");
+				put("status", "completed").put("session_id", "child-session");
 			scope.json().writeValue(nestedResponse.toFile(), response);
 			Path receipt = root.resolve("receipt.json");
 
@@ -186,7 +186,7 @@ public final class HarnessRunReceiptTest
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path child = Files.createDirectories(run.directory().resolve("responses/first")).resolve("response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
-				put("status", "completed").put("child_run_id", "child-run");
+				put("status", "completed").put("session_id", "child-session");
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
@@ -221,7 +221,7 @@ public final class HarnessRunReceiptTest
 			Files.writeString(responses.resolve("limits.json"), "{}");
 			Path child = Files.createDirectories(responses.resolve("first")).resolve("response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
-				put("status", "completed").put("child_run_id", "child-run");
+				put("status", "completed").put("session_id", "child-session");
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
@@ -257,7 +257,7 @@ public final class HarnessRunReceiptTest
 			scope.json().writeValue(worktree.resolve("response.json").toFile(), done);
 			Path child = Files.createDirectories(responses.resolve("first")).resolve("response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
-				put("status", "completed").put("child_run_id", "child-run");
+				put("status", "completed").put("session_id", "child-session");
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 

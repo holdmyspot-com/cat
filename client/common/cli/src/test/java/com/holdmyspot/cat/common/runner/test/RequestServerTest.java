@@ -802,7 +802,7 @@ public final class RequestServerTest
 	 * @param server  the running server
 	 * @param runRoot the command's run root
 	 * @param extra   further options of the launch
-	 * @return the identifier of the session's kept run, as the command's records name it
+	 * @return the identifier that the session's harness reported, as the command's records name it
 	 * @throws IOException if the session does not complete
 	 */
 	private static String serve(Fixture fixture, Fixture.Running server, Path runRoot, String... extra)
@@ -823,7 +823,9 @@ public final class RequestServerTest
 					throw new IOException("The served session did not end");
 				Thread.yield();
 			});
-		return fixture.json.readTree(output.toString().lines().findFirst().orElseThrow()).path("run_id").asString();
+		return output.toString().lines().map(fixture.json::readTree).
+			filter(record -> record.path("type").asString().equals("session_id")).findFirst().orElseThrow().
+			path("session_id").asString();
 	}
 
 	/**
@@ -847,14 +849,17 @@ public final class RequestServerTest
 				entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).
 					toList();
 			}
-			HarnessRun run = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(), Yielding.fileReplacer()).
-				withFixedRunId(option(arguments, "--run-id")).create("claude");
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId(option(arguments, "--run-id"));
+			HarnessRun run = manager.create("claude");
+			String sessionId = UUID.randomUUID().toString();
+			manager.recordHarnessSession(run, sessionId);
 			served.add(new ServedRun(runRoot, run, entries));
 			Files.writeString(run.directory().resolve("result.txt"), String.valueOf(served.size()));
 			Files.writeString(run.directory().resolve("left-behind"), "left behind");
 			Path output = Path.of(option(arguments, "--output"));
-			Files.writeString(output, fixture.json.createObjectNode().put("type", "started").
-				put("run_id", run.id()) + "\n");
+			Files.writeString(output, fixture.json.createObjectNode().put("type", "started") + "\n" +
+				fixture.json.createObjectNode().put("type", "session_id").put("session_id", sessionId) + "\n");
 			AtomicReference<FakeHarnessCli> process = new AtomicReference<>();
 			process.set(new FakeHarnessCli(line ->
 			{
@@ -862,8 +867,9 @@ public final class RequestServerTest
 				{
 					if (fixture.json.readTree(line).path("type").asString().equals("complete"))
 					{
-						Files.writeString(output, fixture.json.createObjectNode().put("type", "completed").
-							put("run_id", run.id()) + "\n", StandardOpenOption.APPEND);
+						Files.writeString(output, fixture.json.createObjectNode().put("type", "completed") + "\n",
+							StandardOpenOption.APPEND);
+						manager.markCompleted(run);
 						HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(),
 							Path.of(option(arguments, "--receipt")), run, output, List.of());
 						process.get().exit();

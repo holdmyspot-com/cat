@@ -39,16 +39,13 @@ public final class RequestedSessionProtocolContract
 			List<JsonNode> events = Files.readAllLines(observation.transcript()).stream().map(json::readTree).toList();
 			List<String> eventTypes = events.stream().map(event -> event.path("type").asString()).toList();
 			requireThat(eventTypes, "eventTypes").isEqualTo(
-				List.of("started", "turn_completed", "turn_completed", "completed"));
+				List.of("started", "session_id", "turn_completed", "turn_completed", "completed"));
+			requireThat(events.get(1).path("session_id").asString(), "sessionId").isNotBlank();
 
-			String runId = events.getFirst().path("run_id").asString();
-			requireThat(runId, "runId").isNotBlank();
-			for (JsonNode event : events)
-				requireThat(event.path("run_id").asString(), "producerRunId").isEqualTo(runId);
 			requireThat(observation.receivedPrompts(), "receivedPrompts").isEqualTo(inputs.prompts());
 			for (int turn = 0; turn < inputs.prompts().size(); turn += 1)
 			{
-				JsonNode completed = events.get(turn + 1);
+				JsonNode completed = events.get(turn + 2);
 				requireThat(completed.path("assistant_response").asString(), "assistantResponse").
 					isEqualTo(inputs.replies().get(turn));
 				requireThat(completed.path("assistant_messages").size(), "assistantMessageCount").isEqualTo(1);
@@ -57,8 +54,6 @@ public final class RequestedSessionProtocolContract
 				requireThat(completed.path("exit_code").asInt(-1), "exitCode").isEqualTo(0);
 				requireThat(completed.path("error").asString(), "turnError").isEmpty();
 			}
-			JsonNode manifest = json.readTree(observation.retainedRun().resolve("run.json").toFile());
-			requireThat(manifest.path("id").asString(), "retainedRunId").isEqualTo(runId);
 
 			HarnessEvaluationResult receipt = HarnessRunReceipt.read(json, observation.receipt(),
 				observation.retainedRun().resolve("project"));

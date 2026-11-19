@@ -16,7 +16,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -258,50 +257,46 @@ public final class SessionRequestForwarder
 				return Optional.empty();
 			runRoot = defaultRunRoot;
 		}
-		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "", launch.project());
+		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), launch.project());
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		return incomplete;
 	}
 
 	/**
-	 * Copies the kept run that a response names into a harness's runs. The session ran in a slot, which every session
-	 * of the slot shares, so the copy gets an identifier of its own, which no other kept run has.
+	 * Copies the session's results that a response names into a harness's runs, under the identifier that the harness
+	 * gave the session. The session ran in a slot, whose name every session of the slot shares, so the copy takes the
+	 * session's own identifier, which no other session has.
 	 *
 	 * @param response the response
 	 * @param runs     the directory that holds the harness's runs in the launch's run root
-	 * @param keptId   the identifier of the kept run that the command has been told of, or an empty string to give it
-	 *                 a new one
 	 * @param project  the project that the launch named, which the copy's manifest names
-	 * @return the reason why the copy is incomplete, or empty if the response names no kept run or the copy is
+	 * @return the reason why the copy is incomplete, or empty if the response names no results or the copy is
 	 *   complete
 	 * @throws IOException if the run cannot be copied
 	 */
-	private static Optional<String> copyKeptRun(JsonNode response, Path runs, String keptId, Path project)
+	private static Optional<String> copyKeptRun(JsonNode response, Path runs, Path project)
 		throws IOException
 	{
 		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
-		String runId = response.path("child_run_id").asString("");
-		if (run.isEmpty() || !RecordCopy.isRunId(runId))
+		String sessionId = response.path(SessionRequestBroker.SESSION_ID).asString("");
+		if (run.isEmpty() || !RecordCopy.isSessionId(sessionId))
 			return Optional.empty();
-		String kept = keptId;
-		if (kept.isEmpty())
-			kept = HarnessRunManager.newRunId(Clock.systemUTC());
-		return KeptRunCopy.copy(Path.of(run), runs.resolve(kept), kept, project).incomplete();
+		return KeptRunCopy.copy(Path.of(run), runs.resolve(sessionId), sessionId, project).incomplete();
 	}
 
 	/**
 	 * Serves one session of a CAT command, such as the prompt optimizer, through the run's runner: streams the
 	 * command's records to the requested session as it writes them, copies the session's records back as they arrive,
-	 * and copies the session's kept run, which the run's runner names in its response, into the launch's
-	 * {@code --run-root} as {@code <run root>/<harness>/<run id>}. The command creates that run's {@code artifacts}
-	 * directory once the session reports its start, so that what the command writes into the run while it runs has a
-	 * place. Before the command reads the record that reports the end of a completed turn, that run holds the
-	 * session's {@code project} and {@code initial-project} as the turn left them, so that the command can read what
-	 * the session has written so far, as it does in a session that it runs directly. A run that allows no further
-	 * session refuses the session before it publishes anything. The run's runner installs its own CAT for
-	 * {@code --install-cat}, so a launch that names another CAT as {@code --artifact} sends that CAT as a plugin, as a
-	 * launch that goes to a request server does.
+	 * and copies the session's results, which the run's runner names in its response, into the launch's {@code
+	 * --run-root} as {@code <run root>/<harness>/<session id>}, where the session ID is the one that the harness gave
+	 * the session. The command creates that directory's {@code artifacts} once the runner reports the ID, so that what
+	 * the command writes into the session's results while it runs has a place. Before the command reads the record that
+	 * reports the end of a completed turn, that run holds the session's {@code project} and {@code initial-project} as
+	 * the turn left them, so that the command can read what the session has written so far, as it does in a session
+	 * that it runs directly. A run that allows no further session refuses the session before it publishes anything. The
+	 * run's runner installs its own CAT for {@code --install-cat}, so a launch that names another CAT as {@code
+	 * --artifact} sends that CAT as a plugin, as a launch that goes to a request server does.
 	 *
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session
@@ -380,7 +375,6 @@ public final class SessionRequestForwarder
 			request.withArray("plugins").insert(0, launch.artifact().toString());
 		}
 		JsonNode response;
-		String keptId;
 		Path responses = responses(requests, id);
 		try (RecordCopy copy = new RecordCopy(json, output, launch.runRoot().resolve(harness),
 			     responses.resolve(SessionRequestBroker.TURN_COPY));
@@ -398,14 +392,12 @@ public final class SessionRequestForwarder
 			response = await(json, responses, sending, copy);
 			// The run's copy replaces the copies of the turns, which the copy of the run would otherwise collide with
 			copy.deleteTurnCopies();
-			keptId = copy.keptRunId();
 		}
 		String status = response.path("status").asString("");
 		String reason = response.path("reason").asString("");
 		boolean kept = !response.path(SessionRequestBroker.RUN_COPY).asString("").isEmpty() &&
-			RecordCopy.isRunId(response.path("child_run_id").asString(""));
-		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness), keptId,
-			launch.project());
+			RecordCopy.isSessionId(response.path(SessionRequestBroker.SESSION_ID).asString(""));
+		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness), launch.project());
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		if (incomplete.isPresent() && status.equals("completed"))
@@ -865,9 +857,9 @@ public final class SessionRequestForwarder
 		 */
 		private final ByteArrayOutputStream partial = new ByteArrayOutputStream();
 		/**
-		 * The identifier of the session's run, or an empty string until the session reports its start.
+		 * The identifier that the harness gave the session, or an empty string until the runner reports it.
 		 */
-		private String runId = "";
+		private String sessionId = "";
 		/**
 		 * Indicates whether the run holds a copy of turn evidence.
 		 */
@@ -898,29 +890,19 @@ public final class SessionRequestForwarder
 		void deleteTurnCopies() throws IOException
 		{
 			if (turnCopied)
-				KeptRunCopy.deleteTurnCopies(runs.resolve(runId));
+				KeptRunCopy.deleteTurnCopies(runs.resolve(sessionId));
 			turnCopied = false;
 		}
 
 		/**
-		 * Returns the identifier under which the command knows the session's kept run.
+		 * Indicates whether a text can name the directory of a session's results.
 		 *
-		 * @return the identifier, or an empty string until the session reports its start
+		 * @param sessionId the text
+		 * @return {@code true} if it is a session identifier, which names no other directory
 		 */
-		String keptRunId()
+		static boolean isSessionId(String sessionId)
 		{
-			return runId;
-		}
-
-		/**
-		 * Indicates whether a text can name a run's directory.
-		 *
-		 * @param runId the text
-		 * @return {@code true} if it is a run identifier, which names no other directory
-		 */
-		static boolean isRunId(String runId)
-		{
-			return runId.matches("[A-Za-z0-9._-]+") && !runId.startsWith(".");
+			return sessionId.matches("[A-Za-z0-9._-]+") && !sessionId.startsWith(".");
 		}
 
 		@Override
@@ -933,24 +915,22 @@ public final class SessionRequestForwarder
 			}
 			String line = partial.toString(StandardCharsets.UTF_8);
 			partial.reset();
-			if (line.contains("\"started\"") || line.contains("\"turn_completed\""))
+			if (line.contains("\"session_id\"") || line.contains("\"turn_completed\""))
 			{
 				try
 				{
 					JsonNode record = json.readTree(line);
 					String type = record.path("type").asString("");
-					String id = record.path("run_id").asString("");
-					if (type.equals("started") && isRunId(id))
+					String id = record.path("session_id").asString("");
+					if (type.equals("session_id") && sessionId.isEmpty() && isSessionId(id))
 					{
-						// Every session of a slot runs under the slot's identifier, but each kept run needs its own
-						runId = HarnessRunManager.newRunId(Clock.systemUTC());
-						((ObjectNode) record).put("run_id", runId);
-						line = json.writeValueAsString(record);
-						Files.createDirectories(runs.resolve(runId).resolve("artifacts"));
+						// The command writes into the session's results while the session runs
+						sessionId = id;
+						Files.createDirectories(runs.resolve(sessionId).resolve("artifacts"));
 					}
-					else if (type.equals("turn_completed") && !runId.isEmpty() && Files.isDirectory(turnCopy))
+					else if (type.equals("turn_completed") && !sessionId.isEmpty() && Files.isDirectory(turnCopy))
 					{
-						KeptRunCopy.copyTurn(turnCopy, runs.resolve(runId));
+						KeptRunCopy.copyTurn(turnCopy, runs.resolve(sessionId));
 						turnCopied = true;
 					}
 				}

@@ -93,7 +93,7 @@ public final class HarnessRunManager
 		  "schema_version": (?<schemaVersion>[3-6]),
 		  "cat_version": "(?<catVersion>[^\"]+)",
 		  "harness": "(?<harness>[a-z0-9]+)",
-		  "id": "(?<id>[a-z0-9]+-[a-z0-9]+)",
+		  "id": "(?<id>[A-Za-z0-9][A-Za-z0-9._:-]{0,127})",
 		  "state": "(?<state>running|completed|failed)",
 		  "phase": "(?<phase>initializing|idle|working|completed|failed)",
 		  "owner_pid": "?(?<ownerPid>[1-9][0-9]*)"?,
@@ -293,41 +293,23 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Gives the copy of a finished run the identifier under which it is kept, which is the name of its directory, by
-	 * rewriting the identifier in the copy's manifest. A run that ran in a slot has the slot's identifier, which every
-	 * run of the slot shares, so the copies that are kept each take an identifier of their own.
-	 *
-	 * @param directory the directory of the copy
-	 * @param id        the identifier under which the copy is kept
-	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code id} is not a run identifier
-	 * @throws IOException              if the copy's manifest is malformed or cannot be rewritten
-	 */
-	public static void renameCopy(Path directory, String id) throws IOException
-	{
-		requireThat(directory, "directory").isNotNull();
-		requireThat(id, "id").matches(RUN_ID);
-		writeCopyManifest(directory, directory, id, UnaryOperator.identity());
-	}
-
-	/**
 	 * Writes the manifest of a run into the directory of its copy under the identifier by which the copy is kept,
 	 * naming {@code project} as the run's project. The copy's manifest is replaced in one step, so a reader sees either
 	 * no manifest, the manifest that was there, or the new one. A run that has no manifest leaves the copy without one.
 	 *
 	 * @param source    the directory of the run
 	 * @param directory the directory of the copy, which exists
-	 * @param id        the identifier under which the copy is kept
+	 * @param id        the identifier under which the copy is kept, which the harness gave the run's session
 	 * @param project   the project that the copy's manifest names
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code id} is not a run identifier
+	 * @throws IllegalArgumentException if {@code id} is not a harness session identifier
 	 * @throws IOException              if the run's manifest is malformed or the copy's cannot be written
 	 */
 	public static void copyManifest(Path source, Path directory, String id, Path project) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(directory, "directory").isNotNull();
-		requireThat(id, "id").matches(RUN_ID);
+		requireThat(id, "id").matches(HARNESS_SESSION_ID);
 		requireThat(project, "project").isNotNull();
 		String projectPath = escape(project.toAbsolutePath().normalize().toString());
 		writeCopyManifest(source, directory, id, _ -> projectPath);
@@ -619,6 +601,24 @@ public final class HarnessRunManager
 	{
 		requireThat(run, "run").isNotNull();
 		return Optional.ofNullable(readManifest(run).harnessSessionId());
+	}
+
+	/**
+	 * Returns the identifier that the harness gave the session of the run in a directory, such as a slot's run that
+	 * its requester's runner reads once the run has ended.
+	 *
+	 * @param directory the run's directory
+	 * @return the identifier, or empty if the run has no manifest or the harness has not reported it
+	 * @throws NullPointerException if {@code directory} is null
+	 * @throws IOException          if the manifest is malformed or cannot be read
+	 */
+	public static Optional<String> harnessSessionId(Path directory) throws IOException
+	{
+		requireThat(directory, "directory").isNotNull();
+		Path manifest = directory.resolve("run.json");
+		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
+			return Optional.empty();
+		return Optional.ofNullable(readManifest(manifest).harnessSessionId());
 	}
 
 	/**
@@ -1400,11 +1400,11 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Removes disposable runtime state from every terminal run owned by one harness root. Entries whose names are not
-	 * generated run identifiers are not runs and stay as they are, such as the {@code .claude} directories that a
-	 * harness sandbox creates in the directories above its working directory. A run folder that has no manifest stays
-	 * as it is too: a requester's copy of a requested session's run has none until the session ends, or ever if the
-	 * session was stopped, and a run that was being created or deleted at that moment has none either.
+	 * Removes disposable runtime state from every terminal run owned by one harness root. Entries whose names are
+	 * neither run nor session identifiers are not runs and stay as they are, such as the {@code .claude} directories
+	 * that a harness sandbox creates in the directories above its working directory. A run folder that has no manifest
+	 * stays as it is too: a requester's copy of a requested session's run has none until the session ends, or ever if
+	 * the session was stopped, and a run that was being created or deleted at that moment has none either.
 	 *
 	 * @param harness the owning harness name
 	 * @throws IOException if a manifest is malformed or disposable state cannot be removed
@@ -1421,7 +1421,7 @@ public final class HarnessRunManager
 		{
 			for (Path entry : entries.toList())
 			{
-				if (!RUN_ID.matcher(entry.getFileName().toString()).matches())
+				if (!HARNESS_SESSION_ID.matcher(entry.getFileName().toString()).matches())
 					continue;
 				if (Files.isSymbolicLink(entry) || !Files.isDirectory(entry, NOFOLLOW_LINKS))
 					throw new IOException("Harness run is not an owned directory: " + entry);

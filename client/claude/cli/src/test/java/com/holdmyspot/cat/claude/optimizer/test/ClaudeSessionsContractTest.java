@@ -411,7 +411,8 @@ public final class ClaudeSessionsContractTest
 					List.of("Hydrogen and oxygen form water (H₂O).\n\nShip small, ship often.")));
 				List<String> all = new ArrayList<>(first);
 				all.addAll(second);
-				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(all);
+				requireThat(Files.readAllLines(completed.transcript(), UTF_8), "transcript").isEqualTo(
+					RecordedClaude.asServed(all, completed.transcript()));
 				requireThat(completed.usage(), "usage").isEqualTo(new TokenUsage(119_179, 97_940, 627, 337));
 				requireThat(completed.effects(), "effects").isEqualTo(completed.transcript().getParent().getParent().
 					resolve("project"));
@@ -504,7 +505,7 @@ public final class ClaudeSessionsContractTest
 					requireThat(completed.responses().getFirst().size(), role + ".messages.size").
 						isEqualTo(messages.get(role));
 					requireThat(Files.readAllLines(completed.transcript(), UTF_8), role + ".transcript").
-						isEqualTo(events.get(role));
+						isEqualTo(RecordedClaude.asServed(events.get(role), completed.transcript()));
 					transcripts.add(completed.transcript());
 					effects.add(completed.effects());
 				}

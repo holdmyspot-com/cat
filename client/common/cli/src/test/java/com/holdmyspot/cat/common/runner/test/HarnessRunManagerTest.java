@@ -181,13 +181,13 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that the copy of a run that ran under a fixed identifier can be kept under another, so that the run's
-	 * manifest identifies the directory that holds it.
+	 * Verifies that the copy of a run that ran in a slot, under the slot's identifier, is kept under the identifier that
+	 * the harness gave its session, and that its manifest identifies the directory that holds it.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void renamesCopyOfFixedIdRun() throws IOException
+	public void namesCopyBySessionId() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -196,14 +196,14 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.withFixedRunId("slot-1").create("harness");
-			Path kept = root.resolve("kept").resolve("abc-def");
-			Files.createDirectories(kept);
-			Files.copy(run.directory().resolve("run.json"), kept.resolve("run.json"));
+			String sessionId = "5d1c0f3e-2a4b-4c6d-8e9f-0a1b2c3d4e5f";
+			Path kept = Files.createDirectories(root.resolve("kept").resolve(sessionId));
 
-			HarnessRunManager.renameCopy(kept, "abc-def");
+			HarnessRunManager.copyManifest(run.directory(), kept, sessionId, root.resolve("project"));
 
-			manager.markCompleted(new HarnessRun("harness", "abc-def", kept));
-			requireThat(Files.readString(kept.resolve("run.json")), "manifest").contains("\"id\": \"abc-def\"");
+			manager.markCompleted(new HarnessRun("harness", sessionId, kept));
+			requireThat(Files.readString(kept.resolve("run.json")), "manifest").
+				contains("\"id\": \"" + sessionId + "\"");
 		}
 	}
 

@@ -76,10 +76,8 @@ public final class ServedSessionTest
 
 				List<String> types = output.toString().lines().map(line -> json.readTree(line).path("type").asString()).
 					toList();
-				requireThat(types, "types").isEqualTo(List.of("started", "turn_completed", "completed"));
-				String runId = json.readTree(output.toString().lines().findFirst().orElseThrow()).path("run_id").
-					asString();
-				Path kept = inputs.runRoot.resolve("claude").resolve(runId);
+				requireThat(types, "types").isEqualTo(List.of("started", "session_id", "turn_completed", "completed"));
+				Path kept = inputs.runRoot.resolve("claude").resolve(RequestingRun.SESSION_ID);
 				requireThat(Files.isDirectory(kept.resolve("artifacts")), "artifacts").isTrue();
 				requireThat(Files.readString(kept.resolve("project/result.txt")), "result").isEqualTo("result");
 				requireThat(Files.exists(kept.resolve("home")), "home").isFalse();
