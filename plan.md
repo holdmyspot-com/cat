@@ -139,6 +139,13 @@ any turn (receipts in their folders).
 - The sandbox has had no `/sys` since the restart, so `BuildWorkerTest.realTreeIsSampledAndReaped` and
   `BuildAdmissionCliTest.modularMainRunsControllerOperation` fail locally in OSHI's initializer; every other test of
   the full build passes. The hosted Build covers them.
+- Windows/hosted fixes found by Build of `cb776a9c3`: `1ed8a70e5`, `b5ae3811e`, `92f85a2c4` (test-only).
+- Release of `92f85a2c4` failed twice in linux-x64's tag check, silently: `help:evaluate` was the release's only step
+  that downloaded from Maven Central, and its captured output hid Maven's error (Central refusing or throttling the
+  runner fits the timings; not proven). `6548f4a60` checks the tag with the enforcer before the build, visibly and
+  without downloads. The cleanup job also deleted every platform's files after a failed publish, so re-running failed
+  jobs could never publish; `f20a8532c` runs it only after a successful publish. Validated on a branch copy of the
+  workflow (run 44429368207).
 
 Earlier next-step list: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
 traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
