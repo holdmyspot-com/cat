@@ -242,6 +242,8 @@ public sealed interface LaunchRoute
 	 *   <li>When only the other harness runs the command, the launch is refused, since only that harness's plugin
 	 *   holds the request server of its sessions, and the message names the plugin to use instead:
 	 *   {@link Refused}.</li>
+	 *   <li>When no harness runs the command, a launch that names {@value RunnerArguments#RESUME_OPTION} is refused,
+	 *   since nothing outside a harness session or a run keeps the run of an interrupted session: {@link Refused}.</li>
 	 *   <li>A launch that names {@value PolicyBoundFile#OPTION} serves its session within that bound:
 	 *   {@link Bounded}.</li>
 	 *   <li>When no harness runs the command, the session starts in place: {@link InPlace}.</li>
@@ -286,6 +288,13 @@ public sealed interface LaunchRoute
 			return new Refused("CAT cannot start the session: " + otherName + " runs this command, and CAT's " +
 				RequestServer.productName(plugin) + " plugin holds no request server for a " + otherName + " session. " +
 				"Run the runner of CAT's " + otherName + " plugin instead.");
+		}
+		if (Arrays.asList(args).contains(RunnerArguments.RESUME_OPTION))
+		{
+			return new Refused("CAT cannot resume the session: " + RunnerArguments.RESUME_OPTION + " continues an " +
+				"interrupted session in the run that keeps it, and only the request server of the harness session that " +
+				"started it, or the runner of the run whose session started it, keeps such a run. Run the launcher " +
+				"from that session.");
 		}
 		if (Arrays.asList(args).contains(PolicyBoundFile.OPTION))
 			return new Bounded();

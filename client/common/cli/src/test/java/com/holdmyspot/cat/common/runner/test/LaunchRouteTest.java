@@ -103,6 +103,26 @@ public final class LaunchRouteTest
 	}
 
 	/**
+	 * Verifies that a launch that resumes a session, from a command that no harness runs, is refused, bound or not,
+	 * since only a request server or a run's runner keeps an interrupted session's run.
+	 */
+	@Test
+	public void refusesResumeOutsideHarnessSession()
+	{
+		for (List<String> launch : List.of(LAUNCH, BOUND_LAUNCH))
+		{
+			List<String> resume = new ArrayList<>(launch);
+			resume.addAll(List.of("--resume", "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"));
+
+			LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of(), resume.toArray(String[]::new),
+				Map.of());
+
+			requireThat(route, "route").isInstanceOf(LaunchRoute.Refused.class);
+			requireThat(((LaunchRoute.Refused) route).reason(), "reason").contains("--resume");
+		}
+	}
+
+	/**
 	 * Returns each option that only CAT's own starters pass, with the harnesses that run the command.
 	 *
 	 * @return the option and the harnesses
