@@ -2631,8 +2631,11 @@ formal failures, a contract author session receives, for each prompt test with a
 only its development test cases, and each failure's cell, failed assertions and behaviors. It writes new development
 test cases for that test, at least 4, that exercise the failed assertions through that behavior, or reports with a
 reason that the confirmed test admits no 4 valid new ones (user ruling, 2026-11-01). CAT refuses a new test
-case whose normalized expected outcome equals a held-out one, and validates it like any other. The new test cases
-belong to the development part only, and the held-out part never changes. They join development only once they
+case whose normalized expected outcome equals a held-out one, and validates it like any other. When CAT refuses
+the session's test cases, it sends the problems back to the same session once, without naming the part that holds a
+refused outcome, so that the session corrects them with the group still in context; that turn has a time limit of its
+own. A corrected response that CAT also refuses stops the slice with an infrastructure failure, which `run` retries
+with a new session. The new test cases belong to the development part only, and the held-out part never changes. They join development only once they
 reproduce the failure (below). Development draws of that test then give the added test cases, together, half of the
 test's draws, the other half going to its confirmed development test cases. A failure on an added test case is an
 ordinary development failure, which triage and prompt authors receive in full. The development distribution has
