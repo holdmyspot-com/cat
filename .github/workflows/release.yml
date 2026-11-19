@@ -228,12 +228,13 @@ jobs:
           gh release create "${GITHUB_REF_NAME}" release/* --repo "${GITHUB_REPOSITORY}"
           --title "CAT ${GITHUB_REF_NAME}" --notes-file "${RUNNER_TEMP}/release-notes.md" --generate-notes
 
-  # Artifact storage is billed by the hour, so delete the native release files once publishing ends instead of
-  # keeping them for their retention period. This also runs when a build or the publish job fails.
+  # Artifact storage is billed by the hour, so delete the native release files once the release is published instead
+  # of keeping them for their retention period. When a build or the publish job fails, the files stay for their
+  # one-day retention, so that re-running the failed jobs can still publish every platform's files.
   cleanup:
     name: Delete native release files
-    needs: [build, publish]
-    if: always()
+    needs: publish
+    if: needs.publish.result == 'success'
     runs-on: ubuntu-26.04
     permissions:
       actions: write
