@@ -690,6 +690,47 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that writes or keeps a test of a script that the project owns, such as a generated launcher,
+	 * a hook command, or shell command text in a rule, can reach the packaged rule for choosing its test language: the
+	 * testing and build area index routes test design to the testing rule, whose guidance puts every test that runs
+	 * such a script in the project's shell-test framework, forbids an application-language test from running one and
+	 * limits it to what application code decides about the script, has the agent move the claims of such a test to a
+	 * shell test even when it passes, and has the agent add a shell-test framework or ask the user when the project has
+	 * none.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void scriptTestLanguageRuleIsRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
+				"testingIndex").
+				contains("When designing, changing, running to verify a change, or reviewing tests, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/testing.md`.");
+			String rule = oneLine(Files.readString(include.resolve("testing.md")));
+			requireThat(rule, "testing").startsWith("# Testing Focus and Isolation ").
+				contains("and for every test that runs a script the project owns: a shell script, generated " +
+					"launcher, hook command, packaged command-line entry point, or shell command text in a rule or " +
+					"document.").
+				contains("An application-language test must not run such a script. It proves only what " +
+					"application code decides about the script, such as the text the code generates, the hook " +
+					"entries it writes, or the arguments it passes;").
+				contains("Do not keep an application-language test that runs one, even when it passes: move each " +
+					"claim about what the script does to a shell test").
+				contains("When the project has no shell-test framework, add one if your task permits changing the " +
+					"project's test dependencies; otherwise ask the user whether to add one.");
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 * <p>
 	 * The case routes a rule and loads it through the YAML-backed loader, which takes about 0.25 s alone when it

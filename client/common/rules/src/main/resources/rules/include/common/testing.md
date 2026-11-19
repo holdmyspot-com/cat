@@ -13,6 +13,13 @@
 	with a test that runs or fakes an executable, network service, or operating-system facility. Keep integration tests
 	only for claims about the application's own wiring at the boundary and one end-to-end check per boundary, and lose no
 	claim when converting an existing test.
+<!-- Application-language tests once ran generated launchers, hook commands and rule command text against fake
+programs: they proved script behaviour outside the shell-test framework, and running scripts from one multi-threaded
+test process failed with "Text file busy" when a child process inherited a write handle to a script that another test
+was writing. -->
+- Prove what a script that the project owns does when it runs, such as a generated launcher, a hook command, or shell
+	command text in a rule, only with a test in the project's shell-test framework, so that no application-language
+	test runs such a script and each proves only what application code decides about it.
 - Verify meaningful changes efficiently with the narrowest relevant test and the complete suite before handoff.
 
 ## Guidance
@@ -35,8 +42,15 @@ application depends on.
 Choose the test language from the behavior being claimed, not from the fact that it uses a command, files, or another
 tool. Test behavior in the same process when its dependencies can be injected. Use the project's shell-test framework
 when the claimed behavior depends on POSIX-shell parsing, expansion, exit handling, or a packaged shell-facing
-interface. Do not use a shell test merely because application code invokes another command; do not use a facade that
-skips shell behavior a shell contract must prove.
+interface, and for every test that runs a script the project owns: a shell script, generated launcher, hook command,
+packaged command-line entry point, or shell command text in a rule or document. An application-language test must not
+run such a script. It proves only what application code decides about the script, such as the text the code generates,
+the hook entries it writes, or the arguments it passes; each of these is a decided claim, defined below. Do not keep an
+application-language test that runs one, even when it passes: move each claim about what the script does to a shell
+test and each decided claim to an application-language test that does not run the script, then delete the old test
+once those tests pass. When the project has no shell-test framework, add one if your task permits changing the
+project's test dependencies; otherwise ask the user whether to add one. Do not use a shell test merely because
+application code invokes another command; do not use a facade that skips shell behavior a shell contract must prove.
 
 Before writing or keeping an integration test, list each claim it makes. An integration test is a test that crosses
 an external boundary: an executable, network service, or operating-system facility that production code calls, such as
