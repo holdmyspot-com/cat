@@ -1258,10 +1258,10 @@ public final class ClaudeConnectionSettings
 	 * parent's settings deny, with each rule naming its path as {@link #rulePattern(Path)} gives it. Does nothing if
 	 * {@code deniedReads} is empty.
 	 * <p>
-	 * A directory that holds one of {@code writeRoots}, such as the project that holds the run folder of a session that
-	 * runs in place, is denied as every file and directory in it except the write roots and the directories that lead
-	 * to them. A Read rule that covered a write root would stop the instance's Write tool there, since that tool also
-	 * refuses a path that a Read rule denies. A file or directory that appears in such a directory after this method
+	 * A directory that holds one of {@code writeRoots}, such as the project that holds the run folder of a session, is
+	 * denied as every file and directory in it except the write roots and the directories that lead to them. A Read
+	 * rule that covered a write root would stop the instance's Write tool there, since that tool also refuses a path
+	 * that a Read rule denies. A file or directory that appears in such a directory after this method
 	 * returns is not denied.
 	 *
 	 * @param settings    the isolated settings

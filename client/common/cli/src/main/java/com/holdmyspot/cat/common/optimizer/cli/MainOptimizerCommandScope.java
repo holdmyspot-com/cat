@@ -277,7 +277,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 					yield Optional.of(RequestServer.missingServer(plugin()));
 				}
 			}
-			case LaunchRoute.Forward _, LaunchRoute.Refused _, LaunchRoute.Bounded _, LaunchRoute.InPlace _ ->
+			case LaunchRoute.Forward _, LaunchRoute.Refused _, LaunchRoute.Bounded _ ->
 				Optional.empty();
 		};
 	}
@@ -310,8 +310,8 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 
 	/**
 	 * Opens the channel that this command's worktree requests go through, by the route that decides its launches:
-	 * the run's runner inside a run, the host session's request server when this scope's harness runs the command
-	 * outside a run, and none when no harness runs the command, which then carries out the operations itself.
+	 * the run's runner inside a run and the host session's request server when this scope's harness runs the command
+	 * outside a run. A command that no harness session runs is refused before it reaches this channel.
 	 *
 	 * @return the channel, or empty if the command carries out the operations itself
 	 * @throws WorktreeRefusedException if the route refuses the command's requests, or no request server serves the
@@ -336,7 +336,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 					yield Optional.of(new ServerChannel(requests.get()));
 				}
 			}
-			case LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> Optional.empty();
+			case LaunchRoute.Bounded _ -> Optional.empty();
 		};
 	}
 

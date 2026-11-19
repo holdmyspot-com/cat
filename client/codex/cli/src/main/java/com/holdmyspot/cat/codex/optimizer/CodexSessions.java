@@ -417,8 +417,8 @@ public final class CodexSessions extends RunnerSessions
 	 *   kept run is copied into the optimizer's run root.</li>
 	 *   <li>Inside a run whose runner lets its session request none, or when only Claude Code runs the optimizer, the
 	 *   session is refused with the reason that the runner's launch gives.</li>
-	 *   <li>When no harness runs the optimizer, the session is refused: the optimizer never starts its sessions in
-	 *   place, and its commands refuse to run before they reach here.</li>
+	 *   <li>When no harness runs the optimizer, the session is refused, as every launch is that no harness session
+	 *   runs, and its commands refuse to run before they reach here.</li>
 	 * </ul>
 	 * A refused session fails with a {@link LaunchRefusedException}.
 	 *
@@ -442,7 +442,7 @@ public final class CodexSessions extends RunnerSessions
 					HARNESS_ID, settings.artifact(), arguments, input, output, requests,
 					settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL));
 				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
-				case LaunchRoute.Bounded _, LaunchRoute.InPlace _ -> throw new LaunchRefusedException(
+				case LaunchRoute.Bounded _ -> throw new LaunchRefusedException(
 					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
 						"server serves it. Run the prompt optimizer from a Claude Code or Codex session.");
 			}

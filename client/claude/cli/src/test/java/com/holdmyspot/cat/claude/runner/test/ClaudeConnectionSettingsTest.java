@@ -895,7 +895,7 @@ public final class ClaudeConnectionSettingsTest
 
 	/**
 	 * Verifies that when the bound denies reading a folder that holds the session's own write root, such as the
-	 * project that holds the run folder of a session that runs in place, the Read rules deny the rest of that folder
+	 * project that holds the run folder of a session, the Read rules deny the rest of that folder
 	 * but not the write root, so the session's file tools can write there. A read that the session's own needs deny
 	 * inside the write root, and the sandbox's read denial of the folder, stay.
 	 *

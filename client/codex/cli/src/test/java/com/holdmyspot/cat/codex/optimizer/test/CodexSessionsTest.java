@@ -2272,7 +2272,7 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that a session is refused, not started in place, when no harness runs the optimizer, whatever the
+	 * Verifies that a session is refused when no harness runs the optimizer, whatever the
 	 * session needs.
 	 *
 	 * @throws IOException          if a fixture cannot be created
@@ -2303,7 +2303,7 @@ public final class CodexSessionsTest
 
 			requireThat(result, "result").isInstanceOf(SessionResult.LaunchRefused.class);
 			requireThat(((SessionResult.LaunchRefused) result).reason(), "reason").
-				contains("Run the prompt optimizer from a Claude Code or Codex session");
+				contains("Run this command from a Claude Code or Codex session.");
 		}
 	}
 

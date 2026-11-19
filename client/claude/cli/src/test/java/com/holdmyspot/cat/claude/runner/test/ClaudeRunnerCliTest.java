@@ -6,7 +6,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.claude.policy.ClaudeCommandSession;
-import com.holdmyspot.cat.claude.runner.ClaudeRunner;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
@@ -23,10 +22,8 @@ import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
-import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import java.io.ByteArrayOutputStream;
@@ -788,43 +785,6 @@ public final class ClaudeRunnerCliTest
 		requireThat(harnesses, "harnesses").withContext(environment, "environment").isEqualTo(expected);
 	}
 
-	/**
-	 * Verifies that a launch that no harness runs is bounded by exactly what a Claude session needs: its run folder
-	 * and the writes and hosts that the Claude runner reports, the reads that the launch denies, and nothing more.
-	 * The bounded launch then serves its session in place within that bound.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void boundsUnmarkedLaunchByNeeds() throws IOException
-	{
-		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
-			TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path runRoot = home.resolve("runs");
-			Path secret = Files.createDirectory(home.resolve("secret"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
-			String[] args = {"--project", project.toString(), "--run-root", runRoot.toString(), "--deny-read",
-				secret.toString(), "--model", "sonnet", "--effort", "low"};
-			ChildNeedsReport needs = ClaudeRunner.childNeeds(scope, environment);
-
-			List<String> bounded = ClaudeRunnerCli.inPlaceArguments(scope, project, args, environment, cleanup);
-
-			requireThat(bounded.subList(0, args.length), "options").isEqualTo(List.of(args));
-			requireThat(bounded.get(args.length), "option").isEqualTo(PolicyBoundFile.OPTION);
-			ChildPolicy policy = PolicyBoundFile.read(scope.json(), Path.of(bounded.get(args.length + 1)));
-			List<Path> writes = new ArrayList<>(List.of(runRoot));
-			writes.addAll(needs.writes());
-			requireThat(policy.writeRoots(), "writeRoots").isEqualTo(writes);
-			requireThat(policy.writeDenials(), "writeDenials").isEmpty();
-			requireThat(policy.readDenials(), "readDenials").isEqualTo(List.of(secret));
-			requireThat(policy.hosts(), "hosts").isEqualTo(needs.hosts());
-			requireThat(LaunchRoute.decide("claude", "claude", ClaudeRunnerCli.MARKERS.running(environment),
-				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
-		}
-	}
 
 	/**
 	 * Verifies that a launch whose environment holds no Claude authentication variable is refused on Linux and
@@ -962,19 +922,19 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch that no harness runs is refused with the refusal status, and starts nothing, when what
-	 * its session needs cannot be determined: CAT cannot then read the session's sandbox policy.
+	 * Verifies that a launch that no harness session runs, such as one in a terminal or a script, is refused with the
+	 * refusal status and a message that says to run the launcher from a Claude Code or Codex session, and starts
+	 * nothing.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void refusesUnmarkedLaunchWithoutNeeds() throws IOException
+	public void refusesUnmarkedLaunch() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
 			Path project = Files.createDirectory(home.resolve("project"));
-			Files.writeString(home.resolve(".npm"), "not a folder");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString());
 			StringWriter errors = new StringWriter();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -984,41 +944,12 @@ public final class ClaudeRunnerCliTest
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").startsWith("CAT cannot start the session: it cannot read this " +
-				"Claude Code session's sandbox policy: ");
+			requireThat(errors.toString(), "errors").contains("Run this command from a Claude Code or Codex session.");
 			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
 		}
 	}
 
-	/**
-	 * Verifies that a launch that no harness runs is refused with the refusal status, as every launch is whose needs
-	 * cannot be determined, when its model provider's base URL names no host, and that the refusal names the setting
-	 * and starts nothing.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesUnmarkedLaunchWithoutModelHost() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path project = Files.createDirectory(home.resolve("project"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"ANTHROPIC_BASE_URL", "file:///no-host");
-			StringWriter errors = new StringWriter();
-			ByteArrayOutputStream output = new ByteArrayOutputStream();
-
-			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
-				home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"}, environment,
-				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
-
-			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").startsWith("CAT cannot start the session: it cannot read this " +
-				"Claude Code session's sandbox policy: ").contains("ANTHROPIC_BASE_URL names no host: file:///no-host");
-			requireThat(output.size(), "outputSize").isZero();
-		}
-	}
 
 	/**
 	 * Verifies that the runner that a request server asks for a child's needs writes them to the file it is given

@@ -4,7 +4,6 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliAccess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
@@ -21,10 +20,8 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
-import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -1020,61 +1017,21 @@ public final class CodexRunnerCliTest
 		requireThat(harnesses, "harnesses").withContext(environment, "environment").isEqualTo(expected);
 	}
 
+
 	/**
-	 * Verifies that a launch that no harness runs is bounded by exactly what a Codex session needs: its run folder
-	 * and the writes and hosts that the Codex runner reports, the reads that the launch denies, and nothing more.
-	 * The bounded launch then serves its session in place within that bound.
+	 * Verifies that a launch that no harness session runs, such as one in a terminal or a script, is refused with the
+	 * refusal status and a message that says to run the launcher from a Claude Code or Codex session, and starts
+	 * nothing.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void boundsUnmarkedLaunchByNeeds() throws IOException
-	{
-		try (TemporaryDirectories cleanup = new TemporaryDirectories())
-		{
-			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
-			Path codexHome = Files.createDirectory(home.resolve(".codex"));
-			Path project = Files.createDirectory(home.resolve("project"));
-			Path runRoot = home.resolve("runs");
-			Path secret = Files.createDirectory(home.resolve("secret"));
-			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
-				"CODEX_HOME", codexHome.toString(), "OPENAI_API_KEY", "credential");
-			String[] args = {"serve", "--project", project.toString(), "--run-root", runRoot.toString(), "--deny-read",
-				secret.toString(), "--model", "gpt-6-luna", "--effort", "low"};
-			ChildNeedsReport needs = CodexRunner.childNeeds(environment);
-
-			List<String> bounded = CodexRunnerCli.inPlaceArguments(project, args, environment, Yielding.waiting(),
-				cleanup);
-
-			requireThat(bounded.subList(0, args.length), "options").isEqualTo(List.of(args));
-			requireThat(bounded.get(args.length), "option").isEqualTo(PolicyBoundFile.OPTION);
-			ChildPolicy policy = PolicyBoundFile.read(JsonMapper.builder().build(),
-				Path.of(bounded.get(args.length + 1)));
-			List<Path> writes = new ArrayList<>(List.of(runRoot));
-			writes.addAll(needs.writes());
-			requireThat(policy.writeRoots(), "writeRoots").isEqualTo(writes);
-			requireThat(policy.writeDenials(), "writeDenials").isEmpty();
-			requireThat(policy.readDenials(), "readDenials").isEqualTo(List.of(secret));
-			requireThat(policy.hosts(), "hosts").isEqualTo(needs.hosts());
-			requireThat(LaunchRoute.decide("codex", "codex", CodexRunnerCli.MARKERS.running(environment),
-				bounded.toArray(String[]::new), environment), "route").isEqualTo(new LaunchRoute.Bounded());
-		}
-	}
-
-	/**
-	 * Verifies that a launch that no harness runs is refused with the refusal status, and starts nothing, when what
-	 * its session needs cannot be determined: CAT cannot then read the session's sandbox policy.
-	 *
-	 * @throws IOException if the test filesystem cannot be used
-	 */
-	@Test
-	public void refusesUnmarkedLaunchWithoutNeeds() throws IOException
+	public void refusesUnmarkedLaunch() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path home = cleanup.add(Files.createTempDirectory("runner-home-")).toRealPath();
 			Path project = Files.createDirectory(home.resolve("project"));
-			Files.writeString(home.resolve(".npm"), "not a folder");
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
 				"CODEX_HOME", home.resolve(".codex").toString());
 			StringWriter errors = new StringWriter();
@@ -1085,9 +1042,9 @@ public final class CodexRunnerCliTest
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").startsWith("CAT cannot start the session: it cannot read this " +
-				"Codex session's sandbox policy: ");
+			requireThat(errors.toString(), "errors").contains("Run this command from a Claude Code or Codex session.");
 			requireThat(output.size(), "outputSize").isZero();
+			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
 		}
 	}
 

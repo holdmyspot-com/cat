@@ -533,7 +533,7 @@ public final class RequestServer
 				other.get() + " session runs it. Run the request server of CAT's " + other.get() + " plugin instead.");
 		}
 		return Optional.of("The request server serves the " + productName + " session whose agent starts it, " +
-			"but no harness session runs it. A runner launcher that no harness runs starts its session itself.");
+			"but no harness session runs it. Start it from that session.");
 	}
 
 	/**

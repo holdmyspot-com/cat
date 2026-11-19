@@ -333,12 +333,12 @@ public final class RunnerRelayTest
 
 	/**
 	 * Verifies that a launch that CAT's own starter bounds, from a command that no harness runs, runs the selected
-	 * artifact's runner in place with the caller's options.
+	 * artifact's runner with the caller's options.
 	 *
 	 * @throws IOException if the relay fails
 	 */
 	@Test
-	public void runsStarterBoundedLaunchInPlace() throws IOException
+	public void runsStarterBoundedLaunch() throws IOException
 	{
 		Path artifact = Path.of("/other-artifact").toAbsolutePath();
 		Path runner = artifact.resolve("bin/harness-b-runner");
@@ -360,30 +360,30 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that no harness runs runs the selected artifact's runner with only the
-	 * caller's options, which starts the session in place, without bounding it here.
+	 * Verifies that a launch from a command that no harness session runs is refused with status 2 and a message that
+	 * says to run the launcher from a Claude Code or Codex session, before the launcher selects an artifact, starts a
+	 * runner or sends a request.
 	 *
 	 * @throws IOException if the relay fails
 	 */
 	@Test
-	public void runsUnmarkedLaunchInPlace() throws IOException
+	public void refusesUnmarkedLaunch() throws IOException
 	{
-		Path artifact = Path.of("/other-artifact").toAbsolutePath();
-		Path runner = artifact.resolve("bin/harness-b-runner");
-		List<List<String>> commands = new ArrayList<>();
+		ByteArrayOutputStream output = new ByteArrayOutputStream();
+		StringWriter errors = new StringWriter();
 
 		int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project", "project"},
-			Map.of(), Platform.LINUX_X64,
-			() -> "artifact=" + artifact + "\nrunner=" + runner + "\nsource=installed\n",
-			(command, _) ->
+			Map.of(), Platform.LINUX_X64, () ->
 			{
-				commands.add(command);
-				return 0;
-			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, new ByteArrayOutputStream(),
-			new PrintWriter(new StringWriter()));
+				throw new AssertionError("No artifact is selected");
+			}, (_, _) ->
+			{
+				throw new AssertionError("No runner starts");
+			}, PLUGIN, NO_SCOPE, new StringReader(""), NO_PAUSE, output, new PrintWriter(errors, true));
 
-		requireThat(status, "status").isEqualTo(0);
-		requireThat(commands, "commands").isEqualTo(List.of(List.of(runner.toString(), "--project", "project")));
+		requireThat(status, "status").isEqualTo(2);
+		requireThat(errors.toString(), "errors").contains("Run this command from a Claude Code or Codex session.");
+		requireThat(output.size(), "outputBytes").isEqualTo(0);
 	}
 
 	/**

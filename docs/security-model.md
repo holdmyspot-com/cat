@@ -298,9 +298,9 @@ your configuration selects none (see Codex permission profile above); Codex with
 A runner launcher that a session runs stays inside the session's sandbox. It packs the launch as a request into the
 session's CAT session directory, waits there for the request server's response, and writes the transcript, the receipt
 and any kept run itself, so every file that the launch reads is one the session may read, and every file that it
-writes is one the session may write. A runner launcher that no harness runs, such as one that you run in a terminal,
-needs no request server: it starts the new session itself, inside that harness's own sandbox, with exactly what the
-session needs.
+writes is one the session may write. A runner launcher runs only from a Claude Code or Codex session: one that no
+harness session runs, such as one that you run in a terminal or a script, refuses with status 2 and says to run it from
+a Claude Code or Codex session.
 
 The request server treats every request as the session's and checks it before it starts anything:
 
@@ -355,7 +355,7 @@ a message that begins "CAT cannot start the request server:" and names each caus
 - Codex 0.160.0 runs a command that a rule allows outside its sandbox only when the session's filesystem permissions
 	deny no reads ([openai/codex#38318](https://github.com/openai/codex/issues/38318)). When the permissions profile
 	denies any read, the message names the profile and each denied path and pattern. Remove those entries and start a
-	new Codex session, or start the session from a terminal.
+	new Codex session.
 - A session of a CAT run, such as a trial, that runs the request server stays sandboxed: a run's Codex session always
 	denies some reads, so Codex keeps the server inside the sandbox whatever rule allows it, and the run's thread keeps
 	no rollout that could name them unless its caller keeps the session's transcripts. The message says that no request

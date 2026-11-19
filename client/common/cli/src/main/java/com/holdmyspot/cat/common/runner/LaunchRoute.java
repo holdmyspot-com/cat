@@ -1,25 +1,14 @@
 package com.holdmyspot.cat.common.runner;
 
-import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.launcher.ChildBound;
-import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
-import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
-import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
-import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
-import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -30,6 +19,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  */
 public sealed interface LaunchRoute
 {
+	/**
+	 * Why a launch is refused when no harness session runs the command that makes it.
+	 */
+	String NO_HARNESS_REFUSAL = "CAT cannot start the session: CAT starts sessions only for a Claude Code or Codex " +
+		"session, and none runs this command. Run this command from a Claude Code or Codex session.";
 	/**
 	 * The options that only CAT's own starters pass to a runner launcher. A harness session's launch may not name
 	 * them: each one would let the session choose what bounds the new session.
@@ -112,120 +106,11 @@ public sealed interface LaunchRoute
 
 	/**
 	 * The launch names the policy that bounds its session with {@value PolicyBoundFile#OPTION}, as CAT's own starters,
-	 * such as a run's runner, name it for a runner that no harness session runs, and the runner serves the session in
-	 * place within that bound.
+	 * a request server and a run's runner, name it for the runner that they start, and the runner serves the session
+	 * in its own process within that bound.
 	 */
 	record Bounded() implements LaunchRoute
 	{
-	}
-
-	/**
-	 * No harness runs the command, so no harness sandbox confines it, and the runner serves the session in place
-	 * within the bound that {@link #boundArguments} gives it: exactly what the session needs.
-	 */
-	record InPlace() implements LaunchRoute
-	{
-		/**
-		 * Bounds a launch that takes this route. The session's parent is unconfined, so the bound gives the session
-		 * exactly what it needs: its run folder, the reads that the launch denies it, the writes and hosts that its
-		 * harness's runner reports, and the extra permissions that the launch names.
-		 *
-		 * @param harness       the identifier of the session's harness
-		 * @param args          the launch's options
-		 * @param temporaryRoot where the run is kept when the launch names no {@code --run-root}
-		 * @param json          the document mapper
-		 * @param needs         reports what a session of the harness needs
-		 * @param cleanup       receives the folder in the run root that holds the bound's file, which the session
-		 *                      reads when it starts
-		 * @return {@code args} followed by {@value PolicyBoundFile#OPTION} and the bound's file, a launch that takes
-		 *   the {@link Bounded} route
-		 * @throws NullPointerException      if any of the arguments are null
-		 * @throws IllegalArgumentException  if {@code harness} is blank
-		 * @throws InvalidArgumentsException if an option that bounds the session lacks its value, a denied read is
-		 *                                   not absolute, the file of extra permissions is missing or invalid, or the
-		 *                                   launch names no {@code --run-root} outside a harness session
-		 * @throws SessionRefusedException   if what the session needs cannot be determined; the message says that
-		 *                                   CAT cannot read the session's sandbox policy, and why
-		 * @throws IOException               if the bound cannot be written
-		 */
-		public static List<String> boundArguments(String harness, String[] args, HarnessTemporaryRoot temporaryRoot,
-			JsonMapper json, NeedsReport needs, TemporaryDirectories cleanup) throws IOException
-		{
-			requireThat(harness, "harness").isNotBlank();
-			requireThat(args, "args").isNotNull();
-			requireThat(temporaryRoot, "temporaryRoot").isNotNull();
-			requireThat(json, "json").isNotNull();
-			requireThat(needs, "needs").isNotNull();
-			requireThat(cleanup, "cleanup").isNotNull();
-			InPlaceOptions options = InPlaceOptions.parse(args, temporaryRoot);
-			ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, options.extraPermissions());
-			String harnessName = RequestServer.productName(harness);
-			ChildBound bound = new ChildBound(unconfined(harnessName), (_, runFolder, deniedReads, _) ->
-			{
-				ChildNeedsReport report;
-				try
-				{
-					report = needs.report();
-				}
-				catch (IOException e)
-				{
-					throw new SessionRefusedException(ChildBound.unreadablePolicy(harnessName, e), e);
-				}
-				return new ChildNeeds(runFolder, report.writes(), deniedReads, report.hosts());
-			});
-			ChildPolicy policy = bound.bound(harness, options.runRoot(), options.deniedReads(), extra,
-				Optional.empty());
-			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(options.runRoot()),
-				".policy-bound-"));
-			return PolicyBoundFile.boundArguments(json, List.of(args), directory, policy);
-		}
-
-		/**
-		 * Returns the source of the policy of a parent that no harness sandbox confines.
-		 *
-		 * @param harnessName the name of the session's harness as its user knows it
-		 * @return the source, which reads {@link ParentPolicy#UNSANDBOXED}
-		 */
-		private static ParentPolicySource unconfined(String harnessName)
-		{
-			return new ParentPolicySource()
-			{
-				@Override
-				public String harnessName()
-				{
-					return harnessName;
-				}
-
-				@Override
-				public String permissionEntries(List<Path> writes, Set<String> hosts)
-				{
-					// An unconfined parent allows every write and host, so no entry is ever missing
-					return "";
-				}
-
-				@Override
-				public ParentPolicy read(Optional<String> askingThread)
-				{
-					return ParentPolicy.UNSANDBOXED;
-				}
-			};
-		}
-	}
-
-	/**
-	 * Reports what a session of a harness needs, as that harness's runner reports it with
-	 * {@value ChildNeedsReport#OPTION}.
-	 */
-	@FunctionalInterface
-	interface NeedsReport
-	{
-		/**
-		 * Reports what a session needs.
-		 *
-		 * @return the report
-		 * @throws IOException if what the session needs cannot be determined
-		 */
-		ChildNeedsReport report() throws IOException;
 	}
 
 	/**
@@ -246,7 +131,8 @@ public sealed interface LaunchRoute
 	 *   since nothing outside a harness session or a run keeps the run of an interrupted session: {@link Refused}.</li>
 	 *   <li>A launch that names {@value PolicyBoundFile#OPTION} serves its session within that bound:
 	 *   {@link Bounded}.</li>
-	 *   <li>When no harness runs the command, the session starts in place: {@link InPlace}.</li>
+	 *   <li>Otherwise no harness session runs the command, as in a terminal or a script, and the launch is refused,
+	 *   since only a harness session's sandbox and request server can bound the new session: {@link Refused}.</li>
 	 * </ol>
 	 *
 	 * @param runner      the identifier of the harness whose runner the launcher stands for
@@ -298,6 +184,6 @@ public sealed interface LaunchRoute
 		}
 		if (Arrays.asList(args).contains(PolicyBoundFile.OPTION))
 			return new Bounded();
-		return new InPlace();
+		return new Refused(NO_HARNESS_REFUSAL);
 	}
 }

@@ -12,7 +12,6 @@ import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -197,8 +196,8 @@ public final class ClaudeRunnerCli
 	 *   session, and the message names the Codex plugin's runner instead.</li>
 	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a run's runner, name
 	 *   it, serves its session in this process within that bound.</li>
-	 *   <li>When no harness runs the command, no harness sandbox confines it, and the launch serves its session in
-	 *   this process within the bound that {@link #inPlaceArguments} gives it: exactly what the session needs.</li>
+	 *   <li>Otherwise no harness session runs the command, as in a terminal or a script, and the launch is refused
+	 *   with a message that says to run it from a Claude Code or Codex session.</li>
 	 * </ul>
 	 *
 	 * @param args        the launch's options
@@ -266,57 +265,7 @@ public final class ClaudeRunnerCli
 				waiting.every(REQUEST_POLL), output, errors);
 			case LaunchRoute.Bounded _ -> serveInProcess(args, plugin.get(), environment, waiting, input, output,
 				errors);
-			case LaunchRoute.InPlace _ ->
-			{
-				try (TemporaryDirectories cleanup = new TemporaryDirectories())
-				{
-					List<String> bounded;
-					try (HarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting))
-					{
-						bounded = inPlaceArguments(scope, Path.of(""), args, environment, cleanup);
-					}
-					catch (SessionRefusedException e)
-					{
-						errors.println(e.getMessage());
-						yield HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
-					}
-					yield serveInProcess(bounded.toArray(String[]::new), plugin.get(), environment, waiting, input, output,
-						errors);
-				}
-			}
 		};
-	}
-
-	/**
-	 * Bounds a launch that no harness runs, as {@link LaunchRoute.InPlace#boundArguments} bounds it, with what a
-	 * Claude session needs, as {@link ClaudeRunner#childNeeds(HarnessRunnerScope, Map)} reports it.
-	 *
-	 * @param scope            the process scope
-	 * @param workingDirectory the directory from which the command was invoked
-	 * @param args             the launch's options
-	 * @param environment      the launcher's environment
-	 * @param cleanup          receives the folder that holds the bound's file, which the session reads when it
-	 *                         starts
-	 * @return {@code args} followed by {@value PolicyBoundFile#OPTION} and the bound's file
-	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws InvalidArgumentsException if an option that bounds the session lacks its value, a denied read is not
-	 *                                   absolute, the file of extra permissions is missing or invalid, or the launch
-	 *                                   names no {@code --run-root} outside a harness session
-	 * @throws IOException               if what the session needs cannot be determined, or the bound cannot be
-	 *                                   written
-	 */
-	public static List<String> inPlaceArguments(HarnessRunnerScope scope, Path workingDirectory, String[] args,
-		Map<String, String> environment, TemporaryDirectories cleanup) throws IOException
-	{
-		requireThat(scope, "scope").isNotNull();
-		requireThat(workingDirectory, "workingDirectory").isNotNull();
-		requireThat(environment, "environment").isNotNull();
-		try (ToolScope tools = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
-			scope.waiting()))
-		{
-			return LaunchRoute.InPlace.boundArguments(HARNESS_ID, args, HarnessTemporaryRoot.from(tools),
-				scope.json(), () -> ClaudeRunner.childNeeds(scope, environment), cleanup);
-		}
 	}
 
 	/**

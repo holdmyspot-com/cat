@@ -130,8 +130,7 @@ public final class CodexServedSessionTest
 
 			requireThat(reason, "reason").contains("openai/codex#38318").
 				contains("the permissions profile private-reads").contains("\"" + secret + "\"").
-				contains("Remove those entries from the profile and start a new Codex session, or start the session " +
-					"from a terminal.");
+				contains("Remove those entries from the profile and start a new Codex session.");
 		}
 	}
 

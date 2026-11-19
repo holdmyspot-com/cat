@@ -178,7 +178,7 @@ public final class CodexServedSession
 	 * session, and that the session requests sessions through the launchers that its run's runner serves. Otherwise,
 	 * when the latest turn of the thread that runs it denies any read, the reason says that Codex keeps a command that
 	 * a rule allows inside its sandbox while the session's permissions deny a read, names the profile and each denied
-	 * path and pattern, and says to remove them or to start the session from a terminal. Otherwise, it names each
+	 * path and pattern, and says to remove them and start a new Codex session. Otherwise, it names each
 	 * cause that it finds: no rule in Codex's rules folder names the server, or the thread's latest command that names
 	 * the server's file name names it by another path. When it finds neither, it lists the causes that keep the server
 	 * sandboxed. Each of these reasons names the path to run.
@@ -221,7 +221,7 @@ public final class CodexServedSession
 				"only when the session's filesystem permissions deny no reads (openai/codex#38318), so it ran the " +
 				"request server inside this session's sandbox, because " + named + " denies reading " +
 				denied.stream().map(path -> "\"" + path + "\"").collect(Collectors.joining(", ")) + ". Remove " +
-				"those entries from the profile and start a new Codex session, or start the session from a terminal.";
+				"those entries from the profile and start a new Codex session.";
 		}
 		String start = "CAT cannot start the request server: this Codex session runs it inside its sandbox, where " +
 			"no session that a harness sandboxes can start. ";

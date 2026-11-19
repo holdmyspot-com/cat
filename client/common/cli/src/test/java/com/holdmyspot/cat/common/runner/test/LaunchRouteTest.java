@@ -77,7 +77,7 @@ public final class LaunchRouteTest
 
 	/**
 	 * Verifies that a launch that names a policy bound, from a command that no harness runs, serves its session in
-	 * place with that bound, as it does for a runner that a run's runner started.
+	 * its own process within that bound, as CAT's own starters, a request server and a run's runner, start it.
 	 */
 	@Test
 	public void servesBoundLaunch()
@@ -206,15 +206,18 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that no harness runs starts its session in place.
+	 * Verifies that a launch from a command that no harness session runs, such as one in a terminal or a script, is
+	 * refused with a message that says to run the launcher from a Claude Code or Codex session.
 	 */
 	@Test
-	public void startsUnmarkedLaunchInPlace()
+	public void refusesUnmarkedLaunch()
 	{
 		// Requirement: R-I11
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of(),
 			LAUNCH.toArray(String[]::new), Map.of("PATH", "/bin"));
 
-		requireThat(route, "route").isEqualTo(new LaunchRoute.InPlace());
+		requireThat(route, "route").isEqualTo(new LaunchRoute.Refused("CAT cannot start the session: CAT starts " +
+			"sessions only for a Claude Code or Codex session, and none runs this command. Run this command from a " +
+			"Claude Code or Codex session."));
 	}
 }

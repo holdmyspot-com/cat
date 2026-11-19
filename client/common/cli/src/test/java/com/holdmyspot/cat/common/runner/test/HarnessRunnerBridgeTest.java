@@ -766,15 +766,15 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a runner that no harness runs holds a conversation in place: the bridge serves the messages that
-	 * the asking session appended to {@code to-child.jsonl} as its records, an interrupt ends only the turn in
-	 * progress although the harness fails that turn, as Claude Code does, and {@code from-child.jsonl} receives the
-	 * bridge's records, a {@code turn_end} line after each turn and an {@code ended} line last.
+	 * Verifies that a runner that serves its session in its own process holds a conversation: the bridge serves the
+	 * messages that the asking session appended to {@code to-child.jsonl} as its records, an interrupt ends only the
+	 * turn in progress although the harness fails that turn, as Claude Code does, and {@code from-child.jsonl}
+	 * receives the bridge's records, a {@code turn_end} line after each turn and an {@code ended} line last.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
 	@Test(timeOut = 10_000)
-	public void holdsConversationInPlace() throws IOException
+	public void holdsConversationInOwnProcess() throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
 		List<String> received = new CopyOnWriteArrayList<>();
@@ -1994,7 +1994,7 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Serves a conversation in place, as a runner launcher that no harness runs does.
+	 * Serves a conversation in this process, as a runner that a request server or a run's runner starts does.
 	 *
 	 * @param cleanup       removes the run that the bridge creates
 	 * @param folder        the conversation's folder
