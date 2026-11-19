@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.RetainedRunClient;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -1267,6 +1268,39 @@ public final class SessionRequestBrokerTest
 					Thread.yield();
 				requireThat(Files.readString(manifest), "retained").contains("\"state\": \"running\"").
 					contains(RESUMED_SESSION);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a discard request empties the retained slot whose run records the named harness session, without a
+	 * slot or permit of its own, and that a discard request that names a session that no retained run records changes
+	 * nothing.
+	 *
+	 * @throws IOException if fixture, broker or request I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void discardsRetainedRun() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "0"))
+		{
+			Path slot = SessionRequestAccess.requestedRunsDirectory(fixture.run).resolve("d1");
+			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), slot, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			HarnessRun retained = manager.create("claude");
+			manager.recordHarnessSession(retained, RESUMED_SESSION);
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					throw new AssertionError("A discard request started a session");
+				}))
+			{
+				RetainedRunClient client = new RetainedRunClient(() -> Optional.of(new RunChannel(fixture.requests)),
+					fixture.json, broker::scan);
+
+				requireThat(client.discard(RESUMED_SESSION), "discarded").isTrue();
+				requireThat(Files.exists(retained.directory()), "runKept").isFalse();
+				requireThat(client.discard(RESUMED_SESSION), "discardedAgain").isFalse();
 			}
 		}
 	}

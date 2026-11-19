@@ -260,6 +260,8 @@ public final class SessionRequestBroker implements Closeable
 	{
 		if (id.startsWith(WorktreeRequest.PREFIX))
 			return takeWorktree(id, file, directory);
+		if (id.startsWith(DiscardRequest.PREFIX))
+			return takeDiscard(id, file, directory);
 		if (stopped)
 		{
 			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
@@ -344,6 +346,93 @@ public final class SessionRequestBroker implements Closeable
 		}
 		worktrees.submit(() -> serveWorktree(id, request, directory));
 		return true;
+	}
+
+	/**
+	 * Takes a discard request, which takes no slot, no permit and no count of the requests that the site allows: the
+	 * broker carries it out on its worktree thread, so that the wait for the run's processes to stop never delays a
+	 * launch.
+	 *
+	 * @param id        the request ID
+	 * @param file      the request archive
+	 * @param directory the request's response directory
+	 * @return {@code true} if the request was answered or started, or {@code false} if its archive is busy
+	 * @throws IOException if a response cannot be published
+	 */
+	private boolean takeDiscard(String id, Path file, Path directory) throws IOException
+	{
+		if (stopped)
+		{
+			WorktreeResponse.failed(site.closedReason()).write(json, id, directory);
+			return true;
+		}
+		DiscardRequest request;
+		Path inputs = directory.resolve("inputs");
+		try
+		{
+			unpack(file, directory, inputs);
+			request = DiscardRequest.read(json, inputs);
+		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
+			return true;
+		}
+		finally
+		{
+			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
+				TemporaryDirectories.deleteRecursively(inputs);
+		}
+		worktrees.submit(() -> serveDiscard(id, request, directory));
+		return true;
+	}
+
+	/**
+	 * Carries out a discard request on the broker's worktree thread and publishes its response.
+	 *
+	 * @param id        the request ID
+	 * @param request   the request
+	 * @param directory the request's response directory
+	 */
+	private void serveDiscard(String id, DiscardRequest request, Path directory)
+	{
+		try
+		{
+			WorktreeResponse response;
+			try
+			{
+				String result = DiscardRequest.ABSENT;
+				if (site.slots().discard(request.sessionId()))
+					result = DiscardRequest.DISCARDED;
+				response = new WorktreeResponse(WorktreeRequest.DONE, "", Optional.of(result));
+			}
+			catch (SessionRefusedException e)
+			{
+				response = WorktreeResponse.refused(String.valueOf(e.getMessage()));
+			}
+			catch (IOException e)
+			{
+				response = WorktreeResponse.failed(String.valueOf(e.getMessage()));
+			}
+			catch (InterruptedException _)
+			{
+				Thread.currentThread().interrupt();
+				response = WorktreeResponse.failed(site.closedReason());
+			}
+			response.write(json, id, directory);
+		}
+		catch (IOException e)
+		{
+			synchronized (this)
+			{
+				recordFailure(e);
+			}
+		}
 	}
 
 	/**
