@@ -32,6 +32,10 @@
      than two hours the implementer had committed nothing. -->
 - Point each subtask at the exact passages its decisions depend on, so that it spends its time on its deliverable
 	rather than on searching documents for them.
+<!-- Delegated work was re-run after earlier attempts, and the brief named none of their outputs as superseded, so each
+     new agent read earlier rounds' receipts that no longer applied. -->
+- Keep a delegate that re-runs earlier delegated work from reading the earlier attempts' outputs that its attempt
+	replaces, so that it neither spends time on them nor acts on results that no longer apply.
 <!-- A coordinator briefed every unit of a multi-unit implementation to its most costly implementer, although several
      units were mechanical, such as a configuration-path change, a rename and applying a ready patch, because each brief
      mixed open design choices with the edits that follow from them. -->
@@ -114,9 +118,13 @@ that the subject raises; its edits go to the agent that the contract selects.
 
 Give each subtask its own task contract that carries only what that subtask needs, including a reading list limited to
 the files its decisions depend on. Name in each entry the sections, declarations or line ranges that hold those
-decisions, rather than a whole document or a section that it must search. Do not send several subtasks one shared reading list. A subtask's gates are its
-focused checks: the compilation, static analysis and tests that its owned paths affect. The parent runs the full build
-once, after integrating the subtasks' results, so that concurrent subtasks neither run it nor wait for one another's.
+decisions, rather than a whole document or a section that it must search. Do not send several subtasks one shared
+reading list. When a task re-runs work that earlier delegates attempted and their outputs, such as reports, receipts or
+results, remain where the new delegate can find them, name in the contract each of those outputs that the new attempt
+supersedes and tell the delegate not to read it; put an earlier output that still applies in the reading list instead. A
+subtask's gates are its focused checks: the compilation, static analysis and tests that its owned paths affect. The
+parent runs the full build once, after integrating the subtasks' results, so that concurrent subtasks neither run it nor
+wait for one another's.
 
 For every write-capable delegation, supply a task contract with an exact write allowlist, verification commands,
 workspace mode, and acceptance evidence. The contract requires the delegate's completion report to name, for each
