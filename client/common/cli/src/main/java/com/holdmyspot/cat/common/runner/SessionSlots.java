@@ -457,7 +457,10 @@ public final class SessionSlots
 		{
 			if (System.nanoTime() - deadline >= 0)
 				return false;
-			Thread.sleep(PROCESS_WAIT_MILLIS);
+			synchronized (this)
+			{
+				wait(PROCESS_WAIT_MILLIS);
+			}
 		}
 		return true;
 	}

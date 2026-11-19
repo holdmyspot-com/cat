@@ -46,7 +46,8 @@ public final class InterruptedRunnerProcess
 	{
 		if (args[0].equals("harness"))
 		{
-			Thread.sleep(Long.MAX_VALUE);
+			// The harness runs until it is stopped
+			new CountDownLatch(1).await();
 			return;
 		}
 		ProcessTreeStop.onExit();
