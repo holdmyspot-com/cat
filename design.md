@@ -1008,6 +1008,8 @@ Each trial session runs under its cell's trial profile ([§6.6](#66-trial-profil
 and prompt author sessions run under the harness's **role profile**: the model and effort that the agent definition of
 `optimize-xhigh`, the most capable of CAT's implementation agents, binds in that harness. The contract records the role
 profile as part of the frozen judge. Changing it is a judge change ([§5](#5-measurement-identity-and-applicability)).
+During development, a prompt test's judge sessions may instead run under a cheaper development-judge profile (see
+"Development judge" below); every judging that enters a claim uses the role profile.
 
 **Reusable session slots (user rulings, 2026-11-12):** every nested session that the optimizer starts, in every role,
 runs in a **slot**: one of a fixed set of run directories, one per session that may run at once, at paths that stay the
