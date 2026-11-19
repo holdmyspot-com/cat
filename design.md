@@ -3317,7 +3317,10 @@ any other special file, so a session may request a session over its own project 
 validates the request and starts the session through that harness's runner launcher, resolved as the runner rule
 resolves it, with the requesting session's results folder and denied reads, and with no requested sessions of its own
 unless the caller passed `--request-depth <levels>`: each level below may then request as many sessions as its parent,
-one level less deep, and each level's runner starts its own requested sessions outside its session's sandbox (D107). A
+one level less deep, and each level's runner starts its own requested sessions outside its session's sandbox (D107). The
+requesting session's results folder is denied to the requested session except the requesting session's installed CAT
+plugin, which stays readable and executable but not writable, so the requested session can run a contract tool that its
+request names by absolute path there; the exemption lists the folder's entries when the requested session starts. A
 requested session therefore has at most the permissions of the session that requested it, and no credential reaches a
 command beyond those its harness's limits allow. A requested session needs a few writes outside its session folder (its
 dependency caches) and hosts (its model's host); when the requesting session's sandbox does not allow all of them, the
