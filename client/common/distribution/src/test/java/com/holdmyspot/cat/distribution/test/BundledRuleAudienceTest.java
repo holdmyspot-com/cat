@@ -631,6 +631,65 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that has created a temporary file or directory, clone, worktree, or branch for its own work can
+	 * reach the packaged rule on deleting it: the rule routing that every agent of either harness receives at startup
+	 * routes to the workflow area index after a merge, when a step or work item finishes, when work is abandoned, and
+	 * before a hand-back or final reply; the index and the temporary-resources rule route to the agent-cleanup rule,
+	 * whose guidance has the agent delete a merged or abandoned clone or worktree with its branch, build output, and
+	 * scratch files, including folders in its own session directory, keep what work still meant to be merged, an
+	 * undelivered report, or a running process needs, and never delete what another session or the user owns.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void agentCleanupRuleIsRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			Path project = cleanup.add(Files.createTempDirectory("cat-bundled-rules-project-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+			String route = "lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/temporary-resources/agent-cleanup.md`";
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/workflows.md"))), "workflowIndex").
+				contains("after you merge a clone's or worktree's changes, when a step or work item finishes, when " +
+					"you abandon work, and before you hand back your result or send your final reply, " + route).
+				contains("lazy load `${CAT_PLUGIN_ROOT}/rules/include/common/temporary-resources.md`");
+			requireThat(oneLine(Files.readString(include.resolve("temporary-resources.md"))), "temporaryResources").
+				contains("that you created through your own tool calls, " + route);
+
+			String rule = oneLine(Files.readString(include.resolve("temporary-resources/agent-cleanup.md")));
+			requireThat(rule, "agentCleanup").startsWith("# Cleaning Up Your Working Files ").
+				contains("the `.cat/sessions/<session id>/` directory that contains `${CAT_TEMP}`").
+				contains("once every change on it that is to be kept is in its base branch").
+				contains("`git worktree remove <path>`").
+				contains("work that is abandoned: aborted, superseded, or rejected, with no plan to merge it").
+				contains("Build output in a clone or worktree that you keep").
+				contains("It holds work that is still meant to be merged or reported").
+				contains("A report that you have not yet delivered cites it").
+				contains("Never delete another session's directory").
+				contains("When you cannot tell whether you created an artifact, leave it");
+
+			ProjectRuleLoader loader = new ProjectRuleLoader(scope.yaml());
+			for (String harness : List.of("claude", "codex"))
+			{
+				for (String context : List.of(loader.loadForMainAgent(plugin, project, harness),
+					loader.loadForSubagent(plugin, project, harness, "cat:reviewer")))
+				{
+					requireThat(oneLine(context), harness + "Context").
+						contains("after merging a clone's or worktree's changes, when a step or work item finishes, " +
+							"when abandoning work, and before handing back your result or sending your final reply;").
+						contains("include/common/rule-routing/workflows.md`").
+						doesNotContain("# Cleaning Up Your Working Files");
+				}
+			}
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 * <p>
 	 * The case routes a rule and loads it through the YAML-backed loader, which takes about 0.25 s alone when it

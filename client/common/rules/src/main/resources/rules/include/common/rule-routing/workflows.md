@@ -25,6 +25,11 @@ whose agents exchange information, lazy load `../agent-handoffs.md`.
 
 When creating, using, or handing off temporary files or directories, lazy load `../temporary-resources.md`.
 
+When you create or receive a temporary file or directory, clone, worktree, or branch for your own work, and again,
+while you have one, after you merge a clone's or worktree's changes, when a step or work item finishes, when you abandon
+work, and before you hand back your result or send your final reply, lazy load
+`../temporary-resources/agent-cleanup.md`.
+
 Before you start or request a new agent session yourself, for example to test a plugin or a fresh installation in a
 separate session, including from inside a CAT run, lazy load `../harness-runners.md`.
 

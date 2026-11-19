@@ -27,3 +27,7 @@ that workflow a fresh CAT_TEMP child.
 Do not rely on process exit, operating-system cleanup, a successful run, or an unspecified later operation to remove
 temporary state. A temporary resource may outlive its creator only through an explicit handoff that identifies the next
 owner and the point at which that owner removes it. Until that handoff completes, the creator remains responsible.
+
+This rule governs temporary resources that code, a test, a script, or a workflow definition creates. When deciding
+whether to delete a temporary file or directory, clone, worktree, branch, or build output that you created through your
+own tool calls, lazy load `temporary-resources/agent-cleanup.md`.
