@@ -117,7 +117,7 @@ public final class ServedSessionTest
 			Inputs inputs = new Inputs(root);
 			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
-				Path launcher = parent.home().resolve("plugins/cache/cat/cat/1.0/bin/prompt-optimizer");
+				Path launcher = parent.plugin().resolve("bin/prompt-optimizer");
 				Files.writeString(Files.createDirectories(launcher.getParent()).resolve(launcher.getFileName()),
 					"launcher");
 				Path login = parent.home().resolve(".claude/.credentials.json");

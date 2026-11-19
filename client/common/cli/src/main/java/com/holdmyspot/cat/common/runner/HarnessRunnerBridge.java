@@ -714,7 +714,8 @@ public final class HarnessRunnerBridge
 		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.run())))
 			return null;
 		requireThat(starter, "requestedStarter").isNotNull();
-		SessionRequestBroker broker = new SessionRequestBroker(session.run(), manager, options, starter);
+		SessionRequestBroker broker = new SessionRequestBroker(session.run(), manager, options,
+			session.catPlugin().orElse(null), starter);
 		try
 		{
 			if (options.resumeRun() != null)

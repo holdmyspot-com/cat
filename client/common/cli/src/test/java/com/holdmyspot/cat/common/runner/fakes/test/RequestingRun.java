@@ -119,7 +119,7 @@ public final class RequestingRun implements AutoCloseable
 			"--project", run.directory().resolve("project").toString(), "--model", "model-a", "--effort", "effort-a",
 			"--results", results.toString(), "--session-requests", String.valueOf(sessionRequests)}, "harness",
 			HarnessTemporaryRoot.of(root));
-		this.broker = new SessionRequestBroker(run, manager, options,
+		this.broker = new SessionRequestBroker(run, manager, options, plugin(),
 			(harness, arguments, _) -> child(harness, arguments));
 		broker.start(MainHarnessRunnerScopeSecrets.getMainHarnessRunnerScopeAccess().heartbeatEvery(SCAN_PERIOD));
 	}
@@ -143,6 +143,17 @@ public final class RequestingRun implements AutoCloseable
 	public Path home()
 	{
 		return run.directory().resolve("home");
+	}
+
+	/**
+	 * Returns the directory, in the run's {@link #home() home}, of the CAT plugin that the run's session's commands
+	 * run, which the run's broker lets the run's requested sessions read.
+	 *
+	 * @return the directory, which may not exist
+	 */
+	public Path plugin()
+	{
+		return home().resolve("plugins/cat");
 	}
 
 	/**

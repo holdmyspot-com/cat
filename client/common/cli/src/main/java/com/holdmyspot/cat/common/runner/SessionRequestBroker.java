@@ -86,6 +86,34 @@ public final class SessionRequestBroker implements Closeable
 	 * The reason of a request whose requesting session ended before the request was answered.
 	 */
 	private static final String ENDED = "ended";
+
+	/**
+	 * Returns the read denials that keep a requested session from reading the results folder that holds its requesting
+	 * nested session, except for the CAT plugin installed in the requesting session's home, whose launchers the
+	 * request's prompt may name. The denials let the session read and run the plugin's files; they let it write
+	 * nothing. When the plugin lies inside the results folder, the denials name every file and directory in the folder
+	 * that exists when this method returns, other than the plugin, its contents and the directories that lead to it; a
+	 * file or directory that is created later beside one of those directories is not denied.
+	 *
+	 * @param results   the results folder
+	 * @param catPlugin the directory of the CAT plugin that the requesting session's commands run, or {@code null} if
+	 *                  the requesting session has none
+	 * @return the paths to deny, none of which contains {@code catPlugin}
+	 * @throws NullPointerException if {@code results} is null
+	 * @throws IOException          if a directory of the results folder cannot be listed
+	 */
+	public static List<Path> resultsDenials(Path results, Path catPlugin) throws IOException
+	{
+		requireThat(results, "results").isNotNull();
+		Path directory = results.toAbsolutePath().normalize();
+		if (catPlugin == null)
+			return List.of(directory);
+		List<Path> readable = List.of(catPlugin.toAbsolutePath().normalize());
+		if (!HarnessRunManager.containsAny(directory, readable))
+			return List.of(directory);
+		return HarnessRunManager.deniedReads(directory, readable);
+	}
+
 	private final Site site;
 	private final RequestedSessionStarter starter;
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -120,7 +148,8 @@ public final class SessionRequestBroker implements Closeable
 	private boolean stopped;
 
 	/**
-	 * Creates a broker for an already prepared run. The runner creates its access directories before sandbox setup.
+	 * Creates a broker for an already prepared run whose session has no CAT plugin that its requested sessions read.
+	 * The runner creates its access directories before sandbox setup.
 	 *
 	 * @param run     the requesting run
 	 * @param manager records the run's lifecycle in its manifest, including how many requests the broker has
@@ -131,7 +160,25 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter)
 	{
-		this(run, manager, options, starter, RequestLimits.IN_RUN);
+		this(run, manager, options, null, starter);
+	}
+
+	/**
+	 * Creates a broker for an already prepared run whose requested sessions may read the CAT plugin that the run's
+	 * commands run. The runner creates its access directories before sandbox setup.
+	 *
+	 * @param run       the requesting run
+	 * @param manager   records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                  accepted; the broker keeps it
+	 * @param options   the requesting runner's options
+	 * @param catPlugin the directory of the CAT plugin installed in the run's session's home, whose launchers the
+	 *                  session's commands run, or {@code null} if the session has none
+	 * @param starter   resolves and starts child runners
+	 */
+	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+		Path catPlugin, RequestedSessionStarter starter)
+	{
+		this(run, manager, options, catPlugin, starter, RequestLimits.IN_RUN, new ProcessHandleLiveness());
 	}
 
 	/**
@@ -165,7 +212,27 @@ public final class SessionRequestBroker implements Closeable
 	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(new RunSite(run, manager, options, limits, new SessionSlots(
+		this(run, manager, options, null, starter, limits, liveness);
+	}
+
+	/**
+	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds. Its
+	 * children run in as many slots, in the run's directory, as the run's options allow to run at once.
+	 *
+	 * @param run       the requesting run
+	 * @param manager   records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                  accepted; the broker keeps it
+	 * @param options   the requesting runner's options
+	 * @param catPlugin the directory of the CAT plugin that the run's commands run, which the run's requested
+	 *                  sessions may read, or {@code null} if the run has none
+	 * @param starter   resolves and starts child runners
+	 * @param limits    the bounds that each request's archive must stay within
+	 * @param liveness  checks and stops the processes that a slot's previous session left
+	 */
+	private SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+		Path catPlugin, RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
+	{
+		this(new RunSite(run, manager, options, catPlugin, limits, new SessionSlots(
 			SessionRequestAccess.requestedRunsDirectory(run), options.maximumConcurrency(), liveness)), starter);
 	}
 
@@ -1331,13 +1398,15 @@ public final class SessionRequestBroker implements Closeable
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param run     the requesting run
-	 * @param manager records the run's lifecycle in its manifest
-	 * @param options the requesting runner's options
-	 * @param limits  the bounds that each request's archive must stay within
-	 * @param slots   the slots, each a results folder, that the run's requested sessions take
+	 * @param run       the requesting run
+	 * @param manager   records the run's lifecycle in its manifest
+	 * @param options   the requesting runner's options
+	 * @param catPlugin the directory of the CAT plugin that the run's commands run, which the run's requested sessions
+	 *                  may read, or {@code null} if the run has none
+	 * @param limits    the bounds that each request's archive must stay within
+	 * @param slots     the slots, each a results folder, that the run's requested sessions take
 	 */
-	private record RunSite(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+	private record RunSite(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options, Path catPlugin,
 		RequestLimits limits, SessionSlots slots) implements Site
 	{
 		/**
@@ -1348,12 +1417,14 @@ public final class SessionRequestBroker implements Closeable
 		/**
 		 * Creates the site of a run.
 		 *
-		 * @param run     the requesting run
-		 * @param manager records the run's lifecycle in its manifest
-		 * @param options the requesting runner's options
-		 * @param limits  the bounds that each request's archive must stay within
-		 * @param slots   the slots, each a results folder, that the run's requested sessions take
-		 * @throws NullPointerException if any of the arguments are null
+		 * @param run       the requesting run
+		 * @param manager   records the run's lifecycle in its manifest
+		 * @param options   the requesting runner's options
+		 * @param catPlugin the directory of the CAT plugin that the run's commands run, which the run's requested
+		 *                  sessions may read, or {@code null} if the run has none
+		 * @param limits    the bounds that each request's archive must stay within
+		 * @param slots     the slots, each a results folder, that the run's requested sessions take
+		 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
 		 */
 		private RunSite
 		{
@@ -1431,22 +1502,25 @@ public final class SessionRequestBroker implements Closeable
 		}
 
 		/**
-		 * Retains the parent's denied reads and capacity ceiling, denies the child the parent's run, and, while the
+		 * Retains the parent's denied reads and capacity ceiling, denies the child the parent's results folder except
+		 * for the CAT plugin that the parent's commands run, as {@link #resultsDenials(Path, Path)} does, and, while the
 		 * parent's request depth leaves a level below the child, lets the child request as many sessions as the
 		 * parent, one level less deep; otherwise it may request none.
 		 *
 		 * @param request the request
 		 * @param runRoot the request's results folder
 		 * @return the options
+		 * @throws IOException if a directory of the parent's results folder cannot be listed
 		 */
 		@Override
-		public List<String> options(RunRequest request, Path runRoot)
+		public List<String> options(RunRequest request, Path runRoot) throws IOException
 		{
 			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
 				String.valueOf(options.maximumConcurrency())));
 			for (Path denied : options.deniedReads())
 				arguments.addAll(List.of("--deny-read", denied.toString()));
-			arguments.addAll(List.of("--deny-read", options.runRoot().toString()));
+			for (Path denied : resultsDenials(options.runRoot(), catPlugin))
+				arguments.addAll(List.of("--deny-read", denied.toString()));
 			if (options.requestDepth() > 0)
 			{
 				arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));

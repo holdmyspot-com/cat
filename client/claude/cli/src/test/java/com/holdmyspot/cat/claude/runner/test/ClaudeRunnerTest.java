@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 
 import java.io.File;
 import java.io.IOException;
@@ -1555,6 +1556,105 @@ public final class ClaudeRunnerTest
 				cache.toString(), nestedAccess.requests().toString()));
 			requireThat(nestedPolicy.writeRoots(), "writeRoots").doesNotContain(nested.directory());
 		}
+	}
+
+	/**
+	 * Verifies that a session that a Claude Code session requests may read, but not write, the CAT plugin that the
+	 * requesting session's commands run, such as a launcher that the request's prompt names, while its settings still
+	 * deny it the rest of the requesting run, such as that session's login.
+	 *
+	 * @throws IOException if the runs cannot be created
+	 */
+	@Test
+	public void readsPluginOfRequestingSession() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			HarnessRunnerScope scope = new TestHarnessRunnerScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-requester-plugin-")).
+				toRealPath();
+			Path artifact = root.resolve("artifact");
+			Path cache = Files.createDirectories(root.resolve("cache"));
+			Path results = root.resolve("runs");
+			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), results, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun first = firstManager.create("claude");
+			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path firstProject = Files.createDirectories(first.directory().resolve("project/.git")).getParent();
+			Path firstHome = first.directory().resolve("home");
+			Path plugin = firstHome.resolve(".claude/plugins/cat-marketplace/plugins/cat");
+			Path launcher = Files.createDirectories(plugin.resolve("bin")).resolve("prompt-optimizer");
+			Files.writeString(launcher, "launcher");
+			Path login = firstHome.resolve(".claude/.credentials.json");
+			Files.writeString(login, "login");
+			ChildPolicy firstPolicy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
+				root.resolve("missing.json"), firstHome.resolve(".claude/settings.json"),
+				first.directory().resolve("claude"), firstHome, List.of(cache), first.directory(), List.of(), "",
+				firstAccess, firstProject, first.directory(), null, ExtraPermissions.NONE, "api.example");
+			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun nested = nestedManager.create("claude");
+			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path nestedProject = Files.createDirectories(nested.directory().resolve("project/.git")).getParent();
+			Path nestedSettings = nested.directory().resolve("home/.claude/settings.json");
+
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(nestedManager, nested, List.of(),
+				SessionRequestBroker.resultsDenials(results, plugin), Map.of(), nestedAccess);
+			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), nestedSettings,
+				nested.directory().resolve("claude"), nested.directory().resolve("home"), List.of(cache),
+				nested.directory(), deniedReads, "", nestedAccess, nestedProject, nested.directory(), firstPolicy,
+				ExtraPermissions.NONE, "api.example");
+
+			JsonNode written = scope.json().readTree(Files.readString(nestedSettings));
+			List<Path> denyRead = paths(written.path("sandbox").path("filesystem").path("denyRead"));
+			List<Path> allowWrite = paths(written.path("sandbox").path("filesystem").path("allowWrite"));
+			List<String> rules = new ArrayList<>();
+			for (JsonNode rule : written.path("permissions").path("deny"))
+				rules.add(rule.asString());
+			for (Path path = launcher; path != null; path = path.getParent())
+			{
+				requireThat(denyRead, "denyRead").doesNotContain(path);
+				requireThat(allowWrite, "allowWrite").doesNotContain(path);
+				requireThat(rules, "rules").doesNotContain(readRule(path, "/**")).doesNotContain(readRule(path, ""));
+			}
+			requireThat(denyRead.stream().anyMatch(login::startsWith), "loginDenied").isTrue();
+			boolean loginRule = false;
+			for (Path path = login; path != null; path = path.getParent())
+			{
+				if (rules.contains(readRule(path, "/**")) || rules.contains(readRule(path, "")))
+					loginRule = true;
+			}
+			requireThat(loginRule, "loginRule").isTrue();
+		}
+	}
+
+	/**
+	 * Returns the paths of a list of settings.
+	 *
+	 * @param list the list
+	 * @return its paths
+	 */
+	private static List<Path> paths(JsonNode list)
+	{
+		List<Path> paths = new ArrayList<>();
+		for (JsonNode path : list)
+			paths.add(Path.of(path.asString()));
+		return paths;
+	}
+
+	/**
+	 * Returns the permission rule that denies reading a path whose names hold no character that a rule escapes.
+	 *
+	 * @param path        an absolute path
+	 * @param descendants {@code "/**"} to name the path and its contents, or {@code ""} to name the path alone
+	 * @return the rule
+	 */
+	private static String readRule(Path path, String descendants)
+	{
+		return "Read(/" + ClaudeConnectionSettings.rulePath(path) + descendants + ")";
 	}
 
 	/**

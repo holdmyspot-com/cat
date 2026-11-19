@@ -16,6 +16,11 @@ public final class HarnessRunSession implements AutoCloseable
 	private final HarnessProcess process;
 	private final AbstractHarnessRunnerScope scope;
 	private final HarnessRunLock lock;
+	/**
+	 * The directory of the CAT plugin installed in the run's home, whose launchers the session's commands run, or
+	 * {@code null} if the run has none.
+	 */
+	private final Path catPlugin;
 	private final AtomicBoolean closed = new AtomicBoolean();
 
 	/**
@@ -43,6 +48,24 @@ public final class HarnessRunSession implements AutoCloseable
 	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope,
 		HarnessRunLock lock)
 	{
+		this(run, process, scope, lock, null);
+	}
+
+	/**
+	 * Attaches a live harness process and its exclusive run lock to an owned run whose home holds the CAT plugin that
+	 * the session's commands run.
+	 *
+	 * @param run       the owned run
+	 * @param process   the live harness process
+	 * @param scope     services owned for the process lifetime
+	 * @param lock      the exclusive run lock
+	 * @param catPlugin the directory of the CAT plugin installed in the run's home, whose launchers the session's
+	 *                  commands run, or {@code null} if the run has none
+	 * @throws NullPointerException if {@code run}, {@code process}, {@code scope}, or {@code lock} are null
+	 */
+	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope,
+		HarnessRunLock lock, Path catPlugin)
+	{
 		requireThat(run, "run").isNotNull();
 		requireThat(process, "process").isNotNull();
 		requireThat(scope, "scope").isNotNull();
@@ -51,6 +74,7 @@ public final class HarnessRunSession implements AutoCloseable
 		this.process = process;
 		this.scope = scope;
 		this.lock = lock;
+		this.catPlugin = catPlugin;
 	}
 
 	/**
@@ -148,6 +172,16 @@ public final class HarnessRunSession implements AutoCloseable
 	public HarnessRun run()
 	{
 		return run;
+	}
+
+	/**
+	 * Returns the directory of the CAT plugin installed in the run's home, whose launchers the session's commands run.
+	 *
+	 * @return the directory, or empty if the run has none
+	 */
+	public Optional<Path> catPlugin()
+	{
+		return Optional.ofNullable(catPlugin);
 	}
 
 	/**

@@ -266,6 +266,11 @@ public final class ClaudeRunner
 					(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
 						run, step));
 			}
+			// The first plugin is CAT's when the run installs it, and its launchers are the ones that the session's
+			// requested sessions may read
+			Path catPlugin = null;
+			if (installCat)
+				catPlugin = plugins.getFirst();
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
@@ -315,11 +320,11 @@ public final class ClaudeRunner
 				identityRecorded = true;
 				if (watch == null)
 				{
-					HarnessRunSession session = new HarnessRunSession(run, process, scope, lock);
+					HarnessRunSession session = new HarnessRunSession(run, process, scope, lock, catPlugin);
 					child.release();
 					return session;
 				}
-				HarnessRunSession session = new HarnessRunSession(run, watch.guard(process), scope, lock);
+				HarnessRunSession session = new HarnessRunSession(run, watch.guard(process), scope, lock, catPlugin);
 				child.release();
 				return session;
 			}
