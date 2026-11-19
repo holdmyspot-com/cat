@@ -242,7 +242,8 @@ public final class KeptRunCopyTest
 				for (int round = 0; round < 6 && seen.get() == null; ++round)
 				{
 					String id = "kept-" + round;
-					KeptRunCopy.copy(child.directory(), kept.resolve("harness").resolve(id), id);
+					KeptRunCopy.copy(child.directory(), kept.resolve("harness").resolve(id), id,
+						child.directory().resolve("project"));
 				}
 			}
 			finally

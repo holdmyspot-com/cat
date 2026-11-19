@@ -299,6 +299,83 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
+	 * Verifies that the kept run that a served session's runner copies into the command's run root names, as its
+	 * project, the project that the command's launch named, as a run that the command started itself would. The
+	 * runner ran the session in the copy of that project that the request carried, below its own folder, so the run's
+	 * manifest that it copies names that copy instead.
+	 *
+	 * @throws IOException if the served session or its kept run cannot be copied
+	 */
+	@Test
+	public void keptRunNamesTheLaunchProject() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-kept-project-")).
+				toRealPath();
+			Path requests = Files.createDirectories(root.resolve("run/requests"));
+			Path responses = Files.createDirectories(root.resolve("run/responses"));
+			Path runRoot = root.resolve("kept-runs");
+			Path project = Files.createDirectories(root.resolve("campaign/trial/project"));
+			Path artifact = Files.createDirectories(root.resolve("artifact"));
+			// The parent runner unpacks the request's copy of the project below its response and runs the session there
+			Path requestProject = Files.createDirectories(root.resolve("parent/responses/request/inputs/project"));
+			JsonMapper json = JsonMapper.builder().build();
+			Pause pause = () ->
+			{
+				Path response;
+				try (Stream<Path> directories = Files.list(responses))
+				{
+					response = directories.findFirst().orElse(null);
+				}
+				if (response == null)
+				{
+					try (Stream<Path> files = Files.list(requests))
+					{
+						String id = files.map(path -> path.getFileName().toString()).
+							filter(name -> name.endsWith(".tar")).findFirst().
+							orElseThrow(() -> new IOException("The served request was not published")).
+							replace(".tar", "");
+						response = Files.createDirectories(responses.resolve(id));
+					}
+				}
+				else
+					throw new IOException("The response was published, but the forwarder kept waiting");
+				HarnessRunManager slot = new HarnessRunManager(jvm.fileLocks(), root.resolve("parent/slot"),
+					Clock.systemUTC(), Yielding.fileReplacer());
+				HarnessRun child = slot.create("harnessa");
+				slot.initialize(child, artifact, requestProject, "fixture", List.of("fixture"));
+				slot.markCompleted(child);
+				Path kept = response.resolve("run");
+				requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+				HarnessRunManager.renameCopy(kept, "ab12-cd34");
+				Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"completed\"}\n");
+				json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
+					put("format_version", 1).put("id", response.getFileName().toString()).put("harness", "harnessa").
+					put("status", "completed").put("reason", "").put("child_run_id", "ab12-cd34").
+					put("transcript", response.resolve("transcript.jsonl").toString()).
+					put("run", kept.toString()));
+			};
+			String[] arguments = {"--run-root", runRoot.toString(), "--project", project.toString(), "--model",
+				"model-a", "--effort", "effort-a", "--keep-run"};
+
+			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
+				new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n{\"type\":\"complete\"}\n"),
+				Writer.nullWriter(), requests, pause);
+
+			List<Path> keptRuns;
+			try (Stream<Path> runs = Files.list(runRoot.resolve("harnessa")))
+			{
+				keptRuns = runs.toList();
+			}
+			requireThat(keptRuns, "keptRuns").size().isEqualTo(1);
+			JsonNode manifest = json.readTree(keptRuns.getFirst().resolve("run.json").toFile());
+			requireThat(manifest.path("project_path").asString(), "projectPath").isEqualTo(project.toString());
+		}
+	}
+
+	/**
 	 * Replaces a turn's project and native transcript inputs for the next response.
 	 *
 	 * @param turnCopy the run snapshot the forwarder copies

@@ -249,7 +249,7 @@ public final class SessionRequestForwarder
 		Path runRoot = launch.runRoot();
 		if (runRoot == null)
 			runRoot = defaultRunRoot;
-		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "");
+		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "", launch.project());
 		TemporaryDirectories.deleteRecursively(responses(requests, id));
 		return incomplete;
 	}
@@ -262,11 +262,12 @@ public final class SessionRequestForwarder
 	 * @param runs     the directory that holds the harness's runs in the launch's run root
 	 * @param keptId   the identifier of the kept run that the command has been told of, or an empty string to give it
 	 *                 a new one
+	 * @param project  the project that the launch named, which the copy's manifest names
 	 * @return the reason why the copy is incomplete, or empty if the response names no kept run or the copy is
 	 *   complete
 	 * @throws IOException if the run cannot be copied
 	 */
-	private static Optional<String> copyKeptRun(JsonNode response, Path runs, String keptId)
+	private static Optional<String> copyKeptRun(JsonNode response, Path runs, String keptId, Path project)
 		throws IOException
 	{
 		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
@@ -276,7 +277,7 @@ public final class SessionRequestForwarder
 		String kept = keptId;
 		if (kept.isEmpty())
 			kept = HarnessRunManager.newRunId(Clock.systemUTC());
-		return KeptRunCopy.copy(Path.of(run), runs.resolve(kept), kept).incomplete();
+		return KeptRunCopy.copy(Path.of(run), runs.resolve(kept), kept, project).incomplete();
 	}
 
 	/**
@@ -394,7 +395,8 @@ public final class SessionRequestForwarder
 		String reason = response.path("reason").asString("");
 		boolean kept = !response.path(SessionRequestBroker.RUN_COPY).asString("").isEmpty() &&
 			RecordCopy.isRunId(response.path("child_run_id").asString(""));
-		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness), keptId);
+		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness), keptId,
+			launch.project());
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		if (incomplete.isPresent() && status.equals("completed"))
@@ -427,8 +429,9 @@ public final class SessionRequestForwarder
 	 */
 	private static Launch parse(JsonMapper json, Route route, String harness, String[] args) throws IOException
 	{
+		Path project = Path.of("").toAbsolutePath();
 		ObjectNode request = json.createObjectNode().put("format_version", RequestArchive.VERSION).
-			put("harness", harness).put("project", Path.of("").toAbsolutePath().toString());
+			put("harness", harness).put("project", project.toString());
 		request.putArray("prompts");
 		request.putArray("plugins");
 		Path records = null;
@@ -500,7 +503,7 @@ public final class SessionRequestForwarder
 				case "--artifact" -> artifact = Path.of(value).toAbsolutePath();
 				// The parent runner chooses the run root; a served session's kept run is copied below it
 				case "--run-root" -> runRoot = Path.of(value).toAbsolutePath();
-				case "--project" -> request.put("project", Path.of(value).toAbsolutePath().toString());
+				case "--project" -> project = Path.of(value).toAbsolutePath();
 				case "--plugin" -> request.withArray("plugins").add(Path.of(value).toAbsolutePath().toString());
 				case "--model", "--effort" -> request.put(option.substring(2), value);
 				case "--input" -> records = Path.of(value);
@@ -527,7 +530,8 @@ public final class SessionRequestForwarder
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
 			request.path("effort").asString(""));
-		return new Launch(request, records, conversation, transcript, receipt, runRoot, artifact, keepRun);
+		request.put("project", project.toString());
+		return new Launch(request, project, records, conversation, transcript, receipt, runRoot, artifact, keepRun);
 	}
 
 	/**
@@ -594,6 +598,8 @@ public final class SessionRequestForwarder
 	 * A launch's options.
 	 *
 	 * @param request      the request's manifest, naming the files and directories that the launch names
+	 * @param project      the project that the launch names, or the working directory if it names none; the request
+	 *                     names it too until it is packed, which names the project's place in the request instead
 	 * @param records      the file of {@code --input}, or null
 	 * @param conversation the folder of {@code --conversation}, or null
 	 * @param transcript   the file of {@code --output}, or null
@@ -602,8 +608,8 @@ public final class SessionRequestForwarder
 	 * @param artifact     the folder of {@code --artifact}, or null
 	 * @param keepRun      indicates whether the launch names {@code --keep-run}
 	 */
-	private record Launch(ObjectNode request, Path records, Path conversation, Path transcript, Path receipt,
-		Path runRoot, Path artifact, boolean keepRun)
+	private record Launch(ObjectNode request, Path project, Path records, Path conversation, Path transcript,
+		Path receipt, Path runRoot, Path artifact, boolean keepRun)
 	{
 	}
 

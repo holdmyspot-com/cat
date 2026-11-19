@@ -44,6 +44,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 import java.util.stream.Stream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -257,26 +258,47 @@ public final class HarnessRunManager
 	 */
 	public static void renameCopy(Path directory, String id) throws IOException
 	{
-		copyManifest(directory, directory, id);
+		requireThat(directory, "directory").isNotNull();
+		requireThat(id, "id").matches(RUN_ID);
+		writeCopyManifest(directory, directory, id, UnaryOperator.identity());
 	}
 
 	/**
-	 * Writes the manifest of a run into the directory of its copy under the identifier by which the copy is kept. The
-	 * copy's manifest is replaced in one step, so a reader sees either no manifest, the manifest that was there, or the
-	 * new one. A run that has no manifest leaves the copy without one.
+	 * Writes the manifest of a run into the directory of its copy under the identifier by which the copy is kept,
+	 * naming {@code project} as the run's project. The copy's manifest is replaced in one step, so a reader sees either
+	 * no manifest, the manifest that was there, or the new one. A run that has no manifest leaves the copy without one.
 	 *
 	 * @param source    the directory of the run
 	 * @param directory the directory of the copy, which exists
 	 * @param id        the identifier under which the copy is kept
+	 * @param project   the project that the copy's manifest names
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code id} is not a run identifier
 	 * @throws IOException              if the run's manifest is malformed or the copy's cannot be written
 	 */
-	public static void copyManifest(Path source, Path directory, String id) throws IOException
+	public static void copyManifest(Path source, Path directory, String id, Path project) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(directory, "directory").isNotNull();
 		requireThat(id, "id").matches(RUN_ID);
+		requireThat(project, "project").isNotNull();
+		String projectPath = escape(project.toAbsolutePath().normalize().toString());
+		writeCopyManifest(source, directory, id, _ -> projectPath);
+	}
+
+	/**
+	 * Writes the manifest of a run into the directory of its copy with another identifier and project.
+	 *
+	 * @param source    the directory of the run
+	 * @param directory the directory of the copy, which exists
+	 * @param id        the identifier under which the copy is kept
+	 * @param project   returns the project path that the copy's manifest names, as JSON string content, from the one
+	 *                  that the run's manifest names
+	 * @throws IOException if the run's manifest is malformed or the copy's cannot be written
+	 */
+	private static void writeCopyManifest(Path source, Path directory, String id, UnaryOperator<String> project)
+		throws IOException
+	{
 		Path manifest = source.resolve("run.json");
 		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 			return;
@@ -287,7 +309,8 @@ public final class HarnessRunManager
 		Files.createDirectories(directory);
 		Path replacement = Files.createTempFile(directory, "run-", ".json");
 		Files.writeString(replacement, content.substring(0, matcher.start("id")) + id +
-			content.substring(matcher.end("id")));
+			content.substring(matcher.end("id"), matcher.start("projectPath")) +
+			project.apply(matcher.group("projectPath")) + content.substring(matcher.end("projectPath")));
 		Files.move(replacement, directory.resolve("run.json"), REPLACE_EXISTING);
 	}
 
