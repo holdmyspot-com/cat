@@ -49,7 +49,7 @@ import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Tests that a Codex judge may read its trial's evidence, but not change it, while the rest of the host project stays
- * denied, however many runs the trial's run root holds.
+ * denied, however many runs the trial's results folder holds.
  * <p>
  * The bridge stands in for the Codex runner up to the Codex process: it parses the runner options that
  * {@link CodexSessions} sends, as the runner does, and builds the sandbox that the runner gives the session: the
@@ -186,7 +186,7 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @param jvm        the JVM scope
 	 * @param cleanup    deletes the fixture's directories
 	 * @param platform   the platform that the judge runs on
-	 * @param runs       how many other runs the trial's run root holds besides the trial and one sibling
+	 * @param runs       how many other runs the trial's results folder holds besides the trial and one sibling
 	 * @param bubblewrap whether the caller's {@code PATH} has bubblewrap
 	 * @return how the session ended, with the judge's sandbox if the session completed
 	 * @throws IOException          if a fixture cannot be created or read

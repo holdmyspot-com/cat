@@ -24,11 +24,11 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Finds the harness processes of runner runs that an earlier {@link Driver} left running.
  * <p>
- * The runner records each run in {@code <runRoot>/<harness>/<id>/run.json}, including the run's owner process
- * ({@code owner_pid}, {@code owner_started_at}) and its harness process ({@code harness_pid},
- * {@code harness_started_at}). The session port declares the run roots, which hold the runs of every campaign of the
- * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists:
- * a run whose owner is alive belongs to a running driver, of this or another campaign.
+ * The runner records each run in {@code <runRoot>/<harness>/<id>/session.json}, including the run's owner process
+ * ({@code owner_pid}, {@code owner_started_at}) and its harness process ({@code harness_pid}, {@code
+ * harness_started_at}). The session port declares the results folders, which hold the runs of every campaign of the
+ * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists: a
+ * run whose owner is alive belongs to a running driver, of this or another campaign.
  * <p>
  * A manifest that cannot be parsed, or that lacks a process's {@link ProcessDescription#start() start} or holds
  * another form of it, identifies no process: without the start, a reused process identifier cannot be told apart
@@ -51,7 +51,7 @@ public final class LeftoverRuns
 	/**
 	 * Creates a finder that asks the operating system's process table whether each owner process is alive.
 	 *
-	 * @param sessions the session port that declares the run roots
+	 * @param sessions the session port that declares the results folders
 	 * @param json     the JSON mapper that parses run manifests
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -63,7 +63,7 @@ public final class LeftoverRuns
 	/**
 	 * Creates a finder that asks a liveness service whether each owner process is alive.
 	 *
-	 * @param sessions the session port that declares the run roots
+	 * @param sessions the session port that declares the results folders
 	 * @param json     the JSON mapper that parses run manifests
 	 * @param liveness answers whether a recorded owner process is alive
 	 * @throws NullPointerException if any of the arguments are null
@@ -79,11 +79,11 @@ public final class LeftoverRuns
 	}
 
 	/**
-	 * Finds the harness processes of the runs, under every run root that the session port declares, that are still
-	 * marked {@code running} although their owner process no longer exists.
+	 * Finds the harness processes of the runs, under every results folder that the session port declares, that are
+	 * still marked {@code running} although their owner process no longer exists.
 	 *
-	 * @return the harness processes whose identifiers and starts can be parsed, in run root and directory
-	 *   order; empty if no run root exists
+	 * @return the harness processes whose identifiers and starts can be parsed, in results folder and directory
+	 *   order; empty if no results folder exists
 	 * @throws IOException if the run directories cannot be listed or process identity is uncertain
 	 */
 	public List<RecordedProcess> find() throws IOException
@@ -97,7 +97,7 @@ public final class LeftoverRuns
 			{
 				for (Path run : list(harness))
 				{
-					Path manifest = run.resolve("run.json");
+					Path manifest = run.resolve("session.json");
 					if (Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
 						parse(Files.readAllBytes(manifest)).ifPresent(processes::add);
 				}

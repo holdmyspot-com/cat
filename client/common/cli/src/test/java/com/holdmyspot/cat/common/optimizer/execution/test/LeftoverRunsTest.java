@@ -27,7 +27,7 @@ import java.util.Optional;
 import java.util.function.LongFunction;
 
 /**
- * Covers how the harness processes of leftover runner runs are found in the session port's run roots.
+ * Covers how the harness processes of leftover runner runs are found in the session port's results folders.
  * <p>
  * Except in {@link #readsOwnerLivenessFromProcessTable()} and {@link #leavesRunOfLiveOwnerAfterClockIsSet()}, the
  * real {@link ProcessHandleLiveness} reads which owner processes are alive from a table of {@link FakeProcessHandle}s
@@ -137,7 +137,7 @@ public final class LeftoverRunsTest
 	}
 
 	/**
-	 * Verifies that runs are found in every run root that the session port declares.
+	 * Verifies that runs are found in every results folder that the session port declares.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -237,7 +237,8 @@ public final class LeftoverRunsTest
 	}
 
 	/**
-	 * Verifies that a session port without run roots, or whose run roots do not exist yet, has no leftover runs.
+	 * Verifies that a session port without results folders, or whose results folders do not exist yet, has no leftover
+	 * runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -255,10 +256,10 @@ public final class LeftoverRunsTest
 	}
 
 	/**
-	 * Creates a finder over the run roots of a session port.
+	 * Creates a finder over the results folders of a session port.
 	 *
 	 * @param processes the live processes of the operating system's process table
-	 * @param runRoots  the run roots that the port declares
+	 * @param runRoots  the results folders that the port declares
 	 * @return the finder
 	 */
 	private static LeftoverRuns finder(List<FakeProcessHandle> processes, Path... runRoots)
@@ -268,11 +269,12 @@ public final class LeftoverRunsTest
 	}
 
 	/**
-	 * Creates a finder over the run roots of a session port whose real process checker reads the supplied processes.
+	 * Creates a finder over the results folders of a session port whose real process checker reads the supplied
+	 * processes.
 	 *
 	 * @param processes reports the starts of running processes
 	 * @param handles   finds the process with an identifier
-	 * @param runRoots  the run roots that the port declares
+	 * @param runRoots  the results folders that the port declares
 	 * @return the finder
 	 */
 	private static LeftoverRuns finder(HarnessProcesses processes, LongFunction<Optional<ProcessHandle>> handles,
@@ -308,6 +310,6 @@ public final class LeftoverRunsTest
 	private static void writeManifest(Path run, String manifest) throws IOException
 	{
 		Files.createDirectories(run);
-		Files.writeString(run.resolve("run.json"), manifest);
+		Files.writeString(run.resolve("session.json"), manifest);
 	}
 }

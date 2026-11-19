@@ -117,7 +117,7 @@ public final class CodexRoleRulesTest
 	 * Sends a session's first brief through an in-memory bridge.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param root the test-owned run root
+	 * @param root the test-owned results folder
 	 * @param artifact the installed artifact
 	 * @param role the session's role
 	 * @return the first brief that the bridge received
@@ -134,7 +134,7 @@ public final class CodexRoleRulesTest
 			false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		RunnerSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
 			(options, input, output) -> ScriptedHarness.serve(
-				Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex", List.of(Turn.replies("ok")),
+				Path.of(ScriptedHarness.optionValue(options, "--results")), "codex", List.of(Turn.replies("ok")),
 				input, output, prompts));
 
 		SessionResult result = sessions.start(new SessionRequest(role, partOf(role), source, List.of("brief"),

@@ -158,7 +158,7 @@ public final class ClaudeSessionsTest
 		{
 			arguments.add(options);
 			// Claude fails a turn that the caller interrupts
-			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude", script, input,
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude", script, input,
 				output, requests, InterruptedTurn.FAILS);
 		});
 	}
@@ -205,7 +205,7 @@ public final class ClaudeSessionsTest
 					newClaudeSessions(settings, (options, input, output) ->
 				{
 					arguments.add(options);
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude",
 						List.of(Turn.replies("ok")), input, output);
 				});
 				// CAT is recognized by its manifest's repository, whatever the user named it
@@ -275,10 +275,10 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that the held-out run root beside the run root exists before the session starts, that a session of the
-	 * held-out part runs under it and is denied nothing, and that a session of the development part runs under the
-	 * run root and passes each listed held-out directory and the held-out run root to the runner through
-	 * {@code --deny-read}.
+	 * Verifies that the held-out results folder beside the results folder exists before the session starts, that a
+	 * session of the held-out part runs under it and is denied nothing, and that a session of the development part runs
+	 * under the results folder and passes each listed held-out directory and the held-out results folder to the runner
+	 * through {@code --deny-read}.
 	 *
 	 * @param role the session's role
 	 * @param part the part that the session may read
@@ -312,7 +312,7 @@ public final class ClaudeSessionsTest
 				{
 					arguments.add(options);
 					heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude",
 						List.of(Turn.replies("ok")), input, output);
 				});
 
@@ -341,7 +341,7 @@ public final class ClaudeSessionsTest
 					expectedRunRoot = runRoot;
 					expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
 				}
-				requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+				requireThat(ScriptedHarness.optionValue(options, "--results"), "runRoot").
 					isEqualTo(expectedRunRoot.toString());
 				requireThat(denied, "denied").isEqualTo(expectedDenied);
 				requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
@@ -381,7 +381,7 @@ public final class ClaudeSessionsTest
 				newClaudeSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
@@ -435,7 +435,7 @@ public final class ClaudeSessionsTest
 				arguments.add(options);
 				received.add(ContractAuthorFixtures.regularFiles(Path.of(ScriptedHarness.optionValue(options,
 					"--workspace"))));
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
@@ -462,8 +462,8 @@ public final class ClaudeSessionsTest
 
 	/**
 	 * Verifies that a development session started for a campaign in a session's CAT session directory runs under that
-	 * session's run root and is denied reading the {@code held_out} directories of the campaigns of every session and
-	 * the session's held-out run root.
+	 * session's results folder and is denied reading the {@code held_out} directories of the campaigns of every session
+	 * and the session's held-out results folder.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -497,7 +497,7 @@ public final class ClaudeSessionsTest
 				newClaudeSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
@@ -507,7 +507,7 @@ public final class ClaudeSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			List<String> options = arguments.getFirst();
 			Path sessionDirectory = root.resolve(".cat/sessions/" + sessionId);
-			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+			requireThat(ScriptedHarness.optionValue(options, "--results"), "runRoot").
 				isEqualTo(sessionDirectory.resolve("optimizer-runs/claude").toString());
 			List<String> denied = new ArrayList<>();
 			for (int i = 0; i < options.size() - 1; ++i)
@@ -1070,7 +1070,7 @@ public final class ClaudeSessionsTest
 					newClaudeSessions(settings, (options, input, output) ->
 				{
 					arguments.add(options);
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "claude",
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "claude",
 						List.of(Turn.replies("ok")), input, output);
 				});
 
@@ -1825,7 +1825,7 @@ public final class ClaudeSessionsTest
 			if (sharedWithRunner)
 			{
 				StringWriter errors = new StringWriter();
-				int status = ClaudeRunnerCli.launch(new String[]{"--project", source.toString(), "--run-root",
+				int status = ClaudeRunnerCli.launch(new String[]{"--project", source.toString(), "--results",
 					runRoot.toString(), "--model", "sonnet", "--effort", "low"}, environment, jvm.waiting(),
 					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
 
@@ -1871,9 +1871,9 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that inside a run that allows sessions, each of the optimizer's sessions goes to the run's runner, which
-	 * starts it, and that the session completes with the requested session's reply and with its kept run where the
-	 * optimizer reads its sessions' runs.
+	 * Verifies that inside a nested session that allows sessions, each of the optimizer's sessions goes to the nested
+	 * session's runner, which starts it, and that the session completes with the requested session's reply and with its
+	 * kept run where the optimizer reads its sessions' runs.
 	 *
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the wait is interrupted
@@ -1901,7 +1901,7 @@ public final class ClaudeSessionsTest
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				SessionResult.Completed completed = (SessionResult.Completed) result;
 				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("reply 1")));
-				// The optimizer reads the requested session's kept run, without its home, in its own run root
+				// The optimizer reads the requested session's kept run, without its home, in its own results folder
 				Path run = completed.transcript().getParent().getParent();
 				requireThat(Files.readString(run.resolve("project/result.txt")), "result").isEqualTo("result");
 				requireThat(Files.exists(run.resolve("home")), "home").isFalse();
@@ -1925,9 +1925,10 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Verifies that inside a run that allows no session, or whose sessions are spent, the optimizer's session ends as a
-	 * launch refusal, which pauses the optimizer instead of counting a failure, with the message that names the
-	 * caller's options that would allow the session, and that it publishes no request and writes no run first.
+	 * Verifies that inside a nested session that allows no session, or whose sessions are spent, the optimizer's
+	 * session ends as a launch refusal, which pauses the optimizer instead of counting a failure, with the message that
+	 * names the caller's options that would allow the session, and that it publishes no request and writes no run
+	 * first.
 	 *
 	 * @param sessionRequests how many sessions the run allows
 	 * @param serveFirst      indicates whether the run serves one session before
@@ -1974,7 +1975,7 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Returns the production port of an optimizer that a Claude Code session runs inside a run.
+	 * Returns the production port of an optimizer that a Claude Code session runs inside a nested session.
 	 *
 	 * @param jvm     the borrowed process scope
 	 * @param home    the user's home and the port's artifact

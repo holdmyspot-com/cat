@@ -455,7 +455,7 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns what a Codex child session needs beyond its run folder, as a request server asks for it before it
+	 * Returns what a Codex child session needs beyond its session folder, as a request server asks for it before it
 	 * starts the child: the shared dependency caches, which the child writes; the host that the child's Codex sends
 	 * its model requests to, which its commands reach; and the caller's login file, which the child's isolated home
 	 * copies when it exists.
@@ -480,12 +480,12 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the developer instructions of a session: a note that the denied reads under the run root cover neither
-	 * the session's project nor its home, followed by the agent's contract, if any. Codex lists the run root among the
-	 * denied reads in the model's instructions, and without the note models answered that their own project was
-	 * denied without trying to read it.
+	 * Returns the developer instructions of a session: a note that the denied reads under the results folder cover
+	 * neither the session's project nor its home, followed by the agent's contract, if any. Codex lists the results
+	 * folder among the denied reads in the model's instructions, and without the note models answered that their own
+	 * project was denied without trying to read it.
 	 *
-	 * @param root the run root, as the denied reads name it
+	 * @param root the results folder, as the denied reads name it
 	 * @param project the session's project, which is its working directory
 	 * @param home the session's Codex home
 	 * @param agentInstructions the agent's contract, or an empty string for a session without an agent
@@ -521,8 +521,8 @@ public final class CodexRunner
 	 * under them, so its size does not grow with the number of runs or files beside the evidence. Otherwise, and when
 	 * it hides nothing, the command is the app-server command itself.
 	 * <p>
-	 * A Linux session whose {@code readOnlyEvidence} lies inside a directory that it is denied, such as the run root,
-	 * cannot start without that bubblewrap, so the method refuses it before it changes the configuration.
+	 * A Linux session whose {@code readOnlyEvidence} lies inside a directory that it is denied, such as the results
+	 * folder, cannot start without that bubblewrap, so the method refuses it before it changes the configuration.
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
 	 * @param manager          the run manager
@@ -658,36 +658,36 @@ public final class CodexRunner
 
 	/**
 	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
-	 * and directory under the run root except the session's project, home, link-targets directory and evidence, the
-	 * directory where Codex logs the session's events unless the session may request sessions, and every harness's
-	 * login and configuration files in the session's home and in the user's home, as
-	 * {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's own Codex
-	 * home: its {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the
-	 * session's tool output limit, and its {@code auth.json}, the copy of the user's login that the runner puts there,
-	 * which a Codex process that the session starts from a command, such as the prompt optimizer's sessions, reads.
-	 * The session therefore cannot read the runner's records of its own run or of any other run, the workspace files
-	 * of any run, any login but that copy, such as the user's own Codex and Claude logins, or the user's
-	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does
-	 * not exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
+	 * and directory under the results folder except the session's project, home, link-targets directory and evidence,
+	 * the directory where Codex logs the session's events unless the session may request sessions, and every harness's
+	 * login and configuration files in the session's home and in the user's home, as {@link
+	 * SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's own Codex home:
+	 * its {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's
+	 * tool output limit, and its {@code auth.json}, the copy of the user's login that the runner puts there, which a
+	 * Codex process that the session starts from a command, such as the prompt optimizer's sessions, reads. The session
+	 * therefore cannot read the runner's records of its own run or of any other run, the workspace files of any run,
+	 * any login but that copy, such as the user's own Codex and Claude logins, or the user's configuration. The method
+	 * creates the session log directory, because the sandbox skips a denied path that does not exist yet; for the same
+	 * reason, it leaves out a login or configuration file that does not exist.
 	 * <p>
 	 * A session that may request sessions is not denied the session log directory, because the commands that it
 	 * runs include the prompt optimizer's {@code run}, which reads the session's rollout there to learn that the
 	 * user interrupted the session's turn. A session that may request none runs no such command, so it stays denied
-	 * the record of its own events. Another Codex home holds each other session's log, so the run root's denial
+	 * the record of its own events. Another Codex home holds each other session's log, so the results folder's denial
 	 * keeps those hidden.
 	 * <p>
-	 * The result names the run root and each directory that the caller denies rather than each path under them, which
-	 * also denies the runs that start after the session. It omits a path inside another directory that it names, except
-	 * the session log directory and the denied files inside the session's home. Every platform's sandbox still lets the
-	 * session read and write its project and home inside a denied directory, such as the project that holds the run
-	 * root, but the Linux sandbox would also hide read-only evidence there. The result therefore omits each directory
-	 * that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, which the app-server's
-	 * bubblewrap hides instead, and the paths under it. Where the caller's {@code PATH} has no bubblewrap, a Linux
-	 * session is instead denied each other file and directory under a denied directory that holds any of
-	 * {@code readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as
-	 * {@link #sessionSandbox(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess,
-	 * List)} describes, so this listing covers only the run's own link-targets and responses directories, which lie
-	 * inside the run root.
+	 * The result names the results folder and each directory that the caller denies rather than each path under them,
+	 * which also denies the runs that start after the session. It omits a path inside another directory that it names,
+	 * except the session log directory and the denied files inside the session's home. Every platform's sandbox still
+	 * lets the session read and write its project and home inside a denied directory, such as the project that holds
+	 * the results folder, but the Linux sandbox would also hide read-only evidence there. The result therefore omits
+	 * each directory that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, which the
+	 * app-server's bubblewrap hides instead, and the paths under it. Where the caller's {@code PATH} has no bubblewrap,
+	 * a Linux session is instead denied each other file and directory under a denied directory that holds any of {@code
+	 * readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as {@link
+	 * #sessionSandbox(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess, List)}
+	 * describes, so this listing covers only the run's own link-targets and responses directories, which lie inside the
+	 * results folder.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -787,10 +787,10 @@ public final class CodexRunner
 
 	/**
 	 * Returns the directories that the bubblewrap around a Linux session's app-server hides: each directory that the
-	 * caller denies, and the run root, that holds read-only evidence, except one inside another. The Linux sandbox of
-	 * Codex hides read-only paths inside a directory that a permission profile denies, so such a directory cannot be
-	 * denied in the profile. Denying each other path under it instead made the profile of a judge that ran beside
-	 * thousands of runs too long for Codex to pass to its sandbox helper, which then failed to start the judge's
+	 * caller denies, and the results folder, that holds read-only evidence, except one inside another. The Linux
+	 * sandbox of Codex hides read-only paths inside a directory that a permission profile denies, so such a directory
+	 * cannot be denied in the profile. Denying each other path under it instead made the profile of a judge that ran
+	 * beside thousands of runs too long for Codex to pass to its sandbox helper, which then failed to start the judge's
 	 * thread.
 	 *
 	 * @param manager          the run manager
@@ -844,7 +844,7 @@ public final class CodexRunner
 
 	/**
 	 * Returns the directories that a session must not read as a whole: those that the caller denies, followed by the
-	 * run root.
+	 * results folder.
 	 *
 	 * @param manager     the run manager
 	 * @param deniedReads the files and directories that the caller denies the session reading

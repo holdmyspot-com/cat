@@ -75,7 +75,7 @@ public final class RoleBriefTest
 	 * Sends a request through an in-memory bridge and returns its observed prompts.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param root the test-owned run root
+	 * @param root the test-owned results folder
 	 * @param artifact the installed fixture artifact
 	 * @param request the role request
 	 * @return the ordered prompts received by the bridge
@@ -96,7 +96,7 @@ public final class RoleBriefTest
 			true,
 			Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		TestSessions sessions = new TestSessions(settings, (options, input, output) ->
-			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 				replies, input, output, prompts));
 
 		SessionResult result = sessions.start(request).completion().toCompletableFuture().get(60, TimeUnit.SECONDS);
@@ -229,7 +229,7 @@ public final class RoleBriefTest
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(Turn.replies("ok"), Turn.replies("ok")), input, output);
 			});
 

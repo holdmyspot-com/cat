@@ -326,8 +326,8 @@ final class Session implements SessionHandle
 
 	/**
 	 * Writes the files that the session's workspace receives, a trial's workspace files or the contract author's draft
-	 * directory, to a new directory under the run root of the session's part, so that the workspace files of a held-out
-	 * test case stay in a held-out location.
+	 * directory, to a new directory under the results folder of the session's part, so that the workspace files of a
+	 * held-out test case stay in a held-out location.
 	 *
 	 * @return the directory, or {@code null} if the session receives no files
 	 * @throws IOException if the files cannot be written
@@ -351,7 +351,7 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Writes the file that lists the request's extra permissions, in a new directory under the run root of the
+	 * Writes the file that lists the request's extra permissions, in a new directory under the results folder of the
 	 * session's part.
 	 *
 	 * @return the file, or {@code null} if the request asks for no extra permissions
@@ -640,7 +640,7 @@ final class Session implements SessionHandle
 				arguments.addAll(List.of("--plugin", plugin.toString()));
 		}
 		arguments.addAll(List.of("--artifact", artifact.toString(), "--project", request.source().toString(),
-			"--run-root", runRoot().toString()));
+			"--results", runRoot().toString()));
 		// Only a trial's transcripts are read, to learn what its agents received
 		if (request.role() == SessionRole.TRIAL)
 			arguments.add("--session-transcripts");
@@ -669,7 +669,7 @@ final class Session implements SessionHandle
 		Path hostProject = settings.hostProject();
 		if (hostProject != null)
 		{
-			// The run root lies inside the host project, so the runner denies every file of the project except the
+			// The results folder lies inside the host project, so the runner denies every file of the project except the
 			// session's own run and evidence
 			arguments.addAll(List.of("--deny-read", hostProject.toString()));
 		}
@@ -688,8 +688,8 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns the directory that holds this session's run directory: the held-out run root for a session of the
-	 * held-out part, and the run root otherwise.
+	 * Returns the directory that holds this session's run directory: the held-out results folder for a session of the
+	 * held-out part, and the results folder otherwise.
 	 *
 	 * @return the directory
 	 */

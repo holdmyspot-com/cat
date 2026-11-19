@@ -126,11 +126,11 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the message with which a CAT command that starts sessions refuses to start one inside a run that allows
-	 * no further session.
+	 * Returns the message with which a CAT command that starts sessions refuses to start one inside a nested session
+	 * that allows no further session.
 	 *
 	 * @param command names the command, such as {@code "The prompt optimizer"}
-	 * @param reason  the reason of the run's runner, {@link #NO_REQUESTS_REASON} or {@link #limitReason(int)}
+	 * @param reason  the reason of the nested session's runner, {@link #NO_REQUESTS_REASON} or {@link #limitReason(int)}
 	 * @return the message, which names the options of the run's caller that would allow the session
 	 * @throws NullPointerException if {@code command} or {@code reason} are null
 	 */
@@ -362,8 +362,8 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	}
 
 	/**
-	 * Returns the runner launchers beside the request launcher. Inside a run, each one requests a session of its
-	 * harness as the request launcher does.
+	 * Returns the runner launchers beside the request launcher. Inside a nested session, each one requests a session of
+	 * its harness as the request launcher does.
 	 *
 	 * @return the {@code claude-runner} and {@code codex-runner} launchers, in that order, as batch files when the
 	 *   request launcher is one

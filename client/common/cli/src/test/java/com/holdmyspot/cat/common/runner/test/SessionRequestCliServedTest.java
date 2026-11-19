@@ -28,7 +28,8 @@ import java.util.stream.Stream;
 import org.testng.annotations.Test;
 
 /**
- * Tests the requests that {@link SessionRequestCli} writes outside a run, for the session's {@link RequestServer}.
+ * Tests the requests that {@link SessionRequestCli} writes outside a nested session, for the session's {@link
+ * RequestServer}.
  */
 public final class SessionRequestCliServedTest
 {
@@ -45,7 +46,7 @@ public final class SessionRequestCliServedTest
 	}
 
 	/**
-	 * Verifies that outside a run a request that no request server serves is refused with status 2, naming the
+	 * Verifies that outside a nested session a request that no request server serves is refused with status 2, naming the
 	 * command that starts the server, before the command writes a request or creates the requests directory.
 	 *
 	 * @throws IOException if fixture I/O fails
@@ -78,9 +79,9 @@ public final class SessionRequestCliServedTest
 	}
 
 	/**
-	 * Verifies that outside a run a request goes to the requests directory of the request server that serves the
-	 * session, and that a request that outlasts its wait names the absolute path of the plugin's
-	 * {@code request-session} to wait for it again, since outside a run no variable names that command.
+	 * Verifies that outside a nested session a request goes to the requests directory of the request server that serves
+	 * the session, and that a request that outlasts its wait names the absolute path of the plugin's {@code
+	 * request-session} to wait for it again, since outside a nested session no variable names that command.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */

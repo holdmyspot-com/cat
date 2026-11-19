@@ -23,8 +23,9 @@ public final class HarnessEnvironment
 	/**
 	 * The variable that marks a harness process as a session of a CAT run. A runner sets it to {@value #RUN_VALUE} in
 	 * the environment of every harness process that it starts, and the session's commands inherit it. A runner launcher
-	 * that one of the session's commands runs then sends its session to no request server: inside a run, a session
-	 * starts only as a request to the run's own runner, which counts and limits the sessions that the run requests.
+	 * that one of the session's commands runs then sends its session to no request server: inside a nested session, a
+	 * session starts only as a request to the run's own runner, which counts and limits the sessions that the run
+	 * requests.
 	 */
 	public static final String RUN_VARIABLE = "CAT_RUN";
 	/**

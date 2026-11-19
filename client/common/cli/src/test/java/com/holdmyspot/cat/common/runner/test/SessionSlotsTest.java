@@ -60,8 +60,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that the sessions of one slot get the same run root and run identifier, and that the second finds the
-	 * slot empty although the first left files in it.
+	 * Verifies that the sessions of one slot get the same results folder and run identifier, and that the second finds
+	 * the slot empty although the first left files in it.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -254,7 +254,7 @@ public final class SessionSlotsTest
 				new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
 			Path run = Files.createDirectories(first.root().resolve("claude").resolve(first.runId()));
-			Path manifest = run.resolve("run.json");
+			Path manifest = run.resolve("session.json");
 			Path sentinel = run.resolve("evidence");
 			Files.writeString(manifest, "{not json");
 			Files.writeString(sentinel, "keep");
@@ -276,8 +276,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a run folder without a manifest, which records no process, does not keep its slot: taking the slot
-	 * removes the folder and asks no process to end.
+	 * Verifies that a session folder without a manifest, which records no process, does not keep its slot: taking the
+	 * slot removes the folder and asks no process to end.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -302,8 +302,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a run folder left in a free slot whose manifest is malformed keeps its bytes and prevents the slot
-	 * from being taken.
+	 * Verifies that a session folder left in a free slot whose manifest is malformed keeps its bytes and prevents the
+	 * slot from being taken.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -318,7 +318,7 @@ public final class SessionSlotsTest
 			SessionSlots.Slot first = slots.acquire(false);
 			slots.release(first);
 			Path run = Files.createDirectories(first.root().resolve("claude").resolve(first.runId()));
-			Path manifest = run.resolve("run.json");
+			Path manifest = run.resolve("session.json");
 			Files.writeString(manifest, "{not json");
 			IOException failure = null;
 			try
@@ -355,9 +355,9 @@ public final class SessionSlotsTest
 			SessionSlots.Slot slot = slots.acquire(false);
 			HarnessRun run = new HarnessRunManager(new FileLocks(), slot.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(slot.runId()).create("claude");
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			IOException failure = null;
-			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "run.json"))
+			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "session.json"))
 			{
 				slots.release(slot);
 			}
@@ -518,7 +518,7 @@ public final class SessionSlotsTest
 			requireThat(inUse.getMessage(), "inUse").contains("resuming");
 			slots.retain(resumed);
 
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			Files.writeString(manifest, Files.readString(manifest).replace("\"schema_version\": 6", "\"schema_version\": 9"));
 			expectThrows(IOException.class, () -> slots.acquireRetained(SESSION_ID, "claude"));
 			requireThat(Files.isDirectory(run.directory().resolve("home")), "kept").isTrue();

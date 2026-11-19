@@ -79,7 +79,7 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a launch outside a harness session that names no {@code --run-root} prints only the reason, as
+	 * Verifies that a launch outside a harness session that names no {@code --results} prints only the reason, as
 	 * one line without a stack trace, and ends with the status of a refused launch.
 	 */
 	@Test
@@ -93,7 +93,7 @@ public final class HarnessRunnerOptionsTest
 			return 0;
 		}, new PrintWriter(errors, true));
 		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-		requireThat(errors.toString(), "errors").isEqualTo("--run-root is required outside a harness session: " +
+		requireThat(errors.toString(), "errors").isEqualTo("--results is required outside a harness session: " +
 			"CLAUDE_CODE_SESSION_ID is unset" + System.lineSeparator());
 	}
 
@@ -177,7 +177,7 @@ public final class HarnessRunnerOptionsTest
 	public void parsesBridgeOptions()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--project", absolute("project"), "--run-root", absolute("caller-temp/runs"), "--model",
+			"--project", absolute("project"), "--results", absolute("caller-temp/runs"), "--model",
 			"test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
 			"--install-cat"},
 			"harness", SESSION);
@@ -199,7 +199,7 @@ public final class HarnessRunnerOptionsTest
 	public void parsesRunId()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--project", absolute("project"), "--run-root", absolute("slot"), "--run-id", "slot-1", "--model",
+			"--project", absolute("project"), "--results", absolute("slot"), "--slot-id", "slot-1", "--model",
 			"test-model", "--effort", "high"}, "harness", SESSION);
 
 		requireThat(result.runId(), "runId").isEqualTo("slot-1");
@@ -213,7 +213,7 @@ public final class HarnessRunnerOptionsTest
 	public void acceptsHeldOutLaunch()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--project", absolute("project"), "--run-root", absolute("slot"), "--held-out", "--model", "test-model",
+			"--project", absolute("project"), "--results", absolute("slot"), "--held-out", "--model", "test-model",
 			"--effort", "high"}, "harness", SESSION);
 
 		requireThat(result.model(), "model").isEqualTo("test-model");
@@ -226,7 +226,7 @@ public final class HarnessRunnerOptionsTest
 	public void leavesRunIdToRunner()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--project", absolute("project"), "--run-root", absolute("slot"), "--model", "test-model", "--effort",
+			"--project", absolute("project"), "--results", absolute("slot"), "--model", "test-model", "--effort",
 			"high"}, "harness", SESSION);
 
 		requireThat(result.runId(), "runId").isNull();
@@ -239,7 +239,7 @@ public final class HarnessRunnerOptionsTest
 	public void refusesRunIdThatIsNotAnIdentifier()
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--project", absolute("project"),
-			"--run-root", absolute("slot"), "--run-id", "../escape", "--model", "test-model", "--effort", "high"},
+			"--results", absolute("slot"), "--slot-id", "../escape", "--model", "test-model", "--effort", "high"},
 			"harness", SESSION);
 	}
 
@@ -383,7 +383,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Missing --artifact")
 	public void rejectsMissingArtifact()
 	{
-		HarnessRunnerOptions.parse(new String[] {"--project", absolute("project"), "--run-root", absolute("runs"),
+		HarnessRunnerOptions.parse(new String[] {"--project", absolute("project"), "--results", absolute("runs"),
 			"--model", "model-a", "--effort", "effort-a"}, "harness", SESSION);
 	}
 
@@ -628,8 +628,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that without {@code --run-root} the runs go to {@code runner-runs} in the temporary directory of the CAT
-	 * session directory of the session that the session variable names.
+	 * Verifies that without {@code --results} the runs go to {@code nested-sessions} in the temporary directory of the
+	 * CAT session directory of the session that the session variable names.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -651,14 +651,14 @@ public final class HarnessRunnerOptionsTest
 
 				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(SESSION_ID).
 					resolve("temp");
-				requireThat(result.runRoot(), "runRoot").isEqualTo(sessionTemp.resolve("runner-runs"));
+				requireThat(result.runRoot(), "runRoot").isEqualTo(sessionTemp.resolve("nested-sessions"));
 				requireThat(sessionTemp, "sessionTemp").isDirectory();
 			}
 		}
 	}
 
 	/**
-	 * Verifies that a command line that names {@code --run-root} inside a session leaves the session's CAT session
+	 * Verifies that a command line that names {@code --results} inside a session leaves the session's CAT session
 	 * directory alone.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -674,7 +674,7 @@ public final class HarnessRunnerOptionsTest
 			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
 				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitProjects.IGNORING))
 			{
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--run-root", absolute("runs")),
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("runs")),
 					"harness", HarnessTemporaryRoot.from(scope));
 
 				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
@@ -684,8 +684,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that without a session variable the command line must name {@code --run-root}, that the refusal names
-	 * both session variables, and that {@code --run-root} selects the runs' directory.
+	 * Verifies that without a session variable the command line must name {@code --results}, that the refusal names
+	 * both session variables, and that {@code --results} selects the runs' directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -704,15 +704,15 @@ public final class HarnessRunnerOptionsTest
 				{
 					HarnessRunnerOptions.parse(launch(), "harness",
 						temporaryRoot);
-					throw new AssertionError("A command without a session or --run-root chose a run root");
+					throw new AssertionError("A command without a session or --results chose a results folder");
 				}
 				catch (IllegalArgumentException e)
 				{
-					requireThat(e.getMessage(), "message").contains("--run-root").contains(HARNESS_A.sessionVariable()).
+					requireThat(e.getMessage(), "message").contains("--results").contains(HARNESS_A.sessionVariable()).
 						contains(HARNESS_B.sessionVariable());
 				}
 
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--run-root", absolute("runs")),
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("runs")),
 					"harness", temporaryRoot);
 
 				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));

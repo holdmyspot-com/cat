@@ -109,8 +109,8 @@ public final class PolicyBoundFileTest
 	/**
 	 * Verifies that the runner of a bounded session bounds each session that the bounded session requests by the
 	 * bounded session's own policy, in a file that the requested session's runner is told about, so that the requested
-	 * session keeps every write that the bounded session may make, such as a shared cache outside its run root, and
-	 * gets nothing wider.
+	 * session keeps every write that the bounded session may make, such as a shared cache outside its results folder,
+	 * and gets nothing wider.
 	 *
 	 * @throws IOException if the files cannot be written or read
 	 */
@@ -128,11 +128,11 @@ public final class PolicyBoundFileTest
 			Path directory = Files.createDirectories(root.resolve("requested/response"));
 			ChildPolicy policy = new ChildPolicy(List.of(run, cache), List.of(), List.of(secret), List.of(),
 				Set.of("model.example"), false);
-			List<String> arguments = List.of("--run-root", requestedRoot.toString(), "--model", "model-a");
+			List<String> arguments = List.of("--results", requestedRoot.toString(), "--model", "model-a");
 
 			List<String> bounded = PolicyBoundFile.boundArguments(json, arguments, directory, policy);
 
-			requireThat(bounded, "bounded").isEqualTo(List.of("--run-root", requestedRoot.toString(), "--model",
+			requireThat(bounded, "bounded").isEqualTo(List.of("--results", requestedRoot.toString(), "--model",
 				"model-a", PolicyBoundFile.OPTION, directory.resolve(PolicyBoundFile.FILE_NAME).toString()));
 			ChildPolicy bound = PolicyBoundFile.read(json, directory.resolve(PolicyBoundFile.FILE_NAME));
 			requireThat(bound, "bound").isEqualTo(policy);

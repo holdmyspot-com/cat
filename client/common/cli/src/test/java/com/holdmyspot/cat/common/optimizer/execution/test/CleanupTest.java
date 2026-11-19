@@ -47,8 +47,8 @@ import tools.jackson.databind.json.JsonMapper;
  * roots of the CAT session directory that holds the campaigns. The campaigns are removed through {@link GitlessForks},
  * which supplies what Git would answer, since {@code ForkTest} covers removing a Git worktree.
  * <p>
- * Every test stores two campaigns in the base: the campaign under test and another campaign. Each run root holds a run
- * of each campaign, identified by a project path below that campaign's directory, and a run whose manifest is
+ * Every test stores two campaigns in the base: the campaign under test and another campaign. Each results folder holds
+ * a run of each campaign, identified by a project path below that campaign's directory, and a run whose manifest is
  * malformed.
  */
 public final class CleanupTest
@@ -72,7 +72,7 @@ public final class CleanupTest
 
 	/**
 	 * After a certified delivery's final verification, cleanup removes the campaign's optimization worktree, its runs in
-	 * both run roots and its campaign directory, and keeps the other campaign's files and the unattributable run.
+	 * both results folders and its campaign directory, and keeps the other campaign's files and the unattributable run.
 	 *
 	 * @throws IOException if the fixture or cleanup fails
 	 */
@@ -349,18 +349,18 @@ public final class CleanupTest
 	}
 
 	/**
-	 * A base worktree with a CAT session directory that holds two campaigns and two run roots.
+	 * A base worktree with a CAT session directory that holds two campaigns and two results folders.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param base the base worktree
 	 * @param campaigns the session's directory that holds the campaigns
-	 * @param runRoots the session's run root and held-out run root
+	 * @param runRoots the session's results folder and held-out results folder
 	 * @param forks the campaigns' optimization worktrees
 	 */
 	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, GitlessForks forks)
 	{
 		/**
-		 * Creates the base worktree, the other campaign with its worktree and runs, and the run roots.
+		 * Creates the base worktree, the other campaign with its worktree and runs, and the results folders.
 		 *
 		 * @param cleanup the scope that deletes the fixture
 		 * @return the fixture
@@ -383,7 +383,7 @@ public final class CleanupTest
 			for (Path runRoot : fixture.runRoots())
 			{
 				Path malformed = Files.createDirectories(runRoot.resolve("claude/run-malformed"));
-				Files.writeString(malformed.resolve("run.json"), "{ not json", UTF_8);
+				Files.writeString(malformed.resolve("session.json"), "{ not json", UTF_8);
 			}
 			return fixture;
 		}
@@ -401,7 +401,7 @@ public final class CleanupTest
 		}
 
 		/**
-		 * Stores a campaign, forks the base for it, and adds one of its runs to each run root.
+		 * Stores a campaign, forks the base for it, and adds one of its runs to each results folder.
 		 *
 		 * @param builder the campaign's builder, whose identifier becomes {@link #CAMPAIGN} unless it is {@link #OTHER}
 		 * @return the stored campaign
@@ -413,7 +413,7 @@ public final class CleanupTest
 		}
 
 		/**
-		 * Stores a campaign and adds one of its runs to each run root.
+		 * Stores a campaign and adds one of its runs to each results folder.
 		 *
 		 * @param builder the campaign's builder, whose identifier becomes {@link #CAMPAIGN} unless it is {@link #OTHER}
 		 * @param forked {@code true} to fork the base for the campaign, or {@code false} for a campaign whose
@@ -435,7 +435,7 @@ public final class CleanupTest
 			for (Path runRoot : runRoots)
 			{
 				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
-				Files.writeString(run.resolve("run.json"), JSON.writeValueAsString(Map.of(
+				Files.writeString(run.resolve("session.json"), JSON.writeValueAsString(Map.of(
 					"project_path", directory.resolve("staged/project").toString(), "state", "completed")), UTF_8);
 				Files.createDirectories(run.resolve("project"));
 				Files.writeString(run.resolve("project/CLAUDE.md"), "prompt v1\n", UTF_8);
@@ -530,7 +530,7 @@ public final class CleanupTest
 				withContext(context, "context").isRegularFile();
 			for (Path runRoot : runRoots)
 			{
-				requireThat(runRoot.resolve("claude/run-" + CAMPAIGN + "/run.json"), "run").
+				requireThat(runRoot.resolve("claude/run-" + CAMPAIGN + "/session.json"), "run").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
 			requireOtherKept(context);
@@ -551,9 +551,9 @@ public final class CleanupTest
 			requireThat(forks.exists(directory(OTHER)), "otherWorktreeExists").withContext(context, "context").isTrue();
 			for (Path runRoot : runRoots)
 			{
-				requireThat(runRoot.resolve("claude/run-" + OTHER + "/run.json"), "otherRun").
+				requireThat(runRoot.resolve("claude/run-" + OTHER + "/session.json"), "otherRun").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
-				requireThat(runRoot.resolve("claude/run-malformed/run.json"), "malformedRun").
+				requireThat(runRoot.resolve("claude/run-malformed/session.json"), "malformedRun").
 					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
 			}
 		}

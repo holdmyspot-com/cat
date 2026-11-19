@@ -101,7 +101,7 @@ public final class SessionRequestBroker implements Closeable
 	private final Map<String, Process> processes = new HashMap<>();
 	private final Map<String, String> harnesses = new HashMap<>();
 	/**
-	 * The run root of each request that holds a slot, which holds its child's run below the child's harness.
+	 * The results folder of each request that holds a slot, which holds its child's run below the child's harness.
 	 */
 	private final Map<String, Path> childRoots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
@@ -589,7 +589,7 @@ public final class SessionRequestBroker implements Closeable
 	/**
 	 * Builds the runner options that every child receives from its request's private copies: its project,
 	 * transcript and receipt, and the request's options, which only narrow the child or describe its own
-	 * inputs. The child's run root and the site's own options are added when the child starts.
+	 * inputs. The child's results folder and the site's own options are added when the child starts.
 	 *
 	 * @param request   the validated request
 	 * @param directory the response directory
@@ -600,7 +600,7 @@ public final class SessionRequestBroker implements Closeable
 	{
 		List<String> arguments = new ArrayList<>();
 		if (request.resume().isPresent())
-			arguments.addAll(List.of(RunnerArguments.RESUME_RUN_OPTION, request.resume().get()));
+			arguments.addAll(List.of(RunnerArguments.RESUME_SLOT_OPTION, request.resume().get()));
 		else
 			arguments.addAll(List.of("--project", request.project().toString()));
 		arguments.addAll(List.of("--output", directory.resolve("transcript.jsonl").toString(),
@@ -662,7 +662,7 @@ public final class SessionRequestBroker implements Closeable
 			}
 			else
 				slot = site.slots().acquire(request.heldOut());
-			List<String> options = new ArrayList<>(List.of("--run-root", slot.root().toString(), "--run-id",
+			List<String> options = new ArrayList<>(List.of("--results", slot.root().toString(), "--slot-id",
 				slot.runId()));
 			options.addAll(arguments);
 			options.addAll(site.options(request, slot.root()));
@@ -884,7 +884,7 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Copies native transcripts from the child's private run root, including when no success receipt was written.
+	 * Copies native transcripts from the child's private results folder, including when no success receipt was written.
 	 *
 	 * @param id the request id
 	 * @param directory the private response directory
@@ -1278,7 +1278,7 @@ public final class SessionRequestBroker implements Closeable
 		 * the child starts.
 		 *
 		 * @param request the request
-		 * @param runRoot the request's run root
+		 * @param runRoot the request's results folder
 		 * @return the options
 		 * @throws SessionRefusedException if the site refuses the request; the message says why
 		 * @throws IOException             if the options cannot be determined
@@ -1335,7 +1335,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param manager records the run's lifecycle in its manifest
 	 * @param options the requesting runner's options
 	 * @param limits  the bounds that each request's archive must stay within
-	 * @param slots   the slots, each a run root, that the run's requested sessions take
+	 * @param slots   the slots, each a results folder, that the run's requested sessions take
 	 */
 	private record RunSite(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
 		RequestLimits limits, SessionSlots slots) implements Site
@@ -1352,7 +1352,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @param manager records the run's lifecycle in its manifest
 		 * @param options the requesting runner's options
 		 * @param limits  the bounds that each request's archive must stay within
-		 * @param slots   the slots, each a run root, that the run's requested sessions take
+		 * @param slots   the slots, each a results folder, that the run's requested sessions take
 		 * @throws NullPointerException if any of the arguments are null
 		 */
 		private RunSite
@@ -1436,7 +1436,7 @@ public final class SessionRequestBroker implements Closeable
 		 * parent, one level less deep; otherwise it may request none.
 		 *
 		 * @param request the request
-		 * @param runRoot the request's run root
+		 * @param runRoot the request's results folder
 		 * @return the options
 		 */
 		@Override
@@ -1521,7 +1521,7 @@ public final class SessionRequestBroker implements Closeable
 		@Override
 		public void taken(Path file)
 		{
-			// The request stays in the run, which the run's runner removes with it
+			// The request stays in the run, which the nested session's runner removes with it
 		}
 	}
 }

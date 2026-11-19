@@ -70,13 +70,13 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 /**
  * Runs nested sessions through a harness runner.
  * <p>
- * Each session runs in a fresh, isolated run directory and holds one {@link HarnessCapacity} permit for its
- * lifetime. A session of the held-out part runs under the held-out run root and is denied nothing; a session of the
- * development part runs under the run root and its harness sandbox denies it reading every held-out location. A
- * session sends the request's turns one at a time through the runner's JSONL bridge. It parses the harness's events
- * for the observed model, the token usage and the rate-limit windows, and keeps the events as the transcript. The
- * runner selects the request's profile: {@code --model} and {@code --effort} for each bound dimension, and nothing for
- * an unbound one, so the harness applies its default.
+ * Each session runs in a fresh, isolated run directory and holds one {@link HarnessCapacity} permit for its lifetime. A
+ * session of the held-out part runs under the held-out results folder and is denied nothing; a session of the
+ * development part runs under the results folder and its harness sandbox denies it reading every held-out location. A
+ * session sends the request's turns one at a time through the runner's JSONL bridge. It parses the harness's events for
+ * the observed model, the token usage and the rate-limit windows, and keeps the events as the transcript. The runner
+ * selects the request's profile: {@code --model} and {@code --effort} for each bound dimension, and nothing for an
+ * unbound one, so the harness applies its default.
  * <p>
  * The completed result's transcript is {@code <run>/artifacts/transcript.jsonl}, its effects directory is the run's
  * {@code project} copy of the request's source, and its prompt sources are the ones that the session was observed
@@ -143,7 +143,7 @@ public abstract class RunnerSessions implements SessionPort
 	/**
 	 * Creates a port.
 	 *
-	 * @param harness the harness's identifier, which names its directory below the run root
+	 * @param harness the harness's identifier, which names its directory below the results folder
 	 * @param settings how the runner is configured
 	 * @param bridge runs the runner's bridge
 	 * @throws NullPointerException if any argument is null
@@ -748,12 +748,12 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	/**
-	 * Returns every location that holds held-out content: the directories that {@link Settings#heldOut()} lists and
-	 * the held-out run root, which is created first so that it can be denied before any session of the held-out part
+	 * Returns every location that holds held-out content: the directories that {@link Settings#heldOut()} lists and the
+	 * held-out results folder, which is created first so that it can be denied before any session of the held-out part
 	 * runs under it. Sessions of the development part are denied reading each of them.
 	 *
 	 * @return the real paths of the locations
-	 * @throws IOException if the held-out run root cannot be created or the directories cannot be listed
+	 * @throws IOException if the held-out results folder cannot be created or the directories cannot be listed
 	 */
 	final List<Path> heldOutLocations() throws IOException
 	{
@@ -866,7 +866,7 @@ public abstract class RunnerSessions implements SessionPort
 
 	/**
 	 * Returns the requests directory of the request server that serves the host session that starts the sessions,
-	 * outside a run. The host session's CAT session directory is the one that the settings' host project and
+	 * outside a nested session. The host session's CAT session directory is the one that the settings' host project and
 	 * environment name.
 	 *
 	 * @param settings how the runner is configured
@@ -1516,8 +1516,8 @@ public abstract class RunnerSessions implements SessionPort
 		}
 
 		/**
-		 * Returns the held-out run root: the directory beside the run root that holds the run directories of sessions
-		 * of the held-out part. Its name is the run root's name followed by {@code -held_out}.
+		 * Returns the held-out results folder: the directory beside the results folder that holds the run directories
+		 * of sessions of the held-out part. Its name is the results folder's name followed by {@code -held_out}.
 		 *
 		 * @return the absolute directory
 		 */

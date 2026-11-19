@@ -33,7 +33,7 @@ import tools.jackson.databind.node.ObjectNode;
  * {"format_version": 1, "writes": ["/home/me/.cache/pip"], "hosts": ["pypi.org", "files.pythonhosted.org"]}
  * }</pre>
  *
- * @param writes the absolute paths outside the child's run folder that its commands may write
+ * @param writes the absolute paths outside the child's session folder that its commands may write
  * @param hosts  the hosts that its commands may reach, as host names or literal IP addresses, in lower case
  */
 public record ExtraPermissions(List<Path> writes, Set<String> hosts)
@@ -63,7 +63,7 @@ public record ExtraPermissions(List<Path> writes, Set<String> hosts)
 	/**
 	 * Creates extra permissions.
 	 *
-	 * @param writes the absolute paths outside the child's run folder that its commands may write
+	 * @param writes the absolute paths outside the child's session folder that its commands may write
 	 * @param hosts  the hosts that its commands may reach, as host names or literal IP addresses
 	 * @throws NullPointerException     if any of the arguments are null, or a collection contains null
 	 * @throws IllegalArgumentException if a path is not absolute, or a host is blank or is a pattern that starts with

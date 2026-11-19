@@ -288,7 +288,8 @@ public final class HarnessEnvironmentTest
 
 	/**
 	 * Verifies that a request server that a session of a CAT run starts is refused, so that it does not keep running as
-	 * a background command that keeps the session's turn open, and that a command outside a run is not refused.
+	 * a background command that keeps the session's turn open, and that a command outside a nested session is not
+	 * refused.
 	 */
 	@Test
 	public void refusesRequestServerInRun()

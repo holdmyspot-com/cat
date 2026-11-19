@@ -469,10 +469,10 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Verifies that reconciliation requests termination of the harness processes of runs, in each run root that the
-	 * session port declares, that are marked running and whose owner no longer exists, and leaves the processes of
-	 * runs that ended and of runs whose owner is alive. The driver's real process checker and terminator read a table of
-	 * fake processes, which record termination requests without stopping real processes.
+	 * Verifies that reconciliation requests termination of the harness processes of runs, in each results folder that
+	 * the session port declares, that are marked running and whose owner no longer exists, and leaves the processes of
+	 * runs that ended and of runs whose owner is alive. The driver's real process checker and terminator read a table
+	 * of fake processes, which record termination requests without stopping real processes.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -524,6 +524,6 @@ public final class ReconciliationTest
 	private static void writeManifest(Path run, String manifest) throws IOException
 	{
 		Files.createDirectories(run);
-		Files.writeString(run.resolve("run.json"), manifest);
+		Files.writeString(run.resolve("session.json"), manifest);
 	}
 }

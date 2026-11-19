@@ -20,12 +20,12 @@ public final class RunnerArguments
 	/**
 	 * The runner option that gives the run the identifier, and so the directory, of a reusable slot.
 	 */
-	public static final String RUN_ID_OPTION = "--run-id";
+	public static final String SLOT_ID_OPTION = "--slot-id";
 	/**
 	 * The runner option with which a server starts the runner of a launch that resumes a harness session, in the
 	 * retained run that records the session, which the runner continues rather than start a new one.
 	 */
-	public static final String RESUME_RUN_OPTION = "--resume-run";
+	public static final String RESUME_SLOT_OPTION = "--resume-slot";
 	/**
 	 * The launch option that resumes a harness session that an interrupted run of the launch's server recorded.
 	 */

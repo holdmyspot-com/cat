@@ -186,7 +186,7 @@ public final class RequestingRun implements AutoCloseable
 	private FakeHarnessCli child(String harness, List<String> arguments) throws IOException
 	{
 		launches.add(arguments);
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(arguments, "--run-root")),
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(arguments, "--results")),
 			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRun child = manager.create(harness);
 		manager.recordHarnessSession(child, SESSION_ID);

@@ -408,14 +408,16 @@ public final class CodexSessions extends RunnerSessions
 	 * Creates the bridge that runs the real runner. Each session follows the route that the runner's own launch
 	 * takes from the settings' environment:
 	 * <ul>
-	 *   <li>When Codex runs the optimizer outside a run, the session is a request to the request server of the host
+	 * <li>When Codex runs the optimizer outside a nested session, the session is a request to the request server of the
+	 * host
 	 *   session, which starts the runner of the settings' CAT artifact outside the optimizer's sandbox; the session's
-	 *   kept run is copied into the optimizer's run root. Without a request server that serves the host session, the
-	 *   session is refused, naming the command that starts the server.</li>
-	 *   <li>Inside a run whose runner lets its session request sessions, the session is a request to the run's
+	 *   results are copied into the optimizer's results folder. Without a request server that serves the host session,
+	 *   the session is refused, naming the command that starts the server.</li>
+	 *   <li>Inside a nested session whose runner lets its session request sessions, the session is a request to the run's
 	 *   runner, which starts it outside the optimizer's sandbox and counts it against the run's limit; the session's
-	 *   kept run is copied into the optimizer's run root.</li>
-	 *   <li>Inside a run whose runner lets its session request none, or when only Claude Code runs the optimizer, the
+	 *   kept run is copied into the optimizer's results folder.</li>
+	 * <li>Inside a nested session whose runner lets its session request none, or when only Claude Code runs the
+	 * optimizer, the
 	 *   session is refused with the reason that the runner's launch gives.</li>
 	 *   <li>When no harness runs the optimizer, the session is refused, as every launch is that no harness session
 	 *   runs, and its commands refuse to run before they reach here.</li>

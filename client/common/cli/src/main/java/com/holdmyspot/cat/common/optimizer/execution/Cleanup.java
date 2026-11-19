@@ -33,9 +33,9 @@ import tools.jackson.databind.json.JsonMapper;
  * Removes the files of a campaign that ended by a certified delivery or by retaining the incumbent.
  * <p>
  * Removal runs three steps, in order: it removes the campaign's optimization worktree, then the campaign's runs below
- * every run root, then the campaign directory. A run belongs to the campaign when its manifest's {@code project_path}
- * lies below the campaign directory; a run without a readable manifest identifies no campaign and is kept. Every
- * other ending keeps the campaign's files.
+ * every results folder, then the campaign directory. A run belongs to the campaign when its manifest's {@code
+ * project_path} lies below the campaign directory; a run without a readable manifest identifies no campaign and is
+ * kept. Every other ending keeps the campaign's files.
  * <p>
  * Before the first step, the campaign directory records that removal started. A removal that a crash interrupts or
  * a step fails is completed by {@link #resume()}, which every command runs first. Each step does nothing for files
@@ -50,7 +50,7 @@ import tools.jackson.databind.json.JsonMapper;
  */
 public final class Cleanup
 {
-	private static final String MANIFEST = "run.json";
+	private static final String MANIFEST = "session.json";
 	private final FileLocks fileLocks;
 	private final Path base;
 	private final Path campaigns;
@@ -299,9 +299,9 @@ public final class Cleanup
 	}
 
 	/**
-	 * Deletes the runs of a campaign below one run root.
+	 * Deletes the runs of a campaign below one results folder.
 	 *
-	 * @param runRoot the run root, which holds {@code <harness>/<run>/run.json}
+	 * @param runRoot the results folder, which holds {@code <harness>/<run>/session.json}
 	 * @param owners the campaign directory's paths that a run's project path may start with
 	 * @throws IOException if a directory cannot be listed or a run cannot be deleted
 	 */
@@ -406,7 +406,7 @@ public final class Cleanup
 		 */
 		WORKTREE,
 		/**
-		 * Removes the campaign's runs below every run root.
+		 * Removes the campaign's runs below every results folder.
 		 */
 		RUNS,
 		/**

@@ -61,7 +61,7 @@ public final class HarnessRunnerBridgeProtocolContractTest
 		Files.writeString(project.resolve("result.txt"), "result");
 		Files.writeString(Files.createDirectories(run.directory().resolve("home")).resolve("login.json"), "login");
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact", inputs.artifact().toString(),
-			"--run-root", runRoot.toString(), "--project", project.toString(), "--model", "model-a", "--effort",
+			"--results", runRoot.toString(), "--project", project.toString(), "--model", "model-a", "--effort",
 			"effort-a", "--session-requests", "1", "--output", inputs.transcript().toString(),
 			"--receipt", inputs.receipt().toString()}, "codex", HarnessTemporaryRoot.of(inputs.root()));
 		List<String> receivedPrompts = new ArrayList<>();

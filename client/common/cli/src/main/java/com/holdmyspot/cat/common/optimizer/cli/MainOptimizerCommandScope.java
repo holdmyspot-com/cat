@@ -222,8 +222,9 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	/**
 	 * {@inheritDoc}
 	 * <p>
-	 * Inside a run whose runner lets its session request sessions, the command's sessions are requests to that runner,
-	 * so the command is also refused when the run's limits, as its runner states them, allow no further session.
+	 * Inside a nested session whose runner lets its session request sessions, the command's sessions are requests to
+	 * that runner, so the command is also refused when the run's limits, as its runner states them, allow no further
+	 * session.
 	 */
 	@Override
 	protected final Optional<String> runRefusal()
@@ -243,17 +244,17 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		}
 		catch (IOException _)
 		{
-			// The run's runner still refuses each session that its limits do not allow, which pauses the campaign
+			// The nested session's runner still refuses each session that its limits do not allow, which pauses the campaign
 			return Optional.empty();
 		}
 	}
 
 	/**
 	 * Returns why every session would be refused, but only when this command's sessions go to the session's request
-	 * server, as their bridge decides from the environment: when this scope's harness runs the command outside a run.
-	 * Such sessions are refused while no request server serves the host session. On every other route no request
-	 * server needs to serve the host session: inside a run the run's runner serves it, and a route that refuses its
-	 * sessions refuses each of them, with its reason, when it starts.
+	 * server, as their bridge decides from the environment: when this scope's harness runs the command outside a nested
+	 * session. Such sessions are refused while no request server serves the host session. On every other route no
+	 * request server needs to serve the host session: inside a nested session the nested session's runner serves it,
+	 * and a route that refuses its sessions refuses each of them, with its reason, when it starts.
 	 *
 	 * @return the message that names the command that starts the request server, or empty if a request server serves
 	 *   the host session or the sessions do not go to a request server
@@ -285,7 +286,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	/**
 	 * Returns why this command's worktree operations would be refused because no request server serves the host
 	 * session, when the operations go to the session's request server: when this scope's harness runs the command
-	 * outside a run.
+	 * outside a nested session.
 	 *
 	 * @return the message that names the command that starts the request server, or empty if a request server serves
 	 *   the host session or the operations do not go to a request server
@@ -309,9 +310,10 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	}
 
 	/**
-	 * Opens the channel that this command's worktree requests go through, by the route that decides its launches:
-	 * the run's runner inside a run and the host session's request server when this scope's harness runs the command
-	 * outside a run. A command that no harness session runs is refused before it reaches this channel.
+	 * Opens the channel that this command's worktree requests go through, by the route that decides its launches: the
+	 * nested session's runner inside a nested session and the host session's request server when this scope's harness
+	 * runs the command outside a nested session. A command that no harness session runs is refused before it reaches
+	 * this channel.
 	 *
 	 * @return the channel, or empty if the command carries out the operations itself
 	 * @throws WorktreeRefusedException if the route refuses the command's requests, or no request server serves the

@@ -117,12 +117,12 @@ public final class HarnessRunManager
 		}\\n\\z""");
 
 	/**
-	 * Opens the run root of a runner command that is starting. It first deletes the root's stale runs, as
+	 * Opens the results folder of a runner command that is starting. It first deletes the root's stale runs, as
 	 * {@link #deleteStaleRuns(Duration) deleteStaleRuns(DEFAULT_RETENTION)} does, so that a run whose owner ended
 	 * without recording a terminal result is marked failed. A run whose owner is alive stays running.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param root      the absolute owned-run root
+	 * @param root      the absolute owned-results folder
 	 * @param clock     the clock used for generated identifiers
 	 * @param replacer  replaces the runs' manifests and output files
 	 * @return a manager of the runs in {@code root}
@@ -156,7 +156,7 @@ public final class HarnessRunManager
 	 * Creates a manager rooted at an absolute directory.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param root the absolute owned-run root
+	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
 	 * @throws NullPointerException if any of the arguments are null
@@ -171,7 +171,7 @@ public final class HarnessRunManager
 	 * Creates a manager with process liveness support.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param root the absolute owned-run root
+	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
 	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
@@ -188,7 +188,7 @@ public final class HarnessRunManager
 	 * Creates a manager whose runs may all have one identifier.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param root the absolute owned-run root
+	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
 	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
@@ -226,7 +226,7 @@ public final class HarnessRunManager
 	/**
 	 * Returns the directory that holds every run and the workspace files of every run.
 	 *
-	 * @return the absolute, normalized run root
+	 * @return the absolute, normalized results folder
 	 */
 	public Path root()
 	{
@@ -328,7 +328,7 @@ public final class HarnessRunManager
 	private static void writeCopyManifest(Path source, Path directory, String id, UnaryOperator<String> project)
 		throws IOException
 	{
-		Path manifest = source.resolve("run.json");
+		Path manifest = source.resolve("session.json");
 		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 			return;
 		String content = Files.readString(manifest);
@@ -340,7 +340,7 @@ public final class HarnessRunManager
 		Files.writeString(replacement, content.substring(0, matcher.start("id")) + id +
 			content.substring(matcher.end("id"), matcher.start("projectPath")) +
 			project.apply(matcher.group("projectPath")) + content.substring(matcher.end("projectPath")));
-		Files.move(replacement, directory.resolve("run.json"), REPLACE_EXISTING);
+		Files.move(replacement, directory.resolve("session.json"), REPLACE_EXISTING);
 	}
 
 	/**
@@ -356,7 +356,7 @@ public final class HarnessRunManager
 	public static void deleteRunDirectory(Path directory) throws IOException
 	{
 		requireThat(directory, "directory").isNotNull();
-		Path manifest = directory.resolve("run.json");
+		Path manifest = directory.resolve("session.json");
 		List<Path> entries;
 		try
 		{
@@ -527,7 +527,7 @@ public final class HarnessRunManager
 		if (fixedRunId == null)
 			throw new IllegalStateException("Only the run of a slot can be resumed");
 		HarnessRun run = new HarnessRun(harness, fixedRunId, root.resolve(harness).resolve(fixedRunId).normalize());
-		if (Files.isRegularFile(run.directory().resolve("run.json")))
+		if (Files.isRegularFile(run.directory().resolve("session.json")))
 		{
 			String recorded = readManifest(run).harnessSessionId();
 			if (!harnessSessionId.equals(recorded))
@@ -615,7 +615,7 @@ public final class HarnessRunManager
 	public static Optional<String> harnessSessionId(Path directory) throws IOException
 	{
 		requireThat(directory, "directory").isNotNull();
-		Path manifest = directory.resolve("run.json");
+		Path manifest = directory.resolve("session.json");
 		if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 			return Optional.empty();
 		return Optional.ofNullable(readManifest(manifest).harnessSessionId());
@@ -1191,14 +1191,14 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Returns the existing files and directories under the run root that a harness session must not read: all of them
-	 * except the files and directories that the session uses, their contents, and the directories that contain them. The
-	 * session therefore cannot read another run, the workspace files of any run, or the runner's records of its own run.
-	 * A file or directory that is created after this method returns, such as the directory of a run that starts later, is
-	 * not included.
+	 * Returns the existing files and directories under the results folder that a harness session must not read: all of
+	 * them except the files and directories that the session uses, their contents, and the directories that contain
+	 * them. The session therefore cannot read another run, the workspace files of any run, or the runner's records of
+	 * its own run. A file or directory that is created after this method returns, such as the directory of a run that
+	 * starts later, is not included.
 	 *
-	 * @param accessible the files and directories that the session reads or writes; those outside the run root are
-	 *   ignored
+	 * @param accessible the files and directories that the session reads or writes; those outside the results folder
+	 *   are ignored
 	 * @return the paths to deny, none of which contains another
 	 * @throws NullPointerException if {@code accessible} is null
 	 * @throws IOException if a directory cannot be listed
@@ -1351,7 +1351,7 @@ public final class HarnessRunManager
 		Path harnessDirectory = root.resolve(run.harness()).normalize();
 		if (!directory.getParent().equals(harnessDirectory) || !directory.startsWith(root) ||
 			Files.isSymbolicLink(harnessDirectory) || Files.isSymbolicLink(directory) ||
-			!Files.isRegularFile(directory.resolve("run.json"), NOFOLLOW_LINKS))
+			!Files.isRegularFile(directory.resolve("session.json"), NOFOLLOW_LINKS))
 		{
 			throw new IOException("Run is not owned by this manager");
 		}
@@ -1402,9 +1402,9 @@ public final class HarnessRunManager
 	/**
 	 * Removes disposable runtime state from every terminal run owned by one harness root. Entries whose names are
 	 * neither run nor session identifiers are not runs and stay as they are, such as the {@code .claude} directories
-	 * that a harness sandbox creates in the directories above its working directory. A run folder that has no manifest
-	 * stays as it is too: a requester's copy of a requested session's run has none until the session ends, or ever if
-	 * the session was stopped, and a run that was being created or deleted at that moment has none either.
+	 * that a harness sandbox creates in the directories above its working directory. A session folder that has no
+	 * manifest stays as it is too: a requester's copy of a requested session's run has none until the session ends, or
+	 * ever if the session was stopped, and a run that was being created or deleted at that moment has none either.
 	 *
 	 * @param harness the owning harness name
 	 * @throws IOException if a manifest is malformed or disposable state cannot be removed
@@ -1483,7 +1483,7 @@ public final class HarnessRunManager
 				{
 					for (Path run : runs.filter(path -> Files.isDirectory(path, NOFOLLOW_LINKS)).toList())
 					{
-						Path manifest = run.resolve("run.json");
+						Path manifest = run.resolve("session.json");
 						if (!Files.isRegularFile(manifest, NOFOLLOW_LINKS))
 							continue;
 						Manifest parsed = readManifest(manifest);
@@ -1680,7 +1680,7 @@ public final class HarnessRunManager
 			",\n  \"exit_code\": " + nullableNumber(manifest.exitCode()) + ",\n  \"finished_at\": " +
 			nullableString(manifest.finishedAt()) + ",\n  \"diagnostic\": \"" +
 			escape(manifest.diagnostic()) + "\"\n}\n";
-		writeAtomically(directory.resolve("run.json"), content);
+		writeAtomically(directory.resolve("session.json"), content);
 		if (!manifest.state().equals("running"))
 			HarnessCredentials.removeLoginCopies(directory);
 	}
@@ -1695,7 +1695,7 @@ public final class HarnessRunManager
 	private static Manifest readManifest(HarnessRun run) throws IOException
 	{
 		assert run != null;
-		Manifest manifest = readManifest(run.directory().resolve("run.json"));
+		Manifest manifest = readManifest(run.directory().resolve("session.json"));
 		if (!manifest.harness().equals(run.harness()) || !manifest.id().equals(run.id()))
 			throw new IOException("Run manifest does not identify the owned run");
 		return manifest;

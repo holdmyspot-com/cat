@@ -13,7 +13,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * bounds them.
  *
  * @param runFolder   the absolute folder that holds the child's run, which the launcher creates empty and owns
- * @param extraWrites the absolute paths outside the run folder that the commands need to write, such as dependency
+ * @param extraWrites the absolute paths outside the session folder that the commands need to write, such as dependency
  *                    caches
  * @param readDenials the absolute paths that the commands must not read, such as harness login files and the paths
  *                    that the request denies
@@ -26,8 +26,8 @@ public record ChildNeeds(Path runFolder, List<Path> extraWrites, List<Path> read
 	 * Creates the needs of a child.
 	 *
 	 * @param runFolder   the absolute folder that holds the child's run, which the launcher creates empty and owns
-	 * @param extraWrites the absolute paths outside the run folder that the commands need to write, such as dependency
-	 *                    caches
+	 * @param extraWrites the absolute paths outside the session folder that the commands need to write, such as
+	 *                    dependency caches
 	 * @param readDenials the absolute paths that the commands must not read, such as harness login files and the
 	 *                    paths that the request denies
 	 * @param hosts       the network hosts that the commands need to reach, as host names or literal IP addresses

@@ -23,12 +23,12 @@ import java.util.Map;
 
 /**
  * Runs {@code codex-runner} from the Claude plugin, so that a session can run Codex through the same launcher and
- * options as in the Codex plugin. Each launch goes along the route that
- * {@link com.holdmyspot.cat.common.runner.LaunchRoute} gives it: inside a run that may request sessions, it requests a
- * Codex session from the run's runner; when Claude Code runs the command outside a run, it requests the session
- * from the Claude Code session's request server; when only Codex runs it, it refuses the launch and names the Codex
- * plugin's runner; and otherwise it runs the runner of the Codex CAT artifact that {@code CodexArtifact} selects with
- * the caller's options.
+ * options as in the Codex plugin. Each launch goes along the route that {@link
+ * com.holdmyspot.cat.common.runner.LaunchRoute} gives it: inside a nested session that may request sessions, it
+ * requests a Codex session from the nested session's runner; when Claude Code runs the command outside a nested
+ * session, it requests the session from the Claude Code session's request server; when only Codex runs it, it refuses
+ * the launch and names the Codex plugin's runner; and otherwise it runs the runner of the Codex CAT artifact that
+ * {@code CodexArtifact} selects with the caller's options.
  */
 public final class CodexRunnerRelay
 {

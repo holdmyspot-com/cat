@@ -169,8 +169,8 @@ public final class ChildPolicyTest
 	}
 
 	/**
-	 * Verifies that a write inside the child's own run folder is given to the child even though its parent may not
-	 * write the run folder.
+	 * Verifies that a write inside the child's own session folder is given to the child even though its parent may not
+	 * write the session folder.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -193,7 +193,7 @@ public final class ChildPolicyTest
 	}
 
 	/**
-	 * Verifies that a child's run folder is writable even though it lies outside every folder that its parent may
+	 * Verifies that a child's session folder is writable even though it lies outside every folder that its parent may
 	 * write.
 	 *
 	 * @throws IOException if the fixture cannot be created

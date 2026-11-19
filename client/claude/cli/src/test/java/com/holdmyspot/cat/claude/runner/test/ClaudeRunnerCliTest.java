@@ -103,7 +103,7 @@ public final class ClaudeRunnerCliTest
 				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
 					root.resolve("locks"), 1, second, clock);
 				String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
+					root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--capacity-wait",
 					"5", "--model", "sonnet", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
@@ -178,7 +178,7 @@ public final class ClaudeRunnerCliTest
 	{
 		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		return manager.create("claude").directory().resolve("run.json");
+		return manager.create("claude").directory().resolve("session.json");
 	}
 
 	/**
@@ -192,7 +192,7 @@ public final class ClaudeRunnerCliTest
 	private static void startUntilCapacityIsRequested(TestJvmScope jvm, Path root) throws IOException
 	{
 		String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+			root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "sonnet",
 			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
@@ -239,7 +239,7 @@ public final class ClaudeRunnerCliTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				List<String> args = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
-					"--project", root.resolve("project").toString(), "--run-root", root.resolve("runs").toString()));
+					"--project", root.resolve("project").toString(), "--results", root.resolve("runs").toString()));
 				args.addAll(profile);
 				try
 				{
@@ -290,7 +290,7 @@ public final class ClaudeRunnerCliTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				Path artifact = artifactWithAgent(root, "model: opus\neffort: high\n");
 				List<String> args = new ArrayList<>(List.of("--artifact", artifact.toString(), "--project",
-					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--agent", AGENT));
+					root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT));
 				args.addAll(profile);
 				try
 				{
@@ -340,7 +340,7 @@ public final class ClaudeRunnerCliTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				Path artifact = artifactWithAgent(root, frontmatter);
 				String[] args = {"--artifact", artifact.toString(), "--project", root.resolve("project").toString(),
-					"--run-root", root.resolve("runs").toString(), "--agent", AGENT};
+					"--results", root.resolve("runs").toString(), "--agent", AGENT};
 				try
 				{
 					ClaudeRunnerCli.serve(jvm, root, args, new StringReader(""), new StringWriter(), Map.of(),
@@ -376,7 +376,7 @@ public final class ClaudeRunnerCliTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				Path artifact = artifactWithAgent(root, "model: opus\neffort: none\n");
 				HarnessRunnerOptions options = ClaudeRunnerCli.options(new String[]{"--artifact", artifact.toString(),
-					"--run-root", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat"},
+					"--results", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat"},
 					HarnessTemporaryRoot.withoutSession("no session"));
 				requireThat(options.model(), "model").isEqualTo("opus");
 				requireThat(options.effort(), "effort").isEqualTo("none");
@@ -396,8 +396,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, with the
-	 * reason, before it does anything else.
+	 * Verifies that outside a nested session the launcher refuses an option that would choose the artifact it runs,
+	 * with the reason, before it does anything else.
 	 *
 	 * @param option the refused option
 	 */
@@ -415,8 +415,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that inside a run whose runner lets its session request sessions, the launcher does not refuse the
-	 * option, since it forwards the launch as a session request whose runner ignores it.
+	 * Verifies that inside a nested session whose runner lets its session request sessions, the launcher does not
+	 * refuse the option, since it forwards the launch as a session request whose runner ignores it.
 	 *
 	 * @param option the option that the forwarded launch names
 	 */
@@ -594,7 +594,7 @@ public final class ClaudeRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = root.resolve("artifact");
 			HarnessRunnerOptions options = ClaudeRunnerCli.options(new String[]{"--artifact", artifact.toString(),
-				"--run-root", root.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"},
+				"--results", root.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"},
 				HarnessTemporaryRoot.withoutSession("no session"));
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
@@ -615,7 +615,7 @@ public final class ClaudeRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "sonnet",
 				"--effort", "low"};
 			try
 			{
@@ -648,7 +648,7 @@ public final class ClaudeRunnerCliTest
 			Path bound = Files.writeString(root.resolve("bound.json"), Files.readString(policyBound(root)).
 				replace("\"format_version\"", "\"allow_everything\": true, \"format_version\""));
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "sonnet",
 				"--effort", "low", "--policy-bound", bound.toString()};
 			try
 			{
@@ -681,7 +681,7 @@ public final class ClaudeRunnerCliTest
 			Path extra = Files.writeString(root.resolve("extra.json"),
 				"{\"format_version\": 1, \"writes\": [\"relative/cache\"]}");
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "sonnet",
 				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--extra-permissions",
 				extra.toString()};
 
@@ -716,7 +716,7 @@ public final class ClaudeRunnerCliTest
 				"CLAUDE_CONFIG_DIR", configuration.toString(), "CLAUDE_CODE_OAUTH_TOKEN",
 				LOGIN.get("CLAUDE_CODE_OAUTH_TOKEN"));
 			String[] args = {"--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "sonnet",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "sonnet",
 				"--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held", "--input",
 				input.toString()};
 
@@ -808,7 +808,7 @@ public final class ClaudeRunnerCliTest
 			Path configuration = Files.createDirectory(home.resolve(".claude"));
 			Path project = Files.createDirectory(home.resolve("project"));
 			String[] args = {"--artifact", home.resolve("artifact").toString(), "--project", project.toString(),
-				"--run-root", home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low",
+				"--results", home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low",
 				PolicyBoundFile.OPTION, policyBound(home).toString()};
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(), home.toString(),
 				"USER", "alice");
@@ -854,7 +854,7 @@ public final class ClaudeRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			IOException failure = expectThrows(IOException.class, () ->
-				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--results",
 					home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
 					PolicyBoundFile.OPTION, policyBound(home).toString()}, environment, Yielding.waiting(),
 					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
@@ -889,7 +889,7 @@ public final class ClaudeRunnerCliTest
 			StringWriter errors = new StringWriter();
 
 			IOException failure = expectThrows(IOException.class, () ->
-				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+				ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--results",
 					home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low", "--capacity-held",
 					PolicyBoundFile.OPTION, policyBound(home).toString()}, environment, Yielding.waiting(),
 					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true),
@@ -939,7 +939,7 @@ public final class ClaudeRunnerCliTest
 			StringWriter errors = new StringWriter();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--run-root",
+			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--results",
 				home.resolve("runs").toString(), "--model", "sonnet", "--effort", "low"}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
 
@@ -990,9 +990,9 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that Claude Code runs outside a run is refused with the refusal status
-	 * when no request server serves the session, with a reason that names the command that starts the server, before
-	 * the launcher writes a request or starts anything.
+	 * Verifies that a launch from a command that Claude Code runs outside a nested session is refused with the refusal
+	 * status when no request server serves the session, with a reason that names the command that starts the server,
+	 * before the launcher writes a request or starts anything.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -1010,7 +1010,7 @@ public final class ClaudeRunnerCliTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = ClaudeRunnerCli.launch(new String[]{"--project", project.toString(), "--model", "sonnet",
-					"--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
+					"--effort", "low", "--results", home.resolve("runs").toString()}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin,
 				() -> ToolScope.forSession(project, environment, SessionHarness.installed(), Yielding.waiting(),
 					GitProjects.IGNORING));

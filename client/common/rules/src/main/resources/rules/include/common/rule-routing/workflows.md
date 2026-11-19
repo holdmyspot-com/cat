@@ -31,7 +31,7 @@ work, and before you hand back your result or send your final reply, lazy load
 `../temporary-resources/agent-cleanup.md`.
 
 Before you start or request a new agent session yourself, for example to test a plugin or a fresh installation in a
-separate session, including from inside a CAT run, lazy load `../harness-runners.md`.
+separate session, including from inside a nested session, lazy load `../harness-runners.md`.
 
 Before installing, updating or uninstalling CAT or any plugin, lazy load `../install-running-work.md`.
 

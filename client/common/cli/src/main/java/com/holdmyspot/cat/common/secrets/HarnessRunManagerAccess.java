@@ -24,7 +24,7 @@ public interface HarnessRunManagerAccess
 	 * Creates a manager with process liveness support.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param root the absolute owned-run root
+	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
 	 * @param replacer replaces the runs' manifests and output files
 	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes

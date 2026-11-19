@@ -34,10 +34,10 @@ import java.util.stream.Stream;
  * reserves.
  * <p>
  * A slot is emptied before a session takes it, and again once the session has ended, but a slot is never emptied or
- * handed on while a process that its previous session recorded in its run's manifest remains alive: CAT stops each
- * such process, and if one stays alive, the slot waits. The manifest records only the runner's process and the
- * harness process, not the processes below them. A run folder without a manifest records no process, so emptying the
- * slot removes it without stopping anything; a manifest that cannot be read or is malformed keeps the slot from being
+ * handed on while a process that its previous session recorded in its run's manifest remains alive: CAT stops each such
+ * process, and if one stays alive, the slot waits. The manifest records only the runner's process and the harness
+ * process, not the processes below them. A session folder without a manifest records no process, so emptying the slot
+ * removes it without stopping anything; a manifest that cannot be read or is malformed keeps the slot from being
  * emptied.
  * <p>
  * A slot whose run records the session that its harness reported, and no end, is <b>retained</b>: its session was
@@ -91,7 +91,7 @@ public final class SessionSlots
 	/**
 	 * A slot that a session holds.
 	 *
-	 * @param root    the directory that the session uses as its run root, which holds its run below the harness's
+	 * @param root    the directory that the session uses as its results folder, which holds its run below the harness's
 	 *                name
 	 * @param runId   the identifier of the session's run, which is the same for every session of the slot
 	 * @param heldOut {@code true} if the slot belongs to the held-out part
@@ -102,7 +102,7 @@ public final class SessionSlots
 		/**
 		 * Creates a slot.
 		 *
-		 * @param root    the directory that the session uses as its run root
+		 * @param root    the directory that the session uses as its results folder
 		 * @param runId   the identifier of the session's run
 		 * @param heldOut {@code true} if the slot belongs to the held-out part
 		 * @param number  the slot's number within its part
@@ -575,7 +575,7 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Returns the manifests of the runs below a slot, which are at {@code <harness>/<run>/run.json}. A run folder
+	 * Returns the manifests of the runs below a slot, which are at {@code <harness>/<run>/session.json}. A session folder
 	 * without a manifest records no process and is left out.
 	 *
 	 * @param root the slot's directory
@@ -600,8 +600,8 @@ public final class SessionSlots
 						if (!Files.isDirectory(run, LinkOption.NOFOLLOW_LINKS) ||
 							!run.getFileName().toString().startsWith(RUN_ID))
 							continue;
-						Path manifest = run.resolve("run.json");
-						// A run folder without a manifest records no process; emptying the slot removes it
+						Path manifest = run.resolve("session.json");
+						// A session folder without a manifest records no process; emptying the slot removes it
 						if (!Files.exists(manifest, LinkOption.NOFOLLOW_LINKS))
 							continue;
 						if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))

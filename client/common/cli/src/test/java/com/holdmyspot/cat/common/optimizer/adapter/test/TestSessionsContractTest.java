@@ -105,7 +105,7 @@ public final class TestSessionsContractTest
 	private static SessionPortContract contract(JvmScope jvm, List<Turn> script, CountDownLatch entered)
 	{
 		return new SessionPortContract(() -> ScriptedSubject.open(jvm, (options, input, output) ->
-			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 				script, input, output), entered));
 	}
 
@@ -166,7 +166,7 @@ public final class TestSessionsContractTest
 		List<String> requests = new ArrayList<>();
 		try (TestJvmScope jvm = new TestJvmScope();
 			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
 		{
 			SessionResult.Completed completed = completeObservedTrial(subject, trialTest("exact-text turn=1 ok"));
@@ -197,7 +197,7 @@ public final class TestSessionsContractTest
 		List<String> requests = new ArrayList<>();
 		try (TestJvmScope jvm = new TestJvmScope();
 			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
 		{
 			SessionResult.Completed completed = completeObservedTrial(subject, trialTest("exact-text ok"));
@@ -229,7 +229,7 @@ public final class TestSessionsContractTest
 		List<String> requests = new ArrayList<>();
 		try (TestJvmScope jvm = new TestJvmScope();
 			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
 		{
 			PromptTest test = trialTest("count ok 0 0");
@@ -264,7 +264,7 @@ public final class TestSessionsContractTest
 		List<String> requests = new ArrayList<>();
 		try (TestJvmScope jvm = new TestJvmScope();
 			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
 		{
 			PromptTest test = trialTest("count {{expected_outcome}} 2 2");
@@ -298,7 +298,7 @@ public final class TestSessionsContractTest
 		List<String> requests = new ArrayList<>();
 		try (TestJvmScope jvm = new TestJvmScope();
 			ScriptedSubject subject = ScriptedSubject.open(jvm, (options, input, output) ->
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(quickTurn(), quickTurn()), input, output, requests), new CountDownLatch(0)))
 		{
 			SessionResult.Completed completed = completeObservedTrial(subject,
@@ -435,7 +435,7 @@ public final class TestSessionsContractTest
 	}
 
 	/**
-	 * Runs the contract check that the port identifies its versions and run roots.
+	 * Runs the contract check that the port identifies its versions and results folders.
 	 *
 	 * @throws Exception if the check fails
 	 */

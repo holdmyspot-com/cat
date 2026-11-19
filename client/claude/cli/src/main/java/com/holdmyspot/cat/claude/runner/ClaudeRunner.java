@@ -173,7 +173,7 @@ public final class ClaudeRunner
 	 *   {@code model} and {@code effort} whatever {@code agent} names, and records no end if the session cannot start.
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
-	 *   bound does not let it write what Claude Code writes outside the session's run folder, which the bound always
+	 *   bound does not let it write what Claude Code writes outside the session's session folder, which the bound always
 	 *   lets it write, or a settings file that Claude Code also loads would widen it; or if the session runs without a
 	 *   sandbox and its tools include one beyond {@link ClaudeSessionSandbox#READ_ONLY_TOOLS}
 	 * @throws IOException if startup fails
@@ -579,7 +579,7 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns what a Claude child session needs beyond its run folder, as a request server asks for it before it
+	 * Returns what a Claude child session needs beyond its session folder, as a request server asks for it before it
 	 * starts the child: the shared dependency caches, which the child writes, and the host of the model provider that
 	 * the child's Claude Code connects to, which its commands reach. It needs no login file in its home, because the
 	 * child's Claude Code uses the user's own Claude login, or a variable that {@link #requireLogin} accepts, and the
@@ -617,23 +617,21 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every
-	 * file and directory under the run root except the session's project, link-targets directory, home, Claude
-	 * temporary directory and evidence, and every harness's login and configuration files in the session's home and
-	 * in the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no
-	 * login file in the session's home: the session's Claude Code uses the user's own Claude login, whose login file
-	 * the session's commands cannot read; on macOS the login is a Keychain item instead, which Claude Code's
-	 * sandbox lets commands reach through the `security` program, as in the user's own session, and a
-	 * session that a command requests through CAT's runner uses it too. A Claude process that a command
-	 * starts directly has a login only through a variable that the commands receive. The session
-	 * therefore cannot read the runner's records of its own run or of any other run, the workspace
-	 * files of any run, any login file, such as the user's own Claude and Codex logins, or a
-	 * configuration that would let a harness started from a command reach the model
-	 * provider. A denied directory that holds the session's project, home, Claude temporary
-	 * directory, link-targets directory or evidence, such as the project that holds the run root, is replaced by every
-	 * file and directory under it except those and the directories that lead to them. The link-targets directory holds
-	 * the read-only copies that the project's links to targets outside it lead to, so the session reads it; the
-	 * session's settings do not let it write it.
+	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
+	 * and directory under the results folder except the session's project, link-targets directory, home, Claude
+	 * temporary directory and evidence, and every harness's login and configuration files in the session's home and in
+	 * the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no login
+	 * file in the session's home: the session's Claude Code uses the user's own Claude login, whose login file the
+	 * session's commands cannot read; on macOS the login is a Keychain item instead, which Claude Code's sandbox lets
+	 * commands reach through the `security` program, as in the user's own session, and a session that a command
+	 * requests through CAT's runner uses it too. A Claude process that a command starts directly has a login only
+	 * through a variable that the commands receive. The session therefore cannot read the runner's records of its own
+	 * run or of any other run, the workspace files of any run, any login file, such as the user's own Claude and Codex
+	 * logins, or a configuration that would let a harness started from a command reach the model provider. A denied
+	 * directory that holds the session's project, home, Claude temporary directory, link-targets directory or evidence,
+	 * such as the project that holds the results folder, is replaced by every file and directory under it except those
+	 * and the directories that lead to them. The link-targets directory holds the read-only copies that the project's
+	 * links to targets outside it lead to, so the session reads it; the session's settings do not let it write it.
 	 * <p>
 	 * A login or configuration file that does not exist when the session starts is left out, because Claude's sandbox
 	 * creates an empty file at a missing denied path, which would change the user's harness configuration; the
@@ -646,7 +644,7 @@ public final class ClaudeRunner
 	 * @param environment      the caller's environment, which names the user's home and harness directories
 	 * @return the paths to deny, each once
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IOException          if the run root or a denied directory cannot be listed
+	 * @throws IOException          if the results folder or a denied directory cannot be listed
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment) throws IOException
@@ -667,7 +665,7 @@ public final class ClaudeRunner
 	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
 	 * @return the paths to deny, each once
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
-	 * @throws IOException          if the run root or a denied directory cannot be listed
+	 * @throws IOException          if the results folder or a denied directory cannot be listed
 	 */
 	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment,

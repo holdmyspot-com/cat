@@ -39,8 +39,8 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that inside a run whose runner lets its session request sessions, every launch becomes a request to
-	 * that runner, whichever harness runs the command.
+	 * Verifies that inside a nested session whose runner lets its session request sessions, every launch becomes a
+	 * request to that runner, whichever harness runs the command.
 	 */
 	@Test
 	public void forwardsInsideRunWithRequests()
@@ -56,8 +56,8 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that inside a run whose runner lets its session request no sessions, a launch is refused with the
-	 * option that lets it, even one that names a policy bound.
+	 * Verifies that inside a nested session whose runner lets its session request no sessions, a launch is refused with
+	 * the option that lets it, even one that names a policy bound.
 	 */
 	@Test
 	public void refusesInsideRunWithoutRequests()
@@ -96,10 +96,10 @@ public final class LaunchRouteTest
 	@Test
 	public void refusesResumeRunOption()
 	{
-		Optional<String> refusal = LaunchRoute.internalOptionRefusal(new String[]{"--resume-run",
+		Optional<String> refusal = LaunchRoute.internalOptionRefusal(new String[]{"--resume-slot",
 			"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"});
 
-		requireThat(refusal.orElse(""), "refusal").contains("--resume-run");
+		requireThat(refusal.orElse(""), "refusal").contains("--resume-slot");
 	}
 
 	/**
@@ -162,8 +162,8 @@ public final class LaunchRouteTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that the plugin's own harness runs outside a run goes to the session's
-	 * request server.
+	 * Verifies that a launch from a command that the plugin's own harness runs outside a nested session goes to the
+	 * session's request server.
 	 */
 	@Test
 	public void sendsOwnHarnessToServer()

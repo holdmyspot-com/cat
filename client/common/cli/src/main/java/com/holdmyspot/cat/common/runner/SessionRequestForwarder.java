@@ -34,22 +34,22 @@ import tools.jackson.databind.node.ObjectNode;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Hands a runner launch to the runner that serves the session's requests outside its sandbox: inside a run, the run's
- * own runner, and outside a run, the session's request server.
+ * Hands a runner launch to the runner that serves the session's requests outside its sandbox: inside a nested session,
+ * the run's own runner, and outside a nested session, the session's request server.
  * <p>
  * A session's commands cannot start a sandboxed harness: they run in a sandbox, inside which no harness sandbox can
  * start. A runner launcher that the session runs packs the launch as a session request instead, waits for the runner
- * that serves it to finish it, and returns the requested session's transcript and receipt as its own. With
- * {@code --conversation}, the launch publishes the request without its records and sends each of the conversation's
- * messages as the request's next record while the session runs. When the parent's run may request no further
- * session, the parent refuses the request and the launch exits with status 2 and the reason. Inside a run, the parent
- * chooses the run root, the artifact, its own denied reads and the limits of the sessions it requests, so a launch may
- * not choose them; outside a run, a launch chooses the limits of the session it requests. The copy of the session's
- * run that its runner returns is copied into the launch's run root, which inside a run only a launch that names one
- * has; otherwise the copy stays in the response that the run's runner keeps. A launch may name the options that only
- * narrow the requested session or describe its own inputs: further denied reads, the workspace files, the read-only
- * evidence, the tool-output token limit and the instruction files. The files and directories that it names travel
- * inside the request, so each must be one that the session's sandbox lets it read.
+ * that serves it to finish it, and returns the requested session's transcript and receipt as its own. With {@code
+ * --conversation}, the launch publishes the request without its records and sends each of the conversation's messages
+ * as the request's next record while the session runs. When the parent's run may request no further session, the parent
+ * refuses the request and the launch exits with status 2 and the reason. Inside a nested session, the parent chooses
+ * the results folder, the artifact, its own denied reads and the limits of the sessions it requests, so a launch may
+ * not choose them; outside a nested session, a launch chooses the limits of the session it requests. The copy of the
+ * session's run that its runner returns is copied into the launch's results folder, which inside a nested session only
+ * a launch that names one has; otherwise the copy stays in the response that the nested session's runner keeps. A
+ * launch may name the options that only narrow the requested session or describe its own inputs: further denied reads,
+ * the workspace files, the read-only evidence, the tool-output token limit and the instruction files. The files and
+ * directories that it names travel inside the request, so each must be one that the session's sandbox lets it read.
  */
 public final class SessionRequestForwarder
 {
@@ -58,7 +58,8 @@ public final class SessionRequestForwarder
 	 */
 	public static final Duration RESPONSE_POLL = Duration.ofMillis(100);
 	/**
-	 * Options that the parent runner chooses for the sessions it requests inside a run, and their manifest fields.
+	 * Options that the parent runner chooses for the sessions it requests inside a nested session, and their manifest
+	 * fields.
 	 */
 	private static final Map<String, String> PARENT_OPTIONS = Map.of("--session-requests", "session_requests",
 		"--request-depth", "request_depth", "--max-concurrency", "max_concurrency", "--capacity-wait", "capacity_wait",
@@ -70,11 +71,11 @@ public final class SessionRequestForwarder
 	public enum Route
 	{
 		/**
-		 * The run's runner, which chooses the limits of the sessions that its run's session requests.
+		 * The nested session's runner, which chooses the limits of the sessions that its run's session requests.
 		 */
 		RUN,
 		/**
-		 * The session's request server, outside a run, which applies the limits that the launch names.
+		 * The session's request server, outside a nested session, which applies the limits that the launch names.
 		 */
 		SERVER;
 
@@ -99,7 +100,7 @@ public final class SessionRequestForwarder
 	/**
 	 * The options that take a value and that a launch may name.
 	 */
-	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
+	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--results", "--project", "--plugin",
 		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION,
 		"--deny-read", "--workspace", "--read-only-evidence", "--instruction-files", "--session-role",
 		"--tool-output-token-limit", RunnerArguments.RESUME_OPTION);
@@ -130,9 +131,10 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Forwards one launch and waits for its requested session to end. The copy of the session's run is copied into the
-	 * launch's run root as {@code <run root>/<harness>/<run id>}, outside a run or when the launch names one inside a
-	 * run. Outside a run, the response is removed once the launch has copied what it needs.
+	 * Forwards one launch and waits for its requested session to end. The session's results are copied into the
+	 * launch's results folder as {@code <results folder>/<harness>/<session ID>}, outside a nested session or when the
+	 * launch names one inside a nested session. Outside a nested session, the response is removed once the launch has
+	 * copied what it needs.
 	 *
 	 * @param route          the runner that serves the request
 	 * @param harness        the harness of the runner launcher
@@ -140,18 +142,18 @@ public final class SessionRequestForwarder
 	 * @param input          the launch's {@code turn} and {@code complete} records when neither {@code --input} nor
 	 *                       {@code --conversation} is given
 	 * @param requests       the directory into which the launch writes its request
-	 * @param defaultRunRoot the run root of a launch that names no {@code --run-root} outside a run, or {@code null}
-	 *                       inside one
+	 * @param defaultRunRoot the results folder of a launch that names no {@code --results} outside a nested session, or
+	 *                       {@code null} inside one
 	 * @param pause          paces checks for the session's progress
 	 * @param output         receives the session's transcript when {@code --output} is absent
 	 * @param errors         receives the reason when the session does not complete
 	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, {@code 2} if the session was
 	 *         refused, or {@code 1} otherwise
 	 * @throws NullPointerException     if any argument other than {@code defaultRunRoot} is null, or if
-	 *                                  {@code defaultRunRoot} is null outside a run
-	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
-	 *                                  parent runner, if {@code --input} and {@code --conversation} are both given,
-	 *                                  or if the launch names no {@code --model} or no {@code --effort}
+	 *                                  {@code defaultRunRoot} is null outside a nested session
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a nested session,
+	 *                                  chosen by the parent runner, if {@code --input} and {@code --conversation} are
+	 *                                  both given, or if the launch names no {@code --model} or no {@code --effort}
 	 * @throws IOException              if the records are invalid, a file or directory that the launch names cannot be
 	 *                                  read, the request or response cannot be read or written, or the session's
 	 *                                  run cannot be copied
@@ -225,14 +227,15 @@ public final class SessionRequestForwarder
 
 	/**
 	 * Keeps what a launch takes from its session's response: the receipt that {@code --receipt} names and the copy of
-	 * the session's run, which is copied into the launch's run root outside a run, and inside a run when the launch
-	 * names one. The response is removed once the launch has copied what it needs, outside a run.
+	 * the session's run, which is copied into the launch's results folder outside a nested session, and inside a nested
+	 * session when the launch names one. The response is removed once the launch has copied what it needs, outside a
+	 * nested session.
 	 *
 	 * @param route          the runner that serves the request
 	 * @param harness        the harness of the runner launcher
 	 * @param launch         the launch
-	 * @param defaultRunRoot the run root of a launch that names no {@code --run-root} outside a run, or {@code null}
-	 *                       inside one
+	 * @param defaultRunRoot the results folder of a launch that names no {@code --results} outside a nested session, or
+	 *                       {@code null} inside one
 	 * @param requests       the directory into which the launch wrote its request
 	 * @param id             the request identifier
 	 * @param response       the response
@@ -252,7 +255,8 @@ public final class SessionRequestForwarder
 		Path runRoot = launch.runRoot();
 		if (runRoot == null)
 		{
-			// Inside a run, the copy stays in the response, which the run's runner keeps while the run lasts
+			// Inside a nested session, the copy stays in the response, which the nested session's runner keeps while that
+			// session lasts
 			if (route != Route.SERVER)
 				return Optional.empty();
 			runRoot = defaultRunRoot;
@@ -269,7 +273,7 @@ public final class SessionRequestForwarder
 	 * session's own identifier, which no other session has.
 	 *
 	 * @param response the response
-	 * @param runs     the directory that holds the harness's runs in the launch's run root
+	 * @param runs     the directory that holds the harness's runs in the launch's results folder
 	 * @param project  the project that the launch named, which the copy's manifest names
 	 * @return the reason why the copy is incomplete, or empty if the response names no results or the copy is
 	 *   complete
@@ -286,22 +290,23 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Serves one session of a CAT command, such as the prompt optimizer, through the run's runner: streams the
-	 * command's records to the requested session as it writes them, copies the session's records back as they arrive,
-	 * and copies the session's results, which the run's runner names in its response, into the launch's {@code
-	 * --run-root} as {@code <run root>/<harness>/<session id>}, where the session ID is the one that the harness gave
-	 * the session. The command creates that directory's {@code artifacts} once the runner reports the ID, so that what
-	 * the command writes into the session's results while it runs has a place. Before the command reads the record that
-	 * reports the end of a completed turn, that run holds the session's {@code project} and {@code initial-project} as
-	 * the turn left them, so that the command can read what the session has written so far, as it does in a session
-	 * that it runs directly. A run that allows no further session refuses the session before it publishes anything. The
-	 * run's runner installs its own CAT for {@code --install-cat}, so a launch that names another CAT as {@code
-	 * --artifact} sends that CAT as a plugin, as a launch that goes to a request server does.
+	 * Serves one session of a CAT command, such as the prompt optimizer, through the nested session's runner: streams
+	 * the command's records to the requested session as it writes them, copies the session's records back as they
+	 * arrive, and copies the session's results, which the nested session's runner names in its response, into the
+	 * launch's {@code --results} as {@code <results folder>/<harness>/<session id>}, where the session ID is the one
+	 * that the harness gave the session. The command creates that directory's {@code artifacts} once the runner reports
+	 * the ID, so that what the command writes into the session's results while it runs has a place. Before the command
+	 * reads the record that reports the end of a completed turn, that run holds the session's {@code project} and
+	 * {@code initial-project} as the turn left them, so that the command can read what the session has written so far,
+	 * as it does in a session that it runs directly. A run that allows no further session refuses the session before it
+	 * publishes anything. The nested session's runner installs its own CAT for {@code --install-cat}, so a launch that
+	 * names another CAT as {@code --artifact} sends that CAT as a plugin, as a launch that goes to a request server
+	 * does.
 	 *
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session
 	 * @param ownArtifact the CAT artifact that the command runs from
-	 * @param arguments   the runner's options, which name {@code --run-root}
+	 * @param arguments   the runner's options, which name {@code --results}
 	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
 	 * @param output      receives the session's records, one per line
 	 * @param requests    the run's requests directory
@@ -309,7 +314,7 @@ public final class SessionRequestForwarder
 	 *                    interrupted, which ends the request and stops the session
 	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
 	 *                                  the launch names {@code --input} or {@code --conversation}, or no
-	 *                                  {@code --run-root}, {@code --model} or {@code --effort}
+	 *                                  {@code --results}, {@code --model} or {@code --effort}
 	 * @throws LaunchRefusedException   if the run allows no further session or its runner refused the session
 	 * @throws IOException              if the session did not complete, a file or directory that the launch names
 	 *                                  cannot be read, the request or response cannot be read or written, or the kept
@@ -323,23 +328,23 @@ public final class SessionRequestForwarder
 
 	/**
 	 * Serves one session of a CAT command, such as the prompt optimizer, through the runner that a route names, as
-	 * {@link #serve(String, String, Path, List, Reader, Writer, Path, Pause)} does inside a run. Outside a run, the
-	 * response is removed once the command has copied the kept run.
+	 * {@link #serve(String, String, Path, List, Reader, Writer, Path, Pause)} does inside a nested session. Outside a
+	 * nested session, the response is removed once the command has copied the kept run.
 	 *
 	 * @param route       the runner that serves the request
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session
 	 * @param ownArtifact the CAT artifact that the command runs from
-	 * @param arguments   the runner's options, which name {@code --run-root}
+	 * @param arguments   the runner's options, which name {@code --results}
 	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
 	 * @param output      receives the session's records, one per line
 	 * @param requests    the directory into which the command writes its request
 	 * @param pause       paces checks for the session's progress, and throws once the calling thread is
 	 *                    interrupted, which ends the request and stops the session
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
-	 *                                  parent runner, if the launch names {@code --input} or {@code --conversation},
-	 *                                  or no {@code --run-root}, {@code --model} or {@code --effort}
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a nested session,
+	 *                                  chosen by the parent runner, if the launch names {@code --input} or {@code
+	 *                                  --conversation}, or no {@code --results}, {@code --model} or {@code --effort}
 	 * @throws LaunchRefusedException   if the run allows no further session or the runner refused the session
 	 * @throws IOException              if the session did not complete, a file or directory that the launch names
 	 *                                  cannot be read, the request or response cannot be read or written, or the kept
@@ -362,7 +367,7 @@ public final class SessionRequestForwarder
 		if (launch.records() != null || launch.conversation() != null)
 			throw new InvalidArgumentsException("A served session takes its records from its input");
 		if (launch.runRoot() == null)
-			throw new InvalidArgumentsException("A served session names --run-root");
+			throw new InvalidArgumentsException("A served session names --results");
 		Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
 		if (refusal.isPresent())
 			throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, refusal.get()));
@@ -422,10 +427,9 @@ public final class SessionRequestForwarder
 	 * @param harness the harness of the runner launcher
 	 * @param args    the launch's options
 	 * @return the launch
-	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
-	 *                                  parent runner, if
-	 *                                  {@code --input} and {@code --conversation} are both given, or if the launch
-	 *                                  names no {@code --model} or no {@code --effort}
+	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a nested session,
+	 *                                  chosen by the parent runner, if {@code --input} and {@code --conversation} are
+	 *                                  both given, or if the launch names no {@code --model} or no {@code --effort}
 	 * @throws IOException              if the file of {@code --extra-permissions} cannot be read
 	 */
 	private static Launch parse(JsonMapper json, Route route, String harness, String[] args) throws IOException
@@ -447,7 +451,7 @@ public final class SessionRequestForwarder
 			String option = args[index];
 			if (PARENT_OPTIONS.containsKey(option) && route == Route.RUN)
 			{
-				throw new InvalidArgumentsException("Inside a run, the parent runner chooses " + option +
+				throw new InvalidArgumentsException("Inside a nested session, the parent runner chooses " + option +
 					" for the sessions it starts");
 			}
 			if (!REPEATABLE_OPTIONS.contains(option) && !scalars.add(option))
@@ -495,8 +499,8 @@ public final class SessionRequestForwarder
 			{
 				// The parent runner chooses the artifact; a served session may send it as a plugin
 				case "--artifact" -> artifact = Path.of(value).toAbsolutePath();
-				// The parent runner chooses the run root; a served session's kept run is copied below it
-				case "--run-root" -> runRoot = Path.of(value).toAbsolutePath();
+				// The parent runner chooses the results folder; a served session's kept run is copied below it
+				case "--results" -> runRoot = Path.of(value).toAbsolutePath();
 				case "--project" -> project = Path.of(value).toAbsolutePath();
 				case "--plugin" -> request.withArray("plugins").add(Path.of(value).toAbsolutePath().toString());
 				case "--model", "--effort" -> request.put(option.substring(2), value);
@@ -574,7 +578,7 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Reads the value of a limit that a launch outside a run names.
+	 * Reads the value of a limit that a launch outside a nested session names.
 	 *
 	 * @param option the option
 	 * @param value  the option's value
@@ -628,7 +632,7 @@ public final class SessionRequestForwarder
 	 * @param conversation the folder of {@code --conversation}, or null
 	 * @param transcript   the file of {@code --output}, or null
 	 * @param receipt      the file of {@code --receipt}, or null
-	 * @param runRoot      the folder of {@code --run-root}, or null
+	 * @param runRoot      the folder of {@code --results}, or null
 	 * @param artifact     the folder of {@code --artifact}, or null
 	 */
 	private record Launch(ObjectNode request, Path project, Path records, Path conversation, Path transcript,
@@ -637,7 +641,7 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Returns the directory in which the run's runner answers a request.
+	 * Returns the directory in which the nested session's runner answers a request.
 	 *
 	 * @param requests the run's requests directory
 	 * @param id       the request identifier
@@ -782,8 +786,8 @@ public final class SessionRequestForwarder
 			}
 			if (!type.equals("turn") || !record.path("prompt").isString())
 			{
-				throw new IOException("Inside a run, a launch accepts only turn records with a prompt, followed by " +
-					"complete: " + line);
+				throw new IOException("Inside a nested session, a launch accepts only turn records with a prompt, followed " +
+					"by complete: " + line);
 			}
 			prompts.add(record.path("prompt").asString());
 		}
@@ -828,7 +832,7 @@ public final class SessionRequestForwarder
 
 	/**
 	 * Copies the requested session's records, one per line, to a served command's output, creating the
-	 * {@code artifacts} directory of the session's run below the command's run root once the session reports its
+	 * {@code artifacts} directory of the session's run below the command's results folder once the session reports its
 	 * start, and replacing its project, initial project and native transcript copies with the session's, which the runner
 	 * copied, before the command reads each record that reports the end of a completed turn.
 	 * <p>

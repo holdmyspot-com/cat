@@ -41,10 +41,11 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.ArrayNode;
 
 /**
- * The archive in which a sandboxed session sends a session request: its manifest format, which the run's runner and
- * the session's request server share, and the operations that pack a request inside the sender's sandbox and copy,
- * extract and read it on the receiver's side. A request that a run's runner serves may choose fewer fields than one
- * that a request server serves, and the run's runner refuses by name each field that only the server reads.
+ * The archive in which a sandboxed session sends a session request: its manifest format, which the nested session's
+ * runner and the session's request server share, and the operations that pack a request inside the sender's sandbox and
+ * copy, extract and read it on the receiver's side. A request that a run's runner serves may choose fewer fields than
+ * one that a request server serves, and the nested session's runner refuses by name each field that only the server
+ * reads.
  * <p>
  * A sender packs only what its sandbox lets it read, leaving out the null-device placeholders of files that it may not
  * read. It follows no link, except that a symbolic link in the project whose target stays inside the project travels
@@ -77,7 +78,7 @@ public final class RequestArchive
 	 */
 	private static final String TEMPORARY_PREFIX = ".tmp-";
 	/**
-	 * The version of the manifest of a request made inside a run.
+	 * The version of the manifest of a request made inside a nested session.
 	 */
 	static final int VERSION = 3;
 	/**
@@ -85,11 +86,11 @@ public final class RequestArchive
 	 */
 	static final int MAXIMUM_MANIFEST_BYTES = 65_536;
 	/**
-	 * The most bytes of one prompt of a request made inside a run, which a receiver reads into memory.
+	 * The most bytes of one prompt of a request made inside a nested session, which a receiver reads into memory.
 	 */
 	static final int MAXIMUM_PROMPT_BYTES = 1_048_576;
 	/**
-	 * The most prompts or plugins of a request made inside a run.
+	 * The most prompts or plugins of a request made inside a nested session.
 	 */
 	private static final int MAXIMUM_RUN_INPUTS = 32;
 	/**
@@ -115,8 +116,8 @@ public final class RequestArchive
 	private static final Set<String> FIXED_FIELDS = Set.of("project", "plugins", "install_cat", "workspace",
 		"read_only_evidence", "deny_read", "instruction_files", "session_role", "tool_output_token_limit", "agent");
 	/**
-	 * The manifest fields that a session's request server reads and the run's runner refuses, because the run's runner
-	 * chooses them for the sessions that it starts.
+	 * The manifest fields that a session's request server reads and the nested session's runner refuses, because the
+	 * nested session's runner chooses them for the sessions that it starts.
 	 */
 	private static final Set<String> SERVED_FIELDS = Set.of("agent", "session_requests", "request_depth",
 		"capacity_wait", "max_concurrency");
@@ -151,8 +152,8 @@ public final class RequestArchive
 	private static final int WRITE_BITS = 0222;
 
 	/**
-	 * Publishes a request made inside a run with archive-relative manifest paths, packing prompt texts after the
-	 * request's prompt files. The request's {@code workspace} and {@code read_only_evidence}, when it names them,
+	 * Publishes a request made inside a nested session with archive-relative manifest paths, packing prompt texts after
+	 * the request's prompt files. The request's {@code workspace} and {@code read_only_evidence}, when it names them,
 	 * travel inside the archive too.
 	 *
 	 * @param json        the manifest mapper
@@ -1029,13 +1030,13 @@ public final class RequestArchive
 	}
 
 	/**
-	 * Reads the manifest of an extracted request made inside a run.
+	 * Reads the manifest of an extracted request made inside a nested session.
 	 *
 	 * @param json   the manifest mapper
 	 * @param inputs the private directory that {@link #unpack(Path, Path, RequestLimits)} extracted the request into
 	 * @return the request, with its prompts' text already read
-	 * @throws IOException              if the manifest is malformed, chooses a field that a request inside a run may
-	 *                                  not choose, or names an entry that is missing or of the wrong type
+	 * @throws IOException              if the manifest is malformed, chooses a field that a request inside a nested
+	 *                                  session may not choose, or names an entry that is missing or of the wrong type
 	 * @throws IllegalArgumentException if the request names no model or no effort
 	 */
 	static RunRequest readRun(JsonMapper json, Path inputs) throws IOException
@@ -1046,7 +1047,7 @@ public final class RequestArchive
 	/**
 	 * Reads the manifest of an extracted request that a session's command made to the session's request server. Such a
 	 * request may also choose the requested session's agent, its own session requests and their depth, its capacity
-	 * wait and its concurrency ceiling, which the run's runner chooses inside a run.
+	 * wait and its concurrency ceiling, which the nested session's runner chooses inside a nested session.
 	 *
 	 * @param json   the manifest mapper
 	 * @param inputs the private directory that {@link #unpack(Path, Path, RequestLimits)} extracted the request into
@@ -1065,7 +1066,8 @@ public final class RequestArchive
 	 *
 	 * @param json   the manifest mapper
 	 * @param inputs the private directory that {@link #unpack(Path, Path, RequestLimits)} extracted the request into
-	 * @param served {@code true} for a request to a session's request server, {@code false} for one inside a run
+	 * @param served {@code true} for a request to a session's request server, {@code false} for one inside a nested
+	 *   session
 	 * @return the request, with its prompts' text already read
 	 * @throws IOException              if the manifest is malformed, chooses a field that the request may not choose,
 	 *                                  or names an entry that is missing or of the wrong type
@@ -1074,7 +1076,7 @@ public final class RequestArchive
 	private static RunRequest readRun(JsonMapper json, Path inputs, boolean served) throws IOException
 	{
 		Set<String> allowed = RUN_FIELDS;
-		String level = "A request inside a run";
+		String level = "A request inside a nested session";
 		if (served)
 		{
 			allowed = new HashSet<>(RUN_FIELDS);
@@ -1441,7 +1443,7 @@ public final class RequestArchive
 	}
 
 	/**
-	 * An extracted request made inside a run.
+	 * An extracted request made inside a nested session.
 	 *
 	 * @param harness            the selected harness
 	 * @param project            the extracted project, or {@code null} for a request that resumes a session

@@ -202,7 +202,7 @@ public final class HarnessRunManagerTest
 			HarnessRunManager.copyManifest(run.directory(), kept, sessionId, root.resolve("project"));
 
 			manager.markCompleted(new HarnessRun("harness", sessionId, kept));
-			requireThat(Files.readString(kept.resolve("run.json")), "manifest").
+			requireThat(Files.readString(kept.resolve("session.json")), "manifest").
 				contains("\"id\": \"" + sessionId + "\"");
 		}
 	}
@@ -304,9 +304,9 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies bulk pruning skips a run folder that has no manifest yet, as a requester's copy of a requested session's
-	 * run does until the session ends, or never has if the session was stopped, and still prunes the terminal runs
-	 * beside it. The requester's own session ends and prunes while another requested session is still running.
+	 * Verifies bulk pruning skips a session folder that has no manifest yet, as a requester's copy of a requested
+	 * session's run does until the session ends, or never has if the session was stopped, and still prunes the terminal
+	 * runs beside it. The requester's own session ends and prunes while another requested session is still running.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -354,7 +354,7 @@ public final class HarnessRunManagerTest
 
 			manager.fail(run, "harness failed");
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("failed").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").contains("failed").
 				contains("harness failed");
 		}
 	}
@@ -382,7 +382,8 @@ public final class HarnessRunManagerTest
 
 			requireThat(Files.exists(codexLogin), "codexLogin").isFalse();
 			requireThat(Files.exists(claudeLogin), "claudeLogin").isFalse();
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("harness did not start");
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
+				contains("harness did not start");
 		}
 	}
 
@@ -436,7 +437,7 @@ public final class HarnessRunManagerTest
 			manager.fail(run, "harness failed");
 
 			requireThat(Files.readString(hostLogin), "hostLogin").isEqualTo("host login");
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("harness failed");
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").contains("harness failed");
 		}
 	}
 
@@ -483,9 +484,9 @@ public final class HarnessRunManagerTest
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			manager.fail(run, "test cleanup");
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			IOException failure = null;
-			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "run.json"))
+			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "session.json"))
 			{
 				manager.deleteRun(run);
 			}
@@ -516,7 +517,7 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			Files.writeString(run.directory().resolve("run.json"), "{}");
+			Files.writeString(run.directory().resolve("session.json"), "{}");
 
 			manager.deleteRun(run);
 		}
@@ -542,7 +543,7 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 			int maximumManifestBytes = HarnessRunManagerSecrets.getHarnessRunManagerAccess().maximumManifestBytes();
 			int tooLarge = maximumManifestBytes + 1;
-			Path manifest = Files.write(run.directory().resolve("run.json"), new byte[tooLarge]);
+			Path manifest = Files.write(run.directory().resolve("session.json"), new byte[tooLarge]);
 
 			try
 			{
@@ -652,7 +653,7 @@ public final class HarnessRunManagerTest
 
 			manager.markCompleted(run);
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("completed");
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").contains("completed");
 		}
 	}
 
@@ -677,7 +678,7 @@ public final class HarnessRunManagerTest
 			manager.markHarnessStarting(run);
 			manager.recordHarnessProcess(run, 12_345, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t9000");
 
-			String manifest = Files.readString(run.directory().resolve("run.json"));
+			String manifest = Files.readString(run.directory().resolve("session.json"));
 			requireThat(manifest, "manifest").contains("\"harness_pid\": 12345").
 				contains("\"harness_started_at\": \"0f1e2d3c4b5a69788796a5b4c3d2e1f0t9000\"");
 		}
@@ -711,7 +712,7 @@ public final class HarnessRunManagerTest
 				List.of("harness", "--label", "line\r\nbreak", "--api-key", "secret"));
 			manager.markCompleted(run);
 
-			String manifest = Files.readString(run.directory().resolve("run.json"));
+			String manifest = Files.readString(run.directory().resolve("session.json"));
 			JsonNode fields = JsonMapper.builder().build().readTree(manifest);
 			requireThat(fields.get("artifact_path").asString(), "artifactPath").isEqualTo(artifact.toString());
 			requireThat(fields.get("project_path").asString(), "projectPath").isEqualTo(project.toString());
@@ -794,16 +795,16 @@ public final class HarnessRunManagerTest
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 
-			String initialManifest = Files.readString(run.directory().resolve("run.json"));
+			String initialManifest = Files.readString(run.directory().resolve("session.json"));
 			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 6");
 			requireThat(initialManifest, "initialManifest").contains("\"harness_process_state\": \"absent\"");
 			requireThat(initialManifest, "initialManifest").
 				contains("\"phase\": \"initializing\"");
 			manager.markIdle(run);
-			requireThat(Files.readString(run.directory().resolve("run.json")), "idleManifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "idleManifest").
 				contains("\"phase\": \"idle\"");
 			manager.markWorking(run);
-			requireThat(Files.readString(run.directory().resolve("run.json")), "workingManifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "workingManifest").
 				contains("\"phase\": \"working\"");
 		}
 	}
@@ -1072,7 +1073,7 @@ public final class HarnessRunManagerTest
 				jvm.temporaryDirectory(),
 				"cat-project-"));
 			Files.writeString(project.resolve("README.md"), "project");
-			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/runner-runs");
+			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/nested-sessions");
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
@@ -1495,9 +1496,9 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that a session is denied reading every other entry under the run root, including other runs, workspaces
-	 * and the records of its own run, but not the paths that it uses, the paths inside them, or the directories that
-	 * contain them.
+	 * Verifies that a session is denied reading every other entry under the results folder, including other runs,
+	 * workspaces and the records of its own run, but not the paths that it uses, the paths inside them, or the
+	 * directories that contain them.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1529,8 +1530,8 @@ public final class HarnessRunManagerTest
 
 			// Creating a run writes its home directory, its manifest and its lock
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(artifacts,
-				run.directory().resolve("run.json"), run.directory().resolve(".lock"), other.directory(), evidenceProject,
-				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
+				run.directory().resolve("session.json"), run.directory().resolve(".lock"), other.directory(), evidenceProject,
+				evidence.directory().resolve("home"), evidence.directory().resolve("session.json"),
 				evidence.directory().resolve(".lock"), workspaces, otherHarness));
 		}
 	}
@@ -1586,9 +1587,9 @@ public final class HarnessRunManagerTest
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, currentClock,
 				Yielding.fileReplacer());
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			IOException failure = null;
-			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "run.json"))
+			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "session.json"))
 			{
 				manager.deleteStaleRuns(Duration.ofDays(7));
 			}
@@ -1647,7 +1648,7 @@ public final class HarnessRunManagerTest
 			// No process is alive, so the orchestrator that owns the run has ended
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			HarnessRun run = manager(jvm, root, oldClock).create("harness");
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-20T00:00:01Z"), UTC);
 			HarnessRunManager manager = manager(jvm, root, currentClock);
 
@@ -1687,7 +1688,7 @@ public final class HarnessRunManagerTest
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
 			requireThat(harness.stopRequested(), "terminationRequested").isTrue();
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains(
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").contains(
 				"\"state\": \"failed\"");
 		}
 	}
@@ -1715,7 +1716,7 @@ public final class HarnessRunManagerTest
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"running\"");
 			requireThat(owner.stopRequested(), "ownerStopRequested").isFalse();
 		}
@@ -1748,7 +1749,7 @@ public final class HarnessRunManagerTest
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"running\"");
 		}
 	}
@@ -1790,7 +1791,7 @@ public final class HarnessRunManagerTest
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
 			requireThat(harness.stopRequested(), "terminationRequested").isTrue();
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"failed\"");
 		}
 	}
@@ -1811,7 +1812,7 @@ public final class HarnessRunManagerTest
 			FakeProcessHandle harness = new FakeProcessHandle(12_345, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125", true);
 			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), harness);
 			HarnessRun run = manager.create("harness");
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			Files.writeString(manifest, Files.readString(manifest).
 				replaceFirst("\"owner_started_at\": (null|\"[^\"]+\")",
 					"\"owner_started_at\": \"2026-07-20T00:00:00Z\"").
@@ -1884,7 +1885,7 @@ public final class HarnessRunManagerTest
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
 			requireThat(manager.harnessSessionId(run), "before").isEmpty();
-			requireThat(Files.readString(run.directory().resolve("run.json")), "unreported").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "unreported").
 				contains("\"harness_session_id\": null");
 
 			manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
@@ -1893,7 +1894,7 @@ public final class HarnessRunManagerTest
 
 			requireThat(manager.harnessSessionId(run), "recorded").
 				isEqualTo(Optional.of("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"));
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
 			IOException other = expectThrows(IOException.class, () -> manager.recordHarnessSession(run,
 				"019a7c3e-8d21-7f40-b6a2-5c9e1d3f8a07"));
@@ -1919,7 +1920,7 @@ public final class HarnessRunManagerTest
 			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			HarnessRun run = manager.create("harness");
-			Path manifest = run.directory().resolve("run.json");
+			Path manifest = run.directory().resolve("session.json");
 			Files.writeString(manifest, Files.readString(manifest).
 				replace("\"schema_version\": 6", "\"schema_version\": 4").
 				replace("\n  \"harness_session_id\": null,", "").
@@ -1950,7 +1951,7 @@ public final class HarnessRunManagerTest
 				Yielding.fileReplacer()).withFixedRunId("s-1").withLaunchArguments(fixed);
 			manager.create("claude");
 			JsonMapper json = JsonMapper.builder().build();
-			List<String> own = List.of("--run-root", root.toString(), "--run-id", "s-1", "--resume-run",
+			List<String> own = List.of("--results", root.toString(), "--slot-id", "s-1", "--resume-slot",
 				"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", "--model", "opus", "--effort", "high");
 
 			String[] resumed = RunLaunch.resumedArguments(json, "claude", own.toArray(String[]::new));
@@ -2057,7 +2058,7 @@ public final class HarnessRunManagerTest
 			HarnessRun reopened = later.reopen("harness", run.id());
 
 			requireThat(reopened.directory(), "directory").isEqualTo(run.directory());
-			String manifest = Files.readString(run.directory().resolve("run.json"));
+			String manifest = Files.readString(run.directory().resolve("session.json"));
 			requireThat(manifest, "manifest").contains("\"state\": \"running\"").
 				contains("\"owner_pid\": " + ProcessHandle.current().pid() + ",").
 				contains("\"harness_process_state\": \"absent\"").
@@ -2134,7 +2135,7 @@ public final class HarnessRunManagerTest
 			ended.markCompleted(completed);
 			IOException finished = expectThrows(IOException.class, () -> ended.reopen("harness", completed.id()));
 			requireThat(finished.getMessage(), "finished").contains("ended");
-			requireThat(Files.readString(completed.directory().resolve("run.json")), "completedManifest").
+			requireThat(Files.readString(completed.directory().resolve("session.json")), "completedManifest").
 				contains("\"state\": \"completed\"");
 		}
 	}
@@ -2192,7 +2193,7 @@ public final class HarnessRunManagerTest
 				if (harness.isPresent())
 					harness.get().onExit().join();
 
-				requireThat(Files.readString(run.resolve("run.json")), "manifest").
+				requireThat(Files.readString(run.resolve("session.json")), "manifest").
 					contains("\"state\": \"running\"").
 					contains("\"harness_session_id\": \"" + InterruptedRunnerProcess.HARNESS_SESSION_ID + "\"");
 				requireThat(run.resolve("home"), "home").isDirectory();
@@ -2205,7 +2206,7 @@ public final class HarnessRunManagerTest
 	 * process table.
 	 *
 	 * @param jvm       the test's JVM scope, which supplies the lock coordinator
-	 * @param root      the absolute owned-run root
+	 * @param root      the absolute owned-results folder
 	 * @param clock     the clock used for generated identifiers
 	 * @param processes the processes of the table; every other process identifier names no process
 	 * @return the manager
@@ -2219,7 +2220,7 @@ public final class HarnessRunManagerTest
 	 * Creates a manager whose real process checker reads the supplied processes in place of the operating system's.
 	 *
 	 * @param jvm       the test's JVM scope, which supplies the lock coordinator
-	 * @param root      the absolute owned-run root
+	 * @param root      the absolute owned-results folder
 	 * @param clock     the clock used for generated identifiers
 	 * @param processes reports the starts of running processes
 	 * @param handles   finds the process with an identifier
@@ -2245,7 +2246,7 @@ public final class HarnessRunManagerTest
 	 */
 	private static void recordOwner(HarnessRun run, long pid, String start) throws IOException
 	{
-		Path manifest = run.directory().resolve("run.json");
+		Path manifest = run.directory().resolve("session.json");
 		Files.writeString(manifest, Files.readString(manifest).
 			replaceFirst("\"owner_pid\": [0-9]+", "\"owner_pid\": " + pid).
 			replaceFirst("\"owner_started_at\": (null|\"[^\"]+\")", "\"owner_started_at\": \"" + start + "\""));

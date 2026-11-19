@@ -38,9 +38,9 @@ import java.util.TreeSet;
 /**
  * The Claude plugin's {@code request-server} program, which a Claude Code session's agent starts in the background,
  * outside the session's sandbox, through the only sandbox exception that CAT's install adds. It serves the sessions
- * that the Claude Code session's commands request outside a run, within the sandbox policy that the session's
- * settings give, and starts each requested session through the runner that {@code claude-runner} or
- * {@code codex-runner} would start.
+ * that the Claude Code session's commands request outside a nested session, within the sandbox policy that the
+ * session's settings give, and starts each requested session through the runner that {@code claude-runner} or {@code
+ * codex-runner} would start.
  */
 public final class ClaudeRequestServerCli
 {

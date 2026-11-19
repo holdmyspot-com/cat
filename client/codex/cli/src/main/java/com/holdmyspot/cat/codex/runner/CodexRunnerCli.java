@@ -88,7 +88,7 @@ public final class CodexRunnerCli
 		HarnessMarkers.Marker.notBlank(HARNESS_ID, CodexSessionHarness.HARNESS.sessionVariable()),
 		HarnessMarkers.Marker.equalTo(CLAUDE_ID, "CLAUDECODE", "1")));
 	/**
-	 * How often a launch inside a run checks the requested session's progress.
+	 * How often a launch inside a nested session checks the requested session's progress.
 	 */
 	private static final Duration REQUEST_POLL = Duration.ofMillis(100);
 	/**
@@ -154,13 +154,14 @@ public final class CodexRunnerCli
 	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it.
 	 * The launcher refuses what it must before it calls this method. The routes are:
 	 * <ul>
-	 *   <li>Inside a run whose runner lets its session request sessions, the launch becomes a session request: the
+	 * <li>Inside a nested session whose runner lets its session request sessions, the launch becomes a session request:
+	 * the
 	 *   run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
 	 *   receipt.</li>
-	 *   <li>Inside a run whose runner lets its session request none, the launch is refused.</li>
+	 *   <li>Inside a nested session whose runner lets its session request none, the launch is refused.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass is
 	 *   refused.</li>
-	 *   <li>When Codex runs the command outside a run, the launch becomes a request to the session's
+	 *   <li>When Codex runs the command outside a nested session, the launch becomes a request to the session's
 	 *   {@link RequestServer}, which starts the session outside the session's sandbox, and this command writes its
 	 *   transcript, receipt and kept run. Without a request server that serves the session, the launch is refused.
 	 *   </li>
@@ -290,8 +291,8 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Refuses a launch that names {@code --artifact}, other than inside a run whose runner lets its session request
-	 * sessions. There every launch becomes a session request, whose runner ignores the option.
+	 * Refuses a launch that names {@code --artifact}, other than inside a nested session whose runner lets its session
+	 * request sessions. There every launch becomes a session request, whose runner ignores the option.
 	 *
 	 * @param args        the command and its options
 	 * @param environment the launcher's environment
@@ -351,7 +352,7 @@ public final class CodexRunnerCli
 
 	/**
 	 * Opens the tool scope of a runner command. Its CAT session directory, whose temporary directory holds the runs
-	 * of a command line that names no {@code --run-root}, belongs to the session whose tool shell runs the command, in
+	 * of a command line that names no {@code --results}, belongs to the session whose tool shell runs the command, in
 	 * the nearest CAT project.
 	 *
 	 * @param workingDirectory the directory from which the command was invoked
@@ -457,7 +458,7 @@ public final class CodexRunnerCli
 	 * Gives a run manager the identifier of the slot that the run is in, if it is in one, and has a run in a slot
 	 * record the launch options that its start fixed, so that a later runner can continue its harness session.
 	 *
-	 * @param manager the manager of the run root
+	 * @param manager the manager of the results folder
 	 * @param runId   the slot's run identifier, or {@code null} if the run is not in a slot
 	 * @param args    the launch's options
 	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
@@ -531,12 +532,12 @@ public final class CodexRunnerCli
 	 * names.
 	 *
 	 * @param args          the bridge command and its options, optionally starting with {@code serve}
-	 * @param temporaryRoot where the runs are kept when the command names no {@code --run-root}
+	 * @param temporaryRoot where the runs are kept when the command names no {@code --results}
 	 * @return the parsed options
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, such as a
 	 *                                  relative path after {@code --deny-read} or {@code --read-only-evidence}, or if
-	 *                                  the command names no {@code --run-root} outside a harness session, if it names
+	 *                                  the command names no {@code --results} outside a harness session, if it names
 	 *                                  {@code --agent} together with {@code --model} or {@code --effort}, or if it
 	 *                                  names neither {@code --agent} nor both {@code --model} and {@code --effort}
 	 * @throws IOException              if the selected agent definition is absent or does not name both a model and
@@ -633,7 +634,7 @@ public final class CodexRunnerCli
 		assert runnerArgs != null;
 		assert agentName != null;
 		// A runner that continues a run's session runs it under the model and effort of the launch that resumes it
-		if (agentName.isBlank() || List.of(runnerArgs).contains(RunnerArguments.RESUME_RUN_OPTION))
+		if (agentName.isBlank() || List.of(runnerArgs).contains(RunnerArguments.RESUME_SLOT_OPTION))
 			return runnerArgs;
 		HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
 		Path artifact = HarnessRunnerOptions.catArtifact(runnerArgs, CodexRunner.MANIFEST);

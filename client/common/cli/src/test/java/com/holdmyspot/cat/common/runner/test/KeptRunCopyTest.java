@@ -191,12 +191,13 @@ public final class KeptRunCopyTest
 	}
 
 	/**
-	 * Verifies that a session's pass over the runs of its run root never meets another session's kept run while that
-	 * run is being copied, when a manifest that does not yet identify its directory, or is partly copied, would make
-	 * the pass fail the session.
+	 * Verifies that a session's pass over the runs of its results folder never meets another session's kept run while
+	 * that run is being copied, when a manifest that does not yet identify its directory, or is partly copied, would
+	 * make the pass fail the session.
 	 * <p>
 	 * The case writes 800 real files into a run directory and copies it six times while a pruning thread runs against
-	 * the kept run root, which takes over a second. The test keeps that boundary because it asserts the real copy races.
+	 * the kept results folder, which takes over a second. The test keeps that boundary because it asserts the real copy
+	 * races.
 	 *
 	 * @throws IOException if fixture files cannot be created or copied
 	 * @throws InterruptedException if the test thread is interrupted

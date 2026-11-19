@@ -138,7 +138,7 @@ public final class FakeSessionPortContractTest
 	}
 
 	/**
-	 * Verifies that the fake identifies its versions and run roots.
+	 * Verifies that the fake identifies its versions and results folders.
 	 *
 	 * @throws Exception if the check fails
 	 */

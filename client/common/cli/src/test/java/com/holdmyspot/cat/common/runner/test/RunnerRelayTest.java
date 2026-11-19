@@ -39,16 +39,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * Tests that a plugin's launcher for the other harness's runner runs that harness's CAT artifact, or forwards the
- * launch inside a run, through {@link RunnerRelay}.
+ * launch inside a nested session, through {@link RunnerRelay}.
  */
 public final class RunnerRelayTest
 {
 	/**
-	 * A pause for launches outside a run, which never wait for a requested session.
+	 * A pause for launches outside a nested session, which never wait for a requested session.
 	 */
 	private static final Pause NO_PAUSE = () ->
 	{
-		throw new AssertionError("Nothing waits outside a run");
+		throw new AssertionError("Nothing waits outside a nested session");
 	};
 
 	/**
@@ -136,8 +136,8 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, exiting with
-	 * status 2 and the reason before it selects an artifact, starts a runner or writes output.
+	 * Verifies that outside a nested session the launcher refuses an option that would choose the artifact it runs,
+	 * exiting with status 2 and the reason before it selects an artifact, starts a runner or writes output.
 	 *
 	 * @param option the refused option
 	 * @throws IOException if the relay fails
@@ -192,9 +192,9 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that outside a run, except on native Windows, a launch from a command of the plugin's own harness that
-	 * no request server serves is refused with status 2, naming the command that starts the server, before the
-	 * launcher selects an artifact, starts a runner or writes a request.
+	 * Verifies that outside a nested session, except on native Windows, a launch from a command of the plugin's own
+	 * harness that no request server serves is refused with status 2, naming the command that starts the server, before
+	 * the launcher selects an artifact, starts a runner or writes a request.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -227,8 +227,8 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that outside a run, except on native Windows, the launcher selects no artifact and starts no runner,
-	 * but requests a session of its harness from the request server that serves the session that runs it.
+	 * Verifies that outside a nested session, except on native Windows, the launcher selects no artifact and starts no
+	 * runner, but requests a session of its harness from the request server that serves the session that runs it.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -414,8 +414,9 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that inside a run whose runner lets its session request no sessions, a launch is refused with status 2
-	 * and the option that lets it, before the launcher selects an artifact, starts a runner or sends a request.
+	 * Verifies that inside a nested session whose runner lets its session request no sessions, a launch is refused with
+	 * status 2 and the option that lets it, before the launcher selects an artifact, starts a runner or sends a
+	 * request.
 	 *
 	 * @throws IOException if the relay fails
 	 */
@@ -442,8 +443,8 @@ public final class RunnerRelayTest
 	}
 
 	/**
-	 * Verifies that inside a run the launcher selects no artifact and starts no runner, but requests a session of its
-	 * harness from the run's runner.
+	 * Verifies that inside a nested session the launcher selects no artifact and starts no runner, but requests a
+	 * session of its harness from the nested session's runner.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */

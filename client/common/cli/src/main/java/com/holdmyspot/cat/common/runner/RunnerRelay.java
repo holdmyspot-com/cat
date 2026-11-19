@@ -21,23 +21,23 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Runs the other harness's runner from a plugin, so that both plugins hold a {@code claude-runner} and a
  * {@code codex-runner} launcher with the same options.
  * <p>
- * The launcher sends each launch along its {@link LaunchRoute}, as the harness's own runner launcher does. Inside a
- * run whose runner lets its session request sessions, it requests a session of its harness from the run's runner.
- * From a command that a session of the plugin's own harness runs outside a run, it requests the session from that
- * session's {@link RequestServer}, except on native Windows, where the selected runner refuses it. A launch that
- * CAT's own starter bounds runs the runner of the other harness's CAT artifact that the plugin selects, with the
- * caller's options. The launcher refuses a launch from a run that lets its session request no sessions, a launch
- * from a command that only the other harness runs or that no harness session runs, and any launch from a Codex
+ * The launcher sends each launch along its {@link LaunchRoute}, as the harness's own runner launcher does. Inside a run
+ * whose runner lets its session request sessions, it requests a session of its harness from the nested session's
+ * runner. From a command that a session of the plugin's own harness runs outside a nested session, it requests the
+ * session from that session's {@link RequestServer}, except on native Windows, where the selected runner refuses it. A
+ * launch that CAT's own starter bounds runs the runner of the other harness's CAT artifact that the plugin selects,
+ * with the caller's options. The launcher refuses a launch from a run that lets its session request no sessions, a
+ * launch from a command that only the other harness runs or that no harness session runs, and any launch from a Codex
  * sandbox that has network off.
  */
 public final class RunnerRelay
 {
 	/**
-	 * The variable that names the run's requests directory inside a run that may request sessions.
+	 * The variable that names the run's requests directory inside a nested session that may request sessions.
 	 */
 	public static final String REQUESTS_VARIABLE = SessionRequestAccess.REQUESTS_VARIABLE;
 	/**
-	 * How often a launch inside a run checks the requested session's progress.
+	 * How often a launch inside a nested session checks the requested session's progress.
 	 */
 	private static final Duration REQUEST_POLL = Duration.ofMillis(100);
 
@@ -110,10 +110,10 @@ public final class RunnerRelay
 
 	/**
 	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it.
-	 * When a session of the plugin's own harness runs the command outside a run, other than on native Windows, the
-	 * launch is a request to that session's request server. Otherwise, the selected artifact's runner runs with the
-	 * caller's options and serves the launch along the same route; on native Windows, it refuses every launch from a
-	 * harness session.
+	 * When a session of the plugin's own harness runs the command outside a nested session, other than on native
+	 * Windows, the launch is a request to that session's request server. Otherwise, the selected artifact's runner runs
+	 * with the caller's options and serves the launch along the same route; on native Windows, it refuses every launch
+	 * from a harness session.
 	 *
 	 * @param harness     the harness whose runner the launcher stands for
 	 * @param plugin      the harness whose CAT plugin holds the launcher
@@ -130,10 +130,10 @@ public final class RunnerRelay
 	 * @param output      receives the session's transcript when {@code --output} is absent
 	 * @param errors      receives the reason when the launcher refuses the launch or a requested session does not
 	 *                    complete
-	 * @return the runner's or the requested session's exit status, or
-	 *   {@link HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch is made from a Codex sandbox that has network
-	 *   off, names {@code --artifact} outside a run whose runner lets its session request sessions, takes a route that
-	 *   refuses it, requests a session whose project is the user's home folder, or finds no request server that
+	 * @return the runner's or the requested session's exit status, or {@link
+	 *   HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the launch is made from a Codex sandbox that has network off,
+	 *   names {@code --artifact} outside a nested session whose runner lets its session request sessions, takes a route
+	 *   that refuses it, requests a session whose project is the user's home folder, or finds no request server that
 	 *   serves its session. The launcher refuses before it starts a runner or sends a request
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if the options are invalid

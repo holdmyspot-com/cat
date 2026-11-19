@@ -47,12 +47,12 @@ import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * The {@code request-server} program of each plugin, which a harness session's agent starts in the background and
- * which runs outside the session's sandbox through the sandbox exception that CAT's install adds for it. It serves
- * the session requests that the session's commands write into {@value #REQUESTS} in the session's CAT session
- * directory, as the run's runner serves those of a run's commands, and starts each requested session inside its
- * harness's own sandbox, bounded by the intersection of the session's sandbox policy and what the new session needs.
- * It ends once the session's harness process ends, stopping every session that it started with its process tree.
+ * The {@code request-server} program of each plugin, which a harness session's agent starts in the background and which
+ * runs outside the session's sandbox through the sandbox exception that CAT's install adds for it. It serves the
+ * session requests that the session's commands write into {@value #REQUESTS} in the session's CAT session directory, as
+ * the nested session's runner serves those of a run's commands, and starts each requested session inside its harness's
+ * own sandbox, bounded by the intersection of the session's sandbox policy and what the new session needs. It ends once
+ * the session's harness process ends, stopping every session that it started with its process tree.
  */
 public final class RequestServer
 {
@@ -349,8 +349,8 @@ public final class RequestServer
 	}
 
 	/**
-	 * Returns the directory into which a command outside a run writes the requests of the session that runs it, once
-	 * a request server serves that session.
+	 * Returns the directory into which a command outside a nested session writes the requests of the session that runs
+	 * it, once a request server serves that session.
 	 *
 	 * @param scope the command's tool scope, which gives the session's CAT session directory
 	 * @return the directory, or empty if the scope names no session, or no request server serves the session
@@ -375,12 +375,12 @@ public final class RequestServer
 	 */
 	public static String missingServer(Path plugin)
 	{
-		return "No request server serves this session, and outside a run every session starts through it. Start " +
-			"it in the background once, as a command of its own: " + program(plugin) + ". Then launch again.";
+		return "No request server serves this session, and outside a nested session every session starts through it. " +
+			"Start it in the background once, as a command of its own: " + program(plugin) + ". Then launch again.";
 	}
 
 	/**
-	 * Returns why a command that a harness session runs outside a run cannot have its optimization worktree's
+	 * Returns why a command that a harness session runs outside a nested session cannot have its optimization worktree's
 	 * registration changed, because no request server serves the session, naming the command that starts one.
 	 *
 	 * @param plugin the folder of the plugin that holds the command
@@ -395,10 +395,11 @@ public final class RequestServer
 	}
 
 	/**
-	 * Sends a launch that a harness session's command makes outside a run to the session's request server, and waits
-	 * for the requested session to end, as {@link SessionRequestForwarder#forward(SessionRequestForwarder.Route,
-	 * String, String[], Reader, Path, Path, Pause, OutputStream, PrintWriter)} does. A launch that no request server
-	 * serves is refused before it changes anything, naming the command that starts the server.
+	 * Sends a launch that a harness session's command makes outside a nested session to the session's request server,
+	 * and waits for the requested session to end, as {@link
+	 * SessionRequestForwarder#forward(SessionRequestForwarder.Route, String, String[], Reader, Path, Path, Pause,
+	 * OutputStream, PrintWriter)} does. A launch that no request server serves is refused before it changes anything,
+	 * naming the command that starts the server.
 	 *
 	 * @param harness the harness of the requested session
 	 * @param args    the launch's options
@@ -668,8 +669,8 @@ public final class RequestServer
 	 *
 	 * @param requests     the directory into which the session's commands write their requests
 	 * @param responses    the directory that holds one response directory per request
-	 * @param slots        the slots, each a run root, that the requested sessions take, which the server empties for
-	 *                     each session
+	 * @param slots        the slots, each a results folder, that the requested sessions take, which the server empties
+	 *                     for each session
 	 * @param bound        bounds each requested session by the session's policy
 	 * @param askingThread the thread of the session that runs the server, or empty for its main thread
 	 * @param session      the CAT session directory of the session that runs the server, in the project that the
@@ -746,7 +747,7 @@ public final class RequestServer
 		 * session by the intersection of the session's policy and what the new session needs.
 		 *
 		 * @param request the request
-		 * @param runRoot the request's run root
+		 * @param runRoot the request's results folder
 		 * @return the options
 		 * @throws SessionRefusedException if the session's policy cannot be read safely or does not allow what the new
 		 *                                 session needs

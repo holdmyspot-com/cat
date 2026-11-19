@@ -44,7 +44,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator requests termination of processes that an earlier driver left running
  * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
- *   port's run roots
+ *   port's results folders
  * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits that
  *   prompt authors report needing
  * @param promptSources the in-project prompt sources, relative to the project
@@ -91,7 +91,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
 	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
- *   port's run roots
+ *   port's results folders
 	 * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits
 	 *   that prompt authors report needing
 	 * @param promptSources the in-project prompt sources, relative to the project

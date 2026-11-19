@@ -528,7 +528,7 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that the app-server's environment marks the session as a CAT run, so that the session's commands send
-	 * their sessions to the run's runner.
+	 * their sessions to the nested session's runner.
 	 */
 	@Test
 	public void marksCatRun()
@@ -613,7 +613,7 @@ public final class CodexRunnerTest
 	/**
 	 * Verifies that a trial session, which reads no evidence, keeps the sandbox that it had before judges could read
 	 * evidence, with bubblewrap on the {@code PATH}: its app-server runs without bubblewrap, which would hide nothing,
-	 * and its permission profile denies the whole run root and the paths that the caller denies.
+	 * and its permission profile denies the whole results folder and the paths that the caller denies.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -655,9 +655,10 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on Linux a session that may read evidence inside a directory that it is denied, here the run root,
-	 * is refused when the caller's {@code PATH} has no bubblewrap, with a message that names the missing program, why
-	 * the session needs it and how to install it, before the session's configuration receives a permission profile.
+	 * Verifies that on Linux a session that may read evidence inside a directory that it is denied, here the results
+	 * folder, is refused when the caller's {@code PATH} has no bubblewrap, with a message that names the missing
+	 * program, why the session needs it and how to install it, before the session's configuration receives a permission
+	 * profile.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -703,8 +704,8 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that on Linux a session that reads no evidence, such as a trial, starts without bubblewrap on the
-	 * caller's {@code PATH}: its app-server command is not wrapped and its permission profile denies the whole run root
-	 * and the paths that the caller denies.
+	 * caller's {@code PATH}: its app-server command is not wrapped and its permission profile denies the whole results
+	 * folder and the paths that the caller denies.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -746,7 +747,7 @@ public final class CodexRunnerTest
 	 * Verifies that on Linux a session whose project links to a file outside it reads the run's link-targets directory,
 	 * which holds the read-only copy that the link leads to, without writing it: the permission profile grants it as
 	 * read-only and never as writable, and the bubblewrap around the app-server mounts it back read-only, never
-	 * writable, inside the run root that it hides.
+	 * writable, inside the results folder that it hides.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -819,10 +820,10 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that on Linux a session that the caller denies nothing, started without bubblewrap on the caller's
-	 * {@code PATH}, still runs under a permission profile that denies a path: the run root. On stock ubuntu-24.04,
-	 * Codex 0.160.0 fails to start the thread of such a session with {@code bwrap: loopback: Failed RTM_NEWADDR}, which
-	 * the runner refuses, whereas a session without a denied path would start and fail every command with
-	 * {@code bwrap: setting up uid map: Permission denied}.
+	 * {@code PATH}, still runs under a permission profile that denies a path: the results folder. On stock
+	 * ubuntu-24.04, Codex 0.160.0 fails to start the thread of such a session with {@code bwrap: loopback: Failed
+	 * RTM_NEWADDR}, which the runner refuses, whereas a session without a denied path would start and fail every
+	 * command with {@code bwrap: setting up uid map: Permission denied}.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -853,9 +854,9 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on macOS and Windows a session that reads evidence under the run root starts without bubblewrap on
-	 * the caller's {@code PATH}, as before: its app-server command is not wrapped, and its permission profile lets it
-	 * read the evidence while it denies the whole run root.
+	 * Verifies that on macOS and Windows a session that reads evidence under the results folder starts without
+	 * bubblewrap on the caller's {@code PATH}, as before: its app-server command is not wrapped, and its permission
+	 * profile lets it read the evidence while it denies the whole results folder.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -895,11 +896,11 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on Linux a session that reads no evidence under the run root is denied the whole run root as one
-	 * path, besides the Codex session logs in its home and the paths that the caller denies, but not its own login in
-	 * its home, which a Codex process that a command starts reads. The sandbox keeps the session's project and home
-	 * writable inside the denied root, so the session reads them while every other run, including one that starts
-	 * later, and the workspaces stay hidden. The session log directory exists so that the sandbox can deny it.
+	 * Verifies that on Linux a session that reads no evidence under the results folder is denied the whole results
+	 * folder as one path, besides the Codex session logs in its home and the paths that the caller denies, but not its
+	 * own login in its home, which a Codex process that a command starts reads. The sandbox keeps the session's project
+	 * and home writable inside the denied root, so the session reads them while every other run, including one that
+	 * starts later, and the workspaces stay hidden. The session log directory exists so that the sandbox can deny it.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -934,7 +935,7 @@ public final class CodexRunnerTest
 	 * Verifies that the commands of a session that may request sessions are not denied the directory where Codex logs
 	 * the session's events, so that the prompt optimizer's {@code run} command, which its host session runs and which
 	 * reads the session's rollout there to learn that the user interrupted the session's turn, finds the rollout
-	 * instead of failing with an access denial. The session is denied only the run root and the caller's paths.
+	 * instead of failing with an access denial. The session is denied only the results folder and the caller's paths.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -991,9 +992,10 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that a session's developer instructions first tell the model that the denied reads under the run root
-	 * do not cover its project or home, then give the agent's contract, if any. Codex lists the run root among the
-	 * denied reads, and without that note models answered that their own project was denied without trying to read it.
+	 * Verifies that a session's developer instructions first tell the model that the denied reads under the results
+	 * folder do not cover its project or home, then give the agent's contract, if any. Codex lists the results folder
+	 * among the denied reads, and without that note models answered that their own project was denied without trying to
+	 * read it.
 	 */
 	@Test
 	public void developerNoteExemptsProject()
@@ -1031,10 +1033,10 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on macOS and Windows a session is denied the whole run root as one path, besides the Codex session
-	 * logs in its home and the paths that the caller denies, but not its own login in its home, which a Codex process
-	 * that a command starts reads. Their sandboxes keep the session's project and home readable and writable inside the
-	 * denied root.
+	 * Verifies that on macOS and Windows a session is denied the whole results folder as one path, besides the Codex
+	 * session logs in its home and the paths that the caller denies, but not its own login in its home, which a Codex
+	 * process that a command starts reads. Their sandboxes keep the session's project and home readable and writable
+	 * inside the denied root.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -1068,8 +1070,9 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on macOS and Windows a session that validates evidence under the run root is still denied the whole
-	 * run root as one path, because their sandboxes keep a read-only allowance readable inside a denied root.
+	 * Verifies that on macOS and Windows a session that validates evidence under the results folder is still denied the
+	 * whole results folder as one path, because their sandboxes keep a read-only allowance readable inside a denied
+	 * root.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -1102,8 +1105,8 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on Linux a session that validates evidence under the run root is denied each other run by its own
-	 * path rather than the whole root, because the sandbox would hide read-only evidence inside a denied root. The
+	 * Verifies that on Linux a session that validates evidence under the results folder is denied each other run by its
+	 * own path rather than the whole root, because the sandbox would hide read-only evidence inside a denied root. The
 	 * session can still read its project, the rest of its home, including its own login, and the evidence that it
 	 * validates.
 	 *
@@ -1133,10 +1136,10 @@ public final class CodexRunnerTest
 				List.of(heldOut), Platform.LINUX_X64, Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
-				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
+				directory.resolve("artifacts"), directory.resolve("session.json"), directory.resolve(".lock"),
 				directory.resolve("initial-project"), directory.resolve("home/sessions"), other.directory(),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
-				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"), workspaces));
+				evidence.directory().resolve("session.json"), evidence.directory().resolve(".lock"), workspaces));
 		}
 	}
 
@@ -1144,7 +1147,8 @@ public final class CodexRunnerTest
 	 * Verifies that on Linux a session that validates evidence inside a project that the caller denies is denied each
 	 * other file and directory of that project by its own path, each path once, because the sandbox would hide
 	 * read-only evidence inside a denied directory. On macOS and Windows the session is denied the whole project, which
-	 * holds the run root, because their sandboxes keep the session's project, home and evidence readable inside it.
+	 * holds the results folder, because their sandboxes keep the session's project, home and evidence readable inside
+	 * it.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -1176,10 +1180,10 @@ public final class CodexRunnerTest
 
 			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(instructions, documents,
-				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("run.json"),
+				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("session.json"),
 				directory.resolve(".lock"), directory.resolve("initial-project"), directory.resolve("home/sessions"),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
-				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock")));
+				evidence.directory().resolve("session.json"), evidence.directory().resolve(".lock")));
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
 				deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
@@ -1192,7 +1196,7 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that a session is not denied a path inside another denied directory, such as the held-out run root
+	 * Verifies that a session is not denied a path inside another denied directory, such as the held-out results folder
 	 * inside the project, because the Linux sandbox fails to start when it must hide a directory inside one that it
 	 * already hides, while a denied path inside the session's home stays denied.
 	 *

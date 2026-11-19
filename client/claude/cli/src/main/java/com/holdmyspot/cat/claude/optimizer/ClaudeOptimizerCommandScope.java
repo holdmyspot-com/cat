@@ -189,7 +189,7 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param jvm the borrowed process scope
 	 * @param environment            the process environment
 	 * @param home                   the user's home directory
-	 * @param hostProject            the project of the host session, which holds the run root
+	 * @param hostProject            the project of the host session, which holds the results folder
 	 * @param runRoot                the directory that holds the runs of the host session's campaigns
 	 * @param artifact               the complete Claude artifact that nested sessions install
 	 * @param configurationDirectory the host's Claude configuration directory

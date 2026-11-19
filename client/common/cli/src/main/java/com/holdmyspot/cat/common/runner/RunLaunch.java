@@ -81,15 +81,15 @@ public final class RunLaunch
 	/**
 	 * Returns the options of a runner that continues a run's harness session: the options that the run's start fixed,
 	 * which its {@value #FILE_NAME} records, followed by the runner's own. A runner that names no
-	 * {@value RunnerArguments#RESUME_RUN_OPTION} gets its own options back.
+	 * {@value RunnerArguments#RESUME_SLOT_OPTION} gets its own options back.
 	 *
 	 * @param json    the mapper
 	 * @param harness the run's harness
 	 * @param args    the runner's options
 	 * @return the options that the runner runs with
 	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws InvalidArgumentsException if the runner resumes a run but names no {@code --run-root} or
-	 *                                   {@value RunnerArguments#RUN_ID_OPTION}, or names an option that the run fixed
+	 * @throws InvalidArgumentsException if the runner resumes a run but names no {@code --results} or
+	 *                                   {@value RunnerArguments#SLOT_ID_OPTION}, or names an option that the run fixed
 	 *                                   at its start
 	 * @throws IOException               if the run records no launch, or its record is malformed
 	 */
@@ -99,20 +99,20 @@ public final class RunLaunch
 		requireThat(harness, "harness").isNotNull();
 		requireThat(args, "args").isNotNull();
 		List<String> options = List.of(args);
-		if (!options.contains(RunnerArguments.RESUME_RUN_OPTION))
+		if (!options.contains(RunnerArguments.RESUME_SLOT_OPTION))
 			return args;
 		List<String> fixed = fixedArguments(args);
 		if (!fixed.isEmpty())
 		{
-			throw new InvalidArgumentsException(RunnerArguments.RESUME_RUN_OPTION + " continues a run that fixed " +
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " continues a run that fixed " +
 				fixed.getFirst() + " at its start, so the runner cannot name it");
 		}
-		String runRoot = value(options, "--run-root");
-		String runId = value(options, RunnerArguments.RUN_ID_OPTION);
+		String runRoot = value(options, "--results");
+		String runId = value(options, RunnerArguments.SLOT_ID_OPTION);
 		if (runRoot == null || runId == null || !HarnessRunManager.isRunId(runId))
 		{
-			throw new InvalidArgumentsException(RunnerArguments.RESUME_RUN_OPTION + " requires --run-root and " +
-				RunnerArguments.RUN_ID_OPTION);
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires --results and " +
+				RunnerArguments.SLOT_ID_OPTION);
 		}
 		List<String> resumed = new ArrayList<>(read(json, Path.of(runRoot).resolve(harness).resolve(runId)));
 		resumed.addAll(options);

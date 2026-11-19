@@ -30,8 +30,8 @@ public sealed interface LaunchRoute
 	 */
 	List<String> INTERNAL_OPTIONS = List.of(PolicyBoundFile.OPTION, RunnerArguments.CAPACITY_HELD_OPTION,
 		ChildNeedsReport.OPTION, RunnerArguments.GIT_NAME_OPTION, RunnerArguments.GIT_EMAIL_OPTION,
-		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION, RunnerArguments.RUN_ID_OPTION,
-		RunnerArguments.RESUME_RUN_OPTION);
+		RunnerArguments.CONTINUE_AFTER_FAILED_TURN_OPTION, RunnerArguments.SLOT_ID_OPTION,
+		RunnerArguments.RESUME_SLOT_OPTION);
 
 	/**
 	 * Returns the reason for refusing a launch that a harness session runs and that names an option that only CAT's
@@ -96,7 +96,7 @@ public sealed interface LaunchRoute
 	}
 
 	/**
-	 * A session of the plugin's own harness runs the command outside a run. The command, inside the session's
+	 * A session of the plugin's own harness runs the command outside a nested session. The command, inside the session's
 	 * sandbox, packs the launch as a request to the session's {@link RequestServer}, which starts the new session
 	 * outside that sandbox, or refuses the launch when no request server serves the session.
 	 */
@@ -116,9 +116,10 @@ public sealed interface LaunchRoute
 	/**
 	 * Returns where a launch goes. The first of these that applies decides:
 	 * <ol>
-	 *   <li>Inside a run whose runner lets its session request sessions, the launch becomes a request to that runner:
+	 * <li>Inside a nested session whose runner lets its session request sessions, the launch becomes a request to that
+	 * runner:
 	 *   {@link Forward}.</li>
-	 *   <li>Inside a run whose runner lets its session request none, the launch is refused, as
+	 *   <li>Inside a nested session whose runner lets its session request none, the launch is refused, as
 	 *   {@link HarnessEnvironment#inRunRefusal(String, Map)} says: {@link Refused}.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass, as
 	 *   {@link #internalOptionRefusal(String[])} lists them, is refused: {@link Refused}.</li>

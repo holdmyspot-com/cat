@@ -76,10 +76,10 @@ public final class ChildBoundTest
 	}
 
 	/**
-	 * Returns a source of a child's needs that needs its run folder, the launch's denied reads, some writes and the
+	 * Returns a source of a child's needs that needs its session folder, the launch's denied reads, some writes and the
 	 * model's host.
 	 *
-	 * @param writes the writes that the child needs outside its run folder
+	 * @param writes the writes that the child needs outside its session folder
 	 * @return the source
 	 */
 	private static ChildNeedsSource needing(List<Path> writes)

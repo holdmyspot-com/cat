@@ -109,7 +109,8 @@ public final class RunnerLaunchersTest
 
 	/**
 	 * Verifies that each plugin's {@code bin/} holds the {@code request-server} that a session's agent starts, which
-	 * serves the sessions that its harness's sessions request outside a run. The table is the same on every platform.
+	 * serves the sessions that its harness's sessions request outside a nested session. The table is the same on every
+	 * platform.
 	 */
 	@Test
 	public void bothPluginsHoldRequestServer()
@@ -286,8 +287,9 @@ public final class RunnerLaunchersTest
 
 	/**
 	 * Verifies that the bundled rule on running a harness names both runner launchers and both artifact selectors in
-	 * the plugin's {@code bin/}, each of which both plugins hold; names their use inside a run; tells the agent where
-	 * each turn's reply is in the transcript; and holds no shell syntax, since Codex runs commands without a shell.
+	 * the plugin's {@code bin/}, each of which both plugins hold; names their use inside a nested session; tells the
+	 * agent where each turn's reply is in the transcript; and holds no shell syntax, since Codex runs commands without
+	 * a shell.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -312,10 +314,11 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
-	 * Verifies that the bundled rule on running a harness has the agent decide whether it runs inside a run before any
-	 * step that applies only outside one, says that inside a run the agent neither selects an artifact nor verifies one,
-	 * and does not present the runner launchers beside the run's {@code request-session} launcher as the only ones that
-	 * work there, since the plugin's runner launchers forward a launch inside a run as well.
+	 * Verifies that the bundled rule on running a harness has the agent decide whether it runs inside a nested session
+	 * before any step that applies only outside one, says that inside a nested session the agent neither selects an
+	 * artifact nor verifies one, and does not present the runner launchers beside the run's {@code request-session}
+	 * launcher as the only ones that work there, since the plugin's runner launchers forward a launch inside a nested
+	 * session as well.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -328,7 +331,7 @@ public final class RunnerLaunchersTest
 		int check = rule.indexOf("First check whether the command environment sets `CAT_SESSION_REQUESTS`");
 		requireThat(check, "check").isNotNegative();
 		Map<String, String> outsideSteps = Map.of(
-			"outsideSection", "### Outside a run",
+			"outsideSection", "### Outside a nested session",
 			"artifactSelection", "selects. Run `<harness>-artifact` by its absolute path",
 			"prerequisites", "Before a run, require all of these exact prerequisites",
 			"artifactVerification", "`--verify-artifact <artifact>` succeeds");
@@ -336,8 +339,8 @@ public final class RunnerLaunchersTest
 			requireThat(rule.indexOf(step.getValue()), step.getKey()).isGreaterThan(check);
 		requireThat(rule, "rule").
 			contains("Do not run `<harness>-artifact` or `--verify-artifact`, and do not check the prerequisites of " +
-				"\"Outside a run\"").
-			contains("the plugin's `<harness>-runner` behaves the same way inside a run").
+				"\"Outside a nested session\"").
+			contains("the plugin's `<harness>-runner` behaves the same way inside a nested session").
 			doesNotContain("instead of the plugin's");
 	}
 
@@ -364,7 +367,7 @@ public final class RunnerLaunchersTest
 	/**
 	 * Verifies that the bundled rule on running a harness tells the agent to run the launcher with nothing in front of
 	 * it, names every option that only CAT passes as one the agent never passes, and has it start the request server
-	 * once, by its absolute path, before it launches outside a run.
+	 * once, by its absolute path, before it launches outside a nested session.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -376,7 +379,7 @@ public final class RunnerLaunchersTest
 		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
 		requireThat(rule, "rule").
 			contains("as one command with nothing in front of it, such as a variable assignment, `env` or `cd`").
-			contains("Outside a run, the launcher asks this session's request server, " +
+			contains("Outside a nested session, the launcher asks this session's request server, " +
 				"`${CAT_PLUGIN_ROOT}/bin/request-server`, to start the session").
 			contains("start the request server once in the background, by its absolute path").
 			doesNotContain("the launcher starts the session itself").
@@ -406,11 +409,11 @@ public final class RunnerLaunchersTest
 	}
 
 	/**
-	 * Verifies that the bundled rule on running a harness tells a session inside a run, which no instructions of its
-	 * own tell, everything it needs to request a session: which command environment variable names the
-	 * {@code request-session} launcher, where its run states how many sessions it allows and has accepted and how deep
-	 * they may nest, what each launcher's exit status means, which inputs a request refuses, which response field names
-	 * the native transcripts, and that a refusal's reason names the options of the run's caller.
+	 * Verifies that the bundled rule on running a harness tells a session inside a nested session, which no
+	 * instructions of its own tell, everything it needs to request a session: which command environment variable names
+	 * the {@code request-session} launcher, where its run states how many sessions it allows and has accepted and how
+	 * deep they may nest, what each launcher's exit status means, which inputs a request refuses, which response field
+	 * names the native transcripts, and that a refusal's reason names the options of the run's caller.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -504,7 +507,7 @@ public final class RunnerLaunchersTest
 		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
 		requireThat(text, "workflows.md").
 			contains("Before you start or request a new agent session yourself, for example to test a plugin or a " +
-				"fresh installation in a separate session, including from inside a CAT run, lazy load " +
+				"fresh installation in a separate session, including from inside a nested session, lazy load " +
 				"`../harness-runners.md`").
 			doesNotContain("claude-runner").doesNotContain("codex-runner").doesNotContain("`request-session`").
 			doesNotContain("Claude Code or Codex").doesNotContain("instructions name");
@@ -524,7 +527,7 @@ public final class RunnerLaunchersTest
 		String text = read(routing.getFirst()).replaceAll("\\s+", " ");
 		requireThat(text, "rule-routing.md").
 			contains("starting or requesting a new agent session yourself, for example to test a plugin or a fresh " +
-				"installation in a separate session, including from inside a CAT run, or sending information to " +
+				"installation in a separate session, including from inside a nested session, or sending information to " +
 				"another agent").
 			doesNotContain("`claude-runner`, `codex-runner` or `request-session` launcher").
 			doesNotContain("Claude Code or Codex session");

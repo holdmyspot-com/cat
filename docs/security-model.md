@@ -279,11 +279,11 @@ run, because Claude Code may keep your login in the Windows Credential Manager, 
 ### The request server
 
 A harness sandboxes its session's commands, and a sandboxed session cannot start a new session inside another sandbox.
-Outside a run, a session therefore asks CAT's request server, `request-server` beside the launchers in the plugin's
-`bin` folder, to start the new session. The request server runs outside the session's sandbox, and the install lets
-it by adding the entries above. The entry matches only the request server's absolute path alone, with nothing in front
-of it, such as a variable assignment or `env`, no arguments, and no pipe or redirection. The prompt optimizer's trials
-go through the request server the same way.
+Outside a nested session, a session therefore asks CAT's request server, `request-server` beside the launchers in the
+plugin's `bin` folder, to start the new session. The request server runs outside the session's sandbox, and the install
+lets it by adding the entries above. The entry matches only the request server's absolute path alone, with nothing in
+front of it, such as a variable assignment or `env`, no arguments, and no pipe or redirection. The prompt optimizer's
+trials go through the request server the same way.
 
 Because a shell that runs the request server loads the shell startup files first, the install also keeps the session's
 commands from writing them in your home folder (`.bashrc`, `.bash_profile`, `.bash_login`, `.bash_logout`, `.profile`,
@@ -311,7 +311,7 @@ The request server treats every request as the session's and checks it before it
 - It reads the session's sandbox policy from that harness's own settings and command line, never from the request.
 	Every path that the launch names for reading, such as the project, the input or the `--extra-permissions` file,
 	must be one the session may read, and every path that it writes, such as the output, the conversation folder and the
-	run root, one the session may write.
+	results folder, one the session may write.
 - A launch whose project folder is your home folder or contains it exits with status 2 and starts nothing, and so does
 	`--verify-artifact` with an artifact that the session may not read.
 - It removes the variables that make a program load other code, such as `LD_PRELOAD`, `LD_LIBRARY_PATH`, `DYLD_*`,
@@ -332,10 +332,10 @@ The request server treats every request as the session's and checks it before it
 - When CAT cannot read a session's sandbox policy safely, such as a settings file that cannot be parsed, a settings
 	file that the session's sandbox lets its commands write, or a harness option that CAT does not know, it starts
 	nothing and says what failed and how to fix it. Fix it, then start a new session.
-- When the sandbox the session already has does not allow the few writes outside the run folder and the model host that
-	the requested session needs, or the writes and hosts that `--extra-permissions` names, it starts nothing and lists
-	each missing path and host and the entry that grants it. A path inside a path that the sandbox denies writing is
-	reported as that denial, because allowing the folder would not help. Add the entries, then start a new session,
+- When the sandbox the session already has does not allow the few writes outside the session folder and the model host
+	that the requested session needs, or the writes and hosts that `--extra-permissions` names, it starts nothing and
+	lists each missing path and host and the entry that grants it. A path inside a path that the sandbox denies writing
+	is reported as that denial, because allowing the folder would not help. Add the entries, then start a new session,
 	because a running session keeps the policy it started with.
 
 A session that a runner starts can start sessions of its own only when its run was given `--session-requests`, and
@@ -360,7 +360,7 @@ a message that begins "CAT cannot start the request server:" and names each caus
 	denies some reads, so Codex keeps the server inside the sandbox whatever rule allows it, and the run's thread keeps
 	no rollout that could name them unless its caller keeps the session's transcripts. The message says that no request
 	server serves a run's session. Such a session requests sessions through a runner launcher or `request-session`,
-	which the run's runner serves when its caller passes `--session-requests`.
+	which the nested session's runner serves when its caller passes `--session-requests`.
 
 A Codex session whose sandbox has network access off cannot start runner sessions, because a session that it started
 could not reach its model either. CAT then starts no session for it. On Linux, `codex-runner` needs bubblewrap

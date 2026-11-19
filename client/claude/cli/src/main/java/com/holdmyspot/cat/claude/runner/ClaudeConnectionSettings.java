@@ -303,13 +303,13 @@ public final class ClaudeConnectionSettings
 	 * without a setting, so the session is refused unless {@code bound} lets them write those and
 	 * {@code claudeHome}. {@code bound} always lets the instance write inside {@code runFolder}, so the session is
 	 * refused only for the paths among them that lie outside it; the instance's commands still write only the paths
-	 * that its policy lists, not the whole run folder. The sandbox settings carry exactly the resulting policy: its
+	 * that its policy lists, not the whole session folder. The sandbox settings carry exactly the resulting policy: its
 	 * writable paths, the paths inside them that are not writable, the paths that are not readable (also as
 	 * {@code Read} rules in {@code permissions.deny}, since the sandbox does not confine the file tools), the paths
 	 * inside those that are readable nonetheless, and the network hosts. They require the sandbox, forbid every
 	 * command outside it and exclude no command from it.
 	 * <p>
-	 * The file tools may read, and no setting lets them or the commands write, the run folder's {@code link-targets}
+	 * The file tools may read, and no setting lets them or the commands write, the session folder's {@code link-targets}
 	 * directory and its descendants, which hold the read-only copies that the project's links to targets outside it
 	 * lead to.
 	 *
@@ -594,7 +594,7 @@ public final class ClaudeConnectionSettings
 			for (Path path : required)
 			{
 				Path absolute = path.toAbsolutePath().normalize();
-				// The run folder is the instance's own, so the bound does not decide whether it may write there
+				// The session folder is the instance's own, so the bound does not decide whether it may write there
 				if (isInsideAny(RealPaths.resolve(absolute), List.of(run)))
 					continue;
 				if (!writes(bound, absolute))
@@ -1258,11 +1258,11 @@ public final class ClaudeConnectionSettings
 	 * parent's settings deny, with each rule naming its path as {@link #rulePattern(Path)} gives it. Does nothing if
 	 * {@code deniedReads} is empty.
 	 * <p>
-	 * A directory that holds one of {@code writeRoots}, such as the project that holds the run folder of a session, is
-	 * denied as every file and directory in it except the write roots and the directories that lead to them. A Read
+	 * A directory that holds one of {@code writeRoots}, such as the project that holds the session folder of a session,
+	 * is denied as every file and directory in it except the write roots and the directories that lead to them. A Read
 	 * rule that covered a write root would stop the instance's Write tool there, since that tool also refuses a path
-	 * that a Read rule denies. A file or directory that appears in such a directory after this method
-	 * returns is not denied.
+	 * that a Read rule denies. A file or directory that appears in such a directory after this method returns is not
+	 * denied.
 	 *
 	 * @param settings    the isolated settings
 	 * @param deniedReads the existing files and directories to deny

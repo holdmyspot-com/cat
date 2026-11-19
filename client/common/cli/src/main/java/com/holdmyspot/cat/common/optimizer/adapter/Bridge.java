@@ -24,10 +24,10 @@ public interface Bridge
 	 * @param input the requests, one JSON object per line
 	 * @param output where the responses are written, one JSON object per line
 	 * @throws LaunchRefusedException if no session started because it was refused: by the request server or because
-	 *   none serves the host session, by the launch route, which refuses sessions inside a run whose runner lets its
-	 *   session request none and when only the other harness runs the command, or because the sandbox of a session
-	 *   served in this process would not confine it as its bound requires; the same launch is refused again until the
-	 *   user acts on the message
+	 *   none serves the host session, by the launch route, which refuses sessions inside a nested session whose runner
+	 *   lets its session request none and when only the other harness runs the command, or because the sandbox of a
+	 *   session served in this process would not confine it as its bound requires; the same launch is refused again
+	 *   until the user acts on the message
 	 * @throws IOException if the runner or its harness fails
 	 */
 	void serve(List<String> arguments, Reader input, Writer output) throws IOException;

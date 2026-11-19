@@ -37,7 +37,7 @@ import java.util.function.Predicate;
  * A {@link SessionPort} whose sessions end only when the test ends them, in any order.
  * <p>
  * The answers that a real port gives without a session are checked by {@code SessionPortContract}, which runs against
- * this fake and the real adapters: the versions, run roots, empty answers about the host, evidence reading, the
+ * this fake and the real adapters: the versions, results folders, empty answers about the host, evidence reading, the
  * exit-status answer and the windows of an interrupted session.
  * The configuration methods supply typed host responses, evidence, failures and session results directly to consumer
  * tests. They do not discover prompt files or installed plugins, parse harness events, or establish how a real harness
@@ -60,8 +60,8 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public static final int JUDGE_VERSION = 5;
 	/**
-	 * The directories that a port reports as holding its runs unless the test supplies its own: a run root and a
-	 * held-out run root, as a real port has, which do not exist.
+	 * The directories that a port reports as holding its runs unless the test supplies its own: a results folder and a
+	 * held-out results folder, as a real port has, which do not exist.
 	 */
 	private static final List<Path> DEFAULT_RUN_ROOTS = List.of(
 		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/development"),

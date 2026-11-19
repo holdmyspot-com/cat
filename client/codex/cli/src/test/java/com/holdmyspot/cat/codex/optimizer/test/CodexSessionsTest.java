@@ -188,7 +188,7 @@ public final class CodexSessionsTest
 		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
-			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex", script, input,
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "codex", script, input,
 				output, requests);
 		});
 	}
@@ -242,7 +242,7 @@ public final class CodexSessionsTest
 	private static void serveLiveEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
 		java.io.Writer output, List<String> received, List<String> snapshots, boolean malformedFirst) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
+		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "codex",
 			HarnessTemporaryRoot.of(runRoot));
 		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
@@ -327,7 +327,7 @@ public final class CodexSessionsTest
 	private static void serveForwardedEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
 		java.io.Writer output, List<String> snapshots, boolean malformedFirst, List<String> received) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
+		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
 		Path requests = Files.createDirectories(runRoot.resolve("requests"));
 		Path artifact = Files.createDirectories(runRoot.resolve("artifact"));
 		Path source = Path.of(ScriptedHarness.optionValue(arguments, "--project"));
@@ -381,7 +381,7 @@ public final class CodexSessionsTest
 				}
 				writeForwardedKeptRun(jvm, json, source, artifact, responseDirectory[0]);
 			};
-			List<String> forwardArguments = List.of("--run-root", runRoot.toString(), "--project", source.toString(),
+			List<String> forwardArguments = List.of("--results", runRoot.toString(), "--project", source.toString(),
 				"--artifact", artifact.toString(), "--model", "model-a", "--effort", "low");
 			SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "codex", artifact,
 				forwardArguments, records, output, requests, pause);
@@ -629,7 +629,7 @@ public final class CodexSessionsTest
 					newCodexSessions(settings, (options, input, output) ->
 				{
 					arguments.add(options);
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "codex",
 						List.of(Turn.replies("ok")), input, output);
 				});
 				// CAT is recognized by its manifest's repository, whatever the user named it
@@ -699,10 +699,10 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that the held-out run root beside the run root exists before the session starts, that a session of the
-	 * held-out part runs under it and is denied nothing, and that a session of the development part runs under the
-	 * run root and passes each listed held-out directory and the held-out run root to the runner through
-	 * {@code --deny-read}.
+	 * Verifies that the held-out results folder beside the results folder exists before the session starts, that a
+	 * session of the held-out part runs under it and is denied nothing, and that a session of the development part runs
+	 * under the results folder and passes each listed held-out directory and the held-out results folder to the runner
+	 * through {@code --deny-read}.
 	 *
 	 * @param role the session's role
 	 * @param part the part that the session may read
@@ -736,7 +736,7 @@ public final class CodexSessionsTest
 				{
 					arguments.add(options);
 					heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "codex",
 						List.of(Turn.replies("ok")), input, output);
 				});
 
@@ -765,7 +765,7 @@ public final class CodexSessionsTest
 					expectedRunRoot = runRoot;
 					expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
 				}
-				requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+				requireThat(ScriptedHarness.optionValue(options, "--results"), "runRoot").
 					isEqualTo(expectedRunRoot.toString());
 				requireThat(denied, "denied").isEqualTo(expectedDenied);
 				requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
@@ -809,7 +809,7 @@ public final class CodexSessionsTest
 				arguments.add(options);
 				received.add(ContractAuthorFixtures.regularFiles(Path.of(ScriptedHarness.optionValue(options,
 					"--workspace"))));
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "codex",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
@@ -835,8 +835,8 @@ public final class CodexSessionsTest
 
 	/**
 	 * Verifies that a development session started for a campaign in a session's CAT session directory runs under that
-	 * session's run root and is denied reading the {@code held_out} directories of the campaigns of every session and
-	 * the session's held-out run root.
+	 * session's results folder and is denied reading the {@code held_out} directories of the campaigns of every session
+	 * and the session's held-out results folder.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -870,7 +870,7 @@ public final class CodexSessionsTest
 				newCodexSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "codex",
 					List.of(Turn.replies("ok")), input, output);
 			});
 
@@ -880,7 +880,7 @@ public final class CodexSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			List<String> options = arguments.getFirst();
 			Path sessionDirectory = root.resolve(".cat/sessions/" + sessionId);
-			requireThat(ScriptedHarness.optionValue(options, "--run-root"), "runRoot").
+			requireThat(ScriptedHarness.optionValue(options, "--results"), "runRoot").
 				isEqualTo(sessionDirectory.resolve("optimizer-runs/codex").toString());
 			List<String> denied = new ArrayList<>();
 			for (int i = 0; i < options.size() - 1; ++i)
@@ -2271,7 +2271,7 @@ public final class CodexSessionsTest
 			if (sharedWithRunner)
 			{
 				StringWriter errors = new StringWriter();
-				int status = CodexRunnerCli.launch(new String[]{"serve", "--project", source.toString(), "--run-root",
+				int status = CodexRunnerCli.launch(new String[]{"serve", "--project", source.toString(), "--results",
 					runRoot.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
 					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
 
@@ -2318,9 +2318,9 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that inside a run that allows sessions, each of the optimizer's sessions goes to the run's runner, which
-	 * starts it, and that the session completes with the requested session's reply and with its kept run where the
-	 * optimizer reads its sessions' runs.
+	 * Verifies that inside a nested session that allows sessions, each of the optimizer's sessions goes to the nested
+	 * session's runner, which starts it, and that the session completes with the requested session's reply and with its
+	 * kept run where the optimizer reads its sessions' runs.
 	 *
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the wait is interrupted
@@ -2348,7 +2348,7 @@ public final class CodexSessionsTest
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				SessionResult.Completed completed = (SessionResult.Completed) result;
 				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("reply 1")));
-				// The optimizer reads the requested session's kept run, without its home, in its own run root
+				// The optimizer reads the requested session's kept run, without its home, in its own results folder
 				Path run = completed.transcript().getParent().getParent();
 				requireThat(Files.readString(run.resolve("project/result.txt")), "result").isEqualTo("result");
 				requireThat(Files.exists(run.resolve("home")), "home").isFalse();
@@ -2372,9 +2372,10 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Verifies that inside a run that allows no session, or whose sessions are spent, the optimizer's session ends as a
-	 * launch refusal, which pauses the optimizer instead of counting a failure, with the message that names the
-	 * caller's options that would allow the session, and that it publishes no request and writes no run first.
+	 * Verifies that inside a nested session that allows no session, or whose sessions are spent, the optimizer's
+	 * session ends as a launch refusal, which pauses the optimizer instead of counting a failure, with the message that
+	 * names the caller's options that would allow the session, and that it publishes no request and writes no run
+	 * first.
 	 *
 	 * @param sessionRequests how many sessions the run allows
 	 * @param serveFirst      indicates whether the run serves one session before
@@ -2421,7 +2422,7 @@ public final class CodexSessionsTest
 	}
 
 	/**
-	 * Returns the production port of an optimizer that a Codex session runs inside a run.
+	 * Returns the production port of an optimizer that a Codex session runs inside a nested session.
 	 *
 	 * @param jvm     the borrowed process scope
 	 * @param home    the user's home and the port's artifact

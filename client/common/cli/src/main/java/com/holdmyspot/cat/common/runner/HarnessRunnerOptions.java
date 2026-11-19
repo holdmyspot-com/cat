@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * @param artifact the complete harness artifact
  * @param project the source project
- * @param runRoot the absolute owned-run root
+ * @param runRoot the absolute owned-results folder
  * @param model the selected model
  * @param effort the selected reasoning effort, or {@value #NO_REASONING} for none
  * @param output the optional durable bridge-transcript destination
@@ -88,11 +88,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	/**
 	 * The options that take a value.
 	 */
-	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--run-root", "--model",
+	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--project", "--results", "--model",
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
 		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy",
-		RunnerArguments.RUN_ID_OPTION, RunnerArguments.RESUME_RUN_OPTION);
+		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -103,10 +103,10 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *
 	 * @param args the legacy command and its options
 	 * @param harness the harness that the bridge runs, such as {@code claude} or {@code codex}
-	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
+	 * @param temporaryRoot where the runs are kept when the command line names no {@code --results}
 	 * @return parsed runner options
 	 * @throws IllegalArgumentException if the command is not {@code serve}, if its options are invalid, or if it names
-	 *   no {@code --run-root} outside a harness session
+	 *   no {@code --results} outside a harness session
 	 */
 	public static HarnessRunnerOptions parseServe(String[] args, String harness, HarnessTemporaryRoot temporaryRoot)
 	{
@@ -123,10 +123,10 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *
 	 * @param args command-line arguments
 	 * @param harness the harness that the bridge runs, such as {@code claude} or {@code codex}
-	 * @param temporaryRoot where the runs are kept when the command line names no {@code --run-root}
+	 * @param temporaryRoot where the runs are kept when the command line names no {@code --results}
 	 * @return parsed runner options
 	 * @throws IllegalArgumentException if arguments are unsupported, incomplete or invalid, if they name no
-	 *   {@code --model} or no {@code --effort}, or if they name no {@code --run-root} outside a harness session
+	 *   {@code --model} or no {@code --effort}, or if they name no {@code --results} outside a harness session
 	 */
 	public static HarnessRunnerOptions parse(String[] args, String harness, HarnessTemporaryRoot temporaryRoot)
 	{
@@ -221,7 +221,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.artifact = Path.of(value);
 			else if (option.equals("--project"))
 				project = Path.of(value);
-			else if (option.equals("--run-root"))
+			else if (option.equals("--results"))
 				explicitRunRoot = value;
 			else if (option.equals("--model"))
 				model = value;
@@ -251,17 +251,17 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.conversation = Path.of(value).toAbsolutePath();
 			else if (option.equals("--turn-copy"))
 				options.turnCopy = Path.of(value).toAbsolutePath();
-			else if (option.equals(RunnerArguments.RUN_ID_OPTION))
+			else if (option.equals(RunnerArguments.SLOT_ID_OPTION))
 			{
 				if (!HarnessRunManager.isRunId(value))
-					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RUN_ID_OPTION + ": " + value);
+					throw new InvalidArgumentsException("Invalid " + RunnerArguments.SLOT_ID_OPTION + ": " + value);
 				options.runId = value;
 			}
-			else if (option.equals(RunnerArguments.RESUME_RUN_OPTION))
+			else if (option.equals(RunnerArguments.RESUME_SLOT_OPTION))
 			{
 				if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(value).matches())
 				{
-					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RESUME_RUN_OPTION + ": " + value);
+					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RESUME_SLOT_OPTION + ": " + value);
 				}
 				options.resumeRun = value;
 			}
@@ -279,8 +279,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		if (options.resumeRun != null && options.runId == null)
 		{
-			throw new InvalidArgumentsException(RunnerArguments.RESUME_RUN_OPTION + " requires " +
-				RunnerArguments.RUN_ID_OPTION);
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires " +
+				RunnerArguments.SLOT_ID_OPTION);
 		}
 		requireProfile(harness, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
@@ -616,12 +616,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	public static String usage(String launcherName)
 	{
 		requireThat(launcherName, "launcherName").isNotBlank();
-		return "Usage: " + launcherName + " [--project <path>] [--run-root <path>] " +
+		return "Usage: " + launcherName + " [--project <path>] [--results <path>] " +
 			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--held-out] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file> | --conversation <folder>] " +
-			"[--capacity-wait <seconds>] [--extra-permissions <file>] [--run-id <id>]";
+			"[--capacity-wait <seconds>] [--extra-permissions <file>] [--slot-id <id>]";
 	}
 
 	/**
@@ -629,7 +629,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *
 	 * @param artifact the complete harness artifact
 	 * @param project the source project
-	 * @param runRoot the absolute owned-run root
+	 * @param runRoot the absolute owned-results folder
 	 * @param model the selected model
 	 * @param effort the selected reasoning effort
 	 * @param output the optional durable bridge-transcript destination

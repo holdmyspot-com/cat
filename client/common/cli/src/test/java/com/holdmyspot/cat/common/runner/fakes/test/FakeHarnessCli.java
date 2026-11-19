@@ -46,8 +46,8 @@ import java.util.stream.Stream;
  * output EOF and process termination are separate observations, and exit status is unavailable while alive.
  * {@link #failOutput(String)} models the I/O error that the JDK's {@code InputStream.read} reports.
  * The delayed-exit option makes waiting observable without asserting a harness-specific delay. Successful exit status
- * 0 also appears in {@code docs/changelog/1.0/captures/base-codex-live/run.json} (codex-cli 0.147.0) and
- * {@code base-claude-live/run.json} (Claude Code 2.1.220), with versions named in the captures' README.
+ * 0 also appears in {@code docs/changelog/1.0/captures/base-codex-live/session.json} (codex-cli 0.147.0) and
+ * {@code base-claude-live/session.json} (Claude Code 2.1.220), with versions named in the captures' README.
  */
 public final class FakeHarnessCli extends Process
 {

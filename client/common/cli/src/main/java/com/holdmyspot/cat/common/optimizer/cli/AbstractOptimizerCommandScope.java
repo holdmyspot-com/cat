@@ -462,7 +462,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 
 	/**
 	 * Returns the directory that holds the runs of the nested sessions that this command's campaigns start through
-	 * the harness's runner. The held-out run root is its sibling.
+	 * the harness's runner. The held-out results folder is its sibling.
 	 *
 	 * @return the directory, which may not exist
 	 * @throws IllegalStateException if this scope is closed
@@ -482,7 +482,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	}
 
 	/**
-	 * Returns the project of the host session that runs this command, which holds the run root.
+	 * Returns the project of the host session that runs this command, which holds the results folder.
 	 *
 	 * @return the project root
 	 * @throws IllegalStateException if this scope is closed

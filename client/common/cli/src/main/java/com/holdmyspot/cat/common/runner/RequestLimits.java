@@ -16,8 +16,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public record RequestLimits(int entries, long entryBytes, long totalBytes, long archiveBytes)
 {
 	/**
-	 * The bounds of a request made inside a run: 10,000 entries, 64 MiB per entry, 256 MiB of content and 300,000,000
-	 * archive bytes.
+	 * The bounds of a request made inside a nested session: 10,000 entries, 64 MiB per entry, 256 MiB of content and
+	 * 300,000,000 archive bytes.
 	 */
 	public static final RequestLimits IN_RUN = new RequestLimits(10_000, 67_108_864, 268_435_456, 300_000_000);
 	/**

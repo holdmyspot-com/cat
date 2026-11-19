@@ -21,7 +21,7 @@ import java.util.Optional;
  *
  * @param role the kind of work that the session performs
  * @param part the part of the contract whose content the session may read: {@link Part#HELD_OUT} for formal and
- *   baseline trials and for judges, which run under the held-out run root and are denied nothing, and
+ *   baseline trials and for judges, which run under the held-out results folder and are denied nothing, and
  *   {@link Part#DEVELOPMENT} for every other session, which is denied reading every held-out location
  * @param source the directory that the session works in
  * @param turns the complete turn sequence, sent one turn at a time

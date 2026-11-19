@@ -105,8 +105,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that the Claude process environment marks the session as a CAT run, even when the caller's settings
-	 * file sets the marker's variable otherwise, so that the session's commands send their sessions to the run's runner.
+	 * Verifies that the Claude process environment marks the session as a CAT run, even when the caller's settings file
+	 * sets the marker's variable otherwise, so that the session's commands send their sessions to the nested session's
+	 * runner.
 	 *
 	 * @throws IOException if the environment cannot be built
 	 */
@@ -1416,7 +1417,7 @@ public final class ClaudeRunnerTest
 
 	/**
 	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
-	 * manifest, lock and initial project, its own settings, and the other runs and workspaces under the run root,
+	 * manifest, lock and initial project, its own settings, and the other runs and workspaces under the results folder,
 	 * besides the paths that the caller denies, and any login file in its home. The session can still read its project,
 	 * the rest of its home, its Claude temporary directory and the evidence that it validates.
 	 *
@@ -1448,19 +1449,19 @@ public final class ClaudeRunnerTest
 				List.of(heldOut), Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
-				directory.resolve("artifacts"), directory.resolve("run.json"), directory.resolve(".lock"),
+				directory.resolve("artifacts"), directory.resolve("session.json"), directory.resolve(".lock"),
 				directory.resolve("initial-project"), other.directory(), evidence.directory().resolve("project"),
-				evidence.directory().resolve("home"), evidence.directory().resolve("run.json"),
+				evidence.directory().resolve("home"), evidence.directory().resolve("session.json"),
 				evidence.directory().resolve(".lock"), workspaces, directory.resolve("home/.claude/settings.json"),
 				directory.resolve("home/.claude/.credentials.json")));
 		}
 	}
 
 	/**
-	 * Verifies that a session whose run root lies inside a project that the caller denies is denied every file and
-	 * directory of that project except the directories that lead to its run and evidence, each path once. The session
-	 * can still read its project, its home, its Claude temporary directory and the evidence that it validates, but not
-	 * the files of the project around them.
+	 * Verifies that a session whose results folder lies inside a project that the caller denies is denied every file
+	 * and directory of that project except the directories that lead to its run and evidence, each path once. The
+	 * session can still read its project, its home, its Claude temporary directory and the evidence that it validates,
+	 * but not the files of the project around them.
 	 *
 	 * @throws IOException if the run cannot be created
 	 */
@@ -1494,10 +1495,10 @@ public final class ClaudeRunnerTest
 
 			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(instructions, documents,
-				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("run.json"),
+				otherSession, campaigns, heldOutRoot, directory.resolve("artifacts"), directory.resolve("session.json"),
 				directory.resolve(".lock"), directory.resolve("initial-project"),
 				evidence.directory().resolve("project"), evidence.directory().resolve("home"),
-				evidence.directory().resolve("run.json"), evidence.directory().resolve(".lock"),
+				evidence.directory().resolve("session.json"), evidence.directory().resolve(".lock"),
 				directory.resolve("home/.claude/settings.json")));
 		}
 	}
@@ -1507,8 +1508,8 @@ public final class ClaudeRunnerTest
 	 * requester's requested-runs directory, which that policy does not let the requester write: the first requested
 	 * session's policy, which holds only its home, requests directory, worktree registrations and dependency cache,
 	 * bounds the session that it requests, and the settings of that session let its commands write its own home, the
-	 * cache, its requests directory and its worktree registrations, but neither its whole run folder nor its responses
-	 * directory.
+	 * cache, its requests directory and its worktree registrations, but neither its whole session folder nor its
+	 * responses directory.
 	 *
 	 * @throws IOException if the runs cannot be created
 	 */

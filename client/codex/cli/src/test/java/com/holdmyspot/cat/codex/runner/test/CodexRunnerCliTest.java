@@ -98,7 +98,7 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that without {@code CODEX_THREAD_ID} a runner command must name {@code --run-root}, and that the refusal
+	 * Verifies that without {@code CODEX_THREAD_ID} a runner command must name {@code --results}, and that the refusal
 	 * names the variable.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
@@ -116,11 +116,11 @@ public final class CodexRunnerCliTest
 			try (ToolScope scope = ACCESS.toolScope(project, Map.of(), Yielding.waiting(), GitProjects.IGNORING))
 			{
 				HarnessRunnerOptions.parse(args, "codex", HarnessTemporaryRoot.from(scope));
-				throw new AssertionError("A command without a thread or --run-root chose a run root");
+				throw new AssertionError("A command without a thread or --results chose a results folder");
 			}
 			catch (IllegalArgumentException e)
 			{
-				requireThat(e.getMessage(), "message").contains("--run-root").contains("CODEX_THREAD_ID");
+				requireThat(e.getMessage(), "message").contains("--results").contains("CODEX_THREAD_ID");
 			}
 			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 		}
@@ -176,7 +176,7 @@ public final class CodexRunnerCliTest
 		Path effects = Path.of("/runs/trial/project").toAbsolutePath();
 		Path artifacts = Path.of("/runs/trial/artifacts").toAbsolutePath();
 		HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-			Path.of("/artifact").toAbsolutePath().toString(), "--run-root", Path.of("/runs").toAbsolutePath().toString(),
+			Path.of("/artifact").toAbsolutePath().toString(), "--results", Path.of("/runs").toAbsolutePath().toString(),
 			"--read-only-evidence", effects.toString(), "--read-only-evidence",
 			artifacts.toString(), "--model", "gpt-6-luna", "--effort", "low"}, HarnessTemporaryRoot.withoutSession(
 			"no session"));
@@ -194,8 +194,8 @@ public final class CodexRunnerCliTest
 	{
 		String artifact = Path.of("/artifact").toAbsolutePath().toString();
 		String runRoot = Path.of("/runs").toAbsolutePath().toString();
-		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--run-root", runRoot,
-			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--run-root", runRoot,
+		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--results", runRoot,
+			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--results", runRoot,
 			"--read-only-evidence", "--install-cat"}}};
 	}
 
@@ -224,7 +224,7 @@ public final class CodexRunnerCliTest
 	public void refusesRelativeEvidencePath() throws IOException
 	{
 		CodexRunnerCli.options(new String[]{"serve", "--artifact", Path.of("/artifact").toAbsolutePath().toString(),
-			"--run-root", Path.of("/runs").toAbsolutePath().toString(), "--read-only-evidence", "trial/project",
+			"--results", Path.of("/runs").toAbsolutePath().toString(), "--read-only-evidence", "trial/project",
 			"--model", "gpt-6-luna", "--effort", "low"},
 			HarnessTemporaryRoot.withoutSession("no session"));
 	}
@@ -255,7 +255,7 @@ public final class CodexRunnerCliTest
 				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
 					root.resolve("locks"), 1, second, clock);
 				String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-					root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--capacity-wait",
+					root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--capacity-wait",
 					"5", "--model", "gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
@@ -329,7 +329,7 @@ public final class CodexRunnerCliTest
 	{
 		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		return manager.create("codex").directory().resolve("run.json");
+		return manager.create("codex").directory().resolve("session.json");
 	}
 
 	/**
@@ -343,7 +343,7 @@ public final class CodexRunnerCliTest
 	private static void startUntilCapacityIsRequested(TestJvmScope jvm, Path root) throws IOException
 	{
 		String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model", "gpt-6-luna",
+			root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "gpt-6-luna",
 			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
@@ -390,7 +390,7 @@ public final class CodexRunnerCliTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				List<String> args = new ArrayList<>(List.of("serve", "--artifact", root.resolve("artifact").toString(),
-					"--project", root.resolve("project").toString(), "--run-root", root.resolve("runs").toString()));
+					"--project", root.resolve("project").toString(), "--results", root.resolve("runs").toString()));
 				args.addAll(profile);
 				try
 				{
@@ -517,7 +517,7 @@ public final class CodexRunnerCliTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				Path artifact = artifactWithAgent(root, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"none\"\n");
 				HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-					artifact.toString(), "--run-root", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat"},
+					artifact.toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat"},
 					HarnessTemporaryRoot.withoutSession("no session"));
 				requireThat(options.model(), "model").isEqualTo("gpt-6-luna");
 				requireThat(options.effort(), "effort").isEqualTo("none");
@@ -540,8 +540,8 @@ public final class CodexRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = artifactWithAgent(root, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"none\"\n");
 			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-				artifact.toString(), "--run-root", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat",
-				"--run-id", "s-1", "--resume-run", "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b", "--model", "gpt-5.5",
+				artifact.toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat",
+				"--slot-id", "s-1", "--resume-slot", "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b", "--model", "gpt-5.5",
 				"--effort", "high"}, HarnessTemporaryRoot.withoutSession("no session"));
 
 			requireThat(options.model(), "model").isEqualTo("gpt-5.5");
@@ -560,7 +560,7 @@ public final class CodexRunnerCliTest
 	private static List<String> launch(Path root, Path artifact)
 	{
 		return new ArrayList<>(List.of("serve", "--artifact", artifact.toString(), "--project",
-			root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--agent", AGENT,
+			root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT,
 			"--install-cat"));
 	}
 
@@ -593,8 +593,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that outside a run the launcher refuses an option that would choose the artifact it runs, with or
-	 * without {@code serve}, with the reason, before it does anything else.
+	 * Verifies that outside a nested session the launcher refuses an option that would choose the artifact it runs,
+	 * with or without {@code serve}, with the reason, before it does anything else.
 	 *
 	 * @param command the command's leading arguments
 	 * @param option  the refused option
@@ -815,8 +815,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that inside a run whose runner lets its session request sessions, a bridge launch is not refused for
-	 * the option, since it is forwarded as a session request whose runner ignores it.
+	 * Verifies that inside a nested session whose runner lets its session request sessions, a bridge launch is not
+	 * refused for the option, since it is forwarded as a session request whose runner ignores it.
 	 *
 	 * @param option the option that the forwarded launch names
 	 */
@@ -847,7 +847,7 @@ public final class CodexRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = root.resolve("artifact");
 			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-				artifact.toString(), "--run-root", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort",
+				artifact.toString(), "--results", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort",
 				"low"}, HarnessTemporaryRoot.withoutSession("no session"));
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
@@ -868,7 +868,7 @@ public final class CodexRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model",
 				"gpt-6-luna", "--effort", "low"};
 			try
 			{
@@ -903,7 +903,7 @@ public final class CodexRunnerCliTest
 				Set.of("api.openai.com"), false);
 			List<String> requested = PolicyBoundFile.boundArguments(JsonMapper.builder().build(), List.of("serve",
 				"--artifact", root.resolve("artifact").toString(), "--project", root.resolve("project").toString(),
-				"--run-root", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort", "low"),
+				"--results", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort", "low"),
 				root.resolve("request"), requesting);
 			try
 			{
@@ -937,7 +937,7 @@ public final class CodexRunnerCliTest
 			Path extra = Files.writeString(root.resolve("extra.json"),
 				"{\"format_version\": 1, \"hosts\": [\"*.example\"]}");
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model",
 				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--extra-permissions",
 				extra.toString()};
 
@@ -965,7 +965,7 @@ public final class CodexRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--run-root", root.resolve("runs").toString(), "--model",
+				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model",
 				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
 			try
 			{
@@ -1037,7 +1037,7 @@ public final class CodexRunnerCliTest
 			StringWriter errors = new StringWriter();
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
-			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--run-root",
+			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--results",
 				home.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
 
@@ -1049,9 +1049,9 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that Codex runs outside a run is refused with the refusal status when no
-	 * request server serves the session, with a reason that names the command that starts the server, before the
-	 * launcher writes a request or starts anything.
+	 * Verifies that a launch from a command that Codex runs outside a nested session is refused with the refusal status
+	 * when no request server serves the session, with a reason that names the command that starts the server, before
+	 * the launcher writes a request or starts anything.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -1069,7 +1069,7 @@ public final class CodexRunnerCliTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--model",
-					"gpt-6-luna", "--effort", "low", "--run-root", home.resolve("runs").toString()}, environment,
+					"gpt-6-luna", "--effort", "low", "--results", home.resolve("runs").toString()}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin,
 				() -> ToolScope.forSession(project, environment, SessionHarness.installed(), Yielding.waiting(),
 					GitProjects.IGNORING));

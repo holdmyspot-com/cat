@@ -212,7 +212,7 @@ public final class BuildAdmission
 	}
 
 	/**
-	 * Ensures the owned run root cannot overwrite the shared context or reservation ledger.
+	 * Ensures the owned results folder cannot overwrite the shared context or reservation ledger.
 	 *
 	 * @param evidence resolved owned evidence root
 	 * @throws IOException if the evidence root overlaps shared state

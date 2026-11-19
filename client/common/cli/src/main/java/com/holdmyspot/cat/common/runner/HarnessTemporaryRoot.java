@@ -10,9 +10,9 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Where a runner command keeps its runs when the command line names no {@code --run-root}: the {@code temp} directory
+ * Where a runner command keeps its runs when the command line names no {@code --results}: the {@code temp} directory
  * of the CAT session directory of the harness session that runs the command. Outside a harness session there is no such
- * directory, and the command line must name {@code --run-root}. A command that names {@code --run-root} leaves the
+ * directory, and the command line must name {@code --results}. A command that names {@code --results} leaves the
  * session's CAT session directory alone.
  */
 public final class HarnessTemporaryRoot
@@ -50,7 +50,7 @@ public final class HarnessTemporaryRoot
 	 * Returns the temporary root of a command that runs outside a harness session.
 	 *
 	 * @param missingSession why there is no session, such as which session variables are unset
-	 * @return the temporary root, which requires {@code --run-root}
+	 * @return the temporary root, which requires {@code --results}
 	 * @throws NullPointerException if {@code missingSession} is null
 	 * @throws IllegalArgumentException if {@code missingSession} is blank
 	 */
@@ -62,7 +62,7 @@ public final class HarnessTemporaryRoot
 
 	/**
 	 * Returns the temporary root of the harness session that a tool scope belongs to. The session's CAT session directory
-	 * is opened, and created if absent, only when a command needs the default run root.
+	 * is opened, and created if absent, only when a command needs the default results folder.
 	 *
 	 * @param scope the command's tool scope, which must stay open while the command line is parsed
 	 * @return the temporary root
@@ -79,9 +79,9 @@ public final class HarnessTemporaryRoot
 	/**
 	 * Returns the default root for isolated harness runs.
 	 *
-	 * @return {@code runner-runs} in the session's temporary directory
+	 * @return {@code nested-sessions} in the session's temporary directory
 	 * @throws InvalidArgumentsException if there is no harness session, so the command line must name
-	 *   {@code --run-root}
+	 *   {@code --results}
 	 * @throws UncheckedIOException if the session variable is not a UUID in canonical form, or if the session's CAT
 	 *   session directory cannot be created
 	 */
@@ -97,15 +97,15 @@ public final class HarnessTemporaryRoot
 			throw new UncheckedIOException(e);
 		}
 		if (temp.isEmpty())
-			throw new InvalidArgumentsException("--run-root is required outside a harness session: " + missingSession);
-		return temp.get().resolve("runner-runs");
+			throw new InvalidArgumentsException("--results is required outside a harness session: " + missingSession);
+		return temp.get().resolve("nested-sessions");
 	}
 
 	/**
-	 * Returns the run root that a command line selects.
+	 * Returns the results folder that a command line selects.
 	 *
-	 * @param runRoot the {@code --run-root} value, or {@code null} when the command line names none
-	 * @return the normalized absolute run root
+	 * @param runRoot the {@code --results} value, or {@code null} when the command line names none
+	 * @return the normalized absolute results folder
 	 * @throws InvalidArgumentsException if {@code runRoot} is null and there is no harness session
 	 * @throws UncheckedIOException if {@code runRoot} is null and the session's CAT session directory cannot be opened
 	 */

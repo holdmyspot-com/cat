@@ -18,14 +18,14 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * What a child session of one harness needs beyond its run folder, as that harness's runner reports it to a session
- * launcher with {@link #OPTION}: the folders that it writes outside the run folder, the hosts that its commands reach,
- * and the login files that its isolated home copies. The runner writes the report and the launcher reads it. Its file
- * is a JSON object whose {@code format_version} is {@value #VERSION}, whose {@code writes} and {@code logins} are
+ * What a child session of one harness needs beyond its session folder, as that harness's runner reports it to a session
+ * launcher with {@link #OPTION}: the folders that it writes outside the session folder, the hosts that its commands
+ * reach, and the login files that its isolated home copies. The runner writes the report and the launcher reads it. Its
+ * file is a JSON object whose {@code format_version} is {@value #VERSION}, whose {@code writes} and {@code logins} are
  * arrays of absolute paths, and whose {@code hosts} is an array of host names in ascending order. It has no other
  * field.
  *
- * @param writes the absolute folders that the child writes outside its run folder, such as dependency caches
+ * @param writes the absolute folders that the child writes outside its session folder, such as dependency caches
  * @param hosts  the hosts that the child's commands reach, as host names or literal IP addresses
  * @param logins the absolute login files that the child's isolated home copies
  */
@@ -52,7 +52,7 @@ public record ChildNeedsReport(List<Path> writes, Set<String> hosts, List<Path> 
 	/**
 	 * Creates a report.
 	 *
-	 * @param writes the absolute folders that the child writes outside its run folder, such as dependency caches
+	 * @param writes the absolute folders that the child writes outside its session folder, such as dependency caches
 	 * @param hosts  the hosts that the child's commands reach, as host names or literal IP addresses
 	 * @param logins the absolute login files that the child's isolated home copies
 	 * @throws NullPointerException     if any of the arguments are null, or a collection contains null

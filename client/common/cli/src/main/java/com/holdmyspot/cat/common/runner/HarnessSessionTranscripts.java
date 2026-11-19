@@ -21,8 +21,8 @@ import java.util.function.Predicate;
 import java.util.stream.Stream;
 
 /**
- * Locates the native session transcripts that a harness writes inside a run's isolated home, and copies them into the
- * run's {@code artifacts} directory so that they outlive the home.
+ * Locates the native session transcripts that a harness writes inside a nested session's isolated home, and copies them
+ * into the run's {@code artifacts} directory so that they outlive the home.
  */
 public final class HarnessSessionTranscripts
 {

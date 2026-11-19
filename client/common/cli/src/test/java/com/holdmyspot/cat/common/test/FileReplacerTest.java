@@ -56,8 +56,8 @@ public final class FileReplacerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("file-replacer-"));
-			Path target = Files.writeString(directory.resolve("run.json"), "old");
-			Path source = Files.writeString(directory.resolve("run.json.tmp"), "new");
+			Path target = Files.writeString(directory.resolve("session.json"), "old");
+			Path source = Files.writeString(directory.resolve("session.json.tmp"), "new");
 			AtomicInteger pauses = new AtomicInteger();
 
 			try (Refusal refusal = new Refusal(directory, target))
@@ -106,8 +106,8 @@ public final class FileReplacerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("file-replacer-"));
-			Path target = Files.writeString(directory.resolve("run.json"), "old");
-			Path source = Files.writeString(directory.resolve("run.json.tmp"), "new");
+			Path target = Files.writeString(directory.resolve("session.json"), "old");
+			Path source = Files.writeString(directory.resolve("session.json.tmp"), "new");
 			ManualClock clock = new ManualClock(Instant.EPOCH);
 			AtomicInteger pauses = new AtomicInteger();
 			FileReplacer replacer = new FileReplacer(Platform.WINDOWS_X64, () ->
@@ -141,8 +141,8 @@ public final class FileReplacerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("file-replacer-"));
-			Path target = Files.writeString(directory.resolve("run.json"), "old");
-			Path source = Files.writeString(directory.resolve("run.json.tmp"), "new");
+			Path target = Files.writeString(directory.resolve("session.json"), "old");
+			Path source = Files.writeString(directory.resolve("session.json.tmp"), "new");
 			IOException interrupted = new IOException("interrupted");
 			FileReplacer replacer = new FileReplacer(Platform.WINDOWS_X64, () ->
 			{
@@ -173,8 +173,8 @@ public final class FileReplacerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("file-replacer-"));
-			Path target = Files.writeString(directory.resolve("run.json"), "old");
-			Path source = Files.writeString(directory.resolve("run.json.tmp"), "new");
+			Path target = Files.writeString(directory.resolve("session.json"), "old");
+			Path source = Files.writeString(directory.resolve("session.json.tmp"), "new");
 			FileReplacer replacer = new FileReplacer(Platform.LINUX_X64, () ->
 			{
 				throw new AssertionError("A refusal outside Windows must not pause");

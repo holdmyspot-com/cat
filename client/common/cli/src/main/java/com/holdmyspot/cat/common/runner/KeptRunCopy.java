@@ -41,7 +41,7 @@ public final class KeptRunCopy
 	/**
 	 * The manifest of a run, which {@link #copy(Path, Path, String, Path)} writes after the rest of the run.
 	 */
-	private static final Path MANIFEST = Path.of("run.json");
+	private static final Path MANIFEST = Path.of("session.json");
 	private static final String RUN_ARTIFACTS = "artifacts";
 	private static final String RUN_TRANSCRIPTS = "session-transcripts";
 	/**
@@ -96,11 +96,11 @@ public final class KeptRunCopy
 
 	/**
 	 * Copies a kept run as {@link #copy(Path, Path)} does and gives the copy the identifier under which it is kept and
-	 * the project that its requester named. The run's runner ran the session in the copy of that project that the
-	 * request carried, so the copy's manifest names the requester's project instead, as the manifest of a run that the
-	 * requester started itself would, and a removal of the requester's runs by their project finds it. The copy's
-	 * manifest appears last and whole, already naming {@code id}, so that a process that lists the folder of the kept
-	 * runs while the copy is under way never reads a manifest that is partial or names the run's slot.
+	 * the project that its requester named. The nested session's runner ran the session in the copy of that project
+	 * that the request carried, so the copy's manifest names the requester's project instead, as the manifest of a run
+	 * that the requester started itself would, and a removal of the requester's runs by their project finds it. The
+	 * copy's manifest appears last and whole, already naming {@code id}, so that a process that lists the folder of the
+	 * kept runs while the copy is under way never reads a manifest that is partial or names the run's slot.
 	 *
 	 * @param source  the kept run
 	 * @param target  the copy, which need not exist

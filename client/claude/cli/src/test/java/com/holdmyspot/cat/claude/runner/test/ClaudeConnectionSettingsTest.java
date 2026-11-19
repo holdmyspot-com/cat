@@ -895,7 +895,7 @@ public final class ClaudeConnectionSettingsTest
 
 	/**
 	 * Verifies that when the bound denies reading a folder that holds the session's own write root, such as the
-	 * project that holds the run folder of a session, the Read rules deny the rest of that folder
+	 * project that holds the session folder of a session, the Read rules deny the rest of that folder
 	 * but not the write root, so the session's file tools can write there. A read that the session's own needs deny
 	 * inside the write root, and the sandbox's read denial of the folder, stay.
 	 *
@@ -1056,10 +1056,10 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that a session whose home, project or temporary directory lies outside its run folder, and which its
+	 * Verifies that a session whose home, project or temporary directory lies outside its session folder, and which its
 	 * policy bound does not let it write, is refused, naming the directory, before any settings are written.
 	 *
-	 * @param directory the directory that lies outside the run folder: {@code home}, {@code project} or
+	 * @param directory the directory that lies outside the session folder: {@code home}, {@code project} or
 	 *                  {@code temporary}
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -1100,7 +1100,7 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Returns the directories of a session that may lie outside its run folder.
+	 * Returns the directories of a session that may lie outside its session folder.
 	 *
 	 * @return the directory's name
 	 */
@@ -1111,10 +1111,10 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that a session whose run folder lies inside a folder that its policy bound does not let it write, as a
-	 * requested session's does, starts: the bound that holds only its requester's home, requests directory and
-	 * dependency cache lets it write its own run folder, and the session's writable paths stay its home and the cache,
-	 * not the run folder, which also holds what the runner writes.
+	 * Verifies that a session whose session folder lies inside a folder that its policy bound does not let it write, as
+	 * a requested session's does, starts: the bound that holds only its requester's home, requests directory and
+	 * dependency cache lets it write its own session folder, and the session's writable paths stay its home and the
+	 * cache, not the session folder, which also holds what the runner writes.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -1182,7 +1182,7 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Verifies that a session whose run folder lies outside its policy bound's write roots is still refused when a
+	 * Verifies that a session whose session folder lies outside its policy bound's write roots is still refused when a
 	 * dependency cache that it needs is not among them, and the refusal names the cache.
 	 *
 	 * @throws IOException if fixture I/O fails

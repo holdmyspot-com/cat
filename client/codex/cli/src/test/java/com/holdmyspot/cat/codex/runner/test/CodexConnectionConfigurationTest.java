@@ -968,7 +968,7 @@ public final class CodexConnectionConfigurationTest
 
 	/**
 	 * Verifies that a session's read denial inside another of its read denials stays denied when its runner profile
-	 * lets it write a folder between them, as the run's home lies inside the denied run root.
+	 * lets it write a folder between them, as the run's home lies inside the denied results folder.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */

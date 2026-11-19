@@ -42,7 +42,7 @@ import tools.jackson.databind.node.ObjectNode;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests that a runner launched inside a run hands its launch to the parent runner through
+ * Tests that a runner launched inside a nested session hands its launch to the parent runner through
  * {@link SessionRequestForwarder}.
  */
 public final class SessionRequestForwarderTest
@@ -278,7 +278,7 @@ public final class SessionRequestForwarderTest
 					json.writeValue(response.resolve("response.json").toFile(), result);
 				}
 			};
-			String[] arguments = {"--run-root", runRoot.toString(), "--project", project.toString(), "--model",
+			String[] arguments = {"--results", runRoot.toString(), "--project", project.toString(), "--model",
 				"model-a", "--effort", "effort-a"};
 
 			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
@@ -306,7 +306,7 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that the kept run that a served session's runner copies into the command's run root names, as its
+	 * Verifies that the kept run that a served session's runner copies into the command's results folder names, as its
 	 * project, the project that the command's launch named, as a run that the command started itself would. The
 	 * runner ran the session in the copy of that project that the request carried, below its own folder, so the run's
 	 * manifest that it copies names that copy instead.
@@ -363,7 +363,7 @@ public final class SessionRequestForwarderTest
 					put("transcript", response.resolve("transcript.jsonl").toString()).
 					put("run", kept.toString()));
 			};
-			String[] arguments = {"--run-root", runRoot.toString(), "--project", project.toString(), "--model",
+			String[] arguments = {"--results", runRoot.toString(), "--project", project.toString(), "--model",
 				"model-a", "--effort", "effort-a"};
 
 			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
@@ -376,16 +376,16 @@ public final class SessionRequestForwarderTest
 				keptRuns = runs.toList();
 			}
 			requireThat(keptRuns, "keptRuns").isEqualTo(List.of(runRoot.resolve("harnessa").resolve(SESSION_ID)));
-			JsonNode manifest = json.readTree(keptRuns.getFirst().resolve("run.json").toFile());
+			JsonNode manifest = json.readTree(keptRuns.getFirst().resolve("session.json").toFile());
 			requireThat(manifest.path("id").asString(), "id").isEqualTo(SESSION_ID);
 			requireThat(manifest.path("project_path").asString(), "projectPath").isEqualTo(project.toString());
 		}
 	}
 
 	/**
-	 * Verifies that a launch inside a run that names a results folder gets the copy of its session's run that the run's
-	 * runner put in its response copied into that folder, as a launch outside a run does, and that the run's runner,
-	 * which owns the response, still finds it.
+	 * Verifies that a launch inside a nested session that names a results folder gets the copy of its session's run
+	 * that the run's runner put in its response copied into that folder, as a launch outside a nested session does, and
+	 * that the nested session's runner, which owns the response, still finds it.
 	 *
 	 * @throws IOException if the launch or its copy fails
 	 */
@@ -403,7 +403,7 @@ public final class SessionRequestForwarderTest
 			Path[] response = new Path[1];
 
 			int status = SessionRequestForwarder.forward("harnessa", new String[]{"--project",
-				fixture.project.toString(), "--run-root", results.toString(), "--model", "model-a", "--effort",
+				fixture.project.toString(), "--results", results.toString(), "--model", "model-a", "--effort",
 				"effort-a"}, new StringReader(RECORDS), fixture.requests, () ->
 			{
 				if (response[0] != null)
@@ -467,8 +467,9 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that a launch inside a run that names a file of extra permissions asks the parent for the file's writes
-	 * and hosts, as the content that the parent's runner reads, and that a launch without the file asks for none.
+	 * Verifies that a launch inside a nested session that names a file of extra permissions asks the parent for the
+	 * file's writes and hosts, as the content that the parent's runner reads, and that a launch without the file asks
+	 * for none.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -503,8 +504,8 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that a launch inside a run whose file of extra permissions is malformed, such as one that names a
-	 * relative path, is refused with the reason before any request is written.
+	 * Verifies that a launch inside a nested session whose file of extra permissions is malformed, such as one that
+	 * names a relative path, is refused with the reason before any request is written.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -679,8 +680,8 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that a runner launch inside a run without {@code --model} or {@code --effort} is refused with a message
-	 * that names the missing option and where to list the supported values, and requests no session.
+	 * Verifies that a runner launch inside a nested session without {@code --model} or {@code --effort} is refused with
+	 * a message that names the missing option and where to list the supported values, and requests no session.
 	 *
 	 * @param profile  the launch's profile options
 	 * @param expected the start of the refusal

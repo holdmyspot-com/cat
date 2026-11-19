@@ -61,8 +61,8 @@ public final class InterruptServedSessionTest
 	}
 
 	/**
-	 * Verifies that the interrupt that CAT sends to a requested session that is working on a turn reaches that
-	 * session as an interrupt and ends the turn, instead of the run's runner refusing it as an invalid record and
+	 * Verifies that the interrupt that CAT sends to a requested session that is working on a turn reaches that session
+	 * as an interrupt and ends the turn, instead of the nested session's runner refusing it as an invalid record and
 	 * stopping the session.
 	 *
 	 * @param harness the harness whose runner serves the session

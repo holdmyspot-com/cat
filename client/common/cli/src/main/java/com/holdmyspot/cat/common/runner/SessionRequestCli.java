@@ -45,14 +45,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * turn {@code n} of the conversation in {@code <folder>}, as {@link ConversationReply#print} describes, and exits
  * with that method's status, so that it also serves as the check of a wait for the turn to end.
  * <p>
- * Inside a run, the command writes its requests for the run's runner. Outside a run, a harness session's command
- * writes them for the session's {@link RequestServer}, and is refused when no request server serves the session.
+ * Inside a nested session, the command writes its requests for the nested session's runner. Outside a nested session, a
+ * harness session's command writes them for the session's {@link RequestServer}, and is refused when no request server
+ * serves the session.
  */
 public final class SessionRequestCli
 {
 	/**
-	 * Runs the request launcher using the directories supplied by the owning runner, or outside a run, those of the
-	 * harness session's request server.
+	 * Runs the request launcher using the directories supplied by the owning runner, or outside a nested session, those
+	 * of the harness session's request server.
 	 *
 	 * @param args submission options or {@code --await <id>}, with optional {@code --wait <seconds>}
 	 * @throws IOException if the request or response cannot be read or written
@@ -166,7 +167,7 @@ public final class SessionRequestCli
 	}
 
 	/**
-	 * Writes a request of a harness session's command outside a run for the session's request server, as
+	 * Writes a request of a harness session's command outside a nested session for the session's request server, as
 	 * {@link #execute(String[], Path, Path, RequestLimits, SessionRequestAccess.Shell, Clock, Pause, PrintWriter)}
 	 * does for a run's runner. A request that no request server serves is refused before it changes anything, naming
 	 * the command that starts the server.
@@ -483,7 +484,7 @@ public final class SessionRequestCli
 	}
 
 	/**
-	 * Returns the file in which the run's runner answers a request.
+	 * Returns the file in which the nested session's runner answers a request.
 	 *
 	 * @param requests the run's requests directory
 	 * @param id       the request identifier

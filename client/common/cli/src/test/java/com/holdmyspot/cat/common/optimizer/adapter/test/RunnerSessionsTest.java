@@ -346,7 +346,7 @@ public final class RunnerSessionsTest
 		return new TestSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
-			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 				script, input, output);
 		});
 	}
@@ -451,7 +451,8 @@ public final class RunnerSessionsTest
 	}
 
 	/**
-	 * Verifies that the port declares the run root and the held-out run root as the directories that hold its runs.
+	 * Verifies that the port declares the results folder and the held-out results folder as the directories that hold
+	 * its runs.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 */
@@ -583,7 +584,7 @@ public final class RunnerSessionsTest
 						files.add(ExtraPermissions.read(JsonMapper.builder().build(),
 							Path.of(ScriptedHarness.optionValue(options, ExtraPermissions.OPTION))));
 					}
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")),
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")),
 						TestSessions.HARNESS, List.of(Turn.replies("ok")), input, output);
 				});
 				ExtraPermissions extra = new ExtraPermissions(List.of(root.resolve("cache").toAbsolutePath()),
@@ -632,7 +633,7 @@ public final class RunnerSessionsTest
 				{
 					Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
 					received.add(Files.readString(workspace.resolve("logs/build.log")));
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 						List.of(Turn.replies("ok")), input, output);
 				});
 
@@ -677,7 +678,7 @@ public final class RunnerSessionsTest
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				arguments.add(options);
-				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+				ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 					List.of(Turn.replies("ok")), input, output);
 			});
 
@@ -1354,7 +1355,7 @@ public final class RunnerSessionsTest
 				bridgeThread.set(Thread.currentThread());
 				try
 				{
-					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")),
+					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")),
 						TestSessions.HARNESS, script, input, output, received);
 				}
 				finally
@@ -1525,7 +1526,7 @@ public final class RunnerSessionsTest
 				false, Map.of(), root, HarnessCapacity.unlimited(), clock, Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				Path runRoot = Path.of(ScriptedHarness.optionValue(options, "--run-root"));
+				Path runRoot = Path.of(ScriptedHarness.optionValue(options, "--results"));
 				Path project = Path.of(ScriptedHarness.optionValue(options, "--project"));
 				Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
 				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, clock,
@@ -1721,7 +1722,7 @@ public final class RunnerSessionsTest
 		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, false,
 			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
-			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--run-root")), TestSessions.HARNESS,
+			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 				script, input, output, requests));
 	}
 

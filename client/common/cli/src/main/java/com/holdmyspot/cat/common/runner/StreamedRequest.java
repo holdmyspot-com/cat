@@ -21,8 +21,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
- * The files through which a request made inside a run streams its records to the run's runner after the request's
- * archive, so that a conversation's later turns and interrupts reach the requested session.
+ * The files through which a request made inside a nested session streams its records to the nested session's runner
+ * after the request's archive, so that a conversation's later turns and interrupts reach the requested session.
  * <p>
  * The sender holds a lock on {@code <id>.lock} in the run's requests directory from before it publishes the archive
  * until it ends, so the runner learns that the sender ended, however it ended, when the lock is free. It publishes
@@ -264,8 +264,8 @@ final class StreamedRequest
 		}
 
 		/**
-		 * Releases the lock, which tells the run's runner that the sender ended, and removes the records that the
-		 * runner did not take.
+		 * Releases the lock, which tells the nested session's runner that the sender ended, and removes the records
+		 * that the runner did not take.
 		 *
 		 * @throws IOException if the lock cannot be released or a record cannot be removed
 		 */

@@ -34,11 +34,11 @@ public final class InterruptedRunnerProcess
 	}
 
 	/**
-	 * With {@code runner} and a run root, creates a run there, starts its harness, prints the run's directory and the
-	 * harness's process identifier, and records the run failed once the harness ends. With {@code harness}, runs until
-	 * it is stopped.
+	 * With {@code runner} and a results folder, creates a run there, starts its harness, prints the run's directory and
+	 * the harness's process identifier, and records the run failed once the harness ends. With {@code harness}, runs
+	 * until it is stopped.
 	 *
-	 * @param args {@code runner} and the absolute run root, or {@code harness}
+	 * @param args {@code runner} and the absolute results folder, or {@code harness}
 	 * @throws IOException          if the run cannot be created or its harness cannot start
 	 * @throws InterruptedException if the runner is interrupted while it waits for its harness
 	 */

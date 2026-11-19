@@ -28,8 +28,8 @@ import java.util.TreeSet;
 /**
  * The Codex plugin's {@code request-server} program, which a Codex session's agent starts as a command that keeps
  * running, outside the session's sandbox, through the only rule that CAT's install adds. It serves the sessions that
- * the Codex session's commands request outside a run, within the sandbox policy that the session's settings and its
- * thread's latest turn give, and starts each requested session through the runner that {@code codex-runner} or
+ * the Codex session's commands request outside a nested session, within the sandbox policy that the session's settings
+ * and its thread's latest turn give, and starts each requested session through the runner that {@code codex-runner} or
  * {@code claude-runner} would start.
  */
 public final class CodexRequestServerCli

@@ -142,19 +142,19 @@ analyzing, preventing, suppressing, or working around one, or disabling, excludi
 invoking an operation that can modify multiple artifacts or whose actual write set is unproven, lazy load
 `../include/common/rule-routing/failures.md`.
 
-Before creating, reviewing, or revising an implementation plan for AI agents, delegating work, starting or
-requesting a new agent session yourself, for example to test a plugin or a fresh installation in a separate session,
-including from inside a CAT run, or sending information to another agent, when you receive the path of an artifact that
-another agent wrote and that is too large to read in one tool output, and when designing, updating, or
-executing a workflow that delegates work, exchanges information between agents, or hands off, retries, or resumes
-progress; before installing, updating or uninstalling CAT or any plugin, including repair or reinstall; when
-executing a multi-step plan or goal; when dispatching independent work units to run concurrently; when
-applying a skill would cause you to ask for permission or confirmation, pause, leave requested work unfinished, or
-diverge from the user's intent; when creating, using, or handing off temporary files or directories; when creating
-or receiving a clone, worktree, or branch for your own work; while you have a temporary file or directory, clone,
-worktree, or branch for your own work, after merging a clone's or worktree's changes, when a step or work item
-finishes, when abandoning work, and before handing back your result or sending your final reply; or when a task
-needs a state change that something else produces, lazy load `../include/common/rule-routing/workflows.md`.
+Before creating, reviewing, or revising an implementation plan for AI agents, delegating work, starting or requesting a
+new agent session yourself, for example to test a plugin or a fresh installation in a separate session, including from
+inside a nested session, or sending information to another agent, when you receive the path of an artifact that another
+agent wrote and that is too large to read in one tool output, and when designing, updating, or executing a workflow that
+delegates work, exchanges information between agents, or hands off, retries, or resumes progress; before installing,
+updating or uninstalling CAT or any plugin, including repair or reinstall; when executing a multi-step plan or goal;
+when dispatching independent work units to run concurrently; when applying a skill would cause you to ask for permission
+or confirmation, pause, leave requested work unfinished, or diverge from the user's intent; when creating, using, or
+handing off temporary files or directories; when creating or receiving a clone, worktree, or branch for your own work;
+while you have a temporary file or directory, clone, worktree, or branch for your own work, after merging a clone's or
+worktree's changes, when a step or work item finishes, when abandoning work, and before handing back your result or
+sending your final reply; or when a task needs a state change that something else produces, lazy load
+`../include/common/rule-routing/workflows.md`.
 
 When locating or selecting a Git commit, file history, or change to amend, backport, or replay, or creating or revising
 a Git commit message, lazy load `../include/common/rule-routing/git.md`.

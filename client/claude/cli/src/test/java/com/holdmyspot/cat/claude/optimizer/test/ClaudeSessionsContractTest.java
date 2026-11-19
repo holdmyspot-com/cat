@@ -315,7 +315,7 @@ public final class ClaudeSessionsContractTest
 	}
 
 	/**
-	 * Verifies the shared contract check that the port identifies its versions and run roots.
+	 * Verifies the shared contract check that the port identifies its versions and results folders.
 	 *
 	 * @throws Exception if the contract check fails
 	 */

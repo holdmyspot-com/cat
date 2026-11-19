@@ -80,7 +80,7 @@ public final class ClaudeRunnerCli
 		HarnessMarkers.Marker.equalTo(HARNESS_ID, "CLAUDECODE", "1"),
 		HarnessMarkers.Marker.notBlank(CODEX_ID, "CODEX_THREAD_ID")));
 	/**
-	 * How often a launch inside a run checks the requested session's progress.
+	 * How often a launch inside a nested session checks the requested session's progress.
 	 */
 	private static final Duration REQUEST_POLL = Duration.ofMillis(100);
 
@@ -182,13 +182,14 @@ public final class ClaudeRunnerCli
 	 * Runs one launch along the route that {@link LaunchRoute#decide(String, String, Set, String[], Map)} gives it.
 	 * The launcher refuses what it must before it calls this method. The routes are:
 	 * <ul>
-	 *   <li>Inside a run whose runner lets its session request sessions, the launch becomes a session request: the
+	 * <li>Inside a nested session whose runner lets its session request sessions, the launch becomes a session request:
+	 * the
 	 *   run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
 	 *   receipt.</li>
-	 *   <li>Inside a run whose runner lets its session request none, the launch is refused.</li>
+	 *   <li>Inside a nested session whose runner lets its session request none, the launch is refused.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass is
 	 *   refused.</li>
-	 *   <li>When Claude Code runs the command outside a run, the launch becomes a request to the session's
+	 *   <li>When Claude Code runs the command outside a nested session, the launch becomes a request to the session's
 	 *   {@link RequestServer}, which starts the session outside the session's sandbox, and this command writes its
 	 *   transcript, receipt and kept run. Without a request server that serves the session, the launch is refused.
 	 *   </li>
@@ -318,8 +319,8 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Refuses a launch that names {@code --artifact}, other than inside a run whose runner lets its session request
-	 * sessions. There every launch becomes a session request, whose runner ignores the option.
+	 * Refuses a launch that names {@code --artifact}, other than inside a nested session whose runner lets its session
+	 * request sessions. There every launch becomes a session request, whose runner ignores the option.
 	 *
 	 * @param args        the launch's options
 	 * @param environment the launcher's environment
@@ -442,7 +443,7 @@ public final class ClaudeRunnerCli
 	 * Gives a run manager the identifier of the slot that the run is in, if it is in one, and has a run in a slot
 	 * record the launch options that its start fixed, so that a later runner can continue its harness session.
 	 *
-	 * @param manager the manager of the run root
+	 * @param manager the manager of the results folder
 	 * @param runId   the slot's run identifier, or {@code null} if the run is not in a slot
 	 * @param args    the launch's options
 	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
@@ -568,7 +569,7 @@ public final class ClaudeRunnerCli
 	 * model and effort that the definition names.
 	 *
 	 * @param args          the bridge command's options
-	 * @param temporaryRoot where the runs are kept when the command names no {@code --run-root}
+	 * @param temporaryRoot where the runs are kept when the command names no {@code --results}
 	 * @return the parsed options
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, if the command
@@ -585,7 +586,7 @@ public final class ClaudeRunnerCli
 		String[] runnerArgs = withoutClaudeOptions(args);
 		String agentName = agentName(args);
 		// A runner that continues a run's session runs it under the model and effort of the launch that resumes it
-		if (!agentName.isBlank() && !List.of(args).contains(RunnerArguments.RESUME_RUN_OPTION))
+		if (!agentName.isBlank() && !List.of(args).contains(RunnerArguments.RESUME_SLOT_OPTION))
 		{
 			HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
 			Path artifact = HarnessRunnerOptions.catArtifact(runnerArgs, ClaudeRunner.MANIFEST);

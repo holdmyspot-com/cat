@@ -57,14 +57,14 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * The user and run that a session starts from: a user's home holding every harness's login, configuration and an
-	 * installed plugin, and a run root holding the session's run and another run.
+	 * installed plugin, and a results folder holding the session's run and another run.
 	 *
 	 * @param userEnvironment the environment of the process that starts the runner, which names the user's home, a
 	 *                        separate Codex home, and every credential variable
 	 * @param userHome        the user's home directory
-	 * @param manager         the run manager of the run root
+	 * @param manager         the run manager of the results folder
 	 * @param run             the session's run, whose project is snapshotted
-	 * @param otherRun        another run under the same run root
+	 * @param otherRun        another run under the same results folder
 	 * @param artifact        the harness artifact that the session's runner uses
 	 * @param deniedReads     additional directories that the caller denies reading
 	 */
@@ -301,7 +301,7 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that the session's commands may not read another run under the run root.
+	 * Verifies that the session's commands may not read another run under the results folder.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -396,8 +396,8 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that a requested session can read its own project while the parent's run root denies parent and sibling
-	 * runs, including credentials created after the sibling run roots were allocated.
+	 * Verifies that a requested session can read its own project while the parent's results folder denies parent and
+	 * sibling runs, including credentials created after the sibling results folders were allocated.
 	 *
 	 * @throws IOException if fixture or configuration I/O fails
 	 */
@@ -553,8 +553,8 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Creates a user with every harness's login and configuration and an installed plugin, and a run root with the
-	 * session's run and another run.
+	 * Creates a user with every harness's login and configuration and an installed plugin, and a results folder with
+	 * the session's run and another run.
 	 *
 	 * @param cleanup removes the fixture's directories
 	 * @return the fixture

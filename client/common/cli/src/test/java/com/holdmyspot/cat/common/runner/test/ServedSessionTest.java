@@ -24,9 +24,9 @@ import tools.jackson.databind.json.JsonMapper;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests that a CAT command that starts sessions inside a run, such as the prompt optimizer, starts each through the
- * run's runner with {@link SessionRequestForwarder#serve}, and that it is refused before it changes anything when the
- * run allows no further session.
+ * Tests that a CAT command that starts sessions inside a nested session, such as the prompt optimizer, starts each
+ * through the run's runner with {@link SessionRequestForwarder#serve}, and that it is refused before it changes
+ * anything when the run allows no further session.
  */
 public final class ServedSessionTest
 {
@@ -46,10 +46,10 @@ public final class ServedSessionTest
 
 	/**
 	 * Verifies that a served session gets, as copies inside the request, the workspace files and read-only evidence
-	 * that the command names, together with its further denied reads, instruction files, session role,
-	 * tool-output token limit and the command's CAT candidate as a plugin; that the command receives the session's
-	 * records; and that the session's kept run, without its home, lands in the command's run root, whose run has its
-	 * artifacts directory.
+	 * that the command names, together with its further denied reads, instruction files, session role, tool-output
+	 * token limit and the command's CAT candidate as a plugin; that the command receives the session's records; and
+	 * that the session's kept run, without its home, lands in the command's results folder, whose run has its artifacts
+	 * directory.
 	 *
 	 * @throws IOException if fixture or session I/O fails
 	 */
@@ -114,7 +114,7 @@ public final class ServedSessionTest
 	/**
 	 * Verifies that a run that allows no session, or whose sessions are spent, refuses the next session with the
 	 * message that names the caller's options that would allow it, before the command publishes a request or writes
-	 * into its run root.
+	 * into its results folder.
 	 *
 	 * @param sessionRequests how many sessions the run allows
 	 * @param serveFirst      indicates whether the run serves one session before
@@ -155,7 +155,7 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Verifies that a session that the run's runner refuses because the run's limit ran out after the command
+	 * Verifies that a session that the nested session's runner refuses because the run's limit ran out after the command
 	 * checked it is refused with the same message, so that a campaign pauses instead of counting a failure.
 	 *
 	 * @throws IOException if fixture or session I/O fails
@@ -230,8 +230,8 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Verifies that a served session takes its records from the command and keeps its run in the command's run root,
-	 * so a launch that names other records is refused before it publishes a request.
+	 * Verifies that a served session takes its records from the command and keeps its run in the command's results
+	 * folder, so a launch that names other records is refused before it publishes a request.
 	 *
 	 * @param added   the options that the launch adds
 	 * @param removed the options that the launch leaves out
@@ -383,13 +383,13 @@ public final class ServedSessionTest
 		}
 
 		/**
-		 * Returns the options of a session that names only its project, run root, model and effort.
+		 * Returns the options of a session that names only its project, results folder, model and effort.
 		 *
 		 * @return the options
 		 */
 		List<String> arguments()
 		{
-			return List.of("--project", project.toString(), "--run-root", runRoot.toString(), "--model",
+			return List.of("--project", project.toString(), "--results", runRoot.toString(), "--model",
 				"model-a", "--effort", "effort-a");
 		}
 	}

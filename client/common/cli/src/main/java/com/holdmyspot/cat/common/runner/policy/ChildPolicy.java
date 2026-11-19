@@ -19,7 +19,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * policy allows. Its paths are resolved as {@link ParentPolicy} describes, and the commands may write, read and
  * reach what {@link ParentPolicy} describes for the same components.
  *
- * @param writeRoots        the folders that the commands may write; the first is the child's run folder
+ * @param writeRoots        the folders that the commands may write; the first is the child's session folder
  * @param writeDenials      the paths inside the write roots that the commands may not write
  * @param readDenials       the paths that the commands may not read
  * @param readReallowances  the paths inside read denials that the commands may read nonetheless
@@ -32,7 +32,7 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	/**
 	 * Creates a policy.
 	 *
-	 * @param writeRoots        the folders that the commands may write; the first is the child's run folder
+	 * @param writeRoots        the folders that the commands may write; the first is the child's session folder
 	 * @param writeDenials      the paths inside the write roots that the commands may not write
 	 * @param readDenials       the paths that the commands may not read
 	 * @param readReallowances  the paths inside read denials that the commands may read nonetheless
@@ -53,8 +53,8 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	}
 
 	/**
-	 * Returns the policy of a child: its needs, which its parent's policy must allow. The child's run folder is always
-	 * allowed. Read denials only narrow the child's reads, so the parent's are added to the child's.
+	 * Returns the policy of a child: its needs, which its parent's policy must allow. The child's session folder is
+	 * always allowed. Read denials only narrow the child's reads, so the parent's are added to the child's.
 	 *
 	 * @param parent the parent's policy
 	 * @param needs  the child's needs

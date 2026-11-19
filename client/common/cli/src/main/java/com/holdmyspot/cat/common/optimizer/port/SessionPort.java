@@ -191,9 +191,9 @@ public interface SessionPort
 	List<String> installedPluginNames() throws IOException;
 
 	/**
-	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign
-	 * of the project. The run root holds the sessions of the development part and the held-out run root holds the
-	 * sessions of the held-out part. Each run is recorded as {@code <directory>/<harness>/<run>/run.json}.
+	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign of
+	 * the project. The results folder holds the sessions of the development part and the held-out results folder holds
+	 * the sessions of the held-out part. Each run is recorded as {@code <directory>/<harness>/<run>/session.json}.
 	 *
 	 * @return the absolute directories, which may not exist yet
 	 */

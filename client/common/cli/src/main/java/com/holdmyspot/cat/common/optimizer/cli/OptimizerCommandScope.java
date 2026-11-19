@@ -18,7 +18,7 @@ public interface OptimizerCommandScope extends JvmScope
 	 *
 	 * @return the port
 	 * @throws IllegalStateException if this scope is closed
-	 * @throws IOException if the port's run roots cannot be resolved
+	 * @throws IOException if the port's results folders cannot be resolved
 	 */
 	SessionPort sessions() throws IOException;
 

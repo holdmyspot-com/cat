@@ -139,7 +139,7 @@ public final class SessionRequestBrokerTest
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
 					if (exit != 75)
 					{
-						HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(options, "--run-root")),
+						HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(options, "--results")),
 							Clock.systemUTC(), Yielding.fileReplacer());
 						HarnessRun run = manager.create("claude");
 						manager.recordHarnessSession(run, CHILD_SESSION);
@@ -907,9 +907,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a session inside a run holds a conversation with the session that it requests through the run's
-	 * runner: each turn is sent once the previous turn has ended, an interrupt stops the turn in progress, a line that
-	 * is no message is refused without reaching the requested session, and {@code end} completes the session.
+	 * Verifies that a session inside a nested session holds a conversation with the session that it requests through
+	 * the run's runner: each turn is sent once the previous turn has ended, an interrupt stops the turn in progress, a
+	 * line that is no message is refused without reaching the requested session, and {@code end} completes the session.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1019,8 +1019,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that the run's runner stops a requested session that converses with a launcher once the launcher
-	 * ends, however it ends, and answers the request as stopped, and that the launcher's last line in the
+	 * Verifies that the nested session's runner stops a requested session that converses with a launcher once the
+	 * launcher ends, however it ends, and answers the request as stopped, and that the launcher's last line in the
 	 * conversation says that the request failed for it.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
@@ -1080,7 +1080,7 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that the run's runner stops a requested session whose records a launcher sent all at once with
+	 * Verifies that the nested session's runner stops a requested session whose records a launcher sent all at once with
 	 * {@code --input} once the launcher ends before the session does, and answers the request as stopped.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
@@ -1180,9 +1180,9 @@ public final class SessionRequestBrokerTest
 						Thread.yield();
 					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
 				broker.scan();
-				Path slot = Path.of(option(starts.getFirst(), "--run-root"));
-				Path manifest = slot.resolve("claude").resolve(option(starts.getFirst(), "--run-id")).
-					resolve("run.json");
+				Path slot = Path.of(option(starts.getFirst(), "--results"));
+				Path manifest = slot.resolve("claude").resolve(option(starts.getFirst(), "--slot-id")).
+					resolve("session.json");
 				// The slot's run is removed only after the stopped runner has ended
 				for (int check = 0; check < 1_000_000 && child.get().isAlive(); ++check)
 					Thread.yield();
@@ -1205,8 +1205,8 @@ public final class SessionRequestBrokerTest
 				requireThat(fixture.json.readTree(fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE).toFile()).
 					path("requests_used").intValue(), "requestsUsed").isEqualTo(1);
 				List<String> resumed = starts.get(1);
-				requireThat(option(resumed, "--run-root"), "runRoot").isEqualTo(slot.toString());
-				requireThat(option(resumed, RunnerArguments.RESUME_RUN_OPTION), "resumeRun").isEqualTo(RESUMED_SESSION);
+				requireThat(option(resumed, "--results"), "runRoot").isEqualTo(slot.toString());
+				requireThat(option(resumed, RunnerArguments.RESUME_SLOT_OPTION), "resumeRun").isEqualTo(RESUMED_SESSION);
 				requireThat(resumed, "resumed").doesNotContain("--project");
 				// The slot is emptied once the resumed session's response is published
 				for (int check = 0; check < 1_000_000 && Files.exists(manifest); ++check)
@@ -1274,8 +1274,8 @@ public final class SessionRequestBrokerTest
 
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(1);
 				requireThat(errors.toString(), "errors").contains("unresumable");
-				Path manifest = Path.of(option(starts.getFirst(), "--run-root")).resolve("claude").
-					resolve(option(starts.getFirst(), "--run-id")).resolve("run.json");
+				Path manifest = Path.of(option(starts.getFirst(), "--results")).resolve("claude").
+					resolve(option(starts.getFirst(), "--slot-id")).resolve("session.json");
 				// The slot is given back once the resumed session's response is published
 				for (int check = 0; check < 1_000_000 && child.get().isAlive(); ++check)
 					Thread.yield();
@@ -1812,7 +1812,7 @@ public final class SessionRequestBrokerTest
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
-					Path runRoot = Path.of(option(options, "--run-root"));
+					Path runRoot = Path.of(option(options, "--results"));
 					requireThat(active.add(runRoot), "slotFree").isTrue();
 					peak.accumulateAndGet(running.incrementAndGet(), Math::max);
 					full.countDown();
@@ -2051,8 +2051,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Starts a double of a requested runner that builds its run in the run root and under the run identifier that the
-	 * broker names, as the real runner does, and completes.
+	 * Starts a double of a requested runner that builds its run in the results folder and under the run identifier that
+	 * the broker names, as the real runner does, and completes.
 	 *
 	 * @param fixture    the requesting run
 	 * @param fileLocks  the file locks of the requested run
@@ -2082,8 +2082,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Starts a double of a requested runner that builds its run in the run root and under the run identifier that the
-	 * broker names, records what {@code state} records in the run, and completes.
+	 * Starts a double of a requested runner that builds its run in the results folder and under the run identifier that
+	 * the broker names, records what {@code state} records in the run, and completes.
 	 *
 	 * @param fixture   the requesting run
 	 * @param fileLocks the file locks of the requested run
@@ -2096,14 +2096,14 @@ public final class SessionRequestBrokerTest
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotRun> runs, RunState state) throws IOException
 	{
-		Path runRoot = Path.of(option(options, "--run-root"));
+		Path runRoot = Path.of(option(options, "--results"));
 		List<String> entries;
 		try (Stream<Path> paths = Files.list(runRoot))
 		{
 			entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).toList();
 		}
 		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
-			Yielding.fileReplacer()).withFixedRunId(option(options, "--run-id"));
+			Yielding.fileReplacer()).withFixedRunId(option(options, "--slot-id"));
 		HarnessRun run = manager.create("claude");
 		state.record(manager, run);
 		runs.add(new SlotRun(runRoot, run, entries));
@@ -2184,9 +2184,9 @@ public final class SessionRequestBrokerTest
 	/**
 	 * What a session finds in its slot, and the run that it builds there.
 	 *
-	 * @param runRoot       the run root that the session received
+	 * @param runRoot       the results folder that the session received
 	 * @param run           the run that it built
-	 * @param entriesAtStart the names of the entries of the run root when the session started
+	 * @param entriesAtStart the names of the entries of the results folder when the session started
 	 */
 	private record SlotRun(Path runRoot, HarnessRun run, List<String> entriesAtStart)
 	{
@@ -2288,11 +2288,11 @@ public final class SessionRequestBrokerTest
 	private static FakeHarnessCli resumableRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
 		AtomicReference<FakeHarnessCli> child, boolean continues) throws IOException
 	{
-		Path runRoot = Path.of(option(options, "--run-root"));
-		String runId = option(options, "--run-id");
+		Path runRoot = Path.of(option(options, "--results"));
+		String runId = option(options, "--slot-id");
 		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer()).withFixedRunId(runId);
-		if (!options.contains(RunnerArguments.RESUME_RUN_OPTION))
+		if (!options.contains(RunnerArguments.RESUME_SLOT_OPTION))
 		{
 			HarnessRun run = manager.create("claude");
 			manager.recordHarnessSession(run, RESUMED_SESSION);
@@ -2346,7 +2346,7 @@ public final class SessionRequestBrokerTest
 	private static FakeHarnessCli conversingRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
 		AtomicReference<FakeHarnessCli> child) throws IOException
 	{
-		HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(options, "--run-root")), Clock.systemUTC(),
+		HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(options, "--results")), Clock.systemUTC(),
 			Yielding.fileReplacer()).create("claude");
 		Path output = Path.of(option(options, "--output"));
 		Files.writeString(output, "");
@@ -2593,7 +2593,7 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * The channel of a session inside a run to the run's runner.
+	 * The channel of a session inside a nested session to the nested session's runner.
 	 *
 	 * @param requests the run's requests directory
 	 */
@@ -3026,8 +3026,8 @@ public final class SessionRequestBrokerTest
 		}
 
 		/**
-		 * Returns a client that sends its worktree requests to the run's runner, scanning the run's requests while it
-		 * waits for each answer.
+		 * Returns a client that sends its worktree requests to the nested session's runner, scanning the run's requests
+		 * while it waits for each answer.
 		 *
 		 * @param broker the run's broker
 		 * @return the client

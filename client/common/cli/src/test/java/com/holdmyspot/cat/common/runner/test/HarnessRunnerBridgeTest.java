@@ -182,7 +182,7 @@ public final class HarnessRunnerBridgeTest
 				input, new StringWriter());
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isTrue();
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"completed\"");
 		}
 	}
@@ -478,7 +478,7 @@ public final class HarnessRunnerBridgeTest
 				requireThat(e.getMessage(), "diagnostic").contains(named).
 					contains("The session changed read-only copies of symbolic link targets outside the project");
 			}
-			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(fixture.run().directory().resolve("session.json")), "manifest").
 				contains("\"failed\"").contains(named);
 			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
 		}
@@ -533,7 +533,7 @@ public final class HarnessRunnerBridgeTest
 			{
 				requireThat(e.getMessage(), "diagnostic").contains(changed).contains("exit status 143");
 			}
-			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(fixture.run().directory().resolve("session.json")), "manifest").
 				contains("\"failed\"").contains(changed);
 			requireThat(Files.exists(fixture.receipt()), "receipt").isFalse();
 		}
@@ -570,7 +570,7 @@ public final class HarnessRunnerBridgeTest
 			}
 			requireThat(Files.readString(fixture.project().resolve("shared/guide.md")), "guide").
 				isEqualTo("edited through the link");
-			requireThat(Files.readString(fixture.run().directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(fixture.run().directory().resolve("session.json")), "manifest").
 				contains("\"completed\"");
 			requireThat(Files.exists(fixture.receipt()), "receipt").isTrue();
 		}
@@ -795,7 +795,7 @@ public final class HarnessRunnerBridgeTest
 			Files.writeString(folder.resolve("to-child.jsonl"), "{\"turn\": \"first\"}\n{\"interrupt\": true}\n" +
 				"{\"turn\": \"second\"}\n{\"end\": true}\n");
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
-				root.resolve("artifact").toString(), "--run-root", root.toString(), "--model", "model-a",
+				root.resolve("artifact").toString(), "--results", root.toString(), "--model", "model-a",
 				"--effort", "effort-a", "--conversation", folder.toString()}, "harness",
 				HarnessTemporaryRoot.of(root));
 			StringWriter output = new StringWriter();
@@ -1017,7 +1017,7 @@ public final class HarnessRunnerBridgeTest
 				HarnessRun run = manager.create("harness");
 				Files.createDirectories(run.directory().resolve("project"));
 				List<String> arguments = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
-					"--run-root", root.toString(), "--model", "model-a", "--effort", "effort-a"));
+					"--results", root.toString(), "--model", "model-a", "--effort", "effort-a"));
 				if (continues)
 					arguments.add("--continue-after-failed-turn");
 				HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",
@@ -1112,7 +1112,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRun run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			List<String> arguments = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
-				"--run-root", root.toString(), "--model", "model-a", "--effort", "effort-a"));
+				"--results", root.toString(), "--model", "model-a", "--effort", "effort-a"));
 			switch (records)
 			{
 				case CONVERSATION_FOLDER ->
@@ -1166,7 +1166,7 @@ public final class HarnessRunnerBridgeTest
 			Files.writeString(folder.resolve("to-child.jsonl"), "{\"turn\": \"first\"}\n{\"end\": true}\n" +
 				"{\"interrupt\": true}\n");
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
-				root.resolve("artifact").toString(), "--run-root", root.toString(), "--model", "model-a",
+				root.resolve("artifact").toString(), "--results", root.toString(), "--model", "model-a",
 				"--effort", "effort-a", "--conversation", folder.toString()}, "harness",
 				HarnessTemporaryRoot.of(root));
 
@@ -1324,7 +1324,7 @@ public final class HarnessRunnerBridgeTest
 				requireThat(failure.getMessage(), "failure").contains("without a complete message");
 			}
 
-			String manifest = Files.readString(run.directory().resolve("run.json"));
+			String manifest = Files.readString(run.directory().resolve("session.json"));
 			requireThat(manifest, "manifest").contains("\"state\": \"running\"").
 				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
 			requireThat(run.directory().resolve("home"), "home").isDirectory();
@@ -1371,7 +1371,7 @@ public final class HarnessRunnerBridgeTest
 			requireThat(started.path("type").asString(), "type").isEqualTo("started");
 			requireThat(started.path("resumed").asBoolean(), "resumed").isTrue();
 			requireThat(manager.turnNumber(run), "turnNumber").isEqualTo(2);
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"completed\"");
 		}
 	}
@@ -1411,7 +1411,7 @@ public final class HarnessRunnerBridgeTest
 					Yielding.fileReplacer(), input, new StringWriter()));
 			}
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"running\"").contains(RESUMED_SESSION);
 		}
 	}
@@ -1484,7 +1484,7 @@ public final class HarnessRunnerBridgeTest
 			}
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isTrue();
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").contains("\"failed\"");
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").contains("\"failed\"");
 		}
 	}
 
@@ -1518,7 +1518,7 @@ public final class HarnessRunnerBridgeTest
 				requireThat(e.getMessage(), "message").contains("exit status 143");
 			}
 
-			String manifest = Files.readString(run.directory().resolve("run.json"));
+			String manifest = Files.readString(run.directory().resolve("session.json"));
 			requireThat(manifest, "manifest").contains("\"state\": \"failed\"").
 				contains("\"exit_code\": 143").contains("exit status 143");
 		}
@@ -1613,7 +1613,7 @@ public final class HarnessRunnerBridgeTest
 				requireThat(e.getMessage(), "message").contains("before completing the requested turn");
 			}
 
-			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+			requireThat(Files.readString(run.directory().resolve("session.json")), "manifest").
 				contains("\"state\": \"failed\"");
 		}
 	}
@@ -2006,7 +2006,7 @@ public final class HarnessRunnerBridgeTest
 		HarnessRun run = manager.create("harness");
 		Files.createDirectories(run.directory().resolve("project"));
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
-			root.resolve("artifact").toString(), "--run-root", root.toString(), "--model", "model-a",
+			root.resolve("artifact").toString(), "--results", root.toString(), "--model", "model-a",
 			"--effort", "effort-a", "--conversation", folder.toString()}, "harness", HarnessTemporaryRoot.of(root));
 		HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 			options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());

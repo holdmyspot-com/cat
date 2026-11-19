@@ -40,8 +40,8 @@ public final class RunnerChildNeedsTest
 	}
 
 	/**
-	 * Verifies that a child needs its run folder, the request's denied reads, and the writes and hosts that the runner
-	 * of the child's harness reports, which the launcher asks it for in the request's directory.
+	 * Verifies that a child needs its session folder, the request's denied reads, and the writes and hosts that the
+	 * runner of the child's harness reports, which the launcher asks it for in the request's directory.
 	 *
 	 * @throws IOException   if the fixture cannot be created
 	 * @throws PolicyRefusal if the child is refused
@@ -77,7 +77,7 @@ public final class RunnerChildNeedsTest
 
 	/**
 	 * Verifies that a child whose isolated home would copy a login file that the requesting session's sandbox denies
-	 * it reading is refused with the file's name, since the session could read the copy in the child's run folder.
+	 * it reading is refused with the file's name, since the session could read the copy in the child's session folder.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */

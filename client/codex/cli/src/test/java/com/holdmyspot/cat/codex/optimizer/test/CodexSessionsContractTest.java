@@ -227,7 +227,7 @@ public final class CodexSessionsContractTest
 	}
 
 	/**
-	 * Verifies the shared contract check that the port identifies its versions and run roots.
+	 * Verifies the shared contract check that the port identifies its versions and results folders.
 	 *
 	 * @throws Exception if the contract check fails
 	 */
@@ -600,7 +600,7 @@ public final class CodexSessionsContractTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-contract-"));
 				List<String> events = recorded("child-work.jsonl");
 				CodexSessions sessions = port(jvm, root, (options, input, output) -> ScriptedHarness.serve(
-					Path.of(ScriptedHarness.optionValue(options, "--run-root")), "codex",
+					Path.of(ScriptedHarness.optionValue(options, "--results")), "codex",
 					List.of(Turn.replies("done", events.toArray(String[]::new))), input, output));
 
 				SessionResult result = await(sessions.start(request(root, SessionRole.TRIAL, "delegate")));

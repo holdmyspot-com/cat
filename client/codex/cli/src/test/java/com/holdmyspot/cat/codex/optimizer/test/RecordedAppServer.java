@@ -164,7 +164,7 @@ final class RecordedAppServer implements Bridge
 	@Override
 	public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--run-root"));
+		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
 		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot,
 			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRun completed = HarnessRunnerBridge.serve(() ->

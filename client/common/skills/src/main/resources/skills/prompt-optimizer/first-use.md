@@ -23,14 +23,15 @@ supported there.
 
 Trials also need CAT's request server, `bin/request-server` beside the launcher, which starts every trial's session
 outside this session's sandbox, inside that harness's own sandbox. Before step 1's `start`, start it once in the
-background, by its absolute path, as a command of its own with no arguments, through the shell tool's own background mode. It serves this session until the session ends. When a result shows a reason
-that says that no request server serves this session, start it that way and run the command again. When the request
-server exits with status `2` because this session runs inside a CAT run, skip the request server: the run's runner
-starts the sessions that this session requests. Continue with step 1. When it exits with status `2` for any other reason
-than another request server already serving this session, or a result shows a reason that contains "CAT cannot start
-the session:", show that reason to the user, which says what to do, such as starting a new session, and stop. Do not
-change sandbox settings yourself and do not start trials any other way. When the user continues in a new session,
-continue the campaign as the end of this skill describes for a session that is gone.
+background, by its absolute path, as a command of its own with no arguments, through the shell tool's own background
+mode. It serves this session until the session ends. When a result shows a reason that says that no request server
+serves this session, start it that way and run the command again. When the request server exits with status `2` because
+this session is a nested session that a CAT runner started, skip the request server: that runner starts the sessions
+that this session requests. Continue with step 1. When it exits with status `2` for any other reason than another
+request server already serving this session, or a result shows a reason that contains "CAT cannot start the session:",
+show that reason to the user, which says what to do, such as starting a new session, and stop. Do not change sandbox
+settings yourself and do not start trials any other way. When the user continues in a new session, continue the campaign
+as the end of this skill describes for a session that is gone.
 
 ## Workflow
 
