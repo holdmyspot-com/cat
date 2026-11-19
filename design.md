@@ -1159,12 +1159,11 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 	`on_tool_failure: judge`. Well-formed unrelated events remain ignorable; arbitrary tool-output text remains content.
 - **Interrupted trials (user rulings, 2026-11-19).** A trial whose run was interrupted, because its driver, the request
 	server or the host session ended before the run did ("Resuming a run" in [§8](#8-skill-and-command-interface)),
-	never counts as a result. When the campaign runs again, reconciliation first resumes the trial in its own slot: the
-	same root session continues, the first turn without an outcome is sent again with its full time limit, and the
-	remaining turns follow, so every turn still runs in that one root session and the resumption belongs to the same
-	attempt. The resumed session's context holds the interrupted turn's prompt and what the turn did before the
-	interruption, its project copy holds that turn's file changes, and Claude Code adds an empty reply to the unanswered
-	prompt (P18); the trial record notes the interruption. A trial that cannot be resumed, because no harness session ID
+	never counts as a result. When the campaign runs again, reconciliation resumes the trial in its own slot only when it
+	was interrupted between turns, with no turn in progress: the same root session continues with the next turn, so every
+	turn still runs in that one root session and the resumption belongs to the same attempt. A trial interrupted during a
+	turn is not resumed, so that no judged turn runs after a lost turn's prompt, partial work and file changes (user
+	ruling, 2026-11-19, Q7). Such a trial, and one that cannot be resumed because no harness session ID
 	was recorded for it, its run ended or is gone, or its harness session cannot continue, has its run discarded as
 	corrupt and runs again as the same logical trial with the same test case; the discarded run is an infrastructure
 	attempt.
