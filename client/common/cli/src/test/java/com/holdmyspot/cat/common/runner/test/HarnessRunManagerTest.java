@@ -13,6 +13,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import static java.time.ZoneOffset.UTC;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
@@ -22,6 +23,7 @@ import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
+import com.holdmyspot.cat.common.runner.RunLaunch;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
@@ -1923,6 +1925,67 @@ public final class HarnessRunManagerTest
 			manager.markIdle(run);
 			requireThat(Files.readString(manifest), "rewritten").contains("\"schema_version\": 5").
 				contains("\"harness_session_id\": null");
+		}
+	}
+
+	/**
+	 * Verifies that a run in a slot records, at its creation, the launch options that its start fixed, so that a later
+	 * runner can continue its session as it started, and that a run that names none records none.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void recordsLaunchFixedAtStart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			List<String> fixed = RunLaunch.fixedArguments(new String[]{"--project", "/source", "--model", "haiku",
+				"--deny-read", "/secret", "--install-cat", "--output", "/out.jsonl", "--session-role", "validator",
+				"--agent", "cat:reviewer", "--effort", "low"});
+			requireThat(fixed, "fixed").isEqualTo(List.of("--project", "/source", "--deny-read", "/secret",
+				"--install-cat", "--session-role", "validator", "--agent", "cat:reviewer"));
+			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1").withLaunchArguments(fixed);
+			HarnessRun run = manager.create("claude");
+
+			requireThat(manager.launchArguments(run), "launchArguments").isEqualTo(fixed);
+			JsonNode launch = JsonMapper.builder().build().readTree(run.directory().resolve("launch.json").toFile());
+			requireThat(launch.path("schema_version").asInt(), "schemaVersion").isEqualTo(1);
+
+			HarnessRunManager unrecorded = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun other = unrecorded.create("claude");
+			requireThat(Files.exists(other.directory().resolve("launch.json")), "recorded").isFalse();
+			IOException missing = expectThrows(IOException.class, () -> unrecorded.launchArguments(other));
+			requireThat(missing.getMessage(), "missing").contains("records no launch");
+		}
+	}
+
+	/**
+	 * Verifies that a launch record with a field that it does not define, or of another schema, is refused rather
+	 * than read in part.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void refusesMalformedLaunchRecord() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withLaunchArguments(List.of("--install-cat"));
+			HarnessRun run = manager.create("claude");
+			Path launch = run.directory().resolve("launch.json");
+			for (String text : List.of("{\"schema_version\":1,\"arguments\":[\"--install-cat\"],\"extra\":1}",
+				"{\"schema_version\":2,\"arguments\":[]}", "{\"schema_version\":1,\"arguments\":[1]}",
+				"{\"schema_version\":1}", "[]"))
+			{
+				Files.writeString(launch, text, UTF_8);
+				IOException failure = expectThrows(IOException.class, () -> manager.launchArguments(run));
+				requireThat(failure.getMessage(), "failure").contains("launch.json");
+			}
 		}
 	}
 

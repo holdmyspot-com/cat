@@ -146,6 +146,10 @@ public final class HarnessRunManager
 	 * The identifier of every run that {@link #create(String)} makes, or {@code null} to generate one for each run.
 	 */
 	private final String fixedRunId;
+	/**
+	 * The launch options that each created run records as fixed at its start, or {@code null} if the runs record none.
+	 */
+	private final List<String> launchArguments;
 
 	/**
 	 * Creates a manager rooted at an absolute directory.
@@ -176,7 +180,7 @@ public final class HarnessRunManager
 	HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness)
 	{
-		this(fileLocks, root, clock, replacer, processLiveness, null);
+		this(fileLocks, root, clock, replacer, processLiveness, null, null);
 	}
 
 	/**
@@ -188,11 +192,14 @@ public final class HarnessRunManager
 	 * @param replacer replaces the runs' manifests and output files
 	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
 	 * @param fixedRunId the identifier of every run that the manager creates, or {@code null} to generate one for each
-	 * @throws NullPointerException if any argument other than {@code fixedRunId} is null
+	 * @param launchArguments the launch options that each created run records as fixed at its start, or {@code null}
+	 *   if the runs record none
+	 * @throws NullPointerException if any of the arguments other than {@code fixedRunId} and {@code launchArguments} are
+	 *   null
 	 * @throws IllegalArgumentException if {@code root} is relative, or {@code fixedRunId} is not a run identifier
 	 */
 	private HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
-		HarnessProcessLiveness processLiveness, String fixedRunId)
+		HarnessProcessLiveness processLiveness, String fixedRunId, List<String> launchArguments)
 	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(root, "root").isNotNull();
@@ -209,6 +216,10 @@ public final class HarnessRunManager
 		this.replacer = replacer;
 		this.processLiveness = processLiveness;
 		this.fixedRunId = fixedRunId;
+		if (launchArguments == null)
+			this.launchArguments = null;
+		else
+			this.launchArguments = List.copyOf(launchArguments);
 	}
 
 	/**
@@ -235,7 +246,36 @@ public final class HarnessRunManager
 	public HarnessRunManager withFixedRunId(String runId)
 	{
 		requireThat(runId, "runId").isNotNull();
-		return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness, runId);
+		return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness, runId, launchArguments);
+	}
+
+	/**
+	 * Returns a manager over the same root whose {@link #create(String) created} runs each record, in
+	 * {@value RunLaunch#FILE_NAME} beside their manifest, the launch options that their start fixed, so that a later
+	 * runner can continue a run's harness session as the run started it.
+	 *
+	 * @param arguments the fixed options and their values, as {@link RunLaunch#fixedArguments(String[])} returns them
+	 * @return the manager
+	 * @throws NullPointerException if {@code arguments} is null
+	 */
+	public HarnessRunManager withLaunchArguments(List<String> arguments)
+	{
+		requireThat(arguments, "arguments").isNotNull();
+		return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness, fixedRunId, arguments);
+	}
+
+	/**
+	 * Returns the launch options that a run's start fixed.
+	 *
+	 * @param run the run
+	 * @return the fixed options and their values, in the order its launch named them
+	 * @throws NullPointerException if {@code run} is null
+	 * @throws IOException          if the run records no launch, or its record is malformed
+	 */
+	public List<String> launchArguments(HarnessRun run) throws IOException
+	{
+		requireThat(run, "run").isNotNull();
+		return RunLaunch.read(JsonMapper.builder().build(), run.directory());
 	}
 
 	/**
@@ -414,6 +454,8 @@ public final class HarnessRunManager
 			owner.pid(), ownerStart, null, null,
 			clock.instant(), null,
 			"", "", "", "", null, 0, null, null, ""), directory);
+		if (launchArguments != null)
+			RunLaunch.write(JsonMapper.builder().build(), directory, launchArguments, replacer);
 		return run;
 	}
 

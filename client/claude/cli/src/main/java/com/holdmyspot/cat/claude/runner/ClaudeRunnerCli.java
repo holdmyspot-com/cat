@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.RunLaunch;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
@@ -476,7 +477,7 @@ public final class ClaudeRunnerCli
 			HarnessRunManager opened = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
-			HarnessRunManager manager = inSlot(opened, options.runId());
+			HarnessRunManager manager = inSlot(opened, options.runId(), args);
 			HarnessCapacity capacity = null;
 			if (!options.capacityHeld())
 				capacity = capacityForMaximum.apply(options.maximumConcurrency());
@@ -486,17 +487,19 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Gives a run manager the identifier of the slot that the run is in, if it is in one.
+	 * Gives a run manager the identifier of the slot that the run is in, if it is in one, and has a run in a slot
+	 * record the launch options that its start fixed, so that a later runner can continue its harness session.
 	 *
 	 * @param manager the manager of the run root
 	 * @param runId   the slot's run identifier, or {@code null} if the run is not in a slot
+	 * @param args    the launch's options
 	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
 	 */
-	private static HarnessRunManager inSlot(HarnessRunManager manager, String runId)
+	private static HarnessRunManager inSlot(HarnessRunManager manager, String runId, String[] args)
 	{
 		if (runId == null)
 			return manager;
-		return manager.withFixedRunId(runId);
+		return manager.withFixedRunId(runId).withLaunchArguments(RunLaunch.fixedArguments(args));
 	}
 
 	/**
