@@ -31,9 +31,10 @@ Before changing testable production behavior, lazy load `../tdd.md`.
 When designing, changing, running to verify a change, or reviewing tests, lazy load `../testing.md`.
 
 Before starting, dispatching or requesting a build, test suite, workflow run or probe that takes many minutes or draws
-on capacity that others share, such as the runners of a hosted workflow, when a change lands while such a run that you
-started is in progress, and when a job of such a run that you started has failed while other jobs of it are queued or
-running, lazy load `../expensive-verification-runs.md`.
+on capacity that others share, such as the runners of a hosted workflow, before publishing a new build while such a run
+uses the current one, when a change lands while such a run that you started is in progress, and when a job of such a
+run that you started has failed while other jobs of it are queued or running, lazy load
+`../expensive-verification-runs.md`.
 
 When a test's outcome varies between runs of unchanged code and inputs, a test that should reproduce a problem
 triggers it on only some runs, another check, such as a build step or CI job, fails on only some runs, or before adding

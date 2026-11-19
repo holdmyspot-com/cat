@@ -15,6 +15,10 @@
 	would cost money wait for the user's permission, and no run is started only to fill the limit.
 - A run that a newer run supersedes stops consuming time and resources once nothing needs its result, when the agent
 	started it, while a run that someone else started is left to its owner.
+<!-- A long end-to-end evaluation that had reached certification was discarded because a new release superseded the
+     build it ran on, although none of that release's fixes affected it. -->
+- A long evaluation that runs on one build in rounds is not voided mid-round by a new release of fixes that it does not
+	need: those fixes ship together between rounds, and only a fix that the running round needs ships during it.
 - A run in progress that a change makes unusable, such as a new build, release or input that it does not use, does not
 	keep running only because it has started: when stopping it is cheap, it is stopped, what it showed is recorded and
 	it starts again on the new version, unless a reason that the user is told, such as diagnostic value, keeps it.
@@ -27,8 +31,9 @@
 This rule applies before you start, dispatch or request a run of a build, test suite, workflow or probe that takes
 many minutes or draws on capacity that others share, such as the runners of a hosted workflow, when a job of such a
 run that you started has failed while other jobs of it are queued or running, when you have other work that needs a
-runner while such a run is in progress, and when a change lands while such a run that you started is in progress. It
-does not apply to a run that finishes in seconds on your own machine.
+runner while such a run is in progress, before you publish a new build while such a run uses the current one, and when
+a change lands while such a run that you started is in progress. It does not apply to a run that finishes in seconds on
+your own machine.
 
 Name the revision that the run verifies. When a change that you have decided to make, or that is in progress, will
 replace that revision, such as a rebase or merge onto a new base, a dependency or upstream update, or a fix you are
@@ -63,6 +68,11 @@ others ask it instead of dispatching their own.
 When a newer run supersedes one that you started, such as a rerun after a fix, cancel the earlier run once nothing needs
 its result, neither the current diagnosis nor other work. Cancel only a superseded run that you started. A run that
 someone else started is theirs to cancel, even when it looks superseded: tell its owner.
+
+While a long evaluation runs on one build in rounds, such as an end-to-end evaluation of an installed release, collect
+the fixes that the evaluation does not need and publish them together after the current round ends and before the next
+starts. Publish a new build during a round only for a fix without which that round's result cannot count, such as a
+defect that the round fails on: a new build replaces the one whose result the round would establish.
 
 When a change lands while a run that you started is in progress and the run does not use it, such as a new build,
 release or input, decide at once whether the run's result still counts. Being already in progress is not a reason to
