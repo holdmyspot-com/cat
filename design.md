@@ -3674,7 +3674,8 @@ that the run fixed at its start, `--project`, `--plugin`, `--install-cat`, `--wo
 status 2; the model and effort may differ, and the receipt records both. The server also refuses with status 2 a session
 ID that none of its retained slots records, naming the session to resume when a retained slot of another session of the
 project records it, a run of the other harness, naming its launcher, and a run that another launch is resuming or whose
-recorded process stays alive. A harness session that cannot continue, because the harness rejects the resume or reports
+recorded process stays alive. A resume or discard that arrives while the server is still stopping the interrupted
+launch waits for that launch to end instead, and finds no run if that launch ended its run normally. A harness session that cannot continue, because the harness rejects the resume or reports
 another ID, fails the launch with status 1, the harness's reason and the response status `unresumable`, and its slot
 stays retained.
 
