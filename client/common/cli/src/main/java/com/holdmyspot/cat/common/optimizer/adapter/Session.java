@@ -634,7 +634,7 @@ final class Session implements SessionHandle
 				arguments.addAll(List.of("--plugin", plugin.toString()));
 		}
 		arguments.addAll(List.of("--artifact", artifact.toString(), "--project", request.source().toString(),
-			"--run-root", runRoot().toString(), "--keep-run"));
+			"--run-root", runRoot().toString()));
 		// Only a trial's transcripts are read, to learn what its agents received
 		if (request.role() == SessionRole.TRIAL)
 			arguments.add("--session-transcripts");

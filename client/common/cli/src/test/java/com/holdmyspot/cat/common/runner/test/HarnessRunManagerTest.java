@@ -82,12 +82,13 @@ public final class HarnessRunManagerTest
 	{
 	}
 	/**
-	 * Verifies successful runs are deleted only after their output is persisted.
+	 * Verifies that a successful run is kept once its output is persisted, since every nested session's results are
+	 * copied to its results folder.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test
-	public void deletesSuccessfulRunAfterOutput() throws IOException
+	public void keepsSuccessfulRunAfterOutput() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -103,7 +104,7 @@ public final class HarnessRunManagerTest
 			manager.complete(run, output, "{\"text\":\"done\"}");
 
 			requireThat(Files.readString(output), "output").isEqualTo("{\"text\":\"done\"}");
-			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
+			requireThat(Files.exists(run.directory()), "runDirectory").isTrue();
 		}
 	}
 
@@ -404,7 +405,7 @@ public final class HarnessRunManagerTest
 			Path configuration = Files.writeString(run.directory().resolve("home/config.toml"), "model = \"m\"");
 			Path output = root.resolve("output.txt");
 
-			manager.complete(run, output, "answer", true);
+			manager.complete(run, output, "answer");
 
 			requireThat(Files.exists(login), "login").isFalse();
 			requireThat(Files.readString(configuration), "configuration").isEqualTo("model = \"m\"");

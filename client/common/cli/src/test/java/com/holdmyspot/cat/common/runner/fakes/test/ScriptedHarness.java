@@ -130,7 +130,7 @@ public final class ScriptedHarness
 			manager.initialize(run, runRoot, runRoot, "scripted", List.of("scripted"));
 			return new HarnessRunSession(run, new ScriptedProcess(script, requests, interruptedTurn),
 				new TestHarnessRunnerScope());
-		}, manager, true, input, output);
+		}, manager, input, output);
 	}
 
 	/**

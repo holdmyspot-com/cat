@@ -166,11 +166,15 @@ For an authorized task, give the launcher a project directory and an owned run r
 takes this argument list, wrapped here to fit:
 
 ```text
---project <project> --run-root <run-root> --input <records> --install-cat --keep-run
+--project <project> --run-root <run-root> --input <records> --install-cat
 --model <model> --effort <effort> --output <transcript> --receipt <receipt>
 ```
 
-Pass `--session-transcripts` with `--keep-run` only when your task needs the session's own transcript. The runner then
+The launcher always copies the session's results, its project, artifacts and receipt, into the run root, which is
+`runner-runs` in this session's CAT session directory when you pass no `--run-root`. Delete that copy once nothing needs
+it.
+
+Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
 copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in the run
 directory, writes a `session_transcript` record with its path, and lists the copies in the receipt.
 

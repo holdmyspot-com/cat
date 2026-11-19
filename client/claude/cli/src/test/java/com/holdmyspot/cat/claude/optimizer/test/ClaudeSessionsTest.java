@@ -961,7 +961,6 @@ public final class ClaudeSessionsTest
 				requireThat(firstEvidence, "firstEvidence").isGreaterThanOrEqualTo(0);
 				requireThat(options.subList(firstEvidence, firstEvidence + 4), "evidenceOptions").isEqualTo(List.of(
 					"--read-only-evidence", first.toString(), "--read-only-evidence", second.toString()));
-				requireThat(options.contains("--keep-run"), "keepRun").isTrue();
 			}
 		}
 	}

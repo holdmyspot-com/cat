@@ -108,7 +108,7 @@ public final class RequestArchive
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
-		"session_role", "tool_output_token_limit", "keep_run", "turn_copy", "held_out", RESUME);
+		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME);
 	/**
 	 * The manifest fields that a run fixed at its start, which a request that resumes the run's session may not name.
 	 */
@@ -1134,8 +1134,7 @@ public final class RequestArchive
 		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
 			flag(value, "install_cat"), extraPermissions(value), streamed, conversation, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), optionalText(value, "session_role"),
-			toolOutputTokenLimit,
-			flag(value, "keep_run"), flag(value, "turn_copy"), agent,
+			toolOutputTokenLimit, flag(value, "turn_copy"), agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
 			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume);
 	}
@@ -1464,7 +1463,6 @@ public final class RequestArchive
 	 * @param sessionRole        the role of the session, which its harness maps to its launch settings, or empty for
 	 *                           the harness's defaults
 	 * @param toolOutputTokenLimit the most tokens of one tool's output, or empty for its harness's default
-	 * @param keepRun            indicates whether the requester receives a copy of the session's kept run
 	 * @param turnCopy           indicates whether the requester reads a copy of the session's project and initial
 	 *                           project at the end of each turn that completes
 	 * @param agent              the agent whose definition gives the session's model and effort, or empty if the
@@ -1484,8 +1482,8 @@ public final class RequestArchive
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
 		boolean streamed, boolean conversation, Optional<Path> workspace, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, Optional<String> instructionFiles, Optional<String> sessionRole,
-		Optional<Integer> toolOutputTokenLimit, boolean keepRun,
-		boolean turnCopy, Optional<String> agent, int sessionRequests, int requestDepth,
+		Optional<Integer> toolOutputTokenLimit, boolean turnCopy, Optional<String> agent, int sessionRequests,
+		int requestDepth,
 		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume)
 	{
 	}

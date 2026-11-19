@@ -1614,10 +1614,10 @@ public final class SessionRequestBrokerTest
 				(_, options, _) -> inSlotWithReceipt(fixture, fileLocks, options, runs,
 					markers.next())))
 			{
-				fixture.writeRequest("first", fixture.document().put("keep_run", true));
+				fixture.writeRequest("first", fixture.document());
 				broker.scan();
 				firstResponse = fixture.await("first");
-				fixture.writeRequest("second", fixture.document().put("keep_run", true));
+				fixture.writeRequest("second", fixture.document());
 				broker.scan();
 				secondResponse = fixture.await("second");
 			}
@@ -1770,7 +1770,7 @@ public final class SessionRequestBrokerTest
 			{
 				for (String id : List.of("first", "second"))
 				{
-					fixture.writeRequest(id, fixture.document().put("keep_run", true));
+					fixture.writeRequest(id, fixture.document());
 					broker.scan();
 					fixture.await(id);
 				}
@@ -2651,7 +2651,7 @@ public final class SessionRequestBrokerTest
 				requests = Files.createDirectory(SessionRequestAccess.requestsDirectory(run));
 				responses = Files.createDirectory(SessionRequestAccess.responsesDirectory(run));
 				List<String> arguments = new ArrayList<>(List.of("--artifact", root.toString(), "--project",
-					project.toString(), "--model", "model-a", "--effort", "effort-a", "--keep-run", "--deny-read",
+					project.toString(), "--model", "model-a", "--effort", "effort-a", "--deny-read",
 					denied.toString()));
 				arguments.addAll(List.of(requestOptions));
 				options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",

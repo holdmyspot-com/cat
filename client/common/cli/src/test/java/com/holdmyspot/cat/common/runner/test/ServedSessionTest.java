@@ -228,12 +228,12 @@ public final class ServedSessionTest
 	public Object[][] invalidLaunches()
 	{
 		return new Object[][]{{List.of("--input", "records.jsonl"), List.of()},
-			{List.of("--conversation", "folder"), List.of()}, {List.of(), List.of("--keep-run")}};
+			{List.of("--conversation", "folder"), List.of()}};
 	}
 
 	/**
 	 * Verifies that a served session takes its records from the command and keeps its run in the command's run root,
-	 * so a launch that names other records or keeps no run is refused before it publishes a request.
+	 * so a launch that names other records is refused before it publishes a request.
 	 *
 	 * @param added   the options that the launch adds
 	 * @param removed the options that the launch leaves out
@@ -391,7 +391,7 @@ public final class ServedSessionTest
 		 */
 		List<String> arguments()
 		{
-			return List.of("--project", project.toString(), "--run-root", runRoot.toString(), "--keep-run", "--model",
+			return List.of("--project", project.toString(), "--run-root", runRoot.toString(), "--model",
 				"model-a", "--effort", "effort-a");
 		}
 	}

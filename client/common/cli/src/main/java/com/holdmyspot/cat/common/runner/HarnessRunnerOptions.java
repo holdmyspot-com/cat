@@ -27,10 +27,9 @@ import tools.jackson.databind.json.JsonMapper;
  * @param model the selected model
  * @param effort the selected reasoning effort, or {@value #NO_REASONING} for none
  * @param output the optional durable bridge-transcript destination
- * @param keepRun indicates whether successful runs are retained
  * @param receipt the optional retained-evidence receipt destination
  * @param sessionTranscripts indicates whether the harness writes its native session transcripts, which the run copies
- *   into its kept artifacts. A run leaves no harness transcript on disk otherwise.
+ *   into its artifacts. A run leaves no harness transcript on disk otherwise.
  * @param installCat indicates whether CAT is installed in the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
@@ -66,7 +65,7 @@ import tools.jackson.databind.json.JsonMapper;
  *   for a runner that starts a session
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
-	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
+	Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
 	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
@@ -143,12 +142,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		while (index < args.length)
 		{
 			String option = args[index];
-			if (option.equals("--keep-run"))
-			{
-				options.keepRun = true;
-				index += 1;
-				continue;
-			}
 			if (option.equals("--session-transcripts"))
 			{
 				options.sessionTranscripts = true;
@@ -278,10 +271,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		}
 		if (options.artifact == null)
 			throw new InvalidArgumentsException("Missing --artifact");
-		if (options.receipt != null && (!options.keepRun || options.output == null))
-			throw new InvalidArgumentsException("--receipt requires --keep-run and --output");
-		if (options.sessionTranscripts && !options.keepRun)
-			throw new InvalidArgumentsException("--session-transcripts requires --keep-run");
+		if (options.receipt != null && options.output == null)
+			throw new InvalidArgumentsException("--receipt requires --output");
 		if (options.requestDepth > 0 && options.sessionRequests == 0)
 			throw new InvalidArgumentsException("--request-depth requires --session-requests");
 		if (options.input != null && options.conversation != null)
@@ -294,7 +285,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireProfile(harness, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
-			options.keepRun, options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
+			options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
@@ -626,7 +617,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	{
 		requireThat(launcherName, "launcherName").isNotBlank();
 		return "Usage: " + launcherName + " [--project <path>] [--run-root <path>] " +
-			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--keep-run] [--receipt <path>] " +
+			"(--model <name> --effort <level> | --agent <name>) [--output <path>] [--receipt <path>] " +
 			"[--session-transcripts] [--install-cat] [--held-out] [--max-concurrency <1..16>] " +
 			"[--deny-read <path>]... [--read-only-evidence <path>]... [--workspace <path>] [--plugin <path>]... " +
 			"[--session-requests <count>] [--request-depth <levels>] [--input <file> | --conversation <folder>] " +
@@ -642,7 +633,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param model the selected model
 	 * @param effort the selected reasoning effort
 	 * @param output the optional durable bridge-transcript destination
-	 * @param keepRun whether successful runs are retained
 	 * @param receipt the optional retained-evidence receipt destination
 	 * @param sessionTranscripts whether the harness writes its native session transcripts for the run to copy
 	 * @param installCat whether CAT is installed in the isolated harness home
@@ -806,7 +796,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Path output;
 		private Path receipt;
 		private int maximumConcurrency = HarnessCapacity.MAXIMUM_CONCURRENCY;
-		private boolean keepRun;
 		private boolean sessionTranscripts;
 		private boolean installCat;
 		private final List<Path> deniedReads = new ArrayList<>();

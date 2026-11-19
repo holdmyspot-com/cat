@@ -712,28 +712,14 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Replaces the output file with persisted content before deleting a successful run.
+	 * Replaces the output file with persisted content and marks the owned run completed, which keeps it.
 	 *
 	 * @param run the owned run
 	 * @param output the durable output path
 	 * @param content the output content
-	 * @throws IOException if output cannot be persisted or cleanup fails
+	 * @throws IOException if output cannot be persisted
 	 */
 	public void complete(HarnessRun run, Path output, String content) throws IOException
-	{
-		complete(run, output, content, false);
-	}
-
-	/**
-	 * Replaces the output file with persisted content and optionally retains a completed owned run.
-	 *
-	 * @param run the owned run
-	 * @param output the durable output path
-	 * @param content the output content
-	 * @param keepRun whether to retain the completed run
-	 * @throws IOException if output cannot be persisted or cleanup fails
-	 */
-	public void complete(HarnessRun run, Path output, String content, boolean keepRun) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -744,8 +730,6 @@ public final class HarnessRunManager
 		Files.createDirectories(parent);
 		writeAtomically(output, content);
 		markCompleted(run);
-		if (!keepRun)
-			deleteRun(run);
 	}
 
 	/**

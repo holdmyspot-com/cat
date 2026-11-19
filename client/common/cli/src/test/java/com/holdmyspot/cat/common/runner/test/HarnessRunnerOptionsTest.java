@@ -74,7 +74,7 @@ public final class HarnessRunnerOptionsTest
 			return 0;
 		}, new PrintWriter(errors, true));
 		requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-		requireThat(errors.toString(), "errors").isEqualTo("--receipt requires --keep-run and --output" +
+		requireThat(errors.toString(), "errors").isEqualTo("--receipt requires --output" +
 			System.lineSeparator());
 	}
 
@@ -179,7 +179,7 @@ public final class HarnessRunnerOptionsTest
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--project", absolute("project"), "--run-root", absolute("caller-temp/runs"), "--model",
 			"test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
-			"--keep-run", "--install-cat"},
+			"--install-cat"},
 			"harness", SESSION);
 
 		requireThat(result.artifact(), "artifact").isEqualTo(path("artifact"));
@@ -189,7 +189,6 @@ public final class HarnessRunnerOptionsTest
 		requireThat(result.effort(), "effort").isEqualTo("high");
 		requireThat(result.output(), "output").isEqualTo(path("output"));
 		requireThat(result.receipt(), "receipt").isEqualTo(path("receipt"));
-		requireThat(result.keepRun(), "keepRun").isTrue();
 		requireThat(result.installCat(), "installCat").isTrue();
 	}
 
@@ -413,7 +412,7 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies a receipt has the bridge transcript and retained run that make it independently usable.
+	 * Verifies a receipt has the bridge transcript that makes it independently usable.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void rejectsIncompleteReceiptEvidence()
@@ -430,31 +429,29 @@ public final class HarnessRunnerOptionsTest
 	public void parsesSessionTranscripts()
 	{
 		// Requirement: R-I7
-		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(launch("--keep-run", "--session-transcripts"),
-			"harness", SESSION);
-		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch("--keep-run"), "harness", SESSION);
+		HarnessRunnerOptions requested = HarnessRunnerOptions.parse(launch("--session-transcripts"), "harness",
+			SESSION);
+		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(), "harness", SESSION);
 
 		requireThat(requested.sessionTranscripts(), "requested").isTrue();
 		requireThat(without.sessionTranscripts(), "without").isFalse();
 	}
 
 	/**
-	 * Verifies that the transcripts of a run that is not kept are refused, because the run's copies would be deleted
-	 * with the run.
+	 * Verifies that {@code --keep-run} is no longer an option: every nested session's results are copied to its
+	 * results folder, so a launch that names it is refused as one that names any unknown option.
 	 */
 	@Test
-	public void rejectsSessionTranscriptsWithoutKeepRun()
+	public void rejectsKeepRun()
 	{
-		// Requirement: R-I7
 		try
 		{
-			HarnessRunnerOptions.parse(launch("--session-transcripts"),
-				"harness", SESSION);
-			throw new AssertionError("A run that is not kept accepted --session-transcripts");
+			HarnessRunnerOptions.parse(launch("--keep-run"), "harness", SESSION);
+			throw new AssertionError("A launch accepted --keep-run");
 		}
 		catch (IllegalArgumentException e)
 		{
-			requireThat(e.getMessage(), "message").contains("--session-transcripts").contains("--keep-run");
+			requireThat(e.getMessage(), "message").isEqualTo("Unsupported option: --keep-run");
 		}
 	}
 

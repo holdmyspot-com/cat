@@ -112,7 +112,7 @@ public final class RequestingRun implements AutoCloseable
 		SessionRequestAccess.allowing(run, root, sessionRequests, Platform.current(), SessionRequestAccess.Shell.POSIX);
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact", root.toString(),
 			"--project", run.directory().resolve("project").toString(), "--model", "model-a", "--effort", "effort-a",
-			"--keep-run", "--session-requests", String.valueOf(sessionRequests)}, "harness",
+			"--session-requests", String.valueOf(sessionRequests)}, "harness",
 			HarnessTemporaryRoot.of(root));
 		this.broker = new SessionRequestBroker(run, manager, options,
 			(harness, arguments, _) -> child(harness, arguments));

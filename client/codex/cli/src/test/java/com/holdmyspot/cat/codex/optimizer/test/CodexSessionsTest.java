@@ -371,7 +371,7 @@ public final class CodexSessionsTest
 				writeForwardedKeptRun(jvm, json, source, artifact, responseDirectory[0]);
 			};
 			List<String> forwardArguments = List.of("--run-root", runRoot.toString(), "--project", source.toString(),
-				"--artifact", artifact.toString(), "--model", "model-a", "--effort", "low", "--keep-run");
+				"--artifact", artifact.toString(), "--model", "model-a", "--effort", "low");
 			SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "codex", artifact,
 				forwardArguments, records, output, requests, pause);
 		}
@@ -1131,7 +1131,6 @@ public final class CodexSessionsTest
 				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
 				List<String> options = arguments.get(0);
 				requireThat(ScriptedHarness.optionValue(options, "--project"), "project").isEqualTo(source.toString());
-				requireThat(options.contains("--keep-run"), "keepRun").isTrue();
 			}
 		}
 	}

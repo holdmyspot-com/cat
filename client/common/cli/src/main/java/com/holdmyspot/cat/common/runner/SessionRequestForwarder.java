@@ -45,11 +45,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * messages as the request's next record while the session runs. When the parent's run may request no further
  * session, the parent refuses the request and the launch exits with status 2 and the reason. Inside a run, the parent
  * chooses the run root, the artifact, its own denied reads and the limits of the sessions it requests, so a launch may
- * not choose them; outside a run, a launch chooses the limits of the session it requests, and its kept run is copied
- * into its run root. A launch may name the options that only narrow the requested session or describe its own inputs:
- * further denied reads, the workspace files, the read-only evidence, the tool-output token limit, the instruction
- * files and {@code --keep-run}. The files and directories that it names travel inside the request, so each must be one
- * that the session's sandbox lets it read.
+ * not choose them; outside a run, a launch chooses the limits of the session it requests. The copy of the session's
+ * run that its runner returns is copied into the launch's run root, which inside a run only a launch that names one
+ * has; otherwise the copy stays in the response that the run's runner keeps. A launch may name the options that only
+ * narrow the requested session or describe its own inputs: further denied reads, the workspace files, the read-only
+ * evidence, the tool-output token limit and the instruction files. The files and directories that it names travel
+ * inside the request, so each must be one that the session's sandbox lets it read.
  */
 public final class SessionRequestForwarder
 {
@@ -130,9 +131,9 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Forwards one launch and waits for its requested session to end. Outside a run, the launch's kept run is copied
-	 * into its run root as {@code <run root>/<harness>/<run id>}, and the response is removed once the launch has
-	 * copied what it needs.
+	 * Forwards one launch and waits for its requested session to end. The copy of the session's run is copied into the
+	 * launch's run root as {@code <run root>/<harness>/<run id>}, outside a run or when the launch names one inside a
+	 * run. Outside a run, the response is removed once the launch has copied what it needs.
 	 *
 	 * @param route          the runner that serves the request
 	 * @param harness        the harness of the runner launcher
@@ -153,8 +154,8 @@ public final class SessionRequestForwarder
 	 *                                  parent runner, if {@code --input} and {@code --conversation} are both given,
 	 *                                  or if the launch names no {@code --model} or no {@code --effort}
 	 * @throws IOException              if the records are invalid, a file or directory that the launch names cannot be
-	 *                                  read, the request or response cannot be read or written, or the kept run
-	 *                                  cannot be copied
+	 *                                  read, the request or response cannot be read or written, or the session's
+	 *                                  run cannot be copied
 	 */
 	public static int forward(Route route, String harness, String[] args, Reader input, Path requests,
 		Path defaultRunRoot, Pause pause, OutputStream output, PrintWriter errors) throws IOException
@@ -201,7 +202,7 @@ public final class SessionRequestForwarder
 		else
 		{
 			// The conversation ends after the launch has what it keeps, so the asking session that reads its last line
-			// finds the kept run in place
+			// finds the copy of its run in place
 			response = converse(json, request, requests, id, launch.conversation(), RequestArchive.NULL_DEVICE,
 				route.limits(), pause, output, launch.transcript(),
 				answer -> incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, answer)));
@@ -224,9 +225,9 @@ public final class SessionRequestForwarder
 	}
 
 	/**
-	 * Keeps what a launch takes from its session's response: the receipt that {@code --receipt} names and, outside a
-	 * run, the kept run, which is copied into the launch's run root. The response is removed once the launch has copied
-	 * what it needs, outside a run.
+	 * Keeps what a launch takes from its session's response: the receipt that {@code --receipt} names and the copy of
+	 * the session's run, which is copied into the launch's run root outside a run, and inside a run when the launch
+	 * names one. The response is removed once the launch has copied what it needs, outside a run.
 	 *
 	 * @param route          the runner that serves the request
 	 * @param harness        the harness of the runner launcher
@@ -236,9 +237,9 @@ public final class SessionRequestForwarder
 	 * @param requests       the directory into which the launch wrote its request
 	 * @param id             the request identifier
 	 * @param response       the response
-	 * @return the reason why the copy of the kept run is incomplete, or empty if it is complete or the launch copies
-	 *   no kept run
-	 * @throws IOException if the receipt or the kept run cannot be copied
+	 * @return the reason why the copy of the session's run is incomplete, or empty if it is complete or the launch
+	 *   copies none
+	 * @throws IOException if the receipt or the session's run cannot be copied
 	 */
 	private static Optional<String> collect(Route route, String harness, Launch launch, Path defaultRunRoot,
 		Path requests, String id, JsonNode response) throws IOException
@@ -249,13 +250,17 @@ public final class SessionRequestForwarder
 			Files.createDirectories(launch.receipt().toAbsolutePath().getParent());
 			Files.copy(childReceipt, launch.receipt(), StandardCopyOption.REPLACE_EXISTING);
 		}
-		if (route != Route.SERVER)
-			return Optional.empty();
 		Path runRoot = launch.runRoot();
 		if (runRoot == null)
+		{
+			// Inside a run, the copy stays in the response, which the run's runner keeps while the run lasts
+			if (route != Route.SERVER)
+				return Optional.empty();
 			runRoot = defaultRunRoot;
+		}
 		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), "", launch.project());
-		TemporaryDirectories.deleteRecursively(responses(requests, id));
+		if (route == Route.SERVER)
+			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		return incomplete;
 	}
 
@@ -301,7 +306,7 @@ public final class SessionRequestForwarder
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session
 	 * @param ownArtifact the CAT artifact that the command runs from
-	 * @param arguments   the runner's options, which name {@code --run-root} and {@code --keep-run}
+	 * @param arguments   the runner's options, which name {@code --run-root}
 	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
 	 * @param output      receives the session's records, one per line
 	 * @param requests    the run's requests directory
@@ -309,7 +314,7 @@ public final class SessionRequestForwarder
 	 *                    interrupted, which ends the request and stops the session
 	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or chosen by the parent runner, if
 	 *                                  the launch names {@code --input} or {@code --conversation}, or no
-	 *                                  {@code --run-root}, {@code --keep-run}, {@code --model} or {@code --effort}
+	 *                                  {@code --run-root}, {@code --model} or {@code --effort}
 	 * @throws LaunchRefusedException   if the run allows no further session or its runner refused the session
 	 * @throws IOException              if the session did not complete, a file or directory that the launch names
 	 *                                  cannot be read, the request or response cannot be read or written, or the kept
@@ -330,7 +335,7 @@ public final class SessionRequestForwarder
 	 * @param command     names the command in a refusal, such as {@code "The prompt optimizer"}
 	 * @param harness     the harness of the session
 	 * @param ownArtifact the CAT artifact that the command runs from
-	 * @param arguments   the runner's options, which name {@code --run-root} and {@code --keep-run}
+	 * @param arguments   the runner's options, which name {@code --run-root}
 	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
 	 * @param output      receives the session's records, one per line
 	 * @param requests    the directory into which the command writes its request
@@ -339,8 +344,7 @@ public final class SessionRequestForwarder
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a run, chosen by the
 	 *                                  parent runner, if the launch names {@code --input} or {@code --conversation},
-	 *                                  or no {@code --run-root}, {@code --keep-run}, {@code --model} or
-	 *                                  {@code --effort}
+	 *                                  or no {@code --run-root}, {@code --model} or {@code --effort}
 	 * @throws LaunchRefusedException   if the run allows no further session or the runner refused the session
 	 * @throws IOException              if the session did not complete, a file or directory that the launch names
 	 *                                  cannot be read, the request or response cannot be read or written, or the kept
@@ -362,8 +366,8 @@ public final class SessionRequestForwarder
 		Launch launch = parse(json, route, harness, arguments.toArray(String[]::new));
 		if (launch.records() != null || launch.conversation() != null)
 			throw new InvalidArgumentsException("A served session takes its records from its input");
-		if (launch.runRoot() == null || !launch.keepRun())
-			throw new InvalidArgumentsException("A served session names --run-root and --keep-run");
+		if (launch.runRoot() == null)
+			throw new InvalidArgumentsException("A served session names --run-root");
 		Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
 		if (refusal.isPresent())
 			throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, refusal.get()));
@@ -445,7 +449,6 @@ public final class SessionRequestForwarder
 		Path receipt = null;
 		Path runRoot = null;
 		Path artifact = null;
-		boolean keepRun = false;
 		Set<String> scalars = new HashSet<>();
 		for (int index = 0; index < args.length; ++index)
 		{
@@ -471,12 +474,6 @@ public final class SessionRequestForwarder
 			}
 			switch (option)
 			{
-				case "--keep-run" ->
-				{
-					keepRun = true;
-					request.put("keep_run", true);
-					continue;
-				}
 				case RunnerArguments.HELD_OUT_OPTION ->
 				{
 					request.put("held_out", true);
@@ -553,7 +550,7 @@ public final class SessionRequestForwarder
 		// A launch that resumes a session continues in the project that the session's run copied at its start
 		if (!request.has(RequestArchive.RESUME))
 			request.put("project", project.toString());
-		return new Launch(request, project, records, conversation, transcript, receipt, runRoot, artifact, keepRun);
+		return new Launch(request, project, records, conversation, transcript, receipt, runRoot, artifact);
 	}
 
 	/**
@@ -641,10 +638,9 @@ public final class SessionRequestForwarder
 	 * @param receipt      the file of {@code --receipt}, or null
 	 * @param runRoot      the folder of {@code --run-root}, or null
 	 * @param artifact     the folder of {@code --artifact}, or null
-	 * @param keepRun      indicates whether the launch names {@code --keep-run}
 	 */
 	private record Launch(ObjectNode request, Path project, Path records, Path conversation, Path transcript,
-		Path receipt, Path runRoot, Path artifact, boolean keepRun)
+		Path receipt, Path runRoot, Path artifact)
 	{
 	}
 

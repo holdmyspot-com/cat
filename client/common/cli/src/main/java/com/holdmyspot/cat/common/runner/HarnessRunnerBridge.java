@@ -64,7 +64,7 @@ public final class HarnessRunnerBridge
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, Reader input, Writer output) throws IOException
 	{
-		return serve(starter, null, true, input, output);
+		return serve(starter, (HarnessRunManager) null, input, output);
 	}
 
 	/**
@@ -82,7 +82,7 @@ public final class HarnessRunnerBridge
 	 */
 	public static HarnessRun serve(HarnessRunStarter starter, Reader input, Path output) throws IOException
 	{
-		return serve(starter, null, true, input, output);
+		return serve(starter, (HarnessRunManager) null, input, output);
 	}
 
 	/**
@@ -97,8 +97,6 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
 	 *
-	 * @param keepRun whether a completed run should be retained
-	 *
 	 * @param input the JSONL client input
 	 *
 	 * @param output the JSONL client output
@@ -108,10 +106,10 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
 		Writer output) throws IOException
 	{
-		return serve(starter, manager, keepRun, input, output, null, null);
+		return serve(starter, manager, input, output, null, null);
 	}
 
 	/**
@@ -119,7 +117,6 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param starter starts the parent session
 	 * @param manager the lifecycle manager
-	 * @param keepRun indicates whether the completed run is retained
 	 * @param input the bridge input
 	 * @param output the bridge output
 	 * @param options the runner options, null when the caller does not serve the session as a runner
@@ -128,14 +125,14 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter) throws IOException
 	{
 		requireThat(starter, "starter").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		if (options == null || options.conversation() == null)
-			return serve(starter, manager, keepRun, input, output, options, requestedStarter, null);
+			return serve(starter, manager, input, output, options, requestedStarter, null);
 		// The folder is checked before the session starts
 		try (Conversation conversation = Conversation.open(options.conversation()))
 		{
@@ -143,7 +140,7 @@ public final class HarnessRunnerBridge
 			String status = "failed";
 			try
 			{
-				HarnessRun run = serve(starter, manager, keepRun, input, conversation.childWriter(output), options,
+				HarnessRun run = serve(starter, manager, input, conversation.childWriter(output), options,
 					requestedStarter, conversation);
 				status = "completed";
 				return run;
@@ -161,7 +158,6 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param starter starts the parent session
 	 * @param manager the lifecycle manager
-	 * @param keepRun indicates whether the completed run is retained
 	 * @param input the bridge input when {@code conversation} is null
 	 * @param output the bridge output
 	 * @param options the runner options, null when the caller does not serve the session as a runner
@@ -171,7 +167,7 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter,
 		Conversation conversation) throws IOException
 	{
@@ -387,8 +383,6 @@ public final class HarnessRunnerBridge
 				if (changes.isPresent())
 					throw new IOException(changes.get());
 				manager.markCompleted(run);
-				if (!keepRun)
-					manager.deleteRun(run);
 			}
 			return run;
 		}
@@ -573,8 +567,6 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
 	 *
-	 * @param keepRun whether a completed run should be retained
-	 *
 	 * @param input the JSONL client input
 	 *
 	 * @param output the durable JSONL client-output destination
@@ -584,7 +576,7 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or transcript I/O fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, boolean keepRun, Reader input,
+	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
 		Path output) throws IOException
 	{
 		requireThat(output, "output").isNotNull();
@@ -594,7 +586,7 @@ public final class HarnessRunnerBridge
 		Files.createDirectories(parent);
 		try (Writer transcript = Files.newBufferedWriter(output, StandardCharsets.UTF_8))
 		{
-			return serve(starter, manager, keepRun, input, transcript);
+			return serve(starter, manager, input, transcript);
 		}
 	}
 
@@ -688,13 +680,13 @@ public final class HarnessRunnerBridge
 		RequestedSessionStarter requestedStarter) throws IOException
 	{
 		if (options.output() == null)
-			return serve(starter, manager, options.keepRun(), input, output, options, requestedStarter);
+			return serve(starter, manager, input, output, options, requestedStarter);
 		HarnessRun run;
 		Path parent = options.output().toAbsolutePath().getParent();
 		Files.createDirectories(parent);
 		try (Writer transcript = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8))
 		{
-			run = serve(starter, manager, options.keepRun(), input, transcript, options, requestedStarter);
+			run = serve(starter, manager, input, transcript, options, requestedStarter);
 		}
 		if (options.receipt() != null)
 		{

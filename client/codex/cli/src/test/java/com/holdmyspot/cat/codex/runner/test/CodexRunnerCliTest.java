@@ -134,7 +134,7 @@ public final class CodexRunnerCliTest
 	public void readsTheToolOutputTokenLimit()
 	{
 		requireThat(CodexRunnerCli.toolOutputTokenLimit(new String[]{"serve", "--artifact", "/artifact",
-			"--tool-output-token-limit", "5000", "--keep-run"}), "limited").isEqualTo(5000);
+			"--tool-output-token-limit", "5000", "--install-cat"}), "limited").isEqualTo(5000);
 		requireThat(CodexRunnerCli.toolOutputTokenLimit(new String[]{"serve", "--artifact", "/artifact"}),
 			"unlimited").isEqualTo(0);
 	}
@@ -148,7 +148,7 @@ public final class CodexRunnerCliTest
 	public Object[][] invalidLimits()
 	{
 		return new Object[][]{{new String[]{"serve", "--tool-output-token-limit"}},
-			{new String[]{"serve", "--tool-output-token-limit", "--keep-run"}},
+			{new String[]{"serve", "--tool-output-token-limit", "--install-cat"}},
 			{new String[]{"serve", "--tool-output-token-limit", "0"}},
 			{new String[]{"serve", "--tool-output-token-limit", "many"}}};
 	}
@@ -196,7 +196,7 @@ public final class CodexRunnerCliTest
 		String runRoot = Path.of("/runs").toAbsolutePath().toString();
 		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--run-root", runRoot,
 			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--run-root", runRoot,
-			"--read-only-evidence", "--keep-run"}}};
+			"--read-only-evidence", "--install-cat"}}};
 	}
 
 	/**

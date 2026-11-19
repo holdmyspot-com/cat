@@ -273,7 +273,7 @@ public final class SessionRequestForwarderTest
 				}
 			};
 			String[] arguments = {"--run-root", runRoot.toString(), "--project", project.toString(), "--model",
-				"model-a", "--effort", "effort-a", "--keep-run"};
+				"model-a", "--effort", "effort-a"};
 
 			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
 				new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
@@ -358,7 +358,7 @@ public final class SessionRequestForwarderTest
 					put("run", kept.toString()));
 			};
 			String[] arguments = {"--run-root", runRoot.toString(), "--project", project.toString(), "--model",
-				"model-a", "--effort", "effort-a", "--keep-run"};
+				"model-a", "--effort", "effort-a"};
 
 			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
 				new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n{\"type\":\"complete\"}\n"),
@@ -372,6 +372,61 @@ public final class SessionRequestForwarderTest
 			requireThat(keptRuns, "keptRuns").size().isEqualTo(1);
 			JsonNode manifest = json.readTree(keptRuns.getFirst().resolve("run.json").toFile());
 			requireThat(manifest.path("project_path").asString(), "projectPath").isEqualTo(project.toString());
+		}
+	}
+
+	/**
+	 * Verifies that a launch inside a run that names a results folder gets the copy of its session's run that the run's
+	 * runner put in its response copied into that folder, as a launch outside a run does, and that the run's runner,
+	 * which owns the response, still finds it.
+	 *
+	 * @throws IOException if the launch or its copy fails
+	 */
+	@Test
+	public void copiesResultsIntoNamedFolderInsideRun() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-")).
+				toRealPath());
+			Path results = fixture.root.resolve("results");
+			Path artifact = Files.createDirectories(fixture.root.resolve("artifact"));
+			JsonMapper json = JsonMapper.builder().build();
+			Path[] response = new Path[1];
+
+			int status = SessionRequestForwarder.forward("harnessa", new String[]{"--project",
+				fixture.project.toString(), "--run-root", results.toString(), "--model", "model-a", "--effort",
+				"effort-a"}, new StringReader(RECORDS), fixture.requests, () ->
+			{
+				if (response[0] != null)
+					throw new AssertionError("The response was published, but the forwarder kept waiting");
+				response[0] = Files.createDirectories(fixture.responseDirectory());
+				HarnessRunManager slot = new HarnessRunManager(jvm.fileLocks(), fixture.root.resolve("slot"),
+					Clock.systemUTC(), Yielding.fileReplacer());
+				HarnessRun child = slot.create("harnessa");
+				slot.initialize(child, artifact, fixture.project, "fixture", List.of("fixture"));
+				slot.markCompleted(child);
+				Path kept = response[0].resolve("run");
+				requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+				HarnessRunManager.renameCopy(kept, "ab12-cd34");
+				Files.writeString(response[0].resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
+				json.writeValue(response[0].resolve("response.json").toFile(), json.createObjectNode().
+					put("format_version", 1).put("id", response[0].getFileName().toString()).
+					put("harness", "harnessa").put("status", "completed").put("reason", "").
+					put("child_run_id", "ab12-cd34").put("transcript", response[0].resolve("transcript.jsonl").toString()).
+					put("run", kept.toString()));
+			}, new ByteArrayOutputStream(), new PrintWriter(fixture.errors, true));
+
+			requireThat(status, "status").withContext(fixture.errors, "errors").isEqualTo(0);
+			List<Path> copies;
+			try (Stream<Path> runs = Files.list(results.resolve("harnessa")))
+			{
+				copies = runs.toList();
+			}
+			requireThat(copies, "copies").size().isEqualTo(1);
+			requireThat(Files.isDirectory(copies.getFirst().resolve("project")), "copiedProject").isTrue();
+			requireThat(Files.isDirectory(response[0].resolve("run")), "responseCopy").isTrue();
 		}
 	}
 

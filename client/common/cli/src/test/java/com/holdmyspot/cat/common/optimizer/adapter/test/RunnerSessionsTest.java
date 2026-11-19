@@ -1544,7 +1544,7 @@ public final class RunnerSessionsTest
 					partialDraftWritten.countDown();
 				})), new ArrayList<>());
 				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
-					options.contains("--keep-run"), input, output);
+					input, output);
 			});
 			SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, source,
 				List.of("write a draft"), List.of(), LIMIT, SESSION_PROFILE, workspaceFiles);

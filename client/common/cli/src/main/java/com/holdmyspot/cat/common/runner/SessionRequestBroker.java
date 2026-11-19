@@ -61,7 +61,8 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private static final int MAXIMUM_REFUSAL_BYTES = 65_536;
 	/**
-	 * The name, in a response directory and in its response, of the copy of a kept run that the requester reads.
+	 * The name, in a response directory and in its response, of the copy of the requested session's run that the
+	 * requester reads.
 	 */
 	static final String RUN_COPY = "run";
 	/**
@@ -99,10 +100,6 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private final Map<String, Path> childRoots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
-	/**
-	 * The requests whose requester receives a copy of the requested session's kept run.
-	 */
-	private final Set<String> keptRuns = new HashSet<>();
 	/**
 	 * The records of each accepted request whose records follow it, by request identifier, until its child ends.
 	 */
@@ -309,8 +306,6 @@ public final class SessionRequestBroker implements Closeable
 				// request-session makes, may outlive the program that made it.
 				held.put(id, directory);
 			}
-			if (request.keepRun())
-				keptRuns.add(id);
 			children.submit(() -> execute(id, request, arguments, directory));
 		}
 		catch (RequestArchiveBusyException _)
@@ -588,7 +583,7 @@ public final class SessionRequestBroker implements Closeable
 
 	/**
 	 * Builds the runner options that every child receives from its request's private copies: its project,
-	 * transcript, receipt and kept run, and the request's options, which only narrow the child or describe its own
+	 * transcript and receipt, and the request's options, which only narrow the child or describe its own
 	 * inputs. The child's run root and the site's own options are added when the child starts.
 	 *
 	 * @param request   the validated request
@@ -603,7 +598,7 @@ public final class SessionRequestBroker implements Closeable
 			arguments.addAll(List.of(RunnerArguments.RESUME_RUN_OPTION, request.resume().get()));
 		else
 			arguments.addAll(List.of("--project", request.project().toString()));
-		arguments.addAll(List.of("--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
+		arguments.addAll(List.of("--output", directory.resolve("transcript.jsonl").toString(),
 			"--receipt", directory.resolve("receipt.json").toString()));
 		if (request.turnCopy())
 			arguments.addAll(List.of("--turn-copy", directory.resolve(TURN_COPY).toString()));
@@ -828,8 +823,8 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Publishes a child's result after copying transcripts from its retained run and, when the request keeps its run,
-	 * the run itself, without its home, into the response directory's {@link #RUN_COPY}. A run that cannot be copied
+	 * Publishes a child's result after copying transcripts from its retained run and the run itself, without its home,
+	 * into the response directory's {@link #RUN_COPY}. A run that cannot be copied
 	 * in full makes a completed child fail, with the reason that names the file.
 	 *
 	 * @param id the request id
@@ -855,7 +850,7 @@ public final class SessionRequestBroker implements Closeable
 			String outcome = status;
 			String diagnostic = reason;
 			// A run whose session could not continue stays retained, so it has no kept copy
-			if (keptRuns.contains(id) && !childRunId.isEmpty() && !status.equals(UNRESUMABLE))
+			if (!childRunId.isEmpty() && !status.equals(UNRESUMABLE))
 			{
 				// The requester cannot read the requested runs, whose homes hold their logins, so it reads a copy
 				Optional<String> incomplete = KeptRunCopy.copy(childRoots.get(id).resolve(childRunId),

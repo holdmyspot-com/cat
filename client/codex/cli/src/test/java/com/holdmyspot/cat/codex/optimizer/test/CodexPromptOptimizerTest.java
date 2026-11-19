@@ -438,7 +438,7 @@ public final class CodexPromptOptimizerTest
 					AtomicInteger checks = new AtomicInteger();
 					Path project = Files.createDirectories(runs.resolve("project"));
 					SessionRequestForwarder.serve(RunnerSessions.COMMAND, "codex", runs, List.of("--project",
-						project.toString(), "--run-root", runs.resolve("runs").toString(), "--keep-run", "--model",
+						project.toString(), "--run-root", runs.resolve("runs").toString(), "--model",
 						"model-a", "--effort", "effort-a"), new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 						"{\"type\":\"complete\"}\n"), new StringWriter(), parent.requests(), () ->
 					{

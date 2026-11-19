@@ -83,7 +83,7 @@ public final class RequestingRunProtocolContractTest
 				turns.write(turnRecord(json, inputs.prompts().getFirst()));
 				turns.flush();
 				List<String> arguments = List.of("--project", inputs.root().resolve("project").toString(), "--model",
-					"model-a", "--effort", "effort-a", "--run-root", inputs.runRoot().toString(), "--keep-run");
+					"model-a", "--effort", "effort-a", "--run-root", inputs.runRoot().toString());
 				SessionRequestForwarder.serve("requested-session contract", "codex", inputs.artifact(), arguments,
 					input, output, parent.requests(), Thread::yield);
 				requireThat(output.completedTurns, "causallyForwardedTurns").isEqualTo(2);

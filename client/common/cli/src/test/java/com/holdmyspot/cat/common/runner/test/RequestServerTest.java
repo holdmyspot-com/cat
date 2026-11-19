@@ -512,7 +512,7 @@ public final class RequestServerTest
 				long deadline = System.nanoTime() + WAIT.toNanos();
 				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
 					new String[]{"--project", fixture.project.toString(), "--run-root", runs.toString(),
-						"--keep-run", "--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
+						"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
 					new StringReader(""), server.requests(), runs, () ->
 					{
 						if (System.nanoTime() > deadline)
@@ -812,7 +812,7 @@ public final class RequestServerTest
 		StringWriter output = new StringWriter();
 		long deadline = System.nanoTime() + WAIT.toNanos();
 		List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString(), "--run-root",
-			runRoot.toString(), "--keep-run", "--model", "haiku", "--effort", "low"));
+			runRoot.toString(), "--model", "haiku", "--effort", "low"));
 		arguments.addAll(List.of(extra));
 		SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "The prompt optimizer", "claude",
 			ownArtifact, arguments,
