@@ -21,6 +21,8 @@ was writing. -->
 	command text in a rule, only with a test in the project's shell-test framework, so that no application-language
 	test runs such a script and each proves only what application code decides about it.
 - Verify meaningful changes efficiently with the narrowest relevant test and the complete suite before handoff.
+- Let a reader of a test that runs one check over inputs of distinct categories tell, from the test itself, which
+	category each input belongs to and why that category gets the expected outcome.
 
 ## Guidance
 
@@ -123,6 +125,13 @@ resource, the local representation, the operation that changes its lifecycle, th
 and the asserted outcome. For a parent process consuming a forked child process's standard-error output through a pipe,
 close the local output endpoint that represents the child, then wait for the parent-side reader and assert it completes;
 do not close the input endpoint as a substitute for the child's close.
+
+When one test runs the same assertions over many inputs that fall into distinct categories, put each category's
+inputs in its own named collection, such as an array or a set. Above each collection, write a comment that says what
+the category represents and why its inputs get the expected outcome. Then run the shared check once over the union of
+the collections. This applies whether the inputs are accepted or rejected. For example, a test that rejects malformed
+version strings keeps missing, incomplete and noncanonical versions in separate collections rather than in one list
+under one comment. When every input has the same reason for its outcome, one collection suffices.
 
 Derive each test from the observable claim it makes. A test must run the part of the system it says it tests: its name,
 documented claim, controlled input, exercised boundary, and assertion must all describe the same observable outcome. Any

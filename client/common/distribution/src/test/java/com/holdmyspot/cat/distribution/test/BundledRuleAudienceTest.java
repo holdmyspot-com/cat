@@ -731,6 +731,39 @@ public final class BundledRuleAudienceTest
 	}
 
 	/**
+	 * Verifies an agent that writes or reviews a test that runs the same assertions over inputs of distinct categories
+	 * can reach the packaged rule for grouping those inputs: the testing and build area index routes test design to the
+	 * testing rule, whose guidance puts each category in its own named collection under a comment that says what the
+	 * category represents and why its inputs get the expected outcome, and runs the shared check once over the union.
+	 *
+	 * @throws IOException        if the bundled rules cannot be copied, routed, or read
+	 * @throws URISyntaxException if the class path returns a malformed resource location
+	 */
+	@Test
+	public void groupedTestInputsRuleIsRouted() throws IOException, URISyntaxException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
+		{
+			Path plugin = cleanup.add(Files.createTempDirectory("cat-bundled-rules-"));
+			BundledRules.copy(plugin.resolve("rules"));
+			RuleArtifactRouter.route(plugin, scope.yaml());
+			Path include = plugin.resolve("rules/include/common");
+
+			requireThat(oneLine(Files.readString(include.resolve("rule-routing/testing-and-builds.md"))),
+				"testingIndex").
+				contains("When designing, changing, running to verify a change, or reviewing tests, lazy load " +
+					"`${CAT_PLUGIN_ROOT}/rules/include/common/testing.md`.");
+			String rule = oneLine(Files.readString(include.resolve("testing.md")));
+			requireThat(rule, "testing").
+				contains("When one test runs the same assertions over many inputs that fall into distinct " +
+					"categories, put each category's inputs in its own named collection").
+				contains("says what the category represents and why its inputs get the expected outcome").
+				contains("run the shared check once over the union of the collections").
+				contains("whether the inputs are accepted or rejected");
+		}
+	}
+
+	/**
 	 * Verifies packaged path routes render installed rule paths and the current project's matching boundary.
 	 * <p>
 	 * The case routes a rule and loads it through the YAML-backed loader, which takes about 0.25 s alone when it
