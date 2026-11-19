@@ -96,12 +96,13 @@ In the command environment, `CAT_REQUEST_SESSION` holds the absolute path of the
 same way inside a run. A launcher does not start the harness itself, but asks the runner that started this session to
 start it outside this session's sandbox, and waits until it ends.
 
-Each launch and each session request counts against the sessions that this run allows. Before your first one, read
+Each launch and each session request, except a launch with `--resume`, counts against the sessions that this run
+allows. Before your first one, read
 `limits.json` in the `responses` folder beside the folder that `CAT_SESSION_REQUESTS` names. Its `requests_allowed`
 field gives how many sessions the run allows, `requests_used` how many it has accepted, and `depth_remaining` how many
 levels below the sessions that you request may request sessions in turn. When `requests_used` has reached
-`requests_allowed`, which is `0` when the run's caller allows none, the run refuses every further request: do not make
-one, and report that this run allows no further session.
+`requests_allowed`, which is `0` when the run's caller allows none, the run refuses every further request that does not
+resume a session: do not make one, and report that this run allows no further session.
 
 The parent runner chooses the run root, the artifact and the limits, so pass a runner launcher only these options,
 which do not include `--agent`:
