@@ -24,11 +24,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.stream.Stream;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
@@ -73,6 +73,10 @@ public final class SessionRequestBroker implements Closeable
 	 * stays retained.
 	 */
 	static final String UNRESUMABLE = "unresumable";
+	/**
+	 * The reason of a request whose requesting session ended before the request was answered.
+	 */
+	private static final String ENDED = "ended";
 	private final Site site;
 	private final RequestedSessionStarter starter;
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -964,6 +968,37 @@ public final class SessionRequestBroker implements Closeable
 		if (Files.isDirectory(directory.resolve(RUN_COPY), LinkOption.NOFOLLOW_LINKS))
 			response.put(RUN_COPY, directory.resolve(RUN_COPY).toString());
 		SessionRequestCli.write(json, directory.resolve("response.json"), response);
+	}
+
+	/**
+	 * Answers {@code ended} each request whose response directory holds no response, once the run that made the
+	 * requests resumes its harness session: those requests were interrupted with the run, and the sessions that they
+	 * started keep their retained slots for the resumed session to resume. Call it before
+	 * {@link #start(HeartbeatTicker)}.
+	 *
+	 * @throws IOException if the responses cannot be listed or a response cannot be published
+	 */
+	public void endUnanswered() throws IOException
+	{
+		Path responses = site.responses();
+		if (!Files.isDirectory(responses, LinkOption.NOFOLLOW_LINKS))
+			return;
+		List<Path> directories;
+		try (Stream<Path> entries = Files.list(responses))
+		{
+			directories = entries.filter(entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)).sorted().
+				toList();
+		}
+		for (Path directory : directories)
+		{
+			if (Files.exists(directory.resolve("response.json"), LinkOption.NOFOLLOW_LINKS))
+				continue;
+			String id = directory.getFileName().toString();
+			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX))
+				WorktreeResponse.failed(ENDED).write(json, id, directory);
+			else
+				respond(id, "", "failed", ENDED, "", directory);
+		}
 	}
 
 	/**

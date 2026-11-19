@@ -2027,6 +2027,35 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
+	 * Verifies that a manager of a slot resumes the slot's run only for the harness session that the run records, and
+	 * that the resumed run's turns continue after the last turn that ended.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void resumesSlotRunOfItsSession() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager first = manager(jvm, root, Clock.systemUTC()).withFixedRunId("s-1");
+			HarnessRun run = first.create("harness");
+			first.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			first.writeTurnOutput(run, 2, new HarnessProcessResult(0, "second", ""));
+			HarnessRunManager later = manager(jvm, root, Clock.systemUTC()).withFixedRunId("s-1");
+
+			IOException other = expectThrows(IOException.class,
+				() -> later.resume("harness", "0b9e8d7c-6a5f-4e3d-8c2b-1a0f9e8d7c6b"));
+			HarnessRun resumed = later.resume("harness", "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+
+			requireThat(other.getMessage(), "other").contains("0b9e8d7c-6a5f-4e3d-8c2b-1a0f9e8d7c6b");
+			requireThat(resumed.directory(), "directory").isEqualTo(run.directory());
+			requireThat(later.turnNumber(resumed), "turnNumber").isEqualTo(2);
+		}
+	}
+
+	/**
 	 * Verifies that a run does not reopen while its runner lives, while its harness launch state is unknown, before
 	 * its harness reported its session, or once it has ended.
 	 *

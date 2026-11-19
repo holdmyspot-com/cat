@@ -522,6 +522,50 @@ public final class HarnessRunManager
 	}
 
 	/**
+	 * Reopens the run of this manager's slot, as {@link #reopen(String, String)} does, so that a new runner continues
+	 * the harness session that the run records.
+	 *
+	 * @param harness          the run's harness
+	 * @param harnessSessionId the harness session that the run must record
+	 * @return the reopened run
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code harness} is blank
+	 * @throws IllegalStateException    if the manager has no fixed run identifier
+	 * @throws IOException              if the run cannot be reopened, or it records another harness session
+	 */
+	public HarnessRun resume(String harness, String harnessSessionId) throws IOException
+	{
+		requireThat(harnessSessionId, "harnessSessionId").isNotNull();
+		if (fixedRunId == null)
+			throw new IllegalStateException("Only the run of a slot can be resumed");
+		HarnessRun run = new HarnessRun(harness, fixedRunId, root.resolve(harness).resolve(fixedRunId).normalize());
+		if (Files.isRegularFile(run.directory().resolve("run.json")))
+		{
+			String recorded = readManifest(run).harnessSessionId();
+			if (!harnessSessionId.equals(recorded))
+			{
+				throw new IOException("The run " + fixedRunId + " records the harness session " + recorded + ", not " +
+					harnessSessionId);
+			}
+		}
+		return reopen(harness, fixedRunId);
+	}
+
+	/**
+	 * Returns the number of the last turn of a run that ended.
+	 *
+	 * @param run the run
+	 * @return the turn's number, or {@code 0} if no turn ended
+	 * @throws NullPointerException if {@code run} is null
+	 * @throws IOException          if the manifest cannot be read
+	 */
+	public int turnNumber(HarnessRun run) throws IOException
+	{
+		requireThat(run, "run").isNotNull();
+		return readManifest(run).turnNumber();
+	}
+
+	/**
 	 * Records the identifier that the run's harness gives its session, once the harness reports it. A run records one
 	 * identifier: a later report of the same identifier keeps it.
 	 *

@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -75,6 +76,62 @@ public final class RunLaunch
 			}
 		}
 		return fixed;
+	}
+
+	/**
+	 * Returns the options of a runner that continues a run's harness session: the options that the run's start fixed,
+	 * which its {@value #FILE_NAME} records, followed by the runner's own. A runner that names no
+	 * {@value RunnerArguments#RESUME_RUN_OPTION} gets its own options back.
+	 *
+	 * @param json    the mapper
+	 * @param harness the run's harness
+	 * @param args    the runner's options
+	 * @return the options that the runner runs with
+	 * @throws NullPointerException      if any of the arguments are null
+	 * @throws InvalidArgumentsException if the runner resumes a run but names no {@code --run-root} or
+	 *                                   {@value RunnerArguments#RUN_ID_OPTION}, or names an option that the run fixed
+	 *                                   at its start
+	 * @throws IOException               if the run records no launch, or its record is malformed
+	 */
+	public static String[] resumedArguments(JsonMapper json, String harness, String[] args) throws IOException
+	{
+		requireThat(json, "json").isNotNull();
+		requireThat(harness, "harness").isNotNull();
+		requireThat(args, "args").isNotNull();
+		List<String> options = List.of(args);
+		if (!options.contains(RunnerArguments.RESUME_RUN_OPTION))
+			return args;
+		List<String> fixed = fixedArguments(args);
+		if (!fixed.isEmpty())
+		{
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_RUN_OPTION + " continues a run that fixed " +
+				fixed.getFirst() + " at its start, so the runner cannot name it");
+		}
+		String runRoot = value(options, "--run-root");
+		String runId = value(options, RunnerArguments.RUN_ID_OPTION);
+		if (runRoot == null || runId == null || !HarnessRunManager.isRunId(runId))
+		{
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_RUN_OPTION + " requires --run-root and " +
+				RunnerArguments.RUN_ID_OPTION);
+		}
+		List<String> resumed = new ArrayList<>(read(json, Path.of(runRoot).resolve(harness).resolve(runId)));
+		resumed.addAll(options);
+		return resumed.toArray(String[]::new);
+	}
+
+	/**
+	 * Returns the value of an option.
+	 *
+	 * @param options the options
+	 * @param option  the option
+	 * @return the value that follows the option's last occurrence, or {@code null} if no value follows it
+	 */
+	private static String value(List<String> options, String option)
+	{
+		int index = options.lastIndexOf(option);
+		if (index < 0 || index + 1 >= options.size())
+			return null;
+		return options.get(index + 1);
 	}
 
 	/**

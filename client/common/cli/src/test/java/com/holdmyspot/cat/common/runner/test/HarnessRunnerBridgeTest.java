@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.Conversation;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
@@ -56,6 +57,10 @@ import static org.testng.Assert.expectThrows;
  */
 public final class HarnessRunnerBridgeTest
 {
+	/**
+	 * The harness session that an interrupted run records.
+	 */
+	private static final String RESUMED_SESSION = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 	/**
 	 * Creates the test fixture.
 	 */
@@ -231,7 +236,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null, false, null);
+				null, null, null, false, null, null);
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
@@ -279,7 +284,7 @@ public final class HarnessRunnerBridgeTest
 			Path turnCopy = root.resolve("turn-copy");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1, List.of(), List.of(), null, List.of(), 0, null, 0, null,
-				null, null, false, null, null, null, turnCopy, false, null);
+				null, null, false, null, null, null, turnCopy, false, null, null);
 			List<String> copied = new ArrayList<>();
 			try (Writer output = new Writer()
 			{
@@ -407,7 +412,7 @@ public final class HarnessRunnerBridgeTest
 			{
 				HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 					"effort-a", null, true, null, false, false, 1, List.of(), List.of(), null, List.of(), 0, null, 0,
-					null, null, null, false, null, null, null, turnCopy, false, null);
+					null, null, null, false, null, null, null, turnCopy, false, null, null);
 				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
 					options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 			}
@@ -674,7 +679,7 @@ public final class HarnessRunnerBridgeTest
 			this(manager, run, copy(manager, root, run), new HarnessRunnerOptions(root.resolve("artifact"),
 				root.resolve("runs"), root, "model-a", "effort-a", root.resolve("evidence/transcript.jsonl"), true,
 				root.resolve("evidence/receipt.json"), false, false, 1, List.of(), List.of(), null, List.of(), 0, null,
-				0, null, null, null, false, null, null, null, null, false, null), root.resolve("evidence/receipt.json"));
+				0, null, null, null, false, null, null, null, null, false, null, null), root.resolve("evidence/receipt.json"));
 		}
 
 		/**
@@ -749,7 +754,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", null, true, null, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, input, null, null, false, null,
-				null, null, null, false, null);
+				null, null, null, false, null, null);
 			StringWriter output = new StringWriter();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
@@ -1211,7 +1216,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, true, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null, false, null);
+				null, null, null, false, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 			// The harness writes the session's transcript in its home as it works on the session
 			Files.createDirectories(nativeFile.getParent());
@@ -1259,7 +1264,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, null, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null, false, null);
+				null, null, null, false, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 			AtomicReference<ScriptedProcess> harness = new AtomicReference<>();
 			// The harness reports its session while it works on the first turn, as Claude Code does
@@ -1308,7 +1313,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", evidence.resolve("transcript.jsonl"), true, evidence.resolve("receipt.json"), false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, true, null,
-				null, null, null, false, "s-1");
+				null, null, null, false, "s-1", null);
 			JsonMapper json = JsonMapper.builder().build();
 			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one")), new ArrayList<>()))
 			{
@@ -1323,6 +1328,91 @@ public final class HarnessRunnerBridgeTest
 			requireThat(manifest, "manifest").contains("\"state\": \"running\"").
 				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
 			requireThat(run.directory().resolve("home"), "home").isDirectory();
+		}
+	}
+
+	/**
+	 * Verifies that a runner that resumes a run says so in its {@code started} record, numbers its turns after the last
+	 * turn that ended, and ends the run normally once its harness has reported the run's session.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void resumedRunContinuesItsTurns() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"again\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			HarnessRun run = manager.create("harness");
+			manager.recordHarnessSession(run, RESUMED_SESSION);
+			manager.writeTurnOutput(run, 1, new HarnessProcessResult(0, "first", ""));
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			Path transcript = evidence.resolve("transcript.jsonl");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", transcript, true, null, false, false, 1,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, true, null,
+				null, null, null, false, "s-1", RESUMED_SESSION);
+			JsonMapper json = JsonMapper.builder().build();
+			AtomicReference<ScriptedProcess> harness = new AtomicReference<>();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("two").withCheckpoint(
+				_ -> harness.get().reportHarnessSession(RESUMED_SESSION))), new ArrayList<>()))
+			{
+				harness.set(process);
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
+			}
+
+			JsonNode started = json.readTree(Files.readAllLines(transcript).getFirst());
+			requireThat(started.path("type").asString(), "type").isEqualTo("started");
+			requireThat(started.path("resumed").asBoolean(), "resumed").isTrue();
+			requireThat(manager.turnNumber(run), "turnNumber").isEqualTo(2);
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+				contains("\"state\": \"completed\"");
+		}
+	}
+
+	/**
+	 * Verifies that a runner whose harness continues another session than the run that it resumes records, or none,
+	 * fails without ending the run, so that the run stays retained for a later launch.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void resumeOfAnotherSessionKeepsRun() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"again\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			HarnessRun run = manager.create("harness");
+			manager.recordHarnessSession(run, RESUMED_SESSION);
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", evidence.resolve("transcript.jsonl"), true, null, false, false, 1,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, true, null,
+				null, null, null, false, "s-1", RESUMED_SESSION);
+			JsonMapper json = JsonMapper.builder().build();
+			AtomicReference<ScriptedProcess> harness = new AtomicReference<>();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("two").withCheckpoint(
+				_ -> harness.get().reportHarnessSession("0b9e8d7c-6a5f-4e3d-8c2b-1a0f9e8d7c6b"))), new ArrayList<>()))
+			{
+				harness.set(process);
+				expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
+					() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
+					Yielding.fileReplacer(), input, new StringWriter()));
+			}
+
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+				contains("\"state\": \"running\"").contains(RESUMED_SESSION);
 		}
 	}
 
@@ -1353,7 +1443,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", transcript, true, receipt, false, false, 1,
 				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
-				null, null, null, false, null);
+				null, null, null, false, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
 			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,

@@ -62,13 +62,15 @@ import tools.jackson.databind.json.JsonMapper;
  * @param runId the identifier that the run takes, which is also its directory's name, or {@code null} for a newly
  *   generated identifier. A run with an identifier of its own starts in an empty directory and fails if the directory
  *   exists.
+ * @param resumeRun the harness session that the runner continues in the slot's run, which records it, or {@code null}
+ *   for a runner that starts a session
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
 	Path output, boolean keepRun, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
 	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
-	String runId)
+	String runId, String resumeRun)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -91,7 +93,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
 		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy",
-		RunnerArguments.RUN_ID_OPTION);
+		RunnerArguments.RUN_ID_OPTION, RunnerArguments.RESUME_RUN_OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -262,6 +264,14 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RUN_ID_OPTION + ": " + value);
 				options.runId = value;
 			}
+			else if (option.equals(RunnerArguments.RESUME_RUN_OPTION))
+			{
+				if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(value).matches())
+				{
+					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RESUME_RUN_OPTION + ": " + value);
+				}
+				options.resumeRun = value;
+			}
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -276,6 +286,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new InvalidArgumentsException("--request-depth requires --session-requests");
 		if (options.input != null && options.conversation != null)
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
+		if (options.resumeRun != null && options.runId == null)
+		{
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_RUN_OPTION + " requires " +
+				RunnerArguments.RUN_ID_OPTION);
+		}
 		requireProfile(harness, model, effort);
 		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
 		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
@@ -283,7 +298,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
-			options.turnCopy, options.continueAfterFailedTurn, options.runId);
+			options.turnCopy, options.continueAfterFailedTurn, options.runId, options.resumeRun);
 	}
 
 	/**
@@ -655,13 +670,17 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 * @param continueAfterFailedTurn whether the bridge keeps serving after a turn fails while the harness keeps
 	 *   running, because the records are a conversation's
 	 * @param runId the identifier that the run takes, or {@code null} for a newly generated identifier
+	 * @param resumeRun the harness session that the runner continues in the slot's run, or {@code null} for a runner
+	 *   that starts a session
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
-	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy} and {@code runId}
+	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code runId} and
+	 *   {@code resumeRun}
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
 	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
 	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
-	 *   {@code capacityWait} is not positive, or {@code runId} is not a run identifier
+	 *   {@code capacityWait} is not positive, {@code runId} is not a run identifier, or {@code resumeRun} is not a
+	 *   harness session identifier or is named without {@code runId}
 	 */
 	public HarnessRunnerOptions
 	{
@@ -695,6 +714,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
 		if (runId != null && !HarnessRunManager.isRunId(runId))
 			throw new IllegalArgumentException("runId is not a run identifier: " + runId);
+		if (resumeRun != null)
+		{
+			if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(resumeRun).matches())
+				throw new IllegalArgumentException("resumeRun is not a harness session identifier: " + resumeRun);
+			if (runId == null)
+				throw new IllegalArgumentException("resumeRun requires runId");
+		}
 	}
 
 	/**
@@ -800,5 +826,6 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Path turnCopy;
 		private boolean continueAfterFailedTurn;
 		private String runId;
+		private String resumeRun;
 	}
 }

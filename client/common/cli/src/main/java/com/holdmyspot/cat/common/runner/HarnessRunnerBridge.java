@@ -187,6 +187,9 @@ public final class HarnessRunnerBridge
 		// A run in a slot is fed by its server, which sends the complete record unless it ends first. A run whose server
 		// ended before the run did records no end, so that its harness session can continue.
 		boolean recordsEnd = true;
+		// A runner that resumes a run records no end until its harness reports the run's session, so that a session that
+		// the harness cannot continue stays retained
+		boolean resumes = options != null && options.resumeRun() != null && manager != null;
 		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
 		// send the next turn once the cause is gone, such as a usage limit that resets
 		boolean continueAfterFailedTurn = conversation != null || (options != null && options.continueAfterFailedTurn());
@@ -211,7 +214,14 @@ public final class HarnessRunnerBridge
 					run = session.run();
 					if (manager != null)
 						manager.markIdle(run);
-					client.write(event(session.scope(), "started").put("run_id", session.run().id()));
+					ObjectNode started = event(session.scope(), "started").put("run_id", session.run().id());
+					if (resumes)
+					{
+						// The resumed session's turns continue after the last turn that ended
+						turnNumber = manager.turnNumber(run);
+						started.put("resumed", true);
+					}
+					client.write(started);
 					recordHarnessSession(session, manager, client, harnessSessionRecorded);
 					try (BufferedReader lines = lines(session, input, conversation))
 					{
@@ -384,7 +394,7 @@ public final class HarnessRunnerBridge
 		}
 		catch (IOException e)
 		{
-			if (manager != null && run != null && recordsEnd)
+			if (manager != null && run != null && recordsEnd && (!resumes || harnessSessionRecorded.get()))
 			{
 				IOException failure = e;
 				if (!copiesChecked)
@@ -717,6 +727,8 @@ public final class HarnessRunnerBridge
 		SessionRequestBroker broker = new SessionRequestBroker(session.run(), options, starter);
 		try
 		{
+			if (options.resumeRun() != null)
+				broker.endUnanswered();
 			broker.start(session.scope().heartbeatTicker());
 		}
 		catch (IOException | RuntimeException e)
@@ -898,10 +910,13 @@ public final class HarnessRunnerBridge
 		if (recorded.get())
 			return;
 		Optional<String> id = session.harnessSessionId();
-		if (id.isEmpty() || !recorded.compareAndSet(false, true))
+		if (id.isEmpty())
 			return;
+		// A run that records another session refuses this one before the session counts as recorded
 		if (manager != null)
 			manager.recordHarnessSession(session.run(), id.get());
+		if (!recorded.compareAndSet(false, true))
+			return;
 		ObjectNode response = event(session.scope(), "session_id");
 		response.put("run_id", session.run().id());
 		response.put("session_id", id.get());

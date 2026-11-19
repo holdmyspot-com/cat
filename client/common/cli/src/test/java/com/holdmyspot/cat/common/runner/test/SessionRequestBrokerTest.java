@@ -26,6 +26,8 @@ import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.RetainedRunClient;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
+import com.holdmyspot.cat.common.runner.WorktreeResponse;
+import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
@@ -1302,6 +1304,39 @@ public final class SessionRequestBrokerTest
 				requireThat(Files.exists(retained.directory()), "runKept").isFalse();
 				requireThat(client.discard(RESUMED_SESSION), "discardedAgain").isFalse();
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a broker of a run that resumes its harness session answers {@code ended} each request that the run
+	 * made before its interruption and that has no response, and leaves each answered request as it was.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void resumedRunEndsUnansweredRequests() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path unanswered = Files.createDirectories(fixture.responses.resolve("a1"));
+			Path worktree = Files.createDirectories(fixture.responses.resolve(WorktreeRequest.PREFIX + "b2"));
+			Path answered = Files.createDirectories(fixture.responses.resolve("c3"));
+			Files.writeString(answered.resolve("response.json"), "{\"status\":\"completed\"}");
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					throw new AssertionError("No session was requested");
+				}))
+			{
+				broker.endUnanswered();
+			}
+			JsonNode launch = fixture.json.readTree(Files.readString(unanswered.resolve("response.json")));
+			requireThat(launch.path("status").asString(), "status").isEqualTo("failed");
+			requireThat(launch.path("reason").asString(), "reason").isEqualTo("ended");
+			requireThat(WorktreeResponse.read(fixture.json, worktree).orElseThrow().reason(), "worktreeReason").
+				isEqualTo("ended");
+			requireThat(Files.readString(answered.resolve("response.json")), "answered").
+				isEqualTo("{\"status\":\"completed\"}");
 		}
 	}
 
