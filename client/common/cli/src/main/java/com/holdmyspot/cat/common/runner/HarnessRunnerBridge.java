@@ -175,6 +175,8 @@ public final class HarnessRunnerBridge
 		boolean completed = false;
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
+		// The thread of the last turn that started, which may still write the run after the turn is stopped
+		Thread activeTurnThread = null;
 		CountDownLatch activeTurnStarted = null;
 		// Set once the client interrupts the active turn
 		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
@@ -309,7 +311,7 @@ public final class HarnessRunnerBridge
 										client.endTurn();
 									}
 								});
-								Thread.ofPlatform().start(activeTurn);
+								activeTurnThread = Thread.ofPlatform().start(activeTurn);
 								activeTurnStarted = turnStarted;
 								activeTurnInterrupted = turnInterrupted;
 								turnNumber = currentTurn;
@@ -386,6 +388,8 @@ public final class HarnessRunnerBridge
 		}
 		catch (IOException e)
 		{
+			// The run's end must follow the turn's last write to it
+			endTurn(activeTurn, activeTurnThread);
 			if (manager != null && run != null && recordsEnd && (!resumes || harnessSessionRecorded.get()))
 			{
 				IOException failure = e;
@@ -401,7 +405,8 @@ public final class HarnessRunnerBridge
 		}
 		finally
 		{
-			stopTurn(activeTurn);
+			// The caller may remove the run once the bridge returns, so the turn must have stopped writing to it
+			endTurn(activeTurn, activeTurnThread);
 		}
 	}
 
@@ -459,6 +464,29 @@ public final class HarnessRunnerBridge
 	{
 		if (turn != null)
 			turn.cancel(true);
+	}
+
+	/**
+	 * Interrupts a turn that is still running and waits for its thread to end, so that the turn no longer writes the
+	 * run. Call it only once the session is closed, which ends a turn that waits for the harness.
+	 *
+	 * @param turn   the last turn that started, or {@code null} if none started
+	 * @param thread the thread of {@code turn}, or {@code null} if none started
+	 */
+	private static void endTurn(FutureTask<Void> turn, Thread thread)
+	{
+		stopTurn(turn);
+		if (thread == null)
+			return;
+		try
+		{
+			thread.join();
+		}
+		catch (InterruptedException _)
+		{
+			// The bridge's caller is stopping it, and the turn has already been asked to end
+			Thread.currentThread().interrupt();
+		}
 	}
 
 	/**

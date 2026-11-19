@@ -2,6 +2,8 @@ package com.holdmyspot.cat.common.runner.test;
 
 
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import java.io.IOException;
@@ -14,6 +16,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -1332,6 +1337,44 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies that a bridge whose input ends while its turn runs returns only after the turn has stopped writing the
+	 * run, so that the caller can remove the run once the bridge has returned. The turn's first write to the run is held
+	 * until the bridge has stopped the turn and then either waits or has returned.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test(timeOut = 30_000)
+	public void bridgeReturnsAfterItsTurnStopsWriting() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			TurnWriteGate gate = new TurnWriteGate(Thread.currentThread());
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				new FileReplacer(Platform.current(), Thread::yield, gate)).withFixedRunId("s-1");
+			HarnessRun run = manager.create("harness");
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", evidence.resolve("transcript.jsonl"), evidence.resolve("receipt.json"), false, false, 1,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, true, null,
+				null, null, null, false, "s-1", null);
+			JsonMapper json = JsonMapper.builder().build();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one")), new ArrayList<>());
+				FailingReader input = FailingReader.ending("{\"type\":\"turn\",\"prompt\":\"first\"}\n",
+					gate.held()))
+			{
+				manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+				gate.arm();
+				expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
+					() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
+					Yielding.fileReplacer(), input, new StringWriter()));
+				requireThat(gate.returned(), "heldAfterReturn").isFalse();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a runner that resumes a run says so in its {@code started} record, numbers its turns after the last
 	 * turn that ended, and ends the run normally once its harness has reported the run's session.
 	 *
@@ -2278,6 +2321,123 @@ public final class HarnessRunnerBridgeTest
 		public void close()
 		{
 			request.close();
+		}
+	}
+
+	/**
+	 * The clock of a file replacer, which holds the first replacement that a thread other than the bridge's makes once
+	 * it is armed. The bridge's turn makes that replacement once it has started. The replacement waits until the bridge
+	 * has interrupted the turn and the bridge's thread then waits, or until the bridge has returned.
+	 */
+	private static final class TurnWriteGate extends Clock
+	{
+		private final Thread bridge;
+		private final CountDownLatch held = new CountDownLatch(1);
+		private final AtomicReference<Hold> hold = new AtomicReference<>(Hold.UNARMED);
+
+		/**
+		 * Creates the clock.
+		 *
+		 * @param bridge the thread that runs the bridge
+		 */
+		private TurnWriteGate(Thread bridge)
+		{
+			this.bridge = bridge;
+		}
+
+		/**
+		 * Makes the next replacement by another thread wait.
+		 */
+		private void arm()
+		{
+			hold.set(Hold.ARMED);
+		}
+
+		/**
+		 * Returns the latch that opens once a replacement waits.
+		 *
+		 * @return the latch
+		 */
+		private CountDownLatch held()
+		{
+			return held;
+		}
+
+		/**
+		 * Records that the bridge has returned, and lets the held replacement go ahead.
+		 *
+		 * @return {@code true} if the replacement was still held when the bridge returned
+		 */
+		private boolean returned()
+		{
+			return hold.compareAndSet(Hold.HELD, Hold.AFTER_RETURN);
+		}
+
+		@Override
+		public ZoneId getZone()
+		{
+			return ZoneOffset.UTC;
+		}
+
+		@Override
+		public Clock withZone(ZoneId zone)
+		{
+			throw new UnsupportedOperationException();
+		}
+
+		@Override
+		public Instant instant()
+		{
+			if (Thread.currentThread() != bridge && hold.compareAndSet(Hold.ARMED, Hold.HELD))
+				hold();
+			return Instant.now();
+		}
+
+		/**
+		 * Holds the calling thread until the bridge has interrupted it and then waits, or the bridge has returned.
+		 */
+		private void hold()
+		{
+			held.countDown();
+			boolean interrupted = false;
+			while (hold.get() == Hold.HELD)
+			{
+				if (Thread.interrupted())
+					interrupted = true;
+				Thread.State state = bridge.getState();
+				if (interrupted && (state == Thread.State.WAITING || state == Thread.State.TIMED_WAITING))
+					hold.compareAndSet(Hold.HELD, Hold.BEFORE_RETURN);
+				Thread.onSpinWait();
+			}
+			if (interrupted)
+				Thread.currentThread().interrupt();
+		}
+
+		/**
+		 * The progress of the held replacement.
+		 */
+		private enum Hold
+		{
+			/**
+			 * No replacement is held.
+			 */
+			UNARMED,
+			/**
+			 * The next replacement by another thread is held.
+			 */
+			ARMED,
+			/**
+			 * A replacement is held.
+			 */
+			HELD,
+			/**
+			 * The replacement went ahead while the bridge waited, before it returned.
+			 */
+			BEFORE_RETURN,
+			/**
+			 * The replacement went ahead only once the bridge had returned.
+			 */
+			AFTER_RETURN
 		}
 	}
 }
