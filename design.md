@@ -3605,11 +3605,13 @@ harness runs.
 
 **Resuming a run (user rulings, 2026-11-19):** a run is **interrupted** when its launcher, its server (the session's
 request server, or inside a run the run's runner) or the session that requested it ends before the run does, whatever
-the launch's options. Every launch, with or without `--conversation`, holds the operating-system lock beside its request
-from before it publishes the request until it ends, so its server sees the launcher's end. The runner records the
+the launch's options. Every runner-launcher launch, with or without `--conversation`, holds the operating-system lock
+beside its request from before it publishes the request until it ends, so its server sees the launcher's end; a request
+made with `request-session`, which may outlive its launcher through `--await`, is interrupted only when its server or the
+requesting session ends. The runner records the
 harness's session ID in the run's `run.json` as soon as the harness reports it, Claude's `session_id` in its `init`
 event and Codex's thread ID in its `thread/start` response, and the launcher publishes it at once as a
-`{"session_id": "<id>"}` line in `<folder>/from-child.jsonl` or the `--output` transcript. At an interruption the server
+`{"type":"session_id","run_id":"<slot run id>","session_id":"<id>"}` line in `<folder>/from-child.jsonl` or the `--output` transcript. At an interruption the server
 stops the run's processes as for any run and makes no kept copy. If the run recorded its harness session ID, the server
 keeps its slot as a retained slot, with the project copy, which holds the requested session's CAT session directory and
 its campaigns, the isolated home with the harness session, and `run.json`; a run interrupted before its harness reported
@@ -3631,7 +3633,8 @@ no project, installs no plugin and leaves the harness's session store as it is; 
 current sandbox bound decides, the harness settings, the Codex permission profile and configuration and the copy of the
 user's login, and continues the same harness session in the same home and working directory: Claude with
 `--resume <session-id>`, Codex with `thread/resume`, naming the permission profile and workspace roots, or the sandbox,
-that the current bound gives. The runner ends the launch unless the harness reports the recorded ID, so the requested
+that the current bound gives. The resume sends no developer instructions or agent contract: the session keeps those its
+start gave it, and runs under the resuming launch's `--model` and `--effort`, even for a run started with `--agent`. The runner ends the launch unless the harness reports the recorded ID, so the requested
 session keeps its ID and project path, and with them its CAT session directory and the campaigns it owns (D17). Turn
 numbers continue after the last turn that ended, and the `started` record says `"resumed": true`. The turn in progress
 at the interruption has no reply: the harness keeps its prompt and what it did before the interruption, and a later
