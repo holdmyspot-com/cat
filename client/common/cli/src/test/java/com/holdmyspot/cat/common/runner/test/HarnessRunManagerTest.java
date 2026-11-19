@@ -794,7 +794,7 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 
 			String initialManifest = Files.readString(run.directory().resolve("run.json"));
-			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 5");
+			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 6");
 			requireThat(initialManifest, "initialManifest").contains("\"harness_process_state\": \"absent\"");
 			requireThat(initialManifest, "initialManifest").
 				contains("\"phase\": \"initializing\"");
@@ -1903,8 +1903,8 @@ public final class HarnessRunManagerTest
 	}
 
 	/**
-	 * Verifies that the manifest of a run written before runs recorded their harness session reads as a run whose
-	 * harness reported no session.
+	 * Verifies that the manifest of a run written before runs recorded their harness session and their session requests
+	 * reads as a run whose harness reported no session and that accepted no session request.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1920,13 +1920,15 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 			Path manifest = run.directory().resolve("run.json");
 			Files.writeString(manifest, Files.readString(manifest).
-				replace("\"schema_version\": 5", "\"schema_version\": 4").
-				replace("\n  \"harness_session_id\": null,", ""));
+				replace("\"schema_version\": 6", "\"schema_version\": 4").
+				replace("\n  \"harness_session_id\": null,", "").
+				replace("\n  \"requests_used\": 0,", ""));
 
 			requireThat(manager.harnessSessionId(run), "harnessSessionId").isEmpty();
+			requireThat(manager.requestsUsed(run), "requestsUsed").isEqualTo(0);
 			manager.markIdle(run);
-			requireThat(Files.readString(manifest), "rewritten").contains("\"schema_version\": 5").
-				contains("\"harness_session_id\": null");
+			requireThat(Files.readString(manifest), "rewritten").contains("\"schema_version\": 6").
+				contains("\"harness_session_id\": null").contains("\"requests_used\": 0");
 		}
 	}
 
@@ -2028,7 +2030,8 @@ public final class HarnessRunManagerTest
 
 	/**
 	 * Verifies that a run whose runner ended after its harness reported its session reopens for a new runner whatever
-	 * its age, which records the new runner as its owner and keeps its turns and session.
+	 * its age, which records the new runner as its owner and keeps its turns, its session and its count of accepted
+	 * session requests.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -2045,6 +2048,7 @@ public final class HarnessRunManagerTest
 			first.markHarnessStarting(run);
 			first.recordHarnessProcess(run, 4321, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			first.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			first.recordRequestsUsed(run, 2);
 			first.writeTurnOutput(run, 1, new HarnessProcessResult(0, "first", ""));
 			Files.writeString(run.directory().resolve("home/session.jsonl"), "kept");
 			HarnessRunManager later = manager(jvm, root, Clock.fixed(Instant.parse("2026-09-01T00:00:00Z"), UTC));
@@ -2059,6 +2063,7 @@ public final class HarnessRunManagerTest
 				contains("\"harness_pid\": null").
 				contains("\"turn_number\": 1").
 				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
+			requireThat(later.requestsUsed(reopened), "requestsUsed").isEqualTo(2);
 			requireThat(run.directory().resolve("home/session.jsonl"), "home").isRegularFile();
 		}
 	}

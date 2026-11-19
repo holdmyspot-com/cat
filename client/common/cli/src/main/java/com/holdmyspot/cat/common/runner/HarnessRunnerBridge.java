@@ -207,7 +207,7 @@ public final class HarnessRunnerBridge
 		{
 			try (HarnessRunSession session = starter.start();
 				ClientOutput client = ClientOutput.open(session, output);
-				SessionRequestBroker broker = requestBroker(session, options, requestedStarter))
+				SessionRequestBroker broker = requestBroker(session, manager, options, requestedStarter))
 			{
 				try
 				{
@@ -712,19 +712,20 @@ public final class HarnessRunnerBridge
 	 * launch that the session's commands make is answered, with a refusal when the options allow no session request.
 	 *
 	 * @param session the parent session
+	 * @param manager the run's lifecycle manager, which is not null when {@code options} is not null
 	 * @param options runner options, null when the caller does not serve the session as a runner
 	 * @param starter starts child runners
 	 * @return the started broker, or null if {@code options} is null or the session's run has no requests directory
 	 * @throws NullPointerException if the broker starts and {@code starter} is null
 	 * @throws IOException          if the broker cannot state the run's limits
 	 */
-	private static SessionRequestBroker requestBroker(HarnessRunSession session, HarnessRunnerOptions options,
-		RequestedSessionStarter starter) throws IOException
+	private static SessionRequestBroker requestBroker(HarnessRunSession session, HarnessRunManager manager,
+		HarnessRunnerOptions options, RequestedSessionStarter starter) throws IOException
 	{
 		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.run())))
 			return null;
 		requireThat(starter, "requestedStarter").isNotNull();
-		SessionRequestBroker broker = new SessionRequestBroker(session.run(), options, starter);
+		SessionRequestBroker broker = new SessionRequestBroker(session.run(), manager, options, starter);
 		try
 		{
 			if (options.resumeRun() != null)

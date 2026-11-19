@@ -519,7 +519,7 @@ public final class SessionSlotsTest
 			slots.retain(resumed);
 
 			Path manifest = run.directory().resolve("run.json");
-			Files.writeString(manifest, Files.readString(manifest).replace("\"schema_version\": 5", "\"schema_version\": 9"));
+			Files.writeString(manifest, Files.readString(manifest).replace("\"schema_version\": 6", "\"schema_version\": 9"));
 			expectThrows(IOException.class, () -> slots.acquireRetained(SESSION_ID, "claude"));
 			requireThat(Files.isDirectory(run.directory().resolve("home")), "kept").isTrue();
 		}

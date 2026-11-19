@@ -40,8 +40,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Validates session requests, snapshots their inputs before starting children, and publishes retained evidence.
  * A run whose options allow no session request gets each request refused with
  * {@link SessionRequestAccess#NO_REQUESTS_REASON}, and one that has accepted all that its options allow gets each
- * further request refused with {@link SessionRequestAccess#limitReason(int)}. A request that resumes a session that
- * the run requested continues that session: it is not a new request, so the run's limits neither refuse nor count it.
+ * further request refused with {@link SessionRequestAccess#limitReason(int)}. A run counts the requests that it
+ * accepted over its whole life, across every runner that resumed it. A request that resumes a session that the run
+ * requested continues that session: it is not a new request, so the run's limits neither refuse nor count it.
  * <p>
  * A request whose records follow it, as {@link StreamedRequest} publishes them, gets each record on its child's
  * standard input as it arrives, and its child is stopped once the request's sender ends. Closing the broker stops
@@ -120,26 +121,31 @@ public final class SessionRequestBroker implements Closeable
 	 * Creates a broker for an already prepared run. The runner creates its access directories before sandbox setup.
 	 *
 	 * @param run     the requesting run
+	 * @param manager records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                accepted; the broker keeps it
 	 * @param options the requesting runner's options
 	 * @param starter resolves and starts child runners
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter)
+	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+		RequestedSessionStarter starter)
 	{
-		this(run, options, starter, RequestLimits.IN_RUN);
+		this(run, manager, options, starter, RequestLimits.IN_RUN);
 	}
 
 	/**
 	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds.
 	 *
 	 * @param run     the requesting run
+	 * @param manager records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                accepted; the broker keeps it
 	 * @param options the requesting runner's options
 	 * @param starter resolves and starts child runners
 	 * @param limits  the bounds that each request's archive must stay within
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter,
-		RequestLimits limits)
+	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+		RequestedSessionStarter starter, RequestLimits limits)
 	{
-		this(run, options, starter, limits, new ProcessHandleLiveness());
+		this(run, manager, options, starter, limits, new ProcessHandleLiveness());
 	}
 
 	/**
@@ -147,16 +153,18 @@ public final class SessionRequestBroker implements Closeable
 	 * children run in as many slots, in the run's directory, as the run's options allow to run at once.
 	 *
 	 * @param run      the requesting run
+	 * @param manager  records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                 accepted; the broker keeps it
 	 * @param options  the requesting runner's options
 	 * @param starter  resolves and starts child runners
 	 * @param limits   the bounds that each request's archive must stay within
 	 * @param liveness checks and stops the processes that a slot's previous session left
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunnerOptions options, RequestedSessionStarter starter,
-		RequestLimits limits, HarnessProcessLiveness liveness)
+	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+		RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(new RunSite(run, options, limits, new SessionSlots(SessionRequestAccess.requestedRunsDirectory(run),
-			options.maximumConcurrency(), liveness)), starter);
+		this(new RunSite(run, manager, options, limits, new SessionSlots(
+			SessionRequestAccess.requestedRunsDirectory(run), options.maximumConcurrency(), liveness)), starter);
 	}
 
 	/**
@@ -176,10 +184,11 @@ public final class SessionRequestBroker implements Closeable
 
 	/**
 	 * Starts paced discovery using the session's ticker, after stating the run's limits in its
-	 * {@link SessionRequestAccess#LIMITS_FILE}. Any discovery failure is reported by {@link #close()}.
+	 * {@link SessionRequestAccess#LIMITS_FILE}. The broker continues the count of the requests that the run accepted
+	 * before this broker started. Any discovery failure is reported by {@link #close()}.
 	 *
 	 * @param ticker the injected scan schedule
-	 * @throws IOException if the limits cannot be written
+	 * @throws IOException if the run's count of requests cannot be read, or its limits cannot be written
 	 */
 	public void start(HeartbeatTicker ticker) throws IOException
 	{
@@ -188,6 +197,7 @@ public final class SessionRequestBroker implements Closeable
 			requireThat(ticker, "ticker").isNotNull();
 			if (monitor != null || stopped)
 				throw new IllegalStateException("The session request broker has already started or stopped");
+			accepted = site.acceptedBefore();
 			site.accepted(json, accepted);
 			monitor = ticker.start(() ->
 			{
@@ -1228,16 +1238,26 @@ public final class SessionRequestBroker implements Closeable
 		/**
 		 * Returns why the site refuses the next request that does not resume a session.
 		 *
-		 * @param accepted how many requests the broker has accepted
+		 * @param accepted how many requests the site's requester has accepted
 		 * @return the reason, or empty if the site accepts the request
 		 */
 		Optional<String> refusal(int accepted);
 
 		/**
-		 * Records how many requests the broker has accepted, once when it starts and again after each acceptance.
+		 * Returns how many requests the site's requester accepted before the broker started, which the broker
+		 * continues to count from.
+		 *
+		 * @return the number of requests
+		 * @throws IOException if the count cannot be read
+		 */
+		int acceptedBefore() throws IOException;
+
+		/**
+		 * Records how many requests the site's requester has accepted, once when the broker starts and again after
+		 * each acceptance.
 		 *
 		 * @param json     writes the record
-		 * @param accepted how many requests the broker has accepted
+		 * @param accepted how many requests the site's requester has accepted
 		 * @throws IOException if the record cannot be written
 		 */
 		void accepted(JsonMapper json, int accepted) throws IOException;
@@ -1308,12 +1328,13 @@ public final class SessionRequestBroker implements Closeable
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param run     the requesting run
+	 * @param manager records the run's lifecycle in its manifest
 	 * @param options the requesting runner's options
 	 * @param limits  the bounds that each request's archive must stay within
 	 * @param slots   the slots, each a run root, that the run's requested sessions take
 	 */
-	private record RunSite(HarnessRun run, HarnessRunnerOptions options, RequestLimits limits, SessionSlots slots)
-		implements Site
+	private record RunSite(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+		RequestLimits limits, SessionSlots slots) implements Site
 	{
 		/**
 		 * Carries out the run's worktree requests.
@@ -1324,6 +1345,7 @@ public final class SessionRequestBroker implements Closeable
 		 * Creates the site of a run.
 		 *
 		 * @param run     the requesting run
+		 * @param manager records the run's lifecycle in its manifest
 		 * @param options the requesting runner's options
 		 * @param limits  the bounds that each request's archive must stay within
 		 * @param slots   the slots, each a run root, that the run's requested sessions take
@@ -1332,6 +1354,7 @@ public final class SessionRequestBroker implements Closeable
 		private RunSite
 		{
 			requireThat(run, "run").isNotNull();
+			requireThat(manager, "manager").isNotNull();
 			requireThat(options, "options").isNotNull();
 			requireThat(limits, "limits").isNotNull();
 			requireThat(slots, "slots").isNotNull();
@@ -1366,16 +1389,31 @@ public final class SessionRequestBroker implements Closeable
 		}
 
 		/**
-		 * Atomically states, in the run's {@link SessionRequestAccess#LIMITS_FILE}, how many sessions the run allows,
-		 * how many it has accepted and how many levels below its requested sessions may request sessions in turn.
+		 * Returns how many requests the run accepted before the broker started, as its manifest records them, so that a
+		 * run that a runner resumes keeps the count of its earlier runners.
+		 *
+		 * @return the number of requests
+		 * @throws IOException if the run's manifest cannot be read
+		 */
+		@Override
+		public int acceptedBefore() throws IOException
+		{
+			return manager.requestsUsed(run);
+		}
+
+		/**
+		 * Records in the run's manifest how many requests the run has accepted, then atomically states, in the run's
+		 * {@link SessionRequestAccess#LIMITS_FILE}, how many sessions the run allows, how many it has accepted and how
+		 * many levels below its requested sessions may request sessions in turn.
 		 *
 		 * @param json     writes the file
-		 * @param accepted how many requests the broker has accepted
-		 * @throws IOException if the file cannot be written
+		 * @param accepted how many requests the run has accepted
+		 * @throws IOException if the manifest or the file cannot be written
 		 */
 		@Override
 		public void accepted(JsonMapper json, int accepted) throws IOException
 		{
+			manager.recordRequestsUsed(run, accepted);
 			ObjectNode limits = json.createObjectNode().put("format_version", 1).
 				put("requests_allowed", options.sessionRequests()).put("requests_used", accepted).
 				put("depth_remaining", options.requestDepth());

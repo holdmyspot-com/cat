@@ -723,6 +723,13 @@ public final class RequestServer
 		}
 
 		@Override
+		public int acceptedBefore()
+		{
+			// The session's own requests have no caller that limits them, so nothing counts them
+			return 0;
+		}
+
+		@Override
 		public void accepted(JsonMapper json, int accepted)
 		{
 			// No caller limits the session's requests, so there is nothing to state

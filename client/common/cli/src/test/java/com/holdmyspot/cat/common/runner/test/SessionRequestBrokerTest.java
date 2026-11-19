@@ -121,7 +121,7 @@ public final class SessionRequestBrokerTest
 		{
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			AtomicReference<List<String>> arguments = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(harness, options, directory) ->
 				{
 					arguments.set(options);
@@ -205,7 +205,7 @@ public final class SessionRequestBrokerTest
 		{
 			AtomicReference<List<String>> arguments = new AtomicReference<>();
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					arguments.set(options);
@@ -244,7 +244,7 @@ public final class SessionRequestBrokerTest
 		{
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			Path file = fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE);
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 1);
@@ -280,7 +280,7 @@ public final class SessionRequestBrokerTest
 	public void statesNoRequests() throws IOException
 	{
 		try (Fixture fixture = new Fixture("--session-requests", "0");
-			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("A run that allows no request starts no session");
 			}))
@@ -307,7 +307,7 @@ public final class SessionRequestBrokerTest
 		{
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					arguments.add(options);
@@ -344,7 +344,7 @@ public final class SessionRequestBrokerTest
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
 			List<ExtraPermissions> given = new CopyOnWriteArrayList<>();
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					arguments.add(options);
@@ -376,7 +376,7 @@ public final class SessionRequestBrokerTest
 	public void refusesInvalidExtraPermissions() throws IOException
 	{
 		try (Fixture fixture = new Fixture();
-			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("Invalid extra permissions cannot start a child");
 			}))
@@ -404,7 +404,7 @@ public final class SessionRequestBrokerTest
 		{
 			String reason = "The session needs host registry.example, which the parent's sandbox does not allow";
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, directory) ->
 				{
 					Files.writeString(directory.resolve("runner.stderr"), reason + System.lineSeparator());
@@ -439,7 +439,7 @@ public final class SessionRequestBrokerTest
 		{
 			AtomicInteger started = new AtomicInteger();
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					started.incrementAndGet();
@@ -505,7 +505,7 @@ public final class SessionRequestBrokerTest
 	{
 		// Requirement: R-I9
 		try (Fixture fixture = new Fixture();
-			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("Invalid inputs cannot start a child");
 			}, limits(kind)))
@@ -565,7 +565,7 @@ public final class SessionRequestBrokerTest
 			List<Path> targets = new CopyOnWriteArrayList<>();
 			List<String> contents = new CopyOnWriteArrayList<>();
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					Path link = Path.of(options.get(options.indexOf("--project") + 1)).resolve("docs/marker");
@@ -608,7 +608,7 @@ public final class SessionRequestBrokerTest
 	public void refusesSessionOnlyField(String field, String value) throws IOException
 	{
 		try (Fixture fixture = new Fixture();
-			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("A request with a session-only field cannot start a session");
 			}))
@@ -648,7 +648,7 @@ public final class SessionRequestBrokerTest
 	{
 		// Requirement: R-I9
 		try (Fixture fixture = new Fixture();
-			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("A request without a profile cannot start a session");
 			}))
@@ -699,11 +699,12 @@ public final class SessionRequestBrokerTest
 			FakeHarnessCli process = new FakeHarnessCli(_ ->
 					{
 					});
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
-			{
-				started.countDown();
-				return process;
-			}))
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
+				(_, _, _) ->
+				{
+					started.countDown();
+					return process;
+				}))
 			{
 				fixture.request("running");
 				broker.scan();
@@ -731,11 +732,12 @@ public final class SessionRequestBrokerTest
 		}))
 		{
 			CountDownLatch started = new CountDownLatch(1);
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
-			{
-				started.countDown();
-				return child;
-			}))
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
+				(_, _, _) ->
+				{
+					started.countDown();
+					return child;
+				}))
 			{
 				broker.start(_ -> () ->
 				{
@@ -923,7 +925,7 @@ public final class SessionRequestBrokerTest
 			AtomicInteger sent = new AtomicInteger();
 			AtomicInteger checks = new AtomicInteger();
 			int status;
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					runnerOptions.set(options);
@@ -981,7 +983,7 @@ public final class SessionRequestBrokerTest
 			AtomicInteger checks = new AtomicInteger();
 			StringWriter printed = new StringWriter();
 			int status;
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					FakeHarnessCli process = conversingRunner(fixture, fileLocks, options, child);
@@ -1027,7 +1029,7 @@ public final class SessionRequestBrokerTest
 			Path folder = Files.createDirectory(fixture.root.resolve("conversation"));
 			Files.writeString(folder.resolve("to-child.jsonl"), "{\"turn\": \"hold\"}\n");
 			AtomicInteger checks = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					FakeHarnessCli process = conversingRunner(fixture, fileLocks, options, child);
@@ -1086,7 +1088,7 @@ public final class SessionRequestBrokerTest
 			Path records = Files.writeString(fixture.root.resolve("records.jsonl"),
 				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
 			AtomicInteger checks = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					// The requested session works on its turn until it is stopped
@@ -1149,7 +1151,7 @@ public final class SessionRequestBrokerTest
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			List<List<String>> starts = new CopyOnWriteArrayList<>();
 			AtomicInteger checks = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					starts.add(List.copyOf(options));
@@ -1227,7 +1229,7 @@ public final class SessionRequestBrokerTest
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			List<List<String>> starts = new CopyOnWriteArrayList<>();
 			AtomicInteger checks = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					starts.add(List.copyOf(options));
@@ -1294,7 +1296,7 @@ public final class SessionRequestBrokerTest
 				Yielding.fileReplacer()).withFixedRunId("s-1");
 			HarnessRun retained = manager.create("claude");
 			manager.recordHarnessSession(retained, RESUMED_SESSION);
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					throw new AssertionError("A discard request started a session");
@@ -1325,7 +1327,7 @@ public final class SessionRequestBrokerTest
 			Path worktree = Files.createDirectories(fixture.responses.resolve(WorktreeRequest.PREFIX + "b2"));
 			Path answered = Files.createDirectories(fixture.responses.resolve("c3"));
 			Files.writeString(answered.resolve("response.json"), "{\"status\":\"completed\"}");
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					throw new AssertionError("No session was requested");
@@ -1344,6 +1346,59 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a run that resumes its harness session continues the count of the requests that the run accepted
+	 * before its interruption, so that a resumed run that has already made all the requests that its options allow is
+	 * refused the next one.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void resumedRunKeepsItsSpentAllowance() throws IOException
+	{
+		try (Fixture fixture = new Fixture("--session-requests", "1"))
+		{
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
+				(_, _, _) ->
+				{
+					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), 1);
+					child.set(process);
+					return process;
+				}))
+			{
+				broker.start(_ -> () ->
+				{
+				});
+				fixture.request("first");
+				broker.scan();
+				fixture.await("first");
+			}
+			// The runner that resumes the run is a process of its own, with a manager of its own
+			HarnessRunManager resuming = new HarnessRunManager(new FileLocks(), fixture.manager.root(),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, resuming, fixture.options,
+				(_, _, _) ->
+				{
+					throw new AssertionError("A resumed run that spent its allowance started a session");
+				}))
+			{
+				broker.endUnanswered();
+				broker.start(_ -> () ->
+				{
+				});
+				requireThat(SessionRequestAccess.furtherRequestRefusal(fixture.requests), "stated").
+					isEqualTo(Optional.of(SessionRequestAccess.limitReason(1)));
+
+				fixture.request("second");
+				broker.scan();
+
+				requireThat(fixture.await("second").path("reason").asString(), "reason").
+					isEqualTo(SessionRequestAccess.limitReason(1));
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a launch that resumes a harness session that no retained run records is refused with status 2
 	 * and a reason that names the session, and that one that names an option that the run fixed at its start is
 	 * refused before it makes a request.
@@ -1358,7 +1413,7 @@ public final class SessionRequestBrokerTest
 			Path again = Files.writeString(fixture.root.resolve("again.jsonl"),
 				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
 			AtomicInteger checks = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					throw new AssertionError("The refused request started a session");
@@ -1404,7 +1459,7 @@ public final class SessionRequestBrokerTest
 			AtomicInteger checks = new AtomicInteger();
 			StringWriter printed = new StringWriter();
 			int status;
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					throw new AssertionError("The refused request started a session");
@@ -1442,7 +1497,7 @@ public final class SessionRequestBrokerTest
 			AtomicInteger checks = new AtomicInteger();
 			StringWriter printed = new StringWriter();
 			int status;
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
 				{
 					throw new AssertionError("The refused request started a session");
@@ -1487,7 +1542,7 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
 			List<SlotRun> runs = new CopyOnWriteArrayList<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
 			{
 				fixture.request("first");
@@ -1525,7 +1580,7 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
 			List<SlotRun> runs = new CopyOnWriteArrayList<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
 			{
 				fixture.request("first");
@@ -1555,7 +1610,7 @@ public final class SessionRequestBrokerTest
 			Iterator<String> markers = List.of("first", "second").iterator();
 			JsonNode firstResponse;
 			JsonNode secondResponse;
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlotWithReceipt(fixture, fileLocks, options, runs,
 					markers.next())))
 			{
@@ -1630,7 +1685,7 @@ public final class SessionRequestBrokerTest
 		{
 			List<SlotRun> runs = new CopyOnWriteArrayList<>();
 			ScriptedLiveness liveness = new ScriptedLiveness();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 4242), RequestLimits.IN_RUN, liveness))
 			{
 				fixture.request("first");
@@ -1666,7 +1721,7 @@ public final class SessionRequestBrokerTest
 			CountDownLatch developmentStarted = new CountDownLatch(1);
 			CountDownLatch release = new CountDownLatch(1);
 			AtomicInteger calls = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
@@ -1710,7 +1765,7 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
 			List<SlotRun> runs = new CopyOnWriteArrayList<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
 			{
 				for (String id : List.of("first", "second"))
@@ -1748,7 +1803,7 @@ public final class SessionRequestBrokerTest
 			AtomicInteger peak = new AtomicInteger();
 			CountDownLatch full = new CountDownLatch(2);
 			Semaphore gate = new Semaphore(0);
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					Path runRoot = Path.of(option(options, "--run-root"));
@@ -1804,14 +1859,15 @@ public final class SessionRequestBrokerTest
 		{
 			CountDownLatch started = new CountDownLatch(1);
 			AtomicInteger calls = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
-			{
-				calls.incrementAndGet();
-				started.countDown();
-				return new FakeHarnessCli(_ ->
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
+				(_, _, _) ->
 				{
-				});
-			}))
+					calls.incrementAndGet();
+					started.countDown();
+					return new FakeHarnessCli(_ ->
+					{
+					});
+				}))
 			{
 				fixture.request("running");
 				broker.scan();
@@ -1838,7 +1894,7 @@ public final class SessionRequestBrokerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, directory) ->
 				{
 					Files.createDirectory(directory.resolve("response.json"));
@@ -1873,7 +1929,7 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "3", "--max-concurrency", "1"))
 		{
 			List<SlotRun> runs = new CopyOnWriteArrayList<>();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
 					if (runs.isEmpty())
@@ -1914,7 +1970,7 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "2"))
 		{
 			AtomicInteger started = new AtomicInteger();
-			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, directory) ->
 				{
 					Files.createDirectory(directory.resolve("response.json"));
@@ -2411,7 +2467,7 @@ public final class SessionRequestBrokerTest
 	{
 		// Requirement: R-W17
 		try (Fixture fixture = new Fixture();
-			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options, (_, _, _) ->
 			{
 				throw new AssertionError("A worktree request starts no session");
 			}))
@@ -2457,10 +2513,11 @@ public final class SessionRequestBrokerTest
 		for (String allowed : List.of("1", "0"))
 		{
 			try (Fixture fixture = new Fixture("--session-requests", allowed);
-				SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options, (_, _, _) ->
-				{
-					throw new AssertionError("A worktree request starts no session");
-				}))
+				SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
+					(_, _, _) ->
+					{
+						throw new AssertionError("A worktree request starts no session");
+					}))
 			{
 				Git git = TestRepositories.initialize(fixture.project, fixture.root.resolve("no-excludes"));
 				Path campaign = Files.createDirectories(fixture.project.resolve(".cat/sessions/s1/optimizer/c1"));
@@ -2554,6 +2611,7 @@ public final class SessionRequestBrokerTest
 		private final TemporaryDirectories cleanup = new TemporaryDirectories();
 		private final JsonMapper json = JsonMapper.builder().build();
 		private final Path root;
+		private final HarnessRunManager manager;
 		private final HarnessRun run;
 		private final Path project;
 		private final Path denied;
@@ -2583,8 +2641,9 @@ public final class SessionRequestBrokerTest
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
 				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
-				run = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
-					Clock.systemUTC(), Yielding.fileReplacer()).create("claude");
+				manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				run = manager.create("claude");
 				project = run.directory().resolve("project");
 				denied = Files.createDirectory(root.resolve("denied"));
 				Files.writeString(project.resolve("marker"), "original");
