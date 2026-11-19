@@ -52,9 +52,9 @@ public final class KeptRunCopy
 	/**
 	 * How the copy of a kept run ended.
 	 *
-	 * @param incomplete the message that names the file that could not be copied and says that the kept run is
-	 *                   incomplete, or empty if the run was copied in full, apart from what the copier's sandbox
-	 *                   protects
+	 * @param incomplete the message that names each file that could not be copied with the failure that stopped it and
+	 *                   says that the kept run is incomplete, or empty if the run was copied in full, apart from what
+	 *                   the copier's sandbox protects
 	 * @param skipped    the paths, relative to the run, that the copier's sandbox refused to let the copy write
 	 */
 	public record Result(Optional<String> incomplete, List<String> skipped)
@@ -62,7 +62,7 @@ public final class KeptRunCopy
 		/**
 		 * Creates a result.
 		 *
-		 * @param incomplete the message that names the file that could not be copied, or empty
+		 * @param incomplete the message that names each file that could not be copied, or empty
 		 * @param skipped    the paths, relative to the run, that the copy skipped
 		 * @throws NullPointerException if {@code incomplete} or {@code skipped} are null
 		 */
@@ -76,8 +76,11 @@ public final class KeptRunCopy
 	/**
 	 * Copies a kept run into {@code target}, leaving out links, the child's isolated home and the project files that
 	 * the child's sandbox kept it from changing. A file or folder that the copier's sandbox refuses to write is skipped
-	 * without a message and listed in the result. Any other file that cannot be written ends the copy and is reported,
-	 * not thrown, so that it does not hide the session's outcome.
+	 * without a message and listed in the result. Any other file or folder that cannot be copied is left out and
+	 * reported with the failure that stopped it, and the copy goes on with the rest of the run, so that one such file
+	 * costs the requester neither the run's project nor its other evidence. The failure is reported, not thrown, so
+	 * that it does not hide the session's outcome. Only a kept run whose own folder cannot be read, or a copy whose own
+	 * folder cannot be created, ends the copy at once.
 	 *
 	 * @param source the kept run
 	 * @param target the copy, which need not exist
@@ -129,7 +132,7 @@ public final class KeptRunCopy
 		requireThat(target, "target").isNotNull();
 		deleteTurnCopies(target);
 		RunCopier copier = new RunCopier(source, target, KeptRunCopy::includesTurnPath,
-			KeptRunCopy::isRequiredTranscript);
+			KeptRunCopy::isRequiredTranscript, false);
 		Files.walkFileTree(source, copier);
 	}
 
@@ -187,24 +190,18 @@ public final class KeptRunCopy
 	 */
 	private static Result copy(Path source, Path target, Predicate<Path> included)
 	{
-		RunCopier copier = new RunCopier(source, target, included, _ -> false);
+		RunCopier copier = new RunCopier(source, target, included, _ -> false, true);
 		try
 		{
 			Files.walkFileTree(source, copier);
 		}
-		catch (FileSystemException e)
-		{
-			String reason = e.getReason();
-			if (reason == null)
-				reason = e.getClass().getSimpleName();
-			return new Result(Optional.of(incompleteRun(copier.attempted, reason, target)), copier.skipped);
-		}
 		catch (IOException e)
 		{
-			return new Result(Optional.of(incompleteRun(copier.attempted, e.getClass().getSimpleName(), target)),
-				copier.skipped);
+			copier.failures.add(failure(copier.attempted, e));
 		}
-		return new Result(Optional.empty(), copier.skipped);
+		if (copier.failures.isEmpty())
+			return new Result(Optional.empty(), copier.skipped);
+		return new Result(Optional.of(incompleteRun(copier.failures, target)), copier.skipped);
 	}
 
 	/**
@@ -220,22 +217,34 @@ public final class KeptRunCopy
 	}
 
 	/**
+	 * Describes a file that could not be copied.
+	 *
+	 * @param file    the file or folder of the copy that could not be written
+	 * @param failure the failure that stopped it, which names the file that it concerns, the copy's or the kept
+	 *                run's, and the system's reason
+	 * @return the description
+	 */
+	private static String failure(Path file, IOException failure)
+	{
+		return "The file " + file + " could not be copied: " + failure + ".";
+	}
+
+	/**
 	 * Returns the message that says a kept run is incomplete.
 	 *
-	 * @param file   the file that could not be copied
-	 * @param reason why it could not be copied
-	 * @param target the copy of the kept run
+	 * @param failures the description of each file that could not be copied
+	 * @param target   the copy of the kept run
 	 * @return the message
 	 */
-	private static String incompleteRun(Path file, String reason, Path target)
+	private static String incompleteRun(List<String> failures, Path target)
 	{
-		return "The file " + file + " could not be copied: " + reason + ". The kept run at " + target +
-			" is incomplete.";
+		return String.join("\n", failures) + "\nThe kept run at " + target + " is incomplete.";
 	}
 
 	/**
 	 * Copies a kept run's directories and regular files, skips what the copier's sandbox refuses to write, and
-	 * remembers which copy it attempted last.
+	 * remembers which copy it attempted last. A copier that goes on past failures leaves out each other file or folder
+	 * that cannot be copied and remembers why; any other copier stops at the first.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
@@ -265,9 +274,18 @@ public final class KeptRunCopy
 		private final Predicate<Path> included;
 		private final Predicate<Path> required;
 		/**
+		 * Indicates whether a file or folder that cannot be copied is left out, rather than ending the copy, unless
+		 * {@link #required} accepts it.
+		 */
+		private final boolean goesOnPastFailures;
+		/**
 		 * The paths, relative to the run, that the copier's sandbox refused to let the copy write.
 		 */
 		private final List<String> skipped = new ArrayList<>();
+		/**
+		 * The description of each file or folder that was left out because it could not be copied.
+		 */
+		private final List<String> failures = new ArrayList<>();
 		/**
 		 * The file or directory of the copy that the visitor last tried to write.
 		 */
@@ -280,13 +298,17 @@ public final class KeptRunCopy
 		 * @param target the copy of the kept run
 		 * @param included accepts the paths relative to the run that the copy includes
 		 * @param required accepts the paths whose copy failures must be thrown
+		 * @param goesOnPastFailures indicates whether a file or folder that cannot be copied is left out, rather than
+		 *                           ending the copy, unless {@code required} accepts it
 		 */
-		RunCopier(Path source, Path target, Predicate<Path> included, Predicate<Path> required)
+		RunCopier(Path source, Path target, Predicate<Path> included, Predicate<Path> required,
+			boolean goesOnPastFailures)
 		{
 			this.source = source;
 			this.target = target;
 			this.included = included;
 			this.required = required;
+			this.goesOnPastFailures = goesOnPastFailures;
 			this.attempted = target;
 		}
 
@@ -328,6 +350,20 @@ public final class KeptRunCopy
 			return true;
 		}
 
+		/**
+		 * Leaves out a file or folder that could not be copied, if this copier goes on past failures.
+		 *
+		 * @param file    the file or folder of the kept run
+		 * @param failure the failure that stopped its copy
+		 * @throws IOException {@code failure} if this copier stops at failures or the file's copy is required
+		 */
+		private void leaveOut(Path file, IOException failure) throws IOException
+		{
+			if (!goesOnPastFailures || required.test(source.relativize(file)))
+				throw failure;
+			failures.add(failure(copyOf(file), failure));
+		}
+
 		@Override
 		public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 		{
@@ -341,8 +377,10 @@ public final class KeptRunCopy
 			}
 			catch (IOException e)
 			{
-				if (relative.toString().isEmpty() || !skips(directory, e))
+				if (relative.toString().isEmpty())
 					throw e;
+				if (!skips(directory, e))
+					leaveOut(directory, e);
 				return FileVisitResult.SKIP_SUBTREE;
 			}
 			return FileVisitResult.CONTINUE;
@@ -362,7 +400,7 @@ public final class KeptRunCopy
 				catch (IOException e)
 				{
 					if (!skips(file, e))
-						throw e;
+						leaveOut(file, e);
 				}
 			}
 			return FileVisitResult.CONTINUE;
@@ -372,7 +410,23 @@ public final class KeptRunCopy
 		public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException
 		{
 			attempted = copyOf(file);
-			throw failure;
+			if (file.equals(source))
+				throw failure;
+			leaveOut(file, failure);
+			return FileVisitResult.CONTINUE;
+		}
+
+		@Override
+		public FileVisitResult postVisitDirectory(Path directory, IOException failure) throws IOException
+		{
+			if (failure != null)
+			{
+				attempted = copyOf(directory);
+				if (directory.equals(source))
+					throw failure;
+				leaveOut(directory, failure);
+			}
+			return FileVisitResult.CONTINUE;
 		}
 	}
 

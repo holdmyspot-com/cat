@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.file.StandardOpenOption.APPEND;
 
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
@@ -13,7 +14,16 @@ import com.holdmyspot.cat.common.runner.KeptRunCopy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.AclEntry;
+import java.nio.file.attribute.AclEntryPermission;
+import java.nio.file.attribute.AclEntryType;
+import java.nio.file.attribute.AclFileAttributeView;
+import java.nio.file.attribute.UserPrincipal;
 import java.time.Clock;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -144,6 +154,43 @@ public final class KeptRunCopyTest
 	}
 
 	/**
+	 * Verifies that a file of a kept run that cannot be read does not end the copy: the rest of the run, its project
+	 * included, is copied, and the result names every file that could not be copied with the failure that stopped it.
+	 *
+	 * @throws IOException if fixture files cannot be created, protected or copied
+	 */
+	@Test
+	public void unreadableFilesLeaveTheRestCopied() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("kept-unreadable-"));
+			Path source = Files.createDirectories(root.resolve("source"));
+			Path target = root.resolve("target");
+			Files.writeString(Files.createDirectories(source.resolve("project")).resolve("marker"), "kept project");
+			Files.writeString(Files.createDirectories(source.resolve("artifacts")).resolve("turn-1.events"), "events");
+			Path evidence = Files.createDirectories(source.resolve("responses/request-1/inputs/read_only_evidence/1"));
+			Path firstUnreadable = Files.writeString(evidence.resolve("bridge-transcript.jsonl"), "transcript");
+			Path secondUnreadable = Files.writeString(source.resolve("artifacts/receipt.json"), "receipt");
+			denyReading(firstUnreadable);
+			denyReading(secondUnreadable);
+
+			KeptRunCopy.Result result = KeptRunCopy.copy(source, target);
+
+			requireThat(Files.readString(target.resolve("project/marker")), "project").isEqualTo("kept project");
+			requireThat(Files.readString(target.resolve("artifacts/turn-1.events")), "events").isEqualTo("events");
+			Optional<String> incomplete = result.incomplete();
+			requireThat(incomplete, "incomplete").isPresent();
+			requireThat(incomplete.get(), "incomplete").
+				contains(target.resolve("responses/request-1/inputs/read_only_evidence/1/bridge-transcript.jsonl").
+					toString()).
+				contains(target.resolve("artifacts/receipt.json").toString()).
+				contains("AccessDeniedException").
+				contains("The kept run at " + target + " is incomplete.");
+		}
+	}
+
+	/**
 	 * Verifies that a session's pass over the runs of its run root never meets another session's kept run while that
 	 * run is being copied, when a manifest that does not yet identify its directory, or is partly copied, would make
 	 * the pass fail the session.
@@ -205,5 +252,31 @@ public final class KeptRunCopyTest
 			}
 			requireThat(seen.get(), "failureOfPass").isNull();
 		}
+	}
+
+	/**
+	 * Takes away the permission to read a file. A file system without POSIX permissions gets an access-control entry
+	 * that denies the current user the reading instead. Either way, the file can still be deleted.
+	 *
+	 * @param file a file
+	 * @throws IOException if the file's permissions cannot be changed
+	 */
+	private static void denyReading(Path file) throws IOException
+	{
+		if (PortableFiles.hasModes(file))
+		{
+			Files.setPosixFilePermissions(file, Set.of());
+			return;
+		}
+		// The test created the file, so its owner is the user that runs the test
+		UserPrincipal user = Files.getOwner(file);
+		AclFileAttributeView view = Files.getFileAttributeView(file, AclFileAttributeView.class);
+		List<AclEntry> entries = new ArrayList<>(view.getAcl());
+		entries.addFirst(AclEntry.newBuilder().
+			setType(AclEntryType.DENY).
+			setPrincipal(user).
+			setPermissions(AclEntryPermission.READ_DATA).
+			build());
+		view.setAcl(entries);
 	}
 }
