@@ -4,8 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.optimizer.CodexProfileInventory;
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
@@ -19,8 +21,8 @@ import org.testng.annotations.Test;
 import tools.jackson.core.JacksonException;
 
 /**
- * Tests {@link CodexProfileInventory} over the launcher that {@link HarnessVersion#process()} returns, with a fake
- * {@code codex} executable that writes the model list to stdout and diagnostics to stderr.
+ * Tests {@link CodexProfileInventory} over the launcher that {@link HarnessVersion#process(ExecutableFiles)} returns,
+ * with a fake {@code codex} executable that writes the model list to stdout and diagnostics to stderr.
  */
 public final class CodexProfileInventoryProcessTest
 {
@@ -97,7 +99,7 @@ public final class CodexProfileInventoryProcessTest
 			Path codex = writeCodex(directory, MODELS_START,
 				"WARNING: {\"event\":\"stale\"} could not refresh the model cache\n", MODELS_END);
 			ProfileCatalog inventory = new CodexProfileInventory(directory, codex.toString(),
-				HarnessVersion.process()).inventory();
+				HarnessVersion.process(Yielding.executableFiles())).inventory();
 
 			requireThat(inventory.profiles(), "profiles").isEqualTo(List.of(new TrialProfile("gpt-6-sol", "low")));
 			requireThat(inventory.source(), "source").contains("codex-cli 0.169.0");
@@ -120,7 +122,7 @@ public final class CodexProfileInventoryProcessTest
 			String stdout = "{\"models\":[{\"slug\":\"" + padding + "-unterminated";
 			Path codex = writeCodex(directory, stdout, "error: the connection was reset\n", "");
 			CodexProfileInventory inventory = new CodexProfileInventory(directory, codex.toString(),
-				HarnessVersion.process());
+				HarnessVersion.process(Yielding.executableFiles()));
 			try
 			{
 				inventory.inventory();

@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.CodeLoadingVariables;
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -77,17 +77,23 @@ public final class HarnessVersion
 	 * Returns the launcher that starts a real process and waits 30 seconds for it to end. The launcher finds the
 	 * executable as {@link Platform#findProgram} does, and reads stdout and stderr apart, so that a diagnostic on
 	 * stderr never enters the text that a caller parses from stdout.
+	 * <p>
+	 * The launcher starts the executable as {@code executables} does, so a start that Linux refuses because a process
+	 * still holds a just-installed harness open for writing is retried until that process closes it.
 	 *
+	 * @param executables starts the executable
 	 * @return the launcher
+	 * @throws NullPointerException if {@code executables} is null
 	 */
-	public static Launcher process()
+	public static Launcher process(ExecutableFiles executables)
 	{
+		requireThat(executables, "executables").isNotNull();
 		return command ->
 		{
 			ProcessBuilder builder = new ProcessBuilder(command);
 			List<String> resolved = new ArrayList<>(command);
 			resolved.set(0, Platform.current().findProgram(command.getFirst(), builder.environment()));
-			Process process = CodeLoadingVariables.start(builder.command(resolved));
+			Process process = executables.run(builder.command(resolved));
 			try (ExecutorService readers = Executors.newVirtualThreadPerTaskExecutor())
 			{
 				Future<String> stdout = readers.submit(() -> readAll(process.getInputStream()));

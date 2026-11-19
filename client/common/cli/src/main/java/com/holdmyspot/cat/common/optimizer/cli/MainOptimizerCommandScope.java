@@ -359,7 +359,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	protected final HarnessVersion.Launcher harnessVersionLauncher()
 	{
 		ensureOpen();
-		return HarnessVersion.process();
+		return HarnessVersion.process(executableFiles());
 	}
 
 	@Override

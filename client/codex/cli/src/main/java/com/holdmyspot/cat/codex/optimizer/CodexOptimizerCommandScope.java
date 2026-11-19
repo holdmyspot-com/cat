@@ -121,7 +121,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 				artifact.resolve("bin/prompt-optimizer"), environment).replace("request server", "prompt optimizer"),
 			environment);
 		this.interrupts = interrupts(environment, configurationDirectory, clock());
-		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process());
+		this.profiles = new CodexProfileInventory(artifact, EXECUTABLE, HarnessVersion.process(executableFiles()));
 	}
 
 	/**
