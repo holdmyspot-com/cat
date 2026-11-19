@@ -1,8 +1,8 @@
 #!/usr/bin/env bats
 
 # Tests how the release's entry script cat.sh runs the installer's install for Claude Code, from detecting a Claude Code
-# shell to choosing Claude Code's configuration directory as the harness home, and what the generated Claude plugin
-# launchers and hooks report.
+# shell to choosing Claude Code's configuration directory as the harness home, what the generated Claude plugin
+# launchers and hooks report, and that each command of the hooks' manifest starts its hook.
 
 load bootstrap-helpers
 
@@ -69,4 +69,43 @@ platform=${expected_platform}" ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
 	context_file=$(printf '%s\n' "${output}" | sed -n 's/.*Read the whole file `\([^`]*\)`.*/\1/p')
 	grep -F "reviewer rule" "${context_file}"
+}
+
+@test "each generated Claude hook command starts its hook from a path with a space and a quote" {
+	plugin="${TEST_ROOT}/cat plugin's hooks"
+	mkdir -p "${plugin}/bin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/claude/hooks" "${plugin}/hooks"
+	# Claude Code names the plugin's root directory with / separators on every platform
+	root="${plugin}"
+	if command -v cygpath >/dev/null 2>&1; then
+		root=$(cygpath -m "${plugin}")
+	fi
+	hooks="${plugin}/hooks/hooks.json"
+	commands=0
+	for event in $(jq -r '.hooks | keys_unsorted[]' "${hooks}" | tr -d '\r'); do
+		case "${event}" in
+			SessionStart) program="session-start" ;;
+			SubagentStart) program="subagent-start" ;;
+			SessionEnd) program="session-end" ;;
+			*)
+				printf 'The manifest names an unknown event: %s\n' "${event}"
+				false
+				;;
+		esac
+		printf '#!/bin/sh\necho started %s\n' "${program}" > "${plugin}/bin/${program}"
+		chmod +x "${plugin}/bin/${program}"
+		count=$(jq --arg event "${event}" '[.hooks[$event][].hooks[]] | length' "${hooks}" | tr -d '\r')
+		for ((index = 0; index < count; ++index)); do
+			command=$(jq -r --arg event "${event}" --argjson index "${index}" \
+				'[.hooks[$event][].hooks[]][$index].command' "${hooks}" | tr -d '\r')
+
+			# Claude Code runs the command in a POSIX shell, Git Bash on Windows, which expands ${CLAUDE_PLUGIN_ROOT}
+			run env CLAUDE_PLUGIN_ROOT="${root}" sh -c "${command}" < /dev/null
+
+			[ "${status}" -eq 0 ]
+			[ "${output}" = "started ${program}" ]
+			commands=$((commands + 1))
+		done
+	done
+	[ "${commands}" -eq 3 ]
 }

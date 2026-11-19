@@ -1,8 +1,11 @@
 #!/usr/bin/env bats
 
 # Tests how the release's entry script cat.sh runs the installer's install for Codex, from detecting a Codex shell to
-# choosing Codex's home as the harness home, how it refuses Windows, where PowerShell installs Codex, and what the
-# generated Codex hooks report when Codex runs them on this platform.
+# choosing Codex's home as the harness home, how it refuses Windows, where PowerShell installs Codex, what the
+# generated Codex hooks report when Codex runs them on this platform, and that each command of the hooks' manifest
+# starts its hook.
+
+bats_require_minimum_version 1.5.0
 
 load bootstrap-helpers
 load windows-helpers
@@ -115,4 +118,118 @@ codex_hook()
 	[ "${status}" -eq 0 ]
 	[[ "${output}" == *'"hookEventName":"SubagentStart"'* ]]
 	[[ "${output}" == *"reviewer rule"* ]]
+}
+
+# An event of a shell command that runs run-part, with text that is not ASCII
+PART_EVENT='{"tool_input":{"command":"run-part café —"}}'
+
+# Runs a command of a Codex plugin's hooks manifest the way that Codex runs it on this platform: Codex writes the
+# plugin's root directory in place of ${PLUGIN_ROOT}, sets the environment variable PLUGIN_ROOT to it, and runs the
+# hook's commandWindows in PowerShell on Windows, and its command in a POSIX shell elsewhere.
+#
+# Arguments:
+#   $1 - The plugin's root directory, which holds hooks/hooks.json.
+#   $2 - The hook's event, such as SessionStart.
+#   $3 - The position of the hook among the event's hooks, from 0.
+#   $4 - The event, which the command reads from its standard input.
+#
+# Output:
+#   Writes the command's standard output and standard error.
+#
+# Exit status:
+#   Returns the command's exit status.
+codex_manifest_command()
+{
+	local field=command root="$1"
+	case "$(current_platform)" in
+		windows-*)
+			field=commandWindows
+			root=$(cygpath -w "$1")
+			;;
+	esac
+	local command
+	command=$(jq -r --arg event "$2" --argjson index "$3" --arg field "${field}" \
+		'[.hooks[$event][].hooks[]][$index][$field]' "$1/hooks/hooks.json" | tr -d '\r')
+	# shellcheck disable=SC2016 # The placeholder that Codex replaces, not an expansion
+	local placeholder='${PLUGIN_ROOT}'
+	command="${command//"${placeholder}"/"${root}"}"
+	case "$(current_platform)" in
+		windows-*) printf '%s\n' "$4" | powershell_command "${command}" "PLUGIN_ROOT=${root}" ;;
+		*) printf '%s\n' "$4" | env PLUGIN_ROOT="${root}" sh -c "${command}" ;;
+	esac
+}
+
+# Replaces a program of a Codex plugin's bin folder, in the form that the plugin's hooks start on this platform, with
+# one that prints a line and then copies its standard input to its standard output.
+#
+# Arguments:
+#   $1 - The plugin's root directory.
+#   $2 - The program's name, such as session-start.
+#   $3 - The line that the program prints first.
+#
+# Side effects:
+#   Writes $1/bin/$2.cmd on Windows and $1/bin/$2 elsewhere.
+replace_codex_program()
+{
+	case "$(current_platform)" in
+		windows-*)
+			printf '@echo off\r\necho %s\r\nfindstr "^"\r\nexit /b 0\r\n' "$3" > "$1/bin/$2.cmd"
+			;;
+		*)
+			printf '#!/bin/sh\necho %s\ncat\n' "$3" > "$1/bin/$2"
+			chmod +x "$1/bin/$2"
+			;;
+	esac
+}
+
+@test "each generated Codex hook command starts its hook from a path with a space, a quote and a dollar sign" {
+	plugin="${TEST_ROOT}/cat plugin's \$HOME hooks"
+	mkdir -p "${plugin}/bin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex/hooks" "${plugin}/hooks"
+	commands=0
+	for event in $(jq -r '.hooks | keys_unsorted[]' "${plugin}/hooks/hooks.json" | tr -d '\r'); do
+		case "${event}" in
+			SessionStart) program="session-start" ;;
+			SubagentStart) program="subagent-start" ;;
+			# The next test runs this hook, whose command starts Java only for some events
+			PostToolUse) continue ;;
+			*)
+				printf 'The manifest names an unknown event: %s\n' "${event}"
+				false
+				;;
+		esac
+		replace_codex_program "${plugin}" "${program}" "started ${program}"
+		hooks=$(jq --arg event "${event}" '[.hooks[$event][].hooks[]] | length' "${plugin}/hooks/hooks.json" | tr -d '\r')
+		for ((index = 0; index < hooks; ++index)); do
+			run --separate-stderr codex_manifest_command "${plugin}" "${event}" "${index}" "${PART_EVENT}"
+
+			[ "${status}" -eq 0 ]
+			[ "${output//$'\r'/}" = "started ${program}"$'\n'"${PART_EVENT}" ]
+			commands=$((commands + 1))
+		done
+	done
+	[ "${commands}" -eq 2 ]
+}
+
+@test "the generated Codex PostToolUse hook passes only a run-part or read-part event to the plugin's program" {
+	plugin="${TEST_ROOT}/cat plugin's \$HOME hooks"
+	mkdir -p "${plugin}/bin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex/hooks" "${plugin}/hooks"
+	replace_codex_program "${plugin}" post-tool-use started
+	read_part_event="${PART_EVENT/run-part/read-part}"
+
+	run --separate-stderr codex_manifest_command "${plugin}" PostToolUse 0 "${PART_EVENT}"
+
+	[ "${status}" -eq 0 ]
+	[ "${output//$'\r'/}" = "started"$'\n'"${PART_EVENT}" ]
+
+	run --separate-stderr codex_manifest_command "${plugin}" PostToolUse 0 "${read_part_event}"
+
+	[ "${status}" -eq 0 ]
+	[ "${output//$'\r'/}" = "started"$'\n'"${read_part_event}" ]
+
+	run --separate-stderr codex_manifest_command "${plugin}" PostToolUse 0 '{"tool_input":{"command":"ls"}}'
+
+	[ "${status}" -eq 0 ]
+	[ -z "${output}" ]
 }
