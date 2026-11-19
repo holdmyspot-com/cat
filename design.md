@@ -1548,11 +1548,8 @@ keeps its files as long as its session exists.
 Earlier versions of CAT kept these directories under `<base>/.cat/work/`. CAT no longer moves them: a session start
 leaves every entry of `.cat/work/`, including its former shared `temp/`, where it is and never deletes it (D81).
 
-Codex enforces those denials through a sandbox helper that refuses to start when it cannot use the directory
-`/tmp/codex-daemon-<uid>`, and a Codex sandbox hides that directory from the commands it runs. A campaign started from
-a sandboxed Codex session could therefore start no session that is denied reads. When `bwrap` is on the `PATH`, the
-Codex runner starts the app-server under bubblewrap with a private, empty `/tmp`, keeping a run directory below `/tmp`
-visible.
+No runner starts inside a Codex sandbox. When `bwrap` is on the `PATH`, the Codex runner starts the app-server under
+bubblewrap only to hide the directories that its session is denied; the app-server sees the system's `/tmp`.
 
 Loading a campaign reads only the snapshot, so its cost does not grow with the number of trials. Trial records are read
 for diagnosis, reports and reconciliation of the in-flight tail. CAT never rebuilds state by replaying all trials.
@@ -2710,6 +2707,8 @@ keeps the frozen judge. The development judge is a cost control like the commit 
 or send a weak candidate to an attempt that then fails, but they never enter a claim, so choosing it changes neither
 the judge version nor any certification's currency. The candidates are the profiles that the agent definitions of
 CAT's cheaper implementation agents bind in the harness, cheapest first, excluding any equal to the role profile.
+A judge may use the same model as the trials it judges, but it is always a session distinct from the trial session
+whose reply it judges (user ruling, 2026-11-19).
 
 CAT chooses per prompt test, because one judge session decides all of a trial's judged assertions and splitting it by
 assertion would add sessions. It examines the candidates cheapest first, and starts the next one early (step 2):
