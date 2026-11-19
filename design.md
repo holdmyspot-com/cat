@@ -3586,12 +3586,12 @@ carry the options that only narrow the requested session or describe its own inp
 workspace files, the read-only evidence paths, the tool-output token limit, the instruction files and `--keep-run`.
 Each path it names must be one the requesting session's sandbox lets it read, and so must the target of each link in
 the project that the request carries as a read-only copy, a directory target counting against the same size bounds; its
-contents travel inside the request
-archive, so the workspace files and the evidence reach the requested session at new paths inside its run, not at the
+contents travel inside the request archive, so the workspace files and the evidence reach the requested session at new paths inside its run, not at the
 paths the command named. A command run with `--install-cat` names the candidate CAT artifact as the request's first
 plugin when it differs from the run's own. The run's runner copies a kept run, without its isolated home, into its
 response, and the requesting command copies it from there into its own run root, so the optimizer reads its trial's
-run where it reads it outside a run. The run's runner also keeps `limits.json` in the responses
+run where it reads it outside a run. The copy's manifest names the project that the launch named, as a run outside a run does,
+so cleanup finds the campaign's runs. The run's runner also keeps `limits.json` in the responses
 directory, which the session may read and not write: `{"format_version": 1, "requests_allowed": <n>,
 "requests_used": <n>, "depth_remaining": <n>}`, rewritten whenever it accepts a request, so a command can tell before
 it changes anything whether the run allows any further session; a session reads it to learn how many sessions its run
