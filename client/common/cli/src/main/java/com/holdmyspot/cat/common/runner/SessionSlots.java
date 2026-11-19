@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -10,6 +11,10 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
@@ -34,6 +39,12 @@ import java.util.stream.Stream;
  * harness process, not the processes below them. A run folder without a manifest records no process, so emptying the
  * slot removes it without stopping anything; a manifest that cannot be read or is malformed keeps the slot from being
  * emptied.
+ * <p>
+ * A slot whose run records the session that its harness reported, and no end, is <b>retained</b>: its session was
+ * interrupted and may continue, so no other session takes the slot, and a session that needs a slot of the part takes
+ * the next slot instead, numbered past the slots' count if need be. No more sessions of a part run at once than the
+ * count allows. A retained slot is given only to the launch that resumes its run's session, and is emptied only when
+ * that launch ends its run or the run is discarded.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -61,6 +72,16 @@ public final class SessionSlots
 	 * milliseconds.
 	 */
 	private static final long PROCESS_WAIT_MILLIS = 100;
+	/**
+	 * How long a resume or a discard waits for the processes that a retained run recorded to end once they are asked
+	 * to, in milliseconds.
+	 */
+	private static final long STOP_WAIT_MILLIS = 1_000;
+	/**
+	 * The name of a slot's directory below the slots' base.
+	 */
+	private static final Pattern SLOT_NAME = Pattern.compile("(?<part>[" + DEVELOPMENT + HELD_OUT +
+		"])(?<number>[1-9][0-9]{0,8})");
 	private final Path base;
 	private final int count;
 	private final HarnessProcessLiveness liveness;
@@ -128,8 +149,10 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Waits for a free slot of a part whose previous session has ended, empties it and gives it to the caller. The
-	 * slot stays the caller's until it is {@link #release(Slot) released}.
+	 * Waits until fewer sessions of a part run than the slots' count allows, then takes the free slot of the part with
+	 * the lowest number that is not retained, waits for its previous session to end, empties it and gives it to the
+	 * caller. The slot stays the caller's until it is {@link #release(Slot) released} or {@link #retain(Slot)
+	 * retained}.
 	 *
 	 * @param heldOut {@code true} to take a slot of the held-out part, or {@code false} for the development part
 	 * @return the slot, whose directory exists and is empty
@@ -144,12 +167,11 @@ public final class SessionSlots
 			Slot slot;
 			synchronized (this)
 			{
-				int index = taken.nextClearBit(0);
-				while (index >= count)
-				{
+				while (taken.cardinality() >= count)
 					wait(RELEASE_WAIT_MILLIS);
-					index = taken.nextClearBit(0);
-				}
+				int index = taken.nextClearBit(0);
+				while (isRetained(slot(heldOut, index + 1)))
+					index = taken.nextClearBit(index + 1);
 				taken.set(index);
 				slot = slot(heldOut, index + 1);
 			}
@@ -197,6 +219,224 @@ public final class SessionSlots
 		{
 			free(slot);
 		}
+	}
+
+	/**
+	 * Gives a slot back without emptying it, once its session was interrupted. The slot stays retained while its run
+	 * records its harness session and no end; a slot whose run does not is emptied by the next session to take it.
+	 *
+	 * @param slot the slot that {@link #acquire(boolean)} or {@link #acquireRetained(String, String)} returned
+	 * @throws NullPointerException if {@code slot} is null
+	 */
+	public void retain(Slot slot)
+	{
+		requireThat(slot, "slot").isNotNull();
+		free(slot);
+	}
+
+	/**
+	 * Takes the retained slot whose run records a harness session, so that a launch continues the session there. Waits
+	 * until fewer sessions of the slot's part run than the slots' count allows, and stops each process that the run
+	 * recorded, under the checks of its identity. The slot keeps its files, and stays the caller's until it is
+	 * {@link #release(Slot) released} or {@link #retain(Slot) retained}.
+	 *
+	 * @param sessionId the session that the harness reported
+	 * @param harness   the harness of the launch that resumes the session
+	 * @return the slot, or none if no retained slot records the session
+	 * @throws NullPointerException    if any of the arguments are null
+	 * @throws SessionRefusedException if the slot's run is of another harness, a launch holds the slot, or a process
+	 *                                 that the run recorded stays alive once it is asked to end
+	 * @throws IOException             if no readable run records the session and a run's manifest cannot be read, or
+	 *                                 the slot's run cannot be checked
+	 * @throws InterruptedException    if the thread is interrupted while it waits
+	 */
+	public Optional<Slot> acquireRetained(String sessionId, String harness) throws IOException, InterruptedException
+	{
+		requireThat(sessionId, "sessionId").isNotNull();
+		requireThat(harness, "harness").isNotNull();
+		Optional<Retained> found = findRetained(sessionId);
+		if (found.isEmpty())
+			return Optional.empty();
+		Slot slot = found.get().slot();
+		String recorded = found.get().harness();
+		if (!recorded.equals(harness))
+		{
+			throw new SessionRefusedException("The session " + sessionId + " is of a " + recorded + " run, so only " +
+				"the " + recorded + " runner launcher can resume it");
+		}
+		BitSet taken = taken(slot.heldOut());
+		synchronized (this)
+		{
+			while (true)
+			{
+				if (taken.get(slot.number() - 1))
+					throw new SessionRefusedException("Another launch is resuming the session " + sessionId);
+				if (taken.cardinality() < count)
+					break;
+				wait(RELEASE_WAIT_MILLIS);
+			}
+			taken.set(slot.number() - 1);
+		}
+		boolean ready = false;
+		try
+		{
+			if (!stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS))
+			{
+				throw new SessionRefusedException("A process that the run of session " + sessionId + " recorded is " +
+					"still alive");
+			}
+			ready = true;
+			return Optional.of(slot);
+		}
+		finally
+		{
+			if (!ready)
+				free(slot);
+		}
+	}
+
+	/**
+	 * Discards the retained run that records a harness session: stops each process that the run recorded, under the
+	 * checks of its identity, and empties its slot.
+	 *
+	 * @param sessionId the session that the harness reported
+	 * @return {@code true} if a retained run recorded the session and was discarded, or {@code false} if none did
+	 * @throws NullPointerException    if {@code sessionId} is null
+	 * @throws SessionRefusedException if a launch is resuming the run, or a process that the run recorded stays alive
+	 *                                 once it is asked to end
+	 * @throws IOException             if no readable run records the session and a run's manifest cannot be read, or
+	 *                                 the slot cannot be emptied
+	 * @throws InterruptedException    if the thread is interrupted while it waits
+	 */
+	public boolean discard(String sessionId) throws IOException, InterruptedException
+	{
+		requireThat(sessionId, "sessionId").isNotNull();
+		Optional<Retained> found = findRetained(sessionId);
+		if (found.isEmpty())
+			return false;
+		Slot slot = found.get().slot();
+		BitSet taken = taken(slot.heldOut());
+		synchronized (this)
+		{
+			if (taken.get(slot.number() - 1))
+				throw new SessionRefusedException("A launch is resuming the session " + sessionId);
+			taken.set(slot.number() - 1);
+		}
+		try
+		{
+			if (!stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS) || !empty(slot))
+			{
+				throw new SessionRefusedException("A process that the run of session " + sessionId + " recorded is " +
+					"still alive");
+			}
+			return true;
+		}
+		finally
+		{
+			free(slot);
+		}
+	}
+
+	/**
+	 * Finds the retained slot whose run records a harness session.
+	 *
+	 * @param sessionId the session
+	 * @return the slot and its run's harness, or none if no retained slot records the session
+	 * @throws IOException if no readable run records the session and a run's manifest cannot be read
+	 */
+	private Optional<Retained> findRetained(String sessionId) throws IOException
+	{
+		if (!Files.isDirectory(base, LinkOption.NOFOLLOW_LINKS))
+			return Optional.empty();
+		IOException unreadable = null;
+		List<Path> directories;
+		try (Stream<Path> entries = Files.list(base))
+		{
+			directories = entries.sorted().toList();
+		}
+		for (Path directory : directories)
+		{
+			Matcher name = SLOT_NAME.matcher(directory.getFileName().toString());
+			if (!name.matches() || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+				continue;
+			Slot slot = slot(name.group("part").equals(HELD_OUT), Integer.parseInt(name.group("number")));
+			try
+			{
+				for (RecordedRun record : manifests(slot.root()))
+				{
+					HarnessRunManager.Manifest manifest = HarnessRunManager.readManifest(record.manifest());
+					if (isRetained(manifest) && sessionId.equals(manifest.harnessSessionId()))
+						return Optional.of(new Retained(slot, manifest.harness()));
+				}
+			}
+			catch (IOException e)
+			{
+				if (unreadable == null)
+					unreadable = e;
+				else
+					unreadable.addSuppressed(e);
+			}
+		}
+		if (unreadable != null)
+			throw unreadable;
+		return Optional.empty();
+	}
+
+	/**
+	 * Indicates whether a slot is retained: a run below it records its harness session and no end.
+	 *
+	 * @param slot the slot
+	 * @return {@code true} if the slot is retained, or {@code false} if it is not, or its runs cannot be read, which
+	 *   emptying the slot reports
+	 */
+	private static boolean isRetained(Slot slot)
+	{
+		try
+		{
+			for (RecordedRun record : manifests(slot.root()))
+			{
+				if (isRetained(HarnessRunManager.readManifest(record.manifest())))
+					return true;
+			}
+		}
+		catch (IOException _)
+		{
+			// Emptying the slot reports the reason
+		}
+		return false;
+	}
+
+	/**
+	 * Indicates whether a run can continue: it records its harness session and no end.
+	 *
+	 * @param manifest the run's manifest
+	 * @return {@code true} if the run can continue
+	 */
+	private static boolean isRetained(HarnessRunManager.Manifest manifest)
+	{
+		return manifest.harnessSessionId() != null && manifest.state().equals("running");
+	}
+
+	/**
+	 * Asks every process that the manifests of a slot's runs record to end, and waits a while for them to.
+	 *
+	 * @param records the runs of the slot
+	 * @param millis  how long to wait, in milliseconds
+	 * @return {@code true} if no recorded process remains alive
+	 * @throws IOException          if a run's manifest cannot be read or does not match its run
+	 * @throws InterruptedException if the thread is interrupted while it waits
+	 */
+	private boolean stopRecordedProcesses(List<RecordedRun> records, long millis)
+		throws IOException, InterruptedException
+	{
+		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
+		while (!stopRecordedProcesses(records))
+		{
+			if (System.nanoTime() - deadline >= 0)
+				return false;
+			Thread.sleep(PROCESS_WAIT_MILLIS);
+		}
+		return true;
 	}
 
 	/**
@@ -347,6 +587,16 @@ public final class SessionSlots
 			}
 		}
 		return manifests;
+	}
+
+	/**
+	 * A retained slot and the harness of its run.
+	 *
+	 * @param slot    the slot
+	 * @param harness the run's harness
+	 */
+	private record Retained(Slot slot, String harness)
+	{
 	}
 
 	/**
