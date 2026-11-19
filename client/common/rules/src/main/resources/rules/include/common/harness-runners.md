@@ -190,7 +190,8 @@ exits with status `2` instead, report its reason to the user and do not launch, 
 request server already serves this session.
 
 Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email`,
-`--continue-after-failed-turn` or `--run-id`: only CAT itself passes them, and the launcher refuses them. The launcher
+`--continue-after-failed-turn`, `--run-id` or `--resume-run`: only CAT itself passes them, and the launcher refuses
+them. The launcher
 exits with `0` when the session completed, `75` when no capacity was free, `2` when CAT refused to start the session,
 and `1` otherwise, and prints the reason for any status other than `0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
 other reason to the user. When it asks the user to start a new session or to change a setting, as it does when this
@@ -244,6 +245,31 @@ failed. Relay that output as the reply; do not read `from-child.jsonl` or `event
 these messages is refused in `from-child.jsonl` with a `refused` line and changes nothing. The last line in that file,
 however the session ends, is `{"ended": "<status>"}`, with the status of the request; once it is there, no `turn_end`
 line that you wait for will come. The launcher then exits as it does without `--conversation`.
+
+### Resuming a session
+
+A session that you launched stops when this session ends before it, such as when the user stops this session or
+its connection drops, but CAT keeps its run so that you can continue it later. When the launched session starts, a
+line that begins `{"type":"session_id"` reaches `from-child.jsonl`, or the transcript without `--conversation`, and
+its `session_id` field holds the launched harness session's ID. Note that ID while the session runs.
+
+Once this session is resumed, start the request server again as above, then continue the launched session with the
+runner launcher of its harness and a new conversation folder:
+
+```text
+--resume <session-id> --model <model> --effort <effort> --conversation <new-folder>
+```
+
+The session continues in its run, with the project, plugins and options that its first launch gave it. Do not pass
+`--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`,
+`--instruction-files`, `--session-role`, `--tool-output-token-limit` or `--agent`; the launcher refuses them. Other
+options work as for any launch. Its turns go on after the last turn that ended. The turn that was in progress when it
+stopped has no reply, so send that turn again as your first `turn` message.
+
+Only the session that launched a session can resume it, and only while its run is kept: a session that ended on its
+own cannot be resumed. The launcher exits with `2` when it cannot resume the session, such as for an ID that no kept
+run of this session records, and with `1` when the harness could not continue it; the response's status is then
+`unresumable`, and the run stays kept. Report the reason to the user in either case.
 
 ### Replies
 
