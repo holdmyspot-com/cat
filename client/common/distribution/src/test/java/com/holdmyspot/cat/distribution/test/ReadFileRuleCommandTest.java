@@ -9,7 +9,6 @@ import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import com.holdmyspot.cat.distribution.bundle.RuleArtifactRouter;
 import java.io.IOException;
 import java.net.URISyntaxException;
@@ -83,7 +82,8 @@ public final class ReadFileRuleCommandTest
 			}
 			else
 			{
-				ExecutableFixture.write(bin.resolve("run-part"), "#!/bin/sh\ncat\n");
+				Path runPart = Files.writeString(bin.resolve("run-part"), "#!/bin/sh\ncat\n");
+				requireThat(runPart.toFile().setExecutable(true, false), "executable").isTrue();
 				output = run(new ProcessBuilder("sh", "-c", command), command, errors);
 			}
 			requireThat(output.strip(), "output").withContext(command, "command").isEqualTo(COMMAND);

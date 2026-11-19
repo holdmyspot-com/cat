@@ -10,7 +10,6 @@ import com.holdmyspot.cat.common.installer.cli.internal.InstallerProcess;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
 import com.holdmyspot.cat.common.installer.secrets.InstallerProcessSecrets;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -296,7 +295,7 @@ public final class InstallerProcessTest
 				"') { 'present' } else { 'absent' }\n");
 		}
 		String literal = folder.toString().replace("'", "'\\''");
-		Path launcher = ExecutableFixture.write(bin.resolve("installer"), "#!/bin/sh\nif [ -e '" + literal +
+		Path launcher = Files.writeString(bin.resolve("installer"), "#!/bin/sh\nif [ -e '" + literal +
 			"' ]; then echo present; else echo absent; fi\n");
 		if (Files.getFileStore(launcher).supportsFileAttributeView(PosixFileAttributeView.class))
 			Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwx------"));

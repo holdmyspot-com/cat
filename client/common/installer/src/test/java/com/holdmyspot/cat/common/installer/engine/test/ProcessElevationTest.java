@@ -4,14 +4,15 @@ import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.tes
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.ISO_8859_1;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.engine.ProcessElevation;
 import com.holdmyspot.cat.common.installer.secrets.ProcessElevationSecrets;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -174,13 +175,13 @@ public final class ProcessElevationTest
 
 	/**
 	 * The check reports the unprivileged user ID that each completed fake {@code id} program prints while other
-	 * threads create programs and start checks. Four writers each have {@link ExecutableFixture} write a new program
-	 * before checking it; four starters repeatedly check an already completed program. A separate process writes each
-	 * program, so unrelated processes that this JVM starts cannot inherit a fixture's open writer.
+	 * threads create programs and start checks. Four writers each write a new program and check it; four starters
+	 * repeatedly check an already completed program. A process that a starter starts while a writer writes its program
+	 * inherits the open file, so the writers' programs are the ones that Linux may briefly refuse to run.
 	 * <p>
 	 * This process integration deliberately exercises the concurrent writers and starters for two seconds and waits
-	 * for their current operations to finish. Real writer processes and elevation checks preserve the concurrent
-	 * process boundary and its zero-incorrect-results assertion, so the case exceeds the one-second unit-test target.
+	 * for their current operations to finish. Real writers and elevation checks preserve the concurrent process
+	 * boundary and its zero-incorrect-results assertion, so the case exceeds the one-second unit-test target.
 	 *
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the test is interrupted
@@ -225,7 +226,8 @@ public final class ProcessElevationTest
 							while (System.nanoTime() < end)
 							{
 								count += 1;
-								Path id = writeIdInChild(Files.createDirectories(own.resolve(Integer.toString(count))));
+								Path id = fakeId(Files.createDirectories(own.resolve(Integer.toString(count))),
+									"echo 1000", "@echo 1000");
 								countWrong(id, wrong, checks);
 							}
 							return null;
@@ -250,42 +252,6 @@ public final class ProcessElevationTest
 			requireThat(checks.get(), "checks").isGreaterThan(0);
 			requireThat(wrong.get(), "wrong").isEqualTo(0);
 		}
-	}
-
-	/**
-	 * Writes an unprivileged fake {@code id} through {@link ExecutableFixture} and returns it after the writer has
-	 * ended.
-	 *
-	 * @param directory the directory that receives the program
-	 * @return the completed executable program
-	 * @throws IOException if the program cannot be written
-	 */
-	private static Path writeIdInChild(Path directory) throws IOException
-	{
-		boolean windows = Platform.current().isWindows();
-		Path id;
-		String body;
-		if (windows)
-		{
-			id = directory.resolve("id.cmd");
-			body = """
-				@if not "%~1"=="-u" exit /b 2
-				@if not "%~2"=="" exit /b 2
-				@echo 1000
-				""";
-		}
-		else
-		{
-			id = directory.resolve("id");
-			body = """
-				#!/bin/sh
-				[ $# = 1 ] && [ "$1" = -u ] || exit 2
-				echo 1000
-				""";
-		}
-		ExecutableFixture.write(id, body);
-		requireThat(Files.readString(id), "completedProgram").isEqualTo(body);
-		return id;
 	}
 
 	/**
@@ -342,11 +308,48 @@ public final class ProcessElevationTest
 	{
 		if (Platform.current().isWindows())
 		{
-			return ExecutableFixture.write(directory.resolve("id.cmd"), "@if not \"%~1\"==\"-u\" exit /b 2\r\n" +
+			return Files.writeString(directory.resolve("id.cmd"), "@if not \"%~1\"==\"-u\" exit /b 2\r\n" +
 				"@if not \"%~2\"==\"\" exit /b 2\r\n" + windows + "\r\n");
 		}
-		return ExecutableFixture.write(directory.resolve("id"), "#!/bin/sh\n[ $# = 1 ] && [ \"$1\" = -u ] || " +
-			"exit 2\n" + posix + "\n");
+		Path id = Files.writeString(directory.resolve("id"), "#!/bin/sh\n[ $# = 1 ] && [ \"$1\" = -u ] || exit 2\n" +
+			posix + "\n");
+		requireThat(id.toFile().setExecutable(true), "executable").isTrue();
+		awaitRunnable(id);
+		return id;
+	}
+
+	/**
+	 * Waits until the operating system runs a program that a test has just written. A process that another thread
+	 * starts while this thread writes the program inherits the open file until it closes its inherited descriptors,
+	 * and Linux refuses to run the program until then. The check reports administrative rights for a program that
+	 * cannot be run, so a program that was handed over too early would make the check report a result that the
+	 * program's output does not justify. The program is run once without arguments, which the fake programs reject
+	 * at once. Once that run starts, no process holds the file open for writing, because none can inherit a
+	 * descriptor that this thread has closed.
+	 *
+	 * @param program the program that the test has written
+	 * @throws IOException if the program cannot be started, or does not end
+	 */
+	private static void awaitRunnable(Path program) throws IOException
+	{
+		ProcessBuilder builder = new ProcessBuilder(program.toString()).
+			redirectOutput(ProcessBuilder.Redirect.DISCARD).
+			redirectError(ProcessBuilder.Redirect.DISCARD);
+		// Yields between attempts instead of sleeping, and retries a refusal until the process that holds the file ends
+		try (Process process = new ExecutableFiles(Thread::yield, Clock.systemUTC()).run(builder))
+		{
+			process.getOutputStream().close();
+			if (!process.waitFor(1, TimeUnit.MINUTES))
+			{
+				process.destroyForcibly();
+				throw new IOException(program + " did not end");
+			}
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for " + program, e);
+		}
 	}
 
 	/**
@@ -435,11 +438,14 @@ public final class ProcessElevationTest
 		Path printed = Files.writeString(directory.resolve("groups.csv"), groups, ISO_8859_1);
 		if (Platform.current().isWindows())
 		{
-			return ExecutableFixture.write(directory.resolve("whoami.cmd"), "@if not \"%*\"==\"/groups /fo csv " +
-				"/nh\" exit /b 2\r\n@type \"" + printed + "\"\r\n");
+			return Files.writeString(directory.resolve("whoami.cmd"), "@if not \"%*\"==\"/groups /fo csv /nh\" " +
+				"exit /b 2\r\n@type \"" + printed + "\"\r\n");
 		}
-		return ExecutableFixture.write(directory.resolve("whoami"), "#!/bin/sh\n" +
+		Path whoami = Files.writeString(directory.resolve("whoami"), "#!/bin/sh\n" +
 			"[ \"$*\" = '/groups /fo csv /nh' ] || exit 2\nexec cat '" + printed + "'\n");
+		requireThat(whoami.toFile().setExecutable(true), "executable").isTrue();
+		awaitRunnable(whoami);
+		return whoami;
 	}
 
 	/**

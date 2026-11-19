@@ -4,10 +4,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication;
 import com.holdmyspot.cat.common.runner.StartupCache;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import java.io.IOException;
@@ -16,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -163,16 +165,17 @@ public final class PluginLaunchersTest
 			Path plugin = cleanup.add(Files.createTempDirectory("plugin launchers ")).toRealPath();
 			Path bin = plugin.resolve("bin");
 			PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, bin);
-			ExecutableFixture.rewrite(bin.resolve("read-part"));
 			Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 			String javaName = "java";
 			if (Platform.current().isWindows())
 				javaName = "java.exe";
 			// The launcher runs java.exe on Windows, so the fake script takes that name; Git Bash starts it by its #! line
-			ExecutableFixture.write(runtime.resolve("bin").resolve(javaName), """
+			Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
 				#!/bin/sh
 				printf '%s|' "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS-unset}" "$@"
 				""");
+			if (PortableFiles.hasModes(java))
+				Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
 			List<String> command = new ArrayList<>();
@@ -195,7 +198,7 @@ public final class PluginLaunchersTest
 			builder.environment().remove("TMPDIR");
 			builder.environment().put("LC_ALL", "C.UTF-8");
 			String output;
-			try (Process process = builder.start())
+			try (Process process = Yielding.start(builder))
 			{
 				process.getOutputStream().close();
 				output = new String(process.getInputStream().readAllBytes(), UTF_8);
@@ -290,15 +293,16 @@ public final class PluginLaunchersTest
 		Path plugin = Files.createTempDirectory(work, "plugin launchers ").toRealPath();
 		Path bin = plugin.resolve("bin");
 		PluginLaunchers.write(List.of(READ_PART), platform, true, bin);
-		ExecutableFixture.rewrite(bin.resolve("read-part"));
 		Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 		String javaName = "java";
 		if (platform.isWindows())
 			javaName = "java.exe";
-		ExecutableFixture.write(runtime.resolve("bin").resolve(javaName), """
+		Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
 			#!/bin/sh
 			printf '%s\\n' "$@"
 			""");
+		if (PortableFiles.hasModes(java))
+			Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 		Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
 		List<String> command = new ArrayList<>();
@@ -316,7 +320,7 @@ public final class PluginLaunchersTest
 			builder.environment().remove("TMPDIR");
 		else
 			builder.environment().put("TMPDIR", tmpdir);
-		try (Process process = builder.start())
+		try (Process process = Yielding.start(builder))
 		{
 			process.getOutputStream().close();
 			String output = new String(process.getInputStream().readAllBytes(), UTF_8);
@@ -349,7 +353,6 @@ public final class PluginLaunchersTest
 			Path bin = plugin.resolve("bin");
 			// A Windows plugin whose harness runs commands in PowerShell holds only the batch launchers
 			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), bin);
-			ExecutableFixture.rewrite(bin.resolve(PluginLaunchers.JAVA_WRAPPER));
 			// Java uses a startup cache that it trained on a module path only for the same module path, which an empty
 			// folder is not; any jar stands in for the plugin's modules
 			Path runtime = linkedRuntime(bin.resolve("runtime"));
@@ -432,10 +435,7 @@ public final class PluginLaunchersTest
 				// Copied below
 			}
 		}
-		if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.isExecutable(file))
-			ExecutableFixture.copy(file, copy);
-		else
-			Files.copy(file, copy, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
+		Files.copy(file, copy, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
 	}
 
 	/**
@@ -456,7 +456,7 @@ public final class PluginLaunchersTest
 		command.add(bin.resolve(wrapper).toString());
 		command.addAll(List.of(arguments));
 		ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-		try (Process process = builder.start())
+		try (Process process = Yielding.start(builder))
 		{
 			process.getOutputStream().close();
 			String output = new String(process.getInputStream().readAllBytes(), UTF_8);

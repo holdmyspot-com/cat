@@ -17,7 +17,6 @@ import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.installer.engine.TreeCopy;
 import com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -428,7 +427,7 @@ public final class RecordingIntegration implements HarnessIntegration
 		String name = "harness-a";
 		if (Platform.current().isWindows())
 			name += ".exe";
-		Path program = ExecutableFixture.write(Files.createDirectories(directory).resolve(name), "#!/bin/sh\n");
+		Path program = Files.writeString(Files.createDirectories(directory).resolve(name), "#!/bin/sh\n");
 		if (Files.getFileStore(program).supportsFileAttributeView(PosixFileAttributeView.class))
 			Files.setPosixFilePermissions(program, PosixFilePermissions.fromString("rwx------"));
 		return program;

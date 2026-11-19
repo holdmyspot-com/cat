@@ -6,7 +6,6 @@ module com.holdmyspot.cat.common.cli.test
 	requires tools.jackson.databind;
 	requires tools.jackson.dataformat.yaml;
 	requires java.management;
-	requires jdk.jfr;
 	requires jdk.httpserver;
 	requires org.testng;
 	requires org.apache.commons.compress;
@@ -56,7 +55,5 @@ module com.holdmyspot.cat.common.cli.test
 	exports com.holdmyspot.cat.common.runner.policy.test to org.testng;
 	exports com.holdmyspot.cat.common.runner.test to org.testng;
 	exports com.holdmyspot.cat.common.test to org.testng, com.holdmyspot.cat.claude.cli.test,
-		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.common.installer.test,
-		com.holdmyspot.cat.claude.installer.test, com.holdmyspot.cat.codex.installer.test,
-		com.holdmyspot.cat.distribution.test;
+		com.holdmyspot.cat.codex.cli.test;
 }

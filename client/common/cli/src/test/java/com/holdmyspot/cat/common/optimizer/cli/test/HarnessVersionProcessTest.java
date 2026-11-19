@@ -5,7 +5,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,9 +36,12 @@ public final class HarnessVersionProcessTest
 			Path programs = cleanup.add(Files.createTempDirectory("version-programs-")).
 				toAbsolutePath();
 			if (Platform.current().isWindows())
-				ExecutableFixture.write(programs.resolve("harness.cmd"), "@echo harness 1.2.3\r\n");
+				Files.writeString(programs.resolve("harness.cmd"), "@echo harness 1.2.3\r\n");
 			else
-				ExecutableFixture.write(programs.resolve("harness"), "#!/bin/sh\necho harness 1.2.3\n");
+			{
+				Path script = Files.writeString(programs.resolve("harness"), "#!/bin/sh\necho harness 1.2.3\n");
+				requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
+			}
 
 			String version = HarnessVersion.read(programs.resolve("harness").toString(), HarnessVersion.process());
 			requireThat(version, "version").isEqualTo("harness 1.2.3");

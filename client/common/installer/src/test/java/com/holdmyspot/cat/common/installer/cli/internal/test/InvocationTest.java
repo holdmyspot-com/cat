@@ -30,7 +30,6 @@ import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
 import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -1583,8 +1582,9 @@ public final class InvocationTest
 			this.data = home.resolve("plugins/data/cat-cat");
 			this.policyFile = data.resolve("policy.json");
 			Path user = Files.createDirectory(root.resolve("user"));
-			this.program = ExecutableFixture.write(Files.createDirectories(root.resolve("tools")).resolve("harness-a"),
-				"#!/bin/sh\n");
+			this.program = Files.createDirectories(root.resolve("tools")).resolve("harness-a");
+			Files.writeString(program, "#!/bin/sh\n");
+			program.toFile().setExecutable(true);
 			this.command = new HarnessCommand(List.of(program.toString()), Map.of("HOME", user.toString()));
 		}
 

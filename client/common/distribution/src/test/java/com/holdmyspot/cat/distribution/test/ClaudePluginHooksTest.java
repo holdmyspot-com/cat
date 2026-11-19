@@ -4,14 +4,16 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -107,7 +109,9 @@ public final class ClaudePluginHooksTest
 	 */
 	private static void writeLauncher(Path directory, String name) throws IOException
 	{
-		ExecutableFixture.write(directory.resolve(name + ".sh"), "#!/bin/sh\necho started " + name + "\n");
+		Path launcher = Files.writeString(directory.resolve(name + ".sh"), "#!/bin/sh\necho started " + name + "\n");
+		if (PortableFiles.hasModes(launcher))
+			Files.setPosixFilePermissions(launcher, PosixFilePermissions.fromString("rwxr-xr-x"));
 	}
 
 	/**
@@ -128,7 +132,7 @@ public final class ClaudePluginHooksTest
 			root = root.replace('\\', '/');
 		ProcessBuilder builder = new ProcessBuilder("sh").redirectErrorStream(true);
 		builder.environment().put("CLAUDE_PLUGIN_ROOT", root);
-		try (Process process = builder.start())
+		try (Process process = Yielding.start(builder))
 		{
 			try (OutputStream in = process.getOutputStream())
 			{

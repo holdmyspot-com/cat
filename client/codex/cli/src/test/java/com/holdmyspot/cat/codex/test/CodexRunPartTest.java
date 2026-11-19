@@ -28,7 +28,6 @@ import java.util.stream.Stream;
 import org.testng.SkipException;
 import org.testng.annotations.Test;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.test.ExecutableFixture;
 
 /**
  * Verifies that {@code run-part} saves a command's output and exit status, then prints the output's first part the way
@@ -433,7 +432,7 @@ public final class CodexRunPartTest
 			Path plugin = temporary.resolve("plugin");
 			Path overrides = Files.createDirectories(plugin.resolve("bin/run-part-overrides"));
 			Path override = overrides.resolve("rg");
-			ExecutableFixture.write(override, "#!/bin/sh\n");
+			writeExecutable(override, "#!/bin/sh\n");
 			Path caller = Files.createDirectories(temporary.resolve("caller"));
 			Path callerRipgrep;
 			Path expected;
@@ -446,7 +445,7 @@ public final class CodexRunPartTest
 			else
 			{
 				callerRipgrep = caller.resolve("rg");
-				ExecutableFixture.write(callerRipgrep, "#!/bin/sh\n");
+				writeExecutable(callerRipgrep, "#!/bin/sh\n");
 				expected = override;
 			}
 			String path = caller + File.pathSeparator + Path.of("/usr/bin").toAbsolutePath() + File.pathSeparator +
@@ -770,6 +769,19 @@ public final class CodexRunPartTest
 		if (Files.notExists(file))
 			return "";
 		return Files.readString(file);
+	}
+
+	/**
+	 * Writes a POSIX script that every user may run.
+	 *
+	 * @param path    the script's path
+	 * @param content the script
+	 * @throws IOException if the script cannot be written
+	 */
+	private static void writeExecutable(Path path, String content) throws IOException
+	{
+		Files.writeString(path, content);
+		requireThat(path.toFile().setExecutable(true, false), "executable").isTrue();
 	}
 
 	/**
