@@ -82,7 +82,7 @@ Use the installed version folder's `bin/installer uninstall`, as described in th
 the same `install --harness <harness>` command from a newly built plugin tree to test an upgrade: it installs the new
 tree's version as a new version folder and keeps the previous one.
 
-Run the external launcher and entry-script boundary tests:
+Run the external launcher and entry-script boundary tests, which also need jq:
 
 ```bash
 bats client/common/distribution/src/test/bats/bootstrap-common.bats \
@@ -92,6 +92,9 @@ bats client/common/distribution/src/test/bats/bootstrap-common.bats \
 	client/common/distribution/src/test/bats/jlink-launchers.bats \
 	client/common/distribution/src/test/bats/installer-launcher.bats
 ```
+
+On Windows, run them from Git Bash with `codex-plugin-launchers-windows.bats` and `installer-launcher-windows.bats` in
+place of `codex-plugin-launchers.bats`, `jlink-launchers.bats` and `installer-launcher.bats`.
 
 Java tests call production classes directly. Bats is reserved for shell, entry-script, and generated-launcher boundaries
 that Java tests cannot exercise directly.
