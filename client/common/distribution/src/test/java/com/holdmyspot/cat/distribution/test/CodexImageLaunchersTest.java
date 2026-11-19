@@ -63,7 +63,7 @@ public final class CodexImageLaunchersTest
 			List<Launcher> launchers = access.codexLaunchers();
 			List<String> paths = new ArrayList<>();
 			for (Launcher launcher : launchers)
-				paths.add(bin.resolve(launcher.name()).toString());
+				paths.add(ExecutableFixture.rewrite(bin.resolve(launcher.name())).toString());
 			if (platform.isWindows())
 			{
 				String output = runInPowerShell(paths);

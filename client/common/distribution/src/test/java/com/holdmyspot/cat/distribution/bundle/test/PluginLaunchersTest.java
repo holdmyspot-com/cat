@@ -163,6 +163,7 @@ public final class PluginLaunchersTest
 			Path plugin = cleanup.add(Files.createTempDirectory("plugin launchers ")).toRealPath();
 			Path bin = plugin.resolve("bin");
 			PluginLaunchers.write(List.of(READ_PART), Platform.current(), true, bin);
+			ExecutableFixture.rewrite(bin.resolve("read-part"));
 			Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 			String javaName = "java";
 			if (Platform.current().isWindows())
@@ -289,6 +290,7 @@ public final class PluginLaunchersTest
 		Path plugin = Files.createTempDirectory(work, "plugin launchers ").toRealPath();
 		Path bin = plugin.resolve("bin");
 		PluginLaunchers.write(List.of(READ_PART), platform, true, bin);
+		ExecutableFixture.rewrite(bin.resolve("read-part"));
 		Path runtime = Files.createDirectories(plugin.resolve("installed runtime/bin")).getParent();
 		String javaName = "java";
 		if (platform.isWindows())
@@ -347,6 +349,7 @@ public final class PluginLaunchersTest
 			Path bin = plugin.resolve("bin");
 			// A Windows plugin whose harness runs commands in PowerShell holds only the batch launchers
 			PluginLaunchers.write(List.of(), Platform.current(), !Platform.current().isWindows(), bin);
+			ExecutableFixture.rewrite(bin.resolve(PluginLaunchers.JAVA_WRAPPER));
 			// Java uses a startup cache that it trained on a module path only for the same module path, which an empty
 			// folder is not; any jar stands in for the plugin's modules
 			Path runtime = linkedRuntime(bin.resolve("runtime"));
@@ -429,7 +432,10 @@ public final class PluginLaunchersTest
 				// Copied below
 			}
 		}
-		Files.copy(file, copy, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
+		if (Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS) && Files.isExecutable(file))
+			ExecutableFixture.copy(file, copy);
+		else
+			Files.copy(file, copy, LinkOption.NOFOLLOW_LINKS, StandardCopyOption.COPY_ATTRIBUTES);
 	}
 
 	/**

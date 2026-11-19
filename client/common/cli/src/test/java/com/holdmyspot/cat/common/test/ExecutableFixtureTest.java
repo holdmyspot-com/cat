@@ -7,11 +7,16 @@ import jdk.jfr.consumer.RecordedEvent;
 import jdk.jfr.consumer.RecordingFile;
 
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermission;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 
 import org.testng.SkipException;
 import org.testng.annotations.Test;
@@ -74,6 +79,35 @@ public final class ExecutableFixtureTest
 			requireThat(programWrites, "programWrites").isEmpty();
 			requireThat(run(written), "written").isEqualTo("written now\n");
 			requireThat(run(copied), "copied").isEqualTo("written now\n");
+		}
+	}
+
+	/**
+	 * Verifies that a program that code under test wrote runs once the fixture rewrites it, even while a descriptor
+	 * that keeps the original file open for writing remains, and that it keeps its mode.
+	 *
+	 * @throws IOException          if the program cannot be written, rewritten or run
+	 * @throws InterruptedException if the thread is interrupted while the program runs
+	 */
+	@Test
+	public void rewrittenProgramRunsWhileItsWriterIsOpen() throws IOException, InterruptedException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("cat-programs-")).toAbsolutePath();
+			if (!PortableFiles.hasModes(directory))
+				throw new SkipException("The fixture rewrites programs only on a file system with POSIX modes");
+			Path program = directory.resolve("program");
+			Set<PosixFilePermission> mode = PosixFilePermissions.fromString("rwx------");
+			Files.writeString(program, "#!/bin/sh\necho written \"$1\"\n");
+			Files.setPosixFilePermissions(program, mode);
+			// Stands in for a descriptor that a process that another test started inherited during the write
+			try (FileChannel _ = FileChannel.open(program, StandardOpenOption.WRITE))
+			{
+				ExecutableFixture.rewrite(program);
+				requireThat(run(program), "output").isEqualTo("written now\n");
+			}
+			requireThat(Files.getPosixFilePermissions(program), "mode").isEqualTo(mode);
 		}
 	}
 

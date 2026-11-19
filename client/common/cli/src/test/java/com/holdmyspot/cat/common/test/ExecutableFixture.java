@@ -11,6 +11,7 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Set;
+import java.util.UUID;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -26,6 +27,9 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * writes each program, so the JVM never opens one for writing. The JVM opens for writing only a staged copy in the
  * temporary directory, which nothing runs. On Windows, the processes that the JVM starts inherit no file that the JVM
  * opens, so there the JVM writes the program itself.
+ * <p>
+ * Code under test that writes a program in the JVM exposes it in the same way. {@link #rewrite(Path)} moves such a
+ * program onto a new file before a test runs it.
  * <p>
  * This class is thread-safe.
  */
@@ -74,6 +78,7 @@ public final class ExecutableFixture
 		{
 			Files.write(staged, content);
 			copyThroughProcess(staged, program);
+			Files.setPosixFilePermissions(program, MODE);
 		}
 		finally
 		{
@@ -101,6 +106,40 @@ public final class ExecutableFixture
 			return program;
 		}
 		copyThroughProcess(source, program);
+		Files.setPosixFilePermissions(program, MODE);
+		return program;
+	}
+
+	/**
+	 * Moves a program that code under test wrote onto a new file that the JVM never opened for writing, so that a test
+	 * can run it at once. The content and mode stay the same. A process that another test started while the program was
+	 * being written may still hold the old file open for writing; it keeps that file after the move, and the program's
+	 * path names the new one. This concerns only the processes that tests running at the same time start; code under
+	 * test writes the program as before.
+	 *
+	 * @param program the program's path
+	 * @return {@code program}
+	 * @throws NullPointerException if {@code program} is null
+	 * @throws IOException          if the program cannot be read or replaced
+	 */
+	public static Path rewrite(Path program) throws IOException
+	{
+		requireThat(program, "program").isNotNull();
+		if (!writesThroughProcess(program))
+			return program;
+		Set<PosixFilePermission> mode = Files.getPosixFilePermissions(program);
+		// cp creates the replacement, because a file that the JVM created would be open for writing in the JVM
+		Path replacement = program.resolveSibling(program.getFileName() + "." + UUID.randomUUID() + ".tmp");
+		try
+		{
+			copyThroughProcess(program, replacement);
+			Files.setPosixFilePermissions(replacement, mode);
+			Files.move(replacement, program, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING);
+		}
+		finally
+		{
+			Files.deleteIfExists(replacement);
+		}
 		return program;
 	}
 
@@ -116,13 +155,12 @@ public final class ExecutableFixture
 	}
 
 	/**
-	 * Has {@code cp} copy a file to a program, then gives the program {@link #MODE}. Only POSIX systems, such as
-	 * Linux and macOS, provide {@code cp}; Java offers no way to write a file that the processes that the JVM starts
-	 * cannot inherit.
+	 * Has {@code cp} copy a file to a program. Only POSIX systems, such as Linux and macOS, provide {@code cp}; Java
+	 * offers no way to write a file that the processes that the JVM starts cannot inherit.
 	 *
 	 * @param source  the file to copy
 	 * @param program the program's path
-	 * @throws IOException if {@code cp} cannot be started or fails, or the program's mode cannot be set
+	 * @throws IOException if {@code cp} cannot be started or fails
 	 */
 	private static void copyThroughProcess(Path source, Path program) throws IOException
 	{
@@ -145,7 +183,6 @@ public final class ExecutableFixture
 			failure.initCause(e);
 			throw failure;
 		}
-		Files.setPosixFilePermissions(program, MODE);
 	}
 
 	/**
