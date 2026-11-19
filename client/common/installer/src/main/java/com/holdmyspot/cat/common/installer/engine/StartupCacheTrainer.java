@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
@@ -93,7 +94,8 @@ public final class StartupCacheTrainer
 	 * @param timeout  the longest time that each of a training's two Java runs may take before it is stopped
 	 * @param elevated tells whether this process runs with administrative rights, such as
 	 *                 {@link ProcessElevation#isElevated()}
-	 * @param waiting  creates pauses between required final cleanup attempts
+	 * @param waiting  creates pauses between required final cleanup attempts and between the attempts to start the
+	 *                 plugin's {@code java} wrapper
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code timeout} is not positive
 	 */
@@ -110,7 +112,8 @@ public final class StartupCacheTrainer
 	 * @param timeout    the longest time that each of a training's two Java runs may take before it is stopped
 	 * @param elevated   tells whether this process runs with administrative rights
 	 * @param deleteTree removes a cache or scratch tree
-	 * @param waiting    creates pauses between required final cleanup attempts
+	 * @param waiting    creates pauses between required final cleanup attempts and between the attempts to start the
+	 *                   plugin's {@code java} wrapper
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code timeout} is not positive
 	 */
@@ -325,7 +328,7 @@ public final class StartupCacheTrainer
 			redirectError(ProcessBuilder.Redirect.DISCARD);
 		builder.environment().clear();
 		builder.environment().putAll(run.environment());
-		try (Process process = builder.start())
+		try (Process process = ExecutableFiles.retrying(waiting).run(builder))
 		{
 			try
 			{

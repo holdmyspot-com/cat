@@ -3,21 +3,28 @@ package com.holdmyspot.cat.common.installer.cli.internal.test;
 import static com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures.testDirectory;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
 import com.holdmyspot.cat.common.installer.cli.internal.InstallerProcess;
 import com.holdmyspot.cat.common.installer.engine.test.RecordingIntegration;
 import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
 import com.holdmyspot.cat.common.installer.secrets.InstallerProcessSecrets;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermissions;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -163,6 +170,68 @@ public final class InstallerProcessTest
 			requireThat(result.exitCode(), "exitCode").withContext(result.output(), "output").isEqualTo(0);
 			requireThat(result.output().strip(), "output").isEqualTo("absent");
 			requireThat(Files.exists(replaced), "replacedExists").isFalse();
+		}
+	}
+
+	/**
+	 * On Linux, a launcher that the installer has just extracted runs once no process holds it open for writing any
+	 * more, although the first start is refused while one does.
+	 * <p>
+	 * The JVM opens files without close-on-exec, so a process that the installer starts while it extracts the launcher
+	 * inherits the open file until it closes the descriptors that it inherited. A write channel that the test keeps
+	 * open stands in for that process, and the pause between start attempts closes it, as the inherited descriptor
+	 * would close during the retries.
+	 *
+	 * @throws IOException if the fixture cannot be created or the run fails
+	 */
+	@Test
+	public void runsLauncherOnceItsWriterCloses() throws IOException
+	{
+		if (!Platform.current().isLinux())
+			throw new SkipException("Only Linux refuses to run a file that a process holds open for writing");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("installer-process-busy-")).toRealPath();
+			Path launcher = launcherReporting(root.resolve("bin"), root.resolve("missing"));
+			try (FileChannel inherited = FileChannel.open(launcher, StandardOpenOption.WRITE))
+			{
+				InstallerProcess installers = new InstallerProcess(Platform.current(), Map.of(),
+					new ExecutableFiles(inherited::close, new ManualClock(Instant.EPOCH)));
+
+				CommandResult result = installers.run(launcher, List.of());
+
+				requireThat(result.exitCode(), "exitCode").withContext(result.output(), "output").isEqualTo(0);
+				requireThat(result.output().strip(), "output").isEqualTo("absent");
+				// Only a refused start pauses, so a closed channel shows that the first start was refused
+				requireThat(inherited.isOpen(), "inherited.isOpen").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * On Linux, starting a launcher fails with the operating system's refusal once the retry limit passes while a
+	 * process holds the launcher open for writing.
+	 *
+	 * @throws IOException if the fixture cannot be created, or, as expected, the launcher cannot start
+	 */
+	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = ".*Text file busy.*")
+	public void launcherFailsWhileWriterStaysOpen() throws IOException
+	{
+		if (!Platform.current().isLinux())
+			throw new SkipException("Only Linux refuses to run a file that a process holds open for writing");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("installer-process-stays-busy-")).toRealPath();
+			Path launcher = launcherReporting(root.resolve("bin"), root.resolve("missing"));
+			// Stands in for a process that never closes the descriptor that it inherited during the extraction
+			try (FileChannel _ = FileChannel.open(launcher, StandardOpenOption.WRITE))
+			{
+				ManualClock clock = new ManualClock(Instant.EPOCH);
+				InstallerProcess installers = new InstallerProcess(Platform.current(), Map.of(),
+					new ExecutableFiles(() -> clock.advance(Duration.ofMillis(400)), clock));
+
+				installers.run(launcher, List.of());
+			}
 		}
 	}
 

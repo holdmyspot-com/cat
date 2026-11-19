@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.installer.cli.internal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.CommandResult;
@@ -94,11 +95,13 @@ public final class InstallerProcess
 	 * @param platform    the running platform
 	 * @param environment the installer's environment, which the launcher gets with {@link #NO_QUESTIONS} and which
 	 *                    names the Windows folder in {@code SystemRoot} on Windows
+	 * @param executables starts the launcher, which the installer has just extracted, so that a start that Linux
+	 *                    refuses while a process still holds the launcher open for writing is tried again
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public InstallerProcess(Platform platform, Map<String, String> environment)
+	public InstallerProcess(Platform platform, Map<String, String> environment, ExecutableFiles executables)
 	{
-		this(platform, environment, ProcessBuilder::start, Path.of(System.getProperty("java.home")));
+		this(platform, environment, executables::run, Path.of(System.getProperty("java.home")));
 	}
 
 	/**

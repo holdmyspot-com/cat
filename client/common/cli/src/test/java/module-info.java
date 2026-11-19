@@ -11,7 +11,8 @@ module com.holdmyspot.cat.common.cli.test
 	requires org.apache.commons.compress;
 
 	exports com.holdmyspot.cat.common.fakes.test to org.testng, com.holdmyspot.cat.claude.cli.test,
-		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test;
+		com.holdmyspot.cat.codex.cli.test, com.holdmyspot.cat.distribution.test,
+		com.holdmyspot.cat.common.installer.test;
 	exports com.holdmyspot.cat.common.git.test to org.testng;
 	exports com.holdmyspot.cat.common.delegation.test to org.testng;
 	exports com.holdmyspot.cat.common.build.test to org.testng;

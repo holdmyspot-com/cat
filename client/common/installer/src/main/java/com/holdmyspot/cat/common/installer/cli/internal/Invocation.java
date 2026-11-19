@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
 
+import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
@@ -133,7 +134,8 @@ public final class Invocation
 	 * @param integrations the installed harness integration services
 	 * @param cliFactory   runs the recorded harness program
 	 * @param clock        supplies UTC diagnostic times
-	 * @param waiting      creates pauses between installer lock attempts
+	 * @param waiting      creates pauses between installer lock attempts and between the attempts to start an
+	 *                     extracted installer launcher
 	 * @param replacer     atomically replaces installed files, with platform-appropriate retry waiting
 	 * @param terminal     asks the user whether they allow a change that needs their permission
 	 * @param starter      starts the program that deletes, once the installer's process has exited, the folders that
@@ -150,7 +152,8 @@ public final class Invocation
 	{
 		this(image, platform, environment, accountHome, activations, integrations, cliFactory, clock, waiting,
 			replacer, terminal, starter, releaseBaseUrl -> new HttpsReleaseSource(releaseBaseUrl, environment,
-				CONNECT_LIMIT, REQUEST_LIMIT), new InstallerProcess(platform, environment), stdout, stderr);
+				CONNECT_LIMIT, REQUEST_LIMIT), new InstallerProcess(platform, environment,
+				ExecutableFiles.retrying(waiting)), stdout, stderr);
 	}
 
 	/**

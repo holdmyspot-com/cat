@@ -19,9 +19,12 @@ import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication
 import com.holdmyspot.cat.common.installer.secrets.StartupCacheTrainerSecrets;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
+import java.nio.channels.FileChannel;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,6 +33,7 @@ import java.util.OptionalInt;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BooleanSupplier;
 import java.util.stream.Stream;
+import org.testng.SkipException;
 import org.testng.annotations.Test;
 
 /**
@@ -475,6 +479,53 @@ public final class StartupCacheTrainerTest
 			requireThat(written, "written").isFalse();
 			requireThat(Files.exists(plugin.resolve(StartupCache.DIRECTORY), NOFOLLOW_LINKS), "cacheFolder").isFalse();
 			requireThat(entries(scratch), "scratchEntries").isEmpty();
+		}
+	}
+
+	/**
+	 * On Linux, a training writes the cache through a {@code java} wrapper that the installer has just extracted once
+	 * no process holds the wrapper open for writing any more, although the wrapper's first start is refused while one
+	 * does.
+	 * <p>
+	 * The JVM opens files without close-on-exec, so a process that the installer starts while it extracts the wrapper
+	 * inherits the open file until it closes the descriptors that it inherited. A write channel that the test keeps
+	 * open stands in for that process, and the pause between start attempts closes it, as the inherited descriptor
+	 * would close during the retries. The wrapper stands in for Java: it writes the file that each run's options name.
+	 *
+	 * @throws IOException if the fixture cannot be created or inspected
+	 */
+	@Test
+	public void trainsOnceWrapperWriterCloses() throws IOException
+	{
+		if (!Platform.current().isLinux())
+			throw new SkipException("Only Linux refuses to run a file that a process holds open for writing");
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(testDirectory("startup-cache-busy-")).toRealPath();
+			Path plugin = describedPlugin(root.resolve("plugin"));
+			Path wrapper = Files.writeString(Files.createDirectories(plugin.resolve("bin")).resolve("java"), """
+				#!/bin/sh
+				for option; do
+					case "$option" in
+						-XX:AOTConfiguration=*) configuration=${option#*=} ;;
+						-XX:AOTCache=*) cache=${option#*=} ;;
+					esac
+				done
+				if [ -n "$cache" ]; then : > "$cache"; else : > "$configuration"; fi
+				""");
+			Files.setPosixFilePermissions(wrapper, PosixFilePermissions.fromString("rwx------"));
+			try (FileChannel inherited = FileChannel.open(wrapper, StandardOpenOption.WRITE))
+			{
+				Waiting closing = _ -> inherited::close;
+
+				boolean written = new StartupCacheTrainer(root.resolve("scratch"), Duration.ofMinutes(1), NOT_ELEVATED,
+					closing).train(plugin);
+
+				requireThat(written, "written").isTrue();
+				requireThat(Files.isRegularFile(plugin.resolve(StartupCache.FILE), NOFOLLOW_LINKS), "cache").isTrue();
+				// Only a refused start pauses, so a closed channel shows that the first start was refused
+				requireThat(inherited.isOpen(), "inherited.isOpen").isFalse();
+			}
 		}
 	}
 
