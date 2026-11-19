@@ -120,10 +120,10 @@ Before changing testable production behavior or selecting or reporting a command
 passes, and when creating, designing, changing, reviewing, or debugging tests, a build script, pipeline, or multi-step
 build, or a CI or hosted workflow; when the project's build, tests or scripts fail on a machine other than the local
 one, whatever the task is called, including a release step; when running a build or test suite, starting, dispatching
-or requesting a workflow run or probe that takes many minutes or draws on capacity that others share, selecting,
-configuring, or reusing a build or workflow cache, building a dependency once for a workflow's jobs to share, or running
-such a workflow on a remote runner; or when introducing or repairing an expensive many-unit workflow, lazy load
-`../include/common/rule-routing/testing-and-builds.md`.
+or requesting a workflow run or probe that takes many minutes, draws on capacity that others share, or publishes,
+selecting, configuring, or reusing a build or workflow cache, building a dependency once for a workflow's jobs to share,
+or running such a workflow on a remote runner; or when introducing or repairing an expensive many-unit workflow, lazy
+load `../include/common/rule-routing/testing-and-builds.md`.
 
 Before counting a conclusion drawn from two or more separate runs, such as a resumed run compared with the run it
 resumed, timings before and after a change, or the results of two prompt or configuration variants, including an

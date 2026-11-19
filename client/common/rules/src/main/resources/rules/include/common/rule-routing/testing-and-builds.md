@@ -23,6 +23,9 @@ not be reached, whether or not you loaded `../ci-debugging.md`.
 When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
 `../remote-runner-testing.md` before dispatching the run.
 
+Before starting a run of a workflow that publishes, such as by pushing a release tag or dispatching a deployment, lazy
+load `../publishing-workflows.md`.
+
 Before changing testable production behavior, lazy load `../tdd.md`.
 
 When designing, changing, running to verify a change, or reviewing tests, lazy load `../testing.md`.
