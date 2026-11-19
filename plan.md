@@ -147,6 +147,21 @@ any turn (receipts in their folders).
   jobs could never publish; `f20a8532c` runs it only after a successful publish. Validated on a branch copy of the
   workflow (run 44429368207).
 
+**E1 round 8 and rulings (2026-11-19 UTC).** Release `v1.0` republished at `f20a8532c` (Release 44432905541, 15 assets,
+verify-release passed) and installed in both harnesses as `1.0+bf20a8532c685`.
+- Codex E1 passed 10 of 11 checks; per-trial records were not observable because delivery deletes the campaign folder
+  (the E-run brief now copies it before each `run`). Claude E1's first campaign certified and delivered inside its slot,
+  but a restart of the parent session killed the runner and the next slot acquire deleted the copy; its second campaign
+  passed the conflict and refusal checks, then attempt 1 was inconclusive and it stopped on rejected reproduction values.
+- User rulings: a judge may use the trials' model but is always a distinct session (design.md "Development judge");
+  runners become resumable across a parent restart (design in progress; supersedes accepting the loss).
+- Open defects, each fixed by its own agent and clone: the contract-tool launcher is hidden by the child's inherited
+  run-root denial, and nested roles get no scratch location; rejected reproduction values never return to their
+  generator; a `--keep-run` copy aborts on one unreadable file; cleanup leaves the campaign's nested runs; slot reuse
+  deletes kept runs.
+- Merged `32f9ed0f6`, `c27740e47`: tests write programs through a `cp` process (Linux "Text file busy" race).
+- Next: integrate the fixes and the resumable-runner work, republish, rerun E1 in both harnesses, then E2–E8.
+
 Earlier next-step list: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
 traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
 429 account recovery; inspect Codex E5's account-reset prerequisite first), G1–G10, T3/T6 and the documentation rows.
