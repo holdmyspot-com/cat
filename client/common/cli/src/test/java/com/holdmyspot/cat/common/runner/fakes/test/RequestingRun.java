@@ -110,13 +110,14 @@ public final class RequestingRun implements AutoCloseable
 		this.fileLocks = fileLocks;
 		this.replyForTurn = replyForTurn;
 		Files.createDirectories(root);
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, root.resolve("requesting-runs"), Clock.systemUTC(),
+		Path results = root.resolve("requesting-runs");
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, results, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		this.run = manager.create("claude");
 		SessionRequestAccess.allowing(run, root, sessionRequests, Platform.current(), SessionRequestAccess.Shell.POSIX);
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact", root.toString(),
 			"--project", run.directory().resolve("project").toString(), "--model", "model-a", "--effort", "effort-a",
-			"--session-requests", String.valueOf(sessionRequests)}, "harness",
+			"--results", results.toString(), "--session-requests", String.valueOf(sessionRequests)}, "harness",
 			HarnessTemporaryRoot.of(root));
 		this.broker = new SessionRequestBroker(run, manager, options,
 			(harness, arguments, _) -> child(harness, arguments));
@@ -131,6 +132,17 @@ public final class RequestingRun implements AutoCloseable
 	public Path requests()
 	{
 		return SessionRequestAccess.requestsDirectory(run);
+	}
+
+	/**
+	 * Returns the home directory of the run's session, where the run's runner installs the CAT plugin that the
+	 * session's commands run from.
+	 *
+	 * @return the directory, which may not exist
+	 */
+	public Path home()
+	{
+		return run.directory().resolve("home");
 	}
 
 	/**

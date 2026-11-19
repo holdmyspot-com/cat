@@ -100,6 +100,47 @@ public final class ServedSessionTest
 	}
 
 	/**
+	 * Verifies that a served session whose prompt names, by absolute path, a launcher of the CAT plugin in the
+	 * requesting session's home, such as the contract tools that a contract author runs, is not denied reading that
+	 * launcher, while the runner still denies it the rest of the requesting nested session, such as that session's
+	 * login.
+	 *
+	 * @throws IOException if fixture or session I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void readsLauncherThatItsRequestNames() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
+			Inputs inputs = new Inputs(root);
+			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			{
+				Path launcher = parent.home().resolve("plugins/cache/cat/cat/1.0/bin/prompt-optimizer");
+				Files.writeString(Files.createDirectories(launcher.getParent()).resolve(launcher.getFileName()),
+					"launcher");
+				Path login = parent.home().resolve(".claude/.credentials.json");
+				Files.writeString(Files.createDirectories(login.getParent()).resolve(login.getFileName()), "login");
+				String records = json.createObjectNode().put("type", "turn").
+					put("prompt", "Run " + launcher + " contract-tools to check the draft.").toString() + """
+
+					{"type":"complete"}
+					""";
+
+				SessionRequestForwarder.serve(COMMAND, "claude", inputs.ownArtifact, inputs.arguments(),
+					new StringReader(records), new StringWriter(), parent.requests(), bounded());
+
+				List<Path> denied = values(parent.launches().getFirst(), "--deny-read").stream().map(Path::of).toList();
+				for (Path path : denied)
+					requireThat(launcher.startsWith(path), "launcher.startsWith(" + path + ")").isFalse();
+				requireThat(denied.stream().anyMatch(login::startsWith), "loginDenied").isTrue();
+				requireThat(onlyResponse(parent).path("status").asString(), "status").isEqualTo("completed");
+			}
+		}
+	}
+
+	/**
 	 * Supplies the session requests of a run whose runner refuses the next session, and whether the run first serves
 	 * the one session it allows.
 	 *
@@ -335,6 +376,24 @@ public final class ServedSessionTest
 		{
 			return entries.map(path -> path.getFileName().toString()).sorted().toList();
 		}
+	}
+
+	/**
+	 * Returns the values of a repeatable option, in order.
+	 *
+	 * @param arguments the options
+	 * @param name      the option's name
+	 * @return its values
+	 */
+	private static List<String> values(List<String> arguments, String name)
+	{
+		List<String> values = new ArrayList<>();
+		for (int i = 0; i < arguments.size() - 1; ++i)
+		{
+			if (arguments.get(i).equals(name))
+				values.add(arguments.get(i + 1));
+		}
+		return values;
 	}
 
 	/**
