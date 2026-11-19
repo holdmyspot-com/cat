@@ -2320,7 +2320,8 @@ Work on what the author is drafting is a contract tool, a command that the reque
 	prints each prompt test's number of distinct expected outcomes. It does not split them into parts, so that the author
 	cannot tell which of its test cases are held out; CAT checks the split when the session ends
 	([§6.3](#63-prompt-tests-and-test-cases)).
-- `contract workspace` writes one test case's workspace files into a directory that the author names: the prompt test's
+- `contract workspace` writes one test case's workspace files into a new directory that the author names outside the draft directory; the
+	author's prompt tells it to create that directory, and every other scratch file, under the session's `TMPDIR`: the prompt test's
 	`workspace/` with each link replaced by a copy of its target, the case's values in place of the placeholders and its
 	generator calls expanded. It prints each file's path, size in bytes and line count, and how its size compares with the
 	tool-output limit of each trial profile of the prompt test, so the author can size a workspace file just over a limit
