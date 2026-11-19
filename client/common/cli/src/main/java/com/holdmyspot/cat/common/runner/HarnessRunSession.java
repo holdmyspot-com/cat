@@ -172,6 +172,16 @@ public final class HarnessRunSession implements AutoCloseable
 	}
 
 	/**
+	 * Returns the identifier that the harness gave its session, once the harness has reported it.
+	 *
+	 * @return the identifier of the harness's session
+	 */
+	public Optional<String> harnessSessionId()
+	{
+		return process.harnessSessionId();
+	}
+
+	/**
 	 * Indicates whether the owned harness process remains alive.
 	 *
 	 * @return true if the harness process remains alive

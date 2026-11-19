@@ -16,6 +16,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
@@ -1231,6 +1233,57 @@ public final class HarnessRunnerBridgeTest
 			requireThat(HarnessRunReceipt.read(json, receipt, run.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEqualTo(List.of(run.sessionTranscripts().resolve("session-7.jsonl")));
+		}
+	}
+
+	/**
+	 * Verifies that the bridge records the identifier that the harness gave its session in the run's manifest as soon as
+	 * the harness reports it, and tells its client the identifier in one record.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void recordsHarnessSessionWhenReported() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
+				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			Path transcript = evidence.resolve("transcript.jsonl");
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", transcript, true, null, false, false, 1,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, false, null,
+				null, null, null, false, null);
+			JsonMapper json = JsonMapper.builder().build();
+			AtomicReference<ScriptedProcess> harness = new AtomicReference<>();
+			// The harness reports its session while it works on the first turn, as Claude Code does
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one").withCheckpoint(
+				_ -> harness.get().reportHarnessSession("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90")),
+				Turn.replies("two")), new ArrayList<>()))
+			{
+				harness.set(process);
+				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
+			}
+
+			List<JsonNode> records = Files.readAllLines(transcript).stream().map(json::readTree).toList();
+			List<String> types = records.stream().map(record -> record.path("type").asString()).
+				filter(type -> !type.equals("harness_event")).toList();
+			requireThat(types, "types").isEqualTo(List.of("started", "session_id", "turn_completed", "turn_completed",
+				"completed"));
+			JsonNode reported = records.stream().filter(record -> record.path("type").asString().equals("session_id")).
+				findFirst().orElseThrow();
+			requireThat(reported.path("session_id").asString(), "sessionId").
+				isEqualTo("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			requireThat(reported.path("run_id").asString(), "runId").isEqualTo(run.id());
+			requireThat(manager.harnessSessionId(run), "recorded").
+				isEqualTo(Optional.of("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"));
 		}
 	}
 

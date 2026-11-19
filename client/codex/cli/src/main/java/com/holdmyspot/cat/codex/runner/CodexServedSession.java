@@ -196,8 +196,7 @@ public final class CodexServedSession
 		requireThat(server, "server").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		requireThat(accountHome, "accountHome").isNotNull();
-		// A run's thread is ephemeral unless its caller keeps the session's transcripts, so its rollout cannot name the
-		// permissions that keep the server sandboxed, and a run's session has no use for a request server
+		// A run's session has no use for a request server, since it requests sessions from its own runner
 		if (HarnessEnvironment.RUN_VALUE.equals(environment.get(HarnessEnvironment.RUN_VARIABLE)))
 			return inRun();
 		List<String> denied = List.of();

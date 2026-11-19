@@ -127,9 +127,9 @@ public final class CodexRunner
 	 *   its own run
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
-	 * @param sessionTranscripts whether the session's threads are persistent, and the run copies their rollouts into its
-	 *   session transcripts directory when the session closes; otherwise the threads are ephemeral and Codex keeps no
-	 *   rollout
+	 * @param sessionTranscripts whether the run copies its threads' rollouts into its session transcripts directory
+	 *   when the session closes. Codex keeps every thread in the run's home either way, so that the run's session can
+	 *   continue after its runner ends
 	 * @param sessionRequests how many sessions the session may request over its run, or {@code 0} if it may request
 	 *   none
 	 * @param bound the policy that bounds the session's sandbox: the session gets its run directory, the dependency

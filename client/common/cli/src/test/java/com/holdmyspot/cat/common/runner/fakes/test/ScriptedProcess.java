@@ -58,6 +58,10 @@ public final class ScriptedProcess implements HarnessProcess
 	 */
 	private boolean ended;
 	private volatile boolean closed;
+	/**
+	 * The identifier that the harness gave its session, or {@code null} until the harness reports it.
+	 */
+	private volatile String harnessSessionId;
 
 	/**
 	 * Creates a process that keeps no session transcript and completes a turn that the caller interrupts.
@@ -299,6 +303,30 @@ public final class ScriptedProcess implements HarnessProcess
 			else if (turnPrepared)
 				interruptPending = true;
 		}
+	}
+
+	/**
+	 * Has the harness report the identifier that it gave its session, as a harness reports it once it has started
+	 * the session.
+	 *
+	 * @param harnessSessionId the identifier
+	 * @throws NullPointerException if {@code harnessSessionId} is null
+	 */
+	public void reportHarnessSession(String harnessSessionId)
+	{
+		requireThat(harnessSessionId, "harnessSessionId").isNotNull();
+		this.harnessSessionId = harnessSessionId;
+	}
+
+	/**
+	 * Returns the identifier that the harness gave its session.
+	 *
+	 * @return the identifier, or none until the harness reports it
+	 */
+	@Override
+	public Optional<String> harnessSessionId()
+	{
+		return Optional.ofNullable(harnessSessionId);
 	}
 
 	/**

@@ -21,6 +21,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -207,40 +208,41 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * Verifies that a process that keeps no session transcripts starts ephemeral threads, copies nothing when it
-	 * closes and names no transcript, while one that keeps them starts persistent threads and names the rollout that
-	 * Codex reports for the thread.
+	 * Verifies that every process starts a persistent thread, so that the run's session can continue after its runner
+	 * ends, and reports the thread as its harness session, while only one that keeps session transcripts copies the
+	 * rollout and names it.
 	 *
 	 * @throws IOException if the process cannot be started or closed
 	 */
 	@Test(timeOut = 10_000)
-	public void keepsNoRolloutUnlessAsked() throws IOException
+	public void keepsEveryThread() throws IOException
 	{
 		// Requirement: R-I7
 		try (TemporaryDirectories directories = new TemporaryDirectories())
 		{
-			Path directory = directories.add(Files.createTempDirectory("codex-process-ephemeral-"));
+			Path directory = directories.add(Files.createTempDirectory("codex-process-thread-"));
 			Files.createDirectories(directory.resolve("home/sessions"));
 			Files.writeString(directory.resolve("home/sessions/rollout-root.jsonl"), "{}\n", UTF_8);
-			AppServer ephemeral = new AppServer(NO_ANSWER, NO_ANSWER);
+			AppServer uncopied = new AppServer(NO_ANSWER, NO_ANSWER);
 
-			try (CodexProcess process = ephemeral.start(directory, "", "", false))
+			try (CodexProcess process = uncopied.start(directory, "", "", false))
 			{
 				requireThat(process.sessionTranscript().isPresent(), "named").isFalse();
+				requireThat(process.harnessSessionId(), "harnessSessionId").isEqualTo(Optional.of(ROOT_THREAD));
 			}
 
-			requireThat(ephemeral.requests("thread/start").getFirst().path("ephemeral").asBoolean(false), "ephemeral").
-				isTrue();
+			requireThat(uncopied.requests("thread/start").getFirst().has("ephemeral"), "ephemeral").isFalse();
 			requireThat(Files.exists(directory.resolve("rollouts")), "copied").isFalse();
-			AppServer persistent = new AppServer(NO_ANSWER, NO_ANSWER);
+			AppServer copied = new AppServer(NO_ANSWER, NO_ANSWER);
 
-			try (CodexProcess process = persistent.start(directory, "", "", true))
+			try (CodexProcess process = copied.start(directory, "", "", true))
 			{
 				requireThat(process.sessionTranscript().orElseThrow(), "rollout").
 					isEqualTo(Path.of("/codex-home/sessions/rollout-root.jsonl"));
+				requireThat(process.harnessSessionId(), "harnessSessionId").isEqualTo(Optional.of(ROOT_THREAD));
 			}
 
-			requireThat(persistent.requests("thread/start").getFirst().has("ephemeral"), "ephemeral").isFalse();
+			requireThat(copied.requests("thread/start").getFirst().has("ephemeral"), "ephemeral").isFalse();
 			requireThat(Files.exists(directory.resolve("rollouts/rollout-root.jsonl")), "copied").isTrue();
 		}
 	}

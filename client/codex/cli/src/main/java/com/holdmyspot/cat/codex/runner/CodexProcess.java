@@ -51,7 +51,8 @@ public final class CodexProcess implements HarnessProcess
 	private final boolean verifyCatHookDelivery;
 	/**
 	 * Copies the rollouts of the app-server's threads once it exits, or {@code null} if the run keeps no session
-	 * transcripts, in which case its threads are ephemeral and Codex writes no rollout.
+	 * transcripts. Codex keeps every thread's rollout in the run's home either way, so that the run's session can
+	 * continue after its runner ends.
 	 */
 	private final HarnessSessionTranscripts transcripts;
 	private final StringBuilder startupEvents = new StringBuilder();
@@ -63,7 +64,11 @@ public final class CodexProcess implements HarnessProcess
 	 * The next JSON-RPC request identifier; guarded by {@link #input}.
 	 */
 	private long nextRequestId = 3;
-	private String threadId;
+	/**
+	 * The root thread's identifier, or {@code null} until Codex answers the {@code thread/start} request; written while
+	 * {@link #input} is held.
+	 */
+	private volatile String threadId;
 	private String effort = "";
 	/**
 	 * Indicates whether a turn has been requested and has not yet ended; guarded by {@link #input}.
@@ -91,7 +96,7 @@ public final class CodexProcess implements HarnessProcess
 	 * @param scope services owned for this app-server lifetime
 	 * @param verifyCatHookDelivery whether CAT hook configuration and delegated-hook delivery must be verified
 	 * @param transcripts copies the rollouts of the app-server's threads once it exits, or {@code null} if the run keeps
-	 *   no session transcripts, in which case the threads are ephemeral
+	 *   no session transcripts
 	 * @throws NullPointerException if {@code process} or {@code scope} are null
 	 */
 	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery,
@@ -199,7 +204,7 @@ public final class CodexProcess implements HarnessProcess
 			readResponse(1, CodexAppServerProtocol.initialize());
 			writeDuringStartup(CodexAppServerProtocol.initialized(), "after its response to request 1");
 			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model,
-				developerInstructions, permissionProfile, transcripts == null)));
+				developerInstructions, permissionProfile)));
 			if (verifyCatHookDelivery)
 			{
 				long requestId = nextRequestId;
@@ -578,6 +583,17 @@ public final class CodexProcess implements HarnessProcess
 		if (transcripts == null || path.isBlank())
 			return Optional.empty();
 		return Optional.of(Path.of(path));
+	}
+
+	/**
+	 * Returns the root thread's identifier once Codex has answered the {@code thread/start} request.
+	 *
+	 * @return the identifier, or none until Codex answers
+	 */
+	@Override
+	public Optional<String> harnessSessionId()
+	{
+		return Optional.ofNullable(threadId);
 	}
 
 	/**

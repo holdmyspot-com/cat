@@ -264,7 +264,7 @@ public final class ClaudeSessionRoleTest
 	 */
 	private static List<String> launch(List<String> tools)
 	{
-		return ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"), List.of(), false, 0,
+		return ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"), List.of(),
 			tools);
 	}
 

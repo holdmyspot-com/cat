@@ -976,50 +976,20 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies an isolated one-shot session cannot retain or resume host conversation state or override its generated
-	 * sandbox policy.
+	 * Verifies that every run keeps its Claude Code session, whether or not it copies the session's transcripts or may
+	 * request sessions, so that the run's session can continue after its runner ends, and that the command sets no
+	 * generated sandbox policy of its own.
 	 */
 	@Test
-	public void disablesSessionPersistence()
-	{
-		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", Path.of("marketplace"),
-			false, Path.of("hook-results"), List.of());
-
-		requireThat(command, "command").contains("--no-session-persistence");
-		requireThat(command, "command").doesNotContain("--settings");
-	}
-
-	/**
-	 * Verifies that a run asked for session transcripts lets Claude persist its session, and still sets no generated
-	 * sandbox policy of its own.
-	 */
-	@Test
-	public void persistsSessionForTranscripts()
+	public void persistsEverySession()
 	{
 		// Requirement: R-I7
-		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), true);
-
-		requireThat(command, "command").doesNotContain("--no-session-persistence").doesNotContain("--settings");
-		requireThat(ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"), List.of(),
-			false), "withoutTranscripts").contains("--no-session-persistence");
-	}
-
-	/**
-	 * Verifies that a session that may request sessions keeps its transcript, which a runner launcher that the
-	 * session's commands run reads to find the session's sandbox policy, while a session that may request none still
-	 * keeps no session.
-	 */
-	@Test
-	public void persistsSessionThatMayRequestSessions()
-	{
-		List<String> mayRequest = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, 2);
-		List<String> mayRequestNone = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(),
-			Path.of("hook-results"), List.of(), false, 0);
-
-		requireThat(mayRequest, "mayRequest").doesNotContain("--no-session-persistence");
-		requireThat(mayRequestNone, "mayRequestNone").contains("--no-session-persistence");
+		List<List<String>> commands = List.of(
+			ClaudeRunner.command("claude", "sonnet", "low", "", Path.of("marketplace"), false, Path.of("hook-results"),
+				List.of()),
+			ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"), List.of()));
+		for (List<String> command : commands)
+			requireThat(command, "command").doesNotContain("--no-session-persistence").doesNotContain("--settings");
 	}
 
 	/**
@@ -1030,7 +1000,7 @@ public final class ClaudeRunnerTest
 	public void selectsAcceptEditsPermissionMode()
 	{
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, 0);
+			List.of());
 
 		int option = command.indexOf("--permission-mode");
 		requireThat(option, "option").isGreaterThan(-1);
@@ -1047,9 +1017,9 @@ public final class ClaudeRunnerTest
 	{
 		// Requirement: R-I11
 		List<String> none = ClaudeRunner.command("claude", "sonnet", "none", "", List.of(), Path.of("hook-results"),
-			List.of(), false);
+			List.of());
 		List<String> low = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false);
+			List.of());
 
 		int thinking = none.indexOf("--thinking");
 		requireThat(thinking, "thinking").isNotNegative();
@@ -1070,7 +1040,7 @@ public final class ClaudeRunnerTest
 	{
 		// Requirement: R-I9
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "", List.of(), Path.of("hook-results"),
-			List.of(), false, 2);
+			List.of());
 
 		requireThat(command, "command").doesNotContain("--append-system-prompt").
 			doesNotContain("--append-system-prompt-file").doesNotContain("--system-prompt").
@@ -1113,7 +1083,7 @@ public final class ClaudeRunnerTest
 	public void permitsTrialPluginDirectory()
 	{
 		List<String> command = ClaudeRunner.command("claude", "sonnet", "low", "",
-			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of(), false);
+			List.of(Path.of("release-docs-marketplace/plugins/release-docs")), Path.of("hook-results"), List.of());
 
 		requireThat(command, "command").contains(Path.of("release-docs-marketplace/plugins/release-docs").toString()).
 			contains("hook-results");

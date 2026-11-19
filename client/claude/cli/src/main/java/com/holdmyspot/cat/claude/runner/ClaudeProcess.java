@@ -539,6 +539,20 @@ public final class ClaudeProcess implements HarnessProcess
 	}
 
 	/**
+	 * Returns the root session's identifier once Claude has reported it in its {@code init} event.
+	 *
+	 * @return the identifier, or none until Claude reports it
+	 */
+	@Override
+	public Optional<String> harnessSessionId()
+	{
+		String id = sessionId;
+		if (id.isEmpty())
+			return Optional.empty();
+		return Optional.of(id);
+	}
+
+	/**
 	 * Closes input and waits for Claude to exit by itself, which lets it save its session and end its own background
 	 * tasks, and then copies the session's transcripts if the process keeps them. Terminates the process tree only if
 	 * Claude has not exited when the grace period ends.

@@ -156,10 +156,10 @@ public final class ClaudeRunner
 	 * @param deniedReads the files and directories that the session must not read
 	 * @param instructionFilesMode the choice of which instruction files load, such as {@code claude-md}, or an empty
 	 *   string to keep the parent's choice
-	 * @param sessionTranscripts whether Claude persists its session and the run copies the session's transcripts, its
-	 *   subagents' included, into the run's session transcripts directory when the session closes
+	 * @param sessionTranscripts whether the run copies the session's transcripts, its subagents' included, into the
+	 *   run's session transcripts directory when the session closes
 	 * @param sessionRequests how many sessions the session may request; with any, the run gets its requests and
-	 *   responses directories, and the session keeps its session
+	 *   responses directories
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
@@ -255,7 +255,7 @@ public final class ClaudeRunner
 				selectedAgent = agent.name();
 			}
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
-				readOnlyEvidence, sessionTranscripts, sessionRequests, tools(role));
+				readOnlyEvidence, tools(role));
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			Path projectDirectory = null;
@@ -1046,7 +1046,7 @@ public final class ClaudeRunner
 			requireThat(marketplace, "marketplace").isNotNull();
 			plugins = List.of(marketplace.resolve("plugins/cat"));
 		}
-		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, false);
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence);
 	}
 
 	/**
@@ -1165,84 +1165,50 @@ public final class ClaudeRunner
 
 	/**
 	 * Builds a Claude command with an explicit profile, optional direct agent, installed plugins and immutable evidence
-	 * directories.
+	 * directories. The session keeps its Claude Code session in the run's home, as every run's does, so that the session
+	 * can continue after its runner ends.
 	 *
-	 * @param executable the Claude executable
-	 * @param model the requested model
-	 * @param effort the requested reasoning effort
-	 * @param agent the optional direct CAT agent name
-	 * @param plugins the directories of the plugins installed in the isolated home
-	 * @param hookResults the hook context directory
-	 * @param readOnlyEvidence executor evidence exposed through added directories
-	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
-	 *   copies; otherwise Claude keeps no session
-	 * @return the complete harness command
-	 */
-	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
-		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts)
-	{
-		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts, 0);
-	}
-
-	/**
-	 * Builds a Claude command as
-	 * {@link #command(String, String, String, String, List, Path, List, boolean)} does, except that a session that may
-	 * request sessions keeps its session.
-	 *
-	 * @param executable         the Claude executable
-	 * @param model              the requested model
-	 * @param effort             the requested reasoning effort; {@code none} starts Claude Code with extended thinking
+	 * @param executable       the Claude executable
+	 * @param model            the requested model
+	 * @param effort           the requested reasoning effort; {@code none} starts Claude Code with extended thinking
 	 *   turned off ({@code --thinking disabled}) and no {@code --effort}, because Claude Code ignores an
 	 *   {@code --effort} it does not list and applies its default effort instead
-	 * @param agent              the optional direct CAT agent name
-	 * @param plugins            the directories of the plugins installed in the isolated home
-	 * @param hookResults        the hook context directory
-	 * @param readOnlyEvidence   executor evidence exposed through added directories
-	 * @param sessionTranscripts whether Claude persists its session, which is what writes the transcripts that the run
-	 *   copies; otherwise Claude keeps no session unless it may request sessions
-	 * @param sessionRequests    how many sessions the session may request; {@code 0}, without
-	 *   {@code sessionTranscripts}, keeps no session, while any keeps the session, whose transcript the runner
-	 *   launcher that the session runs reads to find the session's sandbox policy, in the run's home without copying it
+	 * @param agent            the optional direct CAT agent name
+	 * @param plugins          the directories of the plugins installed in the isolated home
+	 * @param hookResults      the hook context directory
+	 * @param readOnlyEvidence executor evidence exposed through added directories
 	 * @return the complete harness command
-	 * @throws NullPointerException     if any required argument is null
-	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
-	 *   or {@code sessionRequests} is negative
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank
 	 */
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
-		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests)
+		Path hookResults, List<Path> readOnlyEvidence)
 	{
-		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, sessionTranscripts,
-			sessionRequests, List.of());
+		return command(executable, model, effort, agent, plugins, hookResults, readOnlyEvidence, List.of());
 	}
 
 	/**
-	 * Builds a Claude command as
-	 * {@link #command(String, String, String, String, List, Path, List, boolean, int)} does, except that the session's
-	 * model is offered only {@code tools}.
+	 * Builds a Claude command as {@link #command(String, String, String, String, List, Path, List)} does, except that
+	 * the session's model is offered only {@code tools}.
 	 *
-	 * @param executable         the Claude executable
-	 * @param model              the requested model
-	 * @param effort             the requested reasoning effort
-	 * @param agent              the optional direct CAT agent name
-	 * @param plugins            the directories of the plugins installed in the isolated home
-	 * @param hookResults        the hook context directory
-	 * @param readOnlyEvidence   executor evidence exposed through added directories
-	 * @param sessionTranscripts whether Claude persists its session
-	 * @param sessionRequests    how many sessions the session may request
-	 * @param tools              the only tools that the session's model is offered, or none to keep every tool. The
+	 * @param executable       the Claude executable
+	 * @param model            the requested model
+	 * @param effort           the requested reasoning effort
+	 * @param agent            the optional direct CAT agent name
+	 * @param plugins          the directories of the plugins installed in the isolated home
+	 * @param hookResults      the hook context directory
+	 * @param readOnlyEvidence executor evidence exposed through added directories
+	 * @param tools            the only tools that the session's model is offered, or none to keep every tool. The
 	 *   option {@code --tools} removes the other tools' definitions from the model's requests, which
 	 *   {@code --allowedTools} does not
 	 * @return the complete harness command
-	 * @throws NullPointerException     if any required argument is null
-	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank,
-	 *   or {@code sessionRequests} is negative
+	 * @throws NullPointerException     if any argument is null
+	 * @throws IllegalArgumentException if {@code executable}, {@code model} or {@code effort} is blank
 	 */
 	public static List<String> command(String executable, String model, String effort, String agent, List<Path> plugins,
-		Path hookResults, List<Path> readOnlyEvidence, boolean sessionTranscripts, int sessionRequests,
-		List<String> tools)
+		Path hookResults, List<Path> readOnlyEvidence, List<String> tools)
 	{
 		requireThat(tools, "tools").isNotNull();
-		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(executable, "executable").isNotBlank();
 		requireThat(model, "model").isNotBlank();
 		requireThat(effort, "effort").isNotBlank();
@@ -1252,10 +1218,8 @@ public final class ClaudeRunner
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
 			"--output-format", "stream-json", "--permission-mode", "acceptEdits",
 			"--verbose", "--include-partial-messages"));
-		// A runner launcher that the session's commands run finds the session's sandbox policy from its transcript, so a
-		// session that may request sessions keeps its transcript in the run's home even when the run copies none.
-		if (!sessionTranscripts && sessionRequests == 0)
-			command.add("--no-session-persistence");
+		// Every run keeps its session in the run's home, so that the session can continue after its runner ends. A runner
+		// launcher that the session's commands run also finds the session's sandbox policy from its transcript.
 		for (Path plugin : plugins)
 		{
 			command.add("--add-dir");
@@ -1749,6 +1713,12 @@ public final class ClaudeRunner
 			public Optional<Path> sessionTranscript()
 			{
 				return session.sessionTranscript();
+			}
+
+			@Override
+			public Optional<String> harnessSessionId()
+			{
+				return session.harnessSessionId();
 			}
 
 			/**

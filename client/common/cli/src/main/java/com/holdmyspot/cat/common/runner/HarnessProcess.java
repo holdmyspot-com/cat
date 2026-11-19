@@ -118,6 +118,18 @@ public interface HarnessProcess extends AutoCloseable
 	}
 
 	/**
+	 * Returns the identifier that the harness gave its session, once the harness has reported it: Claude Code's
+	 * session ID or Codex's thread ID. A harness that has not yet reported it, or one that gives none, returns no
+	 * identifier.
+	 *
+	 * @return the identifier of the harness's session
+	 */
+	default Optional<String> harnessSessionId()
+	{
+		return Optional.empty();
+	}
+
+	/**
 	 * Indicates whether the harness remains alive.
 	 *
 	 * @return true if the process is alive

@@ -183,6 +183,7 @@ public final class HarnessRunnerBridge
 		// Set once the client interrupts the active turn
 		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
 		AtomicBoolean transcriptRecorded = new AtomicBoolean();
+		AtomicBoolean harnessSessionRecorded = new AtomicBoolean();
 		// A run in a slot is fed by its server, which sends the complete record unless it ends first. A run whose server
 		// ended before the run did records no end, so that its harness session can continue.
 		boolean recordsEnd = true;
@@ -211,6 +212,7 @@ public final class HarnessRunnerBridge
 					if (manager != null)
 						manager.markIdle(run);
 					client.write(event(session.scope(), "started").put("run_id", session.run().id()));
+					recordHarnessSession(session, manager, client, harnessSessionRecorded);
 					try (BufferedReader lines = lines(session, input, conversation))
 					{
 						String line = lines.readLine();
@@ -246,8 +248,10 @@ public final class HarnessRunnerBridge
 													manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
 												forwardHarnessEvent(session, client, harnessEvent);
 												recordSessionTranscript(session, client, transcriptRecorded);
+												recordHarnessSession(session, manager, client, harnessSessionRecorded);
 											}, turnMode);
 											recordSessionTranscript(session, client, transcriptRecorded);
+											recordHarnessSession(session, manager, client, harnessSessionRecorded);
 											if (manager != null)
 												manager.writeTurnOutput(session.run(), currentTurn, result);
 											if (!result.completed())
@@ -872,6 +876,35 @@ public final class HarnessRunnerBridge
 		ObjectNode response = event(session.scope(), "session_transcript");
 		response.put("run_id", session.run().id());
 		response.put("path", transcript.get().toString());
+		client.write(response);
+	}
+
+	/**
+	 * Records the identifier that the harness gave its session in the run's manifest, once the harness has reported
+	 * it, and tells the client the identifier in a {@code session_id} record, once per session.
+	 *
+	 * @param session  the session
+	 * @param manager  the run's lifecycle manager, or {@code null} if the caller does not own the run
+	 * @param client   the client
+	 * @param recorded indicates whether the identifier was recorded already
+	 * @throws IOException if the run recorded another identifier, or the record cannot be written
+	 */
+	private static void recordHarnessSession(HarnessRunSession session, HarnessRunManager manager, ClientOutput client,
+		AtomicBoolean recorded) throws IOException
+	{
+		assert session != null;
+		assert client != null;
+		assert recorded != null;
+		if (recorded.get())
+			return;
+		Optional<String> id = session.harnessSessionId();
+		if (id.isEmpty() || !recorded.compareAndSet(false, true))
+			return;
+		if (manager != null)
+			manager.recordHarnessSession(session.run(), id.get());
+		ObjectNode response = event(session.scope(), "session_id");
+		response.put("run_id", session.run().id());
+		response.put("session_id", id.get());
 		client.write(response);
 	}
 
