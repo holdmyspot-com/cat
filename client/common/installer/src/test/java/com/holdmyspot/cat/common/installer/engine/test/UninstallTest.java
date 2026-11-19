@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -285,9 +286,8 @@ public final class UninstallTest
 			Path root = cleanup.add(testDirectory("uninstall-reinstalled-")).toRealPath();
 			Path home = Files.createDirectories(root.resolve("home"));
 			Path data = new RecordingIntegration.Layout(home).dataDirectory();
-			Path program = Files.writeString(Files.createDirectories(root.resolve("bin")).resolve("harness-a"),
+			Path program = ExecutableFixture.write(Files.createDirectories(root.resolve("bin")).resolve("harness-a"),
 				"#!/bin/sh\n");
-			requireThat(program.toFile().setExecutable(true), "executable").isTrue();
 			ReleaseCatalog catalog = new ReleaseCatalog("1.1", "# No migration\n");
 			TrustPolicy signed = catalog.policy(home, "1.0");
 			TrustPolicy trust = TrustPolicy.of(signed.keys(), signed.releaseBaseUrl(), signed.minimum(),
@@ -436,9 +436,8 @@ public final class UninstallTest
 			Files.writeString(user.resolve(".cat/bundles/bundle"), "bundle");
 			Files.createDirectories(user.resolve(".cat/rules"));
 			Files.writeString(user.resolve(".cat/rules/rule.md"), "rule");
-			this.program = Files.createDirectories(root.resolve("bin")).resolve("harness-a");
-			Files.writeString(program, "#!/bin/sh\n");
-			requireThat(program.toFile().setExecutable(true), "executable").isTrue();
+			this.program = ExecutableFixture.write(Files.createDirectories(root.resolve("bin")).resolve("harness-a"),
+				"#!/bin/sh\n");
 			HarnessCommand command = new HarnessCommand(List.of(program.toString()),
 				Map.of("HOME", user.toString()));
 			this.trust = TrustPolicy.of(List.of(trusted("key", keyPair())), URI.create("https://releases.example/cat"),

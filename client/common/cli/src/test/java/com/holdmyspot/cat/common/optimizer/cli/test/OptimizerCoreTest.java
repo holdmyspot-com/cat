@@ -105,6 +105,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import org.testng.Assert.ThrowingRunnable;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -4384,7 +4385,7 @@ public final class OptimizerCoreTest
 	{
 		if (Platform.current().isWindows())
 		{
-			Files.writeString(root.resolve(buildProgram()), """
+			ExecutableFixture.write(root.resolve(buildProgram()), """
 				@echo off\r
 				echo building %1\r
 				echo build>> ..\\builds.log\r
@@ -4394,7 +4395,7 @@ public final class OptimizerCoreTest
 				""".replace("REPOSITORY", PluginInfo.CAT_REPOSITORY));
 			return;
 		}
-		Path script = Files.writeString(root.resolve(buildProgram()), """
+		ExecutableFixture.write(root.resolve(buildProgram()), """
 			#!/bin/sh
 			echo "building $1"
 			echo build >> ../builds.log
@@ -4402,7 +4403,6 @@ public final class OptimizerCoreTest
 			printf '{"name": "%s", "repository": "%s"}\\n' "$1" "REPOSITORY" > out/.claude-plugin/plugin.json
 			exit "$2"
 			""".replace("REPOSITORY", PluginInfo.CAT_REPOSITORY));
-		requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
 	}
 
 	/**

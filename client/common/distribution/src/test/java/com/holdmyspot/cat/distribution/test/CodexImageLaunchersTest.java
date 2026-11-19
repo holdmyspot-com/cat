@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainAccess;
 import com.holdmyspot.cat.distribution.secrets.DistributionMainSecrets;
@@ -55,7 +56,7 @@ public final class CodexImageLaunchersTest
 			else
 			{
 				runtime = Files.createDirectories(directory.resolve("runtime/bin")).getParent();
-				writeExecutable(runtime.resolve("bin/java"), "#!/bin/sh\necho started \"$@\"\n");
+				ExecutableFixture.write(runtime.resolve("bin/java"), "#!/bin/sh\necho started \"$@\"\n");
 			}
 			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
@@ -134,7 +135,7 @@ public final class CodexImageLaunchersTest
 		throws IOException, InterruptedException
 	{
 		Path stubs = Files.createDirectories(directory.resolve("stubs"));
-		writeExecutable(stubs.resolve("bwrap"), """
+		ExecutableFixture.write(stubs.resolve("bwrap"), """
 			#!/bin/sh
 			echo 'bwrap: No permissions to create new namespace' >&2
 			exit 1
@@ -165,18 +166,5 @@ public final class CodexImageLaunchersTest
 			requireThat(status, "status").withContext(output, "output").isEqualTo(0);
 			return output;
 		}
-	}
-
-	/**
-	 * Writes a POSIX script that every user may run.
-	 *
-	 * @param path    the script's path
-	 * @param content the script
-	 * @throws IOException if the script cannot be written
-	 */
-	private static void writeExecutable(Path path, String content) throws IOException
-	{
-		Files.writeString(path, content);
-		requireThat(path.toFile().setExecutable(true, false), "executable").isTrue();
 	}
 }

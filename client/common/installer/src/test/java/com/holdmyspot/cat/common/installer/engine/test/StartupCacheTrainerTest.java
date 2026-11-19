@@ -18,6 +18,7 @@ import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.TrainingRu
 import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication;
 import com.holdmyspot.cat.common.installer.secrets.StartupCacheTrainerSecrets;
 import com.holdmyspot.cat.common.runner.StartupCache;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
@@ -798,12 +799,9 @@ public final class StartupCacheTrainerTest
 		Files.createDirectories(bin.resolve("modules"));
 		Files.write(plugin.resolve(StartupCacheFixtures.JAR), StartupCacheFixtures.jar(StartupProgram.class));
 		if (Platform.current().isWindows())
-			Files.writeString(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper());
+			ExecutableFixture.write(bin.resolve("java.cmd"), StartupCacheFixtures.windowsWrapper());
 		else
-		{
-			Path wrapper = Files.writeString(bin.resolve("java"), StartupCacheFixtures.posixWrapper());
-			requireThat(wrapper.toFile().setExecutable(true), "executable").isTrue();
-		}
+			ExecutableFixture.write(bin.resolve("java"), StartupCacheFixtures.posixWrapper());
 		Files.writeString(bin.resolve("runtime-binding"), Path.of(System.getProperty("java.home")) + "\n", UTF_8);
 		Files.writeString(plugin.resolve(StartupCache.TRAINING),
 			StartupCacheFixtures.description(List.of(StartupProgram.class.getName())), UTF_8);

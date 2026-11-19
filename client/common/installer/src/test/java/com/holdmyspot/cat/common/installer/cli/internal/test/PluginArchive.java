@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.TrustedKey;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
@@ -63,9 +64,7 @@ final class PluginArchive
 		Files.createDirectories(plugin.resolve("bin/runtime/bin"));
 		Files.writeString(plugin.resolve("bin/runtime/bin/java"), "java");
 		Files.writeString(plugin.resolve("bin/installer"), "#!/bin/sh\n");
-		Path pluginInfo = Files.writeString(plugin.resolve("bin/plugin-info"), "#!/bin/sh\n");
-		if (!pluginInfo.toFile().setExecutable(true))
-			throw new IOException("Cannot make " + pluginInfo + " executable");
+		ExecutableFixture.write(plugin.resolve("bin/plugin-info"), "#!/bin/sh\n");
 		if (Platform.current().isWindows())
 		{
 			// A Windows archive's launchers are a PowerShell installer launcher and batch launchers

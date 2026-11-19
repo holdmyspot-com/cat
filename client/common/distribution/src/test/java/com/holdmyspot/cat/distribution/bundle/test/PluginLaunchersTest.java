@@ -4,10 +4,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication;
 import com.holdmyspot.cat.common.runner.StartupCache;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import com.holdmyspot.cat.distribution.bundle.Launcher;
 import com.holdmyspot.cat.distribution.bundle.PluginLaunchers;
 import java.io.IOException;
@@ -16,7 +16,6 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -169,12 +168,10 @@ public final class PluginLaunchersTest
 			if (Platform.current().isWindows())
 				javaName = "java.exe";
 			// The launcher runs java.exe on Windows, so the fake script takes that name; Git Bash starts it by its #! line
-			Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
+			ExecutableFixture.write(runtime.resolve("bin").resolve(javaName), """
 				#!/bin/sh
 				printf '%s|' "JAVA_TOOL_OPTIONS=${JAVA_TOOL_OPTIONS-unset}" "$@"
 				""");
-			if (PortableFiles.hasModes(java))
-				Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 			Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
 			List<String> command = new ArrayList<>();
@@ -296,12 +293,10 @@ public final class PluginLaunchersTest
 		String javaName = "java";
 		if (platform.isWindows())
 			javaName = "java.exe";
-		Path java = Files.writeString(runtime.resolve("bin").resolve(javaName), """
+		ExecutableFixture.write(runtime.resolve("bin").resolve(javaName), """
 			#!/bin/sh
 			printf '%s\\n' "$@"
 			""");
-		if (PortableFiles.hasModes(java))
-			Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 		Files.writeString(bin.resolve("runtime-binding"), runtime + "\n");
 
 		List<String> command = new ArrayList<>();

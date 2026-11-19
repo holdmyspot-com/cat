@@ -4,18 +4,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import com.holdmyspot.cat.distribution.bundle.PluginInstaller;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
@@ -95,12 +94,10 @@ public final class PluginInstallerTest
 			Path bin = cleanup.add(Files.createTempDirectory("plugin installer ")).toRealPath().resolve("bin");
 			new PluginInstaller(scope, "2.3.4", "").write(bin, Platform.WINDOWS_X64, true);
 			Path java = Files.createDirectories(bin.resolve("runtime/bin")).resolve("java");
-			Files.writeString(java, """
+			ExecutableFixture.write(java, """
 				#!/bin/sh
 				printf '%s\\n' "$@"
 				""");
-			if (PortableFiles.hasModes(java))
-				Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
 			List<String> command = List.of("sh", bin.resolve("installer").toString().replace('\\', '/'));
 			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
 			builder.environment().put("LC_ALL", "C.UTF-8");

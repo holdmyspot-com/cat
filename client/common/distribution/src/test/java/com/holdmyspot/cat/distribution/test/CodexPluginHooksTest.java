@@ -5,15 +5,14 @@ import static java.nio.charset.StandardCharsets.UTF_16LE;
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
@@ -116,8 +115,8 @@ public final class CodexPluginHooksTest
 			}
 			else
 			{
-				makeExecutable(copyResource("hooks/post-tool-use.sh", launchers.resolve("post-tool-use.sh")));
-				makeExecutable(Files.writeString(bin.resolve("post-tool-use"), "#!/bin/sh\necho started\ncat\n"));
+				copyResource("hooks/post-tool-use.sh", launchers.resolve("post-tool-use.sh"));
+				ExecutableFixture.write(bin.resolve("post-tool-use"), "#!/bin/sh\necho started\ncat\n");
 			}
 			String readPartEvent = PART_EVENT.replace("run-part", "read-part");
 
@@ -167,32 +166,18 @@ public final class CodexPluginHooksTest
 	}
 
 	/**
-	 * Copies a file of the Codex plugin.
+	 * Copies a launcher of the Codex plugin, so that it can run as soon as it is copied.
 	 *
-	 * @param path   the file's path relative to the plugin's root directory
+	 * @param path   the launcher's path relative to the plugin's root directory
 	 * @param target the copy's path
-	 * @return {@code target}
-	 * @throws IOException if the file cannot be copied
+	 * @throws IOException if the launcher cannot be copied
 	 */
-	private static Path copyResource(String path, Path target) throws IOException
+	private static void copyResource(String path, Path target) throws IOException
 	{
 		try (InputStream in = pluginResource(path).openStream())
 		{
-			Files.copy(in, target);
+			ExecutableFixture.write(target, in.readAllBytes());
 		}
-		return target;
-	}
-
-	/**
-	 * Lets every user run a POSIX script, on a file system that has permission modes.
-	 *
-	 * @param script the script
-	 * @throws IOException if the permissions cannot be changed
-	 */
-	private static void makeExecutable(Path script) throws IOException
-	{
-		if (PortableFiles.hasModes(script))
-			Files.setPosixFilePermissions(script, PosixFilePermissions.fromString("rwxr-xr-x"));
 	}
 
 	/**
@@ -212,7 +197,7 @@ public final class CodexPluginHooksTest
 				"findstr \"^\"\r\nexit /b 0\r\n");
 			return;
 		}
-		makeExecutable(Files.writeString(directory.resolve(name + ".sh"), "#!/bin/sh\necho started " + name + "\ncat\n"));
+		ExecutableFixture.write(directory.resolve(name + ".sh"), "#!/bin/sh\necho started " + name + "\ncat\n");
 	}
 
 	/**

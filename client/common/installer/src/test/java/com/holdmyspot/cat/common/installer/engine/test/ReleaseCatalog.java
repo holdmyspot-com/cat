@@ -5,6 +5,7 @@ import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
 import com.holdmyspot.cat.common.installer.trust.test.ReleaseFixtures;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -158,9 +159,10 @@ final class ReleaseCatalog
 					continue;
 				}
 				Files.createDirectories(target.getParent());
-				Files.copy(tar, target);
-				if ((entry.getMode() & 0100) != 0 && !target.toFile().setExecutable(true))
-					throw new IOException("Cannot make " + target + " executable");
+				if ((entry.getMode() & 0100) != 0)
+					ExecutableFixture.write(target, tar.readAllBytes());
+				else
+					Files.copy(tar, target);
 			}
 		}
 		Files.delete(archive);

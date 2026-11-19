@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installer.activation.HarnessCommand;
 import com.holdmyspot.cat.common.installer.cli.internal.ExecutableDiscovery;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -184,7 +185,7 @@ public final class ExecutableDiscoveryTest
 			String name = "harness-a";
 			if (platform.isWindows())
 				name += ".exe";
-			Path program = Files.writeString(Files.createDirectories(directory).resolve(name), "#!/bin/sh\n");
+			Path program = ExecutableFixture.write(Files.createDirectories(directory).resolve(name), "#!/bin/sh\n");
 			if (Files.getFileStore(program).supportsFileAttributeView(PosixFileAttributeView.class))
 				Files.setPosixFilePermissions(program, PosixFilePermissions.fromString("rwx------"));
 			return program;

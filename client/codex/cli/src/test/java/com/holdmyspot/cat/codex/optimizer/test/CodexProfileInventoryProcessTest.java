@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -53,7 +54,7 @@ public final class CodexProfileInventoryProcessTest
 		Files.writeString(directory.resolve("stdout-end.txt"), stdoutEnd, UTF_8);
 		if (Platform.current().isWindows())
 		{
-			Files.writeString(directory.resolve("codex.cmd"), """
+			ExecutableFixture.write(directory.resolve("codex.cmd"), """
 				@echo off\r
 				if "%~1"=="--version" (\r
 				  echo codex-cli 0.169.0\r
@@ -62,11 +63,11 @@ public final class CodexProfileInventoryProcessTest
 				type "%~dp0stdout-start.txt"\r
 				type "%~dp0stderr.txt" 1>&2\r
 				type "%~dp0stdout-end.txt"\r
-				""", UTF_8);
+				""");
 		}
 		else
 		{
-			Path script = Files.writeString(directory.resolve("codex"), """
+			ExecutableFixture.write(directory.resolve("codex"), """
 				#!/bin/sh
 				if [ "$1" = "--version" ]; then
 				  echo codex-cli 0.169.0
@@ -76,8 +77,7 @@ public final class CodexProfileInventoryProcessTest
 				cat "$directory/stdout-start.txt"
 				cat "$directory/stderr.txt" >&2
 				cat "$directory/stdout-end.txt"
-				""", UTF_8);
-			requireThat(script.toFile().setExecutable(true, false), "executable").isTrue();
+				""");
 		}
 		return directory.resolve("codex");
 	}

@@ -20,6 +20,7 @@ import com.holdmyspot.cat.common.installer.cli.internal.Terminal;
 import com.holdmyspot.cat.common.installer.fakes.test.ExitedProgram;
 import com.holdmyspot.cat.common.installer.fakes.test.HarnessProgram;
 import com.holdmyspot.cat.common.installer.secrets.ProcessHarnessCliSecrets;
+import com.holdmyspot.cat.common.test.ExecutableFixture;
 import com.holdmyspot.cat.distribution.bundle.ApplicationModules;
 import com.holdmyspot.cat.distribution.bundle.ArtifactLayer;
 import com.holdmyspot.cat.distribution.bundle.PluginArtifactBuilder;
@@ -576,9 +577,7 @@ public final class InstallerActivationTest
 			}
 			else
 			{
-				Path program = Files.writeString(tools.resolve(harness), "#!/bin/sh\n");
-				if (!program.toFile().setExecutable(true))
-					throw new IOException("Cannot make " + program + " executable");
+				ExecutableFixture.write(tools.resolve(harness), "#!/bin/sh\n");
 				environment.put("HOME", user.toString());
 			}
 		}
