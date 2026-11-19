@@ -80,9 +80,11 @@ platform=${expected_platform}" ]
 	if command -v cygpath >/dev/null 2>&1; then
 		root=$(cygpath -m "${plugin}")
 	fi
+	# jq reads the manifest from its standard input: Git Bash converts a path argument of a Windows program such as jq
+	# to the path's Windows form, but not a path that holds a quote, which the program then cannot open
 	hooks="${plugin}/hooks/hooks.json"
 	commands=0
-	for event in $(jq -r '.hooks | keys_unsorted[]' "${hooks}" | tr -d '\r'); do
+	for event in $(jq -r '.hooks | keys_unsorted[]' < "${hooks}" | tr -d '\r'); do
 		case "${event}" in
 			SessionStart) program="session-start" ;;
 			SubagentStart) program="subagent-start" ;;
@@ -94,10 +96,10 @@ platform=${expected_platform}" ]
 		esac
 		printf '#!/bin/sh\necho started %s\n' "${program}" > "${plugin}/bin/${program}"
 		chmod +x "${plugin}/bin/${program}"
-		count=$(jq --arg event "${event}" '[.hooks[$event][].hooks[]] | length' "${hooks}" | tr -d '\r')
+		count=$(jq --arg event "${event}" '[.hooks[$event][].hooks[]] | length' < "${hooks}" | tr -d '\r')
 		for ((index = 0; index < count; ++index)); do
 			command=$(jq -r --arg event "${event}" --argjson index "${index}" \
-				'[.hooks[$event][].hooks[]][$index].command' "${hooks}" | tr -d '\r')
+				'[.hooks[$event][].hooks[]][$index].command' < "${hooks}" | tr -d '\r')
 
 			# Claude Code runs the command in a POSIX shell, Git Bash on Windows, which expands ${CLAUDE_PLUGIN_ROOT}
 			run env CLAUDE_PLUGIN_ROOT="${root}" sh -c "${command}" < /dev/null

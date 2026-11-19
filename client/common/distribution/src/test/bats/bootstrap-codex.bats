@@ -149,8 +149,10 @@ codex_manifest_command()
 			;;
 	esac
 	local command
+	# jq reads the manifest from its standard input: Git Bash converts a path argument of a Windows program such as jq
+	# to the path's Windows form, but not a path that holds a quote, which the program then cannot open
 	command=$(jq -r --arg event "$2" --argjson index "$3" --arg field "${field}" \
-		'[.hooks[$event][].hooks[]][$index][$field]' "$1/hooks/hooks.json" | tr -d '\r')
+		'[.hooks[$event][].hooks[]][$index][$field]' < "$1/hooks/hooks.json" | tr -d '\r')
 	# shellcheck disable=SC2016 # The placeholder that Codex replaces, not an expansion
 	local placeholder='${PLUGIN_ROOT}'
 	command="${command//"${placeholder}"/"${root}"}"
@@ -188,7 +190,7 @@ replace_codex_program()
 	mkdir -p "${plugin}/bin"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex/hooks" "${plugin}/hooks"
 	commands=0
-	for event in $(jq -r '.hooks | keys_unsorted[]' "${plugin}/hooks/hooks.json" | tr -d '\r'); do
+	for event in $(jq -r '.hooks | keys_unsorted[]' < "${plugin}/hooks/hooks.json" | tr -d '\r'); do
 		case "${event}" in
 			SessionStart) program="session-start" ;;
 			SubagentStart) program="subagent-start" ;;
@@ -200,7 +202,8 @@ replace_codex_program()
 				;;
 		esac
 		replace_codex_program "${plugin}" "${program}" "started ${program}"
-		hooks=$(jq --arg event "${event}" '[.hooks[$event][].hooks[]] | length' "${plugin}/hooks/hooks.json" | tr -d '\r')
+		hooks=$(jq --arg event "${event}" '[.hooks[$event][].hooks[]] | length' < "${plugin}/hooks/hooks.json" |
+			tr -d '\r')
 		for ((index = 0; index < hooks; ++index)); do
 			run --separate-stderr codex_manifest_command "${plugin}" "${event}" "${index}" "${PART_EVENT}"
 
