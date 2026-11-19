@@ -38,6 +38,11 @@ jobs:
           java-version: '27'
           cache: maven
           cache-dependency-path: client/pom.xml
+      # Fails before the long build when the tag is not "v" followed by the Maven project version. The root POM's
+      # release-tag profile runs the check with the enforcer plugin that the build uses, so it downloads nothing that
+      # the build would not, and Maven prints the mismatch to the log.
+      - name: Verify release tag
+        run: client/mvnw -q -f client/pom.xml --non-recursive validate "-Dcat.release.tag=${GITHUB_REF_NAME}"
       - name: Install test tools on Linux
         if: runner.os == 'Linux'
         run: .github/scripts/install-linux-test-tools.sh
@@ -92,14 +97,6 @@ jobs:
         if: runner.os != 'macOS'
         working-directory: client/common/distribution/target/release
         run: sha256sum --check --strict SHA256SUMS.txt
-      - name: Verify release tag
-        run: |
-          version="$(client/mvnw -q -f client/pom.xml help:evaluate -Dexpression=project.version -DforceStdout)"
-          if [ "${GITHUB_REF_NAME}" != "v${version}" ]; then
-            echo "Release tag ${GITHUB_REF_NAME} does not match the Maven project version ${version}; " \
-              "create tag v${version}." >&2
-            exit 1
-          fi
       - name: Verify bootstrap boundaries
         if: runner.os != 'Windows'
         run: >-

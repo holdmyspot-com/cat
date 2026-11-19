@@ -471,5 +471,44 @@
 				<cat.session.temp>${project.rootDirectory}/../.cat/sessions/${env.CLAUDE_CODE_SESSION_ID}/temp</cat.session.temp>
 			</properties>
 		</profile>
+		<profile>
+			<!--
+				The release workflow names its tag in "cat.release.tag", and the build fails unless the tag is "v" followed
+				by the project version. The check uses the enforcer plugin that every build already runs, so it needs no
+				plugin that the build would not download anyway.
+			-->
+			<id>release-tag</id>
+			<activation>
+				<property>
+					<name>cat.release.tag</name>
+				</property>
+			</activation>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-enforcer-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>require-release-tag</id>
+								<inherited>false</inherited>
+								<goals>
+									<goal>enforce</goal>
+								</goals>
+								<configuration>
+									<rules>
+										<requireProperty>
+											<property>cat.release.tag</property>
+											<regex>v\Q${project.version}\E</regex>
+											<regexMessage>The release tag ${cat.release.tag} does not match the Maven project version ${project.version}; create tag v${project.version}.</regexMessage>
+										</requireProperty>
+									</rules>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
 	</profiles>
 </project>
