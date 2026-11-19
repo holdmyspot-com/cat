@@ -3626,7 +3626,10 @@ resumed the session under its own ID. It runs the same harness's runner launcher
 and `--effort`, and either `--conversation` with a new or empty folder or `--input`; `--output`, `--receipt`,
 `--keep-run`, `--run-root`, `--session-transcripts`, `--extra-permissions`, `--session-requests` and `--request-depth`
 apply to the resumed launch as to any launch, and `--keep-run` again decides only the copy at the resumed run's normal
-end. The launch takes a concurrency permit as any launch does. The server finds its retained slot whose `run.json`
+end. The launch takes a concurrency permit as any launch does. A resume continues the same session and is not a new
+request: it uses none of the requesting run's `--session-requests` allowance, and each run keeps the `requests_used`
+count of the requests it accepted in its `run.json`, so a resumed run continues its count and its allowance covers its
+whole life. The server finds its retained slot whose `run.json`
 records that ID, stops any process that the run recorded, under the identity checks of
 [§3.8](#38-interruption-and-crash-consistency), and starts the run's runner in the slot in resume mode. The runner copies
 no project, installs no plugin and leaves the harness's session store as it is; it writes again only the files that the
