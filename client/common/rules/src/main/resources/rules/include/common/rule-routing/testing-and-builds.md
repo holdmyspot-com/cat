@@ -33,7 +33,9 @@ started is in progress, and when a job of such a run that you started has failed
 running, lazy load `../expensive-verification-runs.md`.
 
 When a test's outcome varies between runs of unchanged code and inputs, a test that should reproduce a problem
-triggers it on only some runs, or before adding a randomized or property-based test, lazy load `../flaky-tests.md` before changing, rerunning, or removing that test.
+triggers it on only some runs, another check, such as a build step or CI job, fails on only some runs, or before adding
+a randomized or property-based test, lazy load `../flaky-tests.md` before changing, rerunning, or removing that test or
+check.
 
 When a test creates or shares a fixture, lazy load `../temporary-resources.md`.
 

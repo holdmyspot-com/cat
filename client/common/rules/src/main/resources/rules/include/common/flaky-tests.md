@@ -7,6 +7,10 @@
 - Confirm the fix of a problem that a test triggers on only some runs with before-and-after evidence whose pass the
 	reader can explain, without leaving that test in the suite.
 - Leave no claim silently unproven when a flaky test is removed.
+<!-- An agent asked for the root cause of an intermittent CI failure reran the old check about 281 times on 21 runners
+     after the first few dozen runs showed that it did not fail on demand: 151 tool calls in about 58 minutes. -->
+- Bound the runs spent trying to reproduce a failure that occurs on only some runs, and when the bound passes without a
+	reproduction, leave its next occurrence observable, its likely cause fixed, and its cause reported as unproven.
 
 ## Guidance
 
@@ -35,8 +39,16 @@ a scratch location outside the repository. Then:
 3. Remove the temporary test before committing or handing off the work.
 4. Report the runs, failures, and conditions, such as load, thread count, and machine, before and after the fix.
 
-If neither a reliable test nor a temporary test triggers the problem, report that the fix has no test evidence, the
-attempts you made, and the closest evidence you have.
+Before you rerun a check that fails on only some runs, such as a test, build step or CI job, or run a temporary test
+to reproduce such a failure, set a reproduction budget: a number of runs and a time limit. Size it from the failure's
+observed rate: at a rate p, about 3/p runs show the failure with 95% probability, for example 60 runs for a failure seen
+once in 20. When the budget passes without a reproduction, stop rerunning, then:
+
+1. Make the next failure observable: have the check keep the output that it now hides, such as the failing process's
+	error output or log, or a thread dump at a timeout.
+2. Fix the likely cause that the evidence you have supports.
+3. Report that the cause is unproven and the fix has no test evidence, with the attempts you made and the closest
+	evidence you have.
 
 Do not keep a flaky test, whether you wrote it or found it in the existing suite. Make it reliable or remove it.
 Retrying it, rerunning it until it passes, and marking it ignored, disabled, or expected to fail are not fixes. When you
