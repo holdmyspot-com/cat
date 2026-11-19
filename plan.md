@@ -3903,6 +3903,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-142 | `optimize-xhigh` | Moves the boundary between a sandboxed session and the sessions it starts into the runner launchers and changes what `install` writes to both harnesses' settings; an error lets a session's command run unsandboxed code, start a session wider than its own sandbox, read or write a path its sandbox denies, or leaves a user's settings with an exception that `uninstall` does not remove. |
 | WI-146 | `optimize-xhigh` | Changes when the request server and a run's runner delete a requested session's run, continues a harness session in a reused home under a newly computed sandbox bound, and changes how the optimizer reconciles an interrupted trial; an error deletes a retained campaign, signals a process by an unchecked PID, resumes a session under another ID or with wider permissions than its bound, or counts an interrupted trial as a result. |
 | WI-147 | `optimize-high` | Renames the runner's terms, files and options across code, rules, skills and documentation, and removes `--keep-run`; an error leaves a reader of an old name (a `run.json` reader, a rule that names `--keep-run`), names a results copy before its ID is known, or deletes results that their owner still needs. |
+| WI-148 | `optimize-xhigh` | Installs a new harness's package and changes another package's settings, and starts pi sessions under a boundary that CAT builds itself; an error installs a package or changes a setting the user did not agree to, leaves a subagent without CAT's context, or lets a nested pi session reach outside its bound. |
 | WI-145 | `optimize-xhigh` | Runs Git outside the session's sandbox in a repository that the session's commands can write, on a request that the session's model wrote; an error lets a request choose a path to delete or a registration to rewrite, run a program the session chose outside the sandbox, or leaves a campaign that cannot start or be removed. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
@@ -4624,6 +4625,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-142 | In progress: installer exceptions, read-only startup files, direct runner launches, the Codex CAT profile, the session's request server with every client outside a run sending it requests, install's request-server-only exception and the session launcher's removal merged (`ab75964beb`..`d4c0fcefca`; clean full build 5203 tests, 0 failures, 7 skipped); Claude live checks on the installed `1.0+b5e9a6a7a450d` (2026-11-09): the server started in the background runs outside the sandbox; a variable assignment, `env X=1`, a second command and a relative path keep it sandboxed (status 2 with the explanation); a bare `env` in front does not, because Claude Code drops it when matching the exception (the server runs outside the sandbox with the same environment); a run's Claude session appended to `to-child.jsonl` and its requested session answered turn 1 (turn 2 was lost because the session started the conversation with `nohup … &` in a foreground command, not as a background command); D135 accepts the bare `env` case; `env -i` (refused: no session to identify) and `env -C` (sandboxed) pass, and `env -u LANG` left the sandbox, which D135 accepts; remaining: the Codex live checks, and whether the internal options that nothing passes any more (`--capacity-held`, `--git-name`, `--git-email`) leave the design and the code (D133 and D134 already record that D127's launcher-state reason no longer applies and that the exception names only `request-server`). |
 | WI-146 | Not started. Designed 2026-11-19 (`design.md` "Resuming a run", §3.2 "Interrupted trials", D151); premises P18 and P19 passed the same day; Q7 ruled the same day; steps 1–6 and 8 merged, step 7 follows WI-147. |
 | WI-147 | Not started; ruled 2026-11-19; follows WI-146. |
+| WI-148 | Not started; ruled 2026-11-19 (pi support); runs at the end of the plan, after every §9 gate. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -8108,6 +8110,47 @@ selection and download it describes are unchanged.
 	harness whose results folder holds the copy under the harness's ID.
 - **Exit:** the tests, the scan, the clean build and the live launches pass on the committed revision. Closes R-I13.
 
+### WI-148 — CAT supports the pi harness (user rulings, 2026-11-19)
+
+- **Problem:** CAT installs into Claude Code and Codex only. pi (`@earendil-works/pi-coding-agent`, researched on 1.5.2
+	with pi itself, 2026-11-19) loads skills from `SKILL.md` folders but ships neither hooks nor subagents, and runs with
+	its user's own permissions, without a sandbox.
+- **Scope:** design text first, then the installer, a pi package (skills, a TypeScript extension, the shared `bin/`
+	launchers), a pi runner, the `update` and `uninstall` skills, and the history reader. It runs at the end of the plan,
+	after every §9 gate, and no v1.0 gate depends on it.
+- **Change:**
+	1. **Hooks** come from CAT's own extension, not a third-party package (no established hooks package exists; the
+		largest, pi-code, has about 4,600 weekly downloads and no SubagentStart). The extension maps CAT's hooks onto pi's
+		events and runs the existing launchers: SessionStart on startup, resume and clear to `session_start` (reasons
+		`startup`, `resume`, `new`); SessionStart on compaction to `session_compact`, since pi fires no `session_start`
+		then; SessionEnd to `session_shutdown`; Codex's PostToolUse on Bash to `tool_result` for a bash call.
+	2. **SubagentStart** comes from the same extension: a subagent that loads CAT's extension runs its `session_start`
+		handler in the child, which tells a subagent from a top-level session (`PI_SUBAGENT_CHILD=1` under pi-subagents).
+		@tintinweb/pi-subagents children load the user's extensions by default. pi-subagents (nicobailon) loads them only
+		for background children, so the installer adds CAT to its `subagents.defaultSubagentOnlyExtensions` setting.
+	3. **Dependencies:** the installer installs only CAT unless the user agrees to more. It finds the installed packages
+		with `pi list` and the `packages` arrays of `<agent-dir>/settings.json` and `.pi/settings.json`. It accepts any
+		installed package that provides a `subagent` tool (pi-subagents, @tintinweb/pi-subagents or pi-code); when none
+		is installed it proposes pi-subagents, the most used. A change to another package's settings (step 2) is part of
+		the same question. In a terminal it asks, and stops before any change when the answer is not yes. Under `--json`
+		it changes nothing and reports the missing dependency and the setting change; the `update` skill asks the user and
+		reruns with a new option, for example `--install-dependencies`, which records the consent. On a no, the skill
+		reports that CAT was not installed. Each dependency is installed by its own `pi install` call before CAT's package;
+		none is bundled, since pi deduplicates packages by name. A dependency that CAT installed stays installed when CAT's
+		own install then fails, and the error names it; `uninstall` leaves it, because the user may use it elsewhere.
+	4. **Runner:** a pi runner and artifact launcher on `pi --mode rpc` or `--mode json`, with `--model` and `--thinking`
+		for the effort; the session ID comes from the session header or `get_state`, and `--session <id>` resumes it, as
+		nested sessions and resumes need.
+	5. **Isolation:** pi provides none, so the pi runner gives every nested session and trial CAT's own boundary (for
+		example bubblewrap on Linux), equal to the bounds that Claude Code and Codex enforce.
+	6. **History:** `get-history` and the session analyzer read pi's JSONL session format.
+- **Verification:** design text and its requirements before code; requirement-level tests written first, with doubles
+	only for the `pi` program; Bats tests for the extension's hook commands and the installer's prompts; live checks
+	against the installed pi in `~/cat/worktrees/<name>`: an install that asks, one that refuses, a `--json` install that
+	reports the missing dependency, a foreground and a background subagent under pi-subagents that both receive CAT's
+	context, and a nested session that resumes.
+- **Exit:** the tests, the clean build and the live checks pass on the committed revision.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -8251,6 +8294,7 @@ blocks only the part of a work item that it names.
 | WI-145 | WI-142 |
 | WI-146 | WI-142, WI-143, WI-145 |
 | WI-147 | WI-146 |
+| WI-148 | every §9 gate (runs at the end of the plan) |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
