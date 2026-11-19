@@ -123,6 +123,9 @@ codex_hook()
 
 # An event of a shell command that runs run-part, with text that is not ASCII
 PART_EVENT='{"tool_input":{"command":"run-part café —"}}'
+# The byte-order mark that Windows PowerShell 5.1 can put before the text that it pipes to a program, which run-part and
+# the hooks' reader of the event ignore at the start of their input
+PIPED_MARK=$'\xEF\xBB\xBF'
 
 # Runs a command of a Codex plugin's hooks manifest the way that Codex runs it on this platform: Codex writes the
 # plugin's root directory in place of ${PLUGIN_ROOT}, sets the environment variable PLUGIN_ROOT to it, and runs the
@@ -225,12 +228,15 @@ replace_codex_program()
 	run --separate-stderr codex_manifest_command "${plugin}" PostToolUse 0 "${PART_EVENT}"
 
 	[ "${status}" -eq 0 ]
-	[ "${output//$'\r'/}" = "started"$'\n'"${PART_EVENT}" ]
+	output="${output//$'\r'/}"
+	[ "${output}" = "started"$'\n'"${PART_EVENT}" ] || [ "${output}" = "started"$'\n'"${PIPED_MARK}${PART_EVENT}" ]
 
 	run --separate-stderr codex_manifest_command "${plugin}" PostToolUse 0 "${read_part_event}"
 
 	[ "${status}" -eq 0 ]
-	[ "${output//$'\r'/}" = "started"$'\n'"${read_part_event}" ]
+	output="${output//$'\r'/}"
+	[ "${output}" = "started"$'\n'"${read_part_event}" ] ||
+		[ "${output}" = "started"$'\n'"${PIPED_MARK}${read_part_event}" ]
 
 	run --separate-stderr codex_manifest_command "${plugin}" PostToolUse 0 '{"tool_input":{"command":"ls"}}'
 
@@ -264,5 +270,6 @@ replace_codex_program()
 	esac
 
 	[ "${status}" -eq 0 ]
-	[ "${output//$'\r'/}" = "Get-Content notes.md" ]
+	output="${output//$'\r'/}"
+	[ "${output#"${PIPED_MARK}"}" = "Get-Content notes.md" ]
 }
