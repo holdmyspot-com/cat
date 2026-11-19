@@ -132,6 +132,10 @@ public final class SessionRequestBroker implements Closeable
 	 * The results folder of each request that holds a slot, which holds its child's run below the child's harness.
 	 */
 	private final Map<String, Path> childRoots = new HashMap<>();
+	/**
+	 * The slot of each request whose child runs in it, by request identifier, until the child has ended.
+	 */
+	private final Map<String, SessionSlots.Slot> slots = new HashMap<>();
 	private final Set<String> cancelled = new HashSet<>();
 	/**
 	 * The records of each accepted request whose records follow it, by request identifier, until its child ends.
@@ -582,7 +586,7 @@ public final class SessionRequestBroker implements Closeable
 			if (stop.isEmpty())
 				continue;
 			entries.remove();
-			cancelled.add(id);
+			cancel(id);
 			if (processes.containsKey(id))
 				HarnessProcessTermination.stopRunner(processes.get(id));
 			stream.records.add(Optional.empty());
@@ -600,7 +604,7 @@ public final class SessionRequestBroker implements Closeable
 			if (StreamedRequest.senderRuns(requests, id))
 				continue;
 			entries.remove();
-			cancelled.add(id);
+			cancel(id);
 			if (processes.containsKey(id))
 				HarnessProcessTermination.stopRunner(processes.get(id));
 			Path directory = entry.getValue();
@@ -738,6 +742,7 @@ public final class SessionRequestBroker implements Closeable
 				if (stopped || cancelled.contains(id))
 					return;
 				childRoots.put(id, slot.root().resolve(request.harness()));
+				slots.put(id, slot);
 			}
 			process = starter.start(request.harness(), options, directory);
 			synchronized (this)
@@ -816,6 +821,7 @@ public final class SessionRequestBroker implements Closeable
 				processes.remove(id);
 				streams.remove(id);
 				held.remove(id);
+				slots.remove(id);
 			}
 			if (slot != null)
 			{
@@ -836,6 +842,21 @@ public final class SessionRequestBroker implements Closeable
 				}
 			}
 		}
+	}
+
+	/**
+	 * Stops serving a request whose child is being stopped. A launch that resumes or discards the child's run waits for
+	 * the child's slot until the child has ended, instead of being refused as if another launch held it. Call it while
+	 * holding this instance's monitor.
+	 *
+	 * @param id the request identifier
+	 */
+	private void cancel(String id)
+	{
+		cancelled.add(id);
+		SessionSlots.Slot slot = slots.get(id);
+		if (slot != null)
+			site.slots().markStopping(slot);
 	}
 
 	/**
@@ -1105,7 +1126,7 @@ public final class SessionRequestBroker implements Closeable
 				Path directory = site.responses().resolve(entry.getKey());
 				if (!Files.exists(directory.resolve("response.json")))
 				{
-					cancelled.add(entry.getKey());
+					cancel(entry.getKey());
 					respond(entry.getKey(), entry.getValue(), "stopped", "The requesting turn stopped",
 						copyChildEvidence(entry.getKey(), directory), directory);
 				}

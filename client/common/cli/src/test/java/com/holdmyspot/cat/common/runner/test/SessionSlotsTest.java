@@ -26,6 +26,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -558,6 +559,98 @@ public final class SessionSlotsTest
 	}
 
 	/**
+	 * Verifies that a launch that resumes a run whose session is being stopped waits for that session to give the slot
+	 * back, instead of being refused as if another launch resumed the run, and then takes the retained slot.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void resumeWaitsForStoppingSession() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			liveness.end();
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
+			SessionSlots.Slot slot = slots.acquire(false);
+			interruptedRun(jvm, slot, SESSION_ID);
+			slots.markStopping(slot);
+			AtomicReference<Object> resumed = new AtomicReference<>();
+			Thread resume = running(() -> slots.acquireRetained(SESSION_ID, "claude"), resumed);
+			awaitWaiting(resume);
+			requireThat(resumed.get(), "resumedWhileStopping").isNull();
+			slots.retain(slot);
+			resume.join(WAIT);
+
+			requireThat(resumed.get(), "resumed").isEqualTo(Optional.of(slot));
+		}
+	}
+
+	/**
+	 * Verifies that a launch that resumes a run whose session is being stopped finds no retained run once that session
+	 * has ended its run normally.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void resumeFindsNoRunThatStoppingSessionEnded() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			liveness.end();
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
+			SessionSlots.Slot slot = slots.acquire(false);
+			HarnessRun run = interruptedRun(jvm, slot, SESSION_ID);
+			slots.markStopping(slot);
+			AtomicReference<Object> resumed = new AtomicReference<>();
+			Thread resume = running(() -> slots.acquireRetained(SESSION_ID, "claude"), resumed);
+			awaitWaiting(resume);
+			new HarnessRunManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(), Yielding.fileReplacer()).
+				withFixedRunId(slot.runId()).markCompleted(run);
+			slots.release(slot);
+			resume.join(WAIT);
+
+			requireThat(resumed.get(), "resumed").isEqualTo(Optional.empty());
+		}
+	}
+
+	/**
+	 * Verifies that discarding a run whose session is being stopped waits for that session to give the slot back,
+	 * instead of being refused as if a launch resumed the run, and then empties the slot.
+	 *
+	 * @throws IOException          if the filesystem operation fails
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void discardWaitsForStoppingSession() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			liveness.end();
+			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
+			SessionSlots.Slot slot = slots.acquire(false);
+			interruptedRun(jvm, slot, SESSION_ID);
+			slots.markStopping(slot);
+			AtomicReference<Object> discarded = new AtomicReference<>();
+			Thread discard = running(() -> slots.discard(SESSION_ID), discarded);
+			awaitWaiting(discard);
+			requireThat(discarded.get(), "discardedWhileStopping").isNull();
+			slots.retain(slot);
+			discard.join(WAIT);
+
+			requireThat(discarded.get(), "discarded").isEqualTo(true);
+			requireThat(Files.exists(slot.root(), LinkOption.NOFOLLOW_LINKS), "slotExists").isFalse();
+		}
+	}
+
+	/**
 	 * Creates a run in a slot whose harness reported its session and that recorded no end, as a run that its server
 	 * stopped leaves behind.
 	 *
@@ -604,6 +697,28 @@ public final class SessionSlotsTest
 	}
 
 	/**
+	 * Starts a thread that runs an action on the slots.
+	 *
+	 * @param action the action
+	 * @param result receives the action's result, or the exception that it threw
+	 * @return the thread
+	 */
+	private static Thread running(Callable<?> action, AtomicReference<Object> result)
+	{
+		return Thread.ofVirtual().start(() ->
+		{
+			try
+			{
+				result.set(action.call());
+			}
+			catch (Exception e)
+			{
+				result.set(e);
+			}
+		});
+	}
+
+	/**
 	 * Waits until a thread waits for something, which shows that it found no slot to take.
 	 *
 	 * @param thread the thread
@@ -613,7 +728,7 @@ public final class SessionSlotsTest
 		long deadline = System.nanoTime() + WAIT.toNanos();
 		while (thread.getState() != Thread.State.WAITING && thread.getState() != Thread.State.TIMED_WAITING)
 		{
-			if (System.nanoTime() > deadline)
+			if (thread.getState() == Thread.State.TERMINATED || System.nanoTime() > deadline)
 				throw new AssertionError("The thread did not wait: " + thread.getState());
 			Thread.onSpinWait();
 		}
