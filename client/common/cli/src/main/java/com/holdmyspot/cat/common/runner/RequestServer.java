@@ -43,6 +43,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.function.Supplier;
+import java.util.stream.Stream;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
@@ -773,6 +774,36 @@ public final class RequestServer
 		public String closedReason()
 		{
 			return "ended";
+		}
+
+		@Override
+		public String unknownSession(String sessionId) throws IOException
+		{
+			// Only the session that started a run can resume it, so name the session whose server retains it
+			Path own = session.directory();
+			Path sessions = own.getParent();
+			if (sessions != null && Files.isDirectory(sessions, LinkOption.NOFOLLOW_LINKS))
+			{
+				List<Path> siblings;
+				try (Stream<Path> entries = Files.list(sessions))
+				{
+					siblings = entries.sorted().toList();
+				}
+				for (Path sibling : siblings)
+				{
+					if (sibling.equals(own) || !Files.isDirectory(sibling.resolve(RUNS), LinkOption.NOFOLLOW_LINKS))
+						continue;
+					SessionSlots other = new SessionSlots(sibling.resolve(RUNS), HarnessCapacity.MAXIMUM_CONCURRENCY,
+						new ProcessHandleLiveness());
+					if (other.retains(sessionId))
+					{
+						return "The session " + sessionId + " was interrupted in a run that the session " +
+							sibling.getFileName() + " started, and only that session can resume it";
+					}
+				}
+			}
+			return "No interrupted run that this session started records the session " + sessionId + ", so it " +
+				"cannot be resumed";
 		}
 
 		@Override

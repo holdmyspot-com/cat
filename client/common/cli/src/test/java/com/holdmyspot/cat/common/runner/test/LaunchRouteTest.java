@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
@@ -86,6 +87,19 @@ public final class LaunchRouteTest
 			BOUND_LAUNCH.toArray(String[]::new), Map.of());
 
 		requireThat(route, "route").isEqualTo(new LaunchRoute.Bounded());
+	}
+
+	/**
+	 * Verifies that a harness session's launch may not name the option with which a server starts a runner in a
+	 * retained run, so that only a server that found the run starts its runner there.
+	 */
+	@Test
+	public void refusesResumeRunOption()
+	{
+		Optional<String> refusal = LaunchRoute.internalOptionRefusal(new String[]{"--resume-run",
+			"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"});
+
+		requireThat(refusal.orElse(""), "refusal").contains("--resume-run");
 	}
 
 	/**

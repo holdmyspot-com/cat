@@ -102,7 +102,7 @@ public final class SessionRequestForwarder
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--run-root", "--project", "--plugin",
 		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION,
 		"--deny-read", "--workspace", "--read-only-evidence", "--instruction-files", "--session-role",
-		"--tool-output-token-limit");
+		"--tool-output-token-limit", RunnerArguments.RESUME_OPTION);
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
@@ -436,7 +436,7 @@ public final class SessionRequestForwarder
 	{
 		Path project = Path.of("").toAbsolutePath();
 		ObjectNode request = json.createObjectNode().put("format_version", RequestArchive.VERSION).
-			put("harness", harness).put("project", project.toString());
+			put("harness", harness);
 		request.putArray("prompts");
 		request.putArray("plugins");
 		Path records = null;
@@ -522,6 +522,15 @@ public final class SessionRequestForwarder
 				case "--instruction-files" -> request.put("instruction_files", value);
 				case "--session-role" -> request.put("session_role", value);
 				case "--tool-output-token-limit" -> request.put("tool_output_token_limit", tokenLimit(value));
+				case RunnerArguments.RESUME_OPTION ->
+				{
+					if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(value).matches())
+					{
+						throw new InvalidArgumentsException(RunnerArguments.RESUME_OPTION + " needs the ID of a harness " +
+							"session: " + value);
+					}
+					request.put(RequestArchive.RESUME, value);
+				}
 				case ExtraPermissions.OPTION ->
 				{
 					ExtraPermissions extra = HarnessRunnerOptions.readExtraPermissions(json, Path.of(value));
@@ -533,10 +542,31 @@ public final class SessionRequestForwarder
 		}
 		if (conversation != null && records != null)
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
+		if (request.has(RequestArchive.RESUME))
+		{
+			List<String> fixed = RunLaunch.fixedArguments(args);
+			if (!fixed.isEmpty())
+				throw fixedAtStart(fixed.getFirst());
+		}
 		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
 			request.path("effort").asString(""));
-		request.put("project", project.toString());
+		// A launch that resumes a session continues in the project that the session's run copied at its start
+		if (!request.has(RequestArchive.RESUME))
+			request.put("project", project.toString());
 		return new Launch(request, project, records, conversation, transcript, receipt, runRoot, artifact, keepRun);
+	}
+
+	/**
+	 * Returns the refusal of a launch that resumes a session and names an option that the session's run fixed at its
+	 * start.
+	 *
+	 * @param option the option
+	 * @return the refusal
+	 */
+	private static InvalidArgumentsException fixedAtStart(String option)
+	{
+		return new InvalidArgumentsException(RunnerArguments.RESUME_OPTION + " continues a run that fixed " + option +
+			" at its start, so a launch that resumes a session cannot name it");
 	}
 
 	/**

@@ -22,6 +22,15 @@ public final class RunnerArguments
 	 */
 	public static final String RUN_ID_OPTION = "--run-id";
 	/**
+	 * The runner option with which a server starts the runner of a launch that resumes a harness session, in the
+	 * retained run that records the session, which the runner continues rather than start a new one.
+	 */
+	public static final String RESUME_RUN_OPTION = "--resume-run";
+	/**
+	 * The launch option that resumes a harness session that an interrupted run of the launch's server recorded.
+	 */
+	public static final String RESUME_OPTION = "--resume";
+	/**
 	 * The launch option that states that the session belongs to the held-out part, so that a request server or run
 	 * runs it in a slot of the held-out part.
 	 */

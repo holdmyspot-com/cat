@@ -68,6 +68,11 @@ public final class SessionRequestBroker implements Closeable
 	 * directory is removed.
 	 */
 	static final String TURN_COPY = "turn-copy";
+	/**
+	 * The status of a request whose harness could not continue the session that the request resumes. The session's run
+	 * stays retained.
+	 */
+	static final String UNRESUMABLE = "unresumable";
 	private final Site site;
 	private final RequestedSessionStarter starter;
 	private final JsonMapper json = JsonMapper.builder().build();
@@ -484,8 +489,12 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private List<String> arguments(RunRequest request, Path directory) throws IOException
 	{
-		List<String> arguments = new ArrayList<>(List.of("--project", request.project().toString(),
-			"--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
+		List<String> arguments = new ArrayList<>();
+		if (request.resume().isPresent())
+			arguments.addAll(List.of(RunnerArguments.RESUME_RUN_OPTION, request.resume().get()));
+		else
+			arguments.addAll(List.of("--project", request.project().toString()));
+		arguments.addAll(List.of("--keep-run", "--output", directory.resolve("transcript.jsonl").toString(),
 			"--receipt", directory.resolve("receipt.json").toString()));
 		if (request.turnCopy())
 			arguments.addAll(List.of("--turn-copy", directory.resolve(TURN_COPY).toString()));
@@ -534,7 +543,16 @@ public final class SessionRequestBroker implements Closeable
 		SessionSlots.Slot slot = null;
 		try
 		{
-			slot = site.slots().acquire(request.heldOut());
+			if (request.resume().isPresent())
+			{
+				String sessionId = request.resume().get();
+				Optional<SessionSlots.Slot> retained = site.slots().acquireRetained(sessionId, request.harness());
+				if (retained.isEmpty())
+					throw new SessionRefusedException(site.unknownSession(sessionId));
+				slot = retained.get();
+			}
+			else
+				slot = site.slots().acquire(request.heldOut());
 			List<String> options = new ArrayList<>(List.of("--run-root", slot.root().toString(), "--run-id",
 				slot.runId()));
 			options.addAll(arguments);
@@ -588,6 +606,13 @@ public final class SessionRequestBroker implements Closeable
 					status = "refused";
 					reason = refusal(directory, reason);
 				}
+				else if (request.resume().isPresent() && SessionSlots.isRetained(slot))
+				{
+					// The runner ended before it recorded an end, so the harness did not continue the session
+					status = UNRESUMABLE;
+					reason = refusal(directory, "The harness could not continue the session " +
+						request.resume().get());
+				}
 				finish(id, request.harness(), status, reason, directory);
 			}
 		}
@@ -620,8 +645,12 @@ public final class SessionRequestBroker implements Closeable
 			{
 				try
 				{
-					// The session has ended and its response is published, with its results copied out of the slot
-					site.slots().release(slot);
+					// A run that recorded its harness session and no end was interrupted, and may continue. Any other run
+					// has ended, and its response is published, with its results copied out of the slot.
+					if (SessionSlots.isRetained(slot))
+						site.slots().retain(slot);
+					else
+						site.slots().release(slot);
 				}
 				catch (IOException _)
 				{
@@ -716,7 +745,8 @@ public final class SessionRequestBroker implements Closeable
 				throw new IOException("Requested runner completed without a retained-evidence receipt");
 			String outcome = status;
 			String diagnostic = reason;
-			if (keptRuns.contains(id) && !childRunId.isEmpty())
+			// A run whose session could not continue stays retained, so it has no kept copy
+			if (keptRuns.contains(id) && !childRunId.isEmpty() && !status.equals(UNRESUMABLE))
 			{
 				// The requester cannot read the requested runs, whose homes hold their logins, so it reads a copy
 				Optional<String> incomplete = KeptRunCopy.copy(childRoots.get(id).resolve(childRunId),
@@ -1116,6 +1146,16 @@ public final class SessionRequestBroker implements Closeable
 		String closedReason();
 
 		/**
+		 * Returns why a request that resumes a harness session is refused when none of the site's retained runs
+		 * records the session.
+		 *
+		 * @param sessionId the harness session
+		 * @return the reason
+		 * @throws IOException if the places where another requester's runs are retained cannot be read
+		 */
+		String unknownSession(String sessionId) throws IOException;
+
+		/**
 		 * Carries out a worktree request, on the broker's worktree thread.
 		 *
 		 * @param request the request
@@ -1297,6 +1337,13 @@ public final class SessionRequestBroker implements Closeable
 		public String closedReason()
 		{
 			return "The requesting run stopped";
+		}
+
+		@Override
+		public String unknownSession(String sessionId)
+		{
+			return "No interrupted run that this run requested records the session " + sessionId + ", so no launch " +
+				"of this run can resume it";
 		}
 
 		@Override

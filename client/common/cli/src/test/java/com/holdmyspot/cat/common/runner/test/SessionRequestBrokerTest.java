@@ -13,6 +13,8 @@ import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
@@ -78,6 +80,10 @@ import static org.testng.Assert.expectThrows;
  */
 public final class SessionRequestBrokerTest
 {
+	/**
+	 * The harness session that an interrupted requested run records.
+	 */
+	private static final String RESUMED_SESSION = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 	/**
 	 * Creates the test.
 	 */
@@ -1120,6 +1126,198 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that a requested session whose launcher ended after its harness reported its session keeps its slot,
+	 * which no other session takes, and that a launch that resumes the harness session continues it in that slot,
+	 * without a project of its own, and empties the slot once the resumed run ends.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void interruptedLaunchResumesInItsSlot() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2"))
+		{
+			Path held = Files.writeString(fixture.root.resolve("held.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
+			Path again = Files.writeString(fixture.root.resolve("again.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			List<List<String>> starts = new CopyOnWriteArrayList<>();
+			AtomicInteger checks = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					starts.add(List.copyOf(options));
+					FakeHarnessCli process = resumableRunner(fixture, fileLocks, options, child);
+					child.set(process);
+					return process;
+				}))
+			{
+				String[] first = {"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
+					"--input", held.toString()};
+				expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude", first,
+					new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 1_000_000)
+							throw new IOException("The requested session never received its records");
+						broker.scan();
+						FakeHarnessCli process = child.get();
+						if (process != null && process.requests().size() == 2)
+							throw new IOException("The launcher was stopped");
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+				broker.scan();
+				Path slot = Path.of(option(starts.getFirst(), "--run-root"));
+				Path manifest = slot.resolve("claude").resolve(option(starts.getFirst(), "--run-id")).
+					resolve("run.json");
+				// The slot's run is removed only after the stopped runner has ended
+				for (int check = 0; check < 1_000_000 && child.get().isAlive(); ++check)
+					Thread.yield();
+				requireThat(Files.readString(manifest), "retained").contains("\"state\": \"running\"").
+					contains(RESUMED_SESSION);
+
+				String[] resume = {RunnerArguments.RESUME_OPTION, RESUMED_SESSION, "--model", "haiku", "--effort",
+					"low", "--input", again.toString()};
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", resume, new StringReader(""), fixture.requests,
+					() ->
+					{
+						if (checks.incrementAndGet() > 2_000_000)
+							throw new IOException("The resumed session never ended");
+						broker.scan();
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+
+				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+				List<String> resumed = starts.get(1);
+				requireThat(option(resumed, "--run-root"), "runRoot").isEqualTo(slot.toString());
+				requireThat(option(resumed, RunnerArguments.RESUME_RUN_OPTION), "resumeRun").isEqualTo(RESUMED_SESSION);
+				requireThat(resumed, "resumed").doesNotContain("--project");
+				// The slot is emptied once the resumed session's response is published
+				for (int check = 0; check < 1_000_000 && Files.exists(manifest); ++check)
+					Thread.yield();
+				requireThat(Files.exists(manifest), "runKept").isFalse();
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch whose harness cannot continue the session that it resumes fails with status 1 and the
+	 * status {@code unresumable}, and that the session's slot stays retained for a later launch.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void unresumableSessionStaysRetained() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "2"))
+		{
+			Path held = Files.writeString(fixture.root.resolve("held.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
+			Path again = Files.writeString(fixture.root.resolve("again.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			List<List<String>> starts = new CopyOnWriteArrayList<>();
+			AtomicInteger checks = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, options, _) ->
+				{
+					starts.add(List.copyOf(options));
+					FakeHarnessCli process = resumableRunner(fixture, fileLocks, options, child, false);
+					child.set(process);
+					return process;
+				}))
+			{
+				String[] first = {"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
+					"--input", held.toString()};
+				expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude", first,
+					new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 1_000_000)
+							throw new IOException("The requested session never received its records");
+						broker.scan();
+						FakeHarnessCli process = child.get();
+						if (process != null && process.requests().size() == 2)
+							throw new IOException("The launcher was stopped");
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+				broker.scan();
+				for (int check = 0; check < 1_000_000 && child.get().isAlive(); ++check)
+					Thread.yield();
+
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", new String[]{RunnerArguments.RESUME_OPTION,
+					RESUMED_SESSION, "--model", "haiku", "--effort", "low", "--input", again.toString()},
+					new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 2_000_000)
+							throw new IOException("The resumed session never ended");
+						broker.scan();
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+
+				requireThat(status, "status").withContext(errors, "errors").isEqualTo(1);
+				requireThat(errors.toString(), "errors").contains("unresumable");
+				Path manifest = Path.of(option(starts.getFirst(), "--run-root")).resolve("claude").
+					resolve(option(starts.getFirst(), "--run-id")).resolve("run.json");
+				// The slot is given back once the resumed session's response is published
+				for (int check = 0; check < 1_000_000 && child.get().isAlive(); ++check)
+					Thread.yield();
+				requireThat(Files.readString(manifest), "retained").contains("\"state\": \"running\"").
+					contains(RESUMED_SESSION);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch that resumes a harness session that no retained run records is refused with status 2
+	 * and a reason that names the session, and that one that names an option that the run fixed at its start is
+	 * refused before it makes a request.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void refusesResumeThatCannotContinue() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			Path again = Files.writeString(fixture.root.resolve("again.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
+			AtomicInteger checks = new AtomicInteger();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.options,
+				(_, _, _) ->
+				{
+					throw new AssertionError("The refused request started a session");
+				}))
+			{
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", new String[]{RunnerArguments.RESUME_OPTION,
+					RESUMED_SESSION, "--model", "haiku", "--effort", "low", "--input", again.toString()},
+					new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 1_000_000)
+							throw new IOException("The request was not answered");
+						broker.scan();
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+				requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+				requireThat(errors.toString(), "errors").contains(RESUMED_SESSION);
+
+				InvalidArgumentsException fixed = expectThrows(InvalidArgumentsException.class,
+					() -> SessionRequestForwarder.forward("claude", new String[]{RunnerArguments.RESUME_OPTION,
+						RESUMED_SESSION, "--model", "haiku", "--effort", "low", "--deny-read", "/secret", "--input",
+						again.toString()}, new StringReader(""), fixture.requests, () ->
+					{
+						throw new IOException("The refused launch made a request");
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+				requireThat(fixed.getMessage(), "fixed").contains("--deny-read");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that {@code request-session --conversation} exits with status 2 when the run allows no requested
 	 * session, and that the conversation's last line says that the request was refused.
 	 *
@@ -1880,6 +2078,84 @@ public final class SessionRequestBrokerTest
 			terminations.incrementAndGet();
 			return false;
 		}
+	}
+
+	/**
+	 * Returns a requested runner whose harness reports its session as soon as the run starts. A runner that starts a
+	 * run works on its turns until it is stopped, and records no end. A runner that resumes the run continues it in its
+	 * slot, and on {@code complete} records the run's end, writes its receipt and exits.
+	 *
+	 * @param fixture   the requesting run
+	 * @param fileLocks the file locks of the requested run
+	 * @param options   the requested runner's options
+	 * @param child     receives the runner, so that it can exit
+	 * @return the runner
+	 * @throws IOException if the requested run cannot be created
+	 */
+	private static FakeHarnessCli resumableRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
+		AtomicReference<FakeHarnessCli> child) throws IOException
+	{
+		return resumableRunner(fixture, fileLocks, options, child, true);
+	}
+
+	/**
+	 * Returns a requested runner whose harness reports its session as soon as the run starts. A runner that starts a
+	 * run works on its turns until it is stopped, and records no end. A runner that resumes the run either continues
+	 * it, and on {@code complete} records the run's end, writes its receipt and exits, or, when the harness cannot
+	 * continue the session, exits with status 1 and leaves the run as it was.
+	 *
+	 * @param fixture   the requesting run
+	 * @param fileLocks the file locks of the requested run
+	 * @param options   the requested runner's options
+	 * @param child     receives the runner, so that it can exit
+	 * @param continues indicates whether the harness continues the session that a resumed run records
+	 * @return the runner
+	 * @throws IOException if the requested run cannot be created
+	 */
+	private static FakeHarnessCli resumableRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
+		AtomicReference<FakeHarnessCli> child, boolean continues) throws IOException
+	{
+		Path runRoot = Path.of(option(options, "--run-root"));
+		String runId = option(options, "--run-id");
+		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+			Yielding.fileReplacer()).withFixedRunId(runId);
+		if (!options.contains(RunnerArguments.RESUME_RUN_OPTION))
+		{
+			HarnessRun run = manager.create("claude");
+			manager.recordHarnessSession(run, RESUMED_SESSION);
+			return new FakeHarnessCli(_ ->
+			{
+			});
+		}
+		if (!continues)
+		{
+			return new FakeHarnessCli(line ->
+			{
+				if (line.contains("\"complete\""))
+					child.get().exit();
+			}, 1);
+		}
+		HarnessRun run = new HarnessRun("claude", runId, runRoot.resolve("claude").resolve(runId));
+		Path output = Path.of(option(options, "--output"));
+		Files.writeString(output, "");
+		return new FakeHarnessCli(line ->
+		{
+			try
+			{
+				if (fixture.json.readTree(line).path("type").asString().equals("complete"))
+				{
+					append(output, "{\"type\":\"completed\",\"run_id\":\"" + run.id() + "\"}");
+					manager.markCompleted(run);
+					HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
+						run, output, List.of());
+					child.get().exit();
+				}
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+		});
 	}
 
 	/**

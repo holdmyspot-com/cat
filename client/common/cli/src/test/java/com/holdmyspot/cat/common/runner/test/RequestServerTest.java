@@ -17,6 +17,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.RequestServer;
@@ -305,6 +306,44 @@ public final class RequestServerTest
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/" + RequestServer.REQUESTS).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/responses").
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/" + RequestServer.LOCK_FILE);
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch that resumes a harness session that another session of the project interrupted is refused
+	 * with status 2 and a reason that names the session that can resume it.
+	 *
+	 * @throws IOException          if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(timeOut = 60_000)
+	public void refusesResumeOfAnotherSession() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			String other = "6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
+			String harnessSession = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
+			Path slot = fixture.project.resolve(".cat/sessions").resolve(other).resolve("slots").resolve("d1");
+			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), slot, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			manager.recordHarnessSession(manager.create("claude"), harnessSession);
+			fixture.child = _ ->
+			{
+				throw new AssertionError("The refused launch started a session");
+			};
+			try (Fixture.Running server = fixture.start())
+			{
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", new String[]{RunnerArguments.RESUME_OPTION,
+						harnessSession, "--model", "haiku", "--effort", "low"},
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n"),
+					server.requests(), Thread::yield, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+				requireThat(status, "status").withContext(errors, "errors").
+					isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+				requireThat(errors.toString(), "errors").contains(other);
 				fixture.processes.end(fixture.harness);
 				requireThat(server.end(), "exit").isEqualTo(0);
 			}

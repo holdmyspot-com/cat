@@ -338,6 +338,26 @@ public final class SessionSlots
 	}
 
 	/**
+	 * Indicates whether a retained slot's run records a harness session.
+	 *
+	 * @param sessionId the session that the harness reported
+	 * @return {@code true} if a readable retained run records the session
+	 * @throws NullPointerException if {@code sessionId} is null
+	 */
+	public boolean retains(String sessionId)
+	{
+		requireThat(sessionId, "sessionId").isNotNull();
+		try
+		{
+			return findRetained(sessionId).isPresent();
+		}
+		catch (IOException _)
+		{
+			return false;
+		}
+	}
+
+	/**
 	 * Finds the retained slot whose run records a harness session.
 	 *
 	 * @param sessionId the session
@@ -383,14 +403,17 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Indicates whether a slot is retained: a run below it records its harness session and no end.
+	 * Indicates whether a slot is retained: a run below it records its harness session and no end, so that the run's
+	 * session can continue.
 	 *
 	 * @param slot the slot
 	 * @return {@code true} if the slot is retained, or {@code false} if it is not, or its runs cannot be read, which
 	 *   emptying the slot reports
+	 * @throws NullPointerException if {@code slot} is null
 	 */
-	private static boolean isRetained(Slot slot)
+	public static boolean isRetained(Slot slot)
 	{
+		requireThat(slot, "slot").isNotNull();
 		try
 		{
 			for (RecordedRun record : manifests(slot.root()))

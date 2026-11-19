@@ -100,10 +100,20 @@ public final class RequestArchive
 	 * The manifest field that holds a request's extra permissions.
 	 */
 	static final String EXTRA_PERMISSIONS = "extra_permissions";
+	/**
+	 * The manifest field that names the harness session that a request resumes, in a retained run of the requester's
+	 * server. A request that names it carries no project.
+	 */
+	static final String RESUME = "resume";
 	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
-		"session_role", "tool_output_token_limit", "keep_run", "turn_copy", "held_out");
+		"session_role", "tool_output_token_limit", "keep_run", "turn_copy", "held_out", RESUME);
+	/**
+	 * The manifest fields that a run fixed at its start, which a request that resumes the run's session may not name.
+	 */
+	private static final Set<String> FIXED_FIELDS = Set.of("project", "plugins", "install_cat", "workspace",
+		"read_only_evidence", "deny_read", "instruction_files", "session_role", "tool_output_token_limit", "agent");
 	/**
 	 * The manifest fields that a session's request server reads and the run's runner refuses, because the run's runner
 	 * chooses them for the sessions that it starts.
@@ -164,9 +174,13 @@ public final class RequestArchive
 			getParent());
 		publish(json, destination, limits, (archive, budget) ->
 		{
-			Path project = Path.of(request.path("project").asString());
-			packProject(archive, project, budget, nullDevice, skipped);
-			request.put("project", "project");
+			// A resumed run keeps the project that its start copied
+			if (!request.has(RESUME))
+			{
+				Path project = Path.of(request.path("project").asString());
+				packProject(archive, project, budget, nullDevice, skipped);
+				request.put("project", "project");
+			}
 			for (String field : new String[]{"prompts", "plugins"})
 			{
 				ArrayNode paths = request.withArray(field);
@@ -1070,7 +1084,24 @@ public final class RequestArchive
 		JsonNode value = manifest(json, inputs, allowed, level, VERSION,
 			"Request manifest requires format_version " + VERSION);
 		String harness = harness(value);
-		Path project = entry(value, inputs, "project", Kind.DIRECTORY);
+		Optional<String> resume = optionalText(value, RESUME);
+		Path project = null;
+		if (resume.isPresent())
+		{
+			if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(resume.get()).matches())
+				throw new IOException(RESUME + " must name a harness session: " + resume.get());
+			for (String field : FIXED_FIELDS)
+			{
+				JsonNode fixed = value.path(field);
+				if (!fixed.isMissingNode() && !(fixed.isArray() && fixed.isEmpty()))
+				{
+					throw new IOException("A request that resumes a session may not choose " + field + ", which the " +
+						"session's run fixed at its start");
+				}
+			}
+		}
+		else
+			project = entry(value, inputs, "project", Kind.DIRECTORY);
 		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_RUN_INPUTS);
 		List<Path> promptFiles = namedEntries(value, inputs, "prompts", Kind.FILE, MAXIMUM_RUN_INPUTS);
 		boolean streamed = value.has(StreamedRequest.INPUT_FIELD);
@@ -1106,7 +1137,7 @@ public final class RequestArchive
 			toolOutputTokenLimit,
 			flag(value, "keep_run"), flag(value, "turn_copy"), agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
-			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"));
+			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume);
 	}
 
 	/**
@@ -1414,7 +1445,7 @@ public final class RequestArchive
 	 * An extracted request made inside a run.
 	 *
 	 * @param harness            the selected harness
-	 * @param project            the extracted project
+	 * @param project            the extracted project, or {@code null} for a request that resumes a session
 	 * @param plugins            the extracted plugins
 	 * @param prompts            the prompts' text in turn order
 	 * @param model              the selected model
@@ -1446,6 +1477,8 @@ public final class RequestArchive
 	 * @param maximumConcurrency the most sessions that run at once, or empty for the requester's choice
 	 * @param heldOut            indicates whether the session belongs to the held-out part, which runs in slots of
 	 *                           its own; a request that does not say so is not held out
+	 * @param resume             the harness session that the request resumes in a retained run, or empty for a request
+	 *                           that starts a session; a request that resumes one has no {@code project}
 	 */
 	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
@@ -1453,7 +1486,7 @@ public final class RequestArchive
 		List<Path> deniedReads, Optional<String> instructionFiles, Optional<String> sessionRole,
 		Optional<Integer> toolOutputTokenLimit, boolean keepRun,
 		boolean turnCopy, Optional<String> agent, int sessionRequests, int requestDepth,
-		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut)
+		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume)
 	{
 	}
 
