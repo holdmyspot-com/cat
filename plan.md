@@ -154,13 +154,17 @@ verify-release passed) and installed in both harnesses as `1.0+bf20a8532c685`.
   but a restart of the parent session killed the runner and the next slot acquire deleted the copy; its second campaign
   passed the conflict and refusal checks, then attempt 1 was inconclusive and it stopped on rejected reproduction values.
 - User rulings: a judge may use the trials' model but is always a distinct session (design.md "Development judge");
-  runners become resumable across a parent restart (design in progress; supersedes accepting the loss).
+  every interrupted run keeps its slot and resumes (design.md "Resuming a run", D151, WI-146; supersedes accepting
+  the loss); runner launchers run only from a harness session, and launching one that no harness runs is removed; a
+  rename of runs to nested sessions and the removal of `--keep-run` follow WI-146 (WI-147).
 - Open defects, each fixed by its own agent and clone: the contract-tool launcher is hidden by the child's inherited
   run-root denial, and nested roles get no scratch location; rejected reproduction values never return to their
   generator; a `--keep-run` copy aborts on one unreadable file; cleanup leaves the campaign's nested runs; slot reuse
   deletes kept runs.
 - Merged `32f9ed0f6`, `c27740e47`: tests write programs through a `cp` process (Linux "Text file busy" race).
-- Next: integrate the fixes and the resumable-runner work, republish, rerun E1 in both harnesses, then E2–E8.
+- Next: integrate the fixes, then WI-146 (premises P18 and P19 passed 2026-11-19); after it, a parent restart in an
+  E-run resumes each interrupted conversation with `--resume <session-id>` instead of starting it again. Then republish,
+  rerun E1 in both harnesses, then E2–E8.
 
 Earlier next-step list: the §9 gates on these final inputs, starting with those that need no model (client verification, E-proof
 traceability, the no-model Java/source audit), then installed E1–E8 in both harnesses (Claude E1/E5/E7 still need the
@@ -3897,6 +3901,8 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-140 | `optimize-high` | Changes how many trials run at once for every purpose, the campaign snapshot and the status; an error wastes trials after a failure that ends work, holds work at one trial after failures that end nothing, or makes an existing campaign fail to load. |
 | WI-141 | `optimize-xhigh` | Changes how a runner launcher sends turns to a requested session and how CAT commands inside a run start sessions; an error lets a child outlive the command that holds it, delivers a turn twice or out of order, loses the child's output, or lets a child start more sessions than its caller allowed. |
 | WI-142 | `optimize-xhigh` | Moves the boundary between a sandboxed session and the sessions it starts into the runner launchers and changes what `install` writes to both harnesses' settings; an error lets a session's command run unsandboxed code, start a session wider than its own sandbox, read or write a path its sandbox denies, or leaves a user's settings with an exception that `uninstall` does not remove. |
+| WI-146 | `optimize-xhigh` | Changes when the request server and a run's runner delete a requested session's run, continues a harness session in a reused home under a newly computed sandbox bound, and changes how the optimizer reconciles an interrupted trial; an error deletes a retained campaign, signals a process by an unchecked PID, resumes a session under another ID or with wider permissions than its bound, or counts an interrupted trial as a result. |
+| WI-147 | `optimize-high` | Renames the runner's terms, files and options across code, rules, skills and documentation, and removes `--keep-run`; an error leaves a reader of an old name (a `run.json` reader, a rule that names `--keep-run`), names a results copy before its ID is known, or deletes results that their owner still needs. |
 | WI-145 | `optimize-xhigh` | Runs Git outside the session's sandbox in a repository that the session's commands can write, on a request that the session's model wrote; an error lets a request choose a path to delete or a registration to rewrite, run a program the session chose outside the sandbox, or leaves a campaign that cannot start or be removed. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
@@ -4616,6 +4622,8 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-140 | Done 2026-10-31 (Claude `optimize-high`; `9131428c90`). Record: [history](plan-history.md). |
 | WI-141 | Done 2026-11-08 (Claude `optimize-xhigh`; `0f275126f3`..`e42e901aaa`). |
 | WI-142 | In progress: installer exceptions, read-only startup files, direct runner launches, the Codex CAT profile, the session's request server with every client outside a run sending it requests, install's request-server-only exception and the session launcher's removal merged (`ab75964beb`..`d4c0fcefca`; clean full build 5203 tests, 0 failures, 7 skipped); Claude live checks on the installed `1.0+b5e9a6a7a450d` (2026-11-09): the server started in the background runs outside the sandbox; a variable assignment, `env X=1`, a second command and a relative path keep it sandboxed (status 2 with the explanation); a bare `env` in front does not, because Claude Code drops it when matching the exception (the server runs outside the sandbox with the same environment); a run's Claude session appended to `to-child.jsonl` and its requested session answered turn 1 (turn 2 was lost because the session started the conversation with `nohup … &` in a foreground command, not as a background command); D135 accepts the bare `env` case; `env -i` (refused: no session to identify) and `env -C` (sandboxed) pass, and `env -u LANG` left the sandbox, which D135 accepts; remaining: the Codex live checks, and whether the internal options that nothing passes any more (`--capacity-held`, `--git-name`, `--git-email`) leave the design and the code (D133 and D134 already record that D127's launcher-state reason no longer applies and that the exception names only `request-server`). |
+| WI-146 | Not started. Designed 2026-11-19 (`design.md` "Resuming a run", §3.2 "Interrupted trials", D151); premises P18 and P19 passed the same day; step 7 waits for the user's ruling on Q7. |
+| WI-147 | Not started; ruled 2026-11-19; follows WI-146. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5118,11 +5126,13 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I4 | `prompt-optimizer` launchers are registered for both harnesses in `DistributionMain`. | §8 | WI-13 | U: distribution tests; E: installed launcher runs |
 | R-I5 | Agents locate CAT's installed files without shell variables the harness does not define: the session hooks render the plugin root into the injected skill-environment rule, and Java derives the harness home from `CODEX_HOME` or `CLAUDE_CONFIG_DIR` when set, otherwise from `HOME`. | §8 | WI-15 finding | U: session-start hook tests, `CodexGetHistoryTest`, `ClaudeGetHistoryTest`; E: every E-scenario's events show no exit-127 launcher call |
 | R-I6 | The runner rule (formerly Codex's `claude-runner` and Claude's `codex-runner` skills; D123) runs a task in the other harness with CAT for that harness installed, through that harness's runner launcher. Each uses the CAT plugin that the other harness has installed when it is of the same CAT release, whatever its build (its own version first, otherwise the first installed build of that release). It downloads nothing and keeps no copy; with no CAT in the other harness, or only other releases, it refuses and names the installer command that installs or updates CAT there, for the user to approve before the agent runs it and retries (user rulings, 2026-11-04, replacing the `~/.cat/bundles` copy and download of 2026-10-22 and 2026-10-23). A plugin ships only its own harness's classes and files (user rulings, 2026-10-22). | §8, D96 | WI-120 | U: selection tests with fake installations (same version, another build of the release, other releases only, none, an incomplete plugin), distribution tests (each archive's launchers); E: each runner launcher without the other harness's plugin installed |
-| R-I7 | A run leaves no harness transcript on disk unless its caller passes `--session-transcripts`, which requires `--keep-run`; with it, the runner reports each session's native transcript path in a `session_transcript` record when the session starts, copies every native transcript of the run, subagents' included, into `artifacts/session-transcripts/` at the end of the run and lists them in the receipt. The optimizer passes the option for its trials and reads what a trial's model received from those copies (user rulings, 2026-10-23: "1a, 2a"). | §8, D97 | WI-121 | U: runner option, command and receipt tests in both harnesses; optimizer session tests |
+| R-I7 | A run's harness transcript stays in its isolated home, which never leaves its slot (D151), and reaches the run's artifacts only when its caller passes `--session-transcripts`, which requires `--keep-run`; with it, the runner reports each session's native transcript path in a `session_transcript` record when the session starts, copies every native transcript of the run, subagents' included, into `artifacts/session-transcripts/` at the end of the run and lists them in the receipt. The optimizer passes the option for its trials and reads what a trial's model received from those copies (user rulings, 2026-10-23: "1a, 2a"). | §8, D97 | WI-121 | U: runner option, command and receipt tests in both harnesses; optimizer session tests |
 | R-I8 | Both harnesses use one harness-neutral definition and shared conformance tests for command limits: the run's isolated home, no reads of the user's real harness logins or configuration, the other harness's files, or other runs. Commands may read the session's own login in its isolated home. Codex commands receive no harness credential in their environment; Claude commands receive the connection credentials their parent has. Native Windows refuses sandboxed Claude sessions and directs the user to WSL2. | §8, D98 | WI-122 | U: shared conformance test run against each runner; E: a command in a session of each harness cannot start a harness that reaches the provider |
 | R-I9 | A caller's `--session-requests <count>` lets a session request up to that many sessions through the `request-session` launcher, passing inputs and results only as file paths through the run's `requests` directory; the launcher packs the inputs into one archive inside the session's sandbox, and the runner opens only that archive. The runner starts each through the requested harness's runner with no more than the requester's permissions and none of its own requests, takes a capacity slot waiting at most 10 minutes, stops requested sessions when the run ends or its turn is interrupted, lists them in the receipt, and tells the session how to request one; the optimizer allows none (user ruling, 2026-10-23: option C, file references between sessions). | §8, D99, D101 | WI-123 | U: request validation (archive opened without links or extra hard links, unsafe entries refused), broker, capacity timeout, stop and receipt tests with fake harnesses; E: a Claude and a Codex session each test a plugin they wrote through a requested session |
 | R-I10 | No model receives a `## Design Goals` section or an HTML comment other than a `cat:` directive, outside fenced code blocks and code spans, from any prompt file: not from either plugin artifact or a prompt-only repackaging (injected and lazily loaded rules, skill bodies and agent bodies), an optimizer role brief or an injected project rule; each prompt file's guidance achieves its design goals without them. | §8, D100 | WI-124 | U: `PluginArtifactBuilderTest`, `SourceOnlyContentTest`, `PromptTemplateTest`, `ProjectRuleLoaderTest`; R: a scan of both built artifacts and the guidance audit |
 | R-I11 | Both plugins hold both runner launchers and the bundled runner rule. Agents name model and effort and supply turns through an --input records file. Every session-starting client, including the optimizer, packs requests inside its sandbox; inside a run the run's runner serves them within the caller's request/depth limits, and outside a run an agent-started request server serves them outside the asking sandbox. Only request-server has the installed sandbox exception; shell startup files remain read-only. A client without a server refuses before changes and names its startup command. The server identifies the session and project from protected harness/transcript evidence, reads settings and command-line policy, and for Codex narrows it by the latest recorded turn policy on each request; unsafe or unreadable policy and unknown options refuse. Child permissions are the intersection of the asking policy and child needs, including optional --extra-permissions writes/hosts; refused needs name each missing permission and its settings entry. The optimizer records those extra permissions and its goal in the campaign header and refuses a mismatched resume with named differences. Requests cannot supply CAT-owned bounds, artifacts or starter options. Launches retain the credential qualifications of R-I8 and the read-only Claude judge exception in design §6.4. Inside a run without request access launches refuse. Outside a harness, the launcher starts the child directly with exactly its needs. A request server ends and stops its child process trees when the owning harness ends; native Windows refuses launches. The old SessionStart launcher, inbox, holder and ~/.cat/sessions state folder and write denial are removed; an older session lacking the request-server exception must restart. | §8, D107 | WI-128 | U: `ChildPolicyTest`, `ParentPolicyTest`, `ChildBoundTest`, `LaunchRouteTest`, `ProcessHandleTableTest`, `HarnessProcessesTest`, `RunnerChildNeedsTest`, `ClaudeOptionTableTest`, `ClaudePolicyReaderTest`, `CodexPolicyReaderTest`, `CodexRolloutPolicyTest`, `HarnessEnvironmentTest`, `SessionRequestForwarderTest`, `RunnerRelayTest`, `SessionRequestBrokerTest` (depth), `ClaudeConnectionSettingsTest`, `SessionRequestInstructionsTest`, `HarnessRunnerOptionsTest`, `ExtraPermissionsTest`, `SessionRequestCliTest`, `ClaudeRunnerCliTest`, `CodexRunnerCliTest`, `CodexConnectionConfigurationTest`, `CommandsTest`, `OptimizerCoreTest`, `CampaignStoreContract`, `ExtraPermissionSessionsTest`, `RunnerSessionsTest`, `IntegrationTest`, `SandboxEntriesTest`; E: four parent and child pairs on Linux and macOS, a child-to-grandchild launch each way, negative checks of a child's commands, a refused launch, and a session's end stopping its launcher |
+| R-I12 | Every run that its launcher, its server or the requesting session interrupts, whatever its options, keeps its slot, with its project copy, home, harness session and `run.json`, when it recorded its harness session ID, and its slot is emptied as corrupt when it did not; no slot reuse empties a retained slot, and retained slots do not count toward the concurrency limit. Every launch holds its request's lock, and every run keeps its harness session in its home, records the harness's session ID and publishes it to its caller at once. `--resume <session-id>` from the session that started the run continues the same harness session in the same slot under the same ID and the current sandbox bound, in both harnesses, refusing a fixed option, another harness, an unknown or finished run and a run in use; `--keep-run` decides only the copy at a normal end. The optimizer resumes an interrupted trial, never counting it as a result, and otherwise discards its run as corrupt and reruns it. A retained run is deleted only when resumed to its end, discarded by the optimizer, or with the directory that holds its slot (user rulings, 2026-11-19). | §3.2, §3.8, §4.1, §8 "Resuming a run", D151, P18, P19 | WI-146 | U: slot, broker, forwarder, run-manager, runner (both harnesses), protocol and optimizer reconciliation tests; E: a per-harness parent restart that resumes a child holding a campaign; an optimizer campaign whose host session ends during a trial |
+| R-I13 | The runner's terms follow the user's rulings of 2026-11-19: a run is a nested session, `run.json` is `session.json`, the run root is the results folder, and a nested session's ID is its harness's own session ID, Claude's `session_id` from its `init` event or Codex's thread ID from its `thread/start` response, which CAT adopts once the harness reports it; slots keep their names. `--keep-run` is removed: every nested session's results are copied to the results folder under its session ID once that ID is known, and the folder's owner deletes them once nothing needs them, the optimizer's cleanup included. | §8 (renamed by WI-147), D151 | WI-147 | U: the renamed runner, slot, forwarder and optimizer tests; a results copy named by the reported ID; R: a scan of code, rules, skills and documentation for the old terms |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -8029,6 +8039,77 @@ selection and download it describes are unchanged.
 	the same `start` and `cancel` in Codex.
 - **Exit:** the tests, the clean build and the live checks pass on the committed revision. Closes D148 and R-W17.
 
+### WI-146 — Interrupted runs keep their slot and resume (user rulings, 2026-11-19)
+
+- **Problem:** E1 lost a certified campaign. A restart of the parent Claude Code session killed the conversation's
+	launcher, and the resumed parent's request server emptied the slot for the next launch, deleting the child's project
+	copy and campaign although the launch named `--keep-run`. The broker releases a slot on every path and makes no kept
+	copy for an interrupted run; a packed `--input` launch holds no lock, so the server cannot see its launcher end; and
+	Claude's `--no-session-persistence` and Codex's ephemeral threads leave nothing to continue.
+- **Scope:** `client/common/cli/` (`common.runner`: `SessionSlots`, `SessionRequestBroker`, `RequestServer`,
+	`SessionRequestForwarder`, `StreamedRequest`, `RequestArchive`, `HarnessRunManager`, `HarnessRunnerBridge`,
+	`HarnessRunnerOptions`, `launcher.RunnerArguments`; the optimizer's reconciliation, trial client and cleanup),
+	`client/claude/cli/` (`ClaudeRunner`, `ClaudeRunnerCli`, `ClaudeProcess`), `client/codex/cli/` (`CodexRunner`,
+	`CodexProcess`, `CodexAppServerProtocol`), the bundled runner rule `harness-runners.md`, this design and plan.
+	Launches that no harness runs are out of scope; their support is removed.
+- **Change:** as `design.md` "Resuming a run", "Reusable session slots", §3.2 "Interrupted trials", §3.8, §4.1 and D151
+	define it. Steps, each after its tests:
+	1. Runs: every run keeps its harness session (no `--no-session-persistence`, no ephemeral thread); the runner records
+		`harness_session_id` in `run.json` when the harness reports it and emits a `session_id` record that the launcher
+		publishes; `launch.json` keeps the start options that a resume needs; a runner that its server stops records no end
+		and prunes nothing.
+	2. Locks: every launch, packed `--input` included, holds its request's lock until it ends.
+	3. Slots: a slot whose `run.json` records a harness session ID and no end is retained; `acquire` passes it over and
+		numbers new slots past the limit; lookup by harness session ID; the existing malformed-record refusals.
+	4. Broker and server: on an interruption retain the slot, or empty it as corrupt when no ID was recorded, and make no
+		kept copy; the `resume` request and the runner's internal resume option; the lookups, refusals and the
+		`unresumable` status; `ended` for the run's own requests without a response; the discard request.
+	5. Runners: the resume mode in both harnesses with the ID check (Claude `--resume`, Codex `thread/resume` naming the
+		current bound's profile and workspace roots), turn numbering after the last ended turn.
+	6. Launchers: `--resume <session-id>` and the refusal of the options that a run fixes at its start.
+	7. Optimizer: the harness session ID written ahead; reconciliation resumes an interrupted trial, or discards its run
+		and reruns it as the same logical trial; removing a campaign discards its retained trials. This step waits for Q7.
+	8. The runner rule's section on resuming a run.
+- **Open, for the user (Q7):** the design resumes a trial that was interrupted during a turn and sends that turn again
+	(`design.md` §3.2), so the judged turn runs after the lost turn's prompt, its partial work and its file changes, and in
+	Claude Code after an empty reply (P18). The alternative resumes only a trial interrupted between turns and discards and
+	reruns one interrupted during a turn, so no judged turn follows a lost one; trials rarely stop between turns, so that
+	alternative nearly always reruns.
+- **Verification:** the requirement-level tests of the implementation brief, written first with CAT's real classes
+	(doubles only for the harness programs); a clean full build, reporting every test of one second or more; then live
+	checks on the installed artifacts in `~/cat/worktrees/<name>`, one per harness: a parent conversation whose child
+	starts an optimizer campaign, the parent's harness ended mid-turn and resumed under its ID, its request server
+	started, a new launch taking another slot, then `--resume <session-id>`, where the child reports the same session or
+	thread ID and the campaign's status, and `{"end": true}` leaves the kept copy and an empty slot; and an optimizer
+	campaign whose host session ends during a trial, whose next `run` resumes the trial or discards and reruns it and
+	never counts it twice. Before a live resume, no driver of the slot may still run: the stop of recorded processes does
+	not see a driver that escaped its session (E1).
+- **Exit:** the tests, the clean build and the live checks pass on the committed revision. Closes D151 and R-I12.
+
+### WI-147 — Runs become nested sessions, and `--keep-run` goes (user rulings, 2026-11-19)
+
+- **Problem:** the runner's terms name one thing twice: a requested session is a "run" with a "run id", kept in a "run
+	root", while the harness gives the same session its own ID. The user ruled on 2026-11-19 to rename them once WI-146
+	has landed and to copy every nested session's results out.
+- **Scope:** every source, test, rule, skill and document that names a run, `run.json`, a run root, a run id or
+	`--keep-run`, in both plugins, this design and plan.
+- **Change:** a mechanical rename, then the two behaviour changes:
+	1. "Run" becomes "nested session", `run.json` becomes `session.json`, the run root becomes the results folder, and the
+		run id becomes the session id. Slots keep their slot names.
+	2. The single ID is the harness's own session ID in both harnesses: Claude's `session_id` from its `init` event and
+		Codex's thread ID from its `thread/start` response. CAT adopts it once the harness reports it and publishes it to
+		the caller at once (WI-146 already publishes it). It is not chosen in advance: before the harness reports it there
+		is nothing to resume, and a session interrupted before then is deleted as corrupt and started again (WI-146).
+		The results-folder copy is named by that ID and made after it is known.
+	3. `--keep-run` is removed. Every nested session's results are copied to the results folder, and the folder's owner
+		deletes them once nothing needs them, under the plugin rule `temporary-resources/agent-cleanup.md`; the
+		optimizer's cleanup deletes its own. `--session-transcripts` no longer needs another option. The results-folder
+		option's name and the folder of a launch that names none are decided in this work item's design text, before code.
+- **Verification:** the renamed tests pass unchanged in meaning; a test names a results copy by the ID that a fake harness
+	reports; a scan finds no old term in code, rules, skills and documentation; a clean full build; one live launch per
+	harness whose results folder holds the copy under the harness's ID.
+- **Exit:** the tests, the scan, the clean build and the live launches pass on the committed revision. Closes R-I13.
+
 ## 6. Dependency order
 
 A work item starts once every work item it needs is integrated. A premise gate listed in [§4](#4-premise-gates-wi-0)
@@ -8170,6 +8251,8 @@ blocks only the part of a work item that it names.
 | WI-143 | WI-142 |
 | WI-144 | WI-143 |
 | WI-145 | WI-142 |
+| WI-146 | WI-142, WI-143, WI-145 |
+| WI-147 | WI-146 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.

@@ -464,12 +464,12 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 |---|---|---|
 | Faster trials finishing first | If failures take longer, deciding on completion order biases toward passes. | Adopt outcomes strictly in assignment order ([§3.4](#34-adoption-order-and-draining)). |
 | Adaptive cell choice and concurrency | Scheduling depends on past outcomes. | The cell is chosen and persisted before the draw, and the draw within the cell is independent of outcomes. Concurrency changes timing only. Both are allowed by the supermartingale argument. |
-| Shared state between concurrent trials | Trials that read each other's files, judge results or assignments are no longer conditionally independent. | Each trial runs in a fresh session with its own isolated project copy and harness home. Trial staging excludes all optimizer state ([§4.4](#44-trial-staging)). |
+| Shared state between concurrent trials | Trials that read each other's files, judge results or assignments are no longer conditionally independent. | Each trial runs in a fresh session with its own isolated project copy and harness home; a resumed trial continues its own session in its own slot ([§3.2](#32-logical-trials)). Trial staging excludes all optimizer state ([§4.4](#44-trial-staging)). |
 | Judge memory | A judge that sees earlier trials links outcomes. | One fresh judge session per trial, and the judge receives only that trial's evidence. |
 | Provider prompt caching | Shared prefixes are cached across sessions. | Caching changes latency and cost, not sampling given the prompt. This is an assumption, recorded as a limitation. |
 | Throttling and load under parallelism | Load could change model behaviour, or turn errors into failures. | Provider errors and rate-limit rejections are infrastructure failures that rerun the same logical trial. Every trial records its concurrency level and throttle state. |
 | Parallel conditions differing from real use | Real use is usually one session at a time. | The test stays valid under the weaker null "every trial's conditional rate is at most the minimum pass rate", even when conditions vary. The only risk is that parallel conditions are better than serial ones. The report runs a descriptive comparison of pass rates by concurrency level, and the claim names the measured conditions. |
-| Discarding unfavourable outcomes | A retry could hide a failure. | A valid pass or fail outcome is recorded once. Only an attempt with no outcome reruns, as the same logical trial with the same test case. A trial that exceeds its declared time limit is judged on its behaviour, not retried, unless the provider produced no output in the turn that reached it ([§3.2](#32-logical-trials)). A logical trial with 3 infrastructure failures, not counting rate-limit rejections or provider refusals, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-commit-gate-and-edit-or-continue)). |
+| Discarding unfavourable outcomes | A retry could hide a failure. | A valid pass or fail outcome is recorded once. An interrupted trial never counts as an outcome: it is resumed in its own session, or its run is discarded as corrupt and it reruns ([§3.2](#32-logical-trials)). Only an attempt with no outcome reruns, as the same logical trial with the same test case. A trial that exceeds its declared time limit is judged on its behaviour, not retried, unless the provider produced no output in the turn that reached it ([§3.2](#32-logical-trials)). A logical trial with 3 infrastructure failures, not counting rate-limit rejections or provider refusals, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-commit-gate-and-edit-or-continue)). |
 | Formal outcomes tuning the same candidate | Editing a candidate in response to its formal results. | A formal outcome may inform development, but any edit creates a new candidate and needs a new attempt. |
 | Certifying on the test cases that shaped the candidate | A candidate tuned on the test cases that then certify it is measured on its own training data, so the claim overstates how it does on cases it was not tuned for. | CAT splits every prompt test's test cases by expected outcome before any trial. Development, prompt authors and diagnosis see only development test cases; formal trials and baseline trials draw only held-out test cases, and a formal failure reaches development without its test case ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Control trials chosen by the candidate's outcomes | A control or incumbent comparison that paired its trials with chosen candidate trials, or stopped on the candidate's outcomes, could favour the candidate. | Each control or incumbent trial runs the test case of the candidate formal trial it pairs with, pairs follow assignment order, and the comparison decides only from its own pairs, up to the frozen cap ([§2.3](#23-sequential-tests)). Running the comparison only in certified cells cannot raise the false-certification probability, because a false certification still needs a false part to pass. |
@@ -1026,7 +1026,12 @@ concurrency limit. A kept run's artifacts are copied out of its slot to the driv
 emptied, as today, and every record reads those copies (refinement after implementation, 2026-11-12). Each kept copy
 gets a run id of its own, since slot run ids repeat. A slot is not handed on while a process that its previous run
 recorded, the runner or the harness, is alive; the runner already ends the rest of the run's process tree. A run
-folder without its `run.json` records no process and does not keep its slot (user ruling, 2026-11-18).
+folder without its `run.json` records no process and does not keep its slot (user ruling, 2026-11-18). A slot whose run
+was interrupted is **retained**: its run keeps its project copy, home, harness session and `run.json` for a resume, and
+slot reuse passes it over until the run is resumed to its end, discarded, or deleted with the directory that holds the
+slot ("Resuming a run" in [§8](#8-skill-and-command-interface)). A retained slot runs no process and does not count
+toward the concurrency limit, so a new session takes the lowest free slot number that holds no retained run, which may
+exceed the limit (user rulings, 2026-11-19).
 
 The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
 and project into the instructions they send before the conversation. In a Claude session the memory path sits in the
@@ -1152,7 +1157,18 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 - Malformed retained trial evidence reports its filename and physical line as an infrastructure failure. It cannot
 	be omitted from the normalized record, converted into a correctness verdict or sent to a judge through
 	`on_tool_failure: judge`. Well-formed unrelated events remain ignorable; arbitrary tool-output text remains content.
-- A run that ends without a pass or fail outcome (provider error, rate-limit rejection, interruption, crash) is an
+- **Interrupted trials (user rulings, 2026-11-19).** A trial whose run was interrupted, because its driver, the request
+	server or the host session ended before the run did ("Resuming a run" in [§8](#8-skill-and-command-interface)),
+	never counts as a result. When the campaign runs again, reconciliation first resumes the trial in its own slot: the
+	same root session continues, the first turn without an outcome is sent again with its full time limit, and the
+	remaining turns follow, so every turn still runs in that one root session and the resumption belongs to the same
+	attempt. The resumed session's context holds the interrupted turn's prompt and what the turn did before the
+	interruption, its project copy holds that turn's file changes, and Claude Code adds an empty reply to the unanswered
+	prompt (P18); the trial record notes the interruption. A trial that cannot be resumed, because no harness session ID
+	was recorded for it, its run ended or is gone, or its harness session cannot continue, has its run discarded as
+	corrupt and runs again as the same logical trial with the same test case; the discarded run is an infrastructure
+	attempt.
+- A run that ends without a pass or fail outcome (provider error, rate-limit rejection, an interrupted turn, crash) is an
 	infrastructure attempt. The same logical trial runs again with the same test case. After 3 infrastructure failures
 	of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections and
 	provider refusals do not count toward that limit; they follow the hold in [§3.5](#35-volume-safeguards).
@@ -1431,11 +1447,13 @@ below describes.
 	runner interrupts a turn with the app-server's `turn/interrupt` request (H19).
 - **Claude runner:** interrupts a turn by writing a stream-json `control_request` with subtype `interrupt` to
 	Claude's standard input, not by a signal, so the interrupt works the same on every operating system (H29).
-- **Write-ahead order:** CAT persists each assignment before starting its session and each outcome before adopting it.
+- **Write-ahead order:** CAT persists each assignment before starting its session, the session's harness session ID as
+	soon as the runner publishes it, and each outcome before adopting it.
 	The campaign snapshot is replaced atomically after adoption. A crash at any point leaves either a logical trial to
 	rerun or an outcome to adopt; it never leaves a duplicate outcome or a lost failure.
-- **Reconciliation** runs first in every `run`. It adopts recorded outcomes that are not yet in the snapshot, marks
-	sessions that started without an outcome for rerun, and verifies the optimization worktree inventory
+- **Reconciliation** runs first in every `run`. It adopts recorded outcomes that are not yet in the snapshot, resumes
+	each session that started without an outcome, discards as corrupt and reruns each one that it cannot resume
+	([§3.2](#32-logical-trials)), and verifies the optimization worktree inventory
 	([§4.6](#46-inventory-validation)). It also terminates the processes recorded in the run manifest (`ownerPid`,
 	`harnessPid`) of every run left by an earlier driver, since Codex runner processes outlive a killed driver (H20). The
 	runner's stale-run maintenance deletes orphaned run directories.
@@ -1449,6 +1467,8 @@ below describes.
 	failed start or confirmed child exit can clear that uncertainty. A historical record without child identity does
 	not prove that no child exists. Historical complete identities remain usable for the same identity checks.
 	Validate every affected record before deleting slot contents, and never signal a PID whose identity is uncertain.
+	A retained slot is never emptied to hand it on. Resuming or discarding its run first stops the processes that its
+	`run.json` records, under these identity checks, and refuses while one stays alive (user ruling, 2026-11-19).
 
 ### 3.9 Progress and remaining work
 
@@ -1543,7 +1563,10 @@ command for it and every start of a second campaign for its target, naming the s
 no state ([§7](#7-campaign-lifecycle), D17). Once the harness has deleted the owning session, the next session start in
 the project removes its CAT session directory (D79), first removing each of its campaigns' optimization worktrees
 through Git, so the repository keeps no stale worktree entry. A campaign that does not clean up after itself therefore
-keeps its files as long as its session exists.
+keeps its files as long as its session exists. A campaign of a requested session whose run was interrupted stays in that
+run's retained slot, under the requesting session's directory, and resuming the run continues the same owning session
+(D17, D151); the slot goes when the run is resumed to its end or with the directory that holds it. The campaign's
+worktree is registered in the slot's own project copy, so deleting the slot leaves no stale registration.
 
 Earlier versions of CAT kept these directories under `<base>/.cat/work/`. CAT no longer moves them: a session start
 leaves every entry of `.cat/work/`, including its former shared `temp/`, where it is and never deletes it (D81).
@@ -3182,11 +3205,11 @@ Windows prompts, acknowledged short lines with a hash check for file transfers, 
 rule and the skill carry organic regression scenarios now; their certification runs later with the other
 certifications (D111).
 
-**Session transcripts (user rulings, 2026-10-23):** a run leaves no harness transcript on disk unless its caller passes
-`--session-transcripts`, which requires `--keep-run`. Without it, Claude runs with `--no-session-persistence` and Codex
-starts ephemeral threads, except in a session that may request sessions: its launchers read its sandbox policy from its
-transcript, so that session keeps its transcript in the run's isolated home, which the run discards unless kept, and the
-transcript reaches the kept run's artifacts only with the option. With it, the harness writes its native JSONL transcripts, the runner reports each session's
+**Session transcripts (user rulings, 2026-10-23, 2026-11-19):** every run's harness keeps its session, transcript
+included, in the run's isolated home, which never leaves the run's slot and is deleted with the run: a session's
+launchers read its sandbox policy from its transcript, and a resume continues an interrupted run's session from it
+("Resuming a run" below). A transcript reaches the kept run's artifacts only when the caller passes
+`--session-transcripts`, which requires `--keep-run`. With it, the runner reports each session's
 transcript path in a `session_transcript` record once the session starts, so a caller can read it while the run lasts,
 and at the end of the run copies every native transcript of the run, subagents' included, into the kept run's
 `artifacts/session-transcripts/` and lists them in the receipt. The optimizer passes the option for its trials, whose
@@ -3464,7 +3487,8 @@ own whose runner applies the request's `--session-requests` and `--request-depth
 the top-level session's requests have no caller limit and every deeper one does. A request for either harness is
 served, so a Claude Code session's server also starts Codex sessions, and the reverse. The server ends, and stops every
 session it started with its whole process tree, when the session's harness process ends; the requests it was serving
-fail with the reason `ended`. CAT's own starters, the server and the run's runner among them, remove the harness's
+fail with the reason `ended`, and each of their runs that recorded its harness session ID keeps its slot, as "Resuming a
+run" below describes. CAT's own starters, the server and the run's runner among them, remove the harness's
 markers from the environment of the runners they start, so that those are not taken for a harness session's commands.
 A request server that the other harness runs is refused and names the plugin to use. The request server and the
 runner launchers refuse every launch on native Windows.
@@ -3578,6 +3602,58 @@ launcher holds an operating-system lock on a file beside its request from before
 ends, and the run's runner stops the child once that lock is free. `--conversation` works on every path that starts a
 session: through the session's request server, through a run's runner, and in place for a runner launcher that no
 harness runs.
+
+**Resuming a run (user rulings, 2026-11-19):** a run is **interrupted** when its launcher, its server (the session's
+request server, or inside a run the run's runner) or the session that requested it ends before the run does, whatever
+the launch's options. Every launch, with or without `--conversation`, holds the operating-system lock beside its request
+from before it publishes the request until it ends, so its server sees the launcher's end. The runner records the
+harness's session ID in the run's `run.json` as soon as the harness reports it, Claude's `session_id` in its `init`
+event and Codex's thread ID in its `thread/start` response, and the launcher publishes it at once as a
+`{"session_id": "<id>"}` line in `<folder>/from-child.jsonl` or the `--output` transcript. At an interruption the server
+stops the run's processes as for any run and makes no kept copy. If the run recorded its harness session ID, the server
+keeps its slot as a retained slot, with the project copy, which holds the requested session's CAT session directory and
+its campaigns, the isolated home with the harness session, and `run.json`; a run interrupted before its harness reported
+an ID has nothing to resume, and its slot is emptied as corrupt. A slot holds a retained run while its `run.json` records
+a harness session ID and no end, so a server that crashed leaves its runs retained too. A run that ends any other way,
+at `{"end": true}`, at the end of its `--input`, at a refusal, a failure or its time limit, or when its harness exits,
+ended normally: its kept copy is made when the launch named `--keep-run`, its slot is emptied as for any run, and it
+cannot be resumed. `--keep-run` decides only that copy.
+
+Only the session that started a run can resume it, through the server that serves that session, after its harness has
+resumed the session under its own ID. It runs the same harness's runner launcher with `--resume <session-id>`, `--model`
+and `--effort`, and either `--conversation` with a new or empty folder or `--input`; `--output`, `--receipt`,
+`--keep-run`, `--run-root`, `--session-transcripts`, `--extra-permissions`, `--session-requests` and `--request-depth`
+apply to the resumed launch as to any launch, and `--keep-run` again decides only the copy at the resumed run's normal
+end. The launch takes a concurrency permit as any launch does. The server finds its retained slot whose `run.json`
+records that ID, stops any process that the run recorded, under the identity checks of
+[§3.8](#38-interruption-and-crash-consistency), and starts the run's runner in the slot in resume mode. The runner copies
+no project, installs no plugin and leaves the harness's session store as it is; it writes again only the files that the
+current sandbox bound decides, the harness settings, the Codex permission profile and configuration and the copy of the
+user's login, and continues the same harness session in the same home and working directory: Claude with
+`--resume <session-id>`, Codex with `thread/resume`, naming the permission profile and workspace roots, or the sandbox,
+that the current bound gives. The runner ends the launch unless the harness reports the recorded ID, so the requested
+session keeps its ID and project path, and with them its CAT session directory and the campaigns it owns (D17). Turn
+numbers continue after the last turn that ended, and the `started` record says `"resumed": true`. The turn in progress
+at the interruption has no reply: the harness keeps its prompt and what it did before the interruption, and a later
+`turn` message asks it again. The sessions that the run had requested were interrupted with it, and their retained
+slots wait in the run's directory for the resumed session to resume them; each of the run's requests that has no
+response is answered `ended`. A resumed launch that is itself interrupted leaves the slot retained again. Options that
+the run fixed at its start, `--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`,
+`--deny-read`, `--instruction-files`, `--session-role`, `--tool-output-token-limit` and `--agent`, are refused with
+status 2; the model and effort may differ, and the receipt records both. The server also refuses with status 2 a session
+ID that none of its retained slots records, naming the session to resume when a retained slot of another session of the
+project records it, a run of the other harness, naming its launcher, and a run that another launch is resuming or
+whose recorded process stays alive. A harness session that cannot continue, because the harness rejects the resume or
+reports another ID, fails the launch with status 1, the harness's reason and the response status `unresumable`, and
+its slot stays retained.
+
+A retained run is deleted only when a launch that resumed it ends normally, when the optimizer discards it as corrupt,
+or with the directory that holds its slot: the requesting session's CAT session directory once the harness has deleted
+that session (D79), or the requesting run when its own slot is emptied. No time limit deletes it, and no runner
+launcher option discards it. The optimizer resumes an interrupted trial by the same request, and discards one that it
+cannot resume, or one of a campaign that it removes, by a discard request that names the run's harness session ID. The
+server serves a discard request like a worktree request, on a thread of its own with no slot and no permit: it empties
+the slot after stopping the run's recorded processes and refuses while one stays alive or a launch is resuming the run.
 
 **Sessions that a requested session's commands start (user rulings, 2026-11-07):** inside a run whose caller allows
 requested sessions, every CAT command that starts sessions, the prompt optimizer included, sends each launch to the run's
@@ -3820,6 +3896,8 @@ records with the evidence.
 | P15 | A candidate developed only in one cell, the weakest model at its lowest effort, once it passes the commit gate there (§2.7), also has a high rate under stronger models and higher efforts. Development samples only that cell (§6.6, user ruling, 2026-10-04); the user chooses whether certification covers only that cell or more cells. The weakest model is the least capable by advertised capability. | Certifying every cell (§6.6) finds a cell where it fails, which then becomes a development cell. | Holds for the read-file rule (plan §4): P15 chose gpt-6-luna by the fewest incumbent baseline passes, and Codex advertises it as its model for easier tasks; a candidate (p15-28) that passed the commit gate under gpt-6-luna at low effort then passed 148 of 148 trials in each of the 14 other Codex cells, but later failed certification on held-out test cases. Its successor p15-60 passed the commit gate in the same cell and then certified in all 15 cells and tasks by the optimizer's own rule (§2.3, §2.4; attempt 1, α 2%, 1,729 runs, 4 failures, none leaving a category below); no 14-cell benchmark was run for p15-60. One prompt file does not show it for every prompt file, which is why weakest-only certification claims nothing about the other cells. |
 | P16 | A command that the host's shell tool runs in the background keeps running when the user presses ESC during a later turn, so the background driver can ignore host interrupts and only `cancel` or the session's end stops it. | If ESC kills a background command in some host, the skill uses the foreground slices on that host and says why. | Passes (H38), with one run per harness; Codex's shared daemon untested. |
 | P17 | A fully tool-decided trial that ends between turns leaves a complete trial record in both harnesses: the runner stops the session after a completed turn with no partial turn, no orphaned child and no change to the files that the settled assertions read. | If a harness leaves a child or a half-written record, the trial ends early only after that harness's session has ended on its own, and the saving falls to nothing there. | Passes (H40): closing a session's input after the turn is the clean stop in both harnesses. A detached daemon outside the runner's sandbox would survive, which the trial's sandbox and process group must prevent. |
+| P18 | Claude Code keeps a session's ID when `claude --print --input-format stream-json --resume <id>` continues it in the same `CLAUDE_CONFIG_DIR` and working directory after its process was killed mid-turn: the `init` and `result` events and the session's commands report the same `session_id`, the same transcript grows, and the earlier turns are in its context. | Claude runs are not resumable: an interrupted Claude run's slot is kept only for collection, and the user rules on campaign recovery. | Passed 2026-11-19 on Claude Code 2.1.326 (haiku, low). A runner conversation's session was resumed with the runner's own command plus `--resume <id>` and no `--fork-session`, killed with SIGKILL after 15 content deltas of a long reply, and resumed twice more. Every `init` and `result` event, and `$CLAUDE_CODE_SESSION_ID` in a command, gave the same ID; the one transcript grew from 30 to 74 lines and no other appeared; the session recalled the number and fruit of its first turn. The killed turn's prompt stayed in the transcript unanswered, and the next resume added the assistant message `No response requested.` before the new prompt. |
+| P19 | Codex app-server `thread/resume`, from a new app-server process with the same `CODEX_HOME`, continues a non-ephemeral thread whose app-server was killed mid-turn under the same thread ID, permission profile and workspace roots: the response and the commands' `CODEX_THREAD_ID` carry the same ID, and the profile still denies what it denied. | Codex runs are not resumable: an interrupted Codex run's slot is kept only for collection, and the user rules on campaign recovery. | Passed 2026-11-19 on codex-cli 0.170.0 (gpt-6-luna, low). A runner conversation's thread, started under the profile `cat-denied-reads` with the project as its only workspace root, was resumed through the run's recorded bwrap command, with and without `permissions` and `runtimeWorkspaceRoots` (both in the experimental `ThreadResumeParams`), and again after a SIGKILL at a command's start. Each response named the same thread, `cat-denied-reads` and the project root; in each turn `CODEX_THREAD_ID` was the same, a read of the run's `home/sessions` was denied, a write in the project passed and one outside it failed on a read-only file system. A control resume naming `cat-runner` could read `home/sessions`, so the named profile, not the mount, made the denial, and a resume applies the profile it names. Every `turn_context` record of the one rollout had the same sandbox and permission fields. |
 
 ## 13. Decision records
 
@@ -3923,7 +4001,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D94 | Name no model provider in a certification's environment or measurement identity (user ruling, 2026-10-22). | The provider name that Codex reports is only the name configured in its `config.toml`; behind a proxy such as codex-lb it does not say who serves the model, and Claude Code reports no provider at all. A fact that one harness can state wrongly and the other cannot state is not a condition to certify against. | The `Model` line reads `Model: <model>, reasoning <level>`. Stored campaigns and certification histories that carry the retired condition load without it. |
 | D95 | Neither record nor control the host machine's programs and outside sources, such as MCP servers, websites and web search: they are not measurement conditions, never material and never compared. Every certification's environment block and every `status` report state this as a limitation and recommend running the campaign, and the sessions that later use the prompt, in the same container image to limit changes to them. A stored campaign or certification history that records the retired host tools or external sources conditions loads with them dropped, and a pending measurement change that names only them is dropped (user ruling, 2026-10-22, superseding the earlier ruling of the same day to record them). | CAT cannot snapshot the host environment; short of a container, nothing it records would let a user reproduce it. Which tools a trial runs varies from trial to trial, so recording them gives noise and making them material gives false alarms that pause campaigns. The candidate, control and incumbent trials paired within one attempt run on the same machine at the same time, so they already share the environment that the comparison depends on. A container is the user's means to limit changes to it. | The tools that trials invoke usually do not affect prompt optimization, but sometimes do; a certification stays current when they change, and only the limitation and the container recommendation warn the user. |
 | D96 | Revised by D123: give each harness's plugin a runner skill for the other harness, and have it download the other harness's CAT release archive, verified against the release's checksums, when neither that harness's installed CAT plugin of the same version nor an earlier download exists (user rulings, 2026-10-22). | A plugin that bundled the other harness's classes and plugin files would grow for every user to serve a skill few run, and one that required the other harness's plugin installed would fail for a user who never installed it. Downloading the published, checksummed archive of the same version reuses the installer's trust model and costs nothing until the skill first runs. |
-| D97 | Write harness transcripts only when the caller passes `--session-transcripts` to a kept run, copy them into the run's artifacts and list them in the receipt (user rulings, 2026-10-23: "1a, 2a"). | Transcripts on disk by default would keep every trial's conversation, which callers rarely read; a caller that tests what a harness records, such as a plugin's effect on the transcript, had no way to get it. | Optimizer trials pass the option, so a campaign keeps the transcripts that its records read. |
+| D97 | Write harness transcripts only when the caller passes `--session-transcripts` to a kept run, copy them into the run's artifacts and list them in the receipt (user rulings, 2026-10-23: "1a, 2a"). D151 narrows it: every run keeps its harness session in its isolated home, which never leaves its slot, and the option decides only the copy (user ruling, 2026-11-19). | Transcripts on disk by default would keep every trial's conversation, which callers rarely read; a caller that tests what a harness records, such as a plugin's effect on the transcript, had no way to get it. | Optimizer trials pass the option, so a campaign keeps the transcripts that its records read. |
 | D98 | Give a session's commands one set of limits in both harnesses from one harness-neutral definition: the run's home as their home, no harness credential in their environment, and no reads of any harness's login or configuration or of other runs (user ruling, 2026-10-23); amended 2026-11-02 by user ruling: a Claude session's commands receive Claude's connection credentials, which the parent has too; amended 2026-11-02 by user ruling ("Allow session's own login"): the commands may read the session's own login in the run's home, a copy of the user's login, while the user's real logins and the other harness's stay denied. | A Codex session's commands kept the user's home, and a Claude session's commands received the provider token, so a harness started from a command reached the provider in one harness and not the other, and an agent could not predict which. | A command that needs the user's harness configuration, such as a harness CLI started directly, no longer works in a session; it requests a session instead (D99). |
 | D99 | Let a caller allow a session to request sessions, which the runner starts outside the session's sandbox through the requested harness's runner with no more than the requesting session's permissions, passing every input and result as a file path (user ruling, 2026-10-23: option C). | Starting a harness inside a session would put credentials in reach of every command and escape the shared capacity, interrupts and evidence; making the caller start every session prevents a session from checking its own work, such as a plugin it just wrote. A broker keeps credentials, capacity and evidence with the runner. | A requested session waits at most 10 minutes for a capacity slot and fails with `capacity` after that; requested sessions request none of their own and are unavailable in optimizer trials. |
 | D100 | Remove each prompt file's design goals and comments before any model reads it (plugin build, role briefs, project rules), and make the guidance alone carry every goal (user rulings, 2026-10-23). | Design goals guide prompt authors and comments remind plugin developers why a goal was added. Agents read lazily loaded rules, skill bodies and agent bodies straight from the installed plugin, so removal at injection alone left that text in front of models; a model that needed it showed a gap in the guidance. |
@@ -3978,6 +4056,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D148 | The request server, outside the session's sandbox, adds, recreates, removes and repairs the registration of the prompt optimizer's optimization worktree, the run's runner does the same inside a CAT run, and a process that no sandbox confines does it in place; the request names an operation and a campaign and no path or Git argument, and Codex uses the same request (user ruling, 2026-11-16: the request server, which runs outside the session's sandbox, creates and deletes the optimizer's worktrees). | Claude Code 2.1.323 mounts `.git/worktrees` read-only in its sandbox over any write grant, with or without the environment scrub (probed 2026-11-16), so the optimizer's sandboxed commands cannot register their worktree, while every other Git operation of the optimizer still works there. The server already runs outside the sandbox and already identifies the session, its project and its CAT session directory, so a request that carries no path leaves the session no way to choose what is created or deleted; a second server or an exception for the optimizer would give a second way to leave the sandbox, which D134 declined. One request for both harnesses needs no test of what a Codex profile lets its commands write. | A start, a recreate and a removal need a request server serving the session (or a run that allows requested sessions), and a command whose worktree links are intact and that removes nothing works without one. The server refuses when the session's sandbox lets its commands write `.git/config` or `.git/hooks` (user ruling, 2026-11-16), because Git outside the sandbox would run what they name. A build command that writes the worktree's index or `HEAD` still fails in the sandbox. The runner's grant of `.git/worktrees` is removed. `status` never reconnects the worktree, and a campaign without its worktree is not a fork; the next `run` or `choose` recreates it through the server (decided 2026-11-16). |
 | D149 | Judge every assertion that no built-in tool decided in every trial, even when a built-in tool with `on_tool_failure: fail` failed: the failed tool fails only its own assertion, nothing is imputed to the others, and the trial fails when any assertion fails (user ruling, 2026-11-16, which replaces the earlier ruling that only a guard pilot's trials were judged after such a failure and a campaign's trials skipped the judge). | One assertion's failure policy must not decide another assertion. A fail-mode tool that fails often (the motto tool failed 0 of 20 control trials of the E1 `deficient` fixture) left every judged guard decided in no trial, and the imputation that covered the gap, passing a control's judged assertions and failing a candidate's, scored assertions that no one had judged. | One judge session more for each trial that fails a fail-mode tool and has a judged assertion, in every purpose, which raises the cost of a prompt test whose fail-mode tool fails often (about 20 sessions for its guard pilot alone). A failed tool's assertion stays failed, pilot trials still enter no count and spend no allowance, and a judged guard that a failing trial passes now counts as passed in the control and incumbent pairs. |
 | D150 | In a runner conversation, end a Claude turn at the first `idle` that follows the turn's reply, whatever background work is listed; trials and every other use keep ending at `idle` with an empty task list (user ruling, 2026-11-16). | A user message written while Claude works is queued and answered (H41), nothing in a conversation is scored per turn, and a real user can type at idle; in the E2, E3 and E5 runs on Claude the second turn stayed open 40 to 50 minutes because `run --background` kept the driver listed, so the asking session could not send its next message. The trial rule exists because each trial turn's reply is judged and must be whole (H17, H24, H25), which no conversation turn needs. | A conversation turn may end while a child or command still runs, and the child's completion reply then arrives as a late follow-up reported on the next turn. A conversation that must see a child's result waits for it itself. Codex is unaffected: its turn already ends while a background command runs. |
+| D151 | Keep every interrupted run, whatever its options: when its launcher, its server or the requesting session ends before the run does, the server stops its processes and retains its slot, with the project copy, home, harness session and `run.json`, and slot reuse passes it over. The session that started the run continues the same harness session in the same slot with `--resume <session-id>`, and the optimizer resumes an interrupted trial, or else discards its run as corrupt and reruns the trial. Every run keeps its harness session in its home, `--keep-run` decides only the copy at a normal end, a run that ended normally cannot be resumed, retained slots do not count toward the concurrency limit, and a retained run is deleted when it is resumed to its end, when the optimizer discards it, or with the directory that holds its slot (user rulings, 2026-11-19). | "Interruption is something that happens, not something you plan for ahead of time" (user, 2026-11-19): in E1 a parent restart lost a certified campaign although the launch named `--keep-run`. A copy without the home cannot continue the harness session, and with it the campaign's owner (D17); moving campaigns between sessions was ruled out (2026-11-10); moving the slot would break the absolute paths in transcripts and worktree registrations; a time limit could delete an uncollected certified campaign. Both harnesses keep the session's ID across a resume (P18, P19). | Disk for each retained slot (2.4 GB in E1) until one of the three deletions, with no bound on their number; a harness session and login copy in every run's home while the run lasts; a resume mode in both runners and a discard request. A resumed trial's context holds its interrupted turn's prompt and partial work, and its project copy that turn's file changes, before the turn is sent again, and Claude Code adds an empty reply to the unanswered prompt (P18). A top-level run whose resume cannot continue keeps its slot until the requesting session's directory goes. |
 
 ## 14. Acceptance evidence
 
