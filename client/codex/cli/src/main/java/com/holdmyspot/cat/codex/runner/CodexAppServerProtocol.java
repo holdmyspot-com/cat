@@ -48,6 +48,50 @@ public final class CodexAppServerProtocol
 	public static String threadStart(Path workingDirectory, String model, String developerInstructions,
 		String permissionProfile)
 	{
+		return thread("thread/start", "", ",\"sessionStartSource\":\"startup\"", workingDirectory, model,
+			developerInstructions, permissionProfile);
+	}
+
+	/**
+	 * Frames the request that continues a recorded thread, in place of {@link #threadStart}, with the confinement that
+	 * the resuming runner's bound gives it: a named permission profile and the working directory as its workspace
+	 * root, or the workspace-write sandbox.
+	 *
+	 * @param workingDirectory      the absolute copied-project directory
+	 * @param threadId              the recorded thread
+	 * @param model                 the model name, or empty to keep the thread's
+	 * @param developerInstructions the direct developer contract, or empty for none
+	 * @param permissionProfile     the named Codex permission profile, or empty for the workspace-write sandbox
+	 * @return the JSON-RPC request line
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code workingDirectory} is not absolute or {@code threadId} is blank
+	 */
+	public static String threadResume(Path workingDirectory, String threadId, String model,
+		String developerInstructions, String permissionProfile)
+	{
+		requireThat(threadId, "threadId").isNotBlank();
+		return thread("thread/resume", "\"threadId\":\"" + escape(threadId) + "\",", "", workingDirectory, model,
+			developerInstructions, permissionProfile);
+	}
+
+	/**
+	 * Frames a request that starts or resumes the session's thread.
+	 *
+	 * @param method                the request's method
+	 * @param leading               the parameters that come first, each followed by a comma, or empty for none
+	 * @param trailing              the parameters that follow the confinement, each preceded by a comma, or empty for
+	 *                              none
+	 * @param workingDirectory      the absolute copied-project directory
+	 * @param model                 the model name, or empty for the default
+	 * @param developerInstructions the direct developer contract, or empty for none
+	 * @param permissionProfile     the named Codex permission profile, or empty for the workspace-write sandbox
+	 * @return the JSON-RPC request line
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code workingDirectory} is not absolute
+	 */
+	private static String thread(String method, String leading, String trailing, Path workingDirectory, String model,
+		String developerInstructions, String permissionProfile)
+	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
 		requireThat(developerInstructions, "developerInstructions").isNotNull();
@@ -67,10 +111,9 @@ public final class CodexAppServerProtocol
 			permissionParameter = "\"permissions\":\"" + escape(permissionProfile) +
 				"\",\"runtimeWorkspaceRoots\":[\"" + escape(workingDirectory.toString()) + "\"]";
 		}
-		return "{\"id\":2,\"method\":\"thread/start\",\"params\":{\"cwd\":\"" +
-			escape(workingDirectory.toString()) + "\"," + permissionParameter + ",\"approvalPolicy\":\"never\"," +
-			"\"sessionStartSource\":\"startup\"" + modelParameter + developerInstructionsParameter +
-			"}}\n";
+		return "{\"id\":2,\"method\":\"" + method + "\",\"params\":{" + leading + "\"cwd\":\"" +
+			escape(workingDirectory.toString()) + "\"," + permissionParameter + ",\"approvalPolicy\":\"never\"" + trailing +
+			modelParameter + developerInstructionsParameter + "}}\n";
 	}
 
 	/**

@@ -138,6 +138,10 @@ public final class CodexRunner
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
+	 * @param resumedSession the thread that the run of {@code manager}'s slot records and that the runner continues,
+	 *   or {@code null} to start a thread in a new run. A resumed run keeps its project and its installed plugins, and
+	 *   its thread keeps the developer instructions and agent contract that its start gave it, but runs under
+	 *   {@code model} and {@code effort} and the sandbox that {@code bound} allows now.
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
 	 * @throws IOException             if validation, copying, or process startup fails
@@ -147,8 +151,8 @@ public final class CodexRunner
 		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
-		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail, ExtraPermissions extraPermissions)
-		throws IOException
+		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail, ExtraPermissions extraPermissions,
+		String resumedSession) throws IOException
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
@@ -166,18 +170,27 @@ public final class CodexRunner
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
-		HarnessRun run = manager.create(HARNESS_ID);
+		boolean resumes = resumedSession != null;
+		HarnessRun run;
+		if (resumes)
+			run = manager.resume(HARNESS_ID, resumedSession);
+		else
+			run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
 		try
 		{
-			manager.copyProject(project, run);
-			if (workspace != null)
-				manager.copyWorkspace(workspace, run);
-			manager.snapshotProject(run);
-			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
-				executables, gitName, gitEmail);
+			// A resumed run keeps the project that its start copied, as its thread left it
+			if (!resumes)
+			{
+				manager.copyProject(project, run);
+				if (workspace != null)
+					manager.copyWorkspace(workspace, run);
+				manager.snapshotProject(run);
+				HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(),
+					environment, executables, gitName, gitEmail);
+			}
 			Path isolatedHome = run.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = CodexInstallation.resolveHome(environment);
@@ -216,9 +229,13 @@ public final class CodexRunner
 			Path worktree = run.directory().resolve("project");
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
 				executables, manager, run), featureFlags(pluginsInstalled), policy.hosts());
-			installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome, isolatedEnvironment,
-				executables, FileReplacer.retrying(waiting), (setup, step) -> HarnessCommand.execute(setup, worktree,
-					isolatedEnvironment, executables, manager, run, step));
+			// A resumed run keeps the plugins that its start installed in its home
+			if (!resumes)
+			{
+				installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome,
+					isolatedEnvironment, executables, FileReplacer.retrying(waiting), (setup, step) ->
+						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, run, step));
+			}
 			List<String> command = sandbox.command();
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			lock = manager.acquireLock(run);
@@ -238,7 +255,8 @@ public final class CodexRunner
 				String selectedModel = model;
 				String agentInstructions = "";
 				String selectedEffort = effort;
-				if (agent != null)
+				// A resumed thread runs under the model and effort of the launch that resumes it
+				if (agent != null && !resumes)
 				{
 					selectedModel = agent.model();
 					agentInstructions = agent.developerInstructions();
@@ -246,8 +264,15 @@ public final class CodexRunner
 				}
 				try
 				{
-					process.initialize(worktree, selectedModel, developerInstructions(manager.root().toRealPath(),
-						worktree, isolatedHome, agentInstructions), selectedEffort, sandbox.profile());
+					// A resumed thread keeps the developer instructions that its start gave it
+					String instructions = "";
+					if (!resumes)
+					{
+						instructions = developerInstructions(manager.root().toRealPath(), worktree, isolatedHome,
+							agentInstructions);
+					}
+					process.initialize(worktree, selectedModel, instructions, selectedEffort, sandbox.profile(),
+						resumedSession);
 				}
 				catch (IOException e)
 				{
@@ -272,7 +297,9 @@ public final class CodexRunner
 					e.addSuppressed(failure);
 			}
 			scope.close();
-			manager.fail(run, e.getMessage());
+			// A resumed run whose thread could not continue stays retained for a later launch
+			if (!resumes)
+				manager.fail(run, e.getMessage());
 			throw e;
 		}
 	}

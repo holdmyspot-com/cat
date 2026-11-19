@@ -194,6 +194,40 @@ public final class CodexProcess implements HarnessProcess
 	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
 		String permissionProfile) throws IOException
 	{
+		initialize(workingDirectory, model, developerInstructions, effort, permissionProfile, null);
+	}
+
+	/**
+	 * Initializes the app-server and continues a thread that an earlier app-server of the run started, instead of
+	 * starting one.
+	 *
+	 * @param workingDirectory the copied-project directory
+	 * @param threadId         the recorded thread
+	 * @param model            the model name, or empty to keep the thread's
+	 * @param effort           the reasoning effort, or empty for Codex's default
+	 * @throws IOException if startup fails or Codex does not resume the thread
+	 */
+	public void resume(Path workingDirectory, String threadId, String model, String effort) throws IOException
+	{
+		requireThat(threadId, "threadId").isNotBlank();
+		initialize(workingDirectory, model, "", effort, "", threadId);
+	}
+
+	/**
+	 * Initializes the app server with optional profile-based filesystem authority, and starts the session's thread or
+	 * continues a recorded one.
+	 *
+	 * @param workingDirectory      the copied project directory
+	 * @param model                 the optional model name
+	 * @param developerInstructions the optional direct agent contract
+	 * @param effort                the optional reasoning effort
+	 * @param permissionProfile     the optional named Codex permission profile
+	 * @param resumedThread         the recorded thread to continue, or {@code null} to start a thread
+	 * @throws IOException if startup fails or no thread ID is returned
+	 */
+	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
+		String permissionProfile, String resumedThread) throws IOException
+	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
 		requireThat(developerInstructions, "developerInstructions").isNotNull();
@@ -203,8 +237,18 @@ public final class CodexProcess implements HarnessProcess
 		{
 			readResponse(1, CodexAppServerProtocol.initialize());
 			writeDuringStartup(CodexAppServerProtocol.initialized(), "after its response to request 1");
-			threadId = threadId(readResponse(2, CodexAppServerProtocol.threadStart(workingDirectory, model,
-				developerInstructions, permissionProfile)));
+			String thread;
+			if (resumedThread == null)
+			{
+				thread = CodexAppServerProtocol.threadStart(workingDirectory, model, developerInstructions,
+					permissionProfile);
+			}
+			else
+			{
+				thread = CodexAppServerProtocol.threadResume(workingDirectory, resumedThread, model,
+					developerInstructions, permissionProfile);
+			}
+			threadId = threadId(readResponse(2, thread));
 			if (verifyCatHookDelivery)
 			{
 				long requestId = nextRequestId;

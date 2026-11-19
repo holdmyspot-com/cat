@@ -36,6 +36,7 @@ import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -460,6 +461,8 @@ public final class CodexRunnerCli
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
+			// A runner that continues a run's session takes the options that the run's start fixed
+			args = RunLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
@@ -490,7 +493,7 @@ public final class CodexRunnerCli
 					options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 					toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
-					options.gitName(), options.gitEmail(), extraPermissions),
+					options.gitName(), options.gitEmail(), extraPermissions, options.resumeRun()),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 					requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
 						boundArguments(scope.json(), arguments, directory, policy.get()), directory,
@@ -678,7 +681,8 @@ public final class CodexRunnerCli
 	{
 		assert runnerArgs != null;
 		assert agentName != null;
-		if (agentName.isBlank())
+		// A runner that continues a run's session runs it under the model and effort of the launch that resumes it
+		if (agentName.isBlank() || List.of(runnerArgs).contains(RunnerArguments.RESUME_RUN_OPTION))
 			return runnerArgs;
 		HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
 		Path artifact = HarnessRunnerOptions.catArtifact(runnerArgs, CodexRunner.MANIFEST);

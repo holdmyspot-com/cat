@@ -529,6 +529,31 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
+	 * Verifies that a runner that continues an agent's run runs the session under the model and effort of the launch
+	 * that resumes it, rather than refusing them beside the agent.
+	 *
+	 * @throws IOException if the test filesystem cannot be used
+	 */
+	@Test
+	public void resumedAgentRunTakesLaunchProfile() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
+			Path artifact = artifactWithAgent(root, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"none\"\n");
+			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
+				artifact.toString(), "--run-root", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat",
+				"--run-id", "s-1", "--resume-run", "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b", "--model", "gpt-5.5",
+				"--effort", "high"}, HarnessTemporaryRoot.withoutSession("no session"));
+
+			requireThat(options.model(), "model").isEqualTo("gpt-5.5");
+			requireThat(options.effort(), "effort").isEqualTo("high");
+			requireThat(options.resumeRun(), "resumeRun").isEqualTo("019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b");
+		}
+	}
+
+	/**
 	 * Returns the options of an {@code --agent} bridge launch without a profile.
 	 *
 	 * @param root     the test's directory

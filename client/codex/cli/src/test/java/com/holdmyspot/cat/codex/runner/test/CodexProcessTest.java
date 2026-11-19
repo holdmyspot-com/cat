@@ -388,6 +388,32 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * Verifies that a process that continues a recorded thread asks Codex to resume that thread instead of starting
+	 * one, reports the thread that Codex resumed as its session, and runs its turns in it.
+	 *
+	 * @throws IOException if the turn fails
+	 */
+	@Test(timeOut = 10_000)
+	public void resumesRecordedThread() throws IOException
+	{
+		AppServer server = new AppServer(id -> List.of(turnStarted(id),
+			agentMessage(ROOT_THREAD, "done"),
+			turnCompleted(ROOT_THREAD, ROOT_TURN, "completed")), NO_ANSWER);
+		try (CodexProcess process = new CodexProcess(server.process, new TestHarnessRunnerScope(), false, null))
+		{
+			process.resume(PROJECT, ROOT_THREAD, "gpt-5.5", "high");
+			process.sendTurn("Continue the trial.");
+
+			requireThat(server.requests("thread/start"), "starts").isEmpty();
+			requireThat(server.requests("thread/resume").getFirst().path("threadId").asString(""), "threadId").
+				isEqualTo(ROOT_THREAD);
+			requireThat(process.harnessSessionId(), "session").isEqualTo(Optional.of(ROOT_THREAD));
+			requireThat(server.requests("turn/start").getFirst().path("threadId").asString(""), "turn").
+				isEqualTo(ROOT_THREAD);
+		}
+	}
+
+	/**
 	 * Verifies that when Codex refuses to start the thread, the failure reports Codex's own error message.
 	 *
 	 * @throws IOException if the app-server's process cannot be closed
@@ -1063,6 +1089,12 @@ public final class CodexProcessTest
 						process.emit("{\"error\":{\"code\":-32603,\"message\":" + json.writeValueAsString(threadStartError) +
 							"},\"id\":" + id + "}");
 					}
+				}
+				case "thread/resume" ->
+				{
+					process.emit("{\"id\":" + id + ",\"result\":{\"thread\":{\"id\":" +
+						json.writeValueAsString(request.path("params").path("threadId").asString("")) +
+						",\"path\":\"/codex-home/sessions/rollout-root.jsonl\"}}}");
 				}
 				case "turn/start" ->
 				{

@@ -6,6 +6,8 @@ import com.holdmyspot.cat.codex.runner.CodexAppServerProtocol;
 
 import java.nio.file.Path;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link CodexAppServerProtocol}.
@@ -59,5 +61,32 @@ public final class CodexAppServerProtocolTest
 		Path directory = Path.of("/").toAbsolutePath();
 
 		requireThat(CodexAppServerProtocol.threadStart(directory, "", "", ""), "request").doesNotContain("ephemeral");
+	}
+
+	/**
+	 * Verifies that a resume names the recorded thread and the working directory, and confines the thread by the
+	 * permission profile and workspace root that it names, or by the workspace-write sandbox without one, never asking
+	 * for approval.
+	 */
+	@Test
+	public void framesThreadResume()
+	{
+		Path directory = Path.of("/").toAbsolutePath();
+		JsonMapper json = JsonMapper.builder().build();
+
+		JsonNode profiled = json.readTree(CodexAppServerProtocol.threadResume(directory, "thread-1", "gpt-5", "",
+			"cat-runner"));
+		JsonNode sandboxed = json.readTree(CodexAppServerProtocol.threadResume(directory, "thread-1", "", "", ""));
+
+		requireThat(profiled.path("method").asString(), "method").isEqualTo("thread/resume");
+		JsonNode params = profiled.path("params");
+		requireThat(params.path("threadId").asString(), "threadId").isEqualTo("thread-1");
+		requireThat(params.path("cwd").asString(), "cwd").isEqualTo(directory.toString());
+		requireThat(params.path("approvalPolicy").asString(), "approvalPolicy").isEqualTo("never");
+		requireThat(params.path("model").asString(), "model").isEqualTo("gpt-5");
+		requireThat(params.path("permissions").asString(), "permissions").isEqualTo("cat-runner");
+		requireThat(params.path("runtimeWorkspaceRoots").get(0).asString(), "root").isEqualTo(directory.toString());
+		requireThat(sandboxed.path("params").path("sandbox").asString(), "sandbox").isEqualTo("workspace-write");
+		requireThat(sandboxed.path("params").has("model"), "model").isFalse();
 	}
 }
