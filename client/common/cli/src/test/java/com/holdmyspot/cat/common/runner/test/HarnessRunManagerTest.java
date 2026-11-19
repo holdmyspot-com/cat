@@ -785,7 +785,7 @@ public final class HarnessRunManagerTest
 			HarnessRun run = manager.create("harness");
 
 			String initialManifest = Files.readString(run.directory().resolve("run.json"));
-			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 4");
+			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 5");
 			requireThat(initialManifest, "initialManifest").contains("\"harness_process_state\": \"absent\"");
 			requireThat(initialManifest, "initialManifest").
 				contains("\"phase\": \"initializing\"");
@@ -1854,6 +1854,148 @@ public final class HarnessRunManagerTest
 			}
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a run records the harness's own identifier of its session once, that a later report of the same
+	 * identifier keeps it, and that a report of another identifier is refused.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void recordsHarnessSessionOnce() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			requireThat(manager.harnessSessionId(run), "before").isEmpty();
+			requireThat(Files.readString(run.directory().resolve("run.json")), "unreported").
+				contains("\"harness_session_id\": null");
+
+			manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			manager.markIdle(run);
+
+			requireThat(manager.harnessSessionId(run), "recorded").
+				isEqualTo(Optional.of("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"));
+			requireThat(Files.readString(run.directory().resolve("run.json")), "manifest").
+				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
+			IOException other = expectThrows(IOException.class, () -> manager.recordHarnessSession(run,
+				"019a7c3e-8d21-7f40-b6a2-5c9e1d3f8a07"));
+			requireThat(other.getMessage(), "other").contains("019a7c3e-8d21-7f40-b6a2-5c9e1d3f8a07");
+			requireThat(manager.harnessSessionId(run), "kept").
+				isEqualTo(Optional.of("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"));
+		}
+	}
+
+	/**
+	 * Verifies that the manifest of a run written before runs recorded their harness session reads as a run whose
+	 * harness reported no session.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void earlierManifestHasNoHarnessSession() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun run = manager.create("harness");
+			Path manifest = run.directory().resolve("run.json");
+			Files.writeString(manifest, Files.readString(manifest).
+				replace("\"schema_version\": 5", "\"schema_version\": 4").
+				replace("\n  \"harness_session_id\": null,", ""));
+
+			requireThat(manager.harnessSessionId(run), "harnessSessionId").isEmpty();
+			manager.markIdle(run);
+			requireThat(Files.readString(manifest), "rewritten").contains("\"schema_version\": 5").
+				contains("\"harness_session_id\": null");
+		}
+	}
+
+	/**
+	 * Verifies that a run whose runner ended after its harness reported its session reopens for a new runner whatever
+	 * its age, which records the new runner as its owner and keeps its turns and session.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void reopensInterruptedRunOfAnyAge() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			// No process is alive, so the runner that owned the run has ended, along with its harness
+			HarnessRunManager first = manager(jvm, root, Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC));
+			HarnessRun run = first.create("harness");
+			first.markHarnessStarting(run);
+			first.recordHarnessProcess(run, 4321, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
+			first.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			first.writeTurnOutput(run, 1, new HarnessProcessResult(0, "first", ""));
+			Files.writeString(run.directory().resolve("home/session.jsonl"), "kept");
+			HarnessRunManager later = manager(jvm, root, Clock.fixed(Instant.parse("2026-09-01T00:00:00Z"), UTC));
+
+			HarnessRun reopened = later.reopen("harness", run.id());
+
+			requireThat(reopened.directory(), "directory").isEqualTo(run.directory());
+			String manifest = Files.readString(run.directory().resolve("run.json"));
+			requireThat(manifest, "manifest").contains("\"state\": \"running\"").
+				contains("\"owner_pid\": " + ProcessHandle.current().pid() + ",").
+				contains("\"harness_process_state\": \"absent\"").
+				contains("\"harness_pid\": null").
+				contains("\"turn_number\": 1").
+				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
+			requireThat(run.directory().resolve("home/session.jsonl"), "home").isRegularFile();
+		}
+	}
+
+	/**
+	 * Verifies that a run does not reopen while its runner lives, while its harness launch state is unknown, before
+	 * its harness reported its session, or once it has ended.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void refusesToReopenUnresumableRun() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Clock clock = Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC);
+			HarnessRunManager live = new HarnessRunManager(jvm.fileLocks(), root, clock, Yielding.fileReplacer());
+			HarnessRun owned = live.create("harness");
+			live.recordHarnessSession(owned, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			IOException ownerAlive = expectThrows(IOException.class, () -> live.reopen("harness", owned.id()));
+			requireThat(ownerAlive.getMessage(), "ownerAlive").contains("live");
+
+			HarnessRunManager ended = manager(jvm, root, clock);
+			HarnessRun starting = ended.create("harness");
+			ended.recordHarnessSession(starting, "019a7c3e-8d21-7f40-b6a2-5c9e1d3f8a07");
+			ended.markHarnessStarting(starting);
+			IOException launchUnknown = expectThrows(IOException.class, () -> ended.reopen("harness", starting.id()));
+			requireThat(launchUnknown.getMessage(), "launchUnknown").contains("launch");
+
+			HarnessRun unreported = ended.create("harness");
+			IOException noSession = expectThrows(IOException.class, () -> ended.reopen("harness", unreported.id()));
+			requireThat(noSession.getMessage(), "noSession").contains("session");
+
+			HarnessRun completed = ended.create("harness");
+			ended.recordHarnessSession(completed, "7d3e9b21-4c5a-4f8e-a1b6-0e2c7f9d5a13");
+			ended.markCompleted(completed);
+			IOException finished = expectThrows(IOException.class, () -> ended.reopen("harness", completed.id()));
+			requireThat(finished.getMessage(), "finished").contains("ended");
+			requireThat(Files.readString(completed.directory().resolve("run.json")), "completedManifest").
+				contains("\"state\": \"completed\"");
 		}
 	}
 
