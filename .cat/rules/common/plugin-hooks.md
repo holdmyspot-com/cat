@@ -22,11 +22,11 @@ Codex runs a hook's `commandWindows` in PowerShell, not `cmd.exe`, so the comman
 call operator, `& "$env:PLUGIN_ROOT\hooks\<name>.cmd"`. A quoted path without `&` is only a string, which PowerShell
 prints. Codex also writes the plugin's directory into the command in place of `${PLUGIN_ROOT}`, where a `$` or a quote
 in the directory's name would be read as syntax, so a Codex hook's command names the directory through the environment
-variable `PLUGIN_ROOT` instead, on every platform. `CodexPluginHooksTest` runs each hook's command as Codex does on the
-platform that runs the test.
+variable `PLUGIN_ROOT` instead, on every platform. `bootstrap-codex.bats` runs each hook's command of the generated
+Codex plugin as Codex does on the platform that runs the test.
 
 Claude Code runs a hook's `command` in a POSIX shell, Git Bash on Windows, and the shell expands
 `${CLAUDE_PLUGIN_ROOT}`, so the command double-quotes it, as in `"${CLAUDE_PLUGIN_ROOT}/hooks/<name>.sh"`; a space in
-the plugin's path, such as one in a user's name, otherwise splits the command. `ClaudePluginHooksTest` runs each hook's
-command from a plugin path that holds a space.
+the plugin's path, such as one in a user's name, otherwise splits the command. `bootstrap-claude.bats` runs each hook's
+command of the generated Claude plugin from a plugin path that holds a space.
 
