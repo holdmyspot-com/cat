@@ -40,10 +40,12 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Validates session requests, snapshots their inputs before starting children, and publishes retained evidence.
  * A run whose options allow no session request gets each request refused with
  * {@link SessionRequestAccess#NO_REQUESTS_REASON}, and one that has accepted all that its options allow gets each
- * further request refused with {@link SessionRequestAccess#limitReason(int)}. A request whose records follow it, as
- * {@link StreamedRequest} publishes them, gets each record on its child's standard input as it arrives, and its child
- * is stopped once the request's sender ends. Closing the broker stops child process trees and answers unprocessed
- * requests as stopped.
+ * further request refused with {@link SessionRequestAccess#limitReason(int)}. A request that resumes a session that
+ * the run requested continues that session: it is not a new request, so the run's limits neither refuse nor count it.
+ * <p>
+ * A request whose records follow it, as {@link StreamedRequest} publishes them, gets each record on its child's
+ * standard input as it arrives, and its child is stopped once the request's sender ends. Closing the broker stops
+ * child process trees and answers unprocessed requests as stopped.
  * <p>
  * A worktree request, whose archive's name starts with {@link WorktreeRequest#PREFIX}, is not a requested session: it
  * takes no slot and no count of the run's limits, and the broker carries it out on a thread of its own, one request at
@@ -271,17 +273,21 @@ public final class SessionRequestBroker implements Closeable
 			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
 			return true;
 		}
-		Optional<String> refusal = site.refusal(accepted);
-		if (refusal.isPresent())
-		{
-			respond(id, "", "refused", refusal.get(), "", directory);
-			return true;
-		}
 		try
 		{
 			RunRequest request = read(file, directory);
-			accepted += 1;
-			site.accepted(json, accepted);
+			// A request that resumes a session continues the session that an earlier request started
+			if (request.resume().isEmpty())
+			{
+				Optional<String> refusal = site.refusal(accepted);
+				if (refusal.isPresent())
+				{
+					respond(id, "", "refused", refusal.get(), "", directory);
+					return true;
+				}
+				accepted += 1;
+				site.accepted(json, accepted);
+			}
 			harnesses.put(id, request.harness());
 			List<String> arguments = arguments(request, directory);
 			if (request.streamed())
@@ -1220,10 +1226,10 @@ public final class SessionRequestBroker implements Closeable
 		RunRequest read(JsonMapper json, Path inputs) throws IOException;
 
 		/**
-		 * Returns why the site refuses the next request before it reads it.
+		 * Returns why the site refuses the next request that does not resume a session.
 		 *
 		 * @param accepted how many requests the broker has accepted
-		 * @return the reason, or empty if the site reads the request
+		 * @return the reason, or empty if the site accepts the request
 		 */
 		Optional<String> refusal(int accepted);
 

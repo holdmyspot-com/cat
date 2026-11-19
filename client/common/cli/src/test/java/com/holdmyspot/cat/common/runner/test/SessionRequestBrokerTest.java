@@ -1131,7 +1131,8 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that a requested session whose launcher ended after its harness reported its session keeps its slot,
 	 * which no other session takes, and that a launch that resumes the harness session continues it in that slot,
-	 * without a project of its own, and empties the slot once the resumed run ends.
+	 * without a project of its own and without using any of the requesting run's allowance, and empties the slot once
+	 * the resumed run ends.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1139,7 +1140,7 @@ public final class SessionRequestBrokerTest
 	public void interruptedLaunchResumesInItsSlot() throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
-		try (Fixture fixture = new Fixture("--session-requests", "2"))
+		try (Fixture fixture = new Fixture("--session-requests", "1"))
 		{
 			Path held = Files.writeString(fixture.root.resolve("held.jsonl"),
 				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
@@ -1193,6 +1194,8 @@ public final class SessionRequestBrokerTest
 					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+				requireThat(fixture.json.readTree(fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE).toFile()).
+					path("requests_used").intValue(), "requestsUsed").isEqualTo(1);
 				List<String> resumed = starts.get(1);
 				requireThat(option(resumed, "--run-root"), "runRoot").isEqualTo(slot.toString());
 				requireThat(option(resumed, RunnerArguments.RESUME_RUN_OPTION), "resumeRun").isEqualTo(RESUMED_SESSION);
@@ -1215,7 +1218,7 @@ public final class SessionRequestBrokerTest
 	public void unresumableSessionStaysRetained() throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
-		try (Fixture fixture = new Fixture("--session-requests", "2"))
+		try (Fixture fixture = new Fixture("--session-requests", "1"))
 		{
 			Path held = Files.writeString(fixture.root.resolve("held.jsonl"),
 				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
