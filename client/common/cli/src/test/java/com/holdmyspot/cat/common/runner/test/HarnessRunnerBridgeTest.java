@@ -47,6 +47,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 /**
  * Tests {@link HarnessRunnerBridge}.
@@ -1230,6 +1231,45 @@ public final class HarnessRunnerBridgeTest
 			requireThat(HarnessRunReceipt.read(json, receipt, run.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEqualTo(List.of(run.sessionTranscripts().resolve("session-7.jsonl")));
+		}
+	}
+
+	/**
+	 * Verifies that a run in a slot whose input ends before its {@code complete} record, because the server that
+	 * feeds it ended, records no end and keeps its home, so that its harness session can continue.
+	 *
+	 * @throws IOException if the bridge fails
+	 */
+	@Test
+	public void runInSlotOutlivesItsServer() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1");
+			HarnessRun run = manager.create("harness");
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", evidence.resolve("transcript.jsonl"), true, evidence.resolve("receipt.json"), false, false, 1,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, true, null,
+				null, null, null, false, "s-1");
+			JsonMapper json = JsonMapper.builder().build();
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one")), new ArrayList<>()))
+			{
+				manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+				IOException failure = expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
+					() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
+					Yielding.fileReplacer(), input, new StringWriter()));
+				requireThat(failure.getMessage(), "failure").contains("without a complete message");
+			}
+
+			String manifest = Files.readString(run.directory().resolve("run.json"));
+			requireThat(manifest, "manifest").contains("\"state\": \"running\"").
+				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
+			requireThat(run.directory().resolve("home"), "home").isDirectory();
 		}
 	}
 

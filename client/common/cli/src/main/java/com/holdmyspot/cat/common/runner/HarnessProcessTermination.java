@@ -3,7 +3,11 @@ package com.holdmyspot.cat.common.runner;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.List;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+
+import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 
 /**
@@ -43,6 +47,52 @@ public final class HarnessProcessTermination
 		{
 			Thread.currentThread().interrupt();
 			throw new IOException("Interrupted while waiting for " + harnessName + " and its descendants to exit", e);
+		}
+	}
+
+	/**
+	 * Stops a runner and every process that it started. The runner is asked to stop before its descendants, so that it
+	 * sees its own stop before its harness ends and records no end for its run: a run whose runner its server stopped
+	 * stays unended, so that its harness session can continue. The descendants that remain once the runner has ended
+	 * are stopped too, forcibly if they outlast {@link #GRACEFUL_TERMINATION_TIMEOUT}.
+	 *
+	 * @param runner the runner
+	 * @throws NullPointerException if {@code runner} is null
+	 * @throws IOException          if interruption prevents termination from being confirmed
+	 */
+	public static void stopRunner(Process runner) throws IOException
+	{
+		requireThat(runner, "runner").isNotNull();
+		List<ProcessHandle> descendants = runner.toHandle().descendants().toList();
+		try
+		{
+			if (runner.isAlive())
+			{
+				runner.destroy();
+				if (!runner.waitFor(GRACEFUL_TERMINATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS))
+				{
+					runner.destroyForcibly();
+					runner.waitFor();
+				}
+			}
+			List<ProcessHandle> remaining = descendants.stream().filter(ProcessHandle::isAlive).toList();
+			remaining.forEach(ProcessHandle::destroy);
+			for (ProcessHandle descendant : remaining)
+			{
+				try
+				{
+					descendant.onExit().get(GRACEFUL_TERMINATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+				}
+				catch (ExecutionException | TimeoutException _)
+				{
+					descendant.destroyForcibly();
+				}
+			}
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			throw new IOException("Interrupted while waiting for the runner and its descendants to exit", e);
 		}
 	}
 

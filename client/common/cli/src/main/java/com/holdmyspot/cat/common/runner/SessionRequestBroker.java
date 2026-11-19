@@ -391,7 +391,7 @@ public final class SessionRequestBroker implements Closeable
 			entries.remove();
 			cancelled.add(id);
 			if (processes.containsKey(id))
-				HarnessProcessTermination.terminate(processes.get(id), "requested runner");
+				HarnessProcessTermination.stopRunner(processes.get(id));
 			stream.records.add(Optional.empty());
 			respond(id, harnesses.get(id), "stopped", stop, copyChildEvidence(id, stream.directory), stream.directory);
 		}
@@ -520,7 +520,7 @@ public final class SessionRequestBroker implements Closeable
 				processes.put(id, process);
 				if (stopped || cancelled.contains(id))
 				{
-					HarnessProcessTermination.terminate(process, "requested runner");
+					HarnessProcessTermination.stopRunner(process);
 					return;
 				}
 			}
@@ -824,7 +824,7 @@ public final class SessionRequestBroker implements Closeable
 		synchronized (this)
 		{
 			for (String id : processes.keySet())
-				HarnessProcessTermination.terminate(processes.get(id), "requested runner");
+				HarnessProcessTermination.stopRunner(processes.get(id));
 			for (Map.Entry<String, String> entry : harnesses.entrySet())
 			{
 				Path directory = site.responses().resolve(entry.getKey());
@@ -869,7 +869,7 @@ public final class SessionRequestBroker implements Closeable
 			{
 				try
 				{
-					HarnessProcessTermination.terminate(processes.get(id), "requested runner");
+					HarnessProcessTermination.stopRunner(processes.get(id));
 				}
 				catch (IOException e)
 				{

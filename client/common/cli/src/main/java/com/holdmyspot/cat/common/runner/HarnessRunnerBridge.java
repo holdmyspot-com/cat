@@ -183,6 +183,9 @@ public final class HarnessRunnerBridge
 		// Set once the client interrupts the active turn
 		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
 		AtomicBoolean transcriptRecorded = new AtomicBoolean();
+		// A run in a slot is fed by its server, which sends the complete record unless it ends first. A run whose server
+		// ended before the run did records no end, so that its harness session can continue.
+		boolean recordsEnd = true;
 		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
 		// send the next turn once the cause is gone, such as a usage limit that resets
 		boolean continueAfterFailedTurn = conversation != null || (options != null && options.continueAfterFailedTurn());
@@ -347,7 +350,11 @@ public final class HarnessRunnerBridge
 					// Input that ends without complete means that the requester has gone away, so no one reads the rest of
 					// the turn: the failure below stops it instead of waiting for it
 					if (!completed)
+					{
+						if (options != null && options.runId() != null)
+							recordsEnd = false;
 						throw new IOException("Bridge input ended without a complete message");
+					}
 				}
 				catch (IOException | RuntimeException e)
 				{
@@ -373,7 +380,7 @@ public final class HarnessRunnerBridge
 		}
 		catch (IOException e)
 		{
-			if (manager != null && run != null)
+			if (manager != null && run != null && recordsEnd)
 			{
 				IOException failure = e;
 				if (!copiesChecked)

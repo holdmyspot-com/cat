@@ -6,15 +6,18 @@ import com.holdmyspot.cat.common.fakes.test.UndeletableDirectory;
 
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_EXECUTE;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_READ;
 import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 import static java.time.ZoneOffset.UTC;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
@@ -25,7 +28,9 @@ import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
 import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStreamReader;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -1996,6 +2001,67 @@ public final class HarnessRunManagerTest
 			requireThat(finished.getMessage(), "finished").contains("ended");
 			requireThat(Files.readString(completed.directory().resolve("run.json")), "completedManifest").
 				contains("\"state\": \"completed\"");
+		}
+	}
+
+	/**
+	 * Returns the ways in which a runner is stopped: by its server, and by a signal to its process alone, after which
+	 * the processes that it started are stopped, as the stop of its server's process tree stops them.
+	 *
+	 * @return the ways
+	 */
+	@DataProvider
+	public Object[][] runnerStops()
+	{
+		return new Object[][]{{"server"}, {"signal"}};
+	}
+
+	/**
+	 * Verifies that a runner that is stopped while its run runs stops its harness, but records no end for the run
+	 * and keeps its home, so that the run's harness session can continue.
+	 *
+	 * @param stop how the runner is stopped
+	 * @throws IOException          if the filesystem operation fails or the runner cannot start
+	 * @throws InterruptedException if the test is interrupted
+	 */
+	@Test(dataProvider = "runnerStops", timeOut = 120_000)
+	public void stoppedRunnerRecordsNoEnd(String stop) throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			String executable = "java";
+			if (Platform.current().isWindows())
+				executable = "java.exe";
+			Path java = Path.of(System.getProperty("java.home"), "bin", executable);
+			String classes = System.getProperty("jdk.module.path", System.getProperty("java.class.path"));
+			try (Process runner = new ProcessBuilder(java.toString(), "-XX:+PerfDisableSharedMem",
+				"-Djava.io.tmpdir=" + root, "-cp", classes, InterruptedRunnerProcess.class.getName(), "runner",
+				root.toString()).redirectError(ProcessBuilder.Redirect.INHERIT).start())
+			{
+				String[] ready = new BufferedReader(new InputStreamReader(runner.getInputStream(), UTF_8)).readLine().
+					split(" ");
+				Path run = Path.of(ready[0]);
+				long harnessPid = Long.parseLong(ready[1]);
+				if (stop.equals("server"))
+					HarnessProcessTermination.stopRunner(runner);
+				else
+				{
+					List<ProcessHandle> tree = runner.descendants().toList();
+					runner.destroy();
+					runner.waitFor();
+					tree.forEach(ProcessHandle::destroy);
+				}
+				Optional<ProcessHandle> harness = ProcessHandle.of(harnessPid);
+				if (harness.isPresent())
+					harness.get().onExit().join();
+
+				requireThat(Files.readString(run.resolve("run.json")), "manifest").
+					contains("\"state\": \"running\"").
+					contains("\"harness_session_id\": \"" + InterruptedRunnerProcess.HARNESS_SESSION_ID + "\"");
+				requireThat(run.resolve("home"), "home").isDirectory();
+			}
 		}
 	}
 

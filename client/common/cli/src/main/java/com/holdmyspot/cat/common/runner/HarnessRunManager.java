@@ -610,7 +610,8 @@ public final class HarnessRunManager
 	 * Records that a harness run completed successfully before cleanup begins.
 	 *
 	 * @param run the owned run
-	 * @throws IOException if the manifest cannot be persisted
+	 * @throws IOException if the manifest cannot be persisted, or this process is
+	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running run unended
 	 */
 	public void markCompleted(HarnessRun run) throws IOException
 	{
@@ -1187,7 +1188,8 @@ public final class HarnessRunManager
 	 *
 	 * @param run the owned run
 	 * @param diagnostic the non-secret failure diagnostic
-	 * @throws IOException if the manifest cannot be persisted
+	 * @throws IOException if the manifest cannot be persisted, or this process is
+	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running run unended
 	 */
 	public void fail(HarnessRun run, String diagnostic) throws IOException
 	{
@@ -1450,7 +1452,8 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @param state the terminal or active state
 	 * @param diagnostic the optional non-secret diagnostic
-	 * @throws IOException if the manifest cannot be persisted
+	 * @throws IOException if the manifest cannot be persisted, or {@code state} ends a running run while this process
+	 *   is {@link ProcessTreeStop#stopping() stopping}
 	 */
 	private void writeManifest(HarnessRun run, String state, String diagnostic) throws IOException
 	{
@@ -1460,7 +1463,12 @@ public final class HarnessRunManager
 		Manifest previous = readManifest(run);
 		Instant finishedAt = null;
 		if (!state.equals("running"))
+		{
+			// A runner that is being stopped did not see its run end, so the run's harness session can continue
+			if (ProcessTreeStop.stopping() && previous.state().equals("running"))
+				throw new IOException("The runner is stopping, so run " + run.id() + " records no end");
 			finishedAt = clock.instant();
+		}
 		writeManifest(new Manifest(run.harness(), run.id(), state, state, previous.harnessProcessState(),
 			previous.ownerPid(), previous.ownerStart(),
 			previous.harnessPid(), previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(),

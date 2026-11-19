@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.CountDownLatch;
 import java.util.function.LongFunction;
 import java.util.stream.Stream;
@@ -197,7 +198,21 @@ public final class FakeProcessHandle implements ProcessHandle, ProcessHandle.Inf
 	@Override
 	public CompletableFuture<ProcessHandle> onExit()
 	{
-		throw new UnsupportedOperationException();
+		if (!isAlive())
+			return CompletableFuture.completedFuture(this);
+		return CompletableFuture.supplyAsync(() ->
+		{
+			try
+			{
+				ended.await();
+			}
+			catch (InterruptedException e)
+			{
+				Thread.currentThread().interrupt();
+				throw new CompletionException(e);
+			}
+			return this;
+		});
 	}
 
 	@Override
