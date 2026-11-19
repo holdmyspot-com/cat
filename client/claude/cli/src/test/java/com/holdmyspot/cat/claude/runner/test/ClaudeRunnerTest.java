@@ -993,6 +993,22 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
+	 * Verifies that a runner that continues a run's session asks Claude Code to resume that session, which Claude Code
+	 * keeps under the same identifier.
+	 */
+	@Test
+	public void resumesRecordedSession()
+	{
+		List<String> command = ClaudeRunner.resumed(ClaudeRunner.command("claude", "sonnet", "low", "", List.of(),
+			Path.of("hook-results"), List.of()), "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+
+		int option = command.indexOf("--resume");
+		requireThat(option, "option").isGreaterThan(-1);
+		requireThat(command.get(option + 1), "session").isEqualTo("5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+		requireThat(command, "command").doesNotContain("--fork-session");
+	}
+
+	/**
 	 * Verifies that the session runs in the {@code acceptEdits} permission mode, in which the sandbox confines its
 	 * commands and its edits stay inside the project.
 	 */

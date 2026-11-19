@@ -167,6 +167,10 @@ public final class ClaudeRunner
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @param role the session's role, which decides its tools, its prompt cache's lifetime and whether it runs inside a
 	 *   sandbox, or {@code null} to keep Claude Code's defaults
+	 * @param resumedSession the session that the run of {@code manager}'s slot records and that the runner continues,
+	 *   or {@code null} to start a session in a new run. A resumed run keeps its project, its installed plugins and
+	 *   its session store; the runner writes its settings again under the current bound, runs the session under
+	 *   {@code model} and {@code effort} whatever {@code agent} names, and records no end if the session cannot start.
 	 * @return the live run session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes outside the session's run folder, which the bound always
@@ -180,7 +184,7 @@ public final class ClaudeRunner
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
 		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
-		ExtraPermissions extraPermissions, ClaudeSessionRole role) throws IOException
+		ExtraPermissions extraPermissions, ClaudeSessionRole role, String resumedSession) throws IOException
 	{
 		requireThat(policyListener, "policyListener").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
@@ -196,7 +200,12 @@ public final class ClaudeRunner
 		if (agent != null && !installCat)
 			throw new IOException("A direct CAT agent requires --install-cat");
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
-		HarnessRun run = manager.create(HARNESS_ID);
+		boolean resumes = resumedSession != null;
+		HarnessRun run;
+		if (resumes)
+			run = manager.resume(HARNESS_ID, resumedSession);
+		else
+			run = manager.create(HARNESS_ID);
 		HarnessRunLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
@@ -205,12 +214,16 @@ public final class ClaudeRunner
 			// The empty files keep Claude Code's sandbox from mounting a file that the session's tools could not find
 			if (sandboxed(role))
 				ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
-			manager.copyProject(project, run);
-			if (workspace != null)
-				manager.copyWorkspace(workspace, run);
-			manager.snapshotProject(run);
-			HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(), environment,
-				executables, gitName, gitEmail);
+			// A resumed run keeps the project that its start copied, as its session left it
+			if (!resumes)
+			{
+				manager.copyProject(project, run);
+				if (workspace != null)
+					manager.copyWorkspace(workspace, run);
+				manager.snapshotProject(run);
+				HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(),
+					environment, executables, gitName, gitEmail);
+			}
 			Path hostConfiguration = claudeConfigDirectory(environment, Platform.current());
 			Path claudeTemporaryDirectory = run.directory().resolve("claude");
 			if (sandboxed(role))
@@ -219,7 +232,7 @@ public final class ClaudeRunner
 			// This keeps concurrent runs separate without diverting CAT-owned state to the shared system temporary directory.
 			Path isolatedProcessHome = run.directory().resolve("home");
 			Path isolatedConfiguration = isolatedProcessHome.resolve(".claude");
-			if (installCat)
+			if (installCat && !resumes)
 				UserRuleTree.copy(userRulesRoot(environment), ProjectRuleLoader.rulesDirectory(isolatedProcessHome));
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
@@ -240,22 +253,37 @@ public final class ClaudeRunner
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
 			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
-			List<Path> plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
-				isolatedEnvironment, FileReplacer.retrying(waiting), scope.json(),
-				(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
-					run, step));
+			List<Path> plugins;
+			if (resumes)
+			{
+				plugins = installedPlugins(installCat, trialPlugins, isolatedConfiguration, isolatedEnvironment,
+					FileReplacer.retrying(waiting), scope.json());
+			}
+			else
+			{
+				plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
+					isolatedEnvironment, FileReplacer.retrying(waiting), scope.json(),
+					(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
+						run, step));
+			}
 			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
 			String selectedModel = model;
 			String selectedEffort = effort;
 			String selectedAgent = "";
 			if (agent != null)
 			{
-				selectedModel = agent.model();
-				selectedEffort = agent.effort();
+				// A resumed session runs under the model and effort of the launch that resumes it
+				if (!resumes)
+				{
+					selectedModel = agent.model();
+					selectedEffort = agent.effort();
+				}
 				selectedAgent = agent.name();
 			}
 			List<String> command = command(executable, selectedModel, selectedEffort, selectedAgent, plugins, hookResults,
 				readOnlyEvidence, tools(role));
+			if (resumes)
+				command = resumed(command, resumedSession);
 			manager.initialize(run, artifact, project, "claude_stream_json", command);
 			lock = manager.acquireLock(run);
 			Path projectDirectory = null;
@@ -310,9 +338,44 @@ public final class ClaudeRunner
 					e.addSuppressed(failure);
 			}
 			scope.close();
-			manager.fail(run, e.getMessage());
+			// A resumed run whose session could not start stays retained for a later launch
+			if (!resumes)
+				manager.fail(run, e.getMessage());
 			throw e;
 		}
+	}
+
+	/**
+	 * Returns the directory of each plugin that a resumed run's start installed, and merges CAT's installer entries into
+	 * the isolated configuration's {@code settings.json} again, which the resumed run's settings replaced.
+	 *
+	 * @param installCat {@code true} if the run's start installed CAT
+	 * @param trialPlugins the trial plugins that the run's start installed
+	 * @param isolatedConfiguration the isolated Claude configuration directory
+	 * @param environment the environment of the run's Claude process
+	 * @param replacer replaces {@code settings.json}
+	 * @param json parses Claude Code's install records
+	 * @return the directory of each installed plugin, CAT first
+	 * @throws IOException if a plugin's manifest cannot be read, Claude Code's install records cannot be read or
+	 *   {@code settings.json} cannot be changed
+	 */
+	private static List<Path> installedPlugins(boolean installCat, List<Path> trialPlugins,
+		Path isolatedConfiguration, Map<String, String> environment, FileReplacer replacer, JsonMapper json)
+		throws IOException
+	{
+		List<Path> plugins = new ArrayList<>();
+		if (installCat)
+		{
+			Path plugin = isolatedConfiguration.resolve("plugins/cat-marketplace/plugins/cat");
+			installPermissions(isolatedConfiguration, environment, plugin, replacer, json);
+			plugins.add(plugin);
+		}
+		for (Path trialPlugin : trialPlugins)
+		{
+			String name = PluginManifest.name(trialPlugin, MANIFEST);
+			plugins.add(isolatedConfiguration.resolve("plugins/" + name + "-marketplace/plugins/" + name));
+		}
+		return plugins;
 	}
 
 	/**
@@ -1262,6 +1325,26 @@ public final class ClaudeRunner
 			command.add(agent);
 		}
 		return command;
+	}
+
+	/**
+	 * Returns a harness command that continues a recorded session instead of starting one. Claude Code keeps a resumed
+	 * session's identifier.
+	 *
+	 * @param command   the harness command
+	 * @param sessionId the session that the command continues
+	 * @return the command that resumes the session
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code sessionId} is blank
+	 */
+	public static List<String> resumed(List<String> command, String sessionId)
+	{
+		requireThat(command, "command").isNotNull();
+		requireThat(sessionId, "sessionId").isNotBlank();
+		List<String> resumed = new ArrayList<>(command);
+		resumed.add("--resume");
+		resumed.add(sessionId);
+		return resumed;
 	}
 
 

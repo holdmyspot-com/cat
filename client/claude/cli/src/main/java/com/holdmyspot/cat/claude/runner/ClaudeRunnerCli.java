@@ -28,6 +28,7 @@ import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.RunLaunch;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
@@ -464,6 +465,8 @@ public final class ClaudeRunnerCli
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
 			process.waiting()))
 		{
+			// A runner that continues a run's session takes the options that the run's start fixed from the run
+			args = RunLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
@@ -547,7 +550,7 @@ public final class ClaudeRunnerCli
 				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
 				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
 				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),
-				options.gitEmail(), extraPermissions, role.orElse(null));
+				options.gitEmail(), extraPermissions, role.orElse(null), options.resumeRun());
 			HarnessRunnerBridge.serve(starter, manager, options, scope.json(), replacer, input, output,
 				(harness, arguments, directory) -> requestedRunner(scope, options.artifact(), harness, environment).
 					start(PolicyBoundFile.boundArguments(scope.json(), arguments, directory, policy.get()), directory,
@@ -632,7 +635,8 @@ public final class ClaudeRunnerCli
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		String[] runnerArgs = withoutClaudeOptions(args);
 		String agentName = agentName(args);
-		if (!agentName.isBlank())
+		// A runner that continues a run's session runs it under the model and effort of the launch that resumes it
+		if (!agentName.isBlank() && !List.of(args).contains(RunnerArguments.RESUME_RUN_OPTION))
 		{
 			HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);
 			Path artifact = HarnessRunnerOptions.catArtifact(runnerArgs, ClaudeRunner.MANIFEST);

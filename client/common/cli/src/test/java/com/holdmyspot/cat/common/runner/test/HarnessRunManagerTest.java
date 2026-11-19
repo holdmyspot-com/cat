@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.common.runner.HarnessRunLock;
 import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.RunLaunch;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -41,6 +42,7 @@ import java.nio.file.attribute.PosixFilePermissions;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -1925,6 +1927,41 @@ public final class HarnessRunManagerTest
 			manager.markIdle(run);
 			requireThat(Files.readString(manifest), "rewritten").contains("\"schema_version\": 5").
 				contains("\"harness_session_id\": null");
+		}
+	}
+
+	/**
+	 * Verifies that a runner that resumes a run takes the options that the run's start fixed, followed by its own, and
+	 * that one that names an option that the start fixed is refused.
+	 *
+	 * @throws IOException if the filesystem operation fails
+	 */
+	@Test
+	public void resumedRunnerTakesLaunchFixedAtStart() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret");
+			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedRunId("s-1").withLaunchArguments(fixed);
+			manager.create("claude");
+			JsonMapper json = JsonMapper.builder().build();
+			List<String> own = List.of("--run-root", root.toString(), "--run-id", "s-1", "--resume-run",
+				"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", "--model", "opus", "--effort", "high");
+
+			String[] resumed = RunLaunch.resumedArguments(json, "claude", own.toArray(String[]::new));
+
+			List<String> expected = new ArrayList<>(fixed);
+			expected.addAll(own);
+			requireThat(List.of(resumed), "resumed").isEqualTo(expected);
+			List<String> refixed = new ArrayList<>(own);
+			refixed.addAll(List.of("--deny-read", "/other"));
+			InvalidArgumentsException refused = expectThrows(InvalidArgumentsException.class,
+				() -> RunLaunch.resumedArguments(json, "claude", refixed.toArray(String[]::new)));
+			requireThat(refused.getMessage(), "refused").contains("--deny-read");
+			String[] started = {"--project", "/source", "--model", "opus"};
+			requireThat(List.of(RunLaunch.resumedArguments(json, "claude", started)), "started").isEqualTo(List.of(started));
 		}
 	}
 
