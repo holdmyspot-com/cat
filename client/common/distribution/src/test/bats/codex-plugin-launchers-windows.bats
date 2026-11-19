@@ -61,7 +61,9 @@ load windows-helpers
 $program = "--add-modules", "org.slf4j.nop", "-m",
 	"com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo"
 '
-	flags="${prefix}"'& $java -XX:+PrintCommandLineFlags -version 2>$null'
+	# Windows PowerShell fails a program whose standard error it redirects once the program writes there, so the
+	# command redirects nothing and asks for --version, which Java writes to standard output
+	flags="${prefix}"'& $java -XX:+PrintCommandLineFlags --version'
 
 	run --separate-stderr powershell_command "${flags}" "${environment[@]}" < /dev/null
 
