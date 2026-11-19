@@ -236,6 +236,11 @@ public final class CodexRunner
 					isolatedEnvironment, executables, FileReplacer.retrying(waiting), (setup, step) ->
 						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, run, step));
 			}
+			// The requested sessions of the session may read the CAT version that Codex installed, whose launchers the
+			// session's commands run
+			Path catPlugin = null;
+			if (installCat)
+				catPlugin = installedCat(isolatedHome);
 			List<String> command = sandbox.command();
 			manager.initialize(run, artifact, project, "codex_app_server", command);
 			lock = manager.acquireLock(run);
@@ -278,7 +283,7 @@ public final class CodexRunner
 				{
 					throw refusalOf(e);
 				}
-				HarnessRunSession session = new HarnessRunSession(run, process, scope, lock);
+				HarnessRunSession session = new HarnessRunSession(run, process, scope, lock, catPlugin);
 				child.release();
 				return session;
 			}
@@ -946,17 +951,34 @@ public final class CodexRunner
 		FileReplacer replacer) throws IOException
 	{
 		Path home = isolatedHome.toAbsolutePath().normalize();
+		new CodexIntegration().installPermissions(isolatedEnvironment, home,
+			installedCat(home).resolve(PluginDirectory.INSTALLER), replacer, entries ->
+			{
+				// The run owns and removes this entire isolated configuration.
+			});
+	}
+
+	/**
+	 * Returns the directory of the CAT version that Codex installed into an isolated home, whose launchers the
+	 * session's commands run.
+	 *
+	 * @param isolatedHome the isolated Codex home
+	 * @return the absolute directory of the version
+	 * @throws NullPointerException if {@code isolatedHome} is null
+	 * @throws IOException          if the home's configuration or plugin cache cannot be read, or Codex did not install
+	 *                              exactly one copy of CAT
+	 */
+	public static Path installedCat(Path isolatedHome) throws IOException
+	{
+		requireThat(isolatedHome, "isolatedHome").isNotNull();
+		Path home = isolatedHome.toAbsolutePath().normalize();
 		List<Path> copies = InstalledPlugins.of(home, CAT_PLUGIN_ID);
 		if (copies.size() != 1)
 		{
 			throw new IOException("Codex did not install exactly one copy of " + CAT_PLUGIN_ID + " into " + home +
 				": " + copies);
 		}
-		new CodexIntegration().installPermissions(isolatedEnvironment, home,
-			copies.get(0).resolve(PluginDirectory.INSTALLER), replacer, entries ->
-			{
-				// The run owns and removes this entire isolated configuration.
-			});
+		return copies.getFirst();
 	}
 
 	/**

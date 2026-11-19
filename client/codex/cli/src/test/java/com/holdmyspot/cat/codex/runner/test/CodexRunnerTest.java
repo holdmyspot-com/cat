@@ -21,6 +21,7 @@ import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.LocalMarketplace;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -988,6 +989,83 @@ public final class CodexRunnerTest
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
 				run.directory().resolve("home/sessions")));
+		}
+	}
+
+	/**
+	 * Verifies that a session that a Codex session requests may read, but not write, the CAT version that Codex
+	 * installed in the requesting session's home, such as a launcher that the request's prompt names, while its
+	 * permission profile still denies it the rest of the requesting nested session, such as that session's login.
+	 *
+	 * @throws IOException if the runs cannot be created
+	 */
+	@Test
+	public void readsPluginOfRequestingSession() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-requester-plugin-")).
+				toRealPath();
+			Path artifact = root.resolve("artifact");
+			Path results = root.resolve("runs");
+			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), results, Clock.systemUTC(),
+				Yielding.fileReplacer());
+			HarnessRun first = firstManager.create("codex");
+			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path firstHome = Files.createDirectories(first.directory().resolve("home"));
+			Files.writeString(firstHome.resolve("config.toml"), """
+				[plugins."cat@cat"]
+				enabled = true
+				""");
+			Path version = firstHome.resolve("plugins/cache/cat/cat/1.0+b0123456789ab");
+			Files.writeString(Files.createDirectories(version.resolve(".codex-plugin")).resolve("plugin.json"),
+				"{\"name\": \"cat\"}\n");
+			Path launcher = Files.writeString(Files.createDirectories(version.resolve("bin")).
+				resolve("prompt-optimizer"), "launcher");
+			Path login = Files.writeString(firstHome.resolve("auth.json"), "{}");
+			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
+				Clock.systemUTC(), Yielding.fileReplacer());
+			HarnessRun nested = nestedManager.create("codex");
+			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
+				SessionRequestAccess.Shell.POSIX).orElseThrow();
+			Path configuration = nested.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nested.directory().resolve("missing.toml"), configuration,
+				nested.directory().resolve("project"));
+
+			String profile = CodexRunner.addSessionProfile(configuration, nestedManager, nested, List.of(),
+				SessionRequestBroker.resultsDenials(results, CodexRunner.installedCat(firstHome)), Platform.current(),
+				Map.of(), nestedAccess);
+
+			JsonNode permissions = TomlMapper.builder().build().readTree(Files.readString(configuration)).
+				path("permissions");
+			List<Path> denials = new ArrayList<>();
+			List<Path> writes = new ArrayList<>();
+			// A profile has the entries of the profiles that it extends
+			for (String name = profile; permissions.has(name);
+				name = permissions.path(name).path("extends").stringValue(""))
+			{
+				JsonNode filesystem = permissions.path(name).path("filesystem");
+				for (String path : filesystem.propertyNames())
+				{
+					if (path.startsWith(":"))
+						continue;
+					switch (filesystem.get(path).stringValue())
+					{
+						case "deny" -> denials.add(Path.of(path));
+						case "write" -> writes.add(Path.of(path));
+						default ->
+						{
+						}
+					}
+				}
+			}
+			for (Path path : denials)
+				requireThat(launcher.startsWith(path), "launcher.startsWith(" + path + ")").isFalse();
+			for (Path path : writes)
+				requireThat(launcher.startsWith(path), "launcher.startsWith(" + path + ")").isFalse();
+			requireThat(denials.stream().anyMatch(login::startsWith), "loginDenied").isTrue();
 		}
 	}
 
