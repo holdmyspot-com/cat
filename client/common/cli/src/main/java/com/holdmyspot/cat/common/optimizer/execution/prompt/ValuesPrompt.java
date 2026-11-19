@@ -20,9 +20,11 @@ import com.holdmyspot.cat.common.optimizer.contract.Split;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TestValueJson;
+import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.ValueGenerators;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.execution.ValuesProtocol;
+import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -41,6 +43,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.TreeMap;
 import java.util.random.RandomGenerator;
 
@@ -60,11 +63,13 @@ public final class ValuesPrompt implements ValuesProtocol
 	private static final Duration TIME_LIMIT = Duration.ofMinutes(30);
 	private static final String PROMPT_RESOURCE = "/optimizer/values/values.md";
 	private static final String SCHEMA_RESOURCE = "/optimizer/values/values.schema.json";
+	private static final String CORRECTION_RESOURCE = "/optimizer/values/values-correction.md";
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	private final Path directory;
 	private final JsonResponse responses;
 	private final PromptTemplate prompt;
+	private final PromptTemplate correction;
 	private final String outputSchema;
 	private final SchemaValidator validator;
 	private final RandomGenerator seeds;
@@ -79,7 +84,7 @@ public final class ValuesPrompt implements ValuesProtocol
 	 * @param seeds the source of the seeds that CAT adds to each generator call; this prompt draws from it only
 	 *   while holding its lock
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws UncheckedIOException if the packaged prompt or output schema cannot be read
+	 * @throws UncheckedIOException if a packaged prompt or the output schema cannot be read
 	 */
 	public ValuesPrompt(JsonMapper json, ProposalSchema schema, Path directory, RandomGenerator seeds)
 	{
@@ -93,6 +98,7 @@ public final class ValuesPrompt implements ValuesProtocol
 		this.directory = directory;
 		this.responses = new JsonResponse(json);
 		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
+		this.correction = PromptTemplate.load(CORRECTION_RESOURCE);
 		JsonNode schemaNode = json.readTree(PromptTemplate.load(SCHEMA_RESOURCE).text());
 		this.outputSchema = json.writerWithDefaultPrettyPrinter().writeValueAsString(schemaNode);
 		this.validator = new SchemaValidator(schemaNode);
@@ -107,7 +113,7 @@ public final class ValuesPrompt implements ValuesProtocol
 	 * with its cell and each test case's reproduction counts. The session reads nothing else.
 	 */
 	@Override
-	public SessionRequest request(Contract contract, AddedTestCases known, FailureGroup group)
+	public SessionRequest request(Contract contract, AddedTestCases known, int attempt, FailureGroup group)
 	{
 		requireThat(contract, "contract").isNotNull();
 		requireThat(known, "known").isNotNull();
@@ -157,8 +163,36 @@ public final class ValuesPrompt implements ValuesProtocol
 			"failure_group", json.writerWithDefaultPrettyPrinter().writeValueAsString(entry),
 			"output_schema", outputSchema,
 			"generators", ValueGenerators.describeAll()));
+		FollowUp correct = result -> correction(result, contract, known, attempt, group);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, directory, List.of(turn), List.of(),
-			TIME_LIMIT, contract.judge().profile());
+			TIME_LIMIT, contract.judge().profile(), TestWorkspace.NONE, List.of(), Optional.of(correct));
+	}
+
+	/**
+	 * Returns the turn that asks the session to correct its response.
+	 *
+	 * @param result the session's result after its turn
+	 * @param contract the confirmed contract
+	 * @param known the test cases of the contract's tests beyond the confirmed ones
+	 * @param attempt the index of the attempt whose failure group the test cases address
+	 * @param group the failure group whose current round awaits test cases
+	 * @return the turn that lists the response's problems, or empty if the response is valid
+	 */
+	private Optional<String> correction(SessionResult.Completed result, Contract contract, AddedTestCases known,
+		int attempt, FailureGroup group)
+	{
+		try
+		{
+			testCases(result, contract, known, attempt, group);
+			return Optional.empty();
+		}
+		catch (InvalidProposalException e)
+		{
+			StringJoiner problems = new StringJoiner("\n");
+			for (String problem : e.problems())
+				problems.add("- " + problem);
+			return Optional.of(correction.fill(Map.of("problems", problems.toString())));
+		}
 	}
 
 	/**

@@ -1803,7 +1803,7 @@ public final class Driver implements AutoCloseable
 		if (number == 0)
 			return false;
 		SessionRequest request = context.values().request(campaign.contract(), campaign.developmentTestCases(),
-			attempt.group(number));
+			attempt.index(), attempt.group(number));
 		SessionHandle handle;
 		try
 		{
@@ -1836,8 +1836,8 @@ public final class Driver implements AutoCloseable
 	/**
 	 * Consumes the end of a session that writes reproduction values. Valid test cases become the failure group's
 	 * current round, whose reproduction trials then run; exhaustion marks the group not reproduced, as after its
-	 * round limit. A rejected response or a failed session is an infrastructure
-	 * failure. The result is ignored if its group's round does not await values when the session ends.
+	 * round limit. A response that is still rejected after the session's correction turn, or a failed session, is an
+	 * infrastructure failure. The result is ignored if its group's round does not await values when the session ends.
 	 *
 	 * @param values the session
 	 * @param result the session's result, or {@code null} if the session failed with an exception

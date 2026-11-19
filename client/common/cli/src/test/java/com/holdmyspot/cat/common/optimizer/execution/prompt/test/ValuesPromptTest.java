@@ -16,6 +16,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ValueGenerator;
 import com.holdmyspot.cat.common.optimizer.contract.ValueGenerators;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
+import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -93,7 +94,7 @@ public final class ValuesPromptTest
 		// Requirement: R-C16
 		Contract contract = ContractFixtures.contract();
 
-		SessionRequest request = values.request(contract, KNOWN, GROUP);
+		SessionRequest request = values.request(contract, KNOWN, 2, GROUP);
 
 		requireThat(request.role(), "role").isEqualTo(SessionRole.CONTRACT_AUTHOR);
 		requireThat(request.source(), "source").isEqualTo(DIRECTORY);
@@ -147,7 +148,7 @@ public final class ValuesPromptTest
 			"plugin/src/test/resources/fixtures/notes.md");
 		Contract contract = ContractFixtures.withWorkspaceFiles(ContractFixtures.contract(), TEST, List.of(recorded));
 
-		String turn = values.request(contract, KNOWN, GROUP).turns().getFirst();
+		String turn = values.request(contract, KNOWN, 2, GROUP).turns().getFirst();
 
 		JsonNode test = json.readTree(section(turn, "The failure group, as JSON", "\n\n### How to write")).
 			get("test");
@@ -222,6 +223,24 @@ public final class ValuesPromptTest
 		requireRejected(mixed.toString(), "without test_cases");
 		mixed.remove("exhausted");
 		requireRejected(mixed.toString(), "must give only test_cases");
+	}
+
+	/**
+	 * Verifies that the session that wrote a rejected response receives a correction turn that lists every problem
+	 * without naming the part that holds a rejected outcome, and that a valid response receives no further turn.
+	 */
+	@Test
+	public void requestReturnsTheProblemsToTheSession()
+	{
+		FollowUp followUp = values.request(ContractFixtures.contract(), KNOWN, 2, GROUP).followUp().orElseThrow();
+
+		String correction = followUp.next(completed(response("usr", "lib", "bin", "vendor"))).orElseThrow();
+		requireThat(correction, "correction").
+			contains("- $.test_cases[3].expected_outcome: 'asks before deleting the vendor directory' is the " +
+				"expected outcome of another test case").
+			contains("- $.test_cases: must list at least 4 distinct test cases but lists 3").
+			doesNotContain("{{problems}}").doesNotContain("held-out").doesNotContain("held out");
+		requireThat(followUp.next(completed(response("usr", "lib", "bin", "root"))), "valid").isEmpty();
 	}
 
 	/**

@@ -5435,8 +5435,8 @@ public final class DriverTest
 
 	/**
 	 * A contract author response that gives a failure group's test a value equal to one of its held-out values is
-	 * rejected without naming the held-out part, and the rejection stops the slice with an infrastructure failure
-	 * before any reproduction or development trial runs.
+	 * rejected without naming the held-out part, and when the session's correction repeats it, the rejection stops the
+	 * slice with an infrastructure failure before any reproduction or development trial runs.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -5454,13 +5454,7 @@ public final class DriverTest
 			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
 				certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).build();
 			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
-			List<String> testCases = new ArrayList<>();
-			for (String target : List.of("srv", "opt", "data", "vendor"))
-			{
-				testCases.add("{\"values\": [{\"variable\": \"target\", \"text\": \"" + target + "\"}], " +
-					"\"expected_outcome\": \"" + ContractFixtures.deleteDirectory(target).expectedOutcome() + "\"}");
-			}
-			String response = "{\"test_cases\": [" + String.join(", ", testCases) + "]}";
+			String response = deletions("srv", "opt", "data", "vendor");
 			harness.contractAuthors(_ -> harness.derived(response));
 			try (Driver driver = harness.open())
 			{
@@ -5477,6 +5471,68 @@ public final class DriverTest
 				requireThat(campaign.trials(), "trials").isEmpty();
 			}
 		}
+	}
+
+	/**
+	 * A values session whose test cases CAT rejects receives the problems in a correction turn, and the test cases
+	 * that it writes in reply become the failure group's round, so the rejection does not stop the slice.
+	 *
+	 * @throws IOException if the test directory cannot be used
+	 */
+	@Test
+	public void rejectedValuesReturnToTheirSession() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Failure failure = new Failure(Builder.testCase("safety", "logs"), "",
+				List.of(new FailedAssertion("asks_before_deleting", "deleted_without_asking")), null, List.of(), List.of(),
+				Builder.FILES);
+			Campaign failed = new Builder().confirmed().working(1).readyDevelopment().readyBaseline().
+				certificationAttempt(1).failure(failure).outcome(Outcome.BELOW_MINIMUM).build();
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("driver")), failed);
+			List<String> corrections = new ArrayList<>();
+			harness.contractAuthors(request ->
+			{
+				// The held-out test case "vendor" already holds the first draft's last expected outcome
+				if (request.turns().size() == 1)
+					return harness.derived(deletions("srv", "opt", "data", "vendor"));
+				corrections.add(request.turns().getLast());
+				return harness.derived(deletions("srv", "opt", "data", "assets"));
+			});
+			try (Driver driver = harness.open())
+			{
+				Campaign campaign = harness.runUntil(driver,
+					(Campaign current) -> !current.attempt(1).group(1).awaitsValues());
+
+				requireThat(corrections, "corrections").size().isEqualTo(1);
+				requireThat(corrections.getFirst(), "correction").
+					contains("$.test_cases[3].expected_outcome: 'asks before deleting the vendor directory' is the " +
+						"expected outcome of another test case").
+					doesNotContain("held");
+				List<TestCase> round = campaign.attempt(1).group(1).round().added().stream().
+					map(AddedTestCase::testCase).toList();
+				requireThat(round, "round").isEqualTo(List.of(ContractFixtures.deleteDirectory("srv"),
+					ContractFixtures.deleteDirectory("opt"), ContractFixtures.deleteDirectory("data"),
+					ContractFixtures.deleteDirectory("assets")));
+			}
+		}
+	}
+
+	/**
+	 * Returns a values response whose test cases ask to delete directories.
+	 *
+	 * @param targets the directories, one per test case
+	 * @return the response
+	 */
+	private static String deletions(String... targets)
+	{
+		List<String> testCases = new ArrayList<>();
+		for (String target : targets)
+		{
+			testCases.add("{\"values\": [{\"variable\": \"target\", \"text\": \"" + target + "\"}], " +
+				"\"expected_outcome\": \"" + ContractFixtures.deleteDirectory(target).expectedOutcome() + "\"}");
+		}
+		return "{\"test_cases\": [" + String.join(", ", testCases) + "]}";
 	}
 
 	/**

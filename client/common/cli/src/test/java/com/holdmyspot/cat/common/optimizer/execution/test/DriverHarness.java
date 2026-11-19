@@ -1144,12 +1144,43 @@ public final class DriverHarness
 	}
 
 	/**
-	 * Returns the scripted result of a session.
+	 * Returns the scripted result of a session. When the request's follow-up chooses a turn after a completed session,
+	 * the script answers it too, receiving the request with that turn appended to its turns, and the session's
+	 * responses are those of both answers.
 	 *
 	 * @param request the session's request
 	 * @return the result
 	 */
 	private SessionResult respond(SessionRequest request)
+	{
+		SessionResult result = script(request);
+		if (request.followUp().isEmpty() || !(result instanceof SessionResult.Completed first))
+			return result;
+		Optional<String> turn = request.followUp().get().next(first);
+		if (turn.isEmpty())
+			return result;
+
+		List<String> turns = new ArrayList<>(request.turns());
+		turns.add(turn.get());
+		SessionRequest followed = new SessionRequest(request.role(), request.part(), request.source(), turns,
+			request.readOnly(), request.timeLimit(), request.profile(), request.files(), request.plugins(),
+			Optional.empty(), request.controlSource(), request.extraPermissions(), request.turnObserver());
+		SessionResult answer = script(followed);
+		if (!(answer instanceof SessionResult.Completed reply))
+			return answer;
+		List<List<String>> responses = new ArrayList<>(first.responses());
+		responses.addAll(reply.responses());
+		return new SessionResult.Completed(first.transcript(), responses, reply.effects(), first.initialProject(),
+			first.model(), first.reasoning(), first.usage(), first.windows(), first.promptSources(), first.toolCalls());
+	}
+
+	/**
+	 * Returns the scripted result of one session turn sequence.
+	 *
+	 * @param request the session's request
+	 * @return the result
+	 */
+	private SessionResult script(SessionRequest request)
 	{
 		return switch (request.role())
 		{

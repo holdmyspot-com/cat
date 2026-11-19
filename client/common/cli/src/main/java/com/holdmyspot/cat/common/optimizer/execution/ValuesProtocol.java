@@ -25,17 +25,20 @@ public interface ValuesProtocol
 	int MINIMUM_TEST_CASES = 4;
 
 	/**
-	 * Creates the session request.
+	 * Creates the session request. When {@link #testCases} would reject the session's final response, the request
+	 * sends the session one more turn that lists every problem and asks for a corrected response, so that the
+	 * session's final response is its correction.
 	 *
 	 * @param contract the confirmed contract
 	 * @param known the test cases of the contract's tests beyond the confirmed ones: those added to development and
 	 *   those that reproduction rounds tried or try
+	 * @param attempt the index of the attempt whose failure group the test cases address
 	 * @param group the failure group whose current round awaits test cases
 	 * @return a request whose role is {@link SessionRole#CONTRACT_AUTHOR}
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the contract lacks the group's test, cell or requirement
 	 */
-	SessionRequest request(Contract contract, AddedTestCases known, FailureGroup group);
+	SessionRequest request(Contract contract, AddedTestCases known, int attempt, FailureGroup group);
 
 	/**
 	 * Validates the session's test cases or its declaration that the domain is exhausted.
