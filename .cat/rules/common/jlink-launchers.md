@@ -40,10 +40,11 @@ answers 407, so the launchers' JVM options include `-Djdk.http.auth.tunneling.di
 property. Do not remove it from the options or add `Basic` back to it. The download sends the login only to the proxy
 whose URL holds it.
 
-One Bats test, `jlink-launchers.bats`, verifies the launcher template for all launchers against a built image. Do not
-add a Bats test for a launcher or a harness merely to show that its launcher starts its program, runs from a path with
-spaces, or works in another locale; extend that test instead when the template changes. Test a program's own behavior,
-such as its arguments, output and exit status, with Java tests that call it directly.
+One Bats test, `jlink-launchers.bats`, verifies the POSIX launcher template for all launchers against a built image,
+and `codex-plugin-launchers-windows.bats` verifies the batch template on Windows. Do not add a Bats test for a launcher
+or a harness merely to show that its launcher starts its program, runs from a path with spaces, or works in another
+locale; extend those tests instead when a template changes. Test a program's own behavior, such as its arguments,
+output and exit status, with Java tests that call it directly.
 
 ## Launchers That Agents Run
 
@@ -66,9 +67,9 @@ user's name, ends the command there. Keep both launchers' JVM options in one con
 On Windows, the Codex plugin holds only the batch launchers. Codex runs commands in PowerShell, and CAT's skills name a
 launcher by its absolute path without an extension; PowerShell resolves that path to the POSIX launcher whenever it
 exists, cannot run it, and hands it to the program that Windows associates with the file.
-`DistributionMain.writeCodexLaunchers` therefore writes no POSIX launchers there, and `CodexImageLaunchersTest` runs
-each launcher by that path from the shell that Codex uses on the platform that runs the test. The Claude plugin keeps
-both launchers.
+`DistributionMain.writeCodexLaunchers` therefore writes no POSIX launchers there, and
+`codex-plugin-launchers-windows.bats` runs each launcher of the generated Windows plugin by that path from PowerShell.
+The Claude plugin keeps both launchers.
 
 The JVM options include `-Dstdout.encoding=UTF-8` and `-Dstderr.encoding=UTF-8`, so a program writes UTF-8 whatever
 the console's code page, and `--enable-native-access` for the module that holds `CommandLineArguments`.
