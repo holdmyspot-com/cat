@@ -4,8 +4,9 @@
 # contains spaces, without Bubblewrap even where it cannot create a namespace, and Java can name a file that is not ASCII
 # in the caller's C locale. A launcher finds Java only through the plugin's bin/runtime-binding: it passes its JVM
 # options, the plugin's module path and its arguments to the bound java, discards the JVM options that the environment
-# supplies, and refuses an unusable binding with one line naming it and exit status 3. A launcher starts Java from the
-# plugin's startup cache bin/aot/session-start.aot when that file exists, and a cache that Java cannot use changes
+# supplies, passes a set, non-empty TMPDIR as java.io.tmpdir, and refuses an unusable binding with one line naming it
+# and exit status 3. A launcher starts Java from the plugin's startup cache bin/aot/session-start.aot when that file
+# exists, Java accepts a cache trained through the plugin's java wrapper, and a cache that Java cannot use changes
 # nothing that the program's caller sees.
 
 bats_require_minimum_version 1.5.0
@@ -145,24 +146,93 @@ CLASSPATH=unset
 	[[ "${output}" == *$'\n[-XX:AOTCache='"${bin}"$'/aot/session-start.aot]\n[-Djava.io.tmpdir='"${TEST_ROOT}"$'/session temp]\n[-Xlog:all=off:stdout]\n'* ]]
 }
 
+@test "a launcher passes a set, non-empty TMPDIR to the bound java as java.io.tmpdir, and nothing for an empty one" {
+	create_echo_runtime_plugin
+
+	run env TMPDIR="${TEST_ROOT}/session temp" "${PLUGIN}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *$'\nCLASSPATH=unset\n[-Djava.io.tmpdir='"${TEST_ROOT}"$'/session temp]\n[-Xlog:all=off:stdout]\n'* ]]
+
+	run env TMPDIR= "${PLUGIN}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *$'\nCLASSPATH=unset\n[-Xlog:all=off:stdout]\n'* ]]
+	[[ "${output}" != *"java.io.tmpdir"* ]]
+}
+
+# Trains a plugin's startup cache through the plugin's java wrapper, as an installation does: one run records Java's
+# training configuration, and a second run writes the cache from it.
+#
+# Arguments:
+#   $1 - the plugin
+#
+# Environment:
+#   TEST_ROOT - the test's folder, which receives the training configuration
+#
+# Side effects:
+#   Writes the cache to $1/bin/aot/session-start.aot.
+#
+# Exit status:
+#   Returns 0 when the cache was written.
+train_cache()
+{
+	local configuration="${TEST_ROOT}/training.aotconf"
+	rm -f "${configuration}"
+	mkdir "$1/bin/aot"
+	"$1/bin/java" -XX:AOTMode=record -XX:AOTConfiguration="${configuration}" \
+		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
+	"$1/bin/java" -XX:AOTMode=create -XX:AOTConfiguration="${configuration}" \
+		-XX:AOTCache="$1/bin/aot/session-start.aot" \
+		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
+	[ -s "$1/bin/aot/session-start.aot" ]
+}
+
 # Trains a startup cache for a copy of the generated Codex plugin at another path, as an installation at that path
 # would, so that the cache does not match a plugin anywhere else.
 #
 # Arguments:
 #   $1 - the copy to train the cache in
 #
-# Outputs:
-#   $1/bin/aot/session-start.aot - the cache
+# Environment:
+#   GENERATED_RUNTIME_DIRECTORY - the directory of the plugins that the build generated
+#   TEST_ROOT - the test's folder, which receives the training configuration
+#
+# Side effects:
+#   Writes the copy, with its cache in $1/bin/aot/session-start.aot.
+#
+# Exit status:
+#   Returns 0 when the cache was written.
 train_cache_elsewhere()
 {
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "$1"
-	mkdir "$1/bin/aot"
-	"$1/bin/java" -XX:AOTMode=record -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
-		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
-	"$1/bin/java" -XX:AOTMode=create -XX:AOTConfiguration="${TEST_ROOT}/training.aotconf" \
-		-XX:AOTCache="$1/bin/aot/session-start.aot" \
-		--add-modules org.slf4j.nop -m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo >/dev/null 2>&1
-	[ -s "$1/bin/aot/session-start.aot" ]
+	train_cache "$1"
+}
+
+@test "the java wrapper passes a startup cache trained through it, which Java accepts, and passes none before" {
+	plugin="${TEST_ROOT}/trained plugin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${plugin}"
+
+	run --separate-stderr "${plugin}/bin/java" -XX:+PrintCommandLineFlags -version
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" != *"AOTCache"* ]]
+
+	train_cache "${plugin}"
+	bin="$(cd -P "${plugin}/bin" && pwd -P)"
+
+	run --separate-stderr "${plugin}/bin/java" -XX:+PrintCommandLineFlags -version
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == *"-XX:AOTCache=${bin}/aot/session-start.aot "* ]]
+
+	# With AOTMode=on, Java fails instead of starting without a cache that it cannot use
+	run --separate-stderr "${plugin}/bin/java" -XX:AOTMode=on --add-modules org.slf4j.nop \
+		-m com.holdmyspot.cat.codex.cli/com.holdmyspot.cat.codex.CodexPluginInfo
+
+	[ "${status}" -eq 0 ]
+	[ -z "${stderr}" ]
+	[[ "${output}" == "harness=codex"$'\n'* ]]
 }
 
 @test "a launcher's output stays the same and its standard error empty with a foreign, truncated or invalid cache" {

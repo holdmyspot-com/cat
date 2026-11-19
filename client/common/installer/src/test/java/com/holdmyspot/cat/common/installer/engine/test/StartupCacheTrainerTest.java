@@ -41,8 +41,8 @@ import org.testng.annotations.Test;
  * <p>
  * What a training runs and what it does with a run's outcome are decisions, so the tests call the methods that make
  * them. The only claim about real Java, that it accepts a cache which a training wrote through a plugin's wrapper, is
- * checked once, by {@code PluginLaunchersTest.wrapperTrainsAndPassesStartupCache} in the distribution module, which
- * has the wrapper that plugins ship.
+ * checked by the distribution module's {@code jlink-launchers.bats} and {@code codex-plugin-launchers-windows.bats},
+ * which run the wrapper of the plugins that the build generates.
  */
 public final class StartupCacheTrainerTest
 {

@@ -1,13 +1,10 @@
 package com.holdmyspot.cat.distribution.bundle.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
-import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.installer.trust.ReleaseVersion;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
 import com.holdmyspot.cat.common.installer.trust.TrustPolicy;
@@ -16,17 +13,15 @@ import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.attribute.PosixFilePermissions;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
 import java.util.Base64;
-import java.util.List;
 import org.testng.annotations.Test;
 
 /**
  * Tests the default policy that {@link PluginInstaller} writes into a plugin's {@code bin} folder, read through the
- * installer's policy reader, and the options that the POSIX installer launcher it writes passes to Java.
+ * installer's policy reader, and which platforms' POSIX installer launchers pass {@code TMPDIR} to Java.
  */
 public final class PluginInstallerTest
 {
@@ -83,37 +78,30 @@ public final class PluginInstallerTest
 	}
 
 	/**
-	 * Verifies that the POSIX installer launcher of a Windows plugin passes no {@code java.io.tmpdir} when
-	 * {@code TMPDIR} is set, whatever the host that runs it, because the plugin's Java on Windows follows {@code TEMP}
-	 * and {@code TMP} and cannot use the {@code /c/...} path that Git Bash gives {@code TMPDIR}.
+	 * Verifies that the POSIX installer launcher of a Windows plugin passes no {@code java.io.tmpdir}, while that of a
+	 * Linux plugin passes {@code TMPDIR} as {@code java.io.tmpdir}. The plugin's Java on Windows follows {@code TEMP} and
+	 * {@code TMP}, and cannot use the {@code /c/...} path that Git Bash gives {@code TMPDIR}.
+	 * {@code installer-launcher.bats} runs the Linux launcher with {@code TMPDIR} set, empty and unset.
+	 *
+	 * @throws IOException if the launchers cannot be written or read
 	 */
 	@Test
-	public void windowsInstallerPassesNoTmpdir() throws IOException, InterruptedException
+	public void onlyWindowsInstallerIgnoresTmpdir() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			TestJvmScope scope = new TestJvmScope())
 		{
-			Path bin = cleanup.add(Files.createTempDirectory("plugin installer ")).toRealPath().resolve("bin");
-			new PluginInstaller(scope, "2.3.4", "").write(bin, Platform.WINDOWS_X64, true);
-			Path java = Files.createDirectories(bin.resolve("runtime/bin")).resolve("java");
-			Files.writeString(java, """
-				#!/bin/sh
-				printf '%s\\n' "$@"
-				""");
-			if (PortableFiles.hasModes(java))
-				Files.setPosixFilePermissions(java, PosixFilePermissions.fromString("rwxr-xr-x"));
-			List<String> command = List.of("sh", bin.resolve("installer").toString().replace('\\', '/'));
-			ProcessBuilder builder = new ProcessBuilder(command).redirectErrorStream(true);
-			builder.environment().put("LC_ALL", "C.UTF-8");
-			builder.environment().put("TMPDIR", "/c/session temp");
+			Path directory = cleanup.add(Files.createTempDirectory("plugin-installer-"));
+			Path windows = directory.resolve("windows");
+			Path linux = directory.resolve("linux");
+			PluginInstaller installer = new PluginInstaller(scope, "2.3.4", "");
+			installer.write(windows, Platform.WINDOWS_X64, true);
+			installer.write(linux, Platform.LINUX_X64, true);
 
-			try (Process process = Yielding.start(builder))
-			{
-				process.getOutputStream().close();
-				String output = new String(process.getInputStream().readAllBytes(), UTF_8);
-				requireThat(process.waitFor(), "status").withContext(output, "output").isEqualTo(0);
-				requireThat(output, "output").doesNotContain("java.io.tmpdir");
-			}
+			requireThat(Files.readString(windows.resolve("installer")), "windowsInstaller").
+				doesNotContain("-Djava.io.tmpdir");
+			requireThat(Files.readString(linux.resolve("installer")), "linuxInstaller").
+				contains("tmpdir=-Djava.io.tmpdir=$TMPDIR\n");
 		}
 	}
 }

@@ -44,20 +44,6 @@ public final class StartupTrainingApplication
 	}
 
 	/**
-	 * Starts a separate JVM to train the plugin's startup cache and returns its observed result.
-	 *
-	 * @param plugin the plugin directory
-	 * @param scratch the training scratch directory
-	 * @return whether training wrote the startup cache
-	 * @throws IOException if the child cannot run or reports a failure
-	 * @throws InterruptedException if this caller is interrupted while waiting for the child
-	 */
-	public static boolean train(Path plugin, Path scratch) throws IOException, InterruptedException
-	{
-		return runChild(plugin, null, "train", plugin.toAbsolutePath().toString(), scratch.toAbsolutePath().toString());
-	}
-
-	/**
 	 * Starts a separate JVM to cancel a live training and verifies that the child observed the cancellation.
 	 *
 	 * @param plugin the plugin directory
@@ -76,20 +62,16 @@ public final class StartupTrainingApplication
 	/**
 	 * Starts this class as a named-module application. This is the only location that supplies real sleeping pauses.
 	 *
-	 * @param arguments the operation followed by the explicit plugin and scratch paths, and readiness path for cancel
+	 * @param arguments {@code cancel} followed by the explicit plugin, scratch and readiness paths
 	 * @throws IOException if the application cannot train or clean up
 	 * @throws InterruptedException if training or cleanup is interrupted
 	 */
 	public static void main(String[] arguments) throws IOException, InterruptedException
 	{
+		if (arguments.length != 4 || !arguments[0].equals("cancel"))
+			throw new IllegalArgumentException("Expected cancel <plugin> <scratch> <ready>");
 		Waiting waiting = Pause::sleeping;
-		boolean written;
-		if (arguments.length == 3 && arguments[0].equals("train"))
-			written = trainPlugin(Path.of(arguments[1]), Path.of(arguments[2]), waiting);
-		else if (arguments.length == 4 && arguments[0].equals("cancel"))
-			written = cancelTraining(Path.of(arguments[1]), Path.of(arguments[2]), Path.of(arguments[3]), waiting);
-		else
-			throw new IllegalArgumentException("Expected train <plugin> <scratch> or cancel <plugin> <scratch> <ready>");
+		boolean written = cancelTraining(Path.of(arguments[1]), Path.of(arguments[2]), Path.of(arguments[3]), waiting);
 		System.out.println("written=" + written);
 	}
 
@@ -262,22 +244,6 @@ public final class StartupTrainingApplication
 			case "written=false" -> false;
 			default -> throw new IOException("Startup training application returned an invalid result: " + output);
 		};
-	}
-
-	/**
-	 * Trains the plugin with the supplied real waiting boundary.
-	 *
-	 * @param plugin the plugin directory
-	 * @param scratch the scratch directory
-	 * @param waiting the cleanup pause boundary
-	 * @return whether training wrote a cache
-	 * @throws IOException if training fails
-	 * @throws InterruptedException if training is interrupted
-	 */
-	private static boolean trainPlugin(Path plugin, Path scratch, Waiting waiting)
-		throws IOException, InterruptedException
-	{
-		return new StartupCacheTrainer(scratch, Duration.ofMinutes(1), NOT_ELEVATED, waiting).train(plugin);
 	}
 
 	/**
