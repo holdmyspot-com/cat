@@ -21,8 +21,8 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * Copies a session folder to where its requester reads it, leaving out links, the child's isolated home, which holds
- * its logins, and the project files that the child's sandbox kept it from changing.
+ * Copies a session folder to where its requester reads it, leaving out links, private session storage, and the
+ * project files that the child's sandbox kept it from changing.
  */
 public final class ResultsCopy
 {
@@ -76,7 +76,7 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Copies a session folder into {@code target}, leaving out links, the child's isolated home and the project files
+	 * Copies a session folder into {@code target}, leaving out links, the isolated home, private slots and project files
 	 * that the child's sandbox kept it from changing. A file or folder that the copier's sandbox refuses to write is
 	 * skipped without a message and listed in the result. Any other file or folder that cannot be copied is left out and
 	 * reported with the failure that stopped it, and the copy goes on with the rest of the nested session, so that one
@@ -332,7 +332,8 @@ public final class ResultsCopy
 		private boolean includes(Path relative)
 		{
 			return relative.toString().isEmpty() ||
-				!RetainedTrialPrefix.isPrivateSnapshot(relative) && included.test(relative);
+				!relative.equals(Path.of(SessionRequestAccess.REQUESTED_SLOTS)) &&
+					!RetainedTrialPrefix.isPrivateSnapshot(relative) && included.test(relative);
 		}
 
 		/**

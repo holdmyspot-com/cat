@@ -108,7 +108,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * session's nested session, which every path of its home and project starts with, recur many times in what its
 	 * harness sends the model.
 	 */
-	private static final String REQUESTED_SLOTS = "slots";
+	static final String REQUESTED_SLOTS = "slots";
 	/**
 	 * The most bytes of a {@link #LIMITS_FILE} that a reader reads.
 	 */

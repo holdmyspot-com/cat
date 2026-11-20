@@ -3464,7 +3464,9 @@ CAT command that starts sessions, the prompt optimizer included, packs each laun
 nested session, into `requests/` in the session's CAT session directory, waits for the response there, and writes the
 transcript, receipt and the nested session's results copy from it itself. Because the client packs the request and
 writes its results inside the session's sandbox, every file a request carries is one the session may read, and every
-file a launch writes is one it may write. A client that finds no request server serving the session refuses with status
+file a launch writes is one it may write. The results copy includes the public responses for requested sessions,
+including the evidence the receipt references. The isolated home and the private slots stay with the runner.
+A client that finds no request server serving the session refuses with status
 `2` before it changes anything and names the exact command to start one in the background. A runner launcher runs only
 from a Claude Code or Codex session: a command that no harness session runs, such as one in a terminal or a script, has
 no sandbox to bound the new session and no request server, so its launcher refuses with status `2` before it changes

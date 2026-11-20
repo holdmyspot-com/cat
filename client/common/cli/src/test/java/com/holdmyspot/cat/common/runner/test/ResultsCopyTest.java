@@ -68,6 +68,49 @@ public final class ResultsCopyTest
 	}
 
 	/**
+	 * Verifies that final copies leave private slots with the runner and publish the requested sessions' evidence.
+	 *
+	 * @throws IOException if fixture files cannot be created or copied
+	 */
+	@Test
+	public void resultsExcludePrivateSlots() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope())
+		{
+			Path root = jvm.temporaryDirectory();
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runtime"),
+				Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession session = manager.create("harness");
+			Path source = session.directory();
+			Path project = source.resolve("project");
+			Files.writeString(Files.createDirectories(project.resolve("slots")).resolve("marker"), "project file");
+			Files.writeString(Files.createDirectories(source.resolve("slots/allowed/1")).resolve("marker"), "grant");
+			Files.writeString(Files.createDirectories(source.resolve("slots/d1/codex/s-1/home")).resolve("login"),
+				"private file");
+			Path response = Files.createDirectories(source.resolve("responses/request-id"));
+			Files.writeString(response.resolve("response.json"), "response");
+			Files.writeString(Files.createDirectories(response.resolve("results-copy/artifacts")).resolve("receipt.json"),
+				"requested session evidence");
+			manager.markCompleted(session);
+
+			Path brokerCopy = root.resolve("broker-copy");
+			Path requesterCopy = root.resolve("requester-copy");
+			requireThat(ResultsCopy.copy(source, brokerCopy).incomplete(), "brokerCopy").isEmpty();
+			requireThat(ResultsCopy.copy(source, requesterCopy, "kept-1", project).incomplete(), "requesterCopy").
+				isEmpty();
+			for (Path copy : List.of(brokerCopy, requesterCopy))
+			{
+				requireThat(Files.exists(copy.resolve("slots")), "privateSlots").isFalse();
+				requireThat(Files.readString(copy.resolve("project/slots/marker")), "projectFile").isEqualTo("project file");
+				requireThat(Files.readString(copy.resolve("responses/request-id/response.json")), "response").
+					isEqualTo("response");
+				Path receipt = copy.resolve("responses/request-id/results-copy/artifacts/receipt.json");
+				requireThat(Files.readString(receipt), "receipt").isEqualTo("requested session evidence");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that turn copies replace only project and transcript evidence while an unrelated transcript stays open.
 	 *
 	 * @throws IOException if fixture files cannot be created or copied
