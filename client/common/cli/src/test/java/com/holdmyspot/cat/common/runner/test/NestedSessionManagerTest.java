@@ -1959,7 +1959,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
 			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret");
-			String harness = "harness-a";
+			String harness = "codex";
 			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedSlotId("s-1").withLaunchArguments(fixed);
 			manager.create(harness);
