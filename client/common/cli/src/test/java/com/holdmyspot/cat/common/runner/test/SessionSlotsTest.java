@@ -82,7 +82,7 @@ public final class SessionSlotsTest
 
 			requireThat(second, "second").isEqualTo(first);
 			requireThat(second.root(), "root").isEqualTo(base.resolve("d1"));
-			requireThat(second.runId(), "runId").isEqualTo("s-1");
+			requireThat(second.slotId(), "slotId").isEqualTo("s-1");
 			try (Stream<Path> entries = Files.list(second.root()))
 			{
 				requireThat(entries.toList(), "entries").isEmpty();
@@ -137,11 +137,11 @@ public final class SessionSlotsTest
 				{
 					SessionSlots.Slot slot = slots.acquire(heldOut);
 					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
-						Yielding.fileReplacer()).withFixedRunId(slot.runId());
-					Path run = manager.create("claude").directory();
-					requireThat(base.relativize(run).toString().length(), "length").withContext(run, "run").
+						Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+					Path sessionFolder = manager.create("claude").directory();
+					requireThat(base.relativize(sessionFolder).toString().length(), "length").withContext(sessionFolder, "run").
 						isLessThanOrEqualTo(16);
-					runs.add(run);
+					runs.add(sessionFolder);
 				}
 			}
 
@@ -191,13 +191,13 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot first = slots.acquire(false);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(first.runId());
-			NestedSession run = manager.create("claude");
-			manager.markHarnessStarting(run);
-			manager.recordHarnessProcess(run, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
+				Yielding.fileReplacer()).withFixedSlotId(first.slotId());
+			NestedSession nestedSession = manager.create("claude");
+			manager.markHarnessStarting(nestedSession);
+			manager.recordHarnessProcess(nestedSession, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			slots.release(first);
 
-			requireThat(Files.isDirectory(run.directory()), "keptWhileAlive").isTrue();
+			requireThat(Files.isDirectory(nestedSession.directory()), "keptWhileAlive").isTrue();
 			requireThat(liveness.terminations(), "terminations").isGreaterThan(0);
 			AtomicReference<SessionSlots.Slot> second = new AtomicReference<>();
 			Thread waiter = acquiring(slots, second);
@@ -222,7 +222,7 @@ public final class SessionSlotsTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 30_000)
-	public void ignoresRunOfCurrentProcess() throws IOException, InterruptedException
+	public void ignoresSessionOfCurrentProcess() throws IOException, InterruptedException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -231,7 +231,7 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot first = slots.acquire(false);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(first.runId());
+				Yielding.fileReplacer()).withFixedSlotId(first.slotId());
 			manager.create("claude");
 			slots.release(first);
 
@@ -254,9 +254,9 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1,
 				new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
-			Path run = Files.createDirectories(first.root().resolve("claude").resolve(first.runId()));
-			Path manifest = run.resolve("session.json");
-			Path sentinel = run.resolve("evidence");
+			Path sessionFolder = Files.createDirectories(first.root().resolve("claude").resolve(first.slotId()));
+			Path manifest = sessionFolder.resolve("session.json");
+			Path sentinel = sessionFolder.resolve("evidence");
 			Files.writeString(manifest, "{not json");
 			Files.writeString(sentinel, "keep");
 			IOException failure = null;
@@ -284,7 +284,7 @@ public final class SessionSlotsTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 30_000)
-	public void emptiesRunWithoutManifest() throws IOException, InterruptedException
+	public void emptiesSessionFolderWithoutManifest() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -292,12 +292,12 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot first = slots.acquire(false);
 			slots.release(first);
-			Path run = first.root().resolve("claude").resolve(first.runId());
+			Path sessionFolder = first.root().resolve("claude").resolve(first.slotId());
 			for (String entry : List.of("home", "project", "responses"))
-				Files.createDirectories(run.resolve(entry));
+				Files.createDirectories(sessionFolder.resolve(entry));
 
 			requireThat(slots.acquire(false), "second").isEqualTo(first);
-			requireThat(Files.exists(run, LinkOption.NOFOLLOW_LINKS), "runExists").isFalse();
+			requireThat(Files.exists(sessionFolder, LinkOption.NOFOLLOW_LINKS), "runExists").isFalse();
 			requireThat(liveness.terminations(), "terminations").isEqualTo(0);
 		}
 	}
@@ -318,8 +318,8 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot first = slots.acquire(false);
 			slots.release(first);
-			Path run = Files.createDirectories(first.root().resolve("claude").resolve(first.runId()));
-			Path manifest = run.resolve("session.json");
+			Path sessionFolder = Files.createDirectories(first.root().resolve("claude").resolve(first.slotId()));
+			Path manifest = sessionFolder.resolve("session.json");
 			Files.writeString(manifest, "{not json");
 			IOException failure = null;
 			try
@@ -347,18 +347,18 @@ public final class SessionSlotsTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 30_000)
-	public void keepsManifestUntilRunIsEmpty() throws IOException, InterruptedException
+	public void keepsManifestUntilFolderIsEmpty() throws IOException, InterruptedException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1,
 				new Liveness());
 			SessionSlots.Slot slot = slots.acquire(false);
-			NestedSession run = new NestedSessionManager(new FileLocks(), slot.root(), Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(slot.runId()).create("claude");
-			Path manifest = run.directory().resolve("session.json");
+			NestedSession nestedSession = new NestedSessionManager(new FileLocks(), slot.root(), Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId(slot.slotId()).create("claude");
+			Path manifest = nestedSession.directory().resolve("session.json");
 			IOException failure = null;
-			try (UndeletableDirectory _ = UndeletableDirectory.after(run.directory(), "session.json"))
+			try (UndeletableDirectory _ = UndeletableDirectory.after(nestedSession.directory(), "session.json"))
 			{
 				slots.release(slot);
 			}
@@ -388,13 +388,13 @@ public final class SessionSlotsTest
 		{
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
-			NestedSession run = interruptedRun(jvm, first, SESSION_ID);
+			NestedSession nestedSession = interruptedSession(jvm, first, SESSION_ID);
 			slots.retain(first);
 
-			requireThat(Files.isDirectory(run.directory().resolve("home")), "kept").isTrue();
+			requireThat(Files.isDirectory(nestedSession.directory().resolve("home")), "kept").isTrue();
 			SessionSlots.Slot second = slots.acquire(false);
 			requireThat(second.number(), "number").isEqualTo(2);
-			requireThat(second.runId(), "runId").isEqualTo("s-2");
+			requireThat(second.slotId(), "slotId").isEqualTo("s-2");
 			AtomicReference<SessionSlots.Slot> third = new AtomicReference<>();
 			Thread waiter = acquiring(slots, third);
 			awaitWaiting(waiter);
@@ -402,7 +402,7 @@ public final class SessionSlotsTest
 			slots.release(second);
 			waiter.join(WAIT);
 			requireThat(third.get(), "third").isEqualTo(second);
-			requireThat(Files.isDirectory(run.directory().resolve("home")), "stillKept").isTrue();
+			requireThat(Files.isDirectory(nestedSession.directory().resolve("home")), "stillKept").isTrue();
 		}
 	}
 
@@ -422,7 +422,7 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(first.runId());
+				Yielding.fileReplacer()).withFixedSlotId(first.slotId());
 			manager.create("claude");
 			slots.retain(first);
 			requireThat(slots.acquire(false), "unreported").isEqualTo(first);
@@ -455,28 +455,28 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1,
 				new ProcessHandleLiveness());
 			SessionSlots.Slot development = slots.acquire(false);
-			NestedSession developmentRun = interruptedRun(jvm, development, SESSION_ID);
+			NestedSession developmentSession = interruptedSession(jvm, development, SESSION_ID);
 			try (Process harness = new ProcessBuilder(ProcessHandle.current().info().command().orElseThrow(), "-cp",
 				System.getProperty("java.class.path"), InterruptedRunnerProcess.class.getName(), "harness").start())
 			{
 				String start = HarnessProcesses.system().find(harness.pid()).flatMap(ProcessDescription::start).
 					orElseThrow();
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), development.root(),
-					Clock.systemUTC(), Yielding.fileReplacer()).withFixedRunId(development.runId());
-				manager.markHarnessStarting(developmentRun);
-				manager.recordHarnessProcess(developmentRun, harness.pid(), start);
+					Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId(development.slotId());
+				manager.markHarnessStarting(developmentSession);
+				manager.recordHarnessProcess(developmentSession, harness.pid(), start);
 				slots.retain(development);
 				SessionSlots.Slot heldOut = slots.acquire(true);
-				NestedSession heldOutRun = interruptedRun(jvm, heldOut, OTHER_SESSION_ID);
+				NestedSession heldOutSession = interruptedSession(jvm, heldOut, OTHER_SESSION_ID);
 				slots.retain(heldOut);
 
 				requireThat(slots.acquireRetained(OTHER_SESSION_ID, "claude"), "heldOut").
 					isEqualTo(Optional.of(heldOut));
-				requireThat(Files.isDirectory(heldOutRun.directory().resolve("home")), "heldOutKept").isTrue();
+				requireThat(Files.isDirectory(heldOutSession.directory().resolve("home")), "heldOutKept").isTrue();
 				requireThat(slots.acquireRetained(SESSION_ID, "claude"), "development").
 					isEqualTo(Optional.of(development));
 				requireThat(harness.waitFor(10, TimeUnit.SECONDS), "harnessStopped").isTrue();
-				requireThat(Files.isDirectory(developmentRun.directory().resolve("home")), "developmentKept").isTrue();
+				requireThat(Files.isDirectory(developmentSession.directory().resolve("home")), "developmentKept").isTrue();
 				requireThat(slots.acquireRetained("unknown-session", "claude"), "unknown").isEmpty();
 			}
 		}
@@ -499,11 +499,11 @@ public final class SessionSlotsTest
 			Liveness liveness = new Liveness();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 2, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			NestedSession run = interruptedRun(jvm, slot, SESSION_ID);
+			NestedSession nestedSession = interruptedSession(jvm, slot, SESSION_ID);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(slot.runId());
-			manager.markHarnessStarting(run);
-			manager.recordHarnessProcess(run, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
+				Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+			manager.markHarnessStarting(nestedSession);
+			manager.recordHarnessProcess(nestedSession, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			slots.retain(slot);
 
 			SessionRefusedException alive = expectThrows(SessionRefusedException.class,
@@ -519,10 +519,10 @@ public final class SessionSlotsTest
 			requireThat(inUse.getMessage(), "inUse").contains("resuming");
 			slots.retain(resumed);
 
-			Path manifest = run.directory().resolve("session.json");
+			Path manifest = nestedSession.directory().resolve("session.json");
 			Files.writeString(manifest, Files.readString(manifest).replace("\"schema_version\": 6", "\"schema_version\": 9"));
 			expectThrows(IOException.class, () -> slots.acquireRetained(SESSION_ID, "claude"));
-			requireThat(Files.isDirectory(run.directory().resolve("home")), "kept").isTrue();
+			requireThat(Files.isDirectory(nestedSession.directory().resolve("home")), "kept").isTrue();
 		}
 	}
 
@@ -534,7 +534,7 @@ public final class SessionSlotsTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 30_000)
-	public void discardsRetainedRun() throws IOException, InterruptedException
+	public void discardsRetainedSession() throws IOException, InterruptedException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -542,7 +542,7 @@ public final class SessionSlotsTest
 			Liveness liveness = new Liveness();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			interruptedRun(jvm, slot, SESSION_ID);
+			interruptedSession(jvm, slot, SESSION_ID);
 			slots.retain(slot);
 			liveness.end();
 
@@ -575,7 +575,7 @@ public final class SessionSlotsTest
 			liveness.end();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			interruptedRun(jvm, slot, SESSION_ID);
+			interruptedSession(jvm, slot, SESSION_ID);
 			slots.markStopping(slot);
 			AtomicReference<Object> resumed = new AtomicReference<>();
 			Thread resume = running(() -> slots.acquireRetained(SESSION_ID, "claude"), resumed);
@@ -596,7 +596,7 @@ public final class SessionSlotsTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 30_000)
-	public void resumeFindsNoRunThatStoppingSessionEnded() throws IOException, InterruptedException
+	public void resumeFindsNoSlotThatAStopEnded() throws IOException, InterruptedException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -605,13 +605,13 @@ public final class SessionSlotsTest
 			liveness.end();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			NestedSession run = interruptedRun(jvm, slot, SESSION_ID);
+			NestedSession nestedSession = interruptedSession(jvm, slot, SESSION_ID);
 			slots.markStopping(slot);
 			AtomicReference<Object> resumed = new AtomicReference<>();
 			Thread resume = running(() -> slots.acquireRetained(SESSION_ID, "claude"), resumed);
 			awaitWaiting(resume);
 			new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(), Yielding.fileReplacer()).
-				withFixedRunId(slot.runId()).markCompleted(run);
+				withFixedSlotId(slot.slotId()).markCompleted(nestedSession);
 			slots.release(slot);
 			resume.join(WAIT);
 
@@ -636,7 +636,7 @@ public final class SessionSlotsTest
 			liveness.end();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			interruptedRun(jvm, slot, SESSION_ID);
+			interruptedSession(jvm, slot, SESSION_ID);
 			slots.markStopping(slot);
 			AtomicReference<Object> discarded = new AtomicReference<>();
 			Thread discard = running(() -> slots.discard(SESSION_ID), discarded);
@@ -660,14 +660,14 @@ public final class SessionSlotsTest
 	 * @return the run
 	 * @throws IOException if the run cannot be created
 	 */
-	private static NestedSession interruptedRun(TestJvmScope jvm, SessionSlots.Slot slot, String sessionId)
+	private static NestedSession interruptedSession(TestJvmScope jvm, SessionSlots.Slot slot, String sessionId)
 		throws IOException
 	{
 		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
-			Yielding.fileReplacer()).withFixedRunId(slot.runId());
-		NestedSession run = manager.create("claude");
-		manager.recordHarnessSession(run, sessionId);
-		return run;
+			Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+		NestedSession nestedSession = manager.create("claude");
+		manager.recordHarnessSession(nestedSession, sessionId);
+		return nestedSession;
 	}
 
 	/**

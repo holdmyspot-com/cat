@@ -40,11 +40,11 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
  * @param responses the run's responses directory, where the runner answers each request
- * @param requestedRuns the directory below which the runs of the requested sessions are built
+ * @param requestedSlots the directory below which the runs of the requested sessions are built
  * @param launcher  the {@code request-session} launcher of the run's artifact
  * @param shell the shell of the session's commands, in whose form the launcher prints the command that waits again
  */
-public record SessionRequestAccess(Path requests, Path responses, Path requestedRuns, Path launcher, Shell shell)
+public record SessionRequestAccess(Path requests, Path responses, Path requestedSlots, Path launcher, Shell shell)
 {
 	/**
 	 * A shell that can run the request launcher.
@@ -100,13 +100,13 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * The directory, in the requested-runs directory, that holds the directories that stand for the sessions that a
 	 * session may request.
 	 */
-	private static final String REQUESTED_RUN_ROOTS = "allowed";
+	private static final String REQUESTED_RESULTS_FOLDERS = "allowed";
 	/**
 	 * The requested-runs directory in a run's directory. The name is short because the paths of each requested
 	 * session's run, which every path of its home and project starts with, recur many times in what its harness sends
 	 * the model.
 	 */
-	private static final String REQUESTED_RUNS = "slots";
+	private static final String REQUESTED_SLOTS = "slots";
 	/**
 	 * The most bytes of a {@link #LIMITS_FILE} that a reader reads.
 	 */
@@ -198,7 +198,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 *
 	 * @param requests  the run's requests directory, where the {@code request-session} launcher writes each request
 	 * @param responses the run's responses directory, where the runner answers each request
-	 * @param requestedRuns the directory below which the runs of the requested sessions are built
+	 * @param requestedSlots the directory below which the runs of the requested sessions are built
 	 * @param launcher  the {@code request-session} launcher of the run's artifact
 	 * @param shell the shell of the session's commands, in whose form the launcher prints the command that waits again
 	 * @throws NullPointerException if any of the arguments are null
@@ -207,7 +207,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	{
 		requireThat(requests, "requests").isNotNull();
 		requireThat(responses, "responses").isNotNull();
-		requireThat(requestedRuns, "requestedRuns").isNotNull();
+		requireThat(requestedSlots, "requestedSlots").isNotNull();
 		requireThat(launcher, "launcher").isNotNull();
 		requireThat(shell, "shell").isNotNull();
 	}
@@ -215,41 +215,41 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	/**
 	 * Returns the requests directory of a run, which exists once a runner has given the run's session its access.
 	 *
-	 * @param run the run
+	 * @param nestedSession the run
 	 * @return the directory
-	 * @throws NullPointerException if {@code run} is null
+	 * @throws NullPointerException if {@code nestedSession} is null
 	 */
-	public static Path requestsDirectory(NestedSession run)
+	public static Path requestsDirectory(NestedSession nestedSession)
 	{
-		requireThat(run, "run").isNotNull();
-		return run.directory().resolve("requests");
+		requireThat(nestedSession, "nestedSession").isNotNull();
+		return nestedSession.directory().resolve("requests");
 	}
 
 	/**
 	 * Returns the responses directory of a run, which exists once a runner has given the run's session its access.
 	 *
-	 * @param run the run
+	 * @param nestedSession the run
 	 * @return the directory
-	 * @throws NullPointerException if {@code run} is null
+	 * @throws NullPointerException if {@code nestedSession} is null
 	 */
-	public static Path responsesDirectory(NestedSession run)
+	public static Path responsesDirectory(NestedSession nestedSession)
 	{
-		requireThat(run, "run").isNotNull();
-		return run.directory().resolve("responses");
+		requireThat(nestedSession, "nestedSession").isNotNull();
+		return nestedSession.directory().resolve("responses");
 	}
 
 	/**
 	 * Returns the directory below which the runs of the sessions that a run's session requests are built, which exists
 	 * once a runner has given the run's session its access.
 	 *
-	 * @param run the run
+	 * @param nestedSession the run
 	 * @return the directory
-	 * @throws NullPointerException if {@code run} is null
+	 * @throws NullPointerException if {@code nestedSession} is null
 	 */
-	public static Path requestedRunsDirectory(NestedSession run)
+	public static Path requestedSlotsDirectory(NestedSession nestedSession)
 	{
-		requireThat(run, "run").isNotNull();
-		return run.directory().resolve(REQUESTED_RUNS);
+		requireThat(nestedSession, "nestedSession").isNotNull();
+		return nestedSession.directory().resolve(REQUESTED_SLOTS);
 	}
 
 	/**
@@ -260,42 +260,42 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @return the directory
 	 * @throws IllegalArgumentException if {@code ordinal} is not positive
 	 */
-	public Path requestedRunRoot(int ordinal)
+	public Path requestedResultsFolder(int ordinal)
 	{
-		return requestedRunRoot(requestedRuns, ordinal);
+		return requestedResultsFolder(requestedSlots, ordinal);
 	}
 
 	/**
 	 * Returns the directory that holds the directories that stand for the sessions that a run's session may request,
 	 * and nothing else. No requested session runs below it.
 	 *
-	 * @param requestedRuns the run's requested-runs directory
+	 * @param requestedSlots the run's requested-runs directory
 	 * @return the directory
-	 * @throws NullPointerException if {@code requestedRuns} is null
+	 * @throws NullPointerException if {@code requestedSlots} is null
 	 */
-	public static Path requestedRunRoots(Path requestedRuns)
+	public static Path requestedResultsFolders(Path requestedSlots)
 	{
-		requireThat(requestedRuns, "requestedRuns").isNotNull();
-		return requestedRuns.resolve(REQUESTED_RUN_ROOTS);
+		requireThat(requestedSlots, "requestedSlots").isNotNull();
+		return requestedSlots.resolve(REQUESTED_RESULTS_FOLDERS);
 	}
 
 	/**
 	 * Returns the empty directory that stands for one session that a run's session may request, which lies in the
 	 * directory of the {@link #GROUP_SIZE} directories that include it, named by how many whole groups precede that
-	 * one, in {@link #requestedRunRoots(Path)}. The requested session does not run there: the run's broker builds its
-	 * run in a slot.
+	 * one, in {@link #requestedResultsFolders(Path)}. The requested session does not run there: the run's broker builds
+	 * its run in a slot.
 	 *
-	 * @param requestedRuns the run's requested-runs directory
-	 * @param ordinal       the session's place among the sessions that the run's session may request, from 1
+	 * @param requestedSlots the run's requested-runs directory
+	 * @param ordinal        the session's place among the sessions that the run's session may request, from 1
 	 * @return the directory
-	 * @throws NullPointerException     if {@code requestedRuns} is null
+	 * @throws NullPointerException     if {@code requestedSlots} is null
 	 * @throws IllegalArgumentException if {@code ordinal} is not positive
 	 */
-	public static Path requestedRunRoot(Path requestedRuns, int ordinal)
+	public static Path requestedResultsFolder(Path requestedSlots, int ordinal)
 	{
-		requireThat(requestedRuns, "requestedRuns").isNotNull();
+		requireThat(requestedSlots, "requestedSlots").isNotNull();
 		requireThat(ordinal, "ordinal").isPositive();
-		return requestedRunRoots(requestedRuns).resolve(String.valueOf(ordinal / GROUP_SIZE)).
+		return requestedResultsFolders(requestedSlots).resolve(String.valueOf(ordinal / GROUP_SIZE)).
 			resolve(String.valueOf(ordinal));
 	}
 
@@ -307,14 +307,14 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 */
 	public boolean allowsRequests()
 	{
-		return Files.isDirectory(requestedRunRoot(1));
+		return Files.isDirectory(requestedResultsFolder(1));
 	}
 
 	/**
 	 * Returns the access of a run's session, creating the run's requests, responses and requested-runs directories. A
 	 * runner calls this before it decides what the session may read, so that its sandbox covers all three directories.
 	 *
-	 * @param run             the run
+	 * @param nestedSession   the run
 	 * @param artifact        the harness artifact that the run uses, whose {@code bin} directory holds the launcher
 	 * @param sessionRequests how many sessions the session may request, which is the number of directories that
 	 *                        stand for a requested session that this creates
@@ -326,20 +326,20 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
 	 * @throws IOException              if a directory cannot be created
 	 */
-	public static Optional<SessionRequestAccess> allowing(NestedSession run, Path artifact, int sessionRequests,
+	public static Optional<SessionRequestAccess> allowing(NestedSession nestedSession, Path artifact, int sessionRequests,
 		Platform platform, Shell shell) throws IOException
 	{
-		requireThat(run, "run").isNotNull();
+		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(sessionRequests, "sessionRequests").isNotNegative();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(shell, "shell").isNotNull();
-		Path requests = Files.createDirectories(requestsDirectory(run));
-		Path responses = Files.createDirectories(responsesDirectory(run));
-		Path requestedRuns = Files.createDirectories(requestedRunsDirectory(run));
+		Path requests = Files.createDirectories(requestsDirectory(nestedSession));
+		Path responses = Files.createDirectories(responsesDirectory(nestedSession));
+		Path requestedSlots = Files.createDirectories(requestedSlotsDirectory(nestedSession));
 		for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
-			Files.createDirectories(requestedRunRoot(requestedRuns, ordinal));
-		return Optional.of(new SessionRequestAccess(requests, responses, requestedRuns, launcher(artifact, platform),
+			Files.createDirectories(requestedResultsFolder(requestedSlots, ordinal));
+		return Optional.of(new SessionRequestAccess(requests, responses, requestedSlots, launcher(artifact, platform),
 			shell));
 	}
 

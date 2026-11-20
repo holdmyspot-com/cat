@@ -12,34 +12,34 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * The accesses that a child session's commands need, and the paths they must not read, before the parent's policy
  * bounds them.
  *
- * @param runFolder   the absolute folder that holds the child's run, which the launcher creates empty and owns
- * @param extraWrites the absolute paths outside the session folder that the commands need to write, such as dependency
- *                    caches
- * @param readDenials the absolute paths that the commands must not read, such as harness login files and the paths
- *                    that the request denies
- * @param hosts       the network hosts that the commands need to reach, as host names or literal IP addresses, in
- *                    lower case
+ * @param sessionFolder the absolute folder that holds the child's run, which the launcher creates empty and owns
+ * @param extraWrites   the absolute paths outside the session folder that the commands need to write, such as
+ *                      dependency caches
+ * @param readDenials   the absolute paths that the commands must not read, such as harness login files and the paths
+ *                      that the request denies
+ * @param hosts         the network hosts that the commands need to reach, as host names or literal IP addresses, in
+ *                      lower case
  */
-public record ChildNeeds(Path runFolder, List<Path> extraWrites, List<Path> readDenials, Set<String> hosts)
+public record ChildNeeds(Path sessionFolder, List<Path> extraWrites, List<Path> readDenials, Set<String> hosts)
 {
 	/**
 	 * Creates the needs of a child.
 	 *
-	 * @param runFolder   the absolute folder that holds the child's run, which the launcher creates empty and owns
-	 * @param extraWrites the absolute paths outside the session folder that the commands need to write, such as
-	 *                    dependency caches
-	 * @param readDenials the absolute paths that the commands must not read, such as harness login files and the
-	 *                    paths that the request denies
-	 * @param hosts       the network hosts that the commands need to reach, as host names or literal IP addresses
+	 * @param sessionFolder the absolute folder that holds the child's run, which the launcher creates empty and owns
+	 * @param extraWrites   the absolute paths outside the session folder that the commands need to write, such as
+	 *                      dependency caches
+	 * @param readDenials   the absolute paths that the commands must not read, such as harness login files and the
+	 *                      paths that the request denies
+	 * @param hosts         the network hosts that the commands need to reach, as host names or literal IP addresses
 	 * @throws NullPointerException     if any of the arguments are null, or a collection contains null
 	 * @throws IllegalArgumentException if a path is not absolute, or a host is blank or is a pattern that starts with
 	 *                                  {@code *}
 	 */
 	public ChildNeeds
 	{
-		requireThat(runFolder, "runFolder").isNotNull();
-		if (!runFolder.isAbsolute())
-			throw new IllegalArgumentException("runFolder must be absolute: " + runFolder);
+		requireThat(sessionFolder, "sessionFolder").isNotNull();
+		if (!sessionFolder.isAbsolute())
+			throw new IllegalArgumentException("sessionFolder must be absolute: " + sessionFolder);
 		extraWrites = ParentPolicy.absolutePaths(extraWrites, "extraWrites");
 		readDenials = ParentPolicy.absolutePaths(readDenials, "readDenials");
 		hosts = lowerCaseHosts(hosts);
@@ -84,6 +84,6 @@ public record ChildNeeds(Path runFolder, List<Path> extraWrites, List<Path> read
 		writes.addAll(extra.writes());
 		Set<String> allHosts = new LinkedHashSet<>(hosts);
 		allHosts.addAll(extra.hosts());
-		return new ChildNeeds(runFolder, List.copyOf(writes), readDenials, allHosts);
+		return new ChildNeeds(sessionFolder, List.copyOf(writes), readDenials, allHosts);
 	}
 }

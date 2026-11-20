@@ -335,7 +335,8 @@ public final class SessionDirectoryTest
 
 			Path directory = project.toAbsolutePath().normalize().resolve(".cat/sessions/" + SESSION_ID);
 			requireThat(session.campaigns(), "campaigns").isEqualTo(directory.resolve("optimizer"));
-			requireThat(session.runRoot("claude"), "runRoot").isEqualTo(directory.resolve("optimizer-runs/claude"));
+			requireThat(session.resultsFolder("claude"),
+				"resultsFolder").isEqualTo(directory.resolve("optimizer-runs/claude"));
 			requireThat(Files.exists(session.campaigns()), "campaignsExist").isFalse();
 			requireThat(Files.exists(directory.resolve("optimizer-runs")), "runsExist").isFalse();
 		}

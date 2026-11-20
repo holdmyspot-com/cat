@@ -257,12 +257,12 @@ public final class RequestServer
 		requireThat(starter, "starter").isNotNull();
 		requireThat(cleanup, "cleanup").isNotNull();
 		RunnerChildNeeds runner = new RunnerChildNeeds(starter);
-		return (harness, runFolder, deniedReads, bound) ->
+		return (harness, sessionFolder, deniedReads, bound) ->
 		{
-			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(runFolder),
+			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(sessionFolder),
 				".child-needs-"));
 			ChildNeeds reported = runner.needs(harness, directory.resolve("run"), deniedReads, bound);
-			return new ChildNeeds(runFolder, reported.extraWrites(), reported.readDenials(), reported.hosts());
+			return new ChildNeeds(sessionFolder, reported.extraWrites(), reported.readDenials(), reported.hosts());
 		};
 	}
 
@@ -431,7 +431,7 @@ public final class RequestServer
 				return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 			}
 			return SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, harness, args, input,
-				requests.get(), HarnessTemporaryRoot.from(tools).defaultRunRoot(), pause, output, errors);
+				requests.get(), HarnessTemporaryRoot.from(tools).defaultResultsFolder(), pause, output, errors);
 		}
 	}
 
@@ -746,8 +746,8 @@ public final class RequestServer
 		 * Applies the request's own choices of the session's requests, capacity wait and concurrency, and bounds the
 		 * session by the intersection of the session's policy and what the new session needs.
 		 *
-		 * @param request the request
-		 * @param runRoot the request's results folder
+		 * @param request       the request
+		 * @param resultsFolder the request's results folder
 		 * @return the options
 		 * @throws SessionRefusedException if the session's policy cannot be read safely or does not allow what the new
 		 *                                 session needs
@@ -755,7 +755,7 @@ public final class RequestServer
 		 *                                 written
 		 */
 		@Override
-		public List<String> options(LaunchRequest request, Path runRoot) throws IOException
+		public List<String> options(LaunchRequest request, Path resultsFolder) throws IOException
 		{
 			List<String> options = new ArrayList<>();
 			request.capacityWait().ifPresent(seconds ->
@@ -766,9 +766,9 @@ public final class RequestServer
 				options.addAll(List.of("--session-requests", String.valueOf(request.sessionRequests())));
 			if (request.requestDepth() > 0)
 				options.addAll(List.of("--request-depth", String.valueOf(request.requestDepth())));
-			ChildPolicy child = bound.bound(request.harness(), runRoot, request.deniedReads(),
+			ChildPolicy child = bound.bound(request.harness(), resultsFolder, request.deniedReads(),
 				request.extraPermissions(), askingThread);
-			Path folder = Files.createTempDirectory(Files.createDirectories(runRoot), ".policy-bound-");
+			Path folder = Files.createTempDirectory(Files.createDirectories(resultsFolder), ".policy-bound-");
 			return PolicyBoundFile.boundArguments(JsonMapper.builder().build(), options, folder, child);
 		}
 

@@ -115,7 +115,7 @@ public final class PromptOptimizerCli
 		{
 			Optional<String> refusal = scope.noHarnessRefusal();
 			if (refusal.isEmpty() && commands.startsSessions(args))
-				refusal = scope.runRefusal();
+				refusal = scope.nestedSessionRefusal();
 			if (refusal.isPresent())
 			{
 				out.println(Commands.statusMessage(scope.json(), "refused", refusal.get()));

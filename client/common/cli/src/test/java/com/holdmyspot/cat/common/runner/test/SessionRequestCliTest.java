@@ -292,7 +292,7 @@ public final class SessionRequestCliTest
 				ManualClock time = new ManualClock(Instant.EPOCH);
 				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
 					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests, nullDevice,
-					RequestLimits.IN_RUN, time,
+					RequestLimits.IN_NESTED_SESSION, time,
 					() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
 				Map<String, String> entries = new HashMap<>();
 				try (Stream<Path> files = Files.list(requests);
@@ -344,12 +344,12 @@ public final class SessionRequestCliTest
 			ManualClock time = new ManualClock(Instant.EPOCH);
 			SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
 					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests,
-				root.resolve("absent-null-device"), RequestLimits.IN_RUN, time,
+				root.resolve("absent-null-device"), RequestLimits.IN_NESTED_SESSION, time,
 				() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
 			Path inputs = Files.createDirectory(root.resolve("inputs"));
 			try (Stream<Path> files = Files.list(requests))
 			{
-				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_RUN);
+				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_NESTED_SESSION);
 			}
 
 			Path copy = inputs.resolve("project");
@@ -376,29 +376,29 @@ public final class SessionRequestCliTest
 			// targets beside it, which the runner checks for changes
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			NestedSession run = manager.create("harness");
-			manager.copyProject(copy, run);
-			Path runProject = run.directory().resolve("project");
-			Path runLinkTargets = NestedSessionManager.linkTargets(run.directory()).toRealPath();
+			NestedSession nestedSession = manager.create("harness");
+			manager.copyProject(copy, nestedSession);
+			Path sessionProject = nestedSession.directory().resolve("project");
+			Path sessionLinkTargets = NestedSessionManager.linkTargets(nestedSession.directory()).toRealPath();
 			for (String name : List.of("notes.md", "tree"))
 			{
-				requireThat(Files.isSymbolicLink(runProject.resolve(name)), name + "InRun").isTrue();
-				requireThat(runProject.resolve(name).toRealPath().startsWith(runLinkTargets), name + "InRunLinkTargets").
-					isTrue();
+				requireThat(Files.isSymbolicLink(sessionProject.resolve(name)), name + "InRun").isTrue();
+				requireThat(sessionProject.resolve(name).toRealPath().startsWith(sessionLinkTargets),
+					name + "InRunLinkTargets").isTrue();
 			}
-			requireReadOnlyCopies(runProject);
-			requireThat(manager.changedLinkCopies(run), "unchanged").isEmpty();
-			Path changedCopy = runProject.resolve("tree/a.md").toRealPath();
+			requireReadOnlyCopies(sessionProject);
+			requireThat(manager.changedLinkCopies(nestedSession), "unchanged").isEmpty();
+			Path changedCopy = sessionProject.resolve("tree/a.md").toRealPath();
 			PortableFiles.clearReadOnly(changedCopy);
 			Files.writeString(changedCopy, "changed");
-			requireThat(manager.changedLinkCopies(run).orElseThrow(), "changed").
-				contains("link-targets/" + runLinkTargets.relativize(changedCopy).toString().replace('\\', '/') +
+			requireThat(manager.changedLinkCopies(nestedSession).orElseThrow(), "changed").
+				contains("link-targets/" + sessionLinkTargets.relativize(changedCopy).toString().replace('\\', '/') +
 					" (content changed, made writable)");
 			requireThat(Files.readString(root.resolve("outside/notes.md")), "target").isEqualTo("notes");
 			requireThat(Files.readString(outside.resolve("a.md")), "treeTarget").isEqualTo("a");
-			manager.fail(run, "test cleanup");
-			manager.deleteRun(run);
-			requireThat(Files.exists(run.directory()), "runDirectory").isFalse();
+			manager.fail(nestedSession, "test cleanup");
+			manager.deleteSession(nestedSession);
+			requireThat(Files.exists(nestedSession.directory()), "sessionFolder").isFalse();
 			TemporaryDirectories.deleteRecursively(inputs);
 			requireThat(Files.exists(inputs), "inputs").isFalse();
 		}
@@ -474,23 +474,23 @@ public final class SessionRequestCliTest
 			ManualClock time = new ManualClock(Instant.EPOCH);
 			SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
 					"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests,
-				root.resolve("absent-null-device"), RequestLimits.IN_RUN, time,
+				root.resolve("absent-null-device"), RequestLimits.IN_NESTED_SESSION, time,
 				() -> time.advance(Duration.ofSeconds(300)), new PrintWriter(new StringWriter()));
 			Path inputs = Files.createDirectory(root.resolve("inputs"));
 			try (Stream<Path> files = Files.list(requests))
 			{
-				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_RUN);
+				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_NESTED_SESSION);
 			}
 			Path copy = inputs.resolve("project");
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			NestedSession run = manager.create("harness");
-			manager.copyProject(copy, run);
-			Path runProject = run.directory().resolve("project");
+			NestedSession nestedSession = manager.create("harness");
+			manager.copyProject(copy, nestedSession);
+			Path sessionProject = nestedSession.directory().resolve("project");
 			for (String name : modes.keySet())
 			{
 				Set<PosixFilePermission> expected = PortableFiles.mode(project.resolve(name));
-				for (Path received : List.of(copy.resolve(name), runProject.resolve(name)))
+				for (Path received : List.of(copy.resolve(name), sessionProject.resolve(name)))
 				{
 					requireThat(Files.isRegularFile(received, LinkOption.NOFOLLOW_LINKS), received + "IsFile").isTrue();
 					requireThat(PortableFiles.mode(received), received + "Mode").isEqualTo(expected);
@@ -498,9 +498,9 @@ public final class SessionRequestCliTest
 				}
 			}
 			requireThat(Files.exists(inputs.resolve("link-targets")), "linkTargets").isFalse();
-			requireThat(manager.changedLinkCopies(run), "changedLinkCopies").isEmpty();
-			manager.fail(run, "test cleanup");
-			manager.deleteRun(run);
+			requireThat(manager.changedLinkCopies(nestedSession), "changedLinkCopies").isEmpty();
+			manager.fail(nestedSession, "test cleanup");
+			manager.deleteSession(nestedSession);
 			TemporaryDirectories.deleteRecursively(inputs);
 		}
 	}
@@ -545,7 +545,8 @@ public final class SessionRequestCliTest
 			{
 				SessionRequestCli.execute(new String[]{"--harness", "harness-a", "--project", project.toString(),
 						"--prompt", prompt.toString(), "--model", "model-a", "--effort", "effort-a"}, requests, nullDevice,
-					RequestLimits.IN_RUN, new ManualClock(Instant.EPOCH), Thread::yield, new PrintWriter(new StringWriter()));
+					RequestLimits.IN_NESTED_SESSION, new ManualClock(Instant.EPOCH), Thread::yield,
+					new PrintWriter(new StringWriter()));
 				throw new AssertionError("The request was published");
 			}
 			catch (IOException e)
@@ -634,7 +635,7 @@ public final class SessionRequestCliTest
 						}
 					}
 				}
-				RequestLimits limits = RequestLimits.IN_RUN;
+				RequestLimits limits = RequestLimits.IN_NESTED_SESSION;
 				if (kind.equals("entry_count"))
 				{
 					limits = new RequestLimits(10, limits.entryBytes(), limits.totalBytes(), limits.archiveBytes());

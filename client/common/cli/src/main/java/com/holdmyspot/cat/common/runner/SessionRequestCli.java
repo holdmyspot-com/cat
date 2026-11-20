@@ -228,7 +228,7 @@ public final class SessionRequestCli
 	public static int execute(String[] args, Path requests, Clock clock, Pause pause, PrintWriter output)
 		throws IOException
 	{
-		return execute(args, requests, RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN, clock, pause, output);
+		return execute(args, requests, RequestArchive.NULL_DEVICE, RequestLimits.IN_NESTED_SESSION, clock, pause, output);
 	}
 
 	/**
@@ -251,7 +251,7 @@ public final class SessionRequestCli
 	public static int execute(String[] args, Path requests, SessionRequestAccess.Shell shell, Clock clock, Pause pause,
 		PrintWriter output) throws IOException
 	{
-		return execute(args, requests, RequestArchive.NULL_DEVICE, RequestLimits.IN_RUN, shell, clock, pause,
+		return execute(args, requests, RequestArchive.NULL_DEVICE, RequestLimits.IN_NESTED_SESSION, shell, clock, pause,
 			output);
 	}
 

@@ -54,7 +54,7 @@ public final class ServedSessionTest
 	 * @throws IOException if fixture or session I/O fails
 	 */
 	@Test(timeOut = 30_000)
-	public void servesNarrowedSessionAndKeepsItsRun() throws IOException
+	public void servesNarrowedSessionAndKeepsResults() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -77,7 +77,7 @@ public final class ServedSessionTest
 				List<String> types = output.toString().lines().map(line -> json.readTree(line).path("type").asString()).
 					toList();
 				requireThat(types, "types").isEqualTo(List.of("started", "session_id", "turn_completed", "completed"));
-				Path kept = inputs.runRoot.resolve("claude").resolve(RequestingNestedSession.SESSION_ID);
+				Path kept = inputs.resultsFolder.resolve("claude").resolve(RequestingNestedSession.SESSION_ID);
 				requireThat(Files.isDirectory(kept.resolve("artifacts")), "artifacts").isTrue();
 				requireThat(Files.readString(kept.resolve("project/result.txt")), "result").isEqualTo("result");
 				requireThat(Files.exists(kept.resolve("home")), "home").isFalse();
@@ -147,7 +147,7 @@ public final class ServedSessionTest
 	 * @return the session requests of the run and whether one session is served first
 	 */
 	@DataProvider
-	public Object[][] spentRuns()
+	public Object[][] spentSessions()
 	{
 		return new Object[][]{{0, false}, {1, true}};
 	}
@@ -161,7 +161,7 @@ public final class ServedSessionTest
 	 * @param serveFirst      indicates whether the run serves one session before
 	 * @throws IOException if fixture or session I/O fails
 	 */
-	@Test(dataProvider = "spentRuns", timeOut = 30_000)
+	@Test(dataProvider = "spentSessions", timeOut = 30_000)
 	public void refusesBeforeAnyChange(int sessionRequests, boolean serveFirst) throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -178,7 +178,7 @@ public final class ServedSessionTest
 						new StringReader(RECORDS), new StringWriter(), parent.requests(), bounded());
 				}
 				List<String> requestsBefore = names(parent.requests());
-				List<String> runsBefore = names(inputs.runRoot);
+				List<String> runsBefore = names(inputs.resultsFolder);
 				String reason;
 				if (sessionRequests == 0)
 					reason = SessionRequestAccess.NO_REQUESTS_REASON;
@@ -191,7 +191,7 @@ public final class ServedSessionTest
 					reason));
 				requireThat(refusal.getMessage(), "message").contains("--session-requests").doesNotContain("--no-daemon");
 				requireThat(names(parent.requests()), "requests").isEqualTo(requestsBefore);
-				requireThat(names(inputs.runRoot), "runs").isEqualTo(runsBefore);
+				requireThat(names(inputs.resultsFolder), "runs").isEqualTo(runsBefore);
 			}
 		}
 	}
@@ -417,7 +417,7 @@ public final class ServedSessionTest
 	private static final class Inputs
 	{
 		final Path project;
-		final Path runRoot;
+		final Path resultsFolder;
 		final Path workspace;
 		final Path evidence;
 		final Path candidate;
@@ -433,7 +433,7 @@ public final class ServedSessionTest
 		{
 			project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("marker"), "project bytes");
-			runRoot = root.resolve("runs");
+			resultsFolder = root.resolve("runs");
 			workspace = Files.createDirectories(root.resolve("workspace"));
 			Files.writeString(workspace.resolve("notes.txt"), "notes");
 			evidence = Files.writeString(root.resolve("evidence.txt"), "evidence");
@@ -449,7 +449,7 @@ public final class ServedSessionTest
 		 */
 		List<String> arguments()
 		{
-			return List.of("--project", project.toString(), "--results", runRoot.toString(), "--model",
+			return List.of("--project", project.toString(), "--results", resultsFolder.toString(), "--model",
 				"model-a", "--effort", "effort-a");
 		}
 	}

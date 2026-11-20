@@ -44,8 +44,9 @@ public final class LiveNestedSessionsTest
 			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
 			LiveNestedSessions sessions = new LiveNestedSessions())
 		{
-			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			sessions.add(new LiveNestedSession(run, process, new TestHarnessRunnerScope()));
+			NestedSession nestedSession = new NestedSession("harness", "run-1",
+				cleanup.add(Files.createTempDirectory("cat-run-")));
+			sessions.add(new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()));
 			HarnessProcessResult first = sessions.sendTurn("run-1", "first");
 			HarnessProcessResult second = sessions.sendTurn("run-1", "second");
 			requireThat(first.completed(), "firstCompleted").isTrue();

@@ -164,20 +164,20 @@ final class RecordedAppServer implements Bridge
 	@Override
 	public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
-		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot,
+		Path resultsFolder = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, resultsFolder,
 			Clock.systemUTC(), Yielding.fileReplacer());
 		NestedSession completed = HarnessRunnerBridge.serve(() ->
 		{
-			NestedSession run = manager.create("codex");
-			threadId = run.id();
-			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
+			NestedSession nestedSession = manager.create("codex");
+			threadId = nestedSession.id();
+			manager.initialize(nestedSession, resultsFolder, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
 			CodexProcess adapter = new CodexProcess(process, scope, false,
-				CodexProcess.rollouts(run.directory().resolve("home"), run.sessionTranscripts()));
-			adapter.initialize(run.directory().resolve("project"), "requested-alias");
-			return new LiveNestedSession(run, adapter, scope);
+				CodexProcess.rollouts(nestedSession.directory().resolve("home"), nestedSession.sessionTranscripts()));
+			adapter.initialize(nestedSession.directory().resolve("project"), "requested-alias");
+			return new LiveNestedSession(nestedSession, adapter, scope);
 		}, input, output);
 		manager.markCompleted(completed);
 		transcript = completed.directory().resolve("artifacts/transcript.jsonl");

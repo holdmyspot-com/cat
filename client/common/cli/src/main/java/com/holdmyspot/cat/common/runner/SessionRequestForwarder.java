@@ -88,7 +88,7 @@ public final class SessionRequestForwarder
 		{
 			return switch (this)
 			{
-				case RUN -> RequestLimits.IN_RUN;
+				case RUN -> RequestLimits.IN_NESTED_SESSION;
 				case SERVER -> RequestLimits.UNBOUNDED;
 			};
 		}
@@ -136,21 +136,21 @@ public final class SessionRequestForwarder
 	 * launch names one inside a nested session. Outside a nested session, the response is removed once the launch has
 	 * copied what it needs.
 	 *
-	 * @param route          the runner that serves the request
-	 * @param harness        the harness of the runner launcher
-	 * @param args           the runner launcher's options
-	 * @param input          the launch's {@code turn} and {@code complete} records when neither {@code --input} nor
-	 *                       {@code --conversation} is given
-	 * @param requests       the directory into which the launch writes its request
-	 * @param defaultRunRoot the results folder of a launch that names no {@code --results} outside a nested session, or
-	 *                       {@code null} inside one
-	 * @param pause          paces checks for the session's progress
-	 * @param output         receives the session's transcript when {@code --output} is absent
-	 * @param errors         receives the reason when the session does not complete
+	 * @param route                the runner that serves the request
+	 * @param harness              the harness of the runner launcher
+	 * @param args                 the runner launcher's options
+	 * @param input                the launch's {@code turn} and {@code complete} records when neither {@code --input} nor
+	 *                             {@code --conversation} is given
+	 * @param requests             the directory into which the launch writes its request
+	 * @param defaultResultsFolder the results folder of a launch that names no {@code --results} outside a nested
+	 *                             session, or {@code null} inside one
+	 * @param pause                paces checks for the session's progress
+	 * @param output               receives the session's transcript when {@code --output} is absent
+	 * @param errors               receives the reason when the session does not complete
 	 * @return {@code 0} if the session completed, {@code 75} if it found no capacity, {@code 2} if the session was
 	 *         refused, or {@code 1} otherwise
-	 * @throws NullPointerException     if any argument other than {@code defaultRunRoot} is null, or if
-	 *                                  {@code defaultRunRoot} is null outside a nested session
+	 * @throws NullPointerException     if any argument other than {@code defaultResultsFolder} is null, or if
+	 *                                  {@code defaultResultsFolder} is null outside a nested session
 	 * @throws IllegalArgumentException if an option is unknown, incomplete, repeated or, inside a nested session,
 	 *                                  chosen by the parent runner, if {@code --input} and {@code --conversation} are
 	 *                                  both given, or if the launch names no {@code --model} or no {@code --effort}
@@ -159,7 +159,7 @@ public final class SessionRequestForwarder
 	 *                                  run cannot be copied
 	 */
 	public static int forward(Route route, String harness, String[] args, Reader input, Path requests,
-		Path defaultRunRoot, Pause pause, OutputStream output, PrintWriter errors) throws IOException
+		Path defaultResultsFolder, Pause pause, OutputStream output, PrintWriter errors) throws IOException
 	{
 		requireThat(route, "route").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
@@ -167,7 +167,7 @@ public final class SessionRequestForwarder
 		requireThat(input, "input").isNotNull();
 		requireThat(requests, "requests").isDirectory();
 		if (route == Route.SERVER)
-			requireThat(defaultRunRoot, "defaultRunRoot").isNotNull();
+			requireThat(defaultResultsFolder, "defaultResultsFolder").isNotNull();
 		requireThat(pause, "pause").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(errors, "errors").isNotNull();
@@ -197,7 +197,7 @@ public final class SessionRequestForwarder
 					prompts, RequestArchive.NULL_DEVICE, route.limits());
 				response = awaitTranscript(json, responses(requests, id), pause, output, launch.transcript(),
 					Function.identity());
-				incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, response));
+				incomplete.set(collect(route, harness, launch, defaultResultsFolder, requests, id, response));
 			}
 		}
 		else
@@ -206,7 +206,7 @@ public final class SessionRequestForwarder
 			// finds the copy of its run in place
 			response = converse(json, request, requests, id, launch.conversation(), RequestArchive.NULL_DEVICE,
 				route.limits(), pause, output, launch.transcript(),
-				answer -> incomplete.set(collect(route, harness, launch, defaultRunRoot, requests, id, answer)));
+				answer -> incomplete.set(collect(route, harness, launch, defaultResultsFolder, requests, id, answer)));
 		}
 		String status = response.path("status").asString();
 		if (incomplete.get().isPresent() && status.equals("completed"))
@@ -231,19 +231,19 @@ public final class SessionRequestForwarder
 	 * session when the launch names one. The response is removed once the launch has copied what it needs, outside a
 	 * nested session.
 	 *
-	 * @param route          the runner that serves the request
-	 * @param harness        the harness of the runner launcher
-	 * @param launch         the launch
-	 * @param defaultRunRoot the results folder of a launch that names no {@code --results} outside a nested session, or
-	 *                       {@code null} inside one
-	 * @param requests       the directory into which the launch wrote its request
-	 * @param id             the request identifier
-	 * @param response       the response
+	 * @param route                the runner that serves the request
+	 * @param harness              the harness of the runner launcher
+	 * @param launch               the launch
+	 * @param defaultResultsFolder the results folder of a launch that names no {@code --results} outside a nested
+	 *                             session, or {@code null} inside one
+	 * @param requests             the directory into which the launch wrote its request
+	 * @param id                   the request identifier
+	 * @param response             the response
 	 * @return the reason why the copy of the session's run is incomplete, or empty if it is complete or the launch
 	 *   copies none
 	 * @throws IOException if the receipt or the session's run cannot be copied
 	 */
-	private static Optional<String> collect(Route route, String harness, Launch launch, Path defaultRunRoot,
+	private static Optional<String> collect(Route route, String harness, Launch launch, Path defaultResultsFolder,
 		Path requests, String id, JsonNode response) throws IOException
 	{
 		Path childReceipt = responses(requests, id).resolve("receipt.json");
@@ -252,16 +252,16 @@ public final class SessionRequestForwarder
 			Files.createDirectories(launch.receipt().toAbsolutePath().getParent());
 			Files.copy(childReceipt, launch.receipt(), StandardCopyOption.REPLACE_EXISTING);
 		}
-		Path runRoot = launch.runRoot();
-		if (runRoot == null)
+		Path resultsFolder = launch.resultsFolder();
+		if (resultsFolder == null)
 		{
 			// Inside a nested session, the copy stays in the response, which the nested session's runner keeps while that
 			// session lasts
 			if (route != Route.SERVER)
 				return Optional.empty();
-			runRoot = defaultRunRoot;
+			resultsFolder = defaultResultsFolder;
 		}
-		Optional<String> incomplete = copyKeptRun(response, runRoot.resolve(harness), launch.project());
+		Optional<String> incomplete = copyResults(response, resultsFolder.resolve(harness), launch.project());
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		return incomplete;
@@ -272,21 +272,21 @@ public final class SessionRequestForwarder
 	 * gave the session. The session ran in a slot, whose name every session of the slot shares, so the copy takes the
 	 * session's own identifier, which no other session has.
 	 *
-	 * @param response the response
-	 * @param runs     the directory that holds the harness's runs in the launch's results folder
-	 * @param project  the project that the launch named, which the copy's manifest names
+	 * @param response       the response
+	 * @param harnessResults the directory that holds the harness's results copies in the launch's results folder
+	 * @param project        the project that the launch named, which the copy's manifest names
 	 * @return the reason why the copy is incomplete, or empty if the response names no results or the copy is
 	 *   complete
 	 * @throws IOException if the run cannot be copied
 	 */
-	private static Optional<String> copyKeptRun(JsonNode response, Path runs, Path project)
+	private static Optional<String> copyResults(JsonNode response, Path harnessResults, Path project)
 		throws IOException
 	{
-		String run = response.path(SessionRequestBroker.RUN_COPY).asString("");
+		String resultsCopy = response.path(SessionRequestBroker.RESULTS_COPY).asString("");
 		String sessionId = response.path(SessionRequestBroker.SESSION_ID).asString("");
-		if (run.isEmpty() || !RecordCopy.isSessionId(sessionId))
+		if (resultsCopy.isEmpty() || !RecordCopy.isSessionId(sessionId))
 			return Optional.empty();
-		return ResultsCopy.copy(Path.of(run), runs.resolve(sessionId), sessionId, project).incomplete();
+		return ResultsCopy.copy(Path.of(resultsCopy), harnessResults.resolve(sessionId), sessionId, project).incomplete();
 	}
 
 	/**
@@ -366,7 +366,7 @@ public final class SessionRequestForwarder
 		Launch launch = parse(json, route, harness, arguments.toArray(String[]::new));
 		if (launch.records() != null || launch.conversation() != null)
 			throw new InvalidArgumentsException("A served session takes its records from its input");
-		if (launch.runRoot() == null)
+		if (launch.resultsFolder() == null)
 			throw new InvalidArgumentsException("A served session names --results");
 		Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
 		if (refusal.isPresent())
@@ -381,7 +381,7 @@ public final class SessionRequestForwarder
 		}
 		JsonNode response;
 		Path responses = responses(requests, id);
-		try (RecordCopy copy = new RecordCopy(json, output, launch.runRoot().resolve(harness),
+		try (RecordCopy copy = new RecordCopy(json, output, launch.resultsFolder().resolve(harness),
 			     responses.resolve(SessionRequestBroker.TURN_COPY));
 		     TurnFeed records = new TurnFeed(input);
 		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
@@ -400,9 +400,9 @@ public final class SessionRequestForwarder
 		}
 		String status = response.path("status").asString("");
 		String reason = response.path("reason").asString("");
-		boolean kept = !response.path(SessionRequestBroker.RUN_COPY).asString("").isEmpty() &&
+		boolean kept = !response.path(SessionRequestBroker.RESULTS_COPY).asString("").isEmpty() &&
 			RecordCopy.isSessionId(response.path(SessionRequestBroker.SESSION_ID).asString(""));
-		Optional<String> incomplete = copyKeptRun(response, launch.runRoot().resolve(harness), launch.project());
+		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), launch.project());
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		if (incomplete.isPresent() && status.equals("completed"))
@@ -443,7 +443,7 @@ public final class SessionRequestForwarder
 		Path conversation = null;
 		Path transcript = null;
 		Path receipt = null;
-		Path runRoot = null;
+		Path resultsFolder = null;
 		Path artifact = null;
 		Set<String> scalars = new HashSet<>();
 		for (int index = 0; index < args.length; ++index)
@@ -500,7 +500,7 @@ public final class SessionRequestForwarder
 				// The parent runner chooses the artifact; a served session may send it as a plugin
 				case "--artifact" -> artifact = Path.of(value).toAbsolutePath();
 				// The parent runner chooses the results folder; a served session's kept run is copied below it
-				case "--results" -> runRoot = Path.of(value).toAbsolutePath();
+				case "--results" -> resultsFolder = Path.of(value).toAbsolutePath();
 				case "--project" -> project = Path.of(value).toAbsolutePath();
 				case "--plugin" -> request.withArray("plugins").add(Path.of(value).toAbsolutePath().toString());
 				case "--model", "--effort" -> request.put(option.substring(2), value);
@@ -546,7 +546,7 @@ public final class SessionRequestForwarder
 		// A launch that resumes a session continues in the project that the session's run copied at its start
 		if (!request.has(RequestArchive.RESUME))
 			request.put("project", project.toString());
-		return new Launch(request, project, records, conversation, transcript, receipt, runRoot, artifact);
+		return new Launch(request, project, records, conversation, transcript, receipt, resultsFolder, artifact);
 	}
 
 	/**
@@ -625,18 +625,18 @@ public final class SessionRequestForwarder
 	/**
 	 * A launch's options.
 	 *
-	 * @param request      the request's manifest, naming the files and directories that the launch names
-	 * @param project      the project that the launch names, or the working directory if it names none; the request
-	 *                     names it too until it is packed, which names the project's place in the request instead
-	 * @param records      the file of {@code --input}, or null
-	 * @param conversation the folder of {@code --conversation}, or null
-	 * @param transcript   the file of {@code --output}, or null
-	 * @param receipt      the file of {@code --receipt}, or null
-	 * @param runRoot      the folder of {@code --results}, or null
-	 * @param artifact     the folder of {@code --artifact}, or null
+	 * @param request       the request's manifest, naming the files and directories that the launch names
+	 * @param project       the project that the launch names, or the working directory if it names none; the request
+	 *                      names it too until it is packed, which names the project's place in the request instead
+	 * @param records       the file of {@code --input}, or null
+	 * @param conversation  the folder of {@code --conversation}, or null
+	 * @param transcript    the file of {@code --output}, or null
+	 * @param receipt       the file of {@code --receipt}, or null
+	 * @param resultsFolder the folder of {@code --results}, or null
+	 * @param artifact      the folder of {@code --artifact}, or null
 	 */
 	private record Launch(ObjectNode request, Path project, Path records, Path conversation, Path transcript,
-		Path receipt, Path runRoot, Path artifact)
+		Path receipt, Path resultsFolder, Path artifact)
 	{
 	}
 
@@ -849,9 +849,9 @@ public final class SessionRequestForwarder
 		 */
 		private final Writer output;
 		/**
-		 * The folder of the command's runs of the session's harness.
+		 * The folder of the command's results copies of the session's harness.
 		 */
-		private final Path runs;
+		private final Path harnessResults;
 		/**
 		 * The runner's copy of the session's project, initial project and native transcripts as of its last completed turn.
 		 */
@@ -872,17 +872,17 @@ public final class SessionRequestForwarder
 		/**
 		 * Creates a copy.
 		 *
-		 * @param json     the record mapper
-		 * @param output   receives the records
-		 * @param runs     the folder of the command's runs of the session's harness
-		 * @param turnCopy the runner's copy of the session's project, initial project and native transcripts as of the
-		 *                 end of its last completed turn, which exists once a turn has completed
+		 * @param json           the record mapper
+		 * @param output         receives the records
+		 * @param harnessResults the folder of the command's results copies of the session's harness
+		 * @param turnCopy       the runner's copy of the session's project, initial project and native transcripts as
+		 *                       of the end of its last completed turn, which exists once a turn has completed
 		 */
-		RecordCopy(JsonMapper json, Writer output, Path runs, Path turnCopy)
+		RecordCopy(JsonMapper json, Writer output, Path harnessResults, Path turnCopy)
 		{
 			this.json = json;
 			this.output = output;
-			this.runs = runs;
+			this.harnessResults = harnessResults;
 			this.turnCopy = turnCopy;
 		}
 
@@ -894,7 +894,7 @@ public final class SessionRequestForwarder
 		void deleteTurnCopies() throws IOException
 		{
 			if (turnCopied)
-				ResultsCopy.deleteTurnCopies(runs.resolve(sessionId));
+				ResultsCopy.deleteTurnCopies(harnessResults.resolve(sessionId));
 			turnCopied = false;
 		}
 
@@ -930,11 +930,11 @@ public final class SessionRequestForwarder
 					{
 						// The command writes into the session's results while the session runs
 						sessionId = id;
-						Files.createDirectories(runs.resolve(sessionId).resolve("artifacts"));
+						Files.createDirectories(harnessResults.resolve(sessionId).resolve("artifacts"));
 					}
 					else if (type.equals("turn_completed") && !sessionId.isEmpty() && Files.isDirectory(turnCopy))
 					{
-						ResultsCopy.copyTurn(turnCopy, runs.resolve(sessionId));
+						ResultsCopy.copyTurn(turnCopy, harnessResults.resolve(sessionId));
 						turnCopied = true;
 					}
 				}

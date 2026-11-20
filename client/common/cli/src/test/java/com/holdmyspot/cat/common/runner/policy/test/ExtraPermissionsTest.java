@@ -187,15 +187,15 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path run = root.resolve("run");
+			Path sessionFolder = root.resolve("run");
 			Path cache = root.resolve("cache");
 			Path registry = root.resolve("registry");
 			Path denied = root.resolve("denied");
-			ChildNeeds needs = new ChildNeeds(run, List.of(cache), List.of(denied), Set.of("model.example"));
+			ChildNeeds needs = new ChildNeeds(sessionFolder, List.of(cache), List.of(denied), Set.of("model.example"));
 
 			ChildNeeds joined = needs.with(new ExtraPermissions(List.of(registry, cache), Set.of("npm.example")));
 
-			requireThat(joined, "joined").isEqualTo(new ChildNeeds(run, List.of(cache, registry), List.of(denied),
+			requireThat(joined, "joined").isEqualTo(new ChildNeeds(sessionFolder, List.of(cache, registry), List.of(denied),
 				Set.of("model.example", "npm.example")));
 			requireThat(needs.with(ExtraPermissions.NONE), "withNone").isEqualTo(needs);
 		}
@@ -213,16 +213,16 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(registry), List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of("npm.example")), false, List.of());
-			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
+			ChildNeeds needs = new ChildNeeds(sessionFolder, List.of(), List.of(), Set.of()).
 				with(new ExtraPermissions(List.of(registry), Set.of("npm.example")));
 
 			ChildPolicy child = ChildPolicy.intersect(parent, needs);
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, registry));
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder, registry));
 			requireThat(child.hosts(), "hosts").isEqualTo(Set.of("npm.example"));
 		}
 	}
@@ -239,11 +239,11 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
-			ParentPolicy parent = new ParentPolicy(true, List.of(run), List.of(), List.of(), List.of(),
+			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(), List.of(),
 				HostAccess.NONE, false, List.of());
-			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
+			ChildNeeds needs = new ChildNeeds(sessionFolder, List.of(), List.of(), Set.of()).
 				with(new ExtraPermissions(List.of(registry), Set.of("npm.example")));
 
 			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
@@ -267,11 +267,11 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
-			ParentPolicy parent = new ParentPolicy(true, List.of(run), List.of(), List.of(), List.of(),
+			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(), List.of(),
 				HostAccess.NONE, false, List.of());
-			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
+			ChildNeeds needs = new ChildNeeds(sessionFolder, List.of(), List.of(), Set.of()).
 				with(new ExtraPermissions(List.of(registry), Set.of("npm.example")));
 
 			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
@@ -295,12 +295,12 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			Path denied = Files.createDirectory(registry.resolve("secret"));
-			ParentPolicy parent = new ParentPolicy(true, List.of(run, registry), List.of(denied), List.of(),
+			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder, registry), List.of(denied), List.of(),
 				List.of(), HostAccess.NONE, false, List.of());
-			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), Set.of()).
+			ChildNeeds needs = new ChildNeeds(sessionFolder, List.of(), List.of(), Set.of()).
 				with(new ExtraPermissions(List.of(denied.resolve("cache")), Set.of()));
 
 			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,

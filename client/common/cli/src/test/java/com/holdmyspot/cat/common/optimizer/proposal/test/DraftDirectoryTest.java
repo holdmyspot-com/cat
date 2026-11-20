@@ -315,8 +315,8 @@ public final class DraftDirectoryTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Path project = project(scope);
-			Path run = scope.add(Files.createTempDirectory("run-"));
-			Path draft = run.resolve(DraftDirectory.name(run));
+			Path sessionFolder = scope.add(Files.createTempDirectory("run-"));
+			Path draft = sessionFolder.resolve(DraftDirectory.name(sessionFolder));
 			DraftDirectory.seed(scenarios(project), draft);
 			Path written = draft.resolve(".cat/tests/notes/new_case/scenario.md");
 			Files.createDirectories(written.getParent());

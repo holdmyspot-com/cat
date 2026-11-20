@@ -67,19 +67,19 @@ public final class InterruptedRunnerProcess
 		}));
 		NestedSessionManager manager = new NestedSessionManager(new FileLocks(), Path.of(args[1]), Clock.systemUTC(),
 			Yielding.fileReplacer());
-		NestedSession run = manager.create("harness");
-		manager.recordHarnessSession(run, HARNESS_SESSION_ID);
+		NestedSession nestedSession = manager.create("harness");
+		manager.recordHarnessSession(nestedSession, HARNESS_SESSION_ID);
 		try (Process harness = new ProcessBuilder(List.of(ProcessHandle.current().info().command().orElseThrow(), "-cp",
 			System.getProperty("java.class.path"), InterruptedRunnerProcess.class.getName(), "harness")).
 			inheritIO().start())
 		{
-			System.out.println(run.directory() + " " + harness.pid());
+			System.out.println(nestedSession.directory() + " " + harness.pid());
 			System.out.flush();
 			int status = harness.waitFor();
 			try
 			{
-				manager.fail(run, "The harness exited with status " + status);
-				manager.pruneRuntime(run);
+				manager.fail(nestedSession, "The harness exited with status " + status);
+				manager.pruneRuntime(nestedSession);
 			}
 			finally
 			{

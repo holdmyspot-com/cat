@@ -232,12 +232,12 @@ public final class CodexSessionsContractTest
 	 * @throws Exception if the contract check fails
 	 */
 	@Test
-	public void identifiesItsVersionsAndRunRoots() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws Exception
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
 			// Requirement: R-E7
-			contractWithoutSessions(jvm).identifiesItsVersionsAndRunRoots();
+			contractWithoutSessions(jvm).identifiesItsVersionsAndResultsFolders();
 		}
 	}
 

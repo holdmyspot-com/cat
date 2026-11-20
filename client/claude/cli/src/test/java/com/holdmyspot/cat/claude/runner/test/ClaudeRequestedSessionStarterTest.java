@@ -105,7 +105,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 				toRealPath();
 			Path userHome = Files.createDirectory(root.resolve("user"));
 			Path userConfiguration = Files.createDirectory(root.resolve("claude-config"));
-			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
 			Path directory = Files.createDirectory(root.resolve("requested"));
 			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
 				userHome.toString(), "CLAUDE_CONFIG_DIR", userConfiguration.toString(), "CLAUDECODE", "1"));
@@ -143,7 +143,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 					for (Map<String, String> environment : List.of(requestedRunner, nestedRunner))
 					{
 						Map<String, String> session = ClaudeRunner.processEnvironment(runner, environment,
-							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
 						requireThat(session.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").isEqualTo(loginStore);
 					}
 				}
@@ -172,7 +172,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 			Path store = Files.createDirectory(root.resolve("store"));
 			Files.writeString(store.resolve(".credentials.json"),
 				"{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
-			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
 			Path directory = Files.createDirectory(root.resolve("requested"));
 			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
 				userHome.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString(), "CLAUDECODE", "1",
@@ -191,7 +191,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 					for (Map<String, String> environment : List.of(requestedRunner, nestedRunner))
 					{
 						Map<String, String> session = ClaudeRunner.processEnvironment(runner, environment,
-							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+							HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
 						requireThat(session.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo("subscription");
 					}
 				}

@@ -210,7 +210,7 @@ public final class ResultsCopyTest
 		{
 			Path slots = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "kept-slot-"));
 			NestedSessionManager slot = new NestedSessionManager(jvm.fileLocks(), slots, Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId("s-1");
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
 			NestedSession child = slot.create("harness");
 			for (int i = 0; i < 800; ++i)
 				Files.writeString(Files.createDirectories(child.directory().resolve("project/d" + (i % 40))).
@@ -218,7 +218,7 @@ public final class ResultsCopyTest
 			slot.markCompleted(child);
 			Path kept = Files.createTempDirectory(jvm.temporaryDirectory(), "kept-root-");
 			cleanup.add(kept);
-			NestedSessionManager keptRuns = new NestedSessionManager(jvm.fileLocks(), kept, Clock.systemUTC(),
+			NestedSessionManager resultsCopies = new NestedSessionManager(jvm.fileLocks(), kept, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			AtomicBoolean done = new AtomicBoolean();
 			AtomicReference<IOException> seen = new AtomicReference<>();
@@ -228,7 +228,7 @@ public final class ResultsCopyTest
 				{
 					try
 					{
-						keptRuns.pruneTerminalRuntimes("harness");
+						resultsCopies.pruneTerminalRuntimes("harness");
 					}
 					catch (IOException e)
 					{

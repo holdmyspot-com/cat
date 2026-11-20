@@ -83,7 +83,7 @@ public final class HarnessRunnerOptionsTest
 	 * one line without a stack trace, and ends with the status of a refused launch.
 	 */
 	@Test
-	public void missingRunRootEndsAsRefusedLaunch() throws IOException
+	public void missingResultsEndsAsRefusedLaunch() throws IOException
 	{
 		HarnessTemporaryRoot outsideSession = HarnessTemporaryRoot.withoutSession("CLAUDE_CODE_SESSION_ID is unset");
 		StringWriter errors = new StringWriter();
@@ -184,7 +184,7 @@ public final class HarnessRunnerOptionsTest
 
 		requireThat(result.artifact(), "artifact").isEqualTo(path("artifact"));
 		requireThat(result.project(), "project").isEqualTo(path("project"));
-		requireThat(result.runRoot(), "runRoot").isEqualTo(path("caller-temp/runs"));
+		requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("caller-temp/runs"));
 		requireThat(result.model(), "model").isEqualTo("test-model");
 		requireThat(result.effort(), "effort").isEqualTo("high");
 		requireThat(result.output(), "output").isEqualTo(path("output"));
@@ -196,13 +196,13 @@ public final class HarnessRunnerOptionsTest
 	 * Verifies that a launch may name the identifier of the run, which a slot gives so that the run keeps its paths.
 	 */
 	@Test
-	public void parsesRunId()
+	public void parsesSlotId()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--project", absolute("project"), "--results", absolute("slot"), "--slot-id", "slot-1", "--model",
 			"test-model", "--effort", "high"}, "harness", SESSION);
 
-		requireThat(result.runId(), "runId").isEqualTo("slot-1");
+		requireThat(result.slotId(), "slotId").isEqualTo("slot-1");
 	}
 
 	/**
@@ -223,20 +223,20 @@ public final class HarnessRunnerOptionsTest
 	 * Verifies that a launch that names no run identifier leaves the run's identifier to the runner.
 	 */
 	@Test
-	public void leavesRunIdToRunner()
+	public void leavesSlotIdToRunner()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
 			"--project", absolute("project"), "--results", absolute("slot"), "--model", "test-model", "--effort",
 			"high"}, "harness", SESSION);
 
-		requireThat(result.runId(), "runId").isNull();
+		requireThat(result.slotId(), "slotId").isNull();
 	}
 
 	/**
 	 * Verifies that a run identifier that could name another directory is refused.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
-	public void refusesRunIdThatIsNotAnIdentifier()
+	public void refusesSlotIdThatIsNotAnIdentifier()
 	{
 		HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"), "--project", absolute("project"),
 			"--results", absolute("slot"), "--slot-id", "../escape", "--model", "test-model", "--effort", "high"},
@@ -634,7 +634,7 @@ public final class HarnessRunnerOptionsTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void defaultsRunRootToSessionTemp() throws IOException
+	public void defaultsResultsFolderToSessionTemp() throws IOException
 	{
 		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -651,7 +651,7 @@ public final class HarnessRunnerOptionsTest
 
 				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(SESSION_ID).
 					resolve("temp");
-				requireThat(result.runRoot(), "runRoot").isEqualTo(sessionTemp.resolve("nested-sessions"));
+				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(sessionTemp.resolve("nested-sessions"));
 				requireThat(sessionTemp, "sessionTemp").isDirectory();
 			}
 		}
@@ -664,7 +664,7 @@ public final class HarnessRunnerOptionsTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void explicitRunRootLeavesSessionAlone() throws IOException
+	public void explicitResultsLeavesSessionAlone() throws IOException
 	{
 		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -677,7 +677,7 @@ public final class HarnessRunnerOptionsTest
 				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("runs")),
 					"harness", HarnessTemporaryRoot.from(scope));
 
-				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
+				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("runs"));
 				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 			}
 		}
@@ -690,7 +690,7 @@ public final class HarnessRunnerOptionsTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void requiresRunRootWithoutSession() throws IOException
+	public void requiresResultsWithoutSession() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -715,7 +715,7 @@ public final class HarnessRunnerOptionsTest
 				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("runs")),
 					"harness", temporaryRoot);
 
-				requireThat(result.runRoot(), "runRoot").isEqualTo(path("runs"));
+				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("runs"));
 				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 			}
 		}

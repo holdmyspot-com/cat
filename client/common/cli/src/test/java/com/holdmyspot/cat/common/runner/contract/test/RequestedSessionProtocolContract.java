@@ -56,16 +56,16 @@ public final class RequestedSessionProtocolContract
 			}
 
 			HarnessEvaluationResult receipt = NestedSessionReceipt.read(json, observation.receipt(),
-				observation.retainedRun().resolve("project"));
+				observation.retainedSession().resolve("project"));
 			requireThat(receipt.retainedProject(), "retainedProject").
-				isEqualTo(observation.retainedRun().resolve("project"));
-			requireThat(receipt.rawResult().startsWith(observation.retainedRun()), "rawResultWithinRun").isTrue();
+				isEqualTo(observation.retainedSession().resolve("project"));
+			requireThat(receipt.rawResult().startsWith(observation.retainedSession()), "rawResultWithinRun").isTrue();
 			requireThat(Files.mismatch(receipt.rawResult(), observation.transcript()), "transcriptCopy").isEqualTo(-1L);
 			requireThat(Files.isDirectory(receipt.retainedProject()), "retainedProjectExists").isTrue();
 			requireThat(Files.isRegularFile(receipt.rawResult()), "transcriptExists").isTrue();
 			requireThat(Files.readString(receipt.retainedProject().resolve("result.txt")), "retainedProjectBytes").
 				isEqualTo("result");
-			requireThat(Files.exists(observation.retainedRun().resolve("home")), "retainedHome").isFalse();
+			requireThat(Files.exists(observation.retainedSession().resolve("home")), "retainedHome").isFalse();
 		}
 	}
 
@@ -90,21 +90,21 @@ public final class RequestedSessionProtocolContract
 	 *
 	 * @param root the fixture root
 	 * @param artifact the artifact directory
-	 * @param runRoot the destination for the copied requested run
+	 * @param resultsFolder the destination for the copied requested run
 	 * @param transcript the retained transcript path
 	 * @param receipt the retained receipt path
 	 * @param prompts the requested turn prompts, in order
 	 * @param replies the controlled assistant replies, in order
 	 */
-	public record Inputs(Path root, Path artifact, Path runRoot, Path transcript, Path receipt, List<String> prompts,
-		List<String> replies)
+	public record Inputs(Path root, Path artifact, Path resultsFolder, Path transcript, Path receipt,
+		List<String> prompts, List<String> replies)
 	{
 		/**
 		 * Copies fixture inputs so callers cannot mutate a running contract.
 		 *
 		 * @param root the fixture root
 		 * @param artifact the artifact directory
-		 * @param runRoot the destination for the copied requested run
+		 * @param resultsFolder the destination for the copied requested run
 		 * @param transcript the retained transcript path
 		 * @param receipt the retained receipt path
 		 * @param prompts the controlled turn prompts, in order
@@ -136,17 +136,17 @@ public final class RequestedSessionProtocolContract
 	 *
 	 * @param transcript the durable session transcript
 	 * @param receipt the retained-evidence receipt
-	 * @param retainedRun the run named by the receipt
+	 * @param retainedSession the run named by the receipt
 	 * @param receivedPrompts the turn prompts observed by the subject
 	 */
-	public record Observation(Path transcript, Path receipt, Path retainedRun, List<String> receivedPrompts)
+	public record Observation(Path transcript, Path receipt, Path retainedSession, List<String> receivedPrompts)
 	{
 		/**
 		 * Copies observed prompts so callers cannot mutate the contract result.
 		 *
 		 * @param transcript the durable session transcript
 		 * @param receipt the retained-evidence receipt
-		 * @param retainedRun the run named by the receipt
+		 * @param retainedSession the run named by the receipt
 		 * @param receivedPrompts the prompts observed by the subject
 		 */
 		public Observation

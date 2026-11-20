@@ -257,11 +257,11 @@ public final class HarnessEnvironmentTest
 	public void preventsHostGitDiscovery()
 	{
 		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(Map.of("PATH", "/bin")));
-		Path runDirectory = Path.of("/owned/run").toAbsolutePath();
+		Path sessionFolder = Path.of("/owned/run").toAbsolutePath();
 
-		HarnessEnvironment.preventGitDiscoveryAbove(environment, runDirectory);
+		HarnessEnvironment.preventGitDiscoveryAbove(environment, sessionFolder);
 
-		requireThat(environment.get("GIT_CEILING_DIRECTORIES"), "gitCeiling").isEqualTo(runDirectory.toString());
+		requireThat(environment.get("GIT_CEILING_DIRECTORIES"), "gitCeiling").isEqualTo(sessionFolder.toString());
 	}
 
 	/**
@@ -270,20 +270,21 @@ public final class HarnessEnvironmentTest
 	 * from no run, go on.
 	 */
 	@Test
-	public void refusesLaunchInRunWithoutRequests()
+	public void refusesNestedLaunchWithoutRequests()
 	{
 		// Requirement: R-I11
-		Optional<String> refusal = HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE,
-			HarnessEnvironment.RUN_VALUE));
+		Optional<String> refusal = HarnessEnvironment.inNestedSessionRefusal("harness-a",
+			Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE));
 
 		requireThat(refusal.orElseThrow(), "refusal").startsWith("harness-a-runner refuses to start a session").
 			contains("--session-requests <count>").contains("--request-depth <levels>").doesNotContain("--no-daemon");
-		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE,
-				HarnessEnvironment.RUN_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests")), "requesting").
-			isEmpty();
-		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of(HarnessEnvironment.RUN_VARIABLE, "0")),
-			"otherValue").isEmpty();
-		requireThat(HarnessEnvironment.inRunRefusal("harness-a", Map.of("PATH", "/bin")), "outsideRun").isEmpty();
+		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a",
+			Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+				HarnessEnvironment.NESTED_SESSION_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests")),
+			"requesting").isEmpty();
+		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a",
+			Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, "0")), "otherValue").isEmpty();
+		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a", Map.of("PATH", "/bin")), "outsideRun").isEmpty();
 	}
 
 	/**
@@ -292,14 +293,14 @@ public final class HarnessEnvironmentTest
 	 * refused.
 	 */
 	@Test
-	public void refusesRequestServerInRun()
+	public void refusesRequestServerInNestedSession()
 	{
-		Optional<String> refusal = HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.RUN_VARIABLE,
-			HarnessEnvironment.RUN_VALUE));
+		Optional<String> refusal = HarnessEnvironment.requestServerRefusal(Map.of(
+			HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE));
 
 		requireThat(refusal.orElseThrow(), "refusal").startsWith("CAT cannot start the request server:").
 			contains("no request server serves such a session").contains("--session-requests <count>");
-		requireThat(HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.RUN_VARIABLE, "0")),
+		requireThat(HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, "0")),
 			"otherValue").isEmpty();
 		requireThat(HarnessEnvironment.requestServerRefusal(Map.of("PATH", "/bin")), "outsideRun").isEmpty();
 	}

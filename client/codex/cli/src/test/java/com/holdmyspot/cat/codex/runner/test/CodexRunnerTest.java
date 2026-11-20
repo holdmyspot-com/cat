@@ -69,7 +69,7 @@ public final class CodexRunnerTest
 	 * Verifies CAT is installed from this run's marketplace into the fresh isolated home.
 	 */
 	@Test
-	public void reinstallsCatFromTheRunMarketplace()
+	public void reinstallsCatFromTheSessionMarketplace()
 	{
 		requireThat(CodexRunner.pluginSetupCommands("codex", Path.of("marketplace")), "commands").isEqualTo(List.of(
 			List.of("codex", "plugin", "marketplace", "add", "marketplace"),
@@ -460,17 +460,17 @@ public final class CodexRunnerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-tmpdir-"));
-			Path run = Files.createDirectories(root.resolve("run"));
-			Path home = Files.createDirectories(run.resolve("home"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path home = Files.createDirectories(sessionFolder.resolve("home"));
 			Path temporaryDirectory = Files.createDirectories(home.resolve("tmp"));
 			Path configuration = home.resolve("config.toml");
-			CodexConnectionConfiguration.copy(root.resolve("host.toml"), configuration, run.resolve("project"),
+			CodexConnectionConfiguration.copy(root.resolve("host.toml"), configuration, sessionFolder.resolve("project"),
 				HarnessDependencyCaches.NONE, temporaryDirectory, 0, Platform.LINUX_X64);
 			String shellTemporaryDirectory = TomlMapper.builder().build().readTree(Files.readString(configuration)).
 				path("shell_environment_policy").path("set").path("TMPDIR").asString();
 
 			Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
-				"TMPDIR", root.resolve("host-tmp").toString()), HarnessDependencyCaches.NONE, home, run,
+				"TMPDIR", root.resolve("host-tmp").toString()), HarnessDependencyCaches.NONE, home, sessionFolder,
 				temporaryDirectory, Platform.LINUX_X64);
 
 			requireThat(shellTemporaryDirectory, "shellTemporaryDirectory").isEqualTo(temporaryDirectory.toString());
@@ -532,14 +532,14 @@ public final class CodexRunnerTest
 	 * their sessions to the nested session's runner.
 	 */
 	@Test
-	public void marksCatRun()
+	public void marksNestedSession()
 	{
 		Path home = Path.of("/run/home").toAbsolutePath();
 		Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
-			HarnessEnvironment.RUN_VARIABLE, ""), HarnessDependencyCaches.NONE, home, home.getParent(),
+			HarnessEnvironment.NESTED_SESSION_VARIABLE, ""), HarnessDependencyCaches.NONE, home, home.getParent(),
 			home.resolve("tmp"), Platform.LINUX_X64);
 
-		requireThat(appServer.get(HarnessEnvironment.RUN_VARIABLE), "marker").isEqualTo("1");
+		requireThat(appServer.get(HarnessEnvironment.NESTED_SESSION_VARIABLE), "marker").isEqualTo("1");
 	}
 
 	/**
@@ -628,21 +628,21 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			manager.snapshotProject(nestedSession);
 			manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
 			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
 			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
-			Path configuration = run.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-				run.directory().resolve("project"));
+			Path configuration = nestedSession.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+				nestedSession.directory().resolve("project"));
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
 			Map<String, String> environment = Map.of("PATH", bin.toString());
 
-			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
-				Platform.LINUX_X64, environment, null, appServer);
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(),
+				List.of(heldOut), Platform.LINUX_X64, environment, null, appServer);
 
 			requireThat(sandbox.command(), "command").isEqualTo(appServer);
 			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
@@ -673,14 +673,14 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			manager.snapshotProject(nestedSession);
 			NestedSession trial = manager.create("codex");
 			Path evidence = Files.createDirectories(trial.directory().resolve("artifacts"));
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
-			Path configuration = run.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-				run.directory().resolve("project"));
+			Path configuration = nestedSession.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+				nestedSession.directory().resolve("project"));
 			String before = Files.readString(configuration);
 
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
@@ -688,7 +688,7 @@ public final class CodexRunnerTest
 
 			try
 			{
-				CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence), List.of(),
+				CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(evidence), List.of(),
 					Platform.LINUX_X64, environment, null, appServer);
 				throw new AssertionError("The session started without bubblewrap");
 			}
@@ -720,18 +720,18 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			manager.snapshotProject(nestedSession);
 			manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
-			Path configuration = run.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-				run.directory().resolve("project"));
+			Path configuration = nestedSession.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+				nestedSession.directory().resolve("project"));
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
 
-			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(heldOut),
-				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, appServer);
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(),
+				List.of(heldOut), Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, appServer);
 
 			requireThat(sandbox.command(), "command").isEqualTo(appServer);
 			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
@@ -766,19 +766,19 @@ public final class CodexRunnerTest
 			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../notes.md"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			manager.copyProject(source, run);
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			manager.copyProject(source, nestedSession);
+			manager.snapshotProject(nestedSession);
 			manager.create("codex");
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
 			Path bwrap = Files.writeString(bin.resolve("bwrap"), "");
 			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
-			Path configuration = run.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-				run.directory().resolve("project"));
-			Path linkTargets = NestedSessionManager.linkTargets(run.directory()).toRealPath();
+			Path configuration = nestedSession.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+				nestedSession.directory().resolve("project"));
+			Path linkTargets = NestedSessionManager.linkTargets(nestedSession.directory()).toRealPath();
 
-			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(), List.of(),
 				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, CodexRunner.appServerCommand("codex", false));
 
 			List<String> command = sandbox.command();
@@ -829,7 +829,7 @@ public final class CodexRunnerTest
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void deniesRunRootWithoutCallerDenials() throws IOException
+	public void deniesResultsFolderWithoutCallerDenials() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -838,14 +838,14 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			manager.snapshotProject(nestedSession);
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
-			Path configuration = run.directory().resolve("home/config.toml");
-			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-				run.directory().resolve("project"));
+			Path configuration = nestedSession.directory().resolve("home/config.toml");
+			CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+				nestedSession.directory().resolve("project"));
 
-			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
+			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(), List.of(),
 				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, CodexRunner.appServerCommand("codex", false));
 
 			JsonNode denied = TomlMapper.builder().build().readTree(Files.readString(configuration)).
@@ -871,8 +871,8 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			manager.snapshotProject(nestedSession);
 			NestedSession trial = manager.create("codex");
 			Path evidence = Files.createDirectories(trial.directory().resolve("artifacts"));
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
@@ -880,11 +880,11 @@ public final class CodexRunnerTest
 
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
-				Path configuration = run.directory().resolve("home/config-" + platform.id() + ".toml");
-				CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
-					run.directory().resolve("project"));
+				Path configuration = nestedSession.directory().resolve("home/config-" + platform.id() + ".toml");
+				CodexConnectionConfiguration.copy(nestedSession.directory().resolve("missing.toml"), configuration,
+					nestedSession.directory().resolve("project"));
 
-				SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(evidence),
+				SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, nestedSession, List.of(evidence),
 					List.of(), platform, Map.of("PATH", bin.toString()), null, appServer);
 
 				requireThat(sandbox.command(), platform + ".command").isEqualTo(appServer);
@@ -906,7 +906,7 @@ public final class CodexRunnerTest
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesRunRootOnLinux() throws IOException
+	public void deniesResultsFolderOnLinux() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -915,15 +915,15 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			Files.writeString(directory.resolve("home/auth.json"), "{}");
 			manager.create("codex");
 			Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(), List.of(heldOut),
 				Platform.LINUX_X64, Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
@@ -950,12 +950,12 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
+			NestedSession nestedSession = manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
-			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 1,
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, root.resolve("artifact"), 1,
 				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
 
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(), List.of(heldOut),
 				Platform.LINUX_X64, Map.of(), requestAccess);
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root));
@@ -979,16 +979,16 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
+			NestedSession nestedSession = manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
-			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, root.resolve("artifact"), 0,
 				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
 
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(), List.of(heldOut),
 				Platform.LINUX_X64, Map.of(), requestAccess);
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut, root,
-				run.directory().resolve("home/sessions")));
+				nestedSession.directory().resolve("home/sessions")));
 		}
 	}
 
@@ -1025,8 +1025,8 @@ public final class CodexRunnerTest
 			Path launcher = Files.writeString(Files.createDirectories(version.resolve("bin")).
 				resolve("prompt-optimizer"), "launcher");
 			Path login = Files.writeString(firstHome.resolve("auth.json"), "{}");
-			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
-				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(),
+				firstAccess.requestedResultsFolder(1), Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nested = nestedManager.create("codex");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
@@ -1119,7 +1119,7 @@ public final class CodexRunnerTest
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesRunRootOutsideLinux() throws IOException
+	public void deniesResultsFolderOutsideLinux() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1128,9 +1128,9 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			Files.writeString(directory.resolve("home/auth.json"), "{}");
 			manager.create("codex");
 			Files.createDirectories(root.resolve("workspaces"));
@@ -1138,7 +1138,7 @@ public final class CodexRunnerTest
 
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
-				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(), List.of(heldOut),
+				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(), List.of(heldOut),
 					platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
@@ -1155,7 +1155,7 @@ public final class CodexRunnerTest
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesRunRootBesideEvidenceOutsideLinux() throws IOException
+	public void deniesResultsBesideEvidenceOutsideLinux() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1164,16 +1164,16 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			NestedSession evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
 			for (Platform platform : List.of(Platform.MACOS_X64, Platform.WINDOWS_ARM64))
 			{
-				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(evidenceArtifacts),
 					List.of(heldOut), platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(heldOut, root,
@@ -1191,7 +1191,7 @@ public final class CodexRunnerTest
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesEachRunBesideEvidenceInRoot() throws IOException
+	public void deniesEachSessionBesideEvidenceInRoot() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1200,9 +1200,9 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			Files.writeString(directory.resolve("home/auth.json"), "{}");
 			NestedSession other = manager.create("codex");
 			NestedSession evidence = manager.create("codex");
@@ -1210,7 +1210,7 @@ public final class CodexRunnerTest
 			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(evidenceArtifacts),
 				List.of(heldOut), Platform.LINUX_X64, Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
@@ -1247,13 +1247,13 @@ public final class CodexRunnerTest
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("codex");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			NestedSession evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 
-			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(evidenceArtifacts),
 				List.of(project), Platform.LINUX_X64, Map.of());
 
 			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
@@ -1264,7 +1264,7 @@ public final class CodexRunnerTest
 				evidence.directory().resolve("session.json"), evidence.directory().resolve(".lock")));
 			for (Platform platform : List.of(Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
-				deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+				deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(evidenceArtifacts),
 					List.of(project), platform, Map.of());
 
 				requireThat(Set.copyOf(deniedReads), platform + ".deniedReads").isEqualTo(Set.of(project,
@@ -1293,15 +1293,15 @@ public final class CodexRunnerTest
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("codex");
+			NestedSession nestedSession = manager.create("codex");
 
 			for (Platform platform : List.of(Platform.LINUX_X64, Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{
-				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(),
+				List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, nestedSession, List.of(),
 					List.of(heldOutRoot, project), platform, Map.of());
 
 				requireThat(deniedReads, platform + ".deniedReads").containsExactly(List.of(project,
-					run.directory().resolve("home/sessions")));
+					nestedSession.directory().resolve("home/sessions")));
 			}
 		}
 	}

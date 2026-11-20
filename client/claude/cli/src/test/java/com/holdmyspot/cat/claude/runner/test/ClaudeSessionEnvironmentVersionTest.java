@@ -76,9 +76,9 @@ public final class ClaudeSessionEnvironmentVersionTest
 			NestedSessionManager manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("runs"),
 				Clock.systemUTC(),
 				Yielding.fileReplacer());
-			NestedSession run = manager.create("claude");
-			manager.snapshotProject(run);
-			Files.createDirectories(run.directory().resolve("home/.claude"));
+			NestedSession nestedSession = manager.create("claude");
+			manager.snapshotProject(nestedSession);
+			Files.createDirectories(nestedSession.directory().resolve("home/.claude"));
 			Files.createDirectories(hostProject.resolve("runs/workspaces"));
 			Files.writeString(source, """
 				{
@@ -94,33 +94,34 @@ public final class ClaudeSessionEnvironmentVersionTest
 
 			// Every session that the runner starts may hand a runner launch to its runner, even one that may request
 			// no session
-			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, root.resolve("artifact"), 0,
 				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
-			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(),
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, nestedSession, List.of(),
 				List.of(deniedFile, deniedDirectory, hostProject), Map.of(), requestAccess);
 			List<Path> dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
-			Path project = run.directory().resolve("project");
+			Path project = nestedSession.directory().resolve("project");
 			// A trial and a control trial run with the prompt cache lifetime of their role
 			String promptCacheTtl = ClaudeSessionRole.TRIAL.promptCacheTtl();
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "", requestAccess,
-				project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com", promptCacheTtl);
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, nestedSession.directory(), deniedReads, "",
+				requestAccess,
+				project, nestedSession.directory(), null, ExtraPermissions.NONE, "api.anthropic.com", promptCacheTtl);
 			Path controlDestination = root.resolve("isolated/control-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, controlDestination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "claude-md",
-				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, nestedSession.directory(), deniedReads, "claude-md",
+				requestAccess, project, nestedSession.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
 				promptCacheTtl);
 
 			// A judge runs with the prompt cache lifetime and the tools of its role, and without a sandbox
 			Path judgeDestination = root.resolve("isolated/judge-settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, source, judgeDestination, claudeTemporaryDirectory,
-				claudeTemporaryDirectory.resolve("home"), dependencyCaches, run.directory(), deniedReads, "",
-				requestAccess, project, run.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
+				claudeTemporaryDirectory.resolve("home"), dependencyCaches, nestedSession.directory(), deniedReads, "",
+				requestAccess, project, nestedSession.directory(), null, ExtraPermissions.NONE, "api.anthropic.com",
 				ClaudeSessionRole.JUDGE.promptCacheTtl(), ClaudeSessionRole.JUDGE.sandboxed(), ClaudeSessionRole.JUDGE.tools());
 
-			String settings = normalize(scope.json(), destination, root, run) + "\n" +
-				normalize(scope.json(), controlDestination, root, run) + "\n" +
-				normalize(scope.json(), judgeDestination, root, run);
+			String settings = normalize(scope.json(), destination, root, nestedSession) + "\n" +
+				normalize(scope.json(), controlDestination, root, nestedSession) + "\n" +
+				normalize(scope.json(), judgeDestination, root, nestedSession);
 			RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(scope, root, root, List::of, false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			int version = new ClaudeSessions(sessionSettings).sessionEnvironmentVersion();
@@ -133,18 +134,18 @@ public final class ClaudeSessionEnvironmentVersionTest
 	 * Returns the content of a settings file with its root and its run's identifier replaced, because run directories
 	 * differ per run.
 	 *
-	 * @param json     the JSON mapper that wrote the settings
-	 * @param file     the settings file
-	 * @param root     the root
-	 * @param run      the run
+	 * @param json          the JSON mapper that wrote the settings
+	 * @param file          the settings file
+	 * @param root          the root
+	 * @param nestedSession the run
 	 * @return the normalized settings
 	 * @throws IOException if the file cannot be read
 	 */
-	private static String normalize(JsonMapper json, Path file, Path root, NestedSession run) throws IOException
+	private static String normalize(JsonMapper json, Path file, Path root, NestedSession nestedSession) throws IOException
 	{
 		// The mapper ends its lines with the platform's line separator
 		return replaceRoot(withoutExcludesAboveRoot(json, Files.readString(file, UTF_8), root), root).
-			replace(run.id(), "<run>").replace("\r\n", "\n");
+			replace(nestedSession.id(), "<run>").replace("\r\n", "\n");
 	}
 
 	/**

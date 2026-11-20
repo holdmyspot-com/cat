@@ -126,13 +126,13 @@ public final class ClaudeRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void marksRunOfEndedOwnerFailed() throws IOException
+	public void marksSessionOfEndedOwnerFailed() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			Path manifest = createRun(jvm, root.resolve("runs"));
+			Path manifest = createSession(jvm, root.resolve("runs"));
 			// A start that differs from the one of the process holding the recorded identifier means that the
 			// identifier now belongs to another process, so the runner that created the run has ended
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
@@ -151,14 +151,14 @@ public final class ClaudeRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void keepsRunOfLiveOwnerRunning() throws IOException
+	public void keepsSessionOfLiveOwnerRunning() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			// The process that runs the test owns the run and is alive
-			Path manifest = createRun(jvm, root.resolve("runs"));
+			Path manifest = createSession(jvm, root.resolve("runs"));
 
 			startUntilCapacityIsRequested(jvm, root);
 
@@ -169,14 +169,14 @@ public final class ClaudeRunnerCliTest
 	/**
 	 * Creates a running run that the process executing the test owns.
 	 *
-	 * @param jvm     the test's process scope
-	 * @param runRoot the directory that holds the runs
+	 * @param jvm           the test's process scope
+	 * @param resultsFolder the directory that holds the runs
 	 * @return the run's manifest
 	 * @throws IOException if the run cannot be created
 	 */
-	private static Path createRun(TestJvmScope jvm, Path runRoot) throws IOException
+	private static Path createSession(TestJvmScope jvm, Path resultsFolder) throws IOException
 	{
-		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		return manager.create("claude").directory().resolve("session.json");
 	}
@@ -421,7 +421,7 @@ public final class ClaudeRunnerCliTest
 	 * @param option the option that the forwarded launch names
 	 */
 	@Test(dataProvider = "overrides")
-	public void forwardsOverrideInsideRun(String option)
+	public void forwardsOverrideInsideNestedSession(String option)
 	{
 		StringWriter errors = new StringWriter();
 

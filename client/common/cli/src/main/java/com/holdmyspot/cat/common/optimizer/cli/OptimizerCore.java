@@ -2760,7 +2760,7 @@ public final class OptimizerCore implements Core
 	private Cleanup cleanup() throws CommandRefusedException, IOException
 	{
 		return new Cleanup(scope.fileLocks(), scope.projectRoot(), scope.sessionDirectory().campaigns(), scope.forks(),
-			scope.sessions().runRoots(), scope.json(), scope.fileReplacer());
+			scope.sessions().resultsFolders(), scope.json(), scope.fileReplacer());
 	}
 
 	/**

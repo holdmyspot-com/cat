@@ -56,14 +56,14 @@ public final class SessionCommandLimits
 	 * Returns the variables that make a run's isolated home the home directory of a session's commands: {@code HOME}
 	 * and, on Windows, also {@code USERPROFILE} and {@code LOCALAPPDATA}.
 	 *
-	 * @param runHome  the run's isolated home
-	 * @param platform the platform that the session runs on
+	 * @param sessionHome the run's isolated home
+	 * @param platform    the platform that the session runs on
 	 * @return each variable's name mapped to its value
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static Map<String, String> homeEnvironment(Path runHome, Platform platform)
+	public static Map<String, String> homeEnvironment(Path sessionHome, Platform platform)
 	{
-		return HarnessEnvironment.homeVariables(runHome, platform);
+		return HarnessEnvironment.homeVariables(sessionHome, platform);
 	}
 
 	/**

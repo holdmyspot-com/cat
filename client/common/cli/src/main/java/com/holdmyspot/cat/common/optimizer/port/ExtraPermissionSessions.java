@@ -128,9 +128,9 @@ public final class ExtraPermissionSessions implements SessionPort
 	}
 
 	@Override
-	public List<Path> runRoots()
+	public List<Path> resultsFolders()
 	{
-		return delegate.runRoots();
+		return delegate.resultsFolders();
 	}
 
 	@Override

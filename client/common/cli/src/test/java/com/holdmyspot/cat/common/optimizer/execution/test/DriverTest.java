@@ -445,7 +445,7 @@ public final class DriverTest
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.ranking(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
-				original.leftoverRuns(), original.authority(), original.promptSources(), original.environment(),
+				original.leftoverSessions(), original.authority(), original.promptSources(), original.environment(),
 				original.lockFile(), original.random(), original.settings(), original.json(),
 				original.temporaryDirectory());
 			Map<SessionRole, List<TokenUsage>> expected = new EnumMap<>(SessionRole.class);
@@ -2826,7 +2826,7 @@ public final class DriverTest
 			original.workspace(), original.interrupts(), original.clock(), original.overlays(), original.judge(),
 			original.triage(),
 				original.ranking(), original.promptAuthor(), original.values(), deliverer::deliver, original.calibrator(),
-			original.terminator(), original.leftoverRuns(), original.authority(), original.promptSources(),
+			original.terminator(), original.leftoverSessions(), original.authority(), original.promptSources(),
 			original.environment(), original.lockFile(), original.random(), original.settings(), original.json(),
 				original.temporaryDirectory());
 	}
@@ -6908,7 +6908,8 @@ public final class DriverTest
 				rejectInterrupts(original.sessions(), rejectTrials, interrupts), original.workspace(), original.interrupts(),
 				original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.ranking(), original.promptAuthor(),
-				original.values(), original.deliverer(), original.calibrator(), original.terminator(), original.leftoverRuns(),
+				original.values(), original.deliverer(), original.calibrator(), original.terminator(),
+				original.leftoverSessions(),
 				original.authority(), original.promptSources(), original.environment(), original.lockFile(),
 				original.random(), original.settings(), original.json(),
 				original.temporaryDirectory());
@@ -7005,9 +7006,9 @@ public final class DriverTest
 			}
 
 			@Override
-			public List<Path> runRoots()
+			public List<Path> resultsFolders()
 			{
-				return delegate.runRoots();
+				return delegate.resultsFolders();
 			}
 
 			@Override
@@ -7162,9 +7163,9 @@ public final class DriverTest
 			}
 
 			@Override
-			public List<Path> runRoots()
+			public List<Path> resultsFolders()
 			{
-				return delegate.runRoots();
+				return delegate.resultsFolders();
 			}
 
 			@Override
@@ -7453,7 +7454,7 @@ public final class DriverTest
 				original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
 				original.ranking(),
 				original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(), original.terminator(),
-				original.leftoverRuns(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
+				original.leftoverSessions(), new Authority(Set.of(DriverHarness.PROMPT, Path.of("docs")), Set.of(), fork),
 				original.promptSources(), original.environment(), original.lockFile(), original.random(),
 				original.settings(), original.json(),
 				original.temporaryDirectory());

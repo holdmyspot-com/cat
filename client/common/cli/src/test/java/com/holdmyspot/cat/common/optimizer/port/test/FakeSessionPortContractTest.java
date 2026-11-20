@@ -143,10 +143,10 @@ public final class FakeSessionPortContractTest
 	 * @throws Exception if the check fails
 	 */
 	@Test
-	public void identifiesItsVersionsAndRunRoots() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws Exception
 	{
 		// Requirement: R-E7
-		contract().identifiesItsVersionsAndRunRoots();
+		contract().identifiesItsVersionsAndResultsFolders();
 	}
 
 	/**

@@ -44,21 +44,21 @@ public final class NestedSessionReceipt
 	 * @param json the operation-owned JSON mapper
 	 * @param replacer replaces files atomically
 	 * @param destination the receipt destination
-	 * @param run the retained harness run
+	 * @param nestedSession the retained harness run
 	 * @param rawResult the harness response, retained in the run if it is outside the run
 	 * @param sessionTranscripts the copies of the harness's native session transcripts
 	 * @throws IOException if retained evidence cannot be verified, copied, or written
 	 */
-	public static void write(JsonMapper json, FileReplacer replacer, Path destination, NestedSession run, Path rawResult,
-		List<Path> sessionTranscripts) throws IOException
+	public static void write(JsonMapper json, FileReplacer replacer, Path destination, NestedSession nestedSession,
+		Path rawResult, List<Path> sessionTranscripts) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(destination, "destination").isNotNull();
-		requireThat(run, "run").isNotNull();
+		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(rawResult, "rawResult").isNotNull();
 		requireThat(sessionTranscripts, "sessionTranscripts").isNotNull();
-		Path base = run.directory().toAbsolutePath().normalize();
+		Path base = nestedSession.directory().toAbsolutePath().normalize();
 		Path project = base.resolve(PROJECT_NAME);
 		Path response = rawResult.toAbsolutePath().normalize();
 		if (!Files.isRegularFile(response))
@@ -106,7 +106,7 @@ public final class NestedSessionReceipt
 			for (Path transcript : result.sessionTranscripts())
 				copies.add(relative(base, transcript, SESSION_TRANSCRIPTS));
 		}
-		Path responses = SessionRequestAccess.responsesDirectory(run);
+		Path responses = SessionRequestAccess.responsesDirectory(nestedSession);
 		if (Files.isDirectory(responses))
 		{
 			ArrayNode sessions = receipt.putArray(REQUESTED_SESSIONS);

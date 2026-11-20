@@ -155,24 +155,24 @@ public final class CodexSessionsTest
 	 * Creates a port whose runner plays a script.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param runRoot the directory for run directories
+	 * @param resultsFolder the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static CodexSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static CodexSessions port(JvmScope jvm, Path resultsFolder, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		return port(jvm, runRoot, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
+		return port(jvm, resultsFolder, capacity, clock, arguments, script, new CopyOnWriteArrayList<>());
 	}
 
 	/**
 	 * Creates a port and observes the prompts that CAT sends through the bridge.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param runRoot the directory for run directories
+	 * @param resultsFolder the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
@@ -180,11 +180,11 @@ public final class CodexSessionsTest
 	 * @param requests receives the decoded prompts in turn order
 	 * @return the port
 	 */
-	private static CodexSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static CodexSessions port(JvmScope jvm, Path resultsFolder, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script, List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, false, Map.of(),
-			runRoot, capacity, clock, Yielding.fileReplacer());
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, resultsFolder, resultsFolder, List::of, false,
+			Map.of(), resultsFolder, capacity, clock, Yielding.fileReplacer());
 		return CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
@@ -242,17 +242,17 @@ public final class CodexSessionsTest
 	private static void serveLiveEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
 		java.io.Writer output, List<String> received, List<String> snapshots, boolean malformedFirst) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
+		Path resultsFolder = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "codex",
-			HarnessTemporaryRoot.of(runRoot));
-		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+			HarnessTemporaryRoot.of(resultsFolder));
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		NestedSession run = manager.create("codex");
-		Path project = run.directory().resolve("project");
+		NestedSession nestedSession = manager.create("codex");
+		Path project = nestedSession.directory().resolve("project");
 		Path notesFile = project.resolve("notes.md");
 		Files.writeString(notesFile, snapshots.getLast(), UTF_8);
-		manager.snapshotProject(run);
-		manager.initialize(run, options.artifact(), options.project(), "fixture", arguments);
+		manager.snapshotProject(nestedSession);
+		manager.initialize(nestedSession, options.artifact(), options.project(), "fixture", arguments);
 		HarnessProcess process = new HarnessProcess()
 		{
 			private int turn;
@@ -262,7 +262,7 @@ public final class CodexSessionsTest
 			public Optional<String> harnessSessionId()
 			{
 				// No launcher copies the run, so the session is named after the run, whose folder holds its results
-				return Optional.of(run.id());
+				return Optional.of(nestedSession.id());
 			}
 
 			@Override
@@ -275,7 +275,7 @@ public final class CodexSessionsTest
 			{
 				received.add(request);
 				turn += 1;
-				Path transcripts = Files.createDirectories(run.sessionTranscripts());
+				Path transcripts = Files.createDirectories(nestedSession.sessionTranscripts());
 				Files.writeString(transcripts.resolve("rollout-root.jsonl"), "{\"type\":\"session_meta\"}\n",
 					UTF_8);
 				Path child = transcripts.resolve("rollout-child.jsonl");
@@ -307,8 +307,8 @@ public final class CodexSessionsTest
 		};
 		try (process)
 		{
-			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
-				options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()),
+				manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 		}
 	}
 
@@ -327,12 +327,12 @@ public final class CodexSessionsTest
 	private static void serveForwardedEvidence(JvmScope jvm, List<String> arguments, java.io.Reader input,
 		java.io.Writer output, List<String> snapshots, boolean malformedFirst, List<String> received) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
-		Path requests = Files.createDirectories(runRoot.resolve("requests"));
-		Path artifact = Files.createDirectories(runRoot.resolve("artifact"));
+		Path resultsFolder = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
+		Path requests = Files.createDirectories(resultsFolder.resolve("requests"));
+		Path artifact = Files.createDirectories(resultsFolder.resolve("artifact"));
 		Path source = Path.of(ScriptedHarness.optionValue(arguments, "--project"));
 		String initialNotes = Files.readString(source.resolve("notes.md"), UTF_8);
-		Path responses = runRoot.resolve("responses");
+		Path responses = resultsFolder.resolve("responses");
 		AtomicInteger pauseCount = new AtomicInteger();
 		String[] requestId = {""};
 		Path[] responseDirectory = {null};
@@ -379,9 +379,9 @@ public final class CodexSessionsTest
 						completedRecord("one") + completedRecord("two"), UTF_8);
 					return;
 				}
-				writeForwardedKeptRun(jvm, json, source, artifact, responseDirectory[0]);
+				writeForwardedResults(jvm, json, source, artifact, responseDirectory[0]);
 			};
-			List<String> forwardArguments = List.of("--results", runRoot.toString(), "--project", source.toString(),
+			List<String> forwardArguments = List.of("--results", resultsFolder.toString(), "--project", source.toString(),
 				"--artifact", artifact.toString(), "--model", "model-a", "--effort", "low");
 			SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "codex", artifact,
 				forwardArguments, records, output, requests, pause);
@@ -555,7 +555,7 @@ public final class CodexSessionsTest
 	 * @param response the response directory
 	 * @throws IOException if the kept run or response cannot be written
 	 */
-	private static void writeForwardedKeptRun(JvmScope jvm, JsonMapper json, Path source, Path artifact, Path response)
+	private static void writeForwardedResults(JvmScope jvm, JsonMapper json, Path source, Path artifact, Path response)
 		throws IOException
 	{
 		Path childRoot = response.resolve("child-runs");
@@ -725,17 +725,18 @@ public final class CodexSessionsTest
 				Path source = Files.createDirectories(root.resolve("source"));
 				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 				Path heldOut = Files.createDirectories(root.resolve("campaign/held_out"));
-				Path runRoot = root.resolve("runs");
-				Path heldOutRunRoot = root.resolve("runs-held_out");
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, () -> List.of(heldOut),
+				Path resultsFolder = root.resolve("runs");
+				Path heldOutResultsFolder = root.resolve("runs-held_out");
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, resultsFolder,
+					() -> List.of(heldOut),
 					false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
-				List<Boolean> heldOutRunRootExisted = new CopyOnWriteArrayList<>();
+				List<Boolean> heldOutResultsFolderExisted = new CopyOnWriteArrayList<>();
 				CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
 					newCodexSessions(settings, (options, input, output) ->
 				{
 					arguments.add(options);
-					heldOutRunRootExisted.add(Files.isDirectory(heldOutRunRoot));
+					heldOutResultsFolderExisted.add(Files.isDirectory(heldOutResultsFolder));
 					ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), "codex",
 						List.of(Turn.replies("ok")), input, output);
 				});
@@ -745,7 +746,7 @@ public final class CodexSessionsTest
 
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				requireThat(arguments.size(), "arguments.size()").isEqualTo(1);
-				requireThat(heldOutRunRootExisted, "heldOutRunRootExisted").isEqualTo(List.of(true));
+				requireThat(heldOutResultsFolderExisted, "heldOutResultsFolderExisted").isEqualTo(List.of(true));
 				List<String> denied = new ArrayList<>();
 				List<String> options = arguments.get(0);
 				for (int i = 0; i < options.size() - 1; ++i)
@@ -753,22 +754,22 @@ public final class CodexSessionsTest
 					if (options.get(i).equals("--deny-read"))
 						denied.add(options.get(i + 1));
 				}
-				Path expectedRunRoot;
+				Path expectedResultsFolder;
 				List<String> expectedDenied;
 				if (part == Part.HELD_OUT)
 				{
-					expectedRunRoot = heldOutRunRoot;
+					expectedResultsFolder = heldOutResultsFolder;
 					expectedDenied = List.of();
 				}
 				else
 				{
-					expectedRunRoot = runRoot;
-					expectedDenied = List.of(heldOut.toString(), heldOutRunRoot.toString());
+					expectedResultsFolder = resultsFolder;
+					expectedDenied = List.of(heldOut.toString(), heldOutResultsFolder.toString());
 				}
-				requireThat(ScriptedHarness.optionValue(options, "--results"), "runRoot").
-					isEqualTo(expectedRunRoot.toString());
+				requireThat(ScriptedHarness.optionValue(options, "--results"), "resultsFolder").
+					isEqualTo(expectedResultsFolder.toString());
 				requireThat(denied, "denied").isEqualTo(expectedDenied);
-				requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedRunRoot), "transcript").
+				requireThat(((SessionResult.Completed) result).transcript().startsWith(expectedResultsFolder), "transcript").
 					isTrue();
 			}
 		}
@@ -862,7 +863,7 @@ public final class CodexSessionsTest
 			Path heldOut = Files.createDirectories(session.campaigns().resolve("c1/held_out"));
 			Path otherHeldOut = Files.createDirectories(root.resolve(".cat/sessions/" + otherSessionId +
 				"/optimizer/c2/held_out"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, session.runRoot("codex"),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, session.resultsFolder("codex"),
 				() -> List.of(heldOut, otherHeldOut), false, Map.of(), root, HarnessCapacity.unlimited(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
@@ -880,7 +881,7 @@ public final class CodexSessionsTest
 			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 			List<String> options = arguments.getFirst();
 			Path sessionDirectory = root.resolve(".cat/sessions/" + sessionId);
-			requireThat(ScriptedHarness.optionValue(options, "--results"), "runRoot").
+			requireThat(ScriptedHarness.optionValue(options, "--results"), "resultsFolder").
 				isEqualTo(sessionDirectory.resolve("optimizer-runs/codex").toString());
 			List<String> denied = new ArrayList<>();
 			for (int i = 0; i < options.size() - 1; ++i)
@@ -1241,11 +1242,11 @@ public final class CodexSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			String notes = "These notes are complete and exact.";
 			Files.writeString(source.resolve("notes.md"), notes, UTF_8);
-			Path runRoot = root.resolve("runs");
+			Path resultsFolder = root.resolve("runs");
 			List<String> turns = new CopyOnWriteArrayList<>();
 			CountDownLatch bridgeReturned = new CountDownLatch(1);
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runRoot, List::of, false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, resultsFolder, List::of, false,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
 				(arguments, input, output) ->
 				{
@@ -1299,11 +1300,11 @@ public final class CodexSessionsTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			String notes = "These notes are complete and exact.";
 			Files.writeString(source.resolve("notes.md"), notes, UTF_8);
-			Path runRoot = root.resolve("runs");
+			Path resultsFolder = root.resolve("runs");
 			List<String> turns = new CopyOnWriteArrayList<>();
 			CountDownLatch bridgeReturned = new CountDownLatch(1);
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runRoot, List::of, false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, resultsFolder, List::of, false,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
 				(arguments, input, output) ->
 				{
@@ -1347,11 +1348,11 @@ public final class CodexSessionsTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "codex-live-malformed-"));
 			Path source = Files.createDirectories(root.resolve("source"));
 			Files.writeString(source.resolve("notes.md"), "These notes are complete and exact.", UTF_8);
-			Path runRoot = root.resolve("runs");
+			Path resultsFolder = root.resolve("runs");
 			List<String> turns = new CopyOnWriteArrayList<>();
 			CountDownLatch bridgeReturned = new CountDownLatch(1);
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runRoot, List::of, false, Map.of(),
-				root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, resultsFolder, List::of, false,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().newCodexSessions(settings,
 				(arguments, input, output) ->
 				{
@@ -2245,7 +2246,7 @@ public final class CodexSessionsTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-routes-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
-			Path runRoot = home.resolve("runs");
+			Path resultsFolder = home.resolve("runs");
 			// A file where the npm cache belongs keeps what a session needs unknown, so no route starts a harness
 			Files.writeString(home.resolve(".npm"), "not a folder");
 			Map<String, String> environment = new HashMap<>(variables);
@@ -2254,7 +2255,7 @@ public final class CodexSessionsTest
 			environment.put("CODEX_HOME", home.resolve(".codex").toString());
 			// The source is the host session's CAT project, so that the route looks for its request server there
 			Files.createDirectories(source.resolve(".cat"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, resultsFolder, List::of, false,
 				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(),
 				Optional.empty(), source);
 
@@ -2272,7 +2273,7 @@ public final class CodexSessionsTest
 			{
 				StringWriter errors = new StringWriter();
 				int status = CodexRunnerCli.launch(new String[]{"serve", "--project", source.toString(), "--results",
-					runRoot.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
+					resultsFolder.toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment, jvm.waiting(),
 					new StringReader(""), new ByteArrayOutputStream(), new PrintWriter(errors, true));
 
 				requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
@@ -2299,12 +2300,12 @@ public final class CodexSessionsTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-no-harness-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
-			Path runRoot = home.resolve("runs");
+			Path resultsFolder = home.resolve("runs");
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), home.toString());
 			environment.put("CODEX_HOME", home.resolve(".codex").toString());
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, resultsFolder, List::of, false,
 				environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 
 			SessionResult result = await(new CodexSessions(settings).start(new SessionRequest(SessionRole.JUDGE,
@@ -2328,7 +2329,7 @@ public final class CodexSessionsTest
 	 * @throws TimeoutException     if the session does not finish
 	 */
 	@Test(timeOut = 120_000)
-	public void sessionsInsideRunGoThroughRunsRunner()
+	public void sessionsInsideNestedSessionUseItsRunner()
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -2336,10 +2337,10 @@ public final class CodexSessionsTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
-			Path runRoot = home.resolve("runs");
+			Path resultsFolder = home.resolve("runs");
 			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(), 1))
 			{
-				CodexSessions sessions = inRun(jvm, home, runRoot, parent);
+				CodexSessions sessions = inNestedSession(jvm, home, resultsFolder, parent);
 
 				SessionResult result = await(sessions.start(new SessionRequest(SessionRole.JUDGE,
 					partOf(SessionRole.JUDGE), source, List.of("brief"), List.of(), LIMIT, SESSION_PROFILE,
@@ -2349,9 +2350,9 @@ public final class CodexSessionsTest
 				SessionResult.Completed completed = (SessionResult.Completed) result;
 				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("reply 1")));
 				// The optimizer reads the requested session's kept run, without its home, in its own results folder
-				Path run = completed.transcript().getParent().getParent();
-				requireThat(Files.readString(run.resolve("project/result.txt")), "result").isEqualTo("result");
-				requireThat(Files.exists(run.resolve("home")), "home").isFalse();
+				Path sessionFolder = completed.transcript().getParent().getParent();
+				requireThat(Files.readString(sessionFolder.resolve("project/result.txt")), "result").isEqualTo("result");
+				requireThat(Files.exists(sessionFolder.resolve("home")), "home").isFalse();
 				requireThat(parent.launches().size(), "launches").isEqualTo(1);
 				requireThat(ScriptedHarness.optionValue(parent.launches().getFirst(), "--model"), "model").
 					isEqualTo(SESSION_PROFILE.model());
@@ -2366,7 +2367,7 @@ public final class CodexSessionsTest
 	 * @return the session requests of the run and whether one session is served first
 	 */
 	@DataProvider
-	public static Object[][] spentRuns()
+	public static Object[][] spentSessions()
 	{
 		return new Object[][]{{0, false}, {1, true}};
 	}
@@ -2384,8 +2385,8 @@ public final class CodexSessionsTest
 	 * @throws ExecutionException   if the session cannot determine a result
 	 * @throws TimeoutException     if the session does not finish
 	 */
-	@Test(dataProvider = "spentRuns", timeOut = 120_000)
-	public void spentRunRefusesSessionsBeforeAnyChange(int sessionRequests, boolean serveFirst)
+	@Test(dataProvider = "spentSessions", timeOut = 120_000)
+	public void spentSessionRefusesSessionsBeforeChange(int sessionRequests, boolean serveFirst)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -2393,11 +2394,11 @@ public final class CodexSessionsTest
 		{
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
-			Path runRoot = home.resolve("runs");
+			Path resultsFolder = home.resolve("runs");
 			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(),
 				sessionRequests))
 			{
-				CodexSessions sessions = inRun(jvm, home, runRoot, parent);
+				CodexSessions sessions = inNestedSession(jvm, home, resultsFolder, parent);
 				SessionRequest request = new SessionRequest(SessionRole.JUDGE, partOf(SessionRole.JUDGE), source,
 					List.of("brief"), List.of(), LIMIT, SESSION_PROFILE, TestWorkspace.NONE, List.of());
 				if (serveFirst)
@@ -2425,13 +2426,14 @@ public final class CodexSessionsTest
 	/**
 	 * Returns the production port of an optimizer that a Codex session runs inside a nested session.
 	 *
-	 * @param jvm     the borrowed process scope
-	 * @param home    the user's home and the port's artifact
-	 * @param runRoot the directory for run directories
-	 * @param parent  the run
+	 * @param jvm           the borrowed process scope
+	 * @param home          the user's home and the port's artifact
+	 * @param resultsFolder the directory for run directories
+	 * @param parent        the run
 	 * @return the port
 	 */
-	private static CodexSessions inRun(JvmScope jvm, Path home, Path runRoot, RequestingNestedSession parent)
+	private static CodexSessions inNestedSession(JvmScope jvm, Path home, Path resultsFolder,
+		RequestingNestedSession parent)
 	{
 		Map<String, String> environment = new HashMap<>();
 		environment.put("CAT_RUN", "1");
@@ -2440,7 +2442,7 @@ public final class CodexSessionsTest
 		environment.put("PATH", "");
 		environment.put(Platform.current().homeVariable(), home.toString());
 		environment.put("CODEX_HOME", home.resolve(".codex").toString());
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, runRoot, List::of, false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, home, resultsFolder, List::of, false,
 			environment, home, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 		return new CodexSessions(settings);
 	}

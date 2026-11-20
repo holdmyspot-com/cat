@@ -227,10 +227,10 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * session.
 	 */
 	@Override
-	protected final Optional<String> runRefusal()
+	protected final Optional<String> nestedSessionRefusal()
 	{
 		ensureOpen();
-		Optional<String> refusal = HarnessEnvironment.runRefusal(RunnerSessions.COMMAND, environment);
+		Optional<String> refusal = HarnessEnvironment.nestedSessionRefusal(RunnerSessions.COMMAND, environment);
 		if (refusal.isPresent())
 			return refusal;
 		String id = harness.commandName();

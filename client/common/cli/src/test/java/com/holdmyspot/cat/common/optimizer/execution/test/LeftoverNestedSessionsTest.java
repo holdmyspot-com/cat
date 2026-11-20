@@ -29,7 +29,7 @@ import java.util.function.LongFunction;
 /**
  * Covers how the harness processes of leftover runner runs are found in the session port's results folders.
  * <p>
- * Except in {@link #readsOwnerLivenessFromProcessTable()} and {@link #leavesRunOfLiveOwnerAfterClockIsSet()}, the
+ * Except in {@link #readsOwnerLivenessFromProcessTable()} and {@link #leavesSessionOfLiveOwnerAfterClockIsSet()}, the
  * real {@link ProcessHandleLiveness} reads which owner processes are alive from a table of {@link FakeProcessHandle}s
  * that stands in for the operating system's process table.
  */
@@ -130,9 +130,9 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
-			writeManifest(runRoot.resolve("claude").resolve("run-1"), manifest);
-			requireThat(finder(List.of(), runRoot).find(), "find").isEqualTo(expected);
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), manifest);
+			requireThat(finder(List.of(), resultsFolder).find(), "find").isEqualTo(expected);
 		}
 	}
 
@@ -142,16 +142,16 @@ public final class LeftoverNestedSessionsTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void findsRunsInEveryRunRoot() throws IOException
+	public void findsSessionsInEveryResultsFolder() throws IOException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
-			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held_out"));
-			writeManifest(runRoot.resolve("claude").resolve("run-1"), running(4001, 4002));
-			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), running(5001, 5002));
-			requireThat(finder(List.of(), runRoot, heldOutRunRoot).find(), "find").isEqualTo(
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			Path heldOutResultsFolder = cleanup.add(Files.createTempDirectory("runs-held_out"));
+			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), running(4001, 4002));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-2"), running(5001, 5002));
+			requireThat(finder(List.of(), resultsFolder, heldOutResultsFolder).find(), "find").isEqualTo(
 				List.of(new RecordedProcess(4002, HARNESS_START), new RecordedProcess(5002, HARNESS_START)));
 		}
 	}
@@ -164,20 +164,20 @@ public final class LeftoverNestedSessionsTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void leavesRunWithLiveOwner() throws IOException
+	public void leavesSessionWithLiveOwner() throws IOException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
-			Path heldOutRunRoot = cleanup.add(Files.createTempDirectory("runs-held_out"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			Path heldOutResultsFolder = cleanup.add(Files.createTempDirectory("runs-held_out"));
 			List<FakeProcessHandle> processes = List.of(new FakeProcessHandle(6001, OWNER_START, true),
 				new FakeProcessHandle(7001, OWNER_START + "1", true));
-			writeManifest(runRoot.resolve("claude").resolve("run-1"), running(6001, 6002));
-			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-2"), running(6001, 6003));
-			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-3"), running(5001, 5002));
-			writeManifest(heldOutRunRoot.resolve("claude").resolve("run-4"), running(7001, 7002));
-			requireThat(finder(processes, runRoot, heldOutRunRoot).find(), "find").isEqualTo(
+			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), running(6001, 6002));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-2"), running(6001, 6003));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-3"), running(5001, 5002));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-4"), running(7001, 7002));
+			requireThat(finder(processes, resultsFolder, heldOutResultsFolder).find(), "find").isEqualTo(
 				List.of(new RecordedProcess(5002, HARNESS_START), new RecordedProcess(7002, HARNESS_START)));
 		}
 	}
@@ -194,16 +194,16 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
 			ProcessHandle current = ProcessHandle.current();
 			String started = HarnessProcesses.system().find(current.pid()).flatMap(ProcessDescription::start).
 				orElseThrow();
-			writeManifest(runRoot.resolve("claude").resolve("run-1"), """
+			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), """
 				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(current.pid(), started, HARNESS_START));
-			writeManifest(runRoot.resolve("claude").resolve("run-2"), running(5001, 5002));
+			writeManifest(resultsFolder.resolve("claude").resolve("run-2"), running(5001, 5002));
 			LeftoverNestedSessions finder = new LeftoverNestedSessions(new FakeSessionPort(HostLogin.UNKNOWN, null,
-				List.of(runRoot)), JsonMapper.builder().build());
+				List.of(resultsFolder)), JsonMapper.builder().build());
 			requireThat(finder.find(), "find").isEqualTo(List.of(new RecordedProcess(5002, HARNESS_START)));
 		}
 	}
@@ -216,23 +216,23 @@ public final class LeftoverNestedSessionsTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void leavesRunOfLiveOwnerAfterClockIsSet() throws IOException
+	public void leavesSessionOfLiveOwnerAfterClockIsSet() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path runRoot = cleanup.add(Files.createTempDirectory("runs"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory("proc")), BOOT_TIME);
 			long owner = ProcessHandle.current().pid();
 			folder.start(owner, "java", 5000);
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
 			String ownerStart = processes.find(owner).flatMap(ProcessDescription::start).orElseThrow();
-			writeManifest(runRoot.resolve("claude").resolve("run-1"), """
+			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), """
 				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(owner, ownerStart, HARNESS_START));
 			// The wall clock is set an hour back
 			folder.setBootTime(BOOT_TIME - 3600);
 
-			requireThat(finder(processes, ProcessHandle::of, runRoot).find(), "find").isEmpty();
+			requireThat(finder(processes, ProcessHandle::of, resultsFolder).find(), "find").isEmpty();
 		}
 	}
 
@@ -243,7 +243,7 @@ public final class LeftoverNestedSessionsTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void missingRunRoots() throws IOException
+	public void missingResultsFolders() throws IOException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -258,32 +258,32 @@ public final class LeftoverNestedSessionsTest
 	/**
 	 * Creates a finder over the results folders of a session port.
 	 *
-	 * @param processes the live processes of the operating system's process table
-	 * @param runRoots  the results folders that the port declares
+	 * @param processes      the live processes of the operating system's process table
+	 * @param resultsFolders the results folders that the port declares
 	 * @return the finder
 	 */
-	private static LeftoverNestedSessions finder(List<FakeProcessHandle> processes, Path... runRoots)
+	private static LeftoverNestedSessions finder(List<FakeProcessHandle> processes, Path... resultsFolders)
 	{
 		FakeProcessHandle[] table = processes.toArray(FakeProcessHandle[]::new);
-		return finder(FakeProcessHandle.processes(table), FakeProcessHandle.table(table), runRoots);
+		return finder(FakeProcessHandle.processes(table), FakeProcessHandle.table(table), resultsFolders);
 	}
 
 	/**
 	 * Creates a finder over the results folders of a session port whose real process checker reads the supplied
 	 * processes.
 	 *
-	 * @param processes reports the starts of running processes
-	 * @param handles   finds the process with an identifier
-	 * @param runRoots  the results folders that the port declares
+	 * @param processes      reports the starts of running processes
+	 * @param handles        finds the process with an identifier
+	 * @param resultsFolders the results folders that the port declares
 	 * @return the finder
 	 */
 	private static LeftoverNestedSessions finder(HarnessProcesses processes,
-		LongFunction<Optional<ProcessHandle>> handles, Path... runRoots)
+		LongFunction<Optional<ProcessHandle>> handles, Path... resultsFolders)
 	{
 		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(processes,
 			handles);
 		return LeftoverNestedSessionsSecrets.getLeftoverNestedSessionsAccess().create(
-			new FakeSessionPort(HostLogin.UNKNOWN, null, List.of(runRoots)), JsonMapper.builder().build(), liveness);
+			new FakeSessionPort(HostLogin.UNKNOWN, null, List.of(resultsFolders)), JsonMapper.builder().build(), liveness);
 	}
 
 	/**
@@ -303,13 +303,13 @@ public final class LeftoverNestedSessionsTest
 	/**
 	 * Writes a run manifest.
 	 *
-	 * @param run the run's directory
+	 * @param sessionFolder the run's directory
 	 * @param manifest the manifest's content
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void writeManifest(Path run, String manifest) throws IOException
+	private static void writeManifest(Path sessionFolder, String manifest) throws IOException
 	{
-		Files.createDirectories(run);
-		Files.writeString(run.resolve("session.json"), manifest);
+		Files.createDirectories(sessionFolder);
+		Files.writeString(sessionFolder.resolve("session.json"), manifest);
 	}
 }

@@ -57,21 +57,22 @@ public final class HarnessCommand
 	 *
 	 * @param manager the owned-run lifecycle manager
 	 *
-	 * @param run the owned run
+	 * @param nestedSession the owned run
 	 *
 	 * @param commandName the generated command artifact name
 	 *
 	 * @throws IOException if the command fails, is interrupted, or diagnostics cannot be persisted
 	 */
 	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment,
-		ExecutableFiles executables, NestedSessionManager manager, NestedSession run, String commandName) throws IOException
+		ExecutableFiles executables, NestedSessionManager manager, NestedSession nestedSession,
+		String commandName) throws IOException
 	{
 		requireThat(command, "command").isNotEmpty();
 		requireThat(executables, "executables").isNotNull();
-		if (manager != null || run != null || commandName != null)
+		if (manager != null || nestedSession != null || commandName != null)
 		{
 			requireThat(manager, "manager").isNotNull();
-			requireThat(run, "run").isNotNull();
+			requireThat(nestedSession, "nestedSession").isNotNull();
 			requireThat(commandName, "commandName").isNotBlank();
 		}
 		try (Process process = HarnessProcessStarter.start(command, workingDirectory, environment,
@@ -85,7 +86,7 @@ public final class HarnessCommand
 				String output = standardOutput.get();
 				String error = standardError.get();
 				if (manager != null)
-					manager.writeCommandOutput(run, commandName, output, error);
+					manager.writeCommandOutput(nestedSession, commandName, output, error);
 				if (exitCode != 0)
 					throw new IOException("Harness setup command failed: " + command + ": " + error.strip());
 			}

@@ -74,7 +74,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	private static final Duration SCAN_PERIOD = Duration.ofMillis(5);
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final FileLocks fileLocks;
-	private final NestedSession run;
+	private final NestedSession nestedSession;
 	private final SessionRequestBroker broker;
 	private final List<List<String>> launches = new CopyOnWriteArrayList<>();
 	private final List<String> received = new CopyOnWriteArrayList<>();
@@ -113,13 +113,14 @@ public final class RequestingNestedSession implements AutoCloseable
 		Path results = root.resolve("requesting-runs");
 		NestedSessionManager manager = new NestedSessionManager(fileLocks, results, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		this.run = manager.create("claude");
-		SessionRequestAccess.allowing(run, root, sessionRequests, Platform.current(), SessionRequestAccess.Shell.POSIX);
+		this.nestedSession = manager.create("claude");
+		SessionRequestAccess.allowing(nestedSession, root, sessionRequests, Platform.current(),
+			SessionRequestAccess.Shell.POSIX);
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact", root.toString(),
-			"--project", run.directory().resolve("project").toString(), "--model", "model-a", "--effort", "effort-a",
-			"--results", results.toString(), "--session-requests", String.valueOf(sessionRequests)}, "harness",
+			"--project", nestedSession.directory().resolve("project").toString(), "--model", "model-a", "--effort",
+			"effort-a", "--results", results.toString(), "--session-requests", String.valueOf(sessionRequests)}, "harness",
 			HarnessTemporaryRoot.of(root));
-		this.broker = new SessionRequestBroker(run, manager, options, plugin(),
+		this.broker = new SessionRequestBroker(nestedSession, manager, options, plugin(),
 			(harness, arguments, _) -> child(harness, arguments));
 		broker.start(MainHarnessRunnerScopeSecrets.getMainHarnessRunnerScopeAccess().heartbeatEvery(SCAN_PERIOD));
 	}
@@ -131,7 +132,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	 */
 	public Path requests()
 	{
-		return SessionRequestAccess.requestsDirectory(run);
+		return SessionRequestAccess.requestsDirectory(nestedSession);
 	}
 
 	/**
@@ -142,7 +143,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	 */
 	public Path home()
 	{
-		return run.directory().resolve("home");
+		return nestedSession.directory().resolve("home");
 	}
 
 	/**
@@ -163,7 +164,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	 */
 	public Path responses()
 	{
-		return SessionRequestAccess.responsesDirectory(run);
+		return SessionRequestAccess.responsesDirectory(nestedSession);
 	}
 
 	/**

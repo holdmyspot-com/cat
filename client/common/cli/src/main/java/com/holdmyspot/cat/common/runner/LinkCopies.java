@@ -72,14 +72,14 @@ final class LinkCopies
 	/**
 	 * Records the copies of a run, as they are before its session starts.
 	 *
-	 * @param run    the run's directory
-	 * @param roots  the path of each copy relative to {@code run}, none inside another
-	 * @param record the record to write
+	 * @param sessionFolder the run's directory
+	 * @param roots         the path of each copy relative to {@code sessionFolder}, none inside another
+	 * @param record        the record to write
 	 * @throws IOException if a copy cannot be read or the record cannot be written
 	 */
-	static void write(Path run, List<Path> roots, Path record) throws IOException
+	static void write(Path sessionFolder, List<Path> roots, Path record) throws IOException
 	{
-		assert run != null;
+		assert sessionFolder != null;
 		assert roots != null;
 		assert record != null;
 		try (BufferedWriter lines = Files.newBufferedWriter(record, UTF_8))
@@ -88,7 +88,7 @@ final class LinkCopies
 			lines.newLine();
 			for (Path root : roots)
 			{
-				Walk walk = new Walk(run, name(root));
+				Walk walk = new Walk(sessionFolder, name(root));
 				boolean first = true;
 				for (Present entry = walk.next(); entry != null; entry = walk.next())
 				{
@@ -110,14 +110,14 @@ final class LinkCopies
 	 * Compares the copies of a run with their record: a copy changed if a file or directory of it was added, removed,
 	 * replaced by one of another type, given other content, or given another mode.
 	 *
-	 * @param run    the run's directory
-	 * @param record the record
+	 * @param sessionFolder the run's directory
+	 * @param record        the record
 	 * @return a diagnostic that names each changed path, or empty if no copy changed
 	 * @throws IOException if the record is malformed or a copy cannot be read
 	 */
-	static Optional<String> changes(Path run, Path record) throws IOException
+	static Optional<String> changes(Path sessionFolder, Path record) throws IOException
 	{
-		assert run != null;
+		assert sessionFolder != null;
 		assert record != null;
 		Changes changes = new Changes();
 		// The record holds one line per file of the copies, so it is read one line at a time; each line is bounded by
@@ -130,7 +130,7 @@ final class LinkCopies
 			{
 				if (!recorded.root())
 					throw records.malformed("the first entry of a copy is not its root");
-				Walk walk = new Walk(run, recorded.path());
+				Walk walk = new Walk(sessionFolder, recorded.path());
 				Present present = walk.next();
 				boolean first = true;
 				while (present != null || recorded != null && (first || !recorded.root()))
@@ -506,7 +506,7 @@ final class LinkCopies
 	 */
 	private static final class Walk
 	{
-		private final Path run;
+		private final Path sessionFolder;
 		private final Deque<Iterator<Path>> levels = new ArrayDeque<>();
 		/**
 		 * The directory that the walk visited last, whose entries it visits next, or {@code null}.
@@ -516,13 +516,13 @@ final class LinkCopies
 		/**
 		 * Creates a walk.
 		 *
-		 * @param run  the run's directory
-		 * @param root the copy's path relative to the run's directory, with {@code /} between names
+		 * @param sessionFolder the run's directory
+		 * @param root          the copy's path relative to the run's directory, with {@code /} between names
 		 */
-		private Walk(Path run, String root)
+		private Walk(Path sessionFolder, String root)
 		{
-			this.run = run;
-			Path path = run;
+			this.sessionFolder = sessionFolder;
+			Path path = sessionFolder;
 			String[] names = root.split("/");
 			for (int index = 0; index < names.length; ++index)
 			{
@@ -584,7 +584,7 @@ final class LinkCopies
 				else
 					type = Type.OTHER;
 				entered = enter;
-				return new Present(name(run.relativize(file)), file, type);
+				return new Present(name(sessionFolder.relativize(file)), file, type);
 			}
 			entered = null;
 			return null;

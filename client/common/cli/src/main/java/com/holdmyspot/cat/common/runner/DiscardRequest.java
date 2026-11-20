@@ -74,7 +74,7 @@ public record DiscardRequest(String sessionId)
 		String id = PREFIX + UUID.randomUUID();
 		ObjectNode manifest = json.createObjectNode().put(VERSION_FIELD, FORMAT_VERSION).put(SESSION_FIELD, sessionId);
 		RequestArchive.packDocument(json, requests.resolve(id + RequestArchive.EXTENSION), manifest,
-			RequestLimits.IN_RUN);
+			RequestLimits.IN_NESTED_SESSION);
 		return id;
 	}
 

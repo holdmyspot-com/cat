@@ -421,13 +421,13 @@ public final class RunnerRelayTest
 	 * @throws IOException if the relay fails
 	 */
 	@Test
-	public void refusesInsideRunWithoutRequests() throws IOException
+	public void refusesNestedSessionWithoutRequests() throws IOException
 	{
 		ByteArrayOutputStream output = new ByteArrayOutputStream();
 		StringWriter errors = new StringWriter();
 
 		int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project", "project"},
-			Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE, OWN_MARKER, "1"),
+			Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE, OWN_MARKER, "1"),
 			Platform.LINUX_X64, () ->
 			{
 				throw new AssertionError("No artifact is selected");
@@ -449,7 +449,7 @@ public final class RunnerRelayTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void forwardsInsideRun() throws IOException
+	public void forwardsInsideNestedSession() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())

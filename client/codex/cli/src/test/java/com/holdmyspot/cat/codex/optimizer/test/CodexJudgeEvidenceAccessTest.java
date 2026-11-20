@@ -108,7 +108,7 @@ public final class CodexJudgeEvidenceAccessTest
 			requireThat(sandbox.access(sandbox.instructions()), "instructionsAccess").isEqualTo("deny");
 			for (String own : List.of("project", "home"))
 			{
-				Path path = sandbox.judgeRun().resolve(own);
+				Path path = sandbox.judgeFolder().resolve(own);
 				requireThat(sandbox.mountedWritable(path), "mountedWritable(" + path + ")").isTrue();
 			}
 		}
@@ -128,7 +128,7 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @throws TimeoutException     if the session does not finish
 	 */
 	@Test(dataProvider = "platforms", timeOut = 120_000)
-	public void judgeSandboxStaysBoundedBesideManyRuns(Platform platform)
+	public void judgeSandboxStaysBoundedAmongSessions(Platform platform)
 		throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -145,7 +145,7 @@ public final class CodexJudgeEvidenceAccessTest
 			requireThat(sandbox.access(sandbox.instructions()), "instructionsAccess").isEqualTo("deny");
 			for (String own : List.of("project", "home"))
 			{
-				Path path = sandbox.judgeRun().resolve(own);
+				Path path = sandbox.judgeFolder().resolve(own);
 				requireThat(sandbox.mountedWritable(path), "mountedWritable(" + path + ")").isTrue();
 			}
 		}
@@ -202,13 +202,13 @@ public final class CodexJudgeEvidenceAccessTest
 		Path instructions = Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.");
 		Path artifact = RoleRuleFixtures.write(hostProject.resolve("artifact"));
 		Path judgeSource = Files.createDirectories(hostProject.resolve("judge-source"));
-		Path runRoot = hostProject.resolve(".cat/sessions/session-1/optimizer-runs/codex");
-		NestedSessionManager trials = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		Path resultsFolder = hostProject.resolve(".cat/sessions/session-1/optimizer-runs/codex");
+		NestedSessionManager trials = new NestedSessionManager(jvm.fileLocks(), resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		NestedSession trial = trials.create("codex");
 		NestedSession sibling = trials.create("codex");
 		for (int i = 0; i < runs; ++i)
-			Files.createDirectories(runRoot.resolve("other-run-" + i));
+			Files.createDirectories(resultsFolder.resolve("other-run-" + i));
 		Path effects = trial.directory().resolve("project");
 		Path trialArtifacts = trial.directory().resolve("artifacts");
 		Path bin = Files.createDirectories(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
@@ -219,19 +219,19 @@ public final class CodexJudgeEvidenceAccessTest
 			requireThat(bwrap.toFile().setExecutable(true), "setExecutable").isTrue();
 		}
 
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, false,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, resultsFolder, List::of, false,
 			Map.of(), hostProject, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer(),
 			Optional.empty(), hostProject);
 		List<Path> configurations = new CopyOnWriteArrayList<>();
-		List<Path> judgeRuns = new CopyOnWriteArrayList<>();
+		List<Path> judgeFolders = new CopyOnWriteArrayList<>();
 		List<SessionSandbox> sandboxes = new CopyOnWriteArrayList<>();
 		CodexSessions sessions = CodexSessionsSecrets.getCodexSessionsAccess().
 			newCodexSessions(settings, (arguments, input, output) ->
 		{
 			HarnessRunnerOptions options = CodexRunnerCli.options(arguments.toArray(String[]::new),
 				HarnessTemporaryRoot.withoutSession("The judge runs outside a harness session"));
-			NestedSessionManager judges = new NestedSessionManager(jvm.fileLocks(), options.runRoot(), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager judges = new NestedSessionManager(jvm.fileLocks(), options.resultsFolder(),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession judge = judges.create("codex");
 			Path configuration = judge.directory().resolve("home/config.toml");
 			CodexConnectionConfiguration.copy(judge.directory().resolve("missing.toml"), configuration,
@@ -240,8 +240,8 @@ public final class CodexJudgeEvidenceAccessTest
 				options.deniedReads(), platform, Map.of("PATH", bin.toString()), null,
 				CodexRunner.appServerCommand("codex", false)));
 			configurations.add(configuration);
-			judgeRuns.add(judge.directory());
-			ScriptedHarness.serve(options.runRoot(), "codex", List.of(Turn.replies("{}")), input, output);
+			judgeFolders.add(judge.directory());
+			ScriptedHarness.serve(options.resultsFolder(), "codex", List.of(Turn.replies("{}")), input, output);
 		});
 
 		SessionResult result = sessions.start(new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeSource,
@@ -257,7 +257,7 @@ public final class CodexJudgeEvidenceAccessTest
 		SessionSandbox sandbox = sandboxes.getFirst();
 		return new JudgeStart(result, new JudgeSandbox(permissions, sandbox.profile(), profileBytes(configuration),
 			sandbox.command(), List.of(effects, trialArtifacts), sibling.directory(), instructions,
-			judgeRuns.getFirst()));
+			judgeFolders.getFirst()));
 	}
 
 	/**
@@ -295,10 +295,10 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @param evidence     the trial's evidence
 	 * @param sibling      a sibling trial's run directory
 	 * @param instructions a file of the host project outside every run
-	 * @param judgeRun     the judge's own run directory
+	 * @param judgeFolder  the judge's own run directory
 	 */
 	private record JudgeSandbox(JsonNode permissions, String profile, int profileBytes, List<String> command,
-		List<Path> evidence, Path sibling, Path instructions, Path judgeRun)
+		List<Path> evidence, Path sibling, Path instructions, Path judgeFolder)
 	{
 		/**
 		 * Indicates whether the app-server's bubblewrap mounts leave an existing path writable, so that the thread's

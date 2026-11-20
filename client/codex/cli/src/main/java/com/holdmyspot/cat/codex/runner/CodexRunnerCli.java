@@ -424,10 +424,10 @@ public final class CodexRunnerCli
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			NestedSessionManager opened = NestedSessionManager.openRunRoot(process.fileLocks(), options.runRoot(),
+			NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(), options.resultsFolder(),
 				Clock.systemUTC(), replacer);
 			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
-			NestedSessionManager manager = inSlot(opened, options.runId(), args);
+			NestedSessionManager manager = inSlot(opened, options.slotId(), args);
 			HarnessCapacity.Permit permit = null;
 			if (!options.capacityHeld())
 			{
@@ -445,7 +445,7 @@ public final class CodexRunnerCli
 					options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 					options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
 					toolOutputTokenLimit, options.sessionTranscripts(), options.sessionRequests(), bound, policy::set,
-					options.gitName(), options.gitEmail(), extraPermissions, options.resumeRun()),
+					options.gitName(), options.gitEmail(), extraPermissions, options.resumeSlot()),
 					manager, options, scope.json(), replacer, input, output, (harness, arguments, directory) ->
 					requestedRunner(scope, options.artifact(), harness, environment).start(PolicyBoundFile.
 						boundArguments(scope.json(), arguments, directory, policy.get()), directory,
@@ -459,15 +459,15 @@ public final class CodexRunnerCli
 	 * record the launch options that its start fixed, so that a later runner can continue its harness session.
 	 *
 	 * @param manager the manager of the results folder
-	 * @param runId   the slot's run identifier, or {@code null} if the run is not in a slot
+	 * @param slotId  the slot's run identifier, or {@code null} if the run is not in a slot
 	 * @param args    the launch's options
 	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
 	 */
-	private static NestedSessionManager inSlot(NestedSessionManager manager, String runId, String[] args)
+	private static NestedSessionManager inSlot(NestedSessionManager manager, String slotId, String[] args)
 	{
-		if (runId == null)
+		if (slotId == null)
 			return manager;
-		return manager.withFixedRunId(runId).withLaunchArguments(NestedSessionLaunch.fixedArguments(args));
+		return manager.withFixedSlotId(slotId).withLaunchArguments(NestedSessionLaunch.fixedArguments(args));
 	}
 
 	/**

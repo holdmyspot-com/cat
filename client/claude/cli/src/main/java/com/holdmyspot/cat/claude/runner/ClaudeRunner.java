@@ -201,11 +201,11 @@ public final class ClaudeRunner
 			throw new IOException("A direct CAT agent requires --install-cat");
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		boolean resumes = resumedSession != null;
-		NestedSession run;
+		NestedSession nestedSession;
 		if (resumes)
-			run = manager.resume(HARNESS_ID, resumedSession);
+			nestedSession = manager.resume(HARNESS_ID, resumedSession);
 		else
-			run = manager.create(HARNESS_ID);
+			nestedSession = manager.create(HARNESS_ID);
 		NestedSessionLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
@@ -213,46 +213,46 @@ public final class ClaudeRunner
 		{
 			// The empty files keep Claude Code's sandbox from mounting a file that the session's tools could not find
 			if (sandboxed(role))
-				ClaudeMarketplace.writeEmptyMcpConfiguration(run.directory().getParent().getParent());
+				ClaudeMarketplace.writeEmptyMcpConfiguration(nestedSession.directory().getParent().getParent());
 			// A resumed run keeps the project that its start copied, as its session left it
 			if (!resumes)
 			{
-				manager.copyProject(project, run);
+				manager.copyProject(project, nestedSession);
 				if (workspace != null)
-					manager.copyWorkspace(workspace, run);
-				manager.snapshotProject(run);
-				HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(),
-					environment, executables, gitName, gitEmail);
+					manager.copyWorkspace(workspace, nestedSession);
+				manager.snapshotProject(nestedSession);
+				HarnessProjectRepository.initialize(project, nestedSession.directory().resolve("project"),
+					nestedSession.directory(), environment, executables, gitName, gitEmail);
 			}
 			Path hostConfiguration = claudeConfigDirectory(environment, Platform.current());
-			Path claudeTemporaryDirectory = run.directory().resolve("claude");
+			Path claudeTemporaryDirectory = nestedSession.directory().resolve("claude");
 			if (sandboxed(role))
 				ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
 			// The run manager places every project, home, and Claude temporary directory beneath CAT's isolated work root.
 			// This keeps concurrent runs separate without diverting CAT-owned state to the shared system temporary directory.
-			Path isolatedProcessHome = run.directory().resolve("home");
+			Path isolatedProcessHome = nestedSession.directory().resolve("home");
 			Path isolatedConfiguration = isolatedProcessHome.resolve(".claude");
 			if (installCat && !resumes)
 				UserRuleTree.copy(userRulesRoot(environment), ProjectRuleLoader.rulesDirectory(isolatedProcessHome));
 			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
 			// independent trials do not redownload the same immutable registry artifacts.
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
-			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifactRoot, sessionRequests,
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, artifactRoot, sessionRequests,
 				Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
 			Map<String, String> isolatedEnvironment = processEnvironment(scope, environment, caches,
 				hostConfiguration.resolve("settings.json"), isolatedProcessHome, requestAccess);
-			Path worktree = run.directory().resolve("project");
+			Path worktree = nestedSession.directory().resolve("project");
 			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope,
 				hostConfiguration.resolve("settings.json"), isolatedConfiguration.resolve("settings.json"),
-				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), run.directory(),
-				sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, requestAccess),
-				instructionFilesMode, requestAccess, worktree, run.directory(), bound, extraPermissions,
+				claudeTemporaryDirectory, isolatedProcessHome, caches.directories(), nestedSession.directory(),
+				sessionDeniedReads(manager, nestedSession, readOnlyEvidence, deniedReads, environment, requestAccess),
+				instructionFilesMode, requestAccess, worktree, nestedSession.directory(), bound, extraPermissions,
 				ClaudeConnectionSettings.modelHost(isolatedEnvironment), promptCacheTtl(role), sandboxed(role), tools(role));
 			requireNoWidening(scope, Platform.current(), worktree, policy, isolatedProcessHome);
 			policyListener.accept(policy);
 			// The copied project already has its owned baseline. A second initial commit
 			// would be empty, so Git would reject it before Claude can start.
-			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, run.directory());
+			HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, nestedSession.directory());
 			List<Path> plugins;
 			if (resumes)
 			{
@@ -264,14 +264,14 @@ public final class ClaudeRunner
 				plugins = installPlugins(executable, artifact, installCat, trialPlugins, isolatedConfiguration,
 					isolatedEnvironment, FileReplacer.retrying(waiting), scope.json(),
 					(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
-						run, step));
+						nestedSession, step));
 			}
 			// The first plugin is CAT's when the run installs it, and its launchers are the ones that the session's
 			// requested sessions may read
 			Path catPlugin = null;
 			if (installCat)
 				catPlugin = plugins.getFirst();
-			Path hookResults = createHookResultsDirectory(isolatedConfiguration, run);
+			Path hookResults = createHookResultsDirectory(isolatedConfiguration, nestedSession);
 			String selectedModel = model;
 			String selectedEffort = effort;
 			String selectedAgent = "";
@@ -289,15 +289,15 @@ public final class ClaudeRunner
 				readOnlyEvidence, tools(role));
 			if (resumes)
 				command = resumed(command, resumedSession);
-			manager.initialize(run, artifact, project, "claude_stream_json", command);
-			lock = manager.acquireLock(run);
+			manager.initialize(nestedSession, artifact, project, "claude_stream_json", command);
+			lock = manager.acquireLock(nestedSession);
 			Path projectDirectory = null;
 			HarnessSessionTranscripts transcripts = null;
 			if (sessionTranscripts)
 			{
 				// Claude names the root session's transcript after the session, below the directory it names for the worktree
 				projectDirectory = hookResults.resolve(claudeProjectDirectory(worktree.toAbsolutePath().normalize()));
-				transcripts = new HarnessSessionTranscripts(hookResults, run.sessionTranscripts(),
+				transcripts = new HarnessSessionTranscripts(hookResults, nestedSession.sessionTranscripts(),
 					name -> name.endsWith(".jsonl"));
 			}
 			// A session without a sandbox has none whose failure to confine the watch could report
@@ -305,7 +305,7 @@ public final class ClaudeRunner
 			ProcessOwnership child = new ProcessOwnership();
 			ClaudeProcess process = null;
 			boolean identityRecorded = false;
-			manager.markHarnessStarting(run);
+			manager.markHarnessStarting(nestedSession);
 			try
 			{
 				child.start(command, worktree, isolatedEnvironment, executables);
@@ -316,21 +316,21 @@ public final class ClaudeRunner
 				}
 				else
 					process = new ClaudeProcess(scope, child.process(), projectDirectory, transcripts);
-				manager.recordHarnessProcess(run, process.pid(), process.processStart());
+				manager.recordHarnessProcess(nestedSession, process.pid(), process.processStart());
 				identityRecorded = true;
 				if (watch == null)
 				{
-					LiveNestedSession session = new LiveNestedSession(run, process, scope, lock, catPlugin);
+					LiveNestedSession session = new LiveNestedSession(nestedSession, process, scope, lock, catPlugin);
 					child.release();
 					return session;
 				}
-				LiveNestedSession session = new LiveNestedSession(run, watch.guard(process), scope, lock, catPlugin);
+				LiveNestedSession session = new LiveNestedSession(nestedSession, watch.guard(process), scope, lock, catPlugin);
 				child.release();
 				return session;
 			}
 			catch (IOException | RuntimeException e)
 			{
-				cleanupLaunchFailure(child, process, manager, run, identityRecorded, e);
+				cleanupLaunchFailure(child, process, manager, nestedSession, identityRecorded, e);
 				throw e;
 			}
 		}
@@ -345,7 +345,7 @@ public final class ClaudeRunner
 			scope.close();
 			// A resumed run whose session could not start stays retained for a later launch
 			if (!resumes)
-				manager.fail(run, e.getMessage());
+				manager.fail(nestedSession, e.getMessage());
 			throw e;
 		}
 	}
@@ -389,13 +389,13 @@ public final class ClaudeRunner
 	 * @param child the raw process returned by the operating system, if spawned
 	 * @param wrapper the process wrapper, if constructed
 	 * @param manager the run manager
-	 * @param run the run being launched
+	 * @param nestedSession the run being launched
 	 * @param identityRecorded whether the manifest already contains the child identity
 	 * @param primary the launch failure
 	 */
 	@SuppressWarnings("PMD.CloseResource")
 	private static void cleanupLaunchFailure(ProcessOwnership child, ClaudeProcess wrapper, NestedSessionManager manager,
-		NestedSession run, boolean identityRecorded, Throwable primary)
+		NestedSession nestedSession, boolean identityRecorded, Throwable primary)
 	{
 		Process rawProcess = child.processOrNull();
 		if (rawProcess != null)
@@ -426,7 +426,7 @@ public final class ClaudeRunner
 		{
 			try
 			{
-				manager.recordNoHarnessProcess(run);
+				manager.recordNoHarnessProcess(nestedSession);
 			}
 			catch (IOException e)
 			{
@@ -576,7 +576,7 @@ public final class ClaudeRunner
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
 		// Set after the caller's settings too, so that the session's commands send their sessions to this run's runner
-		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+		isolatedEnvironment.put(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 		// Claude Code passes these to the commands that it starts
 		if (requestAccess != null)
 			isolatedEnvironment.putAll(requestAccess.environment());
@@ -643,7 +643,7 @@ public final class ClaudeRunner
 	 * session's own settings file, which the runner writes before the session starts, is always included.
 	 *
 	 * @param manager          the run manager
-	 * @param run              the session's run
+	 * @param nestedSession    the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param environment      the caller's environment, which names the user's home and harness directories
@@ -651,10 +651,10 @@ public final class ClaudeRunner
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the results folder or a denied directory cannot be listed
 	 */
-	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession nestedSession,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment) throws IOException
 	{
-		return sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, null);
+		return sessionDeniedReads(manager, nestedSession, readOnlyEvidence, deniedReads, environment, null);
 	}
 
 	/**
@@ -663,7 +663,7 @@ public final class ClaudeRunner
 	 * requests and responses directories stay readable when the session may request sessions.
 	 *
 	 * @param manager          the run manager
-	 * @param run              the session's run
+	 * @param nestedSession    the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param environment      the caller's environment, which names the user's home and harness directories
@@ -672,21 +672,21 @@ public final class ClaudeRunner
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
 	 * @throws IOException          if the results folder or a denied directory cannot be listed
 	 */
-	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession nestedSession,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment,
 		SessionRequestAccess requestAccess) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
-		requireThat(run, "run").isNotNull();
+		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		Path home = run.directory().resolve("home");
+		Path home = nestedSession.directory().resolve("home");
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
-		accessible.add(run.directory().resolve("project"));
-		accessible.add(NestedSessionManager.linkTargets(run.directory()));
+		accessible.add(nestedSession.directory().resolve("project"));
+		accessible.add(NestedSessionManager.linkTargets(nestedSession.directory()));
 		accessible.add(home);
-		accessible.add(run.directory().resolve("claude"));
+		accessible.add(nestedSession.directory().resolve("claude"));
 		if (requestAccess != null)
 		{
 			accessible.add(requestAccess.requests());
@@ -722,22 +722,22 @@ public final class ClaudeRunner
 	 * Creates the run-owned directory Claude may read for spilled hook context.
 	 *
 	 * @param isolatedHome the isolated Claude configuration directory
-	 * @param run the owned Claude run
+	 * @param nestedSession the owned Claude run
 	 * @return the directory containing spilled hook context
 	 * @throws IOException if the directory or its narrowly scoped Claude path alias cannot be created
 	 */
-	public static Path createHookResultsDirectory(Path isolatedHome, NestedSession run) throws IOException
+	public static Path createHookResultsDirectory(Path isolatedHome, NestedSession nestedSession) throws IOException
 	{
 		assert isolatedHome != null;
-		assert run != null;
+		assert nestedSession != null;
 		Path hookResults = Files.createDirectories(isolatedHome.resolve("projects"));
-		Path worktree = run.directory().resolve("project").toAbsolutePath().normalize();
+		Path worktree = nestedSession.directory().resolve("project").toAbsolutePath().normalize();
 		Path canonicalProjectDirectory = Files.createDirectories(hookResults.resolve(claudeProjectDirectory(worktree)));
-		Path harnessDirectory = run.directory().toAbsolutePath().normalize().getParent();
-		Path runRoot = harnessDirectory.getParent();
-		Path reportedParent = Files.createDirectories(hookResults.resolve(claudeProjectDirectory(runRoot)).
+		Path harnessDirectory = nestedSession.directory().toAbsolutePath().normalize().getParent();
+		Path resultsFolder = harnessDirectory.getParent();
+		Path reportedParent = Files.createDirectories(hookResults.resolve(claudeProjectDirectory(resultsFolder)).
 			resolve(harnessDirectory.getFileName()));
-		Path reportedProjectDirectory = reportedParent.resolve(run.id() + "-project");
+		Path reportedProjectDirectory = reportedParent.resolve(nestedSession.id() + "-project");
 		if (Files.exists(reportedProjectDirectory, NOFOLLOW_LINKS))
 			throw new IOException("Claude spill-context alias already exists: " + reportedProjectDirectory);
 		// Claude writes the canonicalized path but reports the runner's <harness> directory uncanonicalized

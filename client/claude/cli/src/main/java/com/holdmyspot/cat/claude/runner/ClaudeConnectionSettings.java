@@ -301,7 +301,7 @@ public final class ClaudeConnectionSettings
 	 * directory; a cache or directory that {@code bound} does not let it write is not
 	 * writable. Claude Code lets the instance's commands write the project and {@code claudeTemporaryDirectory}
 	 * without a setting, so the session is refused unless {@code bound} lets them write those and
-	 * {@code claudeHome}. {@code bound} always lets the instance write inside {@code runFolder}, so the session is
+	 * {@code claudeHome}. {@code bound} always lets the instance write inside {@code sessionFolder}, so the session is
 	 * refused only for the paths among them that lie outside it; the instance's commands still write only the paths
 	 * that its policy lists, not the whole session folder. The sandbox settings carry exactly the resulting policy: its
 	 * writable paths, the paths inside them that are not writable, the paths that are not readable (also as
@@ -327,28 +327,28 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's project, which Claude Code lets its commands write, or
 	 *                                 {@code null} if the instance has none
-	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
+	 * @param sessionFolder            the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs, which join its needs
 	 * @param modelHost                the host of the instance's model provider
 	 * @return the instance's sandbox policy
-	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions}
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code sessionFolder}, {@code extraPermissions}
 	 *                                  or {@code modelHost} are null
 	 * @throws IllegalArgumentException if {@code modelHost} is blank
 	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write {@code claudeHome},
-	 *                                  {@code claudeTemporaryDirectory} or {@code project} outside {@code runFolder}, or
-	 *                                  lacks a write or host that the instance needs
+	 *                                  {@code claudeTemporaryDirectory} or {@code project} outside {@code sessionFolder},
+	 *                                  or lacks a write or host that the instance needs
 	 * @throws IOException              if settings I/O fails
 	 */
 	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
-		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost)
+		Path sessionFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost)
 		throws IOException
 	{
 		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
-			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, runFolder, bound, extraPermissions,
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, sessionFolder, bound, extraPermissions,
 			modelHost, "");
 	}
 
@@ -372,7 +372,7 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's project, which Claude Code lets its commands write, or
 	 *                                 {@code null} if the instance has none
-	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
+	 * @param sessionFolder            the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs
@@ -380,7 +380,7 @@ public final class ClaudeConnectionSettings
 	 * @param promptCacheTtl           the lifetime of the instance's prompt cache, such as {@code 5m}, or an empty
 	 *                                 string to keep Claude Code's default
 	 * @return the instance's sandbox policy
-	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions},
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code sessionFolder}, {@code extraPermissions},
 	 *                                  {@code modelHost} or {@code promptCacheTtl} are null
 	 * @throws IllegalArgumentException if {@code modelHost} is blank
 	 * @throws SessionRefusedException  if {@code bound} does not let the instance's commands write what Claude Code
@@ -390,11 +390,11 @@ public final class ClaudeConnectionSettings
 	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
-		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl)
+		Path sessionFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl)
 		throws IOException
 	{
 		return writeIsolatedSettings(scope, source, destination, claudeTemporaryDirectory, claudeHome, dependencyCaches,
-			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, runFolder, bound, extraPermissions,
+			isolationRoot, deniedReads, instructionFilesMode, requestAccess, project, sessionFolder, bound, extraPermissions,
 			modelHost, promptCacheTtl, true, List.of());
 	}
 
@@ -429,7 +429,7 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's project, which Claude Code lets its commands write, or
 	 *                                 {@code null} if the instance has none
-	 * @param runFolder                the instance's run directory, which {@code bound} always lets it write
+	 * @param sessionFolder            the instance's run directory, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs
@@ -441,7 +441,7 @@ public final class ClaudeConnectionSettings
 	 * @param tools                    the only tools that the instance's model is offered, or none if it is offered
 	 *                                 every tool
 	 * @return the instance's sandbox policy
-	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code runFolder}, {@code extraPermissions},
+	 * @throws NullPointerException     if {@code instructionFilesMode}, {@code sessionFolder}, {@code extraPermissions},
 	 *                                  {@code modelHost}, {@code promptCacheTtl} or {@code tools} are null
 	 * @throws IllegalArgumentException if {@code modelHost} is blank
 	 * @throws SessionRefusedException  if {@code sandboxed} is {@code false} and {@code tools} is empty or names a tool
@@ -454,13 +454,13 @@ public final class ClaudeConnectionSettings
 	public static ChildPolicy writeIsolatedSettings(HarnessRunnerScope scope, Path source, Path destination,
 		Path claudeTemporaryDirectory, Path claudeHome, List<Path> dependencyCaches, Path isolationRoot,
 		List<Path> deniedReads, String instructionFilesMode, SessionRequestAccess requestAccess, Path project,
-		Path runFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl,
+		Path sessionFolder, ChildPolicy bound, ExtraPermissions extraPermissions, String modelHost, String promptCacheTtl,
 		boolean sandboxed, List<String> tools)
 		throws IOException
 	{
 		requireThat(promptCacheTtl, "promptCacheTtl").isNotNull();
 		requireThat(instructionFilesMode, "instructionFilesMode").isNotNull();
-		requireThat(runFolder, "runFolder").isNotNull();
+		requireThat(sessionFolder, "sessionFolder").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(modelHost, "modelHost").isNotBlank();
 		requireThat(tools, "tools").isNotNull();
@@ -477,7 +477,7 @@ public final class ClaudeConnectionSettings
 		implicitWrites.add(claudeTemporaryDirectory);
 		if (project != null)
 			implicitWrites.add(project);
-		ChildPolicy policy = childPolicy(bound, runFolder, claudeHome, sessionWrites, implicitWrites, deniedReads,
+		ChildPolicy policy = childPolicy(bound, sessionFolder, claudeHome, sessionWrites, implicitWrites, deniedReads,
 			extraPermissions, modelHost);
 
 		JsonMapper mapper = scope.json();
@@ -508,7 +508,7 @@ public final class ClaudeConnectionSettings
 		}
 		// The project's links to targets outside it lead to the copies in the run's link-targets directory, which the
 		// file tools read through the links; no rule or sandbox path lets the session write there
-		grants.add("Read(" + rulePattern(NestedSessionManager.linkTargets(runFolder)) + "/**)");
+		grants.add("Read(" + rulePattern(NestedSessionManager.linkTargets(sessionFolder)) + "/**)");
 		// A session without a sandbox has no command to run and requests no session
 		if (sandboxed && requestAccess != null)
 		{
@@ -565,7 +565,7 @@ public final class ClaudeConnectionSettings
 	 * Returns an isolated instance's sandbox policy: its needs, bounded by the policy that bounds it.
 	 *
 	 * @param bound          the policy that bounds the instance's, or {@code null} if nothing bounds it
-	 * @param runFolder      the instance's run directory, which {@code bound} always lets it write: only the writes
+	 * @param sessionFolder  the instance's run directory, which {@code bound} always lets it write: only the writes
 	 *                       outside it need {@code bound}'s permission, and the instance's commands write only the
 	 *                       paths of its policy inside it
 	 * @param claudeHome     the instance's home directory, which it always writes
@@ -576,10 +576,10 @@ public final class ClaudeConnectionSettings
 	 * @param modelHost      the host of the instance's model provider
 	 * @return the policy
 	 * @throws SessionRefusedException if {@code bound} does not let the commands write {@code claudeHome} or one of
-	 *                                 {@code implicitWrites} outside {@code runFolder}
+	 *                                 {@code implicitWrites} outside {@code sessionFolder}
 	 * @throws IOException             if a symbolic link in a path cannot be read
 	 */
-	private static ChildPolicy childPolicy(ChildPolicy bound, Path runFolder, Path claudeHome,
+	private static ChildPolicy childPolicy(ChildPolicy bound, Path sessionFolder, Path claudeHome,
 		List<Path> sessionWrites, List<Path> implicitWrites, List<Path> deniedReads, ExtraPermissions extra,
 		String modelHost)
 		throws IOException
@@ -587,7 +587,7 @@ public final class ClaudeConnectionSettings
 		ParentPolicy parent = ParentPolicy.UNSANDBOXED;
 		if (bound != null)
 		{
-			Path run = runFolder.toAbsolutePath().normalize();
+			Path absoluteFolder = sessionFolder.toAbsolutePath().normalize();
 			List<Path> required = new ArrayList<>();
 			required.add(claudeHome);
 			required.addAll(implicitWrites);
@@ -595,7 +595,7 @@ public final class ClaudeConnectionSettings
 			{
 				Path absolute = path.toAbsolutePath().normalize();
 				// The session folder is the instance's own, so the bound does not decide whether it may write there
-				if (isInsideAny(RealPaths.resolve(absolute), List.of(run)))
+				if (isInsideAny(RealPaths.resolve(absolute), List.of(absoluteFolder)))
 					continue;
 				if (!writes(bound, absolute))
 				{
@@ -605,7 +605,7 @@ public final class ClaudeConnectionSettings
 			}
 			ParentPolicy boundPolicy = bound.asParentPolicy();
 			List<Path> writeRoots = new ArrayList<>(boundPolicy.writeRoots());
-			writeRoots.add(run);
+			writeRoots.add(absoluteFolder);
 			parent = new ParentPolicy(true, writeRoots, boundPolicy.writeDenials(), boundPolicy.readDenials(),
 				boundPolicy.readReallowances(), boundPolicy.hosts(), boundPolicy.allowLocalBinding(),
 				boundPolicy.protectedSources());

@@ -51,14 +51,14 @@ public final class AppServerPromptSourcesTest
 	 * Observes lines.
 	 *
 	 * @param lines the harness event lines
-	 * @param run the run directory that the lines mention
+	 * @param sessionFolder the run directory that the lines mention
 	 * @return the observed value
 	 */
-	private static String observe(List<String> lines, String run)
+	private static String observe(List<String> lines, String sessionFolder)
 	{
 		AppServerPromptSources sources = AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
 			newAppServerPromptSources(JSON,
-			Map.of("<run>", Path.of(run)));
+			Map.of("<run>", Path.of(sessionFolder)));
 		for (String line : lines)
 			sources.accept(line);
 		return sources.value();
@@ -111,7 +111,7 @@ public final class AppServerPromptSourcesTest
 	 * @throws IOException if the recorded lines cannot be read
 	 */
 	@Test
-	public void listsHooksWithoutRunPaths() throws IOException
+	public void listsHooksWithoutSessionPaths() throws IOException
 	{
 		// Requirement: R-M1
 		String value = observe(recorded(), RUN);
@@ -126,7 +126,7 @@ public final class AppServerPromptSourcesTest
 	 * @throws IOException if the recorded lines cannot be read
 	 */
 	@Test
-	public void ignoresWhereTheRunWasStaged() throws IOException
+	public void ignoresWhereTheSessionWasStaged() throws IOException
 	{
 		// Requirement: R-M1
 		String other = "/elsewhere/stage-7f3a/codex/zz99";

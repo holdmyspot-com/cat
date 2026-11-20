@@ -122,7 +122,7 @@ public final class LinkReportTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void reportsOutsideLinkOfRunProject() throws IOException
+	public void reportsOutsideLinkOfSessionProject() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -133,11 +133,11 @@ public final class LinkReportTest
 			Files.createSymbolicLink(source.resolve("rules.md"), Path.of("../../rules.md"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			NestedSession run = manager.create("harness");
-			manager.copyProject(source.getParent(), run);
-			Path project = run.directory().toRealPath().resolve("project");
+			NestedSession nestedSession = manager.create("harness");
+			manager.copyProject(source.getParent(), nestedSession);
+			Path project = nestedSession.directory().toRealPath().resolve("project");
 			Path copy = project.resolve("docs/rules.md").toRealPath();
-			requireThat(copy.getParent(), "copyFolder").isEqualTo(NestedSessionManager.linkTargets(run.directory()).
+			requireThat(copy.getParent(), "copyFolder").isEqualTo(NestedSessionManager.linkTargets(nestedSession.directory()).
 				toRealPath());
 
 			FileInventory inventory = InventoryScanner.scan(project, Set.of(copy));

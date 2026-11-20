@@ -336,7 +336,8 @@ final class Session implements SessionHandle
 	{
 		if (request.files().isEmpty())
 			return null;
-		Path directory = Files.createDirectories(runRoot().resolve("workspaces")).resolve(UUID.randomUUID().toString());
+		Path directory = Files.createDirectories(resultsFolder().resolve("workspaces")).resolve(
+			UUID.randomUUID().toString());
 		Files.createDirectory(directory);
 		try
 		{
@@ -361,7 +362,7 @@ final class Session implements SessionHandle
 	{
 		if (request.extraPermissions().isEmpty())
 			return null;
-		Path directory = Files.createDirectories(runRoot().resolve("extra-permissions")).
+		Path directory = Files.createDirectories(resultsFolder().resolve("extra-permissions")).
 			resolve(UUID.randomUUID().toString());
 		Files.createDirectory(directory);
 		Path file = directory.resolve(ExtraPermissions.FILE_NAME);
@@ -541,7 +542,7 @@ final class Session implements SessionHandle
 	{
 		List<RateLimitWindow> windows = events.windows();
 		if (ended != null)
-			new NestedSessionManager(settings.scope().fileLocks(), runRoot(),
+			new NestedSessionManager(settings.scope().fileLocks(), resultsFolder(),
 				clock, settings.replacer()).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
@@ -590,9 +591,9 @@ final class Session implements SessionHandle
 	 */
 	private SessionResult.Completed completed()
 	{
-		Path artifacts = runDirectory().resolve("artifacts");
+		Path artifacts = sessionFolder().resolve("artifacts");
 		return new SessionResult.Completed(artifacts.resolve(EventSink.TRANSCRIPT), responses,
-			runDirectory().resolve("project"), runDirectory().resolve("initial-project"), events.model(),
+			sessionFolder().resolve("project"), sessionFolder().resolve("initial-project"), events.model(),
 			events.reasoning(), events.usage(), events.windows(), sink.promptSources(),
 			events.toolCalls(), Math.max(request.turns().size(), responses.size()), endedEarly, settledAssertions);
 	}
@@ -640,7 +641,7 @@ final class Session implements SessionHandle
 				arguments.addAll(List.of("--plugin", plugin.toString()));
 		}
 		arguments.addAll(List.of("--artifact", artifact.toString(), "--project", request.source().toString(),
-			"--results", runRoot().toString()));
+			"--results", resultsFolder().toString()));
 		// Only a trial's transcripts are read, to learn what its agents received
 		if (request.role() == SessionRole.TRIAL)
 			arguments.add("--session-transcripts");
@@ -693,11 +694,11 @@ final class Session implements SessionHandle
 	 *
 	 * @return the directory
 	 */
-	private Path runRoot()
+	private Path resultsFolder()
 	{
 		if (request.part() == Part.HELD_OUT)
-			return settings.heldOutRunRoot();
-		return settings.runRoot();
+			return settings.heldOutResultsFolder();
+		return settings.resultsFolder();
 	}
 
 	/**
@@ -707,7 +708,7 @@ final class Session implements SessionHandle
 	 */
 	private Path harnessDirectory()
 	{
-		return runRoot().resolve(sessions.harness());
+		return resultsFolder().resolve(sessions.harness());
 	}
 
 	/**
@@ -715,7 +716,7 @@ final class Session implements SessionHandle
 	 *
 	 * @return the directory
 	 */
-	private Path runDirectory()
+	private Path sessionFolder()
 	{
 		return harnessDirectory().resolve(sessionId);
 	}

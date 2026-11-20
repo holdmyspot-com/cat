@@ -51,17 +51,18 @@ public final class HarnessRunnerBridgeProtocolContractTest
 	 */
 	private static Observation runBridgeSession(Inputs inputs) throws IOException
 	{
-		Path runRoot = Files.createDirectories(inputs.runRoot());
+		Path resultsFolder = Files.createDirectories(inputs.resultsFolder());
 		FileLocks fileLocks = new FileLocks();
-		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		NestedSession run = manager.create("codex");
-		Path project = Files.createDirectories(run.directory().resolve("project"));
-		manager.initialize(run, inputs.artifact(), project, "scripted", List.of("scripted"));
+		NestedSession nestedSession = manager.create("codex");
+		Path project = Files.createDirectories(nestedSession.directory().resolve("project"));
+		manager.initialize(nestedSession, inputs.artifact(), project, "scripted", List.of("scripted"));
 		Files.writeString(project.resolve("result.txt"), "result");
-		Files.writeString(Files.createDirectories(run.directory().resolve("home")).resolve("login.json"), "login");
+		Files.writeString(Files.createDirectories(nestedSession.directory().resolve("home")).resolve("login.json"),
+			"login");
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact", inputs.artifact().toString(),
-			"--results", runRoot.toString(), "--project", project.toString(), "--model", "model-a", "--effort",
+			"--results", resultsFolder.toString(), "--project", project.toString(), "--model", "model-a", "--effort",
 			"effort-a", "--session-requests", "1", "--output", inputs.transcript().toString(),
 			"--receipt", inputs.receipt().toString()}, "codex", HarnessTemporaryRoot.of(inputs.root()));
 		List<String> receivedPrompts = new ArrayList<>();
@@ -69,7 +70,7 @@ public final class HarnessRunnerBridgeProtocolContractTest
 		StringWriter output = new StringWriter();
 		JsonMapper json = JsonMapper.builder().build();
 
-		HarnessRunnerBridge.serve(() -> new LiveNestedSession(run,
+		HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession,
 			new ScriptedProcess(script, receivedPrompts), new TestHarnessRunnerScope()), manager, options, json,
 			Yielding.fileReplacer(), new StringReader(inputs.records()), output,
 			(_, _, _) ->
@@ -77,7 +78,7 @@ public final class HarnessRunnerBridgeProtocolContractTest
 				throw new AssertionError("The normal bridge session made an unexpected child request");
 			});
 
-		return new Observation(inputs.transcript(), inputs.receipt(), run.directory(), receivedPrompts);
+		return new Observation(inputs.transcript(), inputs.receipt(), nestedSession.directory(), receivedPrompts);
 	}
 
 	/**

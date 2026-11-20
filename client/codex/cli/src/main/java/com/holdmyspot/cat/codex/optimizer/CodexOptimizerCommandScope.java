@@ -160,7 +160,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 		ensureOpen();
 		if (sessions == null)
 		{
-			sessions = sessions(this, environment, home, hostProject(), runRoot(), artifact, configurationDirectory,
+			sessions = sessions(this, environment, home, hostProject(), resultsFolder(), artifact, configurationDirectory,
 				this::heldOutDirectories, clock(), fileReplacer());
 		}
 		return sessions;
@@ -216,7 +216,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param environment            the process environment
 	 * @param home                   the user's home directory
 	 * @param hostProject            the project of the host session, which holds the results folder
-	 * @param runRoot                the directory that holds the runs of the host session's campaigns
+	 * @param resultsFolder                the directory that holds the runs of the host session's campaigns
 	 * @param artifact               the complete Codex artifact that nested sessions install
 	 * @param configurationDirectory the host's Codex configuration directory
 	 * @param heldOut                lists the campaigns' held-out directories
@@ -225,11 +225,11 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @return the port
 	 */
 	private static SessionPort sessions(JvmScope jvm, Map<String, String> environment, Path home, Path hostProject,
-		Path runRoot,
+		Path resultsFolder,
 		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock,
 		FileReplacer replacer)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, heldOut, true,
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, resultsFolder, heldOut, true,
 			environment, configurationDirectory, HarnessCapacity.forHome(jvm.fileLocks(), home, HARNESS_ID,
 				HarnessCapacity.MAXIMUM_CONCURRENCY, jvm.waiting()), clock, replacer,
 			Optional.of(ProjectRuleLoader.rulesDirectory(home)),

@@ -171,11 +171,11 @@ public final class CodexRunner
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
 		boolean resumes = resumedSession != null;
-		NestedSession run;
+		NestedSession nestedSession;
 		if (resumes)
-			run = manager.resume(HARNESS_ID, resumedSession);
+			nestedSession = manager.resume(HARNESS_ID, resumedSession);
 		else
-			run = manager.create(HARNESS_ID);
+			nestedSession = manager.create(HARNESS_ID);
 		NestedSessionLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
@@ -184,14 +184,14 @@ public final class CodexRunner
 			// A resumed run keeps the project that its start copied, as its thread left it
 			if (!resumes)
 			{
-				manager.copyProject(project, run);
+				manager.copyProject(project, nestedSession);
 				if (workspace != null)
-					manager.copyWorkspace(workspace, run);
-				manager.snapshotProject(run);
-				HarnessProjectRepository.initialize(project, run.directory().resolve("project"), run.directory(),
-					environment, executables, gitName, gitEmail);
+					manager.copyWorkspace(workspace, nestedSession);
+				manager.snapshotProject(nestedSession);
+				HarnessProjectRepository.initialize(project, nestedSession.directory().resolve("project"),
+					nestedSession.directory(), environment, executables, gitName, gitEmail);
 			}
-			Path isolatedHome = run.directory().resolve("home");
+			Path isolatedHome = nestedSession.directory().resolve("home");
 			Path temporaryDirectory = Files.createDirectories(isolatedHome.resolve("tmp"));
 			Path hostHome = CodexInstallation.resolveHome(environment);
 			HarnessCredentials.copyAllowedFiles(hostHome, isolatedHome, Set.of(LOGIN));
@@ -200,7 +200,7 @@ public final class CodexRunner
 			SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
 			if (Platform.current().isWindows())
 				shell = SessionRequestAccess.Shell.POWERSHELL;
-			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, artifact, sessionRequests,
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, artifact, sessionRequests,
 				Platform.current(), shell).orElse(null);
 			// A runner that a Codex thread starts gives the session the multi-agent state that the thread runs with
 			CodexParentMultiAgentState parentState = CodexParentMultiAgentState.read(scope.json(), hostHome,
@@ -208,10 +208,10 @@ public final class CodexRunner
 			// The session's commands may reach only the host that its own Codex sends model requests to
 			String modelHost = CodexConnectionConfiguration.modelHost(configuration(hostHome), environment,
 				isolatedHome.resolve(LOGIN));
-			ChildPolicy policy = ChildPolicy.intersect(bound, new ChildNeeds(run.directory().toAbsolutePath(),
+			ChildPolicy policy = ChildPolicy.intersect(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
 				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions));
 			CodexConnectionConfiguration.copy(configuration(hostHome), isolatedConfiguration,
-				run.directory().resolve("project"), caches,
+				nestedSession.directory().resolve("project"), caches,
 				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState, policy,
 				extraPermissions);
 			if (!Platform.current().isWindows())
@@ -222,19 +222,19 @@ public final class CodexRunner
 			policyListener.accept(policy);
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
-			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, run, readOnlyEvidence, deniedReads,
-				Platform.current(), environment, requestAccess, appServer);
+			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, nestedSession, readOnlyEvidence,
+				deniedReads, Platform.current(), environment, requestAccess, appServer);
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
-				run.directory(), temporaryDirectory, Platform.current());
-			Path worktree = run.directory().resolve("project");
+				nestedSession.directory(), temporaryDirectory, Platform.current());
+			Path worktree = nestedSession.directory().resolve("project");
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
-				executables, manager, run), featureFlags(pluginsInstalled), policy.hosts());
+				executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
 			// A resumed run keeps the plugins that its start installed in its home
 			if (!resumes)
 			{
 				installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome,
 					isolatedEnvironment, executables, FileReplacer.retrying(waiting), (setup, step) ->
-						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, run, step));
+						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, nestedSession, step));
 			}
 			// The requested sessions of the session may read the CAT version that Codex installed, whose launchers the
 			// session's commands run
@@ -242,12 +242,12 @@ public final class CodexRunner
 			if (installCat)
 				catPlugin = installedCat(isolatedHome);
 			List<String> command = sandbox.command();
-			manager.initialize(run, artifact, project, "codex_app_server", command);
-			lock = manager.acquireLock(run);
+			manager.initialize(nestedSession, artifact, project, "codex_app_server", command);
+			lock = manager.acquireLock(nestedSession);
 			HarnessSessionTranscripts transcripts = null;
 			if (sessionTranscripts)
-				transcripts = CodexProcess.rollouts(isolatedHome, run.sessionTranscripts());
-			manager.markHarnessStarting(run);
+				transcripts = CodexProcess.rollouts(isolatedHome, nestedSession.sessionTranscripts());
+			manager.markHarnessStarting(nestedSession);
 			ProcessOwnership child = new ProcessOwnership();
 			CodexProcess process = null;
 			boolean identityRecorded = false;
@@ -255,7 +255,7 @@ public final class CodexRunner
 			{
 				child.start(command, worktree, isolatedEnvironment, executables);
 				process = new CodexProcess(child.process(), scope, installCat, transcripts);
-				manager.recordHarnessProcess(run, process.pid(), process.processStart());
+				manager.recordHarnessProcess(nestedSession, process.pid(), process.processStart());
 				identityRecorded = true;
 				String selectedModel = model;
 				String agentInstructions = "";
@@ -283,13 +283,13 @@ public final class CodexRunner
 				{
 					throw refusalOf(e);
 				}
-				LiveNestedSession session = new LiveNestedSession(run, process, scope, lock, catPlugin);
+				LiveNestedSession session = new LiveNestedSession(nestedSession, process, scope, lock, catPlugin);
 				child.release();
 				return session;
 			}
 			catch (IOException | RuntimeException e)
 			{
-				cleanupLaunchFailure(child, process, manager, run, identityRecorded, e);
+				cleanupLaunchFailure(child, process, manager, nestedSession, identityRecorded, e);
 				throw e;
 			}
 		}
@@ -304,7 +304,7 @@ public final class CodexRunner
 			scope.close();
 			// A resumed run whose thread could not continue stays retained for a later launch
 			if (!resumes)
-				manager.fail(run, e.getMessage());
+				manager.fail(nestedSession, e.getMessage());
 			throw e;
 		}
 	}
@@ -315,13 +315,13 @@ public final class CodexRunner
 	 * @param child the raw process returned by the operating system, if spawned
 	 * @param wrapper the process wrapper, if constructed
 	 * @param manager the run manager
-	 * @param run the run being launched
+	 * @param nestedSession the run being launched
 	 * @param identityRecorded whether the manifest already contains the child identity
 	 * @param primary the launch failure
 	 */
 	@SuppressWarnings("PMD.CloseResource")
 	private static void cleanupLaunchFailure(ProcessOwnership child, CodexProcess wrapper, NestedSessionManager manager,
-		NestedSession run, boolean identityRecorded, Throwable primary)
+		NestedSession nestedSession, boolean identityRecorded, Throwable primary)
 	{
 		Process rawProcess = child.processOrNull();
 		if (rawProcess != null)
@@ -352,7 +352,7 @@ public final class CodexRunner
 		{
 			try
 			{
-				manager.recordNoHarnessProcess(run);
+				manager.recordNoHarnessProcess(nestedSession);
 			}
 			catch (IOException e)
 			{
@@ -421,16 +421,16 @@ public final class CodexRunner
 	 * @param environment        the caller's environment
 	 * @param caches             the shared dependency caches
 	 * @param isolatedHome       the run's isolated home
-	 * @param runDirectory       the run's directory
+	 * @param sessionFolder      the run's directory
 	 * @param temporaryDirectory the run's temporary directory, which the run's configuration names as the shell
 	 *                           commands' {@code TMPDIR}
 	 * @param platform           the platform that the app-server runs on
 	 * @return the environment, which the caller may change
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code runDirectory} is relative
+	 * @throws IllegalArgumentException if {@code sessionFolder} is relative
 	 */
 	public static Map<String, String> processEnvironment(Map<String, String> environment,
-		HarnessDependencyCaches caches, Path isolatedHome, Path runDirectory, Path temporaryDirectory,
+		HarnessDependencyCaches caches, Path isolatedHome, Path sessionFolder, Path temporaryDirectory,
 		Platform platform)
 	{
 		requireThat(environment, "environment").isNotNull();
@@ -444,9 +444,9 @@ public final class CodexRunner
 		// independent trials do not redownload the same immutable registry artifacts.
 		isolatedEnvironment.putAll(caches.environment());
 		isolatedEnvironment.put(CODEX_HOME, isolatedHome.toString());
-		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, runDirectory);
+		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, sessionFolder);
 		// The session's commands send their sessions to this run's runner
-		isolatedEnvironment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+		isolatedEnvironment.put(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 		if (platform.isLinux())
 		{
 			// Codex's Linux sandbox creates an empty directory for each protected path that a shell command's sandbox
@@ -531,7 +531,7 @@ public final class CodexRunner
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
 	 * @param manager          the run manager
-	 * @param run              the session's run
+	 * @param nestedSession    the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param platform         the platform that the session runs on
@@ -546,24 +546,25 @@ public final class CodexRunner
 	 *                              path does not exist, a denied directory cannot be listed, or the configuration
 	 *                              cannot be updated
 	 */
-	public static SessionSandbox sessionSandbox(Path configuration, NestedSessionManager manager, NestedSession run,
+	public static SessionSandbox sessionSandbox(Path configuration, NestedSessionManager manager,
+		NestedSession nestedSession,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess, List<String> appServer) throws IOException
 	{
 		requireThat(appServer, "appServer").isNotEmpty();
 		requireBubblewrapForEvidence(manager, readOnlyEvidence, deniedReads, platform, environment);
-		String profile = addSessionProfile(configuration, manager, run, readOnlyEvidence, deniedReads, platform,
+		String profile = addSessionProfile(configuration, manager, nestedSession, readOnlyEvidence, deniedReads, platform,
 			environment, requestAccess);
 		Optional<Path> bubblewrap = bubblewrap(environment);
 		if (bubblewrap.isEmpty())
 			return new SessionSandbox(profile, appServer);
-		List<Path> writable = new ArrayList<>(List.of(run.directory().resolve("project"),
-			run.directory().resolve("home")));
+		List<Path> writable = new ArrayList<>(List.of(nestedSession.directory().resolve("project"),
+			nestedSession.directory().resolve("home")));
 		if (requestAccess != null)
 			writable.add(requestAccess.requests());
 		List<String> command = withHiddenDirectories(appServer, bubblewrap.get(),
-			hiddenDirectories(manager, sessionReadOnly(run, readOnlyEvidence, requestAccess), deniedReads, platform,
-				environment), writable, sessionReadOnly(run, readOnlyEvidence, requestAccess));
+			hiddenDirectories(manager, sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess), deniedReads, platform,
+				environment), writable, sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess));
 		return new SessionSandbox(profile, command);
 	}
 
@@ -614,7 +615,7 @@ public final class CodexRunner
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
 	 * @param manager          the run manager
-	 * @param run              the session's run
+	 * @param nestedSession    the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param platform         the platform that the session runs on
@@ -625,14 +626,14 @@ public final class CodexRunner
 	 * @throws IOException          if an evidence path does not exist, a denied directory cannot be listed, or the
 	 *                              configuration cannot be updated
 	 */
-	public static String addSessionProfile(Path configuration, NestedSessionManager manager, NestedSession run,
+	public static String addSessionProfile(Path configuration, NestedSessionManager manager, NestedSession nestedSession,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess) throws IOException
 	{
 		requireThat(configuration, "configuration").isNotNull();
-		List<Path> sessionReadOnly = sessionReadOnly(run, readOnlyEvidence, requestAccess);
+		List<Path> sessionReadOnly = sessionReadOnly(nestedSession, readOnlyEvidence, requestAccess);
 		return CodexConnectionConfiguration.addSessionProfile(configuration, sessionReadOnly,
-			sessionDeniedReads(manager, run, sessionReadOnly, deniedReads, platform, environment, requestAccess));
+			sessionDeniedReads(manager, nestedSession, sessionReadOnly, deniedReads, platform, environment, requestAccess));
 	}
 
 	/**
@@ -641,19 +642,19 @@ public final class CodexRunner
 	 * targets outside it lead to, and the run's responses directory when the session may request sessions, so that a
 	 * link that the session plants there cannot redirect the runner's answers.
 	 *
-	 * @param run              the session's run
+	 * @param nestedSession    the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
 	 * @return the files and directories
-	 * @throws NullPointerException if {@code run} or {@code readOnlyEvidence} are null
+	 * @throws NullPointerException if {@code nestedSession} or {@code readOnlyEvidence} are null
 	 */
-	public static List<Path> sessionReadOnly(NestedSession run, List<Path> readOnlyEvidence,
+	public static List<Path> sessionReadOnly(NestedSession nestedSession, List<Path> readOnlyEvidence,
 		SessionRequestAccess requestAccess)
 	{
-		requireThat(run, "run").isNotNull();
+		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		List<Path> result = new ArrayList<>(readOnlyEvidence);
-		Path linkTargets = NestedSessionManager.linkTargets(run.directory());
+		Path linkTargets = NestedSessionManager.linkTargets(nestedSession.directory());
 		if (Files.isDirectory(linkTargets))
 			result.add(linkTargets);
 		if (requestAccess != null)
@@ -676,8 +677,8 @@ public final class CodexRunner
 	 * reason, it leaves out a login or configuration file that does not exist.
 	 * <p>
 	 * A session that may request sessions is not denied the session log directory, because the commands that it
-	 * runs include the prompt optimizer's {@code run}, which reads the session's rollout there to learn that the
-	 * user interrupted the session's turn. A session that may request none runs no such command, so it stays denied
+	 * runs include the prompt optimizer's {@code nestedSession}, which reads the session's rollout there to learn that
+	 * the user interrupted the session's turn. A session that may request none runs no such command, so it stays denied
 	 * the record of its own events. Another Codex home holds each other session's log, so the results folder's denial
 	 * keeps those hidden.
 	 * <p>
@@ -695,7 +696,7 @@ public final class CodexRunner
 	 * results folder.
 	 *
 	 * @param manager the run manager
-	 * @param run the session's run
+	 * @param nestedSession the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @param platform the platform that the session runs on
@@ -704,11 +705,11 @@ public final class CodexRunner
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
 	 */
-	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession nestedSession,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment)
 		throws IOException
 	{
-		return sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, platform, environment, null);
+		return sessionDeniedReads(manager, nestedSession, readOnlyEvidence, deniedReads, platform, environment, null);
 	}
 
 	/**
@@ -719,7 +720,7 @@ public final class CodexRunner
 	 * readOnlyEvidence}, as {@link #sessionReadOnly(NestedSession, List, SessionRequestAccess)} returns them.
 	 *
 	 * @param manager the run manager
-	 * @param run the session's run
+	 * @param nestedSession the session's run
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @param platform the platform that the session runs on
@@ -729,19 +730,19 @@ public final class CodexRunner
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
 	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
 	 */
-	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession nestedSession,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
-		requireThat(run, "run").isNotNull();
+		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		Path home = run.directory().resolve("home");
+		Path home = nestedSession.directory().resolve("home");
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
-		accessible.add(run.directory().resolve("project"));
+		accessible.add(nestedSession.directory().resolve("project"));
 		accessible.add(home);
 		if (requestAccess != null)
 			accessible.add(requestAccess.requests());
@@ -1054,26 +1055,26 @@ public final class CodexRunner
 	/**
 	 * Runs the session's Codex and returns what it prints, keeping its output among the run's artifacts.
 	 *
-	 * @param executable  the Codex executable
-	 * @param arguments   the arguments
-	 * @param worktree    the session's project, which Codex runs in
-	 * @param environment the session's environment
-	 * @param executables runs Codex
-	 * @param manager     the run manager
-	 * @param run         the session's run
+	 * @param executable    the Codex executable
+	 * @param arguments     the arguments
+	 * @param worktree      the session's project, which Codex runs in
+	 * @param environment   the session's environment
+	 * @param executables   runs Codex
+	 * @param manager       the run manager
+	 * @param nestedSession the session's run
 	 * @return the stdout
 	 * @throws IOException if Codex fails or its output cannot be kept or read
 	 */
 	private static String commandOutput(String executable, List<String> arguments, Path worktree,
-		Map<String, String> environment, ExecutableFiles executables, NestedSessionManager manager, NestedSession run)
-		throws IOException
+		Map<String, String> environment, ExecutableFiles executables, NestedSessionManager manager,
+		NestedSession nestedSession) throws IOException
 	{
 		List<String> command = new ArrayList<>(List.of(executable));
 		command.addAll(arguments);
 		String name = ("codex-" + String.join("-", arguments)).replaceAll("[^a-z0-9]+", "-").
 			replaceAll("^-|-$", "");
-		HarnessCommand.execute(command, worktree, environment, executables, manager, run, name);
-		return BoundedInput.readUtf8(run.directory().resolve("artifacts").resolve(name + ".stdout"),
+		HarnessCommand.execute(command, worktree, environment, executables, manager, nestedSession, name);
+		return BoundedInput.readUtf8(nestedSession.directory().resolve("artifacts").resolve(name + ".stdout"),
 			MAXIMUM_COMMAND_OUTPUT_BYTES, "Codex output");
 	}
 

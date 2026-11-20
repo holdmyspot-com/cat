@@ -105,7 +105,7 @@ public record WorktreeRequest(Operation operation, String campaign)
 		String id = PREFIX + UUID.randomUUID();
 		ObjectNode manifest = json.createObjectNode().put(OPERATION, operation.label()).put(CAMPAIGN, campaign);
 		RequestArchive.packDocument(json, requests.resolve(id + RequestArchive.EXTENSION), manifest,
-			RequestLimits.IN_RUN);
+			RequestLimits.IN_NESTED_SESSION);
 		return id;
 	}
 

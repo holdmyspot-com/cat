@@ -323,7 +323,7 @@ public final class RunnerLaunchersTest
 	 * @throws IOException if the rule cannot be read
 	 */
 	@Test
-	public void runnerRuleChecksForRunBeforeOutsideSteps() throws IOException
+	public void runnerRuleChecksNestedSessionFirst() throws IOException
 	{
 		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
 		requireThat(rules, "rules").size().isEqualTo(1);
@@ -418,7 +418,7 @@ public final class RunnerLaunchersTest
 	 * @throws IOException if the rule cannot be read
 	 */
 	@Test
-	public void runnerRuleCoversRequestsInsideRun() throws IOException
+	public void runnerRuleCoversNestedRequests() throws IOException
 	{
 		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
 		requireThat(rules, "rules").size().isEqualTo(1);

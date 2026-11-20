@@ -121,12 +121,12 @@ public final class PolicyBoundFileTest
 			TestJvmScope jvm = new TestJvmScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "policy-bound-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path cache = Files.createDirectory(root.resolve("cache"));
 			Path secret = Files.createDirectory(root.resolve("secret"));
 			Path requestedRoot = Files.createDirectories(root.resolve("requested/run-root"));
 			Path directory = Files.createDirectories(root.resolve("requested/response"));
-			ChildPolicy policy = new ChildPolicy(List.of(run, cache), List.of(), List.of(secret), List.of(),
+			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder, cache), List.of(), List.of(secret), List.of(),
 				Set.of("model.example"), false);
 			List<String> arguments = List.of("--results", requestedRoot.toString(), "--model", "model-a");
 

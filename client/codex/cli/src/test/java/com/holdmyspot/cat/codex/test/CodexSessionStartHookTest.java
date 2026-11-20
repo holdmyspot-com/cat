@@ -114,7 +114,7 @@ public final class CodexSessionStartHookTest
 	 * Verifies a session that CAT's runner started in a run still receives CAT's rules.
 	 */
 	@Test
-	public void injectsRulesInCatRun() throws IOException
+	public void injectsRulesInNestedSession() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
@@ -123,7 +123,7 @@ public final class CodexSessionStartHookTest
 			Files.writeString(ruleDirectory.resolve("z.md"), "z rule");
 			writeReadingGuidance(project);
 			HookResult result = invoke(event(project), Map.of("PLUGIN_ROOT", project.toString(),
-				HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE), project);
+				HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE), project);
 
 			requireThat(sessionRules(result), "rules").contains("z rule");
 			requireThat(result.error(), "error").isEmpty();
@@ -173,11 +173,11 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			Path run = cleanup.add(Files.createTempDirectory("cat-run-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-run-"));
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"), "rule");
 			Map<String, String> environment = new HashMap<>();
-			CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, run, run, run,
-				Platform.LINUX_X64).forEach((name, value) ->
+			CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, sessionFolder,
+				sessionFolder, sessionFolder, Platform.LINUX_X64).forEach((name, value) ->
 			{
 				if (name.startsWith("CAT_"))
 					environment.put(name, value);

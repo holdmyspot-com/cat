@@ -158,7 +158,7 @@ public final class HookScopeTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-"));
 			Map<String, String> environment = Map.of("ROOT", plugin.toString(), "USER_HOME", plugin.toString(),
-				HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+				HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 			try (HookScope scope = HookScope.fromEnvironment(environment, "Harness", "ROOT", "USER_HOME", HARNESS_A,
 				Yielding.waiting()))
 			{

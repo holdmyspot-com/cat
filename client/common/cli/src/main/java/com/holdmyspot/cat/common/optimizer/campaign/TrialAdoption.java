@@ -83,7 +83,7 @@ public final class TrialAdoption
 					yield false;
 				PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(key.series());
 				if (promptAuthor == null)
-					yield findRetainedRun(draft, key) < 0;
+					yield findRetainedSession(draft, key) < 0;
 				yield promptAuthor.runs().stream().noneMatch(run -> key.equals(run.trial()));
 			}
 		};
@@ -119,7 +119,7 @@ public final class TrialAdoption
 			return false;
 		PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(key.series());
 		if (promptAuthor == null)
-			return findRetainedRun(draft, key) >= 0;
+			return findRetainedSession(draft, key) >= 0;
 		return decision(draft, promptAuthor) == Promotion.Decision.REJECT;
 	}
 
@@ -130,7 +130,7 @@ public final class TrialAdoption
 	 * @param key the trial's key
 	 * @return the index of the result in the retained attempts, or {@code -1} if none has such a run
 	 */
-	private static int findRetainedRun(Draft draft, TrialKey key)
+	private static int findRetainedSession(Draft draft, TrialKey key)
 	{
 		List<AttemptResult> results = draft.optimization.attempts();
 		for (int i = 0; i < results.size(); ++i)
@@ -895,7 +895,7 @@ public final class TrialAdoption
 			runs = owner.runs();
 		else
 		{
-			int retained = findRetainedRun(draft, key);
+			int retained = findRetainedSession(draft, key);
 			if (retained < 0)
 				return false;
 			runs = draft.optimization.attempts().get(retained).runs();
@@ -914,7 +914,7 @@ public final class TrialAdoption
 		PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(trial.key().series());
 		if (promptAuthor == null)
 		{
-			int retained = findRetainedRun(draft, trial.key());
+			int retained = findRetainedSession(draft, trial.key());
 			if (retained >= 0)
 				recordRetainedOutcome(draft, retained, trial);
 			if (draft.promptAuthor != null)

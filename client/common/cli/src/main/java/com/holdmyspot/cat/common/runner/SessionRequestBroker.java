@@ -64,7 +64,7 @@ public final class SessionRequestBroker implements Closeable
 	 * The name, in a response directory and in its response, of the copy of the requested session's run that the
 	 * requester reads.
 	 */
-	static final String RUN_COPY = "run";
+	static final String RESULTS_COPY = "run";
 	/**
 	 * The response's field that holds the identifier that the harness gave the requested session, or an empty string if
 	 * the harness reported none.
@@ -73,7 +73,7 @@ public final class SessionRequestBroker implements Closeable
 	/**
 	 * The directory of a response directory that holds the copy of a requested session's project and initial project
 	 * as of the end of its last completed turn, for a request that asks for turn copies. The requester may still be
-	 * reading it when the session ends, so it stays with the response, like {@link #RUN_COPY}, until the response
+	 * reading it when the session ends, so it stays with the response, like {@link #RESULTS_COPY}, until the response
 	 * directory is removed.
 	 */
 	static final String TURN_COPY = "turn-copy";
@@ -155,89 +155,90 @@ public final class SessionRequestBroker implements Closeable
 	 * Creates a broker for an already prepared run whose session has no CAT plugin that its requested sessions read.
 	 * The runner creates its access directories before sandbox setup.
 	 *
-	 * @param run     the requesting run
-	 * @param manager records the run's lifecycle in its manifest, including how many requests the broker has
-	 *                accepted; the broker keeps it
-	 * @param options the requesting runner's options
-	 * @param starter resolves and starts child runners
+	 * @param nestedSession the requesting run
+	 * @param manager       records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                      accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param starter       resolves and starts child runners
 	 */
-	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter)
 	{
-		this(run, manager, options, null, starter);
+		this(nestedSession, manager, options, null, starter);
 	}
 
 	/**
 	 * Creates a broker for an already prepared run whose requested sessions may read the CAT plugin that the run's
 	 * commands run. The runner creates its access directories before sandbox setup.
 	 *
-	 * @param run       the requesting run
-	 * @param manager   records the run's lifecycle in its manifest, including how many requests the broker has
-	 *                  accepted; the broker keeps it
-	 * @param options   the requesting runner's options
-	 * @param catPlugin the directory of the CAT plugin installed in the run's session's home, whose launchers the
-	 *                  session's commands run, or {@code null} if the session has none
-	 * @param starter   resolves and starts child runners
+	 * @param nestedSession the requesting run
+	 * @param manager       records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                      accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param catPlugin     the directory of the CAT plugin installed in the run's session's home, whose launchers the
+	 *                      session's commands run, or {@code null} if the session has none
+	 * @param starter       resolves and starts child runners
 	 */
-	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, RequestedSessionStarter starter)
 	{
-		this(run, manager, options, catPlugin, starter, RequestLimits.IN_RUN, new ProcessHandleLiveness());
+		this(nestedSession, manager, options, catPlugin, starter, RequestLimits.IN_NESTED_SESSION,
+			new ProcessHandleLiveness());
 	}
 
 	/**
 	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds.
 	 *
-	 * @param run     the requesting run
-	 * @param manager records the run's lifecycle in its manifest, including how many requests the broker has
-	 *                accepted; the broker keeps it
-	 * @param options the requesting runner's options
-	 * @param starter resolves and starts child runners
-	 * @param limits  the bounds that each request's archive must stay within
+	 * @param nestedSession the requesting run
+	 * @param manager       records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                      accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param starter       resolves and starts child runners
+	 * @param limits        the bounds that each request's archive must stay within
 	 */
-	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits)
 	{
-		this(run, manager, options, starter, limits, new ProcessHandleLiveness());
+		this(nestedSession, manager, options, starter, limits, new ProcessHandleLiveness());
 	}
 
 	/**
 	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds. Its
 	 * children run in as many slots, in the run's directory, as the run's options allow to run at once.
 	 *
-	 * @param run      the requesting run
-	 * @param manager  records the run's lifecycle in its manifest, including how many requests the broker has
-	 *                 accepted; the broker keeps it
-	 * @param options  the requesting runner's options
-	 * @param starter  resolves and starts child runners
-	 * @param limits   the bounds that each request's archive must stay within
-	 * @param liveness checks and stops the processes that a slot's previous session left
+	 * @param nestedSession the requesting run
+	 * @param manager       records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                      accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param starter       resolves and starts child runners
+	 * @param limits        the bounds that each request's archive must stay within
+	 * @param liveness      checks and stops the processes that a slot's previous session left
 	 */
-	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(run, manager, options, null, starter, limits, liveness);
+		this(nestedSession, manager, options, null, starter, limits, liveness);
 	}
 
 	/**
 	 * Creates a broker for an already prepared run whose request archives must stay within the given bounds. Its
 	 * children run in as many slots, in the run's directory, as the run's options allow to run at once.
 	 *
-	 * @param run       the requesting run
-	 * @param manager   records the run's lifecycle in its manifest, including how many requests the broker has
-	 *                  accepted; the broker keeps it
-	 * @param options   the requesting runner's options
-	 * @param catPlugin the directory of the CAT plugin that the run's commands run, which the run's requested
-	 *                  sessions may read, or {@code null} if the run has none
-	 * @param starter   resolves and starts child runners
-	 * @param limits    the bounds that each request's archive must stay within
-	 * @param liveness  checks and stops the processes that a slot's previous session left
+	 * @param nestedSession the requesting run
+	 * @param manager       records the run's lifecycle in its manifest, including how many requests the broker has
+	 *                      accepted; the broker keeps it
+	 * @param options       the requesting runner's options
+	 * @param catPlugin     the directory of the CAT plugin that the run's commands run, which the run's requested
+	 *                      sessions may read, or {@code null} if the run has none
+	 * @param starter       resolves and starts child runners
+	 * @param limits        the bounds that each request's archive must stay within
+	 * @param liveness      checks and stops the processes that a slot's previous session left
 	 */
-	private SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
+	private SessionRequestBroker(NestedSession nestedSession, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(new NestedSessionSite(run, manager, options, catPlugin, limits, new SessionSlots(
-			SessionRequestAccess.requestedRunsDirectory(run), options.maximumConcurrency(), liveness)), starter);
+		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, limits, new SessionSlots(
+			SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(), liveness)), starter);
 	}
 
 	/**
@@ -740,7 +741,7 @@ public final class SessionRequestBroker implements Closeable
 			else
 				slot = site.slots().acquire(request.heldOut());
 			List<String> options = new ArrayList<>(List.of("--results", slot.root().toString(), "--slot-id",
-				slot.runId()));
+				slot.slotId()));
 			options.addAll(arguments);
 			options.addAll(site.options(request, slot.root()));
 			synchronized (this)
@@ -923,7 +924,7 @@ public final class SessionRequestBroker implements Closeable
 
 	/**
 	 * Publishes a child's result after copying transcripts from its retained run and the run itself, without its home,
-	 * into the response directory's {@link #RUN_COPY}. A run that cannot be copied
+	 * into the response directory's {@link #RESULTS_COPY}. A run that cannot be copied
 	 * in full makes a completed child fail, with the reason that names the file.
 	 *
 	 * @param id the request id
@@ -943,21 +944,21 @@ public final class SessionRequestBroker implements Closeable
 			held.remove(id);
 			if (stopped || cancelled.contains(id))
 				return;
-			String childRunId = copyChildEvidence(id, directory);
+			String childSlotId = copyChildEvidence(id, directory);
 			if (status.equals("completed") && !Files.isRegularFile(directory.resolve("receipt.json")))
 				throw new IOException("Requested runner completed without a retained-evidence receipt");
 			String outcome = status;
 			String diagnostic = reason;
 			String sessionId = "";
-			if (!childRunId.isEmpty())
-				sessionId = NestedSessionManager.harnessSessionId(childRoots.get(id).resolve(childRunId)).orElse("");
+			if (!childSlotId.isEmpty())
+				sessionId = NestedSessionManager.harnessSessionId(childRoots.get(id).resolve(childSlotId)).orElse("");
 			// A run whose session could not continue stays retained, so it has no copy. Before the harness reports the
 			// session's identifier, nothing names a copy.
 			if (!sessionId.isEmpty() && !status.equals(UNRESUMABLE))
 			{
 				// The requester cannot read the requested runs, whose homes hold their logins, so it reads a copy
-				Optional<String> incomplete = ResultsCopy.copy(childRoots.get(id).resolve(childRunId),
-					directory.resolve(RUN_COPY)).incomplete();
+				Optional<String> incomplete = ResultsCopy.copy(childRoots.get(id).resolve(childSlotId),
+					directory.resolve(RESULTS_COPY)).incomplete();
 				if (incomplete.isPresent())
 				{
 					if (diagnostic.isEmpty())
@@ -970,7 +971,7 @@ public final class SessionRequestBroker implements Closeable
 				else if (outcome.equals("completed"))
 				{
 					NestedSessionReceipt.read(json, directory.resolve("receipt.json"),
-						directory.resolve(RUN_COPY).resolve("project"));
+						directory.resolve(RESULTS_COPY).resolve("project"));
 				}
 			}
 			respond(id, harness, outcome, diagnostic, sessionId, directory);
@@ -990,9 +991,9 @@ public final class SessionRequestBroker implements Closeable
 		Path root = childRoots.get(id);
 		if (root == null || !Files.isDirectory(root))
 			return "";
-		try (DirectoryStream<Path> runs = Files.newDirectoryStream(root))
+		try (DirectoryStream<Path> children = Files.newDirectoryStream(root))
 		{
-			for (Path child : runs)
+			for (Path child : children)
 			{
 				if (!Files.isDirectory(child, LinkOption.NOFOLLOW_LINKS))
 					continue;
@@ -1079,8 +1080,8 @@ public final class SessionRequestBroker implements Closeable
 				response.put(name.substring(0, name.indexOf('.')), directory.resolve(name).toString());
 		if (Files.isDirectory(directory.resolve("session-transcripts")))
 			response.put("session_transcripts", directory.resolve("session-transcripts").toString());
-		if (Files.isDirectory(directory.resolve(RUN_COPY), LinkOption.NOFOLLOW_LINKS))
-			response.put(RUN_COPY, directory.resolve(RUN_COPY).toString());
+		if (Files.isDirectory(directory.resolve(RESULTS_COPY), LinkOption.NOFOLLOW_LINKS))
+			response.put(RESULTS_COPY, directory.resolve(RESULTS_COPY).toString());
 		SessionRequestCli.write(json, directory.resolve("response.json"), response);
 	}
 
@@ -1371,13 +1372,13 @@ public final class SessionRequestBroker implements Closeable
 		 * Returns the options that the site adds to an accepted request's child, on the request's own thread before
 		 * the child starts.
 		 *
-		 * @param request the request
-		 * @param runRoot the request's results folder
+		 * @param request       the request
+		 * @param resultsFolder the request's results folder
 		 * @return the options
 		 * @throws SessionRefusedException if the site refuses the request; the message says why
 		 * @throws IOException             if the options cannot be determined
 		 */
-		List<String> options(LaunchRequest request, Path runRoot) throws IOException;
+		List<String> options(LaunchRequest request, Path resultsFolder) throws IOException;
 
 		/**
 		 * Returns the status of the requests that remain unanswered when the broker closes.
@@ -1425,16 +1426,16 @@ public final class SessionRequestBroker implements Closeable
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param run       the requesting run
-	 * @param manager   records the run's lifecycle in its manifest
-	 * @param options   the requesting runner's options
-	 * @param catPlugin the directory of the CAT plugin that the run's commands run, which the run's requested sessions
-	 *                  may read, or {@code null} if the run has none
-	 * @param limits    the bounds that each request's archive must stay within
-	 * @param slots     the slots, each a results folder, that the run's requested sessions take
+	 * @param nestedSession the requesting run
+	 * @param manager       records the run's lifecycle in its manifest
+	 * @param options       the requesting runner's options
+	 * @param catPlugin     the directory of the CAT plugin that the run's commands run, which the run's requested
+	 *                      sessions may read, or {@code null} if the run has none
+	 * @param limits        the bounds that each request's archive must stay within
+	 * @param slots         the slots, each a results folder, that the run's requested sessions take
 	 */
-	private record NestedSessionSite(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
-		Path catPlugin, RequestLimits limits, SessionSlots slots) implements Site
+	private record NestedSessionSite(NestedSession nestedSession, NestedSessionManager manager,
+		HarnessRunnerOptions options, Path catPlugin, RequestLimits limits, SessionSlots slots) implements Site
 	{
 		/**
 		 * Carries out the run's worktree requests.
@@ -1444,18 +1445,18 @@ public final class SessionRequestBroker implements Closeable
 		/**
 		 * Creates the site of a run.
 		 *
-		 * @param run       the requesting run
-		 * @param manager   records the run's lifecycle in its manifest
-		 * @param options   the requesting runner's options
-		 * @param catPlugin the directory of the CAT plugin that the run's commands run, which the run's requested
-		 *                  sessions may read, or {@code null} if the run has none
-		 * @param limits    the bounds that each request's archive must stay within
-		 * @param slots     the slots, each a results folder, that the run's requested sessions take
+		 * @param nestedSession the requesting run
+		 * @param manager       records the run's lifecycle in its manifest
+		 * @param options       the requesting runner's options
+		 * @param catPlugin     the directory of the CAT plugin that the run's commands run, which the run's requested
+		 *                      sessions may read, or {@code null} if the run has none
+		 * @param limits        the bounds that each request's archive must stay within
+		 * @param slots         the slots, each a results folder, that the run's requested sessions take
 		 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
 		 */
 		private NestedSessionSite
 		{
-			requireThat(run, "run").isNotNull();
+			requireThat(nestedSession, "nestedSession").isNotNull();
 			requireThat(manager, "manager").isNotNull();
 			requireThat(options, "options").isNotNull();
 			requireThat(limits, "limits").isNotNull();
@@ -1465,19 +1466,19 @@ public final class SessionRequestBroker implements Closeable
 		@Override
 		public Path requests()
 		{
-			return SessionRequestAccess.requestsDirectory(run);
+			return SessionRequestAccess.requestsDirectory(nestedSession);
 		}
 
 		@Override
 		public Path responses()
 		{
-			return SessionRequestAccess.responsesDirectory(run);
+			return SessionRequestAccess.responsesDirectory(nestedSession);
 		}
 
 		@Override
 		public LaunchRequest read(JsonMapper json, Path inputs) throws IOException
 		{
-			return RequestArchive.readRun(json, inputs);
+			return RequestArchive.readLaunch(json, inputs);
 		}
 
 		@Override
@@ -1500,7 +1501,7 @@ public final class SessionRequestBroker implements Closeable
 		@Override
 		public int acceptedBefore() throws IOException
 		{
-			return manager.requestsUsed(run);
+			return manager.requestsUsed(nestedSession);
 		}
 
 		/**
@@ -1515,7 +1516,7 @@ public final class SessionRequestBroker implements Closeable
 		@Override
 		public void accepted(JsonMapper json, int accepted) throws IOException
 		{
-			manager.recordRequestsUsed(run, accepted);
+			manager.recordRequestsUsed(nestedSession, accepted);
 			ObjectNode limits = json.createObjectNode().put("format_version", 1).
 				put("requests_allowed", options.sessionRequests()).put("requests_used", accepted).
 				put("depth_remaining", options.requestDepth());
@@ -1534,19 +1535,19 @@ public final class SessionRequestBroker implements Closeable
 		 * parent's request depth leaves a level below the child, lets the child request as many sessions as the
 		 * parent, one level less deep; otherwise it may request none.
 		 *
-		 * @param request the request
-		 * @param runRoot the request's results folder
+		 * @param request       the request
+		 * @param resultsFolder the request's results folder
 		 * @return the options
 		 * @throws IOException if a directory of the parent's results folder cannot be listed
 		 */
 		@Override
-		public List<String> options(LaunchRequest request, Path runRoot) throws IOException
+		public List<String> options(LaunchRequest request, Path resultsFolder) throws IOException
 		{
 			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
 				String.valueOf(options.maximumConcurrency())));
 			for (Path denied : options.deniedReads())
 				arguments.addAll(List.of("--deny-read", denied.toString()));
-			for (Path denied : resultsDenials(options.runRoot(), catPlugin))
+			for (Path denied : resultsDenials(options.resultsFolder(), catPlugin))
 				arguments.addAll(List.of("--deny-read", denied.toString()));
 			if (options.requestDepth() > 0)
 			{
@@ -1571,7 +1572,7 @@ public final class SessionRequestBroker implements Closeable
 		{
 			if (options.sessionRequests() == 0)
 				return WorktreeResponse.refused(SessionRequestAccess.NO_REQUESTS_REASON);
-			Path project = run.directory().resolve("project");
+			Path project = nestedSession.directory().resolve("project");
 			List<Path> campaigns = new ArrayList<>();
 			Path sessions = project.resolve(SessionDirectory.ROOT);
 			if (Files.isDirectory(sessions, LinkOption.NOFOLLOW_LINKS))

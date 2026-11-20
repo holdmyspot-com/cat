@@ -43,11 +43,11 @@ public final class LaunchRouteTest
 	 * request to that runner, whichever harness runs the command.
 	 */
 	@Test
-	public void forwardsInsideRunWithRequests()
+	public void forwardsInNestedSessionWithRequests()
 	{
 		// Requirement: R-I11
-		Map<String, String> environment = Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE,
-			SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests");
+		Map<String, String> environment = Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+			HarnessEnvironment.NESTED_SESSION_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests");
 
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a", "harness-b"),
 			LAUNCH.toArray(String[]::new), environment);
@@ -60,17 +60,18 @@ public final class LaunchRouteTest
 	 * the option that lets it, even one that names a policy bound.
 	 */
 	@Test
-	public void refusesInsideRunWithoutRequests()
+	public void refusesNestedSessionWithoutRequests()
 	{
 		// Requirement: R-I11
-		Map<String, String> environment = Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+		Map<String, String> environment = Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+			HarnessEnvironment.NESTED_SESSION_VALUE);
 
 		for (List<String> launch : List.of(LAUNCH, BOUND_LAUNCH))
 		{
 			LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a"),
 				launch.toArray(String[]::new), environment);
 
-			requireThat(route, "route").isEqualTo(new LaunchRoute.Refused(HarnessEnvironment.inRunRefusal(
+			requireThat(route, "route").isEqualTo(new LaunchRoute.Refused(HarnessEnvironment.inNestedSessionRefusal(
 				"harness-a", environment).orElseThrow()));
 		}
 	}
@@ -94,7 +95,7 @@ public final class LaunchRouteTest
 	 * retained run, so that only a server that found the run starts its runner there.
 	 */
 	@Test
-	public void refusesResumeRunOption()
+	public void refusesResumeSlotOption()
 	{
 		Optional<String> refusal = LaunchRoute.internalOptionRefusal(new String[]{"--resume-slot",
 			"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90"});

@@ -80,15 +80,15 @@ public final class CodexSessionEnvironmentVersionTest
 					hostProject.resolve("runs"),
 					Clock.systemUTC(),
 					Yielding.fileReplacer());
-				NestedSession run = manager.create("codex");
+				NestedSession nestedSession = manager.create("codex");
 				// The session's project links to a file outside it, so the run holds a read-only copy of that file, which
 				// the session's profile lets it read
 				Files.writeString(root.resolve("outside.md"), "Outside.", UTF_8);
 				Path linkedProject = Files.createDirectories(root.resolve("linked-project"));
 				Files.createSymbolicLink(linkedProject.resolve("outside.md"), Path.of("../outside.md"));
-				manager.copyProject(linkedProject, run);
-				manager.snapshotProject(run);
-				Files.writeString(run.directory().resolve("home/auth.json"), "{}");
+				manager.copyProject(linkedProject, nestedSession);
+				manager.snapshotProject(nestedSession);
+				Files.writeString(nestedSession.directory().resolve("home/auth.json"), "{}");
 				Files.createDirectories(hostProject.resolve("runs/workspaces"));
 				Files.writeString(source, """
 					openai_base_url = "http://localhost:2455/backend-api/codex"
@@ -121,28 +121,28 @@ public final class CodexSessionEnvironmentVersionTest
 				// configuration that other platforms receive
 				// Every session that the runner starts may hand a runner launch to its runner, even one that may request
 				// no session
-				SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
+				SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, root.resolve("artifact"), 0,
 					Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
-				CodexConnectionConfiguration.copy(source, destination, run.directory().resolve("project"), caches,
+				CodexConnectionConfiguration.copy(source, destination, nestedSession.directory().resolve("project"), caches,
 					temporaryDirectory, 0, requestAccess, Platform.LINUX_X64);
 				// Bubblewrap hides the denied directory that holds the read-only paths, so the profile does not list what is
 				// under it
 				Path bin = Files.createDirectories(root.resolve("bin"));
 				Path bubblewrap = Files.writeString(bin.resolve("bwrap"), "");
 				requireThat(bubblewrap.toFile().setExecutable(true), "setExecutable").isTrue();
-				String profile = CodexRunner.addSessionProfile(destination, manager, run, List.of(evidence),
+				String profile = CodexRunner.addSessionProfile(destination, manager, nestedSession, List.of(evidence),
 					List.of(deniedFile, hostProject), Platform.LINUX_X64, Map.of("PATH", bin.toString()), requestAccess);
 				CodexConnectionConfiguration.copyTrustedCatHooks(source, destination);
 
 				// The instructions name paths in plain text, which each platform separates in its own way
 				String instructions = CodexRunner.developerInstructions(manager.root().toRealPath(),
-					run.directory().resolve("project"), run.directory().resolve("home"), "").
+					nestedSession.directory().resolve("project"), nestedSession.directory().resolve("home"), "").
 					replace(root.toRealPath().toString(), "<root>").replace(root.toString(), "<root>").replace('\\', '/');
 
 				// Run directories differ per run, so the hash covers the configuration and instructions with their root
 				// and the run's identifier replaced
 				String configuration = (replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root) +
-					"\ninstructions = " + instructions + "\n").replace(run.id(), "<run>");
+					"\ninstructions = " + instructions + "\n").replace(nestedSession.id(), "<run>");
 				RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(jvm, root, root, List::of, false,
 					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();

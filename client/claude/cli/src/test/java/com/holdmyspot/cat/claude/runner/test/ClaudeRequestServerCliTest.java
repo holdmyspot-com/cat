@@ -27,12 +27,13 @@ public final class ClaudeRequestServerCliTest
 	 * any other session gets only the platform's refusal, if there is one.
 	 */
 	@Test
-	public void refusesInRun()
+	public void refusesInNestedSession()
 	{
 		Platform platform = Platform.current();
-		Map<String, String> inRun = Map.of(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+		Map<String, String> inNestedSession = Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
+			HarnessEnvironment.NESTED_SESSION_VALUE);
 
-		requireThat(ClaudeRequestServerCli.refusal(platform, inRun).orElseThrow(), "refusal").
+		requireThat(ClaudeRequestServerCli.refusal(platform, inNestedSession).orElseThrow(), "refusal").
 			contains("no request server serves such a session");
 		requireThat(ClaudeRequestServerCli.refusal(platform, Map.of("PATH", "/bin")), "outsideRun").
 			isEqualTo(ClaudeSessionSandbox.refusal(platform));

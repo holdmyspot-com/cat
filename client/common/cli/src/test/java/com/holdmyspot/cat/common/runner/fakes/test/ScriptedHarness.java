@@ -66,7 +66,7 @@ public final class ScriptedHarness
 	/**
 	 * Serves one session through the real bridge.
 	 *
-	 * @param runRoot the directory that holds the run directories
+	 * @param resultsFolder the directory that holds the run directories
 	 * @param harness the harness name
 	 * @param script what the harness does for each turn, in turn order
 	 * @param input the bridge requests
@@ -74,16 +74,16 @@ public final class ScriptedHarness
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the bridge fails
 	 */
-	public static void serve(Path runRoot, String harness, List<Turn> script, Reader input, Writer output)
+	public static void serve(Path resultsFolder, String harness, List<Turn> script, Reader input, Writer output)
 		throws IOException
 	{
-		serve(runRoot, harness, script, input, output, new ArrayList<>());
+		serve(resultsFolder, harness, script, input, output, new ArrayList<>());
 	}
 
 	/**
 	 * Serves one session and records the requests CAT sends to the harness, in turn order.
 	 *
-	 * @param runRoot the directory that holds the run directories
+	 * @param resultsFolder the directory that holds the run directories
 	 * @param harness the harness name
 	 * @param script what the harness does for each turn, in turn order
 	 * @param input the bridge requests
@@ -92,17 +92,17 @@ public final class ScriptedHarness
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the bridge fails
 	 */
-	public static void serve(Path runRoot, String harness, List<Turn> script, Reader input, Writer output,
+	public static void serve(Path resultsFolder, String harness, List<Turn> script, Reader input, Writer output,
 		List<String> requests) throws IOException
 	{
-		serve(runRoot, harness, script, input, output, requests, InterruptedTurn.COMPLETES);
+		serve(resultsFolder, harness, script, input, output, requests, InterruptedTurn.COMPLETES);
 	}
 
 	/**
 	 * Serves one session whose harness ends an interrupted turn a given way, and records the requests CAT sends to the
 	 * harness, in turn order.
 	 *
-	 * @param runRoot         the directory that holds the run directories
+	 * @param resultsFolder   the directory that holds the run directories
 	 * @param harness         the harness name
 	 * @param script          what the harness does for each turn, in turn order
 	 * @param input           the bridge requests
@@ -112,27 +112,27 @@ public final class ScriptedHarness
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the bridge fails
 	 */
-	public static void serve(Path runRoot, String harness, List<Turn> script, Reader input, Writer output,
+	public static void serve(Path resultsFolder, String harness, List<Turn> script, Reader input, Writer output,
 		List<String> requests, InterruptedTurn interruptedTurn) throws IOException
 	{
-		requireThat(runRoot, "runRoot").isNotNull();
+		requireThat(resultsFolder, "resultsFolder").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(script, "script").isNotNull();
 		requireThat(input, "input").isNotNull();
 		requireThat(output, "output").isNotNull();
 		requireThat(requests, "requests").isNotNull();
 		requireThat(interruptedTurn, "interruptedTurn").isNotNull();
-		NestedSessionManager manager = new NestedSessionManager(new FileLocks(), runRoot,
+		NestedSessionManager manager = new NestedSessionManager(new FileLocks(), resultsFolder,
 			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRunnerBridge.serve(() ->
 		{
-			NestedSession run = manager.create(harness);
-			manager.initialize(run, runRoot, runRoot, "scripted", List.of("scripted"));
+			NestedSession nestedSession = manager.create(harness);
+			manager.initialize(nestedSession, resultsFolder, resultsFolder, "scripted", List.of("scripted"));
 			ScriptedProcess process = new ScriptedProcess(script, requests, interruptedTurn);
 			// No launcher copies the run, so the harness names its session after the run, whose folder then holds
 			// the session's results where the launcher's copy would
-			process.reportHarnessSession(run.id());
-			return new LiveNestedSession(run, process, new TestHarnessRunnerScope());
+			process.reportHarnessSession(nestedSession.id());
+			return new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope());
 		}, manager, input, output);
 	}
 

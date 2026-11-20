@@ -360,7 +360,7 @@ public final class SessionDirectory
 	 * @throws NullPointerException if {@code harnessId} is null
 	 * @throws IllegalArgumentException if {@code harnessId} is blank
 	 */
-	public Path runRoot(String harnessId)
+	public Path resultsFolder(String harnessId)
 	{
 		requireThat(harnessId, "harnessId").isNotBlank();
 		return directory.resolve("optimizer-runs").resolve(harnessId);

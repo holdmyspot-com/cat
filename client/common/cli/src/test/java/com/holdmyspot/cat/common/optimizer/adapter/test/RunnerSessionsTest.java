@@ -313,17 +313,17 @@ public final class RunnerSessionsTest
 	 * Creates a port whose runner plays a script.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param runRoot the directory for run directories
+	 * @param resultsFolder the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static TestSessions port(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static TestSessions port(JvmScope jvm, Path resultsFolder, HarnessCapacity capacity, Clock clock,
 		List<List<String>> arguments, List<Turn> script)
 	{
-		return port(jvm, runRoot, runRoot, capacity, clock, arguments, script);
+		return port(jvm, resultsFolder, resultsFolder, capacity, clock, arguments, script);
 	}
 
 	/**
@@ -331,18 +331,18 @@ public final class RunnerSessionsTest
 	 *
 	 * @param jvm the borrowed process scope
 	 * @param artifact the installed artifact that supplies the roles' rules
-	 * @param runRoot the directory for run directories
+	 * @param resultsFolder the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
 	 * @param script what the harness does, turn by turn
 	 * @return the port
 	 */
-	private static TestSessions port(JvmScope jvm, Path artifact, Path runRoot, HarnessCapacity capacity, Clock clock,
-		List<List<String>> arguments, List<Turn> script)
+	private static TestSessions port(JvmScope jvm, Path artifact, Path resultsFolder, HarnessCapacity capacity,
+		Clock clock, List<List<String>> arguments, List<Turn> script)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, runRoot, List::of, false,
-			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, resultsFolder, List::of, false,
+			Map.of(), resultsFolder, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
 		{
 			arguments.add(options);
@@ -457,7 +457,7 @@ public final class RunnerSessionsTest
 	 * @throws IOException if a fixture cannot be created or read
 	 */
 	@Test
-	public void declaresRunRoots() throws IOException
+	public void declaresResultsFolders() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
@@ -465,11 +465,12 @@ public final class RunnerSessionsTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Path runRoot = root.resolve("runs").normalize();
-				TestSessions sessions = port(jvm, runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(),
+				Path resultsFolder = root.resolve("runs").normalize();
+				TestSessions sessions = port(jvm, resultsFolder, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					new CopyOnWriteArrayList<>(), List.of());
-				Path heldOutRunRoot = root.resolve("runs-held_out").normalize();
-				requireThat(sessions.runRoots(), "runRoots").isEqualTo(List.of(runRoot, heldOutRunRoot));
+				Path heldOutResultsFolder = root.resolve("runs-held_out").normalize();
+				requireThat(sessions.resultsFolders(), "resultsFolders").isEqualTo(List.of(resultsFolder,
+					heldOutResultsFolder));
 			}
 		}
 	}
@@ -571,11 +572,11 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				Path runRoot = root.resolve("runs");
+				Path resultsFolder = root.resolve("runs");
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
 				List<ExtraPermissions> files = new CopyOnWriteArrayList<>();
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, false,
-					Map.of(), runRoot, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, resultsFolder, resultsFolder, List::of,
+					false, Map.of(), resultsFolder, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 				{
 					arguments.add(options);
@@ -983,10 +984,10 @@ public final class RunnerSessionsTest
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-				NestedSession run = manager.create(TestSessions.HARNESS);
-				manager.initialize(run, root, root, "scripted", List.of("scripted"));
+				NestedSession nestedSession = manager.create(TestSessions.HARNESS);
+				manager.initialize(nestedSession, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
-					run.id() + "\"}\n");
+					nestedSession.id() + "\"}\n");
 				BufferedReader requests = new BufferedReader(input);
 				for (int turn = 0; turn < 2; ++turn)
 				{
@@ -1030,10 +1031,10 @@ public final class RunnerSessionsTest
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-				NestedSession run = manager.create(TestSessions.HARNESS);
-				manager.initialize(run, root, root, "scripted", List.of("scripted"));
+				NestedSession nestedSession = manager.create(TestSessions.HARNESS);
+				manager.initialize(nestedSession, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
-					run.id() + "\"}\n");
+					nestedSession.id() + "\"}\n");
 				BufferedReader requests = new BufferedReader(input);
 				for (int turn = 0; turn < 3; ++turn)
 				{
@@ -1089,10 +1090,10 @@ public final class RunnerSessionsTest
 				{
 					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runs,
 						Clock.systemUTC(), Yielding.fileReplacer());
-					NestedSession run = manager.create(TestSessions.HARNESS);
-					manager.initialize(run, root, root, "scripted", List.of("scripted"));
+					NestedSession nestedSession = manager.create(TestSessions.HARNESS);
+					manager.initialize(nestedSession, root, root, "scripted", List.of("scripted"));
 					output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
-						run.id() + "\"}\n");
+						nestedSession.id() + "\"}\n");
 					output.flush();
 					BufferedReader lines = new BufferedReader(input);
 					String line = lines.readLine();
@@ -1519,24 +1520,24 @@ public final class RunnerSessionsTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			ManualClock clock = new ManualClock(START);
 			CountDownLatch partialDraftWritten = new CountDownLatch(1);
-			AtomicReference<NestedSession> ownedRun = new AtomicReference<>();
+			AtomicReference<NestedSession> ownedSession = new AtomicReference<>();
 			AtomicReference<Path> authorProject = new AtomicReference<>();
 			AtomicReference<Path> workspaceInput = new AtomicReference<>();
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), clock, Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				Path runRoot = Path.of(ScriptedHarness.optionValue(options, "--results"));
+				Path resultsFolder = Path.of(ScriptedHarness.optionValue(options, "--results"));
 				Path project = Path.of(ScriptedHarness.optionValue(options, "--project"));
 				Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
-				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, clock,
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), resultsFolder, clock,
 					Yielding.fileReplacer());
-				NestedSession run = manager.create(TestSessions.HARNESS);
-				manager.initialize(run, artifact, project, "scripted", options);
-				manager.copyProject(project, run);
-				manager.copyWorkspace(workspace, run);
-				ownedRun.set(run);
-				authorProject.set(run.directory().resolve("project"));
+				NestedSession nestedSession = manager.create(TestSessions.HARNESS);
+				manager.initialize(nestedSession, artifact, project, "scripted", options);
+				manager.copyProject(project, nestedSession);
+				manager.copyWorkspace(workspace, nestedSession);
+				ownedSession.set(nestedSession);
+				authorProject.set(nestedSession.directory().resolve("project"));
 				workspaceInput.set(workspace);
 
 				ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted().withCheckpoint(_ ->
@@ -1547,8 +1548,8 @@ public final class RunnerSessionsTest
 					Files.writeString(testDirectory.resolve("proposal.md"), "partial author proposal\n");
 					partialDraftWritten.countDown();
 				})), new ArrayList<>());
-				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
-					input, output);
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()),
+					manager, input, output);
 			});
 			SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, source,
 				List.of("write a draft"), List.of(), LIMIT, SESSION_PROFILE, workspaceFiles);
@@ -1560,9 +1561,9 @@ public final class RunnerSessionsTest
 			SessionResult result = await(handle);
 			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
 				"The contract author session reached its 5-minute time limit", List.of()));
-			NestedSession run = ownedRun.get();
-			requireThat(run, "ownedRun").isNotNull();
-			requireThat(Files.isDirectory(run.directory()), "retainedRun").isTrue();
+			NestedSession nestedSession = ownedSession.get();
+			requireThat(nestedSession, "ownedSession").isNotNull();
+			requireThat(Files.isDirectory(nestedSession.directory()), "retainedSession").isTrue();
 			Path project = authorProject.get();
 			requireThat(Files.readString(project.resolve(draft).resolve("scenario.md")), "seededScenario").isEqualTo(
 				"partial author scenario\n");
@@ -1708,19 +1709,19 @@ public final class RunnerSessionsTest
 	 * Creates a port whose runner plays a script and records the turn requests that reach the harness.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param runRoot the directory for run directories
+	 * @param resultsFolder the directory for run directories
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param script what the harness does, turn by turn
 	 * @param requests receives each turn request that reaches the harness
 	 * @return the port
 	 */
-	private static TestSessions recordingPort(JvmScope jvm, Path runRoot, HarnessCapacity capacity, Clock clock,
+	private static TestSessions recordingPort(JvmScope jvm, Path resultsFolder, HarnessCapacity capacity, Clock clock,
 		List<Turn> script,
 		List<String> requests)
 	{
-		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, runRoot, runRoot, List::of, false,
-			Map.of(), runRoot, capacity, clock, Yielding.fileReplacer());
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, resultsFolder, resultsFolder, List::of, false,
+			Map.of(), resultsFolder, capacity, clock, Yielding.fileReplacer());
 		return new TestSessions(settings, (options, input, output) ->
 			ScriptedHarness.serve(Path.of(ScriptedHarness.optionValue(options, "--results")), TestSessions.HARNESS,
 				script, input, output, requests));

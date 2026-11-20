@@ -742,9 +742,9 @@ public abstract class RunnerSessions implements SessionPort
 	}
 
 	@Override
-	public final List<Path> runRoots()
+	public final List<Path> resultsFolders()
 	{
-		return List.of(settings.runRoot(), settings.heldOutRunRoot());
+		return List.of(settings.resultsFolder(), settings.heldOutResultsFolder());
 	}
 
 	/**
@@ -757,9 +757,9 @@ public abstract class RunnerSessions implements SessionPort
 	 */
 	final List<Path> heldOutLocations() throws IOException
 	{
-		Path heldOutRunRoot = Files.createDirectories(settings.heldOutRunRoot()).toRealPath();
+		Path heldOutResultsFolder = Files.createDirectories(settings.heldOutResultsFolder()).toRealPath();
 		List<Path> locations = new ArrayList<>(settings.heldOut().list());
-		locations.add(heldOutRunRoot);
+		locations.add(heldOutResultsFolder);
 		return locations;
 	}
 
@@ -1399,7 +1399,7 @@ public abstract class RunnerSessions implements SessionPort
 	 *
 	 * @param scope the process scope borrowed for this adapter
 	 * @param artifact the complete harness artifact that the runner validates and installs
-	 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
+	 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
 	 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 	 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that the
 	 *   files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1413,7 +1413,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
 	 *   except those of its own run and the evidence that it reads, or {@code null} to deny no project's files
 	 */
-	public record Settings(JvmScope scope, Path artifact, Path runRoot, HeldOutPaths heldOut, boolean installCat,
+	public record Settings(JvmScope scope, Path artifact, Path resultsFolder, HeldOutPaths heldOut, boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
 		FileReplacer replacer, Optional<Path> userRules, Path hostProject)
 	{
@@ -1422,7 +1422,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
-		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
+		 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 			 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
 		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1437,15 +1437,15 @@ public abstract class RunnerSessions implements SessionPort
 		 *   read except those of its own run and the evidence that it reads, or {@code null} to deny no project's
 		 *   files
 		 * @throws NullPointerException if any argument other than {@code hostProject} is null
-		 * @throws IllegalArgumentException if {@code runRoot} or {@code hostProject} are not absolute, or
-		 *   {@code runRoot} is a file system root
+		 * @throws IllegalArgumentException if {@code resultsFolder} or {@code hostProject} are not absolute, or
+		 *   {@code resultsFolder} is a file system root
 		 */
 		public Settings
 		{
 			requireThat(scope, "scope").isNotNull();
 			requireThat(artifact, "artifact").isNotNull();
-			requireThat(runRoot, "runRoot").isNotNull();
-			requireThat(runRoot.isAbsolute(), "runRoot.isAbsolute").isTrue();
+			requireThat(resultsFolder, "resultsFolder").isNotNull();
+			requireThat(resultsFolder.isAbsolute(), "resultsFolder.isAbsolute").isTrue();
 			requireThat(heldOut, "heldOut").isNotNull();
 			requireThat(environment, "environment").isNotNull();
 			requireThat(configurationDirectory, "configurationDirectory").isNotNull();
@@ -1453,8 +1453,8 @@ public abstract class RunnerSessions implements SessionPort
 			requireThat(clock, "clock").isNotNull();
 			requireThat(replacer, "replacer").isNotNull();
 			requireThat(userRules, "userRules").isNotNull();
-			runRoot = runRoot.normalize();
-			requireThat(runRoot.getFileName(), "runRoot.getFileName()").isNotNull();
+			resultsFolder = resultsFolder.normalize();
+			requireThat(resultsFolder.getFileName(), "resultsFolder.getFileName()").isNotNull();
 			if (hostProject != null)
 			{
 				requireThat(hostProject.isAbsolute(), "hostProject.isAbsolute").isTrue();
@@ -1468,7 +1468,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
-		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
+		 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 			 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
 		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1480,13 +1480,13 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
 		 * @throws NullPointerException if any argument is null
-		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
+		 * @throws IllegalArgumentException if {@code resultsFolder} is not absolute or is a file system root
 		 */
-		public Settings(JvmScope scope, Path artifact, Path runRoot, HeldOutPaths heldOut, boolean installCat,
+		public Settings(JvmScope scope, Path artifact, Path resultsFolder, HeldOutPaths heldOut, boolean installCat,
 			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
 			FileReplacer replacer, Optional<Path> userRules)
 		{
-			this(scope, artifact, runRoot, heldOut, installCat, environment, configurationDirectory, capacity,
+			this(scope, artifact, resultsFolder, heldOut, installCat, environment, configurationDirectory, capacity,
 				clock, replacer, userRules, null);
 		}
 
@@ -1495,7 +1495,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
-		 * @param runRoot the absolute directory that holds the run directories of sessions of the development part
+		 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 			 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that
 		 *   the files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1505,13 +1505,13 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param clock the clock for time limits
 		 * @param replacer replaces the files of the sessions' runs
 		 * @throws NullPointerException if any argument is null
-		 * @throws IllegalArgumentException if {@code runRoot} is not absolute or is a file system root
+		 * @throws IllegalArgumentException if {@code resultsFolder} is not absolute or is a file system root
 		 */
-		public Settings(JvmScope scope, Path artifact, Path runRoot, HeldOutPaths heldOut, boolean installCat,
+		public Settings(JvmScope scope, Path artifact, Path resultsFolder, HeldOutPaths heldOut, boolean installCat,
 			Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
 			FileReplacer replacer)
 		{
-			this(scope, artifact, runRoot, heldOut, installCat, environment, configurationDirectory, capacity,
+			this(scope, artifact, resultsFolder, heldOut, installCat, environment, configurationDirectory, capacity,
 				clock, replacer, Optional.empty());
 		}
 
@@ -1521,9 +1521,9 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @return the absolute directory
 		 */
-		public Path heldOutRunRoot()
+		public Path heldOutResultsFolder()
 		{
-			return runRoot.resolveSibling(runRoot.getFileName() + "-held_out");
+			return resultsFolder.resolveSibling(resultsFolder.getFileName() + "-held_out");
 		}
 	}
 

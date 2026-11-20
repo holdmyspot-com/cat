@@ -320,12 +320,12 @@ public final class ClaudeSessionsContractTest
 	 * @throws Exception if the contract check fails
 	 */
 	@Test(timeOut = 60_000)
-	public void identifiesItsVersionsAndRunRoots() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws Exception
 	{
 		try (TestJvmScope jvm = new TestJvmScope())
 		{
 			// Requirement: R-E7
-			contractWithoutSessions(jvm).identifiesItsVersionsAndRunRoots();
+			contractWithoutSessions(jvm).identifiesItsVersionsAndResultsFolders();
 		}
 	}
 

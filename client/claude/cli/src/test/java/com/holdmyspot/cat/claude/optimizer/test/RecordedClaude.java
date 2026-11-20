@@ -131,17 +131,17 @@ final class RecordedClaude implements Bridge
 	@Override
 	public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 	{
-		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
-		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot,
+		Path resultsFolder = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, resultsFolder,
 			Clock.systemUTC(), Yielding.fileReplacer());
 		NestedSession completed = HarnessRunnerBridge.serve(() ->
 		{
-			NestedSession run = manager.create("claude");
-			sessionId = run.id();
-			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
+			NestedSession nestedSession = manager.create("claude");
+			sessionId = nestedSession.id();
+			manager.initialize(nestedSession, resultsFolder, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
 			TestHarnessRunnerScope scope = new TestHarnessRunnerScope();
-			return new LiveNestedSession(run, new ClaudeProcess(scope, process), scope);
+			return new LiveNestedSession(nestedSession, new ClaudeProcess(scope, process), scope);
 		}, input, output);
 		manager.markCompleted(completed);
 	}

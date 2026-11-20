@@ -120,7 +120,7 @@ public sealed interface LaunchRoute
 	 * runner:
 	 *   {@link Forward}.</li>
 	 *   <li>Inside a nested session whose runner lets its session request none, the launch is refused, as
-	 *   {@link HarnessEnvironment#inRunRefusal(String, Map)} says: {@link Refused}.</li>
+	 *   {@link HarnessEnvironment#inNestedSessionRefusal(String, Map)} says: {@link Refused}.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass, as
 	 *   {@link #internalOptionRefusal(String[])} lists them, is refused: {@link Refused}.</li>
 	 *   <li>When the plugin's own harness runs the command, the launch becomes a request to the session's request
@@ -157,9 +157,9 @@ public sealed interface LaunchRoute
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 			return new Forward(Path.of(requests));
-		Optional<String> inRun = HarnessEnvironment.inRunRefusal(runner, environment);
-		if (inRun.isPresent())
-			return new Refused(inRun.get());
+		Optional<String> inNestedSession = HarnessEnvironment.inNestedSessionRefusal(runner, environment);
+		if (inNestedSession.isPresent())
+			return new Refused(inNestedSession.get());
 		if (!harnesses.isEmpty())
 		{
 			Optional<String> internal = internalOptionRefusal(args);

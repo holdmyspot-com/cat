@@ -630,12 +630,12 @@ public final class ClaudeConnectionSettingsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-excludes-"));
 			Path project = root.resolve("project[1]");
-			Path run = project.resolve(".cat/runs/run");
+			Path sessionFolder = project.resolve(".cat/runs/run");
 			Path destination = root.resolve("isolated/settings.json");
-			Path claudeTemporaryDirectory = run.resolve("claude");
+			Path claudeTemporaryDirectory = sessionFolder.resolve("claude");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, run.resolve("home"), List.of(), run, List.of());
+				claudeTemporaryDirectory, sessionFolder.resolve("home"), List.of(), sessionFolder, List.of());
 
 			List<String> excludes = strings(scope.json().readTree(Files.readString(destination)).
 				path("claudeMdExcludes"));
@@ -648,7 +648,7 @@ public final class ClaudeConnectionSettingsTest
 				fileSystemGlob + ".claude/rules/**", fileSystemGlob + "AGENTS.md"));
 			for (String exclude : excludes)
 			{
-				requireThat(exclude, "exclude").doesNotStartWith(glob(run));
+				requireThat(exclude, "exclude").doesNotStartWith(glob(sessionFolder));
 			}
 		}
 	}
@@ -845,9 +845,9 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-policy-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
-			Path locked = Files.createDirectories(run.resolve("home/locked"));
+			Path locked = Files.createDirectories(sessionFolder.resolve("home/locked"));
 			Path secrets = Files.createDirectories(root.resolve("secrets"));
 			Path shared = Files.createDirectories(secrets.resolve("shared"));
 			Path snapshot = Files.writeString(root.resolve("campaign.json"), "{}");
@@ -862,14 +862,14 @@ public final class ClaudeConnectionSettingsTest
 				}
 				""");
 			Path destination = root.resolve("isolated/settings.json");
-			Path claudeTemporaryDirectory = run.resolve("claude");
-			Path claudeHome = run.resolve("home");
-			ChildPolicy bound = new ChildPolicy(List.of(run, cache), List.of(locked), List.of(secrets),
+			Path claudeTemporaryDirectory = sessionFolder.resolve("claude");
+			Path claudeHome = sessionFolder.resolve("home");
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder, cache), List.of(locked), List.of(secrets),
 				List.of(shared), Set.of("api.example", "other.example"), false);
 
 			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
-				claudeTemporaryDirectory, claudeHome, List.of(cache), run, List.of(snapshot), "", null,
-				null, run, bound, ExtraPermissions.NONE, "api.example");
+				claudeTemporaryDirectory, claudeHome, List.of(cache), sessionFolder, List.of(snapshot), "", null,
+				null, sessionFolder, bound, ExtraPermissions.NONE, "api.example");
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(sandbox.path("enabled").asBoolean(), "enabled").isTrue();
@@ -911,23 +911,23 @@ public final class ClaudeConnectionSettingsTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("notes.txt"), "notes");
 			Files.createDirectories(project.resolve("secrets"));
-			Path run = Files.createDirectories(project.resolve("runs/r1"));
-			Files.createDirectories(run.resolve("home"));
-			Path records = Files.createDirectories(run.resolve("records"));
+			Path sessionFolder = Files.createDirectories(project.resolve("runs/r1"));
+			Files.createDirectories(sessionFolder.resolve("home"));
+			Path records = Files.createDirectories(sessionFolder.resolve("records"));
 			Files.createDirectories(project.resolve("runs/r2"));
 			Path destination = root.resolve("isolated/settings.json");
-			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(project), List.of(),
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(project), List.of(),
 				Set.of("api.example"), false);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(records), "", null, null, run, bound,
-				ExtraPermissions.NONE, "api.example");
+				sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(), sessionFolder, List.of(records), "",
+				null, null, sessionFolder, bound, ExtraPermissions.NONE, "api.example");
 
 			JsonNode settings = scope.json().readTree(Files.readString(destination));
 			List<String> rules = strings(settings.path("permissions").path("deny"));
 			for (String writable : List.of("home/settings.json", "claude/stream.log", "draft/proposal.json"))
 			{
-				requireThat(denies(rules, run.resolve(writable)), "denied").withContext(writable, "path").
+				requireThat(denies(rules, sessionFolder.resolve(writable)), "denied").withContext(writable, "path").
 					withContext(rules, "rules").isFalse();
 			}
 			for (Path denied : List.of(project.resolve("notes.txt"), project.resolve("secrets/key.txt"),
@@ -975,17 +975,18 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-refusal-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path outsideCache = Files.createDirectories(root.resolve("outside-cache"));
 			Path source = Files.writeString(root.resolve("settings.json"), "{}");
 			Path destination = root.resolve("isolated/settings.json");
-			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of("api.example"),
-				false);
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
+				Set.of("api.example"), false);
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, source, destination,
-					run.resolve("claude"), run.resolve("home"), List.of(outsideCache), run, List.of(), "", null, null,
-					run, bound, ExtraPermissions.NONE, "model.example"));
+					sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(outsideCache), sessionFolder,
+				List.of(), "", null, null,
+					sessionFolder, bound, ExtraPermissions.NONE, "model.example"));
 
 			requireThat(refusal.getMessage(), "message").contains(outsideCache.toString()).contains("model.example");
 			requireThat(Files.exists(destination), "written").isFalse();
@@ -1005,16 +1006,16 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-extra-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
 			Path destination = root.resolve("isolated/settings.json");
-			ChildPolicy bound = new ChildPolicy(List.of(run, registry), List.of(), List.of(), List.of(),
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder, registry), List.of(), List.of(), List.of(),
 				Set.of("api.example", "registry.example"), false);
 			ExtraPermissions extra = new ExtraPermissions(List.of(registry), Set.of("registry.example"));
 
 			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
-				destination, run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null,
-				run, bound, extra, "api.example");
+				destination, sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(), sessionFolder,
+				List.of(), "", null, null, sessionFolder, bound, extra, "api.example");
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").contains(registry.toString());
@@ -1038,16 +1039,17 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-extra-refusal-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
 			Path destination = root.resolve("isolated/settings.json");
-			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of("api.example"),
-				false);
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
+				Set.of("api.example"), false);
 			ExtraPermissions extra = new ExtraPermissions(List.of(registry), Set.of("registry.example"));
 
 			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-					run.resolve("claude"), run.resolve("home"), List.of(), run, List.of(), "", null, null, run, bound, extra,
+					sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(), sessionFolder, List.of(), "", null,
+				null, sessionFolder, bound, extra,
 					"api.example"));
 
 			requireThat(refusal.getMessage(), "message").contains(registry.toString()).contains("registry.example");
@@ -1063,21 +1065,21 @@ public final class ClaudeConnectionSettingsTest
 	 *                  {@code temporary}
 	 * @throws IOException if fixture I/O fails
 	 */
-	@Test(dataProvider = "directoriesOutsideRun")
+	@Test(dataProvider = "directoriesOutsideSessionFolder")
 	public void refusesSessionOutsideBound(String directory) throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-outside-bound-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path elsewhere = Files.createDirectories(root.resolve("elsewhere"));
 			Path outside = root.resolve("outside").resolve(directory);
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(elsewhere), List.of(), List.of(), List.of(), Set.of(), false);
-			Path home = run.resolve("home");
-			Path project = run.resolve("project");
-			Path temporary = run.resolve("claude");
+			Path home = sessionFolder.resolve("home");
+			Path project = sessionFolder.resolve("project");
+			Path temporary = sessionFolder.resolve("claude");
 			switch (directory)
 			{
 				case "home" -> home = outside;
@@ -1091,7 +1093,8 @@ public final class ClaudeConnectionSettingsTest
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-					refusedTemporary, refusedHome, List.of(), run, List.of(), "", null, refusedProject, run, bound,
+					refusedTemporary, refusedHome, List.of(), sessionFolder, List.of(), "", null, refusedProject, sessionFolder,
+				bound,
 					ExtraPermissions.NONE, "api.example"));
 
 			requireThat(refusal.getMessage(), "message").contains(outside.toString());
@@ -1105,7 +1108,7 @@ public final class ClaudeConnectionSettingsTest
 	 * @return the directory's name
 	 */
 	@DataProvider
-	public Object[][] directoriesOutsideRun()
+	public Object[][] directoriesOutsideSessionFolder()
 	{
 		return new Object[][]{{"home"}, {"project"}, {"temporary"}};
 	}
@@ -1119,31 +1122,31 @@ public final class ClaudeConnectionSettingsTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void allowsRunFolderOutsideBound() throws IOException
+	public void allowsSessionFolderOutsideBound() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-run-")).toRealPath();
-			Path requesterRun = Files.createDirectories(root.resolve("run"));
-			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/0/1"));
-			Path requesterHome = Files.createDirectories(requesterRun.resolve("home"));
-			Path requests = Files.createDirectories(requesterRun.resolve("requests"));
+			Path requesterSession = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(requesterSession.resolve("requested-runs/0/1"));
+			Path requesterHome = Files.createDirectories(requesterSession.resolve("home"));
+			Path requests = Files.createDirectories(requesterSession.resolve("requests"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(requesterHome, requests, cache), List.of(), List.of(),
 				List.of(), Set.of("api.example"), false);
-			Path home = run.resolve("home");
-			Path project = Files.createDirectories(run.resolve("project/.git"));
+			Path home = sessionFolder.resolve("home");
+			Path project = Files.createDirectories(sessionFolder.resolve("project/.git"));
 
 			ChildPolicy effective = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
-				destination, run.resolve("claude"), home, List.of(cache), run, List.of(), "", null, project.getParent(),
-				run, bound, ExtraPermissions.NONE, "api.example");
+				destination, sessionFolder.resolve("claude"), home, List.of(cache), sessionFolder, List.of(), "", null,
+				project.getParent(), sessionFolder, bound, ExtraPermissions.NONE, "api.example");
 
 			JsonNode sandbox = scope.json().readTree(Files.readString(destination)).path("sandbox");
 			requireThat(strings(sandbox.path("filesystem").path("allowWrite")), "allowWrite").isEqualTo(
 				List.of(home.toString(), cache.toString()));
-			requireThat(effective.writeRoots(), "writeRoots").doesNotContain(run);
+			requireThat(effective.writeRoots(), "writeRoots").doesNotContain(sessionFolder);
 		}
 	}
 
@@ -1164,7 +1167,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-many-denials-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path destination = root.resolve("isolated/settings.json");
 			Path denied = root.resolve("x".repeat(180));
 			List<Path> deniedReads = new ArrayList<>();
@@ -1173,7 +1176,8 @@ public final class ClaudeConnectionSettingsTest
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-					run.resolve("claude"), run.resolve("home"), List.of(), run, deniedReads, "", null, null, run, null,
+					sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(), sessionFolder, deniedReads, "",
+				null, null, sessionFolder, null,
 					ExtraPermissions.NONE, "api.example"));
 
 			requireThat(refusal.getMessage(), "message").contains("read denials");
@@ -1188,15 +1192,15 @@ public final class ClaudeConnectionSettingsTest
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void refusesCacheMissingFromBoundOfNestedRun() throws IOException
+	public void refusesCacheMissingFromNestedBound() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-cache-")).toRealPath();
-			Path requesterRun = Files.createDirectories(root.resolve("run"));
-			Path run = Files.createDirectories(requesterRun.resolve("requested-runs/0/1"));
-			Path requesterHome = Files.createDirectories(requesterRun.resolve("home"));
+			Path requesterSession = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(requesterSession.resolve("requested-runs/0/1"));
+			Path requesterHome = Files.createDirectories(requesterSession.resolve("home"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(requesterHome), List.of(), List.of(), List.of(),
@@ -1204,7 +1208,8 @@ public final class ClaudeConnectionSettingsTest
 
 			MissingPermissionsException refusal = expectThrows(MissingPermissionsException.class,
 				() -> ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-					run.resolve("claude"), run.resolve("home"), List.of(cache), run, List.of(), "", null, null, run,
+					sessionFolder.resolve("claude"), sessionFolder.resolve("home"), List.of(cache), sessionFolder, List.of(), "",
+				null, null, sessionFolder,
 					bound, ExtraPermissions.NONE, "api.example"));
 
 			requireThat(refusal.getMessage(), "message").contains(cache.toString());
@@ -1259,9 +1264,9 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-widening-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path secrets = Files.createDirectories(root.resolve("secrets"));
-			ChildPolicy policy = new ChildPolicy(List.of(run), List.of(), List.of(secrets), List.of(),
+			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(secrets), List.of(),
 				Set.of("api.example"), false);
 			Path narrow = Files.writeString(root.resolve("narrow.json"), "{\"sandbox\": {\"enabled\": true}}");
 			// A Windows path holds backslashes, which a JSON string spells with another backslash each
@@ -1269,7 +1274,7 @@ public final class ClaudeConnectionSettingsTest
 				secrets.toString().replace("\\", "\\\\")));
 
 			Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(narrow, widening),
-				policy, run.resolve("home"));
+				policy, sessionFolder.resolve("home"));
 
 			requireThat(refusal.orElseThrow(), "refusal").contains(widening.toString()).contains(setting);
 		}
@@ -1288,8 +1293,8 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-within-policy-")).toRealPath();
-			Path run = Files.createDirectories(root.resolve("run"));
-			ChildPolicy policy = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(),
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
 				Set.of("api.example"), false);
 			Path settings = Files.writeString(root.resolve("settings.json"), """
 				{
@@ -1301,11 +1306,11 @@ public final class ClaudeConnectionSettingsTest
 				  },
 				  "permissions": {"allow": ["Bash(git status:*)", "Edit(/%s/**)"], "deny": ["Bash(curl *)"]}
 				}
-				""".formatted(run.resolve("work").toString().replace("\\", "\\\\"),
-				ClaudeConnectionSettings.rulePath(run)));
+				""".formatted(sessionFolder.resolve("work").toString().replace("\\", "\\\\"),
+				ClaudeConnectionSettings.rulePath(sessionFolder)));
 
 			Optional<String> refusal = ClaudeConnectionSettings.findWidening(scope.json(), List.of(settings,
-				root.resolve("missing.json")), policy, run.resolve("home"));
+				root.resolve("missing.json")), policy, sessionFolder.resolve("home"));
 
 			requireThat(refusal, "refusal").isEmpty();
 		}

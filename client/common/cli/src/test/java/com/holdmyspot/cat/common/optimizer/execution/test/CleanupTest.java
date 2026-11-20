@@ -354,10 +354,10 @@ public final class CleanupTest
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param base the base worktree
 	 * @param campaigns the session's directory that holds the campaigns
-	 * @param runRoots the session's results folder and held-out results folder
+	 * @param resultsFolders the session's results folder and held-out results folder
 	 * @param forks the campaigns' optimization worktrees
 	 */
-	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> runRoots, GitlessForks forks)
+	private record Fixture(FileLocks fileLocks, Path base, Path campaigns, List<Path> resultsFolders, GitlessForks forks)
 	{
 		/**
 		 * Creates the base worktree, the other campaign with its worktree and runs, and the results folders.
@@ -375,14 +375,14 @@ public final class CleanupTest
 			Files.writeString(base.resolve("CLAUDE.md"), "prompt v1\n", UTF_8);
 			SessionDirectory session = GitProjects.openSession(base, SESSION_ID, SessionHarnesses.HARNESS_A,
 				root.resolve("configuration"), Instant.parse("2026-10-16T12:00:00Z"), JSON);
-			Path sessionRuns = Files.createDirectories(session.runRoot("claude"));
+			Path sessionRuns = Files.createDirectories(session.resultsFolder("claude"));
 			Fixture fixture = new Fixture(new FileLocks(), base, session.campaigns(), List.of(sessionRuns,
 				Files.createDirectories(sessionRuns.resolveSibling("claude-held_out"))),
 				new GitlessForks(Set.of(Path.of("CLAUDE.md")), Yielding.fileReplacer()));
 			fixture.store(new Builder().header(fixture.header(OTHER, Lifecycle.ACTIVE)));
-			for (Path runRoot : fixture.runRoots())
+			for (Path resultsFolder : fixture.resultsFolders())
 			{
-				Path malformed = Files.createDirectories(runRoot.resolve("claude/run-malformed"));
+				Path malformed = Files.createDirectories(resultsFolder.resolve("claude/run-malformed"));
 				Files.writeString(malformed.resolve("session.json"), "{ not json", UTF_8);
 			}
 			return fixture;
@@ -432,13 +432,13 @@ public final class CleanupTest
 				Files.createDirectories(directory.resolve("worktree"));
 				Files.writeString(directory.resolve("worktree/CLAUDE.md"), "prompt v1\n", UTF_8);
 			}
-			for (Path runRoot : runRoots)
+			for (Path resultsFolder : resultsFolders)
 			{
-				Path run = Files.createDirectories(runRoot.resolve("claude/run-" + id));
-				Files.writeString(run.resolve("session.json"), JSON.writeValueAsString(Map.of(
+				Path sessionFolder = Files.createDirectories(resultsFolder.resolve("claude/run-" + id));
+				Files.writeString(sessionFolder.resolve("session.json"), JSON.writeValueAsString(Map.of(
 					"project_path", directory.resolve("staged/project").toString(), "state", "completed")), UTF_8);
-				Files.createDirectories(run.resolve("project"));
-				Files.writeString(run.resolve("project/CLAUDE.md"), "prompt v1\n", UTF_8);
+				Files.createDirectories(sessionFolder.resolve("project"));
+				Files.writeString(sessionFolder.resolve("project/CLAUDE.md"), "prompt v1\n", UTF_8);
 			}
 			return built;
 		}
@@ -479,7 +479,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Consumer<Cleanup.Step> beforeStep)
 		{
-			return new Cleanup(fileLocks, base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), beforeStep);
+			return new Cleanup(fileLocks, base, campaigns, forks, resultsFolders, JSON, Yielding.fileReplacer(), beforeStep);
 		}
 
 		/**
@@ -490,7 +490,7 @@ public final class CleanupTest
 		 */
 		Cleanup cleanup(Forks forks)
 		{
-			return new Cleanup(fileLocks, base, campaigns, forks, runRoots, JSON, Yielding.fileReplacer(), NO_HOOK);
+			return new Cleanup(fileLocks, base, campaigns, forks, resultsFolders, JSON, Yielding.fileReplacer(), NO_HOOK);
 		}
 
 		/**
@@ -502,10 +502,10 @@ public final class CleanupTest
 		void requireRemoved() throws IOException
 		{
 			requireThat(Files.notExists(directory(CAMPAIGN)), "campaignDirectoryIsAbsent").isTrue();
-			for (Path runRoot : runRoots)
+			for (Path resultsFolder : resultsFolders)
 			{
-				requireThat(Files.notExists(runRoot.resolve("claude/run-" + CAMPAIGN)), "runIsAbsent").
-					withContext(runRoot, "runRoot").isTrue();
+				requireThat(Files.notExists(resultsFolder.resolve("claude/run-" + CAMPAIGN)), "runIsAbsent").
+					withContext(resultsFolder, "resultsFolder").isTrue();
 			}
 			requireThat(forks.exists(directory(CAMPAIGN)), "campaignWorktreeExists").isFalse();
 			try (Stream<Path> entries = Files.list(directory(CAMPAIGN).getParent()))
@@ -528,10 +528,10 @@ public final class CleanupTest
 				withContext(context, "context").isRegularFile();
 			requireThat(directory(CAMPAIGN).resolve("worktree/CLAUDE.md"), "worktree").
 				withContext(context, "context").isRegularFile();
-			for (Path runRoot : runRoots)
+			for (Path resultsFolder : resultsFolders)
 			{
-				requireThat(runRoot.resolve("claude/run-" + CAMPAIGN + "/session.json"), "run").
-					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
+				requireThat(resultsFolder.resolve("claude/run-" + CAMPAIGN + "/session.json"), "run").
+					withContext(context, "context").withContext(resultsFolder, "resultsFolder").isRegularFile();
 			}
 			requireOtherKept(context);
 		}
@@ -549,12 +549,12 @@ public final class CleanupTest
 			requireThat(directory(OTHER).resolve("worktree/CLAUDE.md"), "otherWorktree").
 				withContext(context, "context").isRegularFile();
 			requireThat(forks.exists(directory(OTHER)), "otherWorktreeExists").withContext(context, "context").isTrue();
-			for (Path runRoot : runRoots)
+			for (Path resultsFolder : resultsFolders)
 			{
-				requireThat(runRoot.resolve("claude/run-" + OTHER + "/session.json"), "otherRun").
-					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
-				requireThat(runRoot.resolve("claude/run-malformed/session.json"), "malformedRun").
-					withContext(context, "context").withContext(runRoot, "runRoot").isRegularFile();
+				requireThat(resultsFolder.resolve("claude/run-" + OTHER + "/session.json"), "otherSession").
+					withContext(context, "context").withContext(resultsFolder, "resultsFolder").isRegularFile();
+				requireThat(resultsFolder.resolve("claude/run-malformed/session.json"), "malformedRun").
+					withContext(context, "context").withContext(resultsFolder, "resultsFolder").isRegularFile();
 			}
 		}
 	}

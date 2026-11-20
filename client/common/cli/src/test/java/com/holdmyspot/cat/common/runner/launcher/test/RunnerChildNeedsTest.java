@@ -53,7 +53,7 @@ public final class RunnerChildNeedsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path request = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();
-			Path runFolder = request.resolve("run");
+			Path sessionFolder = request.resolve("run");
 			Path cache = request.resolveSibling("cache");
 			Path denied = request.resolveSibling("denied");
 			List<List<String>> started = new ArrayList<>();
@@ -65,10 +65,10 @@ public final class RunnerChildNeedsTest
 				return new ExitedProcess(0);
 			};
 
-			ChildNeeds needs = new RunnerChildNeeds(starter).needs("codex", runFolder, List.of(denied),
+			ChildNeeds needs = new RunnerChildNeeds(starter).needs("codex", sessionFolder, List.of(denied),
 				ParentPolicy.UNSANDBOXED);
 
-			requireThat(needs, "needs").isEqualTo(new ChildNeeds(runFolder, List.of(cache), List.of(denied),
+			requireThat(needs, "needs").isEqualTo(new ChildNeeds(sessionFolder, List.of(cache), List.of(denied),
 				Set.of("model.example")));
 			requireThat(started, "started").isEqualTo(List.of(List.of("codex", request.toString(),
 				ChildNeedsReport.OPTION + " " + request.resolve(ChildNeedsReport.FILE_NAME))));

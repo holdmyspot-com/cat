@@ -19,7 +19,7 @@ public record RequestLimits(int entries, long entryBytes, long totalBytes, long 
 	 * The bounds of a request made inside a nested session: 10,000 entries, 64 MiB per entry, 256 MiB of content and
 	 * 300,000,000 archive bytes.
 	 */
-	public static final RequestLimits IN_RUN = new RequestLimits(10_000, 67_108_864, 268_435_456, 300_000_000);
+	public static final RequestLimits IN_NESTED_SESSION = new RequestLimits(10_000, 67_108_864, 268_435_456, 300_000_000);
 	/**
 	 * The bounds of a request made at session level, which no archive reaches: such a request carries a project of any
 	 * size, as a run started outside a session copies one, and only the free disk space bounds it.

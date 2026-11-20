@@ -374,7 +374,7 @@ public final class CodexPromptOptimizerTest
 	 * @throws IOException if a file cannot be read or written
 	 */
 	@Test(dataProvider = "sessionCommands")
-	public void inRunCommandRefusedWithoutRequests(List<String> command) throws IOException
+	public void nestedCommandRefusedWithoutRequests(List<String> command) throws IOException
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
@@ -402,7 +402,7 @@ public final class CodexPromptOptimizerTest
 	 * @return the commands and their arguments, the run's session requests and whether one session is served first
 	 */
 	@DataProvider
-	public static Object[][] spentRuns()
+	public static Object[][] spentSessions()
 	{
 		List<Object[]> cases = new ArrayList<>();
 		for (Object[] command : sessionCommands())
@@ -423,8 +423,8 @@ public final class CodexPromptOptimizerTest
 	 * @param serveFirst      indicates whether the run serves one session before
 	 * @throws IOException if a file cannot be read or written
 	 */
-	@Test(dataProvider = "spentRuns", timeOut = 30_000)
-	public void inRunCommandRefusedWhenNoFurtherSession(List<String> command, int sessionRequests, boolean serveFirst)
+	@Test(dataProvider = "spentSessions", timeOut = 30_000)
+	public void nestedCommandRefusedWhenNoFurtherSession(List<String> command, int sessionRequests, boolean serveFirst)
 		throws IOException
 	{
 		try (TemporaryDirectories scope = new TemporaryDirectories())

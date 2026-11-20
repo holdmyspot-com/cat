@@ -63,22 +63,22 @@ public abstract class SessionCommandLimitsContract
 	 *                        separate Codex home, and every credential variable
 	 * @param userHome        the user's home directory
 	 * @param manager         the run manager of the results folder
-	 * @param run             the session's run, whose project is snapshotted
-	 * @param otherRun        another run under the same results folder
+	 * @param nestedSession   the session's run, whose project is snapshotted
+	 * @param otherSession    another run under the same results folder
 	 * @param artifact        the harness artifact that the session's runner uses
 	 * @param deniedReads     additional directories that the caller denies reading
 	 */
 	public record Fixture(Map<String, String> userEnvironment, Path userHome, NestedSessionManager manager,
-		NestedSession run, NestedSession otherRun, Path artifact, List<Path> deniedReads)
+		NestedSession nestedSession, NestedSession otherSession, Path artifact, List<Path> deniedReads)
 	{
 		/**
 		 * Returns the run's isolated home.
 		 *
 		 * @return the home
 		 */
-		public Path runHome()
+		public Path sessionHome()
 		{
-			return run.directory().resolve("home");
+			return nestedSession.directory().resolve("home");
 		}
 	}
 
@@ -166,14 +166,14 @@ public abstract class SessionCommandLimitsContract
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void commandsRunInRunHome() throws IOException
+	public void commandsRunInSessionHome() throws IOException
 	{
 		// Requirement: R-I8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
-			for (Map.Entry<String, String> variable : SessionCommandLimits.homeEnvironment(fixture.runHome(),
+			for (Map.Entry<String, String> variable : SessionCommandLimits.homeEnvironment(fixture.sessionHome(),
 				Platform.current()).entrySet())
 			{
 				requireThat(limits.commandEnvironment().get(variable.getKey()), variable.getKey()).
@@ -221,7 +221,7 @@ public abstract class SessionCommandLimitsContract
 			// A harness that a command starts finds its files through the command's environment, or else through the
 			// user's environment if the command names the user's directories
 			Map<String, String> commandEnvironment = new HashMap<>(limits.commandEnvironment());
-			commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(fixture.runHome(), platform));
+			commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(fixture.sessionHome(), platform));
 			Set<Path> expected = new LinkedHashSet<>();
 			for (Path file : SessionCommandLimits.harnessFiles(fixture.userEnvironment(), platform))
 			{
@@ -271,7 +271,7 @@ public abstract class SessionCommandLimitsContract
 			Platform platform = Platform.current();
 			Optional<Path> ownLogin = ownLogin(fixture).map(login -> login.toAbsolutePath().normalize());
 			Map<String, String> commandEnvironment = new HashMap<>(limits.commandEnvironment());
-			commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(fixture.runHome(), platform));
+			commandEnvironment.putAll(SessionCommandLimits.homeEnvironment(fixture.sessionHome(), platform));
 			Set<Path> otherLogins = new LinkedHashSet<>();
 			for (Map<String, String> environment : List.of(fixture.userEnvironment(), commandEnvironment))
 			{
@@ -285,10 +285,10 @@ public abstract class SessionCommandLimitsContract
 			// The fixture gives the user both harnesses' logins and the run's home both harnesses' logins
 			Path codexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME")).toAbsolutePath().normalize();
 			Path userHome = fixture.userHome().toAbsolutePath().normalize();
-			Path runHome = fixture.runHome().toAbsolutePath().normalize();
+			Path sessionHome = fixture.sessionHome().toAbsolutePath().normalize();
 			requireThat(otherLogins, "otherLogins").containsAll(List.of(userHome.resolve(".claude/.credentials.json"),
 				userHome.resolve(".codex/auth.json"), codexHome.resolve("auth.json")));
-			requireThat(otherLogins.stream().anyMatch(login -> login.startsWith(runHome)), "runHomeLogin").isTrue();
+			requireThat(otherLogins.stream().anyMatch(login -> login.startsWith(sessionHome)), "runHomeLogin").isTrue();
 
 			if (ownLogin.isPresent())
 			{
@@ -306,14 +306,14 @@ public abstract class SessionCommandLimitsContract
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void commandsCannotReadOtherRuns() throws IOException
+	public void commandsCannotReadOtherSessions() throws IOException
 	{
 		// Requirement: R-I8
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
-			Path other = fixture.otherRun().directory().toRealPath();
+			Path other = fixture.otherSession().directory().toRealPath();
 			requireThat(realPaths(limits.deniedReads()).stream().anyMatch(other::startsWith), "otherRunDenied").
 				withContext(limits.deniedReads(), "deniedReads").isTrue();
 		}
@@ -333,9 +333,9 @@ public abstract class SessionCommandLimitsContract
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
-			Path linkTargets = NestedSessionManager.linkTargets(fixture.run().directory());
+			Path linkTargets = NestedSessionManager.linkTargets(fixture.nestedSession().directory());
 			requireThat(linkTargets, "linkTargets").isDirectory();
-			Path link = fixture.run().directory().resolve("project/notes.md");
+			Path link = fixture.nestedSession().directory().resolve("project/notes.md");
 			requireThat(Files.isSymbolicLink(link), "linkIsLink").isTrue();
 			requireThat(link.toRealPath().startsWith(linkTargets.toRealPath()), "linkLeadsToLinkTargets").isTrue();
 			requireThat(readable(limits, linkTargets), "readable").withContext(limits, "limits").isTrue();
@@ -364,8 +364,8 @@ public abstract class SessionCommandLimitsContract
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 2);
-			Path requests = fixture.run().directory().resolve("requests");
-			Path responses = fixture.run().directory().resolve("responses");
+			Path requests = fixture.nestedSession().directory().resolve("requests");
+			Path responses = fixture.nestedSession().directory().resolve("responses");
 			String launcher = "request-session";
 			if (Platform.current().isWindows())
 				launcher += ".cmd";
@@ -386,11 +386,12 @@ public abstract class SessionCommandLimitsContract
 			requireThat(readable(limits, requests), "requestsReadable").isTrue();
 			requireThat(readable(limits, responses), "responsesReadable").isTrue();
 			// The runs of requested sessions hold their logins while they run
-			Path requestedRuns = SessionRequestAccess.requestedRunsDirectory(fixture.run());
-			requireThat(requestedRuns, "requestedRuns").isDirectory();
-			requireThat(readable(limits, requestedRuns), "requestedRunsReadable").isFalse();
-			requireThat(SessionRequestAccess.requestedRunRoot(requestedRuns, 1), "firstRequestedRunRoot").isDirectory();
-			requireThat(SessionRequestAccess.requestedRunRoot(requestedRuns, 2), "secondRequestedRunRoot").
+			Path requestedSlots = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession());
+			requireThat(requestedSlots, "requestedSlots").isDirectory();
+			requireThat(readable(limits, requestedSlots), "requestedRunsReadable").isFalse();
+			requireThat(SessionRequestAccess.requestedResultsFolder(requestedSlots, 1),
+				"firstRequestedRunRoot").isDirectory();
+			requireThat(SessionRequestAccess.requestedResultsFolder(requestedSlots, 2), "secondRequestedRunRoot").
 				isDirectory();
 		}
 	}
@@ -410,21 +411,21 @@ public abstract class SessionCommandLimitsContract
 		{
 			Fixture parent = fixture(cleanup);
 			limits(parent, 2);
-			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
-			Path ownRoot = SessionRequestAccess.requestedRunRoot(requested, 1);
-			Path siblingRoot = SessionRequestAccess.requestedRunRoot(requested, 2);
+			Path requested = SessionRequestAccess.requestedSlotsDirectory(parent.nestedSession());
+			Path ownRoot = SessionRequestAccess.requestedResultsFolder(requested, 1);
+			Path siblingRoot = SessionRequestAccess.requestedResultsFolder(requested, 2);
 			NestedSessionManager manager = new NestedSessionManager(fileLocks, ownRoot, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			NestedSession childRun = manager.create("harness");
-			manager.snapshotProject(childRun);
-			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
-				parent.run(), parent.artifact(), List.of(parent.manager().root()));
+			NestedSession childSession = manager.create("harness");
+			manager.snapshotProject(childSession);
+			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childSession,
+				parent.nestedSession(), parent.artifact(), List.of(parent.manager().root()));
 			write(siblingRoot.resolve("future/home/login"));
 
 			Limits childLimits = limits(child, 0);
 
-			requireThat(readable(childLimits, childRun.directory().resolve("project")), "ownProject").isTrue();
-			requireThat(readable(childLimits, parent.runHome()), "parentHome").isFalse();
+			requireThat(readable(childLimits, childSession.directory().resolve("project")), "ownProject").isTrue();
+			requireThat(readable(childLimits, parent.sessionHome()), "parentHome").isFalse();
 			requireThat(readable(childLimits, siblingRoot.resolve("future/home/login")), "siblingLogin").isFalse();
 		}
 	}
@@ -442,7 +443,7 @@ public abstract class SessionCommandLimitsContract
 	 * @throws InterruptedException if the test is interrupted while it takes the slot
 	 */
 	@Test
-	public void childDeniesRequestedRunRootsAsOnePath() throws IOException, InterruptedException
+	public void childDeniesRequestedResultsAsOnePath() throws IOException, InterruptedException
 	{
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -450,18 +451,18 @@ public abstract class SessionCommandLimitsContract
 			Fixture parent = fixture(cleanup);
 			int sessionRequests = SessionRequestAccess.GROUP_SIZE;
 			limits(parent, sessionRequests);
-			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
+			Path requested = SessionRequestAccess.requestedSlotsDirectory(parent.nestedSession());
 			SessionSlots.Slot slot = new SessionSlots(requested, 1, new ProcessHandleLiveness()).acquire(false);
 			NestedSessionManager manager = new NestedSessionManager(fileLocks, slot.root(), Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(slot.runId());
-			NestedSession childRun = manager.create("harness");
-			manager.snapshotProject(childRun);
-			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
-				parent.run(), parent.artifact(), List.of(parent.manager().root()));
+				Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+			NestedSession childSession = manager.create("harness");
+			manager.snapshotProject(childSession);
+			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childSession,
+				parent.nestedSession(), parent.artifact(), List.of(parent.manager().root()));
 
 			Limits childLimits = limits(child, 0);
 
-			Path roots = SessionRequestAccess.requestedRunRoots(requested).toRealPath();
+			Path roots = SessionRequestAccess.requestedResultsFolders(requested).toRealPath();
 			List<Path> covering = new ArrayList<>();
 			for (Path denied : realPaths(childLimits.deniedReads()))
 			{
@@ -473,7 +474,7 @@ public abstract class SessionCommandLimitsContract
 			requireThat(roots.startsWith(covering.getFirst()), "coveringContainsAllRequestedRoots").isTrue();
 			for (int ordinal = 1; ordinal <= sessionRequests; ++ordinal)
 			{
-				Path root = SessionRequestAccess.requestedRunRoot(requested, ordinal);
+				Path root = SessionRequestAccess.requestedResultsFolder(requested, ordinal);
 				requireThat(readable(childLimits, root), "readable").withContext(root, "root").isFalse();
 			}
 			// The denied directory holds only the groups of the directories that stand for requested sessions
@@ -485,8 +486,8 @@ public abstract class SessionCommandLimitsContract
 				requireThat(entries.map(entry -> entry.getFileName().toString()).collect(Collectors.toSet()),
 					"entries").isEqualTo(groups);
 			}
-			requireThat(readable(childLimits, childRun.directory().resolve("project")), "ownProject").isTrue();
-			requireThat(readable(childLimits, childRun.directory().resolve("home")), "ownHome").isTrue();
+			requireThat(readable(childLimits, childSession.directory().resolve("project")), "ownProject").isTrue();
+			requireThat(readable(childLimits, childSession.directory().resolve("home")), "ownHome").isTrue();
 		}
 	}
 
@@ -505,8 +506,8 @@ public abstract class SessionCommandLimitsContract
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
-			Path requests = fixture.run().directory().resolve("requests");
-			Path responses = fixture.run().directory().resolve("responses");
+			Path requests = fixture.nestedSession().directory().resolve("requests");
+			Path responses = fixture.nestedSession().directory().resolve("responses");
 
 			requireThat(requests, "requests").isDirectory();
 			requireThat(responses, "responses").isDirectory();
@@ -514,10 +515,10 @@ public abstract class SessionCommandLimitsContract
 				isEqualTo(requests.toString());
 			requireThat(realPaths(limits.writable()), "writable").contains(requests.toRealPath());
 			requireThat(readable(limits, responses), "responsesReadable").isTrue();
-			Path requestedRuns = SessionRequestAccess.requestedRunsDirectory(fixture.run());
-			try (Stream<Path> roots = Files.list(requestedRuns))
+			Path requestedSlots = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession());
+			try (Stream<Path> roots = Files.list(requestedSlots))
 			{
-				requireThat(roots.toList(), "requestedRunRoots").isEmpty();
+				requireThat(roots.toList(), "requestedResultsFolders").isEmpty();
 			}
 		}
 	}
@@ -589,24 +590,25 @@ public abstract class SessionCommandLimitsContract
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			NestedSession run = manager.create("harness");
+			NestedSession nestedSession = manager.create("harness");
 			// The session's project links to a file outside it, so the run holds a read-only copy of that file
 			Path source = Files.createDirectories(root.resolve("source"));
 			Files.writeString(root.resolve("notes.md"), "notes");
 			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../notes.md"));
-			manager.copyProject(source, run);
-			manager.snapshotProject(run);
-			Path runHome = run.directory().resolve("home");
+			manager.copyProject(source, nestedSession);
+			manager.snapshotProject(nestedSession);
+			Path sessionHome = nestedSession.directory().resolve("home");
 			// The logins and configuration that a runner may have put in the run's home for its harness
 			for (String file : List.of(".claude/.credentials.json", ".claude/settings.json", ".claude.json",
 				".codex/auth.json", "auth.json", "config.toml"))
 			{
-				write(runHome.resolve(file));
+				write(sessionHome.resolve(file));
 			}
-			NestedSession otherRun = manager.create("harness");
-			write(otherRun.directory().resolve("project/notes.txt"));
+			NestedSession otherSession = manager.create("harness");
+			write(otherSession.directory().resolve("project/notes.txt"));
 			Path artifact = Files.createDirectories(root.resolve("artifact"));
-			return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact, List.of());
+			return new Fixture(Map.copyOf(userEnvironment), userHome, manager, nestedSession, otherSession, artifact,
+				List.of());
 		}
 	}
 

@@ -327,7 +327,7 @@ public final class SessionPortContract
 	 *
 	 * @throws Exception if the check fails
 	 */
-	public void identifiesItsVersionsAndRunRoots() throws Exception
+	public void identifiesItsVersionsAndResultsFolders() throws Exception
 	{
 		try (Subject subject = opener.open())
 		{
@@ -336,11 +336,11 @@ public final class SessionPortContract
 			requireThat(port.sessionEnvironmentVersion(), "sessionEnvironmentVersion").isPositive();
 			requireThat(port.sessionEnvironmentRelease(), "sessionEnvironmentRelease").isNotBlank();
 			requireThat(port.judgeVersion(), "judgeVersion").isPositive();
-			List<Path> runRoots = port.runRoots();
-			requireThat(runRoots, "runRoots").isNotEmpty();
-			for (Path runRoot : runRoots)
-				requireThat(runRoot, "runRoot").isAbsolute();
-			requireThat(Set.copyOf(runRoots).size(), "distinctRunRoots").isEqualTo(runRoots.size());
+			List<Path> resultsFolders = port.resultsFolders();
+			requireThat(resultsFolders, "resultsFolders").isNotEmpty();
+			for (Path resultsFolder : resultsFolders)
+				requireThat(resultsFolder, "resultsFolder").isAbsolute();
+			requireThat(Set.copyOf(resultsFolders).size(), "distinctRunRoots").isEqualTo(resultsFolders.size());
 		}
 	}
 

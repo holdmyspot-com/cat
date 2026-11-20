@@ -21,17 +21,17 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessEnvironment
 {
 	/**
-	 * The variable that marks a harness process as a session of a CAT run. A runner sets it to {@value #RUN_VALUE} in
-	 * the environment of every harness process that it starts, and the session's commands inherit it. A runner launcher
-	 * that one of the session's commands runs then sends its session to no request server: inside a nested session, a
-	 * session starts only as a request to the run's own runner, which counts and limits the sessions that the run
-	 * requests.
+	 * The variable that marks a harness process as a session of a CAT run. A runner sets it to {@value
+	 * #NESTED_SESSION_VALUE} in the environment of every harness process that it starts, and the session's commands
+	 * inherit it. A runner launcher that one of the session's commands runs then sends its session to no request server:
+	 * inside a nested session, a session starts only as a request to the run's own runner, which counts and limits the
+	 * sessions that the run requests.
 	 */
-	public static final String RUN_VARIABLE = "CAT_RUN";
+	public static final String NESTED_SESSION_VARIABLE = "CAT_RUN";
 	/**
-	 * The value of {@link #RUN_VARIABLE} in a session of a CAT run.
+	 * The value of {@link #NESTED_SESSION_VARIABLE} in a session of a CAT run.
 	 */
-	public static final String RUN_VALUE = "1";
+	public static final String NESTED_SESSION_VALUE = "1";
 	/**
 	 * The variable in which a CAT runner states the class of the user's login to the sessions that it starts: the
 	 * lower-case name of a host login class, {@code subscription}, {@code api_key} or {@code unknown}.
@@ -42,7 +42,7 @@ public final class HarnessEnvironment
 	 * hooks therefore inherit. A runner adds a variable to a session's environment only through this set's members,
 	 * and a hook accepts them all.
 	 */
-	public static final Set<String> RUNNER_VARIABLES = Set.of(RUN_VARIABLE, HOST_LOGIN_VARIABLE,
+	public static final Set<String> RUNNER_VARIABLES = Set.of(NESTED_SESSION_VARIABLE, HOST_LOGIN_VARIABLE,
 		SessionRequestAccess.REQUESTS_VARIABLE, SessionRequestAccess.LAUNCHER_VARIABLE,
 		SessionRequestAccess.SHELL_VARIABLE);
 	/**
@@ -68,7 +68,7 @@ public final class HarnessEnvironment
 	public static Optional<String> requestServerRefusal(Map<String, String> environment)
 	{
 		requireThat(environment, "environment").isNotNull();
-		if (!RUN_VALUE.equals(environment.get(RUN_VARIABLE)))
+		if (!NESTED_SESSION_VALUE.equals(environment.get(NESTED_SESSION_VARIABLE)))
 			return Optional.empty();
 		return Optional.of("CAT cannot start the request server: this command runs in a session of a CAT run, and no " +
 			"request server serves such a session. This is not a failure of the session's task: it needs no request " +
@@ -89,10 +89,10 @@ public final class HarnessEnvironment
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
 	 */
-	public static Optional<String> inRunRefusal(String harness, Map<String, String> environment)
+	public static Optional<String> inNestedSessionRefusal(String harness, Map<String, String> environment)
 	{
 		requireThat(harness, "harness").isNotBlank();
-		return runRefusal(harness + "-runner", environment);
+		return nestedSessionRefusal(harness + "-runner", environment);
 	}
 
 	/**
@@ -106,11 +106,11 @@ public final class HarnessEnvironment
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code command} is blank
 	 */
-	public static Optional<String> runRefusal(String command, Map<String, String> environment)
+	public static Optional<String> nestedSessionRefusal(String command, Map<String, String> environment)
 	{
 		requireThat(command, "command").isNotBlank();
 		requireThat(environment, "environment").isNotNull();
-		if (!RUN_VALUE.equals(environment.get(RUN_VARIABLE)))
+		if (!NESTED_SESSION_VALUE.equals(environment.get(NESTED_SESSION_VARIABLE)))
 			return Optional.empty();
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
@@ -252,15 +252,15 @@ public final class HarnessEnvironment
 	 *
 	 * @param environment the mutable isolated environment
 	 *
-	 * @param runDirectory the owned directory immediately above the copied project
+	 * @param sessionFolder the owned directory immediately above the copied project
 	 */
-	public static void preventGitDiscoveryAbove(Map<String, String> environment, Path runDirectory)
+	public static void preventGitDiscoveryAbove(Map<String, String> environment, Path sessionFolder)
 	{
 		requireThat(environment, "environment").isNotNull();
-		requireThat(runDirectory, "runDirectory").isNotNull();
-		if (!runDirectory.isAbsolute())
-			throw new IllegalArgumentException("runDirectory must be absolute");
-		environment.put("GIT_CEILING_DIRECTORIES", runDirectory.toString());
+		requireThat(sessionFolder, "sessionFolder").isNotNull();
+		if (!sessionFolder.isAbsolute())
+			throw new IllegalArgumentException("sessionFolder must be absolute");
+		environment.put("GIT_CEILING_DIRECTORIES", sessionFolder.toString());
 	}
 
 	/**

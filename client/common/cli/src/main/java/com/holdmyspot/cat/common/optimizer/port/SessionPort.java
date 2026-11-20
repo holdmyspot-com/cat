@@ -197,5 +197,5 @@ public interface SessionPort
 	 *
 	 * @return the absolute directories, which may not exist yet
 	 */
-	List<Path> runRoots();
+	List<Path> resultsFolders();
 }

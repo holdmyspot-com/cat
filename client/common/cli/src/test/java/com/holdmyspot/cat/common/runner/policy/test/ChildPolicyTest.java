@@ -77,11 +77,11 @@ public final class ChildPolicyTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path cache = Files.createDirectory(root.resolve("cache"));
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(), List.of(), List.of());
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(cache), List.of(), Set.of())));
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(cache), List.of(), Set.of())));
 
 			requireThat(refusal.getMessage(), "message").contains(cache.toString());
 		}
@@ -104,12 +104,12 @@ public final class ChildPolicyTest
 			Path allowed = Files.createDirectory(project.resolve("allowed"));
 			Path firstCache = Files.createDirectory(root.resolve("first-cache"));
 			Path secondCache = Files.createDirectory(root.resolve("second-cache"));
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(project), List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of("allowed.example")), false, List.of());
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(firstCache, allowed, secondCache),
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(firstCache, allowed, secondCache),
 					List.of(), Set.of("allowed.example", "first.example", "second.example"))));
 
 			requireThat(refusal.getMessage(), "message").contains(firstCache.toString()).
@@ -132,13 +132,13 @@ public final class ChildPolicyTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path build = Files.createDirectory(project.resolve("build"));
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(build), List.of(),
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(build), List.of(),
 				Set.of()));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, build));
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder, build));
 		}
 	}
 
@@ -158,11 +158,11 @@ public final class ChildPolicyTest
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path git = Files.createDirectory(project.resolve(".git"));
 			Path hooks = git.resolve("hooks");
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(git), List.of(), List.of());
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(hooks), List.of(), Set.of())));
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(hooks), List.of(), Set.of())));
 
 			requireThat(refusal.getMessage(), "message").contains(hooks.toString()).contains(git.toString());
 		}
@@ -175,20 +175,20 @@ public final class ChildPolicyTest
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void keepsWriteInsideRunFolder() throws IOException
+	public void keepsWriteInsideSessionFolder() throws IOException
 	{
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
-			Path requests = Files.createDirectory(run.resolve("requests"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path requests = Files.createDirectory(sessionFolder.resolve("requests"));
 			ParentPolicy parent = sandboxed(List.of(), List.of(), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(requests), List.of(),
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(requests), List.of(),
 				Set.of()));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, requests));
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder, requests));
 		}
 	}
 
@@ -199,19 +199,19 @@ public final class ChildPolicyTest
 	 * @throws IOException if the fixture cannot be created
 	 */
 	@Test
-	public void keepsRunFolderOutsideParentWrites() throws IOException
+	public void keepsSessionFolderOutsideParentWrites() throws IOException
 	{
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
 			Path sessions = root.resolve("sessions");
-			Path run = Files.createDirectories(sessions.resolve("requests/id/run"));
+			Path sessionFolder = Files.createDirectories(sessions.resolve("requests/id/run"));
 			ParentPolicy parent = sandboxed(List.of(root), List.of(sessions), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(), List.of(), Set.of()));
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(), List.of(), Set.of()));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run));
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder));
 			requireThat(child.writeDenials(), "writeDenials").isEmpty();
 		}
 	}
@@ -232,10 +232,10 @@ public final class ChildPolicyTest
 			Path secrets = Files.createDirectory(root.resolve("secrets"));
 			Path keys = root.resolve("keys");
 			Path login = root.resolve("login.json");
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(), List.of(), List.of(secrets, keys), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(), List.of(login),
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(), List.of(login),
 				Set.of()));
 
 			requireThat(Set.copyOf(child.readDenials()), "readDenials").isEqualTo(Set.of(secrets, keys, login));
@@ -260,11 +260,11 @@ public final class ChildPolicyTest
 			Path docs = Files.createDirectory(home.resolve("docs"));
 			Path pluginData = Files.createDirectory(plugins.resolve("data"));
 			Path login = config.resolve("login.json");
-			Path run = Files.createDirectory(home.resolve("run"));
+			Path sessionFolder = Files.createDirectory(home.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(), List.of(), List.of(home), List.of(config, pluginData, docs));
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(), List.of(login, plugins),
-				Set.of()));
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(), List.of(login,
+				plugins), Set.of()));
 
 			requireThat(child.readReallowances(), "readReallowances").isEqualTo(List.of(docs));
 		}
@@ -304,9 +304,9 @@ public final class ChildPolicyTest
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-policy-"));
 			Set<String> needed = Set.of("api.example.com", "mirror.other.org", "model.test");
-			ChildNeeds needs = new ChildNeeds(run, List.of(), List.of(), needed);
+			ChildNeeds needs = new ChildNeeds(sessionFolder, List.of(), List.of(), needed);
 
 			if (missing.isEmpty())
 			{
@@ -388,9 +388,9 @@ public final class ChildPolicyTest
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-policy-"));
 
-			ChildPolicy child = ChildPolicy.intersect(network(HostAccess.ALL, parentAllows), new ChildNeeds(run,
+			ChildPolicy child = ChildPolicy.intersect(network(HostAccess.ALL, parentAllows), new ChildNeeds(sessionFolder,
 				List.of(), List.of(), hosts));
 
 			requireThat(child.allowLocalBinding(), "allowLocalBinding").isEqualTo(expected);
@@ -409,14 +409,14 @@ public final class ChildPolicyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path cache = root.resolve("cache");
 			Path login = root.resolve("login.json");
 
-			ChildPolicy child = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(run, List.of(cache),
+			ChildPolicy child = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(cache),
 				List.of(login), Set.of("api.example.com", "localhost")));
 
-			requireThat(child, "child").isEqualTo(new ChildPolicy(List.of(run, cache), List.of(), List.of(login),
+			requireThat(child, "child").isEqualTo(new ChildPolicy(List.of(sessionFolder, cache), List.of(), List.of(login),
 				List.of(), Set.of("api.example.com", "localhost"), true));
 		}
 	}
@@ -433,9 +433,9 @@ public final class ChildPolicyTest
 		// Requirement: R-I11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path run = cleanup.add(Files.createTempDirectory("cat-policy-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-policy-"));
 
-			ChildPolicy child = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(run, List.of(),
+			ChildPolicy child = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of(address(192, 168, 1, 2))));
 
 			requireThat(child.allowLocalBinding(), "allowLocalBinding").isTrue();
@@ -458,19 +458,19 @@ public final class ChildPolicyTest
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path link = Files.createSymbolicLink(root.resolve("link"), project);
 			Path outside = Files.createDirectory(root.resolve("outside"));
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			Path cache = project.resolve("cache");
 			Path escapingCache = project.resolve("../outside/cache");
 			Path returningCache = outside.resolve("../project/build");
 			ParentPolicy parent = sandboxed(List.of(link), List.of(), List.of(), List.of());
 
-			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(cache, returningCache),
+			ChildPolicy child = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(cache, returningCache),
 				List.of(), Set.of()));
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(escapingCache), List.of(),
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(escapingCache), List.of(),
 					Set.of())));
 
-			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(run, cache, project.resolve("build")));
+			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder, cache, project.resolve("build")));
 			requireThat(refusal.getMessage(), "message").contains(outside.resolve("cache").toString());
 		}
 	}
@@ -490,11 +490,11 @@ public final class ChildPolicyTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path link = Files.createSymbolicLink(project.resolve("link"), root.resolve("outside/missing"));
-			Path run = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
 			ParentPolicy parent = sandboxed(List.of(project), List.of(), List.of(), List.of());
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> ChildPolicy.intersect(parent, new ChildNeeds(run, List.of(link.resolve("cache")), List.of(),
+				() -> ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(link.resolve("cache")), List.of(),
 					Set.of())));
 
 			requireThat(refusal.getMessage(), "message").contains(root.resolve("outside/missing/cache").toString());
@@ -514,11 +514,11 @@ public final class ChildPolicyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
-			Path work = Files.createDirectory(run.resolve("work"));
-			Path requested = Files.createDirectory(run.resolve("requested"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path work = Files.createDirectory(sessionFolder.resolve("work"));
+			Path requested = Files.createDirectory(sessionFolder.resolve("requested"));
 			Path secret = Files.createDirectory(root.resolve("secret"));
-			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(secret), List.of(),
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(secret), List.of(),
 				Set.of("model.example"), false);
 
 			ChildPolicy child = ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(requested,
@@ -543,11 +543,11 @@ public final class ChildPolicyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
-			Path requested = Files.createDirectory(run.resolve("requested"));
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path requested = Files.createDirectory(sessionFolder.resolve("requested"));
 			Path cache = Files.createDirectory(root.resolve("cache"));
-			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of("model.example"),
-				false);
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
+				Set.of("model.example"), false);
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(requested, List.of(cache),
@@ -570,11 +570,11 @@ public final class ChildPolicyTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-policy-")).toRealPath();
-			Path run = Files.createDirectory(root.resolve("run"));
-			ChildPolicy bound = new ChildPolicy(List.of(run), List.of(), List.of(), List.of(), Set.of(), false);
+			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(), Set.of(), false);
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(run, List.of(), List.of(),
+				() -> ChildPolicy.intersect(bound.asParentPolicy(), new ChildNeeds(sessionFolder, List.of(), List.of(),
 					Set.of("model.example"))));
 
 			requireThat(refusal.getMessage(), "message").contains("model.example");

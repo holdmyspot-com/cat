@@ -66,18 +66,18 @@ public final class HarnessCredentials
 	 * harness may have replaced a directory with a link, the file behind it is outside the run, and deleting through
 	 * the link would remove it.
 	 *
-	 * @param runDirectory the run's directory
+	 * @param sessionFolder the run's directory
 	 *
-	 * @throws NullPointerException if {@code runDirectory} is null
+	 * @throws NullPointerException if {@code sessionFolder} is null
 	 *
 	 * @throws IOException if a login copy cannot be deleted
 	 */
-	public static void removeLoginCopies(Path runDirectory) throws IOException
+	public static void removeLoginCopies(Path sessionFolder) throws IOException
 	{
-		requireThat(runDirectory, "runDirectory").isNotNull();
+		requireThat(sessionFolder, "sessionFolder").isNotNull();
 		for (Path copy : LOGIN_COPIES)
 		{
-			Path current = runDirectory;
+			Path current = sessionFolder;
 			boolean linked = false;
 			for (Path name : copy)
 			{

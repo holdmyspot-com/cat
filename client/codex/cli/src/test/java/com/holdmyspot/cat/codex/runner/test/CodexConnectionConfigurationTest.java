@@ -713,18 +713,18 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-filesystem-policy-")).toRealPath();
 			Path parentWrites = Files.createDirectories(root.resolve("parent-writes"));
 			Path keptCache = Files.createDirectories(parentWrites.resolve("npm-cache"));
-			Path runFolder = Files.createDirectories(root.resolve("run"));
-			Path protectedFolder = Files.createDirectories(runFolder.resolve("home/protected"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path protectedFolder = Files.createDirectories(sessionFolder.resolve("home/protected"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(keptCache), Map.of());
-			ParentPolicy parent = new ParentPolicy(true, List.of(parentWrites, runFolder), List.of(protectedFolder),
+			ParentPolicy parent = new ParentPolicy(true, List.of(parentWrites, sessionFolder), List.of(protectedFolder),
 				List.of(secret), List.of(), HostAccess.NONE, false, List.of());
-			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, caches.directories(),
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, caches.directories(),
 				List.of(), Set.of()));
-			Path destination = runFolder.resolve("home/config.toml");
+			Path destination = sessionFolder.resolve("home/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
-				caches, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
+				caches, sessionFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
 				policy);
 
 			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
@@ -748,7 +748,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-cache-denials-")).toRealPath();
-			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path emptyCache = Files.createDirectories(root.resolve("npm-cache"));
 			Path gitCache = Files.createDirectories(root.resolve("m2-cache"));
 			Path existingGit = Files.createDirectories(gitCache.resolve(".git"));
@@ -760,14 +760,14 @@ public final class CodexConnectionConfigurationTest
 					denials.add(cache.resolve(name));
 			}
 			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(emptyCache, gitCache), Map.of());
-			ParentPolicy parent = new ParentPolicy(true, List.of(emptyCache, gitCache, runFolder), denials, List.of(),
+			ParentPolicy parent = new ParentPolicy(true, List.of(emptyCache, gitCache, sessionFolder), denials, List.of(),
 				List.of(), HostAccess.NONE, false, List.of());
-			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, caches.directories(),
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, caches.directories(),
 				List.of(), Set.of()));
-			Path destination = runFolder.resolve("home/config.toml");
+			Path destination = sessionFolder.resolve("home/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
-				caches, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
+				caches, sessionFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE,
 				policy);
 
 			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
@@ -800,17 +800,17 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-extra-permissions-")).toRealPath();
-			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
-			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder, registry), List.of(), List.of(), List.of(),
+			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder, registry), List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of("api.example", "registry.example")), false, List.of());
 			ExtraPermissions extra = new ExtraPermissions(List.of(registry), Set.of("registry.example"));
-			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(), List.of(),
 				Set.of("api.example")).with(extra));
-			Path destination = runFolder.resolve("home/config.toml");
+			Path destination = sessionFolder.resolve("home/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
-				HarnessDependencyCaches.NONE, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64,
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, sessionFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, policy, extra);
 
 			JsonNode configuration = TomlMapper.builder().build().readTree(Files.readString(destination));
@@ -835,13 +835,13 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-empty-hooks-")).toRealPath();
-			Path runFolder = Files.createDirectories(root.resolve("run"));
-			Path home = runFolder.resolve("home");
-			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(runFolder, List.of(),
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path home = sessionFolder.resolve("home");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of()));
 			Path destination = home.resolve("config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
 				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, policy);
 
@@ -855,7 +855,7 @@ public final class CodexConnectionConfigurationTest
 
 			String existing = "{\"hooks\": {\"Stop\": []}}";
 			Files.writeString(home.resolve("hooks.json"), existing);
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
 				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, policy);
 			requireThat(Files.readString(home.resolve("hooks.json")), "existingHooks").isEqualTo(existing);
@@ -875,13 +875,13 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trusted-files-")).toRealPath();
-			Path runFolder = Files.createDirectories(root.resolve("run"));
-			Path home = runFolder.resolve("home");
-			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(runFolder, List.of(),
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path home = sessionFolder.resolve("home");
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of()));
 			Path destination = home.resolve("config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
 				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, policy);
 
@@ -911,17 +911,17 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-nested-denial-")).toRealPath();
-			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			Path inner = Files.writeString(secret.resolve("hidden.txt"), "private");
-			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder), List.of(), List.of(inner, secret),
+			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(inner, secret),
 				List.of(), HostAccess.NONE, false, List.of());
-			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(), List.of(),
 				Set.of()));
-			Path destination = runFolder.resolve("home/config.toml");
+			Path destination = sessionFolder.resolve("home/config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
-				HarnessDependencyCaches.NONE, runFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64,
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
+				HarnessDependencyCaches.NONE, sessionFolder.resolve("home/tmp"), 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, policy);
 
 			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
@@ -943,18 +943,18 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-regranted-denial-")).toRealPath();
-			Path runFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			Path home = Files.createDirectories(secret.resolve("home"));
 			Path login = Files.writeString(Files.createDirectories(home.resolve(".claude")).
 				resolve(".credentials.json"), "{}");
-			ParentPolicy parent = new ParentPolicy(true, List.of(runFolder), List.of(), List.of(secret, login),
+			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(secret, login),
 				List.of(), HostAccess.NONE, false, List.of());
-			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(runFolder, List.of(), List.of(),
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(sessionFolder, List.of(), List.of(),
 				Set.of()));
 			Path destination = home.resolve("config.toml");
 
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runFolder.resolve("project"),
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, sessionFolder.resolve("project"),
 				HarnessDependencyCaches.NONE, home.resolve("tmp"), 0, null, Platform.LINUX_X64,
 				CodexParentMultiAgentState.NONE, policy);
 
@@ -1068,7 +1068,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-narrowing-layer-"));
-			Path run = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("run"));
 			Path system = Files.writeString(root.resolve("config.toml"), """
 				model = "gpt-6-sol"
 				sandbox_mode = "workspace-write"
@@ -1081,9 +1081,9 @@ public final class CodexConnectionConfigurationTest
 				"example.com" = "deny"
 				[features]
 				fast_mode = false
-				""".formatted(toml(run.resolve("home"))));
+				""".formatted(toml(sessionFolder.resolve("home"))));
 			Path managed = root.resolve("managed_config.toml");
-			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(run, List.of(),
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of("chatgpt.com")));
 
 			CodexConnectionConfiguration.requireNarrowingLayers(system, managed, policy);

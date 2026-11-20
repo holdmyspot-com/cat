@@ -196,7 +196,7 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 *   not run in a CAT run or the run allows a further session
 	 * @throws IllegalStateException if this scope is closed
 	 */
-	protected abstract Optional<String> runRefusal();
+	protected abstract Optional<String> nestedSessionRefusal();
 
 	/**
 	 * Returns the source of campaign identifiers and draw seeds.
@@ -469,11 +469,11 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 * @throws IOException if the working directory is not inside a Git repository whose root may be a CAT project,
 	 *   the environment names no host session, or the session's directory cannot be created
 	 */
-	protected final Path runRoot() throws IOException
+	protected final Path resultsFolder() throws IOException
 	{
 		try
 		{
-			return sessionDirectory().runRoot(harness().commandName());
+			return sessionDirectory().resultsFolder(harness().commandName());
 		}
 		catch (CommandRefusedException e)
 		{

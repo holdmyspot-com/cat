@@ -43,7 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator requests termination of processes that an earlier driver left running
- * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
+ * @param leftoverSessions finds the harness processes of runs that an earlier driver left running, in the session
  *   port's results folders
  * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits that
  *   prompt authors report needing
@@ -66,7 +66,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 	TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor, ValuesProtocol values,
 	Deliverer deliverer,
-	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverNestedSessions leftoverRuns, Authority authority,
+	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverNestedSessions leftoverSessions, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
 	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges, DevelopmentJudgeRecords judgeRecords,
 	Path temporaryDirectory)
@@ -90,7 +90,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running, in the session
+	 * @param leftoverSessions finds the harness processes of runs that an earlier driver left running, in the session
  *   port's results folders
 	 * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits
 	 *   that prompt authors report needing
@@ -123,7 +123,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		requireThat(deliverer, "deliverer").isNotNull();
 		requireThat(calibrator, "calibrator").isNotNull();
 		requireThat(terminator, "terminator").isNotNull();
-		requireThat(leftoverRuns, "leftoverRuns").isNotNull();
+		requireThat(leftoverSessions, "leftoverSessions").isNotNull();
 		requireThat(authority, "authority").isNotNull();
 		requireThat(promptSources, "promptSources").isNotNull();
 		requireThat(environment, "environment").isNotNull();
@@ -159,7 +159,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running
+	 * @param leftoverSessions finds the harness processes of runs that an earlier driver left running
 	 * @param authority the confirmed edit authority
 	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials
@@ -175,11 +175,12 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 		TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor,
 		ValuesProtocol values, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
-		LeftoverNestedSessions leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
+		LeftoverNestedSessions leftoverSessions, Authority authority, Set<Path> promptSources,
+		MeasurementIdentity environment,
 		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json, Path temporaryDirectory)
 	{
 		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
-			values, deliverer, calibrator, terminator, leftoverRuns, authority, promptSources, environment, lockFile,
+			values, deliverer, calibrator, terminator, leftoverSessions, authority, promptSources, environment, lockFile,
 			random, settings, json, List.of(), DevelopmentJudgeRecords.none(), temporaryDirectory);
 	}
 
@@ -201,7 +202,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverRuns finds the harness processes of runs that an earlier driver left running
+	 * @param leftoverSessions finds the harness processes of runs that an earlier driver left running
 	 * @param authority the confirmed edit authority
 	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials
@@ -218,12 +219,12 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 		TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor,
 		ValuesProtocol values, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
-		LeftoverNestedSessions leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
-		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json,
+		LeftoverNestedSessions leftoverSessions, Authority authority, Set<Path> promptSources,
+		MeasurementIdentity environment, Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json,
 		List<TrialProfile> candidateJudges, Path temporaryDirectory)
 	{
 		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
-			values, deliverer, calibrator, terminator, leftoverRuns, authority, promptSources, environment, lockFile,
+			values, deliverer, calibrator, terminator, leftoverSessions, authority, promptSources, environment, lockFile,
 			random, settings, json, candidateJudges, DevelopmentJudgeRecords.none(), temporaryDirectory);
 	}
 }

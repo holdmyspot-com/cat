@@ -141,15 +141,15 @@ public final class SessionRequestForwarderTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("forward-transcript-copy-"));
 			Path requests = Files.createDirectories(root.resolve("run/requests"));
-			Path runRoot = root.resolve("kept-runs");
+			Path resultsFolder = root.resolve("kept-runs");
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path artifact = Files.createDirectories(root.resolve("artifact"));
 			Path childRoot = root.resolve("child-runs");
 			Path responses = root.resolve("run/responses");
 			AtomicInteger pauseCount = new AtomicInteger();
 			List<String> copied = new ArrayList<>();
-			String[] forwardedRunId = {""};
-			String[] slotRunId = {""};
+			String[] forwardedSlotId = {""};
+			String[] childSlotId = {""};
 			Path[] finalResponse = {null};
 			JsonMapper json = JsonMapper.builder().build();
 			try (Writer output = new Writer()
@@ -169,10 +169,10 @@ public final class SessionRequestForwarderTest
 						JsonNode record = json.readTree(line.toString());
 						String type = record.path("type").asString();
 						if (type.equals("session_id"))
-							forwardedRunId[0] = record.path("session_id").asString();
+							forwardedSlotId[0] = record.path("session_id").asString();
 						else if (type.equals("turn_completed"))
 						{
-							Path kept = runRoot.resolve("harnessa").resolve(forwardedRunId[0]);
+							Path kept = resultsFolder.resolve("harnessa").resolve(forwardedSlotId[0]);
 							copied.add(readCopyOrMissing(kept.resolve(
 								"artifacts/session-transcripts/rollout-root.jsonl"), "missing-root") +
 								readCopyOrMissing(kept.resolve(
@@ -222,7 +222,7 @@ public final class SessionRequestForwarderTest
 					NestedSessionManager manager = new NestedSessionManager(new FileLocks(), childRoot, Clock.systemUTC(),
 						Yielding.fileReplacer());
 					NestedSession child = manager.create("harnessa");
-					slotRunId[0] = child.id();
+					childSlotId[0] = child.id();
 					Path childProject = child.directory().resolve("project");
 					Files.writeString(childProject.resolve("marker"), "kept project");
 					Path raw = Files.writeString(child.directory().resolve("artifacts/result.jsonl"), "result\n");
@@ -260,7 +260,7 @@ public final class SessionRequestForwarderTest
 						"{\"type\":\"turn_completed\"}\n" +
 						"{\"type\":\"turn_completed\"}\n" +
 						"{\"type\":\"completed\"}\n");
-					NestedSession copiedChild = new NestedSession("harnessa", slotRunId[0], response.resolve("run"));
+					NestedSession copiedChild = new NestedSession("harnessa", childSlotId[0], response.resolve("run"));
 					requireThat(Files.isDirectory(copiedChild.directory().resolve("project")), "copiedProject").isTrue();
 					requireThat(Files.isRegularFile(response.resolve("transcript.jsonl")), "externalOutput").isTrue();
 					Path copiedRootTranscript = copiedChild.sessionTranscripts().resolve("rollout-root.jsonl");
@@ -278,7 +278,7 @@ public final class SessionRequestForwarderTest
 					json.writeValue(response.resolve("response.json").toFile(), result);
 				}
 			};
-			String[] arguments = {"--results", runRoot.toString(), "--project", project.toString(), "--model",
+			String[] arguments = {"--results", resultsFolder.toString(), "--project", project.toString(), "--model",
 				"model-a", "--effort", "effort-a"};
 
 			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
@@ -287,8 +287,8 @@ public final class SessionRequestForwarderTest
 				requests, pause);
 
 			requireThat(copied, "copied").isEqualTo(List.of("root-1\nchild-1\n", "root-2\nchild-2\n"));
-			requireThat(forwardedRunId[0], "sessionId").isEqualTo(SESSION_ID);
-			Path retained = runRoot.resolve("harnessa").resolve(SESSION_ID);
+			requireThat(forwardedSlotId[0], "sessionId").isEqualTo(SESSION_ID);
+			Path retained = resultsFolder.resolve("harnessa").resolve(SESSION_ID);
 			Path receiptPath = retained.resolve("artifacts/receipt.json");
 			String externalTranscript = Files.readString(finalResponse[0].resolve("transcript.jsonl"));
 			Files.delete(finalResponse[0].resolve("transcript.jsonl"));
@@ -314,7 +314,7 @@ public final class SessionRequestForwarderTest
 	 * @throws IOException if the served session or its kept run cannot be copied
 	 */
 	@Test
-	public void keptRunNamesTheLaunchProject() throws IOException
+	public void resultsCopyNamesTheLaunchProject() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -323,7 +323,7 @@ public final class SessionRequestForwarderTest
 				toRealPath();
 			Path requests = Files.createDirectories(root.resolve("run/requests"));
 			Path responses = Files.createDirectories(root.resolve("run/responses"));
-			Path runRoot = root.resolve("kept-runs");
+			Path resultsFolder = root.resolve("kept-runs");
 			Path project = Files.createDirectories(root.resolve("campaign/trial/project"));
 			Path artifact = Files.createDirectories(root.resolve("artifact"));
 			// The parent runner unpacks the request's copy of the project below its response and runs the session there
@@ -363,20 +363,21 @@ public final class SessionRequestForwarderTest
 					put("transcript", response.resolve("transcript.jsonl").toString()).
 					put("run", kept.toString()));
 			};
-			String[] arguments = {"--results", runRoot.toString(), "--project", project.toString(), "--model",
+			String[] arguments = {"--results", resultsFolder.toString(), "--project", project.toString(), "--model",
 				"model-a", "--effort", "effort-a"};
 
 			SessionRequestForwarder.serve("test command", "harnessa", artifact, List.of(arguments),
 				new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n{\"type\":\"complete\"}\n"),
 				Writer.nullWriter(), requests, pause);
 
-			List<Path> keptRuns;
-			try (Stream<Path> runs = Files.list(runRoot.resolve("harnessa")))
+			List<Path> resultsCopies;
+			try (Stream<Path> runs = Files.list(resultsFolder.resolve("harnessa")))
 			{
-				keptRuns = runs.toList();
+				resultsCopies = runs.toList();
 			}
-			requireThat(keptRuns, "keptRuns").isEqualTo(List.of(runRoot.resolve("harnessa").resolve(SESSION_ID)));
-			JsonNode manifest = json.readTree(keptRuns.getFirst().resolve("session.json").toFile());
+			requireThat(resultsCopies,
+				"resultsCopies").isEqualTo(List.of(resultsFolder.resolve("harnessa").resolve(SESSION_ID)));
+			JsonNode manifest = json.readTree(resultsCopies.getFirst().resolve("session.json").toFile());
 			requireThat(manifest.path("id").asString(), "id").isEqualTo(SESSION_ID);
 			requireThat(manifest.path("project_path").asString(), "projectPath").isEqualTo(project.toString());
 		}

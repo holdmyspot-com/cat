@@ -477,14 +477,14 @@ public final class ReconciliationTest
 	 * @throws IOException if the test directory cannot be used
 	 */
 	@Test
-	public void requestsLeftoverRunTermination() throws IOException
+	public void requestsLeftoverSessionTermination() throws IOException
 	{
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("reconcile"));
 			DriverHarness harness = new DriverHarness(directory, developing().build());
-			List<Path> runRoots = harness.sessions().runRoots();
+			List<Path> resultsFolders = harness.sessions().resultsFolders();
 			String ownerStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5000";
 			String harnessStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125";
 			FakeProcessHandle orphan1 = new FakeProcessHandle(4002, harnessStart, true);
@@ -492,16 +492,16 @@ public final class ReconciliationTest
 			FakeProcessHandle completed = new FakeProcessHandle(5002, harnessStart, true);
 			FakeProcessHandle owned = new FakeProcessHandle(6002, harnessStart, true);
 			harness.processes(new FakeProcessHandle(6001, ownerStart, true), orphan1, orphan2, completed, owned);
-			writeManifest(runRoots.get(0).resolve("claude/run-1"), """
+			writeManifest(resultsFolders.get(0).resolve("claude/run-1"), """
 				{"state": "running", "owner_pid": 4001, "owner_started_at": "%s",
 				"harness_pid": "4002", "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
-			writeManifest(runRoots.get(1).resolve("claude/run-2"), """
+			writeManifest(resultsFolders.get(1).resolve("claude/run-2"), """
 				{"state": "running", "owner_pid": 4003, "owner_started_at": "%s",
 				"harness_pid": 4004, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
-			writeManifest(runRoots.get(0).resolve("claude/run-3"), """
+			writeManifest(resultsFolders.get(0).resolve("claude/run-3"), """
 				{"state": "completed", "owner_pid": 5001, "owner_started_at": "%s",
 				"harness_pid": 5002, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
-			writeManifest(runRoots.get(1).resolve("claude/run-4"), """
+			writeManifest(resultsFolders.get(1).resolve("claude/run-4"), """
 				{"state": "running", "owner_pid": 6001, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
 			try (Driver _ = harness.open())
@@ -517,13 +517,13 @@ public final class ReconciliationTest
 	/**
 	 * Writes a run manifest.
 	 *
-	 * @param run the run's directory
+	 * @param sessionFolder the run's directory
 	 * @param manifest the manifest's content
 	 * @throws IOException if the file cannot be written
 	 */
-	private static void writeManifest(Path run, String manifest) throws IOException
+	private static void writeManifest(Path sessionFolder, String manifest) throws IOException
 	{
-		Files.createDirectories(run);
-		Files.writeString(run.resolve("session.json"), manifest);
+		Files.createDirectories(sessionFolder);
+		Files.writeString(sessionFolder.resolve("session.json"), manifest);
 	}
 }

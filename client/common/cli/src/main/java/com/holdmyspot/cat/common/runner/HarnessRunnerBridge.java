@@ -140,10 +140,10 @@ public final class HarnessRunnerBridge
 			String status = "failed";
 			try
 			{
-				NestedSession run = serve(starter, manager, input, conversation.childWriter(output), options,
+				NestedSession nestedSession = serve(starter, manager, input, conversation.childWriter(output), options,
 					requestedStarter, conversation);
 				status = "completed";
-				return run;
+				return nestedSession;
 			}
 			finally
 			{
@@ -171,7 +171,7 @@ public final class HarnessRunnerBridge
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter,
 		Conversation conversation) throws IOException
 	{
-		NestedSession run = null;
+		NestedSession nestedSession = null;
 		boolean completed = false;
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
@@ -187,7 +187,7 @@ public final class HarnessRunnerBridge
 		boolean recordsEnd = true;
 		// A runner that resumes a run records no end until its harness reports the run's session, so that a session that
 		// the harness cannot continue stays retained
-		boolean resumes = options != null && options.resumeRun() != null && manager != null;
+		boolean resumes = options != null && options.resumeSlot() != null && manager != null;
 		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
 		// send the next turn once the cause is gone, such as a usage limit that resets
 		boolean continueAfterFailedTurn = conversation != null || (options != null && options.continueAfterFailedTurn());
@@ -209,14 +209,14 @@ public final class HarnessRunnerBridge
 			{
 				try
 				{
-					run = session.run();
+					nestedSession = session.nestedSession();
 					if (manager != null)
-						manager.markIdle(run);
+						manager.markIdle(nestedSession);
 					ObjectNode started = event(session.scope(), "started");
 					if (resumes)
 					{
 						// The resumed session's turns continue after the last turn that ended
-						turnNumber = manager.turnNumber(run);
+						turnNumber = manager.turnNumber(nestedSession);
 						started.put("resumed", true);
 					}
 					client.write(started);
@@ -249,11 +249,11 @@ public final class HarnessRunnerBridge
 										try
 										{
 											if (manager != null)
-												manager.markWorking(session.run());
+												manager.markWorking(session.nestedSession());
 											result = session.sendTurn(prompt, harnessEvent ->
 											{
 												if (manager != null)
-													manager.appendTurnEvent(session.run(), currentTurn, harnessEvent);
+													manager.appendTurnEvent(session.nestedSession(), currentTurn, harnessEvent);
 												forwardHarnessEvent(session, client, harnessEvent);
 												recordSessionTranscript(session, client, transcriptRecorded);
 												recordHarnessSession(session, manager, client, harnessSessionRecorded);
@@ -261,12 +261,12 @@ public final class HarnessRunnerBridge
 											recordSessionTranscript(session, client, transcriptRecorded);
 											recordHarnessSession(session, manager, client, harnessSessionRecorded);
 											if (manager != null)
-												manager.writeTurnOutput(session.run(), currentTurn, result);
+												manager.writeTurnOutput(session.nestedSession(), currentTurn, result);
 											if (!result.completed())
 												throw harnessTurnFailure(result, session.processIsAlive());
 											// The requester reads the copy once it reads this turn's response
 											if (options != null && options.turnCopy() != null)
-								ResultsCopy.copyTurn(session.run().directory(), options.turnCopy());
+								ResultsCopy.copyTurn(session.nestedSession().directory(), options.turnCopy());
 										}
 										catch (IOException | RuntimeException e)
 										{
@@ -279,7 +279,7 @@ public final class HarnessRunnerBridge
 												if (turnInterrupted.get())
 												{
 													if (manager != null)
-														manager.markIdle(session.run());
+														manager.markIdle(session.nestedSession());
 													return null;
 												}
 												// The turn failed, and the harness serves the next one. The conversation's end still reports
@@ -288,14 +288,14 @@ public final class HarnessRunnerBridge
 												{
 													failedTurn.set(asIoException(e));
 													if (manager != null)
-														manager.markIdle(session.run());
+														manager.markIdle(session.nestedSession());
 													return null;
 												}
 											}
 											throw e;
 										}
 										if (manager != null)
-											manager.markIdle(session.run());
+											manager.markIdle(session.nestedSession());
 										ObjectNode response = event(session.scope(), "turn_completed");
 										response.put("exit_code", result.exitCode());
 										response.put("error", result.standardError());
@@ -361,7 +361,7 @@ public final class HarnessRunnerBridge
 					// the turn: the failure below stops it instead of waiting for it
 					if (!completed)
 					{
-						if (options != null && options.runId() != null)
+						if (options != null && options.slotId() != null)
 							recordsEnd = false;
 						throw new IOException("Bridge input ended without a complete message");
 					}
@@ -379,26 +379,26 @@ public final class HarnessRunnerBridge
 				// The session has ended, so the copies are as it left them; it may not end the run with a result that
 				// rests on changed copies
 				copiesChecked = true;
-				Optional<String> changes = manager.changedLinkCopies(run);
+				Optional<String> changes = manager.changedLinkCopies(nestedSession);
 				if (changes.isPresent())
 					throw new IOException(changes.get());
-				manager.markCompleted(run);
+				manager.markCompleted(nestedSession);
 			}
-			return run;
+			return nestedSession;
 		}
 		catch (IOException e)
 		{
 			// The run's end must follow the turn's last write to it
 			endTurn(activeTurn, activeTurnThread);
-			if (manager != null && run != null && recordsEnd && (!resumes || harnessSessionRecorded.get()))
+			if (manager != null && nestedSession != null && recordsEnd && (!resumes || harnessSessionRecorded.get()))
 			{
 				IOException failure = e;
 				if (!copiesChecked)
-					failure = withChangedLinkCopies(manager, run, e);
+					failure = withChangedLinkCopies(manager, nestedSession, e);
 				String diagnostic = failure.getMessage();
 				if (diagnostic == null)
 					diagnostic = failure.getClass().getSimpleName();
-				manager.fail(run, diagnostic);
+				manager.fail(nestedSession, diagnostic);
 				throw failure;
 			}
 			throw e;
@@ -415,17 +415,18 @@ public final class HarnessRunnerBridge
 	 * the targets of the project's links outside it, so that the run's diagnostic names each changed path whatever else
 	 * failed.
 	 *
-	 * @param manager the lifecycle manager
-	 * @param run     the failed run
-	 * @param failure why the run failed
+	 * @param manager       the lifecycle manager
+	 * @param nestedSession the failed run
+	 * @param failure       why the run failed
 	 * @return {@code failure}, or a failure that names the changed copies and is caused by {@code failure}
 	 */
-	private static IOException withChangedLinkCopies(NestedSessionManager manager, NestedSession run, IOException failure)
+	private static IOException withChangedLinkCopies(NestedSessionManager manager, NestedSession nestedSession,
+		IOException failure)
 	{
 		Optional<String> changes;
 		try
 		{
-			changes = manager.changedLinkCopies(run);
+			changes = manager.changedLinkCopies(nestedSession);
 		}
 		catch (IOException e)
 		{
@@ -708,22 +709,23 @@ public final class HarnessRunnerBridge
 	{
 		if (options.output() == null)
 			return serve(starter, manager, input, output, options, requestedStarter);
-		NestedSession run;
+		NestedSession nestedSession;
 		Path parent = options.output().toAbsolutePath().getParent();
 		Files.createDirectories(parent);
 		try (Writer transcript = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8))
 		{
-			run = serve(starter, manager, input, transcript, options, requestedStarter);
+			nestedSession = serve(starter, manager, input, transcript, options, requestedStarter);
 		}
 		if (options.receipt() != null)
 		{
 			List<Path> sessionTranscripts = List.of();
 			if (options.sessionTranscripts())
-				sessionTranscripts = sessionTranscripts(run);
-			NestedSessionReceipt.write(json, replacer, options.receipt(), run, options.output(), sessionTranscripts);
-			manager.pruneRuntime(run);
+				sessionTranscripts = sessionTranscripts(nestedSession);
+			NestedSessionReceipt.write(json, replacer, options.receipt(), nestedSession, options.output(),
+				sessionTranscripts);
+			manager.pruneRuntime(nestedSession);
 		}
-		return run;
+		return nestedSession;
 	}
 
 	/**
@@ -741,14 +743,14 @@ public final class HarnessRunnerBridge
 	private static SessionRequestBroker requestBroker(LiveNestedSession session, NestedSessionManager manager,
 		HarnessRunnerOptions options, RequestedSessionStarter starter) throws IOException
 	{
-		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.run())))
+		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.nestedSession())))
 			return null;
 		requireThat(starter, "requestedStarter").isNotNull();
-		SessionRequestBroker broker = new SessionRequestBroker(session.run(), manager, options,
+		SessionRequestBroker broker = new SessionRequestBroker(session.nestedSession(), manager, options,
 			session.catPlugin().orElse(null), starter);
 		try
 		{
-			if (options.resumeRun() != null)
+			if (options.resumeSlot() != null)
 				broker.endUnanswered();
 			broker.start(session.scope().heartbeatTicker());
 		}
@@ -933,7 +935,7 @@ public final class HarnessRunnerBridge
 			return;
 		// A run that records another session refuses this one before the session counts as recorded
 		if (manager != null)
-			manager.recordHarnessSession(session.run(), id.get());
+			manager.recordHarnessSession(session.nestedSession(), id.get());
 		if (!recorded.compareAndSet(false, true))
 			return;
 		ObjectNode response = event(session.scope(), "session_id");
@@ -944,16 +946,16 @@ public final class HarnessRunnerBridge
 	/**
 	 * Lists the copies of the session transcripts that a run kept, in name order.
 	 *
-	 * @param run the completed run
+	 * @param nestedSession the completed run
 	 *
 	 * @return the copies, none if the run kept no directory of them
 	 *
 	 * @throws IOException if the directory cannot be listed
 	 */
-	private static List<Path> sessionTranscripts(NestedSession run) throws IOException
+	private static List<Path> sessionTranscripts(NestedSession nestedSession) throws IOException
 	{
-		assert run != null;
-		Path directory = run.sessionTranscripts();
+		assert nestedSession != null;
+		Path directory = nestedSession.sessionTranscripts();
 		if (!Files.isDirectory(directory))
 			return List.of();
 		try (Stream<Path> files = Files.list(directory))

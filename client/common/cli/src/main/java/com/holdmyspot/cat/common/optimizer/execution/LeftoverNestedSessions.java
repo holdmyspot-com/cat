@@ -24,7 +24,7 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Finds the harness processes of runner runs that an earlier {@link Driver} left running.
  * <p>
- * The runner records each run in {@code <runRoot>/<harness>/<id>/session.json}, including the run's owner process
+ * The runner records each run in {@code <resultsFolder>/<harness>/<id>/session.json}, including the run's owner process
  * ({@code owner_pid}, {@code owner_started_at}) and its harness process ({@code harness_pid}, {@code
  * harness_started_at}). The session port declares the results folders, which hold the runs of every campaign of the
  * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists: a
@@ -89,15 +89,15 @@ public final class LeftoverNestedSessions
 	public List<RecordedProcess> find() throws IOException
 	{
 		List<RecordedProcess> processes = new ArrayList<>();
-		for (Path runRoot : sessions.runRoots())
+		for (Path resultsFolder : sessions.resultsFolders())
 		{
-			if (!Files.isDirectory(runRoot, LinkOption.NOFOLLOW_LINKS))
+			if (!Files.isDirectory(resultsFolder, LinkOption.NOFOLLOW_LINKS))
 				continue;
-			for (Path harness : list(runRoot))
+			for (Path harness : list(resultsFolder))
 			{
-				for (Path run : list(harness))
+				for (Path sessionFolder : list(harness))
 				{
-					Path manifest = run.resolve("session.json");
+					Path manifest = sessionFolder.resolve("session.json");
 					if (Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
 						parse(Files.readAllBytes(manifest)).ifPresent(processes::add);
 				}

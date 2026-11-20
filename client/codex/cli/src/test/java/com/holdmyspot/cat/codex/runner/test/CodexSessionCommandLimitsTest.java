@@ -39,27 +39,27 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	@Override
 	protected Limits limits(Fixture fixture, int sessionRequests) throws IOException
 	{
-		Path runHome = fixture.runHome();
-		Path configuration = runHome.resolve("config.toml");
+		Path sessionHome = fixture.sessionHome();
+		Path configuration = sessionHome.resolve("config.toml");
 		Path userCodexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME"));
 		SessionRequestAccess.Shell shell = SessionRequestAccess.Shell.POSIX;
 		if (Platform.current().isWindows())
 			shell = SessionRequestAccess.Shell.POWERSHELL;
-		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
+		SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.nestedSession(), fixture.artifact(),
 			sessionRequests, Platform.current(), shell).orElse(null);
-		Path temporaryDirectory = Files.createDirectories(runHome.resolve("tmp"));
+		Path temporaryDirectory = Files.createDirectories(sessionHome.resolve("tmp"));
 		CodexConnectionConfiguration.copy(userCodexHome.resolve("config.toml"), configuration,
-			fixture.run().directory().resolve("project"),
+			fixture.nestedSession().directory().resolve("project"),
 			HarnessDependencyCaches.NONE, temporaryDirectory, 0, requestAccess,
 			Platform.current());
-		List<Path> readOnly = CodexRunner.sessionReadOnly(fixture.run(), List.of(), requestAccess);
+		List<Path> readOnly = CodexRunner.sessionReadOnly(fixture.nestedSession(), List.of(), requestAccess);
 		String profile = CodexConnectionConfiguration.addSessionProfile(configuration, readOnly,
-			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.run(), readOnly, fixture.deniedReads(),
+			CodexRunner.sessionDeniedReads(fixture.manager(), fixture.nestedSession(), readOnly, fixture.deniedReads(),
 				Platform.current(), fixture.userEnvironment(), requestAccess));
 		JsonNode root = TomlMapper.builder().build().readTree(Files.readString(configuration));
 
 		Map<String, String> commandEnvironment = new HashMap<>(CodexRunner.processEnvironment(
-			fixture.userEnvironment(), HarnessDependencyCaches.NONE, runHome, fixture.run().directory(),
+			fixture.userEnvironment(), HarnessDependencyCaches.NONE, sessionHome, fixture.nestedSession().directory(),
 			temporaryDirectory, Platform.current()));
 		JsonNode policy = root.path("shell_environment_policy");
 		for (JsonNode excluded : policy.path("exclude"))
@@ -70,7 +70,7 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 
 		List<Path> deniedReads = new ArrayList<>();
 		// The built-in workspace profile grants the thread's project as its workspace root.
-		List<Path> writable = new ArrayList<>(List.of(fixture.run().directory().resolve("project")));
+		List<Path> writable = new ArrayList<>(List.of(fixture.nestedSession().directory().resolve("project")));
 		List<Path> readable = new ArrayList<>();
 		// A profile has the entries of the profiles that it extends, up to Codex's built-in workspace profile
 		JsonNode permissions = root.path("permissions");
@@ -101,13 +101,13 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	{
 		// CAT's read-part command reads the session's tool output limit from the session's configuration, which holds
 		// no login
-		return List.of(fixture.runHome().resolve("config.toml"));
+		return List.of(fixture.sessionHome().resolve("config.toml"));
 	}
 
 	@Override
 	protected Optional<Path> ownLogin(Fixture fixture)
 	{
 		// The runner copies the user's login into the run's home, which is the session's Codex home
-		return Optional.of(fixture.runHome().resolve("auth.json"));
+		return Optional.of(fixture.sessionHome().resolve("auth.json"));
 	}
 }

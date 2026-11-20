@@ -55,7 +55,7 @@ public final class Cleanup
 	private final Path base;
 	private final Path campaigns;
 	private final Forks forks;
-	private final List<Path> runRoots;
+	private final List<Path> resultsFolders;
 	private final JsonMapper json;
 	private final FileReplacer replacer;
 	private final Consumer<Step> beforeStep;
@@ -67,15 +67,15 @@ public final class Cleanup
 	 * @param base the base worktree
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
-	 * @param runRoots the directories that hold the runs of those campaigns
+	 * @param resultsFolders the directories that hold the runs of those campaigns
 	 * @param json the JSON mapper that parses run manifests
 	 * @param replacer writes the record that a campaign's removal started
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
-		FileReplacer replacer)
+	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> resultsFolders,
+		JsonMapper json, FileReplacer replacer)
 	{
-		this(fileLocks, base, campaigns, forks, runRoots, json, replacer, _ ->
+		this(fileLocks, base, campaigns, forks, resultsFolders, json, replacer, _ ->
 		{
 		});
 	}
@@ -87,21 +87,21 @@ public final class Cleanup
 	 * @param base the base worktree
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
-	 * @param runRoots the directories that hold the runs of those campaigns
+	 * @param resultsFolders the directories that hold the runs of those campaigns
 	 * @param json the JSON mapper that parses run manifests
 	 * @param replacer writes the record that a campaign's removal started
 	 * @param beforeStep receives each step before it runs; an exception that it throws stops the removal at that
 	 *   point, as a crash would
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> runRoots, JsonMapper json,
-		FileReplacer replacer, Consumer<Step> beforeStep)
+	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> resultsFolders,
+		JsonMapper json, FileReplacer replacer, Consumer<Step> beforeStep)
 	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(base, "base").isNotNull();
 		requireThat(campaigns, "campaigns").isNotNull();
 		requireThat(forks, "forks").isNotNull();
-		requireThat(runRoots, "runRoots").isNotNull();
+		requireThat(resultsFolders, "resultsFolders").isNotNull();
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(beforeStep, "beforeStep").isNotNull();
@@ -109,7 +109,7 @@ public final class Cleanup
 		this.base = base;
 		this.campaigns = campaigns;
 		this.forks = forks;
-		this.runRoots = List.copyOf(runRoots);
+		this.resultsFolders = List.copyOf(resultsFolders);
 		this.json = json;
 		this.replacer = replacer;
 		this.beforeStep = beforeStep;
@@ -286,8 +286,8 @@ public final class Cleanup
 			beforeStep.accept(Step.RUNS);
 			List<Path> owners = new ArrayList<>(List.of(directory.toAbsolutePath().normalize()));
 			owners.add(directory.toRealPath());
-			for (Path runRoot : runRoots)
-				removeRuns(runRoot, owners);
+			for (Path resultsFolder : resultsFolders)
+				removeResultsCopies(resultsFolder, owners);
 
 			beforeStep.accept(Step.CAMPAIGN_DIRECTORY);
 			// Windows refuses to rename a directory that holds an open file, and deleting the campaign directory
@@ -301,21 +301,21 @@ public final class Cleanup
 	/**
 	 * Deletes the runs of a campaign below one results folder.
 	 *
-	 * @param runRoot the results folder, which holds {@code <harness>/<run>/session.json}
+	 * @param resultsFolder the results folder, which holds {@code <harness>/<run>/session.json}
 	 * @param owners the campaign directory's paths that a run's project path may start with
 	 * @throws IOException if a directory cannot be listed or a run cannot be deleted
 	 */
-	private void removeRuns(Path runRoot, List<Path> owners) throws IOException
+	private void removeResultsCopies(Path resultsFolder, List<Path> owners) throws IOException
 	{
-		if (!Files.isDirectory(runRoot, LinkOption.NOFOLLOW_LINKS))
+		if (!Files.isDirectory(resultsFolder, LinkOption.NOFOLLOW_LINKS))
 			return;
-		for (Path harness : LeftoverNestedSessions.list(runRoot))
+		for (Path harness : LeftoverNestedSessions.list(resultsFolder))
 		{
-			for (Path run : LeftoverNestedSessions.list(harness))
+			for (Path sessionFolder : LeftoverNestedSessions.list(harness))
 			{
-				Optional<Path> project = projectPath(run.resolve(MANIFEST));
+				Optional<Path> project = projectPath(sessionFolder.resolve(MANIFEST));
 				if (project.isPresent() && owners.stream().anyMatch(project.get()::startsWith))
-					NestedSessionManager.deleteRunDirectory(run);
+					NestedSessionManager.deleteSessionFolder(sessionFolder);
 			}
 		}
 	}

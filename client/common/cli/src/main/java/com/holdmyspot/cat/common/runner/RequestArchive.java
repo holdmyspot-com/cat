@@ -92,7 +92,7 @@ public final class RequestArchive
 	/**
 	 * The most prompts or plugins of a request made inside a nested session.
 	 */
-	private static final int MAXIMUM_RUN_INPUTS = 32;
+	private static final int MAXIMUM_LAUNCH_INPUTS = 32;
 	/**
 	 * The device that a sandbox mounts over each file that a session may not read.
 	 */
@@ -106,7 +106,7 @@ public final class RequestArchive
 	 * server. A request that names it carries no project.
 	 */
 	static final String RESUME = "resume";
-	private static final Set<String> RUN_FIELDS = Set.of("format_version", "harness", "project", "prompts",
+	private static final Set<String> LAUNCH_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
 		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME);
@@ -185,8 +185,8 @@ public final class RequestArchive
 			for (String field : new String[]{"prompts", "plugins"})
 			{
 				ArrayNode paths = request.withArray(field);
-				if (paths.size() > MAXIMUM_RUN_INPUTS)
-					throw new IOException("Request accepts at most " + MAXIMUM_RUN_INPUTS + " inputs: " + field);
+				if (paths.size() > MAXIMUM_LAUNCH_INPUTS)
+					throw new IOException("Request accepts at most " + MAXIMUM_LAUNCH_INPUTS + " inputs: " + field);
 				for (int index = 0; index < paths.size(); ++index)
 				{
 					Path source = Path.of(paths.get(index).asString());
@@ -207,9 +207,9 @@ public final class RequestArchive
 			if (request.has("read_only_evidence"))
 			{
 				ArrayNode evidence = request.withArray("read_only_evidence");
-				if (evidence.size() > MAXIMUM_RUN_INPUTS)
+				if (evidence.size() > MAXIMUM_LAUNCH_INPUTS)
 				{
-					throw new IOException("Request accepts at most " + MAXIMUM_RUN_INPUTS +
+					throw new IOException("Request accepts at most " + MAXIMUM_LAUNCH_INPUTS +
 						" inputs: read_only_evidence");
 				}
 				for (int index = 0; index < evidence.size(); ++index)
@@ -224,8 +224,8 @@ public final class RequestArchive
 				}
 			}
 			ArrayNode names = request.withArray("prompts");
-			if (names.size() + prompts.size() > MAXIMUM_RUN_INPUTS)
-				throw new IOException("Request accepts at most " + MAXIMUM_RUN_INPUTS + " inputs: prompts");
+			if (names.size() + prompts.size() > MAXIMUM_LAUNCH_INPUTS)
+				throw new IOException("Request accepts at most " + MAXIMUM_LAUNCH_INPUTS + " inputs: prompts");
 			for (String prompt : prompts)
 			{
 				String name = "prompts/" + names.size();
@@ -1039,9 +1039,9 @@ public final class RequestArchive
 	 *                                  session may not choose, or names an entry that is missing or of the wrong type
 	 * @throws IllegalArgumentException if the request names no model or no effort
 	 */
-	static LaunchRequest readRun(JsonMapper json, Path inputs) throws IOException
+	static LaunchRequest readLaunch(JsonMapper json, Path inputs) throws IOException
 	{
-		return readRun(json, inputs, false);
+		return readLaunch(json, inputs, false);
 	}
 
 	/**
@@ -1058,7 +1058,7 @@ public final class RequestArchive
 	 */
 	static LaunchRequest readServed(JsonMapper json, Path inputs) throws IOException
 	{
-		return readRun(json, inputs, true);
+		return readLaunch(json, inputs, true);
 	}
 
 	/**
@@ -1073,13 +1073,13 @@ public final class RequestArchive
 	 *                                  or names an entry that is missing or of the wrong type
 	 * @throws IllegalArgumentException if the request names no agent and no model or no effort
 	 */
-	private static LaunchRequest readRun(JsonMapper json, Path inputs, boolean served) throws IOException
+	private static LaunchRequest readLaunch(JsonMapper json, Path inputs, boolean served) throws IOException
 	{
-		Set<String> allowed = RUN_FIELDS;
+		Set<String> allowed = LAUNCH_FIELDS;
 		String level = "A request inside a nested session";
 		if (served)
 		{
-			allowed = new HashSet<>(RUN_FIELDS);
+			allowed = new HashSet<>(LAUNCH_FIELDS);
 			allowed.addAll(SERVED_FIELDS);
 			level = "A session request";
 		}
@@ -1104,8 +1104,8 @@ public final class RequestArchive
 		}
 		else
 			project = entry(value, inputs, "project", Kind.DIRECTORY);
-		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_RUN_INPUTS);
-		List<Path> promptFiles = namedEntries(value, inputs, "prompts", Kind.FILE, MAXIMUM_RUN_INPUTS);
+		List<Path> plugins = namedEntries(value, inputs, "plugins", Kind.DIRECTORY, MAXIMUM_LAUNCH_INPUTS);
+		List<Path> promptFiles = namedEntries(value, inputs, "prompts", Kind.FILE, MAXIMUM_LAUNCH_INPUTS);
 		boolean streamed = value.has(StreamedRequest.INPUT_FIELD);
 		String input = value.path(StreamedRequest.INPUT_FIELD).stringValue("");
 		boolean conversation = input.equals(StreamedRequest.CONVERSATION);
@@ -1129,7 +1129,7 @@ public final class RequestArchive
 		Optional<Path> workspace = Optional.empty();
 		if (value.has("workspace"))
 			workspace = Optional.of(entry(value, inputs, "workspace", Kind.DIRECTORY));
-		List<Path> evidence = namedEntries(value, inputs, "read_only_evidence", Kind.ANY, MAXIMUM_RUN_INPUTS);
+		List<Path> evidence = namedEntries(value, inputs, "read_only_evidence", Kind.ANY, MAXIMUM_LAUNCH_INPUTS);
 		Optional<Integer> toolOutputTokenLimit = count(value, "tool_output_token_limit");
 		if (toolOutputTokenLimit.isPresent() && toolOutputTokenLimit.get() <= 0)
 			throw new IOException("tool_output_token_limit must be positive");
@@ -1186,8 +1186,8 @@ public final class RequestArchive
 		if (!value.has(field))
 			return List.of();
 		JsonNode array = value.path(field);
-		if (!array.isArray() || array.size() > MAXIMUM_RUN_INPUTS)
-			throw new IOException(field + " must be an array of at most " + MAXIMUM_RUN_INPUTS + " absolute paths");
+		if (!array.isArray() || array.size() > MAXIMUM_LAUNCH_INPUTS)
+			throw new IOException(field + " must be an array of at most " + MAXIMUM_LAUNCH_INPUTS + " absolute paths");
 		List<Path> paths = new ArrayList<>();
 		for (JsonNode element : array)
 		{

@@ -26,7 +26,7 @@ public final class HarnessTemporaryRootTest
 	@Test
 	public void defaultsBelowCatTemporaryRoot()
 	{
-		Path result = HarnessTemporaryRoot.of(Path.of("/caller-temp").toAbsolutePath()).defaultRunRoot();
+		Path result = HarnessTemporaryRoot.of(Path.of("/caller-temp").toAbsolutePath()).defaultResultsFolder();
 
 		requireThat(result, "result").isEqualTo(Path.of("/caller-temp/nested-sessions").toAbsolutePath());
 	}

@@ -379,7 +379,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	}
 
 	@Override
-	protected Optional<String> runRefusal()
+	protected Optional<String> nestedSessionRefusal()
 	{
 		ensureOpen();
 		return Optional.empty();

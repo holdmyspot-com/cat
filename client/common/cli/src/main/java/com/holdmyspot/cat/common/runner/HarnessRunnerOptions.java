@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
  *
  * @param artifact the complete harness artifact
  * @param project the source project
- * @param runRoot the absolute owned-results folder
+ * @param resultsFolder the absolute owned-results folder
  * @param model the selected model
  * @param effort the selected reasoning effort, or {@value #NO_REASONING} for none
  * @param output the optional durable bridge-transcript destination
@@ -58,18 +58,18 @@ import tools.jackson.databind.json.JsonMapper;
  *   that completes, before the turn's {@code turn_completed} record, or {@code null} if the launch asks for none
  * @param continueAfterFailedTurn indicates whether the bridge keeps serving after a turn fails while the harness keeps
  *   running, because the records are a conversation's; a conversation named by {@code conversation} always does
- * @param runId the identifier that the run takes, which is also its directory's name, or {@code null} for a newly
+ * @param slotId the identifier that the run takes, which is also its directory's name, or {@code null} for a newly
  *   generated identifier. A run with an identifier of its own starts in an empty directory and fails if the directory
  *   exists.
- * @param resumeRun the harness session that the runner continues in the slot's run, which records it, or {@code null}
+ * @param resumeSlot the harness session that the runner continues in the slot's run, which records it, or {@code null}
  *   for a runner that starts a session
  */
-public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, String model, String effort,
+public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
 	Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
 	List<Path> deniedReads, List<Path> readOnlyEvidence, Path workspace, List<Path> plugins, int sessionRequests,
 	Duration capacityWait, int requestDepth, Path input, Path conversation, Path policyBound, boolean capacityHeld,
 	String gitName, String gitEmail, Path extraPermissions, Path turnCopy, boolean continueAfterFailedTurn,
-	String runId, String resumeRun)
+	String slotId, String resumeSlot)
 {
 	/**
 	 * The reasoning effort that selects no reasoning, for every model. Each runner passes it to its harness as that
@@ -134,7 +134,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		Path project = Path.of("").toAbsolutePath().normalize();
-		String explicitRunRoot = null;
+		String explicitResultsFolder = null;
 		String model = "";
 		String effort = "";
 		ParsedOptions options = new ParsedOptions();
@@ -222,7 +222,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			else if (option.equals("--project"))
 				project = Path.of(value);
 			else if (option.equals("--results"))
-				explicitRunRoot = value;
+				explicitResultsFolder = value;
 			else if (option.equals("--model"))
 				model = value;
 			else if (option.equals("--effort"))
@@ -253,9 +253,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.turnCopy = Path.of(value).toAbsolutePath();
 			else if (option.equals(RunnerArguments.SLOT_ID_OPTION))
 			{
-				if (!NestedSessionManager.isRunId(value))
+				if (!NestedSessionManager.isSlotId(value))
 					throw new InvalidArgumentsException("Invalid " + RunnerArguments.SLOT_ID_OPTION + ": " + value);
-				options.runId = value;
+				options.slotId = value;
 			}
 			else if (option.equals(RunnerArguments.RESUME_SLOT_OPTION))
 			{
@@ -263,7 +263,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				{
 					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RESUME_SLOT_OPTION + ": " + value);
 				}
-				options.resumeRun = value;
+				options.resumeSlot = value;
 			}
 			else
 				options.input = Path.of(value);
@@ -277,19 +277,19 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 			throw new InvalidArgumentsException("--request-depth requires --session-requests");
 		if (options.input != null && options.conversation != null)
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
-		if (options.resumeRun != null && options.runId == null)
+		if (options.resumeSlot != null && options.slotId == null)
 		{
 			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires " +
 				RunnerArguments.SLOT_ID_OPTION);
 		}
 		requireProfile(harness, model, effort);
-		Path runRoot = temporaryRoot.runRoot(explicitRunRoot);
-		return new HarnessRunnerOptions(options.artifact, project, runRoot, model, effort, options.output,
+		Path resultsFolder = temporaryRoot.resultsFolder(explicitResultsFolder);
+		return new HarnessRunnerOptions(options.artifact, project, resultsFolder, model, effort, options.output,
 			options.receipt, options.sessionTranscripts, options.installCat, options.maximumConcurrency,
 			options.deniedReads, options.readOnlyEvidence, options.workspace, options.plugins, options.sessionRequests,
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
-			options.turnCopy, options.continueAfterFailedTurn, options.runId, options.resumeRun);
+			options.turnCopy, options.continueAfterFailedTurn, options.slotId, options.resumeSlot);
 	}
 
 	/**
@@ -629,7 +629,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *
 	 * @param artifact the complete harness artifact
 	 * @param project the source project
-	 * @param runRoot the absolute owned-results folder
+	 * @param resultsFolder the absolute owned-results folder
 	 * @param model the selected model
 	 * @param effort the selected reasoning effort
 	 * @param output the optional durable bridge-transcript destination
@@ -659,28 +659,28 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 	 *   turn that completes, or {@code null} if the launch asks for none
 	 * @param continueAfterFailedTurn whether the bridge keeps serving after a turn fails while the harness keeps
 	 *   running, because the records are a conversation's
-	 * @param runId the identifier that the run takes, or {@code null} for a newly generated identifier
-	 * @param resumeRun the harness session that the runner continues in the slot's run, or {@code null} for a runner
+	 * @param slotId the identifier that the run takes, or {@code null} for a newly generated identifier
+	 * @param resumeSlot the harness session that the runner continues in the slot's run, or {@code null} for a runner
 	 *   that starts a session
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
-	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code runId} and
-	 *   {@code resumeRun}
-	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code runRoot} or an element of
-	 *   {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or
-	 *   {@code requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or
-	 *   {@code capacityWait} is not positive, {@code runId} is not a run identifier, or {@code resumeRun} is not a
-	 *   harness session identifier or is named without {@code runId}
+	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code slotId} and
+	 *   {@code resumeSlot}
+	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code resultsFolder} or an element
+	 *   of {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or {@code
+	 *   requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or {@code
+	 *   capacityWait} is not positive, {@code slotId} is not a run identifier, or {@code resumeSlot} is not a harness
+	 *   session identifier or is named without {@code slotId}
 	 */
 	public HarnessRunnerOptions
 	{
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(project, "project").isNotNull();
-		requireThat(runRoot, "runRoot").isNotNull();
+		requireThat(resultsFolder, "resultsFolder").isNotNull();
 		requireThat(model, "model").isNotBlank();
 		requireThat(effort, "effort").isNotBlank();
-		if (!runRoot.isAbsolute())
-			throw new IllegalArgumentException("runRoot must be absolute");
+		if (!resultsFolder.isAbsolute())
+			throw new IllegalArgumentException("resultsFolder must be absolute");
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		for (Path deniedRead : deniedReads)
 		{
@@ -702,14 +702,14 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(requestDepth, "requestDepth").isNotNegative();
 		if (requestDepth > 0 && sessionRequests == 0)
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
-		if (runId != null && !NestedSessionManager.isRunId(runId))
-			throw new IllegalArgumentException("runId is not a run identifier: " + runId);
-		if (resumeRun != null)
+		if (slotId != null && !NestedSessionManager.isSlotId(slotId))
+			throw new IllegalArgumentException("slotId is not a run identifier: " + slotId);
+		if (resumeSlot != null)
 		{
-			if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(resumeRun).matches())
-				throw new IllegalArgumentException("resumeRun is not a harness session identifier: " + resumeRun);
-			if (runId == null)
-				throw new IllegalArgumentException("resumeRun requires runId");
+			if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(resumeSlot).matches())
+				throw new IllegalArgumentException("resumeSlot is not a harness session identifier: " + resumeSlot);
+			if (slotId == null)
+				throw new IllegalArgumentException("resumeSlot requires slotId");
 		}
 	}
 
@@ -814,7 +814,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		private Path extraPermissions;
 		private Path turnCopy;
 		private boolean continueAfterFailedTurn;
-		private String runId;
-		private String resumeRun;
+		private String slotId;
+		private String resumeSlot;
 	}
 }

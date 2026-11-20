@@ -12,7 +12,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class LiveNestedSession implements AutoCloseable
 {
-	private final NestedSession run;
+	private final NestedSession nestedSession;
 	private final HarnessProcess process;
 	private final AbstractHarnessRunnerScope scope;
 	private final NestedSessionLock lock;
@@ -26,51 +26,51 @@ public final class LiveNestedSession implements AutoCloseable
 	/**
 	 * Attaches a live harness process to an owned run.
 	 *
-	 * @param run the owned run
+	 * @param nestedSession the owned run
 	 * @param process the live harness process
 	 * @param scope services owned for the process lifetime
-	 * @throws NullPointerException if {@code run}, {@code process}, or {@code scope} are null
+	 * @throws NullPointerException if {@code nestedSession}, {@code process}, or {@code scope} are null
 	 */
-	public LiveNestedSession(NestedSession run, HarnessProcess process, AbstractHarnessRunnerScope scope)
+	public LiveNestedSession(NestedSession nestedSession, HarnessProcess process, AbstractHarnessRunnerScope scope)
 	{
-		this(run, process, scope, NestedSessionLock.unlocked());
+		this(nestedSession, process, scope, NestedSessionLock.unlocked());
 	}
 
 	/**
 	 * Attaches a live harness process and its exclusive run lock to an owned run.
 	 *
-	 * @param run the owned run
+	 * @param nestedSession the owned run
 	 * @param process the live harness process
 	 * @param scope services owned for the process lifetime
 	 * @param lock the exclusive run lock
-	 * @throws NullPointerException if {@code run}, {@code process}, {@code scope}, or {@code lock} are null
+	 * @throws NullPointerException if {@code nestedSession}, {@code process}, {@code scope}, or {@code lock} are null
 	 */
-	public LiveNestedSession(NestedSession run, HarnessProcess process, AbstractHarnessRunnerScope scope,
+	public LiveNestedSession(NestedSession nestedSession, HarnessProcess process, AbstractHarnessRunnerScope scope,
 		NestedSessionLock lock)
 	{
-		this(run, process, scope, lock, null);
+		this(nestedSession, process, scope, lock, null);
 	}
 
 	/**
 	 * Attaches a live harness process and its exclusive run lock to an owned run whose home holds the CAT plugin that
 	 * the session's commands run.
 	 *
-	 * @param run       the owned run
-	 * @param process   the live harness process
-	 * @param scope     services owned for the process lifetime
-	 * @param lock      the exclusive run lock
-	 * @param catPlugin the directory of the CAT plugin installed in the run's home, whose launchers the session's
-	 *                  commands run, or {@code null} if the run has none
-	 * @throws NullPointerException if {@code run}, {@code process}, {@code scope}, or {@code lock} are null
+	 * @param nestedSession the owned run
+	 * @param process       the live harness process
+	 * @param scope         services owned for the process lifetime
+	 * @param lock          the exclusive run lock
+	 * @param catPlugin     the directory of the CAT plugin installed in the run's home, whose launchers the session's
+	 *                      commands run, or {@code null} if the run has none
+	 * @throws NullPointerException if {@code nestedSession}, {@code process}, {@code scope}, or {@code lock} are null
 	 */
-	public LiveNestedSession(NestedSession run, HarnessProcess process, AbstractHarnessRunnerScope scope,
+	public LiveNestedSession(NestedSession nestedSession, HarnessProcess process, AbstractHarnessRunnerScope scope,
 		NestedSessionLock lock, Path catPlugin)
 	{
-		requireThat(run, "run").isNotNull();
+		requireThat(nestedSession, "nestedSession").isNotNull();
 		requireThat(process, "process").isNotNull();
 		requireThat(scope, "scope").isNotNull();
 		requireThat(lock, "lock").isNotNull();
-		this.run = run;
+		this.nestedSession = nestedSession;
 		this.process = process;
 		this.scope = scope;
 		this.lock = lock;
@@ -133,7 +133,7 @@ public final class LiveNestedSession implements AutoCloseable
 		synchronized (process)
 		{
 			if (!process.isAlive())
-				throw new IOException("Harness process is no longer alive for run " + run.id());
+				throw new IOException("Harness process is no longer alive for run " + nestedSession.id());
 			return process.sendTurn(request, listener, mode);
 		}
 	}
@@ -148,7 +148,7 @@ public final class LiveNestedSession implements AutoCloseable
 	{
 		requireThat(request, "request").isNotBlank();
 		if (!processIsAlive())
-			throw new IOException("Harness process is no longer alive for run " + run.id());
+			throw new IOException("Harness process is no longer alive for run " + nestedSession.id());
 		process.steer(request);
 	}
 
@@ -160,7 +160,7 @@ public final class LiveNestedSession implements AutoCloseable
 	public void interrupt() throws IOException
 	{
 		if (!processIsAlive())
-			throw new IOException("Harness process is no longer alive for run " + run.id());
+			throw new IOException("Harness process is no longer alive for run " + nestedSession.id());
 		process.interrupt();
 	}
 
@@ -169,9 +169,9 @@ public final class LiveNestedSession implements AutoCloseable
 	 *
 	 * @return the owned run
 	 */
-	public NestedSession run()
+	public NestedSession nestedSession()
 	{
-		return run;
+		return nestedSession;
 	}
 
 	/**

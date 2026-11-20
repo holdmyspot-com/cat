@@ -165,13 +165,13 @@ public final class CodexServedSessionTest
 	 * @throws IOException if the fixture cannot be written
 	 */
 	@Test
-	public void explainsRequestServerInRun() throws IOException
+	public void explainsRequestServerInNestedSession() throws IOException
 	{
 		try (Fixture fixture = new Fixture())
 		{
 			fixture.installed();
 			Map<String, String> environment = new HashMap<>(fixture.environment());
-			environment.put(HarnessEnvironment.RUN_VARIABLE, HarnessEnvironment.RUN_VALUE);
+			environment.put(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 
 			String withoutRollout = CodexServedSession.sandboxed(fixture.server, environment, fixture.home, null);
 

@@ -65,7 +65,7 @@ public final class SessionSlots
 	/**
 	 * The start of the identifier of each slot's run, which the slot's number follows.
 	 */
-	private static final String RUN_ID = "s-";
+	private static final String SLOT_ID = "s-";
 	/**
 	 * How long a request waits for a slot to be released before it checks again, in milliseconds.
 	 */
@@ -100,26 +100,26 @@ public final class SessionSlots
 	 *
 	 * @param root    the directory that the session uses as its results folder, which holds its run below the harness's
 	 *                name
-	 * @param runId   the identifier of the session's run, which is the same for every session of the slot
+	 * @param slotId  the identifier of the session's run, which is the same for every session of the slot
 	 * @param heldOut {@code true} if the slot belongs to the held-out part
 	 * @param number  the slot's number within its part, starting at {@code 1}
 	 */
-	public record Slot(Path root, String runId, boolean heldOut, int number)
+	public record Slot(Path root, String slotId, boolean heldOut, int number)
 	{
 		/**
 		 * Creates a slot.
 		 *
 		 * @param root    the directory that the session uses as its results folder
-		 * @param runId   the identifier of the session's run
+		 * @param slotId  the identifier of the session's run
 		 * @param heldOut {@code true} if the slot belongs to the held-out part
 		 * @param number  the slot's number within its part
-		 * @throws NullPointerException     if {@code root} or {@code runId} are null
+		 * @throws NullPointerException     if {@code root} or {@code slotId} are null
 		 * @throws IllegalArgumentException if {@code number} is not positive
 		 */
 		public Slot
 		{
 			requireThat(root, "root").isNotNull();
-			requireThat(runId, "runId").isNotNull();
+			requireThat(slotId, "slotId").isNotNull();
 			requireThat(number, "number").isPositive();
 		}
 	}
@@ -544,7 +544,7 @@ public final class SessionSlots
 		String part = DEVELOPMENT;
 		if (heldOut)
 			part = HELD_OUT;
-		return new Slot(base.resolve(part + number), RUN_ID + number, heldOut, number);
+		return new Slot(base.resolve(part + number), SLOT_ID + number, heldOut, number);
 	}
 
 	/**
@@ -577,7 +577,7 @@ public final class SessionSlots
 		if (!stopRecordedProcesses(records))
 			return false;
 		for (RecordedNestedSession record : records)
-			NestedSessionManager.deleteRunDirectory(record.manifest().getParent());
+			NestedSessionManager.deleteSessionFolder(record.manifest().getParent());
 		TemporaryDirectories.deleteRecursively(slot.root());
 		return true;
 	}
@@ -595,7 +595,7 @@ public final class SessionSlots
 		for (RecordedNestedSession record : records)
 		{
 			NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
-			if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.runId()))
+			if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.slotId()))
 				throw new IOException("Run manifest does not match its slot path: " + record.manifest());
 			if (manifest.harnessProcessState() == NestedSessionManager.HarnessProcessState.STARTING)
 				throw new IOException("Harness launch state is unknown; refusing to empty slot: " + record.manifest());
@@ -607,23 +607,23 @@ public final class SessionSlots
 			validated.add(new ValidatedNestedSession(manifest, currentOwner, ownerAlive, childAlive));
 		}
 		boolean ended = true;
-		for (ValidatedNestedSession run : validated)
+		for (ValidatedNestedSession nestedSession : validated)
 		{
-			if (run.ownerAlive() && !run.currentOwner())
+			if (nestedSession.ownerAlive() && !nestedSession.currentOwner())
 			{
 				ended = false;
 				continue;
 			}
-			if (!run.childAlive())
+			if (!nestedSession.childAlive())
 				continue;
-			long pid = run.manifest().harnessPid();
+			long pid = nestedSession.manifest().harnessPid();
 			if (pid == ProcessHandle.current().pid())
 			{
 				ended = false;
 				continue;
 			}
-			liveness.terminate(pid, run.manifest().harnessStart());
-			if (liveness.isAlive(pid, run.manifest().harnessStart()))
+			liveness.terminate(pid, nestedSession.manifest().harnessStart());
+			if (liveness.isAlive(pid, nestedSession.manifest().harnessStart()))
 				ended = false;
 		}
 		return ended;
@@ -648,21 +648,21 @@ public final class SessionSlots
 			{
 				if (!Files.isDirectory(harness, LinkOption.NOFOLLOW_LINKS))
 					continue;
-				try (Stream<Path> runs = Files.list(harness))
+				try (Stream<Path> sessionFolders = Files.list(harness))
 				{
-					for (Path run : runs.toList())
+					for (Path sessionFolder : sessionFolders.toList())
 					{
-						if (!Files.isDirectory(run, LinkOption.NOFOLLOW_LINKS) ||
-							!run.getFileName().toString().startsWith(RUN_ID))
+						if (!Files.isDirectory(sessionFolder, LinkOption.NOFOLLOW_LINKS) ||
+							!sessionFolder.getFileName().toString().startsWith(SLOT_ID))
 							continue;
-						Path manifest = run.resolve("session.json");
+						Path manifest = sessionFolder.resolve("session.json");
 						// A session folder without a manifest records no process; emptying the slot removes it
 						if (!Files.exists(manifest, LinkOption.NOFOLLOW_LINKS))
 							continue;
 						if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
 							throw new IOException("Slot run manifest is not a regular file: " + manifest);
 						manifests.add(new RecordedNestedSession(harness.getFileName().toString(),
-							run.getFileName().toString(), manifest));
+							sessionFolder.getFileName().toString(), manifest));
 					}
 				}
 			}
@@ -684,10 +684,10 @@ public final class SessionSlots
 	 * A path-derived run whose manifest is checked before slot reuse.
 	 *
 	 * @param harness the harness directory name
-	 * @param runId the generated run identifier
+	 * @param slotId the generated run identifier
 	 * @param manifest the expected manifest path
 	 */
-	private record RecordedNestedSession(String harness, String runId, Path manifest)
+	private record RecordedNestedSession(String harness, String slotId, Path manifest)
 	{
 	}
 

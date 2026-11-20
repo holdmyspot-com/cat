@@ -296,12 +296,12 @@ public final class RequestServerTest
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
 
 				List<String> arguments = started.get();
-				Path runRoot = Path.of(option(arguments, "--results"));
-				requireThat(runRoot.startsWith(fixture.sessionDirectory()), "inSessionDirectory").isTrue();
+				Path resultsFolder = Path.of(option(arguments, "--results"));
+				requireThat(resultsFolder.startsWith(fixture.sessionDirectory()), "inSessionDirectory").isTrue();
 				ChildPolicy bound = bounds.get();
-				requireThat(bound.writeRoots(), "writeRoots").isEqualTo(List.of(runRoot));
+				requireThat(bound.writeRoots(), "writeRoots").isEqualTo(List.of(resultsFolder));
 				requireThat(bound.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST));
-				requireThat(awaitAbsent(runRoot), "runRootRemains").isFalse();
+				requireThat(awaitAbsent(resultsFolder), "runRootRemains").isFalse();
 				requireThat(copied.get(), "copied").contains("README.md").contains(".cat/sessions/" + SESSION_ID).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/" + RequestServer.REQUESTS).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/responses").
@@ -328,7 +328,7 @@ public final class RequestServerTest
 			String harnessSession = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 			Path slot = fixture.project.resolve(".cat/sessions").resolve(other).resolve("slots").resolve("d1");
 			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), slot, Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId("s-1");
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
 			manager.recordHarnessSession(manager.create("claude"), harnessSession);
 			fixture.child = _ ->
 			{
@@ -474,7 +474,7 @@ public final class RequestServerTest
 	 * @throws TimeoutException     if the conversation does not end
 	 */
 	@Test(timeOut = 60_000)
-	public void conversationEndsAfterKeptRunIsCopied() throws IOException, InterruptedException,
+	public void conversationEndsAfterResultsAreCopied() throws IOException, InterruptedException,
 		ExecutionException, TimeoutException
 	{
 		try (Fixture fixture = new Fixture())
@@ -504,8 +504,8 @@ public final class RequestServerTest
 						return false;
 					try (Stream<Path> kept = Files.list(claude))
 					{
-						return kept.anyMatch(run -> Files.isRegularFile(run.resolve("session.json")) &&
-							Files.isRegularFile(run.resolve(lastFile)));
+						return kept.anyMatch(copy -> Files.isRegularFile(copy.resolve("session.json")) &&
+							Files.isRegularFile(copy.resolve(lastFile)));
 					}
 				});
 				StringWriter errors = new StringWriter();
@@ -520,7 +520,7 @@ public final class RequestServerTest
 						// Once the session runs, its run holds many files, so that copying it takes a while
 						if (!served.isEmpty() && !endSent.get())
 						{
-							Path many = Files.createDirectories(served.getFirst().run().directory().
+							Path many = Files.createDirectories(served.getFirst().nestedSession().directory().
 								resolve("artifacts/many"));
 							for (int i = 0; i < 400; ++i)
 								Files.writeString(many.resolve("file-" + i), "content");
@@ -547,17 +547,17 @@ public final class RequestServerTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 60_000)
-	public void servesCommandSessionAndCopiesKeptRun() throws IOException, InterruptedException
+	public void servesCommandSessionAndCopiesResults() throws IOException, InterruptedException
 	{
 		try (Fixture fixture = new Fixture())
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path runRoot = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
-				String runId = serve(fixture, server, runRoot);
-				Path kept = runRoot.resolve("claude").resolve(runId);
+				String slotId = serve(fixture, server, resultsFolder);
+				Path kept = resultsFolder.resolve("claude").resolve(slotId);
 				requireThat(Files.readString(kept.resolve("result.txt")), "result").isEqualTo("1");
 				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
 				{
@@ -568,7 +568,7 @@ public final class RequestServerTest
 					requireThat(requests.filter(path -> path.toString().endsWith(".tar")).toList(),
 						"requests").isEmpty();
 				}
-				requireThat(awaitAbsent(served.getFirst().runRoot()), "serverRunRemains").isFalse();
+				requireThat(awaitAbsent(served.getFirst().resultsFolder()), "serverRunRemains").isFalse();
 			}
 		}
 	}
@@ -581,26 +581,26 @@ public final class RequestServerTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 60_000)
-	public void servedSessionsShareRunPaths() throws IOException, InterruptedException
+	public void servedSessionsShareSessionPaths() throws IOException, InterruptedException
 	{
 		try (Fixture fixture = new Fixture())
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path runRoot = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-runs");
 			ServedNestedSession first;
 			try (Fixture.Running server = fixture.start())
 			{
-				first = serveUntilSlotReuse(fixture, server, runRoot, served).earlier();
+				first = serveUntilSlotReuse(fixture, server, resultsFolder, served).earlier();
 			}
 			ServedNestedSession second = served.getLast();
-			requireThat(second.runRoot(), "runRoot").isEqualTo(first.runRoot());
-			requireThat(second.run().directory(), "directory").isEqualTo(first.run().directory());
-			requireThat(second.run().directory().resolve("home"), "home").
-				isEqualTo(first.run().directory().resolve("home"));
-			requireThat(second.run().directory().resolve("project"), "project").
-				isEqualTo(first.run().directory().resolve("project"));
-			requireThat(first.runRoot().getParent(), "slots").
+			requireThat(second.resultsFolder(), "resultsFolder").isEqualTo(first.resultsFolder());
+			requireThat(second.nestedSession().directory(), "directory").isEqualTo(first.nestedSession().directory());
+			requireThat(second.nestedSession().directory().resolve("home"), "home").
+				isEqualTo(first.nestedSession().directory().resolve("home"));
+			requireThat(second.nestedSession().directory().resolve("project"), "project").
+				isEqualTo(first.nestedSession().directory().resolve("project"));
+			requireThat(first.resultsFolder().getParent(), "slots").
 				isEqualTo(fixture.sessionDirectory().resolve("slots"));
 		}
 	}
@@ -618,10 +618,10 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path runRoot = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
-				serveUntilSlotReuse(fixture, server, runRoot, served);
+				serveUntilSlotReuse(fixture, server, resultsFolder, served);
 			}
 			requireThat(served.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
 		}
@@ -641,16 +641,16 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path runRoot = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
-				serve(fixture, server, runRoot, "--held-out");
-				serve(fixture, server, runRoot);
+				serve(fixture, server, resultsFolder, "--held-out");
+				serve(fixture, server, resultsFolder);
 			}
 			Path slots = fixture.sessionDirectory().resolve("slots");
 			requireThat(served, "served").size().isEqualTo(2);
-			requireThat(served.getFirst().runRoot(), "heldOut").isEqualTo(slots.resolve("h1"));
-			requireThat(served.getLast().runRoot(), "development").isEqualTo(slots.resolve("d1"));
+			requireThat(served.getFirst().resultsFolder(), "heldOut").isEqualTo(slots.resolve("h1"));
+			requireThat(served.getLast().resultsFolder(), "development").isEqualTo(slots.resolve("d1"));
 		}
 	}
 
@@ -697,11 +697,11 @@ public final class RequestServerTest
 		{
 			Path slot = Files.createDirectories(fixture.sessionDirectory().resolve("slots/d1"));
 			NestedSessionManager earlier = new NestedSessionManager(new FileLocks(), slot, Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId("s-1");
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
 			NestedSession leftover = earlier.create("claude");
 			earlier.markHarnessStarting(leftover);
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
-			Path runRoot = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
 				JsonNode refused = server.request(fixture.manifest());
@@ -710,9 +710,9 @@ public final class RequestServerTest
 
 				earlier.recordNoHarnessProcess(leftover);
 				fixture.child = slotChild(fixture, served);
-				serve(fixture, server, runRoot);
+				serve(fixture, server, resultsFolder);
 				requireThat(served, "served").size().isEqualTo(1);
-				requireThat(served.getFirst().runRoot(), "runRoot").isEqualTo(slot);
+				requireThat(served.getFirst().resultsFolder(), "resultsFolder").isEqualTo(slot);
 			}
 		}
 	}
@@ -725,25 +725,25 @@ public final class RequestServerTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 60_000)
-	public void keptRunsOfServedSessionsSurviveSlotReuse() throws IOException, InterruptedException
+	public void servedResultsCopiesSurviveSlotReuse() throws IOException, InterruptedException
 	{
 		try (Fixture fixture = new Fixture())
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path runRoot = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
-				SlotReuse reuse = serveUntilSlotReuse(fixture, server, runRoot, served);
+				SlotReuse reuse = serveUntilSlotReuse(fixture, server, resultsFolder, served);
 				ServedNestedSession first = reuse.earlier();
 				String firstId = reuse.earlierId();
 				String secondId = reuse.currentId();
 				requireThat(secondId, "secondRunId").isNotEqualTo(firstId);
-				requireThat(Files.readString(runRoot.resolve("claude").resolve(firstId).resolve("result.txt")),
+				requireThat(Files.readString(resultsFolder.resolve("claude").resolve(firstId).resolve("result.txt")),
 					"first").isEqualTo(String.valueOf(served.indexOf(first) + 1));
-				requireThat(Files.readString(runRoot.resolve("claude").resolve(secondId).resolve("result.txt")),
+				requireThat(Files.readString(resultsFolder.resolve("claude").resolve(secondId).resolve("result.txt")),
 					"second").isEqualTo(String.valueOf(served.size()));
-				requireThat(Files.readString(runRoot.resolve("claude").resolve(firstId).resolve("session.json")),
+				requireThat(Files.readString(resultsFolder.resolve("claude").resolve(firstId).resolve("session.json")),
 					"manifest").contains("\"id\": \"" + firstId + "\"");
 			}
 		}
@@ -752,14 +752,14 @@ public final class RequestServerTest
 	/**
 	 * Serves sessions until one reuses an earlier session's slot and returns that earlier session.
 	 *
-	 * @param fixture the session that runs the server
-	 * @param server  the running server
-	 * @param runRoot the command's results folder
-	 * @param served  initially empty list that the child populates with the served sessions
+	 * @param fixture       the session that runs the server
+	 * @param server        the running server
+	 * @param resultsFolder the command's results folder
+	 * @param served        initially empty list that the child populates with the served sessions
 	 * @return the earlier session and both retained run identifiers for the reused slot
 	 * @throws IOException if a session does not complete
 	 */
-	private static SlotReuse serveUntilSlotReuse(Fixture fixture, Fixture.Running server, Path runRoot,
+	private static SlotReuse serveUntilSlotReuse(Fixture fixture, Fixture.Running server, Path resultsFolder,
 		List<ServedNestedSession> served) throws IOException
 	{
 		// A response can arrive before cleanup releases its slot. One more session than the fixed pool's size
@@ -767,12 +767,12 @@ public final class RequestServerTest
 		List<String> retainedIds = new ArrayList<>();
 		for (int request = 0; request <= HarnessCapacity.MAXIMUM_CONCURRENCY; ++request)
 		{
-			retainedIds.add(serve(fixture, server, runRoot));
+			retainedIds.add(serve(fixture, server, resultsFolder));
 			ServedNestedSession current = served.getLast();
 			for (int previous = 0; previous < served.size() - 1; ++previous)
 			{
 				ServedNestedSession earlier = served.get(previous);
-				if (earlier.runRoot().equals(current.runRoot()))
+				if (earlier.resultsFolder().equals(current.resultsFolder()))
 					return new SlotReuse(earlier, retainedIds.get(previous), retainedIds.getLast());
 			}
 		}
@@ -798,21 +798,21 @@ public final class RequestServerTest
 	/**
 	 * Serves one session of a command through the server, as the prompt optimizer does.
 	 *
-	 * @param fixture the session that runs the server
-	 * @param server  the running server
-	 * @param runRoot the command's results folder
-	 * @param extra   further options of the launch
+	 * @param fixture       the session that runs the server
+	 * @param server        the running server
+	 * @param resultsFolder the command's results folder
+	 * @param extra         further options of the launch
 	 * @return the identifier that the session's harness reported, as the command's records name it
 	 * @throws IOException if the session does not complete
 	 */
-	private static String serve(Fixture fixture, Fixture.Running server, Path runRoot, String... extra)
+	private static String serve(Fixture fixture, Fixture.Running server, Path resultsFolder, String... extra)
 		throws IOException
 	{
 		Path ownArtifact = Files.createDirectories(fixture.root.resolve("artifact"));
 		StringWriter output = new StringWriter();
 		long deadline = System.nanoTime() + WAIT.toNanos();
 		List<String> arguments = new ArrayList<>(List.of("--project", fixture.project.toString(), "--results",
-			runRoot.toString(), "--model", "haiku", "--effort", "low"));
+			resultsFolder.toString(), "--model", "haiku", "--effort", "low"));
 		arguments.addAll(List.of(extra));
 		SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "The prompt optimizer", "claude",
 			ownArtifact, arguments,
@@ -841,22 +841,22 @@ public final class RequestServerTest
 		FileLocks fileLocks = new FileLocks();
 		return arguments ->
 		{
-			Path runRoot = Path.of(option(arguments, "--results"));
+			Path resultsFolder = Path.of(option(arguments, "--results"));
 			List<String> entries;
-			try (Stream<Path> paths = Files.list(runRoot))
+			try (Stream<Path> paths = Files.list(resultsFolder))
 			{
 				// The server prepares the session's policy in the slot, in entries whose names start with a dot
 				entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).
 					toList();
 			}
-			NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot, Clock.systemUTC(),
-				Yielding.fileReplacer()).withFixedRunId(option(arguments, "--slot-id"));
-			NestedSession run = manager.create("claude");
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, resultsFolder, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId(option(arguments, "--slot-id"));
+			NestedSession nestedSession = manager.create("claude");
 			String sessionId = UUID.randomUUID().toString();
-			manager.recordHarnessSession(run, sessionId);
-			served.add(new ServedNestedSession(runRoot, run, entries));
-			Files.writeString(run.directory().resolve("result.txt"), String.valueOf(served.size()));
-			Files.writeString(run.directory().resolve("left-behind"), "left behind");
+			manager.recordHarnessSession(nestedSession, sessionId);
+			served.add(new ServedNestedSession(resultsFolder, nestedSession, entries));
+			Files.writeString(nestedSession.directory().resolve("result.txt"), String.valueOf(served.size()));
+			Files.writeString(nestedSession.directory().resolve("left-behind"), "left behind");
 			Path output = Path.of(option(arguments, "--output"));
 			Files.writeString(output, fixture.json.createObjectNode().put("type", "started") + "\n" +
 				fixture.json.createObjectNode().put("type", "session_id").put("session_id", sessionId) + "\n");
@@ -869,9 +869,9 @@ public final class RequestServerTest
 					{
 						Files.writeString(output, fixture.json.createObjectNode().put("type", "completed") + "\n",
 							StandardOpenOption.APPEND);
-						manager.markCompleted(run);
+						manager.markCompleted(nestedSession);
 						NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(),
-							Path.of(option(arguments, "--receipt")), run, output, List.of());
+							Path.of(option(arguments, "--receipt")), nestedSession, output, List.of());
 						process.get().exit();
 					}
 				}
@@ -887,11 +887,11 @@ public final class RequestServerTest
 	/**
 	 * What a served session finds in its slot, and the run that it builds there.
 	 *
-	 * @param runRoot        the results folder that the session received
-	 * @param run            the run that it built
+	 * @param resultsFolder  the results folder that the session received
+	 * @param nestedSession  the run that it built
 	 * @param entriesAtStart the names of the entries of the results folder when the session started
 	 */
-	private record ServedNestedSession(Path runRoot, NestedSession run, List<String> entriesAtStart)
+	private record ServedNestedSession(Path resultsFolder, NestedSession nestedSession, List<String> entriesAtStart)
 	{
 	}
 

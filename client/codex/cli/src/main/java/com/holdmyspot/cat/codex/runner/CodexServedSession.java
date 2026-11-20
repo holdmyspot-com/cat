@@ -197,8 +197,8 @@ public final class CodexServedSession
 		requireThat(environment, "environment").isNotNull();
 		requireThat(accountHome, "accountHome").isNotNull();
 		// A run's session has no use for a request server, since it requests sessions from its own runner
-		if (HarnessEnvironment.RUN_VALUE.equals(environment.get(HarnessEnvironment.RUN_VARIABLE)))
-			return inRun();
+		if (HarnessEnvironment.NESTED_SESSION_VALUE.equals(environment.get(HarnessEnvironment.NESTED_SESSION_VARIABLE)))
+			return inNestedSession();
 		List<String> denied = List.of();
 		Optional<String> profile = Optional.empty();
 		Optional<String> command = Optional.empty();
@@ -244,7 +244,7 @@ public final class CodexServedSession
 	 *
 	 * @return the reason
 	 */
-	private static String inRun()
+	private static String inNestedSession()
 	{
 		return "CAT cannot start the request server: this command runs in a session of a CAT run, and no request " +
 			"server serves such a session. Codex runs a command that a rule allows outside its sandbox only when the " +

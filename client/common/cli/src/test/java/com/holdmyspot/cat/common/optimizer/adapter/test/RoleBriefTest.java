@@ -247,8 +247,8 @@ public final class RoleBriefTest
 					denied.add(options.get(i + 1));
 			}
 			requireThat(denied, "denied").isEqualTo(List.of(heldOut.toString(),
-				settings.heldOutRunRoot().toString(), root.toString()));
-			for (Path protectedPath : List.of(heldOut, settings.heldOutRunRoot()))
+				settings.heldOutResultsFolder().toString(), root.toString()));
+			for (Path protectedPath : List.of(heldOut, settings.heldOutResultsFolder()))
 				requireThat(protectedPath.startsWith(rules), "grantContainsHeldOut").isFalse();
 		}
 	}

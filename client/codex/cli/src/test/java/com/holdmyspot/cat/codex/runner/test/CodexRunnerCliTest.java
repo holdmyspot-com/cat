@@ -73,7 +73,7 @@ public final class CodexRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void defaultsRunRootToSessionTemp() throws IOException
+	public void defaultsResultsFolderToSessionTemp() throws IOException
 	{
 		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -91,7 +91,7 @@ public final class CodexRunnerCliTest
 
 				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(THREAD_ID).
 					resolve("temp");
-				requireThat(options.runRoot().getParent(), "runRootParent").isEqualTo(sessionTemp);
+				requireThat(options.resultsFolder().getParent(), "runRootParent").isEqualTo(sessionTemp);
 				requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
 			}
 		}
@@ -104,7 +104,7 @@ public final class CodexRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void requiresRunRootWithoutThreadId() throws IOException
+	public void requiresResultsWithoutThreadId() throws IOException
 	{
 		// Requirement: R-W13
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -193,9 +193,9 @@ public final class CodexRunnerCliTest
 	public Object[][] missingEvidence()
 	{
 		String artifact = Path.of("/artifact").toAbsolutePath().toString();
-		String runRoot = Path.of("/runs").toAbsolutePath().toString();
-		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--results", runRoot,
-			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--results", runRoot,
+		String resultsFolder = Path.of("/runs").toAbsolutePath().toString();
+		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--results", resultsFolder,
+			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--results", resultsFolder,
 			"--read-only-evidence", "--install-cat"}}};
 	}
 
@@ -277,13 +277,13 @@ public final class CodexRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void marksRunOfEndedOwnerFailed() throws IOException
+	public void marksSessionOfEndedOwnerFailed() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			Path manifest = createRun(jvm, root.resolve("runs"));
+			Path manifest = createSession(jvm, root.resolve("runs"));
 			// A start that differs from the one of the process holding the recorded identifier means that the
 			// identifier now belongs to another process, so the runner that created the run has ended
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
@@ -302,14 +302,14 @@ public final class CodexRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void keepsRunOfLiveOwnerRunning() throws IOException
+	public void keepsSessionOfLiveOwnerRunning() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			// The process that runs the test owns the run and is alive
-			Path manifest = createRun(jvm, root.resolve("runs"));
+			Path manifest = createSession(jvm, root.resolve("runs"));
 
 			startUntilCapacityIsRequested(jvm, root);
 
@@ -320,14 +320,14 @@ public final class CodexRunnerCliTest
 	/**
 	 * Creates a running run that the process executing the test owns.
 	 *
-	 * @param jvm     the test's process scope
-	 * @param runRoot the directory that holds the runs
+	 * @param jvm           the test's process scope
+	 * @param resultsFolder the directory that holds the runs
 	 * @return the run's manifest
 	 * @throws IOException if the run cannot be created
 	 */
-	private static Path createRun(TestJvmScope jvm, Path runRoot) throws IOException
+	private static Path createSession(TestJvmScope jvm, Path resultsFolder) throws IOException
 	{
-		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		return manager.create("codex").directory().resolve("session.json");
 	}
@@ -532,7 +532,7 @@ public final class CodexRunnerCliTest
 	 * @throws IOException if the test filesystem cannot be used
 	 */
 	@Test
-	public void resumedAgentRunTakesLaunchProfile() throws IOException
+	public void resumedAgentSessionTakesLaunchProfile() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -546,7 +546,7 @@ public final class CodexRunnerCliTest
 
 			requireThat(options.model(), "model").isEqualTo("gpt-5.5");
 			requireThat(options.effort(), "effort").isEqualTo("high");
-			requireThat(options.resumeRun(), "resumeRun").isEqualTo("019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b");
+			requireThat(options.resumeSlot(), "resumeSlot").isEqualTo("019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b");
 		}
 	}
 
@@ -821,7 +821,7 @@ public final class CodexRunnerCliTest
 	 * @param option the option that the forwarded launch names
 	 */
 	@Test(dataProvider = "bridgeOverrides")
-	public void forwardsBridgeOverrideInsideRun(String option)
+	public void forwardsBridgeOverrideInNestedSession(String option)
 	{
 		StringWriter errors = new StringWriter();
 

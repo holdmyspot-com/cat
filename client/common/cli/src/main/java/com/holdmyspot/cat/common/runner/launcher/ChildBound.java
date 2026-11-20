@@ -113,12 +113,12 @@ public final class ChildBound
 	/**
 	 * Returns the policy that bounds a child.
 	 *
-	 * @param harness      the child's harness identifier
-	 * @param runRoot      the folder that holds the child's run
-	 * @param deniedReads  the absolute paths that the launch denies the child
-	 * @param extra        the writes and hosts that the child's commands need beyond what its harness needs
-	 * @param askingThread the identifier that the parent's harness gives the thread that asks for the child, or
-	 *                     empty for the parent's main thread
+	 * @param harness       the child's harness identifier
+	 * @param resultsFolder the folder that holds the child's run
+	 * @param deniedReads   the absolute paths that the launch denies the child
+	 * @param extra         the writes and hosts that the child's commands need beyond what its harness needs
+	 * @param askingThread  the identifier that the parent's harness gives the thread that asks for the child, or
+	 *                      empty for the parent's main thread
 	 * @return the bound
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
@@ -126,18 +126,18 @@ public final class ChildBound
 	 *                                  needs; the message names the settings that would allow it
 	 * @throws IOException              if what the child needs cannot be determined
 	 */
-	public ChildPolicy bound(String harness, Path runRoot, List<Path> deniedReads, ExtraPermissions extra,
+	public ChildPolicy bound(String harness, Path resultsFolder, List<Path> deniedReads, ExtraPermissions extra,
 		Optional<String> askingThread) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
-		requireThat(runRoot, "runRoot").isNotNull();
+		requireThat(resultsFolder, "resultsFolder").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(extra, "extra").isNotNull();
 		requireThat(askingThread, "askingThread").isNotNull();
 		ParentPolicy policy = readParent(snapshot, trusted, askingThread);
 		try
 		{
-			return ChildPolicy.intersect(policy, needs.needs(harness, runRoot, deniedReads, policy).with(extra));
+			return ChildPolicy.intersect(policy, needs.needs(harness, resultsFolder, deniedReads, policy).with(extra));
 		}
 		catch (PolicyRefusal e)
 		{

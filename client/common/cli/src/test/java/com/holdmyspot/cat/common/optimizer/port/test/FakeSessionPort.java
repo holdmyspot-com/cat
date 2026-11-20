@@ -63,13 +63,13 @@ public final class FakeSessionPort implements SessionPort
 	 * The directories that a port reports as holding its runs unless the test supplies its own: a results folder and a
 	 * held-out results folder, as a real port has, which do not exist.
 	 */
-	private static final List<Path> DEFAULT_RUN_ROOTS = List.of(
+	private static final List<Path> DEFAULT_RESULTS_FOLDERS = List.of(
 		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/development"),
 		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/held-out"));
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
 	private final String heldOutExposure;
-	private final List<Path> runRoots;
+	private final List<Path> resultsFolders;
 	private final Map<Path, SessionEvidence> evidence = new HashMap<>();
 	private final Set<Path> readTranscripts = new HashSet<>();
 	/**
@@ -140,7 +140,7 @@ public final class FakeSessionPort implements SessionPort
 	 */
 	public FakeSessionPort(HostLogin login, String heldOutExposure)
 	{
-		this(login, heldOutExposure, DEFAULT_RUN_ROOTS);
+		this(login, heldOutExposure, DEFAULT_RESULTS_FOLDERS);
 	}
 
 	/**
@@ -148,16 +148,16 @@ public final class FakeSessionPort implements SessionPort
 	 *
 	 * @param login the login that {@link #hostLogin()} reports
 	 * @param heldOutExposure the value that {@link #findHeldOutExposure(Path)} reports, or null if it reports none
-	 * @param runRoots the directories that {@link #runRoots()} reports
-	 * @throws NullPointerException if {@code login} or {@code runRoots} are null
+	 * @param resultsFolders the directories that {@link #resultsFolders()} reports
+	 * @throws NullPointerException if {@code login} or {@code resultsFolders} are null
 	 */
-	public FakeSessionPort(HostLogin login, String heldOutExposure, List<Path> runRoots)
+	public FakeSessionPort(HostLogin login, String heldOutExposure, List<Path> resultsFolders)
 	{
 		requireThat(login, "login").isNotNull();
-		requireThat(runRoots, "runRoots").isNotNull();
+		requireThat(resultsFolders, "resultsFolders").isNotNull();
 		this.login = login;
 		this.heldOutExposure = heldOutExposure;
-		this.runRoots = List.copyOf(runRoots);
+		this.resultsFolders = List.copyOf(resultsFolders);
 	}
 
 	@Override
@@ -204,9 +204,9 @@ public final class FakeSessionPort implements SessionPort
 	}
 
 	@Override
-	public List<Path> runRoots()
+	public List<Path> resultsFolders()
 	{
-		return runRoots;
+		return resultsFolders;
 	}
 
 	@Override

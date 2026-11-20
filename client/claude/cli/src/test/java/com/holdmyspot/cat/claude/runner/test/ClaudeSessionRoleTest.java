@@ -330,7 +330,7 @@ public final class ClaudeSessionRoleTest
 		private final Path deniedDirectory;
 		private final List<Path> deniedReads = new ArrayList<>();
 		private final NestedSessionManager manager;
-		private final NestedSession run;
+		private final NestedSession nestedSession;
 		private final SessionRequestAccess requestAccess;
 		private final List<Path> dependencyCaches;
 		private final List<Path> evidence;
@@ -348,13 +348,13 @@ public final class ClaudeSessionRoleTest
 			Path hostProject = Files.createDirectories(root.resolve("project"));
 			manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			run = manager.create("claude");
-			manager.snapshotProject(run);
-			Files.createDirectories(run.directory().resolve("home/.claude"));
+			nestedSession = manager.create("claude");
+			manager.snapshotProject(nestedSession);
+			Files.createDirectories(nestedSession.directory().resolve("home/.claude"));
 			deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 			deniedDirectory = Files.createDirectory(root.resolve("trials"));
 			evidence = List.of(Files.createDirectory(root.resolve("evidence")));
-			requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0, Platform.LINUX_X64,
+			requestAccess = SessionRequestAccess.allowing(nestedSession, root.resolve("artifact"), 0, Platform.LINUX_X64,
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			deniedReads.addAll(List.of(deniedFile, deniedDirectory, hostProject));
 			dependencyCaches = List.of(root.resolve("host-home/.npm"), root.resolve("host-home/.m2"));
@@ -382,7 +382,7 @@ public final class ClaudeSessionRoleTest
 		 */
 		String linkTargetsRule()
 		{
-			return rule(NestedSessionManager.linkTargets(run.directory()), true);
+			return rule(NestedSessionManager.linkTargets(nestedSession.directory()), true);
 		}
 
 		/**
@@ -415,9 +415,10 @@ public final class ClaudeSessionRoleTest
 		{
 			Path destination = root.resolve(name);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				run.directory().resolve("claude"), run.directory().resolve("home"), dependencyCaches, run.directory(),
-				sessionDeniedReads(), "", requestAccess, run.directory().resolve("project"), run.directory(), null,
-				ExtraPermissions.NONE, "api.anthropic.com", promptCacheTtl, sandboxed, tools);
+				nestedSession.directory().resolve("claude"), nestedSession.directory().resolve("home"), dependencyCaches,
+				nestedSession.directory(),
+				sessionDeniedReads(), "", requestAccess, nestedSession.directory().resolve("project"),
+				nestedSession.directory(), null, ExtraPermissions.NONE, "api.anthropic.com", promptCacheTtl, sandboxed, tools);
 			return destination;
 		}
 
@@ -434,8 +435,10 @@ public final class ClaudeSessionRoleTest
 		{
 			Path destination = root.resolve(name);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				run.directory().resolve("claude"), run.directory().resolve("home"), dependencyCaches, run.directory(),
-				sessionDeniedReads(), "", requestAccess, run.directory().resolve("project"), run.directory(), null,
+				nestedSession.directory().resolve("claude"), nestedSession.directory().resolve("home"), dependencyCaches,
+				nestedSession.directory(),
+				sessionDeniedReads(), "", requestAccess, nestedSession.directory().resolve("project"),
+				nestedSession.directory(), null,
 				ExtraPermissions.NONE, "api.anthropic.com", ClaudeSessionRole.TRIAL.promptCacheTtl());
 			return destination;
 		}
@@ -448,7 +451,7 @@ public final class ClaudeSessionRoleTest
 		 */
 		private List<Path> sessionDeniedReads() throws IOException
 		{
-			return ClaudeRunner.sessionDeniedReads(manager, run, evidence, deniedReads, Map.of(), requestAccess);
+			return ClaudeRunner.sessionDeniedReads(manager, nestedSession, evidence, deniedReads, Map.of(), requestAccess);
 		}
 	}
 }

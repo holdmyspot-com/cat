@@ -55,14 +55,14 @@ public final class StreamJsonPromptSourcesTest
 	 * Observes lines.
 	 *
 	 * @param lines the harness event lines
-	 * @param run the run directory that the lines mention
+	 * @param sessionFolder the run directory that the lines mention
 	 * @return the observed value
 	 */
-	private static String observe(List<String> lines, String run)
+	private static String observe(List<String> lines, String sessionFolder)
 	{
 		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
 			newStreamJsonPromptSources(JSON,
-			Map.of("<run>", Path.of(run)));
+			Map.of("<run>", Path.of(sessionFolder)));
 		for (String line : lines)
 			sources.accept(line);
 		return sources.value();
@@ -121,7 +121,7 @@ public final class StreamJsonPromptSourcesTest
 	 * @throws IOException if the recorded lines cannot be read
 	 */
 	@Test
-	public void listsLoadedSourcesWithoutRunPaths() throws IOException
+	public void listsLoadedSourcesWithoutSessionPaths() throws IOException
 	{
 		// Requirement: R-M1
 		String value = observe(recorded(), RUN);
@@ -202,7 +202,7 @@ public final class StreamJsonPromptSourcesTest
 	 * @throws IOException if the recorded lines cannot be read
 	 */
 	@Test
-	public void ignoresWhereTheRunWasStaged() throws IOException
+	public void ignoresWhereTheSessionWasStaged() throws IOException
 	{
 		// Requirement: R-M1
 		String other = "/elsewhere/stage-7f3a/claude/zz99";

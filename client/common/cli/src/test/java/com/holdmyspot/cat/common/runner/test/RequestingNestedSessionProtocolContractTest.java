@@ -47,19 +47,19 @@ public final class RequestingNestedSessionProtocolContractTest
 	private static Observation runRequestingSession(Inputs inputs) throws IOException
 	{
 		JsonMapper json = JsonMapper.builder().build();
-		NestedSessionOutput runOutput = serveRequestingSession(inputs, json);
-		requireThat(runOutput.launches().size(), "requestedLaunchCount").isEqualTo(1);
-		List<String> launched = runOutput.launches().getFirst();
+		NestedSessionOutput sessionOutput = serveRequestingSession(inputs, json);
+		requireThat(sessionOutput.launches().size(), "requestedLaunchCount").isEqualTo(1);
+		List<String> launched = sessionOutput.launches().getFirst();
 		Path receipt = Path.of(ScriptedHarness.optionValue(launched, "--receipt"));
 		Path responseDirectory = receipt.getParent();
 		JsonNode response = json.readTree(responseDirectory.resolve("response.json").toFile());
 		requireThat(response.path("status").asString(), "responseStatus").isEqualTo("completed");
 		Path transcript = Path.of(response.path("transcript").asString());
-		Path retainedRun = Path.of(response.path("run").asString());
+		Path retainedSession = Path.of(response.path("run").asString());
 		requireThat(response.path("session_id").asString(), "sessionId").isEqualTo(RequestingNestedSession.SESSION_ID);
-		List<String> prompts = runOutput.received().stream().map(record -> readPrompt(json, record)).
+		List<String> prompts = sessionOutput.received().stream().map(record -> readPrompt(json, record)).
 			filter(prompt -> !prompt.isEmpty()).toList();
-		return new Observation(transcript, receipt, retainedRun, prompts);
+		return new Observation(transcript, receipt, retainedSession, prompts);
 	}
 
 	/**
@@ -81,7 +81,7 @@ public final class RequestingNestedSessionProtocolContractTest
 				turns.write(turnRecord(json, inputs.prompts().getFirst()));
 				turns.flush();
 				List<String> arguments = List.of("--project", inputs.root().resolve("project").toString(), "--model",
-					"model-a", "--effort", "effort-a", "--results", inputs.runRoot().toString());
+					"model-a", "--effort", "effort-a", "--results", inputs.resultsFolder().toString());
 				SessionRequestForwarder.serve("requested-session contract", "codex", inputs.artifact(), arguments,
 					input, output, parent.requests(), Thread::yield);
 				requireThat(output.completedTurns, "causallyForwardedTurns").isEqualTo(2);

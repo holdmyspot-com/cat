@@ -29,25 +29,25 @@ public final class ResultsCopy
 	/**
 	 * The directory of a kept run that holds the child's isolated home, which is never copied.
 	 */
-	private static final String RUN_HOME = "home";
+	private static final String SESSION_HOME = "home";
 	/**
 	 * The directory of a kept run that holds the copy of the project that the child worked in.
 	 */
-	private static final String RUN_PROJECT = "project";
+	private static final String SESSION_PROJECT = "project";
 	/**
 	 * The directory of a kept run that holds the copy of the project as it was before the child's first turn.
 	 */
-	private static final String RUN_INITIAL_PROJECT = "initial-project";
+	private static final String SESSION_INITIAL_PROJECT = "initial-project";
 	/**
 	 * The manifest of a run, which {@link #copy(Path, Path, String, Path)} writes after the rest of the run.
 	 */
 	private static final Path MANIFEST = Path.of("session.json");
-	private static final String RUN_ARTIFACTS = "artifacts";
-	private static final String RUN_TRANSCRIPTS = "session-transcripts";
+	private static final String SESSION_ARTIFACTS = "artifacts";
+	private static final String SESSION_TRANSCRIPTS = "session-transcripts";
 	/**
 	 * The directories of a run that {@link #copyTurn(Path, Path)} replaces.
 	 */
-	private static final Set<String> TURN_COPIES = Set.of(RUN_PROJECT, RUN_INITIAL_PROJECT);
+	private static final Set<String> TURN_COPIES = Set.of(SESSION_PROJECT, SESSION_INITIAL_PROJECT);
 
 	/**
 	 * How the copy of a kept run ended.
@@ -145,16 +145,16 @@ public final class ResultsCopy
 	 * Removes the project, initial project and session transcript copies from a run's copy, so that a copy of the whole
 	 * run can follow.
 	 *
-	 * @param run the run's copy
-	 * @throws NullPointerException if {@code run} is null
+	 * @param sessionFolder the run's copy
+	 * @throws NullPointerException if {@code sessionFolder} is null
 	 * @throws IOException          if a file cannot be removed
 	 */
-	public static void deleteTurnCopies(Path run) throws IOException
+	public static void deleteTurnCopies(Path sessionFolder) throws IOException
 	{
-		requireThat(run, "run").isNotNull();
+		requireThat(sessionFolder, "sessionFolder").isNotNull();
 		for (String name : TURN_COPIES)
-			TemporaryDirectories.deleteRecursively(run.resolve(name));
-		TemporaryDirectories.deleteRecursively(run.resolve(RUN_ARTIFACTS).resolve(RUN_TRANSCRIPTS));
+			TemporaryDirectories.deleteRecursively(sessionFolder.resolve(name));
+		TemporaryDirectories.deleteRecursively(sessionFolder.resolve(SESSION_ARTIFACTS).resolve(SESSION_TRANSCRIPTS));
 	}
 
 	/**
@@ -168,8 +168,8 @@ public final class ResultsCopy
 		if (relative.toString().isEmpty())
 			return true;
 		String first = relative.getName(0).toString();
-		return TURN_COPIES.contains(first) || first.equals(RUN_ARTIFACTS) &&
-			(relative.getNameCount() == 1 || relative.getName(1).toString().equals(RUN_TRANSCRIPTS));
+		return TURN_COPIES.contains(first) || first.equals(SESSION_ARTIFACTS) &&
+			(relative.getNameCount() == 1 || relative.getName(1).toString().equals(SESSION_TRANSCRIPTS));
 	}
 
 	/**
@@ -180,9 +180,9 @@ public final class ResultsCopy
 	 */
 	private static boolean isRequiredTranscript(Path relative)
 	{
-		return relative.getNameCount() == 1 && relative.getName(0).toString().equals(RUN_ARTIFACTS) ||
-			relative.getNameCount() >= 2 && relative.getName(0).toString().equals(RUN_ARTIFACTS) &&
-				relative.getName(1).toString().equals(RUN_TRANSCRIPTS);
+		return relative.getNameCount() == 1 && relative.getName(0).toString().equals(SESSION_ARTIFACTS) ||
+			relative.getNameCount() >= 2 && relative.getName(0).toString().equals(SESSION_ARTIFACTS) &&
+				relative.getName(1).toString().equals(SESSION_TRANSCRIPTS);
 	}
 
 	/**
@@ -206,7 +206,7 @@ public final class ResultsCopy
 		}
 		if (copier.failures.isEmpty())
 			return new Result(Optional.empty(), copier.skipped);
-		return new Result(Optional.of(incompleteRun(copier.failures, target)), copier.skipped);
+		return new Result(Optional.of(incompleteCopy(copier.failures, target)), copier.skipped);
 	}
 
 	/**
@@ -241,7 +241,7 @@ public final class ResultsCopy
 	 * @param target   the copy of the kept run
 	 * @return the message
 	 */
-	private static String incompleteRun(List<String> failures, Path target)
+	private static String incompleteCopy(List<String> failures, Path target)
 	{
 		return String.join("\n", failures) + "\nThe kept run at " + target + " is incomplete.";
 	}
@@ -264,7 +264,7 @@ public final class ResultsCopy
 		 * requester reads the run either, which would let the child write where the requester's sandbox forbids it.
 		 */
 		private static final Set<Path> UNCHANGED = ProtectedProjectFiles.paths().stream().
-			map(path -> Path.of(RUN_PROJECT).resolve(path)).collect(Collectors.toUnmodifiableSet());
+			map(path -> Path.of(SESSION_PROJECT).resolve(path)).collect(Collectors.toUnmodifiableSet());
 		/**
 		 * The kept run that is copied.
 		 */
@@ -373,7 +373,7 @@ public final class ResultsCopy
 		public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) throws IOException
 		{
 			Path relative = source.relativize(directory);
-			if (relative.equals(Path.of(RUN_HOME)) || UNCHANGED.contains(relative) || !includes(relative))
+			if (relative.equals(Path.of(SESSION_HOME)) || UNCHANGED.contains(relative) || !includes(relative))
 				return FileVisitResult.SKIP_SUBTREE;
 			attempted = copyOf(directory);
 			try

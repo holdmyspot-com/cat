@@ -85,7 +85,7 @@ public final class HarnessTemporaryRoot
 	 * @throws UncheckedIOException if the session variable is not a UUID in canonical form, or if the session's CAT
 	 *   session directory cannot be created
 	 */
-	public Path defaultRunRoot()
+	public Path defaultResultsFolder()
 	{
 		Optional<Path> temp;
 		try
@@ -104,16 +104,17 @@ public final class HarnessTemporaryRoot
 	/**
 	 * Returns the results folder that a command line selects.
 	 *
-	 * @param runRoot the {@code --results} value, or {@code null} when the command line names none
+	 * @param resultsFolder the {@code --results} value, or {@code null} when the command line names none
 	 * @return the normalized absolute results folder
-	 * @throws InvalidArgumentsException if {@code runRoot} is null and there is no harness session
-	 * @throws UncheckedIOException if {@code runRoot} is null and the session's CAT session directory cannot be opened
+	 * @throws InvalidArgumentsException if {@code resultsFolder} is null and there is no harness session
+	 * @throws UncheckedIOException if {@code resultsFolder} is null and the session's CAT session directory cannot be
+	 *                              opened
 	 */
-	Path runRoot(String runRoot)
+	Path resultsFolder(String resultsFolder)
 	{
-		if (runRoot == null)
-			return defaultRunRoot();
-		return Path.of(runRoot).toAbsolutePath().normalize();
+		if (resultsFolder == null)
+			return defaultResultsFolder();
+		return Path.of(resultsFolder).toAbsolutePath().normalize();
 	}
 
 	/**

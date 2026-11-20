@@ -139,18 +139,18 @@ public final class HarnessProjectRepositoryTest
 	 * Copies a one-file fixture to a new project, initializes it and returns its baseline commit hash.
 	 *
 	 * @param sourceProject the source project whose Git identity is inherited
-	 * @param run           the run directory, created by this method; the project is its {@code project} child
+	 * @param sessionFolder the run directory, created by this method; the project is its {@code project} child
 	 * @param content       the fixture file's content
 	 * @param parent        the parent environment
 	 * @return the hash of the project's {@code HEAD}
 	 * @throws IOException if the fixture cannot be created or initialization fails
 	 */
-	private static String baselineHash(Path sourceProject, Path run, String content, Map<String, String> parent)
+	private static String baselineHash(Path sourceProject, Path sessionFolder, String content, Map<String, String> parent)
 		throws IOException
 	{
-		Path project = Files.createDirectories(run.resolve("project"));
+		Path project = Files.createDirectories(sessionFolder.resolve("project"));
 		Files.writeString(project.resolve("file.txt"), content, UTF_8);
-		HarnessProjectRepository.initialize(sourceProject, project, run, parent, Yielding.executableFiles(), null,
+		HarnessProjectRepository.initialize(sourceProject, project, sessionFolder, parent, Yielding.executableFiles(), null,
 			null);
 		return new Git(project).lines("rev-parse", "HEAD").getFirst();
 	}

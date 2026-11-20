@@ -347,7 +347,7 @@ public final class SliceTest
 			DriverContext observed = new DriverContext(context.fileLocks(), context.store(), sessions, context.workspace(),
 				context.interrupts(), context.clock(), context.overlays(), context.judge(), context.triage(), context.ranking(),
 				context.promptAuthor(), context.values(), context.deliverer(), context.calibrator(),
-				context.terminator(), context.leftoverRuns(), context.authority(), context.promptSources(),
+				context.terminator(), context.leftoverSessions(), context.authority(), context.promptSources(),
 				context.environment(), context.lockFile(), context.random(), context.settings(), context.json(),
 				context.temporaryDirectory());
 			AtomicReference<Thread> worker = new AtomicReference<>();
@@ -470,9 +470,9 @@ public final class SliceTest
 		}
 
 		@Override
-		public List<Path> runRoots()
+		public List<Path> resultsFolders()
 		{
-			return delegate.runRoots();
+			return delegate.resultsFolders();
 		}
 
 		@Override

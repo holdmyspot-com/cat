@@ -69,11 +69,11 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	{
 		requireThat(parent, "parent").isNotNull();
 		requireThat(needs, "needs").isNotNull();
-		Path runFolder = RealPaths.resolve(needs.runFolder());
+		Path sessionFolder = RealPaths.resolve(needs.sessionFolder());
 		List<Path> extraWrites = RealPaths.resolveAll(needs.extraWrites());
 		List<Path> childReadDenials = RealPaths.resolveAll(needs.readDenials());
 		Set<Path> writeRoots = new LinkedHashSet<>();
-		writeRoots.add(runFolder);
+		writeRoots.add(sessionFolder);
 		if (!parent.sandboxed())
 		{
 			writeRoots.addAll(extraWrites);
@@ -87,7 +87,7 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 		Map<Path, Path> deniedWrites = new LinkedHashMap<>();
 		for (Path write : extraWrites)
 		{
-			if (write.startsWith(runFolder))
+			if (write.startsWith(sessionFolder))
 				writeRoots.add(write);
 			else if (!RealPaths.isInsideAny(write, parentWriteRoots))
 				missingWrites.add(write);

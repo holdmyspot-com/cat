@@ -70,7 +70,7 @@ public final class ClaudeRunnerTest
 	 * directory so run cleanup removes the workaround with the completed run.
 	 */
 	@Test
-	public void resolvesRunLaunchConfiguration()
+	public void resolvesSessionLaunchConfiguration()
 	{
 		Path temporaryDirectory = Path.of("/system-temporary-directory/.cat/claude/claude/run-id/claude").toAbsolutePath();
 
@@ -113,7 +113,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the environment cannot be built
 	 */
 	@Test
-	public void marksCatRun() throws IOException
+	public void marksNestedSession() throws IOException
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -121,14 +121,14 @@ public final class ClaudeRunnerTest
 			Path home = cleanup.add(Files.createTempDirectory("cat-claude-run-marker-"));
 			Path settings = Files.writeString(home.resolve("settings.json"), """
 				{"env": {"%s": ""}}
-				""".formatted(HarnessEnvironment.RUN_VARIABLE));
+				""".formatted(HarnessEnvironment.NESTED_SESSION_VARIABLE));
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
 				HarnessDependencyCaches.NONE, settings, home, null);
 
-			requireThat(result.get(HarnessEnvironment.RUN_VARIABLE), "marker").isEqualTo("1");
+			requireThat(result.get(HarnessEnvironment.NESTED_SESSION_VARIABLE), "marker").isEqualTo("1");
 		}
 	}
 
@@ -340,7 +340,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the fixture cannot be built
 	 */
 	@Test(dataProvider = "environmentsWithoutLogin")
-	public void refusesRunWithoutLogin(Platform platform, boolean configured, Map<String, String> environment)
+	public void refusesSessionWithoutLogin(Platform platform, boolean configured, Map<String, String> environment)
 		throws IOException
 	{
 		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
@@ -382,7 +382,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the fixture cannot be built
 	 */
 	@Test(dataProvider = "loginStorePlatforms")
-	public void refusesRunWithoutLoginInUserLoginStore(Platform platform, boolean named) throws IOException
+	public void refusesSessionWithoutLoginInUserStore(Platform platform, boolean named) throws IOException
 	{
 		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
 		try (TestJvmScope build = new TestJvmScope();
@@ -463,7 +463,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the fixture cannot be built
 	 */
 	@Test(dataProvider = "configurationChoices")
-	public void startsRunOnWindowsWithoutLoginFile(boolean configured) throws IOException
+	public void startsSessionOnWindowsWithoutLoginFile(boolean configured) throws IOException
 	{
 		FakeKeychain keychain = new FakeKeychain(FakeKeychain.NOT_FOUND);
 		try (TestJvmScope build = new TestJvmScope();
@@ -596,7 +596,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the fixture cannot be built
 	 */
 	@Test
-	public void startsRunWhenKeychainCannotTell() throws IOException
+	public void startsSessionWhenKeychainCannotTell() throws IOException
 	{
 		// errSecInteractionNotAllowed, which security reports while the Keychain is locked
 		FakeKeychain keychain = new FakeKeychain(36);
@@ -765,7 +765,7 @@ public final class ClaudeRunnerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
 			Path userHome = Files.createDirectory(root.resolve("user"));
-			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), userHome.toString());
@@ -784,11 +784,11 @@ public final class ClaudeRunnerTest
 				loginStore = "";
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
 
 			requireThat(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"), "loginStore").isEqualTo(loginStore);
 			requireThat(result.get("CLAUDE_CONFIG_DIR"), "configurationDirectory").
-				isEqualTo(runHome.resolve(".claude").toString());
+				isEqualTo(sessionHome.resolve(".claude").toString());
 		}
 	}
 
@@ -812,7 +812,7 @@ public final class ClaudeRunnerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-login-class-")).toRealPath();
 			Path store = Files.createDirectory(root.resolve("store"));
-			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), root.resolve("user").toString());
@@ -828,7 +828,7 @@ public final class ClaudeRunnerTest
 				environment.put("CAT_HOST_LOGIN", callerClaim);
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
 
 			requireThat(result.get("CAT_HOST_LOGIN"), "hostLogin").isEqualTo(expected);
 		}
@@ -866,12 +866,12 @@ public final class ClaudeRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
-			Path runHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
 				root.resolve("user").toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", "login-store");
 
 			Map<String, String> result = ClaudeRunner.processEnvironment(scope, environment,
-				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), runHome, null);
+				HarnessDependencyCaches.NONE, root.resolve("missing-settings.json"), sessionHome, null);
 
 			Path loginStore = Path.of(result.get("CLAUDE_SECURESTORAGE_CONFIG_DIR"));
 			requireThat(loginStore.isAbsolute(), "loginStore.isAbsolute()").isTrue();
@@ -931,15 +931,16 @@ public final class ClaudeRunnerTest
 				"CLAUDE_CONFIG_DIR", configured.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("claude");
-			manager.snapshotProject(run);
-			Path project = Files.createDirectories(run.directory().resolve("project/.git")).getParent();
-			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(), environment);
+			NestedSession nestedSession = manager.create("claude");
+			manager.snapshotProject(nestedSession);
+			Path project = Files.createDirectories(nestedSession.directory().resolve("project/.git")).getParent();
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, nestedSession, List.of(), List.of(),
+				environment);
 
 			ChildPolicy policy = ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"),
-				run.directory().resolve("home/.claude/settings.json"), run.directory().resolve("claude"),
-				run.directory().resolve("home"), List.of(), run.directory(), deniedReads, "", null, project,
-				run.directory(), null, ExtraPermissions.NONE, "api.example");
+				nestedSession.directory().resolve("home/.claude/settings.json"), nestedSession.directory().resolve("claude"),
+				nestedSession.directory().resolve("home"), List.of(), nestedSession.directory(), deniedReads, "", null, project,
+				nestedSession.directory(), null, ExtraPermissions.NONE, "api.example");
 
 			List<Path> logins = List.of(defaultLogin, configuredLogin, storeLogin);
 			requireThat(policy.readDenials(), "readDenials").containsAll(logins);
@@ -1381,11 +1382,11 @@ public final class ClaudeRunnerTest
 			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
 			Path directory = Files.createDirectories(capture.resolve("a".repeat(100)).resolve("b".repeat(100)).
 				resolve("c".repeat(100)).resolve("runs/claude/abc123-def456"));
-			NestedSession run = new NestedSession("claude", "abc123-def456", directory);
+			NestedSession nestedSession = new NestedSession("claude", "abc123-def456", directory);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
 			requireThat(worktree.toString().length(), "projectPathLength").isGreaterThan(260);
 
-			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), run);
+			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
 
 			Path projectFolder = hookResults.resolve(ClaudeRunner.claudeProjectDirectory(worktree));
 			requireThat(projectFolder.getFileName().toString().length(), "folderNameLength").isLessThanOrEqualTo(255);
@@ -1403,8 +1404,8 @@ public final class ClaudeRunnerTest
 		{
 			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
 			Path directory = Files.createDirectories(capture.resolve("runs/claude/abc123-def456"));
-			NestedSession run = new NestedSession("claude", "abc123-def456", directory);
-			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), run);
+			NestedSession nestedSession = new NestedSession("claude", "abc123-def456", directory);
+			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
 			String canonicalName = ClaudeRunner.claudeProjectDirectory(worktree);
 			String parentName = ClaudeRunner.claudeProjectDirectory(capture.resolve("runs").toAbsolutePath().normalize());
@@ -1425,7 +1426,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesReadingRunRecordsAndOtherRuns() throws IOException
+	public void deniesReadingRecordsAndOtherSessions() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1434,9 +1435,9 @@ public final class ClaudeRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("claude");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("claude");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			Files.createDirectories(directory.resolve("claude"));
 			Files.writeString(Files.createDirectories(directory.resolve("home/.claude")).resolve(".credentials.json"),
 				"{}");
@@ -1446,7 +1447,7 @@ public final class ClaudeRunnerTest
 			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
-			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, nestedSession, List.of(evidenceArtifacts),
 				List.of(heldOut), Map.of());
 
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(heldOut,
@@ -1467,7 +1468,7 @@ public final class ClaudeRunnerTest
 	 * @throws IOException if the run cannot be created
 	 */
 	@Test
-	public void deniesProjectAroundRunRoot() throws IOException
+	public void deniesProjectAroundResultsFolder() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
@@ -1483,15 +1484,15 @@ public final class ClaudeRunnerTest
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/claude-held_out"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			NestedSession run = manager.create("claude");
-			Path directory = run.directory();
-			manager.snapshotProject(run);
+			NestedSession nestedSession = manager.create("claude");
+			Path directory = nestedSession.directory();
+			manager.snapshotProject(nestedSession);
 			Files.createDirectories(directory.resolve("claude"));
 			Files.createDirectories(directory.resolve("home"));
 			NestedSession evidence = manager.create("claude");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 
-			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
+			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, nestedSession, List.of(evidenceArtifacts),
 				List.of(project), Map.of());
 
 			requireThat(deniedReads.size(), "deniedReads.size()").isEqualTo(Set.copyOf(deniedReads).size());
@@ -1535,8 +1536,8 @@ public final class ClaudeRunnerTest
 				first.directory().resolve("claude"), first.directory().resolve("home"), List.of(cache),
 				first.directory(), List.of(), "", firstAccess, firstProject, first.directory(), null,
 				ExtraPermissions.NONE, "api.example");
-			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
-				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(),
+				firstAccess.requestedResultsFolder(1), Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nested = nestedManager.create("claude");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
@@ -1593,8 +1594,8 @@ public final class ClaudeRunnerTest
 				root.resolve("missing.json"), firstHome.resolve(".claude/settings.json"),
 				first.directory().resolve("claude"), firstHome, List.of(cache), first.directory(), List.of(), "",
 				firstAccess, firstProject, first.directory(), null, ExtraPermissions.NONE, "api.example");
-			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
-				Clock.systemUTC(), Yielding.fileReplacer());
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(),
+				firstAccess.requestedResultsFolder(1), Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nested = nestedManager.create("claude");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
@@ -1684,7 +1685,7 @@ public final class ClaudeRunnerTest
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, sessionRequests,
 				Platform.current(), SessionRequestAccess.Shell.POSIX).orElseThrow();
 			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(),
-				firstAccess.requestedRunRoot(ordinal), Clock.systemUTC(), Yielding.fileReplacer());
+				firstAccess.requestedResultsFolder(ordinal), Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nested = nestedManager.create("claude");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
@@ -1708,7 +1709,7 @@ public final class ClaudeRunnerTest
 			{
 				if (other == ordinal)
 					continue;
-				Path slot = firstAccess.requestedRunRoot(other);
+				Path slot = firstAccess.requestedResultsFolder(other);
 				requireThat(deniedReads.stream().anyMatch(slot::startsWith), "slotDenied").withContext(other, "ordinal").
 					isTrue();
 			}

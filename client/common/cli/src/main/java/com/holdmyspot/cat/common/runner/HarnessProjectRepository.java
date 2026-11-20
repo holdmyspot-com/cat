@@ -59,7 +59,7 @@ public final class HarnessProjectRepository
 	 *
 	 * @param sourceProject     the source project whose Git identity is inherited
 	 * @param project           the copied project directory
-	 * @param runDirectory      the owned run directory that may hold setup-only state
+	 * @param sessionFolder     the owned run directory that may hold setup-only state
 	 * @param parentEnvironment the environment resolved by the production entry point
 	 * @param executables       runs Git
 	 * @param gitName           the Git user name that the launch names, or {@code null} to read the source
@@ -69,13 +69,13 @@ public final class HarnessProjectRepository
 	 * @throws NullPointerException if any of the arguments are null, other than {@code gitName} and {@code gitEmail}
 	 * @throws IOException         if Git cannot resolve the identity or create the independent baseline
 	 */
-	public static void initialize(Path sourceProject, Path project, Path runDirectory,
+	public static void initialize(Path sourceProject, Path project, Path sessionFolder,
 		Map<String, String> parentEnvironment, ExecutableFiles executables, String gitName, String gitEmail)
 		throws IOException
 	{
 		requireThat(sourceProject, "sourceProject").isNotNull();
 		requireThat(project, "project").isNotNull();
-		requireThat(runDirectory, "runDirectory").isNotNull();
+		requireThat(sessionFolder, "sessionFolder").isNotNull();
 		requireThat(parentEnvironment, "parentEnvironment").isNotNull();
 		requireThat(executables, "executables").isNotNull();
 
@@ -86,7 +86,7 @@ public final class HarnessProjectRepository
 		if (gitEmail == null)
 			hostEmail = readIdentity(sourceProject, parentEnvironment, executables, "user.email");
 		Identity identity = identity(gitName, gitEmail, hostName, hostEmail);
-		Path gitHome = runDirectory.resolve("git-home");
+		Path gitHome = sessionFolder.resolve("git-home");
 		Files.createDirectories(gitHome);
 		Map<String, String> environment = environment(parentEnvironment, gitHome);
 		for (List<String> command : commands(identity.name(), identity.email()))

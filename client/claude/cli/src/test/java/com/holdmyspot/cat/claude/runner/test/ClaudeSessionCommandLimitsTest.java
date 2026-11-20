@@ -39,19 +39,20 @@ public final class ClaudeSessionCommandLimitsTest extends SessionCommandLimitsCo
 	{
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope())
 		{
-			Path runHome = fixture.runHome();
+			Path sessionHome = fixture.sessionHome();
 			Path userSettings = fixture.userHome().resolve(".claude/settings.json");
-			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.run(), fixture.artifact(),
+			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(fixture.nestedSession(), fixture.artifact(),
 				sessionRequests, Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
 			Map<String, String> processEnvironment = ClaudeRunner.processEnvironment(scope, fixture.userEnvironment(),
-				HarnessDependencyCaches.NONE, userSettings, runHome, requestAccess);
+				HarnessDependencyCaches.NONE, userSettings, sessionHome, requestAccess);
 
-			Path settings = runHome.resolve(".claude/settings.json");
+			Path settings = sessionHome.resolve(".claude/settings.json");
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, userSettings, settings,
-				fixture.run().directory().resolve("claude"), runHome, List.of(), fixture.run().directory(),
-				ClaudeRunner.sessionDeniedReads(fixture.manager(), fixture.run(), List.of(), fixture.deniedReads(),
+				fixture.nestedSession().directory().resolve("claude"), sessionHome, List.of(),
+				fixture.nestedSession().directory(),
+				ClaudeRunner.sessionDeniedReads(fixture.manager(), fixture.nestedSession(), List.of(), fixture.deniedReads(),
 					fixture.userEnvironment(), requestAccess), "", requestAccess,
-				fixture.run().directory().resolve("project"));
+				fixture.nestedSession().directory().resolve("project"));
 			JsonNode filesystem = scope.json().readTree(Files.readString(settings)).path("sandbox").path("filesystem");
 			return new Limits(processEnvironment, paths(filesystem.path("denyRead")),
 				paths(filesystem.path("allowWrite")), paths(filesystem.path("allowRead")));

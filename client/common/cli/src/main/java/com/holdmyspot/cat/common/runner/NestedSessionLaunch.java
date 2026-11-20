@@ -107,14 +107,14 @@ public final class NestedSessionLaunch
 			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " continues a run that fixed " +
 				fixed.getFirst() + " at its start, so the runner cannot name it");
 		}
-		String runRoot = value(options, "--results");
-		String runId = value(options, RunnerArguments.SLOT_ID_OPTION);
-		if (runRoot == null || runId == null || !NestedSessionManager.isRunId(runId))
+		String resultsFolder = value(options, "--results");
+		String slotId = value(options, RunnerArguments.SLOT_ID_OPTION);
+		if (resultsFolder == null || slotId == null || !NestedSessionManager.isSlotId(slotId))
 		{
 			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires --results and " +
 				RunnerArguments.SLOT_ID_OPTION);
 		}
-		List<String> resumed = new ArrayList<>(read(json, Path.of(runRoot).resolve(harness).resolve(runId)));
+		List<String> resumed = new ArrayList<>(read(json, Path.of(resultsFolder).resolve(harness).resolve(slotId)));
 		resumed.addAll(options);
 		return resumed.toArray(String[]::new);
 	}

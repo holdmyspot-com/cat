@@ -45,20 +45,20 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-relative-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root.resolve("runs"),
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path externalOutput = Files.writeString(Files.createDirectories(root.resolve("requested")).
 				resolve("output.jsonl"), "response bytes");
 			Path nativeTranscript = Files.writeString(Files.createDirectories(
-				run.sessionTranscripts().resolve("subagents")).resolve("native.jsonl"), "native bytes");
-			Path nestedResponse = Files.createDirectories(run.directory().resolve("responses/nested")).
+				nestedSession.sessionTranscripts().resolve("subagents")).resolve("native.jsonl"), "native bytes");
+			Path nestedResponse = Files.createDirectories(nestedSession.directory().resolve("responses/nested")).
 				resolve("response.json");
 			ObjectNode response = scope.json().createObjectNode().put("id", "nested").put("harness", "harness").
 				put("status", "completed").put("session_id", "child-session");
 			scope.json().writeValue(nestedResponse.toFile(), response);
 			Path receipt = root.resolve("receipt.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, externalOutput,
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, externalOutput,
 				List.of(nativeTranscript));
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
@@ -87,14 +87,14 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-relocation-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root.resolve("runs"),
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path external = Files.writeString(root.resolve("external-output.jsonl"), "external response bytes");
 			Path receipt = root.resolve("receipt.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, external, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, external, List.of());
 			Path relocated = root.resolve("retained/run-copy");
-			requireThat(ResultsCopy.copy(run.directory(), relocated).incomplete(), "relocatedRun").isEmpty();
+			requireThat(ResultsCopy.copy(nestedSession.directory(), relocated).incomplete(), "relocatedRun").isEmpty();
 			Files.delete(external);
 
 			HarnessEvaluationResult result = NestedSessionReceipt.read(scope.json(), receipt,
@@ -119,17 +119,18 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root,
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
-			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
+			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
+				"completed response");
 			Path receipt = root.resolve("receipt.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, response, List.of());
 			HarnessEvaluationResult result = NestedSessionReceipt.read(scope.json(), receipt,
-				run.directory().resolve("project"));
+				nestedSession.directory().resolve("project"));
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(
-				run.directory().resolve("project").toAbsolutePath().normalize());
+				nestedSession.directory().resolve("project").toAbsolutePath().normalize());
 			requireThat(result.rawResult(), "rawResult").isEqualTo(response.toAbsolutePath().normalize());
 		}
 	}
@@ -148,21 +149,23 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root,
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
-			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
-			Path transcript = Files.createDirectories(run.sessionTranscripts()).resolve("session-1.jsonl");
+			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
+				"completed response");
+			Path transcript = Files.createDirectories(nestedSession.sessionTranscripts()).resolve("session-1.jsonl");
 			Files.writeString(transcript, "{}\n");
 			Path withCopies = root.resolve("with-copies.json");
 			Path without = root.resolve("without.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), withCopies, run, response, List.of(transcript));
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), without, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), withCopies, nestedSession, response,
+				List.of(transcript));
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), without, nestedSession, response, List.of());
 
-			requireThat(NestedSessionReceipt.read(scope.json(), withCopies, run.directory().resolve("project")).
+			requireThat(NestedSessionReceipt.read(scope.json(), withCopies, nestedSession.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEqualTo(List.of(transcript.toAbsolutePath().normalize()));
-			requireThat(NestedSessionReceipt.read(scope.json(), without, run.directory().resolve("project")).
+			requireThat(NestedSessionReceipt.read(scope.json(), without, nestedSession.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEmpty();
 		}
@@ -181,23 +184,25 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root,
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
-			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
-			Path child = Files.createDirectories(run.directory().resolve("responses/first")).resolve("response.json");
+			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
+				"completed response");
+			Path child = Files.createDirectories(nestedSession.directory().resolve("responses/first")).resolve(
+				"response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
 				put("status", "completed").put("session_id", "child-session");
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, response, List.of());
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
 			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
 			requireThat(written.path("requested_sessions").get(0).path("response").asString(), "response").
 				isEqualTo("responses/first/response.json");
-			requireThat(NestedSessionReceipt.read(scope.json(), receipt, run.directory().resolve("project")).rawResult(),
-				"rawResult").isEqualTo(response);
+			requireThat(NestedSessionReceipt.read(scope.json(), receipt,
+				nestedSession.directory().resolve("project")).rawResult(), "rawResult").isEqualTo(response);
 		}
 	}
 
@@ -214,10 +219,11 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root,
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
-			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
-			Path responses = Files.createDirectories(run.directory().resolve("responses"));
+			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
+				"completed response");
+			Path responses = Files.createDirectories(nestedSession.directory().resolve("responses"));
 			Files.writeString(responses.resolve("limits.json"), "{}");
 			Path child = Files.createDirectories(responses.resolve("first")).resolve("response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
@@ -225,7 +231,7 @@ public final class NestedSessionReceiptTest
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, response, List.of());
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
 			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
@@ -247,10 +253,11 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			NestedSession run = new NestedSessionManager(fileLocks, root,
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
-			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
-			Path responses = Files.createDirectories(run.directory().resolve("responses"));
+			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
+				"completed response");
+			Path responses = Files.createDirectories(nestedSession.directory().resolve("responses"));
 			Path worktree = Files.createDirectories(responses.resolve("worktree-62099d29-79f4-49d7-be67-142b73709c53"));
 			ObjectNode done = scope.json().createObjectNode().put("format_version", 1).
 				put("id", "worktree-62099d29-79f4-49d7-be67-142b73709c53").put("status", "done").put("reason", "");
@@ -261,7 +268,7 @@ public final class NestedSessionReceiptTest
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
-			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, response, List.of());
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
 			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);

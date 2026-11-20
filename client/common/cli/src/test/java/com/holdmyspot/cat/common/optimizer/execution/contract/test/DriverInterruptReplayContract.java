@@ -356,9 +356,9 @@ public final class DriverInterruptReplayContract
 		}
 
 		@Override
-		public List<Path> runRoots()
+		public List<Path> resultsFolders()
 		{
-			return scripted.runRoots();
+			return scripted.resultsFolders();
 		}
 	}
 }
