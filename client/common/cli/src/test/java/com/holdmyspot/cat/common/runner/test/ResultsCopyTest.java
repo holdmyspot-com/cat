@@ -75,9 +75,9 @@ public final class ResultsCopyTest
 	@Test
 	public void resultsExcludePrivateSlots() throws IOException
 	{
-		try (TestJvmScope jvm = new TestJvmScope())
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = jvm.temporaryDirectory();
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "private-slots-copy-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runtime"),
 				Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId("s-1");
 			NestedSession session = manager.create("harness");
