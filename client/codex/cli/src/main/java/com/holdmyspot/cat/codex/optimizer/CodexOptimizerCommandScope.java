@@ -224,7 +224,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param replacer               replaces the files of the sessions' folders
 	 * @return the port
 	 */
-	private static SessionPort sessions(JvmScope jvm, Map<String, String> environment, Path home, Path hostProject,
+	private SessionPort sessions(JvmScope jvm, Map<String, String> environment, Path home, Path hostProject,
 		Path resultsFolder,
 		Path artifact, Path configurationDirectory, RunnerSessions.HeldOutPaths heldOut, Clock clock,
 		FileReplacer replacer)
@@ -234,7 +234,7 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 				HarnessCapacity.MAXIMUM_CONCURRENCY, jvm.waiting()), clock, replacer,
 			Optional.of(ProjectRuleLoader.rulesDirectory(home)),
 			hostProject);
-		return new CodexSessions(settings);
+		return new CodexSessions(settings, retainedTrials());
 	}
 
 	/**

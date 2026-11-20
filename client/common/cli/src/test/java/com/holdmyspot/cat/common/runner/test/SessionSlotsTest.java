@@ -12,6 +12,10 @@ import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
 import com.holdmyspot.cat.common.runner.SessionSlots;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
@@ -22,16 +26,23 @@ import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.Callable;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Tests {@link SessionSlots}: a slot's path stays the same from one session to the next, a session finds the slot
@@ -620,6 +631,314 @@ public final class SessionSlotsTest
 
 			requireThat(resumed.get(), "resumed").isEqualTo(Optional.empty());
 		}
+	}
+
+	/**
+	 * Verifies that a waiting resume cannot take a slot that now retains a different session.
+	 *
+	 * @throws IOException          if writing either session's state fails
+	 * @throws InterruptedException if waiting for the resume is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void resumeRejectsRecycledSlot() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			Liveness liveness = new Liveness();
+			liveness.end();
+			SessionSlots slots = new SessionSlots(base, 1, liveness);
+			SessionSlots.Slot original = slots.acquire(false);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), original.root(),
+				Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId(original.slotId());
+			NestedSession ended = manager.create("harnessa");
+			manager.recordHarnessSession(ended, SESSION_ID);
+			slots.markStopping(original);
+			AtomicReference<Object> resumed = new AtomicReference<>();
+			Thread resume = running(() -> slots.acquireRetained(SESSION_ID, "harnessa"), resumed);
+			awaitWaiting(resume);
+			synchronized (slots)
+			{
+				// Simulate the old launch ending and the next launch retaining this slot before the waiter runs
+				manager.markCompleted(ended);
+				slots.release(original);
+				SessionSlots.Slot replacement = slots.acquire(false);
+				NestedSession retained = manager.create("harnessa");
+				manager.recordHarnessSession(retained, OTHER_SESSION_ID);
+				slots.retain(replacement);
+			}
+			resume.join(WAIT);
+
+			requireThat(resumed.get(), "staleResume").isEqualTo(Optional.empty());
+			requireThat(slots.retains(OTHER_SESSION_ID), "replacementRetained").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that an optimizer claim rechecks the original request, native identity, generation and checkpoint,
+	 * and that an old identity cannot discard a slot after another runner has claimed it.
+	 *
+	 * @throws IOException          if reading or writing the trial data fails
+	 * @throws InterruptedException if taking the slot is interrupted
+	 */
+	@Test
+	public void guardedClaimRechecksPrefix() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			liveness.end();
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, liveness, jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			UUID original = UUID.randomUUID();
+			UUID generation = UUID.randomUUID();
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(),
+				Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+			NestedSession nested = manager.create("harnessa");
+			manager.recordHarnessSession(nested, SESSION_ID);
+			writeTrialBinding(slot, original);
+			writeClaimedGeneration(slot, nested, generation, false);
+			slots.retain(slot);
+
+			Identity observed = new Identity(generation, Optional.of(new HarnessSession("harnessa", SESSION_ID)));
+			RetainedTrialResponse ready = slots.inspectTrial(original);
+			requireThat(ready.status(), "readyStatus").isEqualTo(Status.READY);
+			requireThat(ready.completedTurns(), "completedTurns").isEqualTo(OptionalInt.of(0));
+			requireThat(ready.identity(), "observedIdentity").isEqualTo(Optional.of(observed));
+			requireThat(slots.acquireRetained(UUID.randomUUID(), observed, 0), "differentRequest").
+				isEqualTo(Optional.empty());
+			requireThat(slots.acquireRetained(original, observed, 1), "differentCount").isEqualTo(Optional.empty());
+			Identity differentSession = new Identity(generation,
+				Optional.of(new HarnessSession("harnessa", OTHER_SESSION_ID)));
+			requireThat(slots.acquireRetained(original, differentSession, 0), "differentSession").
+				isEqualTo(Optional.empty());
+
+			Path checkpoint = nested.directory().resolve("turn-checkpoint.json");
+			String readyCheckpoint = Files.readString(checkpoint);
+			Files.writeString(checkpoint, readyCheckpoint.replace("\"ready\"", "\"turn_in_progress\"").
+				replace("\"turn_number\":0", "\"turn_number\":1"));
+			requireThat(slots.inspectTrial(original).status(), "interruptedTurn").isEqualTo(Status.UNSAFE);
+			requireThat(slots.acquireRetained(original, observed, 0), "unreadyCheckpoint").
+				isEqualTo(Optional.empty());
+			Path manifest = nested.directory().resolve("session.json");
+			String initialManifest = Files.readString(manifest);
+			Files.writeString(manifest, initialManifest.replace("\"turn_number\": 0", "\"turn_number\": 1"));
+			Files.writeString(checkpoint, readyCheckpoint.replace("\"turn_number\":0", "\"turn_number\":1"));
+			requireThat(slots.inspectTrial(original).status(), "readyWithoutPrefix").isEqualTo(Status.UNSAFE);
+			requireThat(slots.acquireRetained(original, observed, 1), "incompletePrefix").
+				isEqualTo(Optional.empty());
+			Files.writeString(manifest, initialManifest);
+			Files.writeString(checkpoint, readyCheckpoint);
+			requireThat(slots.acquireRetained(original, observed, 0), "exactClaim").isEqualTo(Optional.of(slot));
+			requireThat(slots.inspectTrial(original).status(), "reservedSlot").isEqualTo(Status.BUSY);
+			slots.retain(slot);
+
+			UUID replacement = UUID.randomUUID();
+			writeClaimedGeneration(slot, nested, replacement, true);
+			requireThat(slots.acquireRetained(original, observed, 0), "oldGeneration").isEqualTo(Optional.empty());
+			requireThat(slots.discardTrial(original, Optional.of(observed)).status(), "staleDiscard").
+				isEqualTo(Status.UNSAFE);
+			RetainedTrialResponse unsafe = slots.inspectTrial(original);
+			requireThat(unsafe.status(), "manualResume").isEqualTo(Status.UNSAFE);
+			requireThat(unsafe.identity(), "newIdentity").isEqualTo(Optional.of(new Identity(replacement,
+				observed.session())));
+			requireThat(checkpoint, "checkpointAfterStaleDiscard").isRegularFile();
+			requireThat(slots.discardTrial(original, unsafe.identity()).status(), "exactDiscard").
+				isEqualTo(Status.DISCARDED);
+			requireThat(slots.inspectTrial(original).status(), "afterDiscard").isEqualTo(Status.ABSENT);
+		}
+	}
+
+	/**
+	 * Verifies that a launch waiting for its runner can be removed only after its exact broker process disappears.
+	 *
+	 * @throws IOException          if reading or writing the trial data fails
+	 * @throws InterruptedException if taking the slot is interrupted
+	 */
+	@Test
+	public void pendingTrialWaitsForBrokerDeath() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, liveness, jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			UUID original = UUID.randomUUID();
+			UUID generation = UUID.randomUUID();
+			writeTrialBinding(slot, original);
+			ObjectNode pending = startupGeneration(generation, "pending");
+			Files.writeString(slot.root().resolve("startup-permit.json"), pending.toString());
+			slots.retain(slot);
+
+			Optional<Identity> expected = Optional.of(new Identity(generation, Optional.empty()));
+			requireThat(slots.inspectTrial(original).status(), "liveBroker").isEqualTo(Status.BUSY);
+			requireThat(slots.discardTrial(original, expected).status(), "pendingDiscard").isEqualTo(Status.BUSY);
+
+			liveness.end();
+			RetainedTrialResponse unsafe = slots.inspectTrial(original);
+			requireThat(unsafe.status(), "expiredPermit").isEqualTo(Status.UNSAFE);
+			requireThat(unsafe.identity(), "expiredGeneration").isEqualTo(expected);
+			requireThat(slots.discardTrial(original, expected).status(), "settledDiscard").
+				isEqualTo(Status.DISCARDED);
+			requireThat(slots.inspectTrial(original).status(), "afterDiscard").isEqualTo(Status.ABSENT);
+		}
+	}
+
+	/**
+	 * Verifies that recovery stops only the exact claimed runner after its broker is gone.
+	 *
+	 * @throws IOException          if reading or writing the slot fails
+	 * @throws InterruptedException if taking the slot is interrupted
+	 */
+	@Test
+	public void probeStopsOrphanedRunner() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Map<Long, String> live = new HashMap<>();
+			Map<Long, String> stopped = new HashMap<>();
+			HarnessProcessLiveness liveness = new HarnessProcessLiveness()
+			{
+				@Override
+				public boolean isAlive(long pid, String start)
+				{
+					return start.equals(live.get(pid));
+				}
+
+				@Override
+				public boolean terminate(long pid, String start)
+				{
+					if (!live.remove(pid, start))
+						return false;
+					stopped.put(pid, start);
+					return true;
+				}
+			};
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, liveness, jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(),
+				Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+			NestedSession nested = manager.create("harnessa");
+			manager.recordHarnessSession(nested, SESSION_ID);
+			UUID original = UUID.randomUUID();
+			UUID generation = UUID.randomUUID();
+			writeTrialBinding(slot, original);
+			long brokerPid = ProcessHandle.current().pid();
+			long runnerPid = brokerPid + 1;
+			String brokerStart = HarnessProcesses.system().find(brokerPid).flatMap(ProcessDescription::start).
+				orElseThrow();
+			String runnerStart = "r1";
+			Path manifest = nested.directory().resolve("session.json");
+			Files.writeString(manifest, Files.readString(manifest).
+				replace("\"owner_pid\": " + brokerPid, "\"owner_pid\": " + runnerPid).
+				replace("\"owner_started_at\": \"" + brokerStart + "\"", "\"owner_started_at\": \"r1\""));
+			writeClaimedGeneration(slot, nested, generation, false);
+			slots.retain(slot);
+			live.put(brokerPid, brokerStart);
+			live.put(runnerPid, runnerStart);
+
+			requireThat(slots.inspectTrial(original).status(), "ownedRunner").isEqualTo(Status.BUSY);
+			requireThat(stopped, "beforeBrokerExit").isEmpty();
+
+			live.put(brokerPid, brokerStart + "1");
+			requireThat(slots.inspectTrial(original).status(), "stoppingRunner").isEqualTo(Status.BUSY);
+			requireThat(stopped, "terminatedProcesses").isEqualTo(Map.of(runnerPid, runnerStart));
+			requireThat(slots.inspectTrial(original).status(), "stoppedRunner").isEqualTo(Status.READY);
+		}
+	}
+
+	/**
+	 * Verifies that a public resume can take a retained session when an earlier broker died before its resume started.
+	 *
+	 * @throws IOException          if reading or writing the slot fails
+	 * @throws InterruptedException if taking the slot is interrupted
+	 */
+	@Test
+	public void publicResumeRevokesStaleStartup() throws IOException, InterruptedException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Liveness liveness = new Liveness();
+			Path base = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "slots-"));
+			SessionSlots slots = new SessionSlots(base, 1, liveness, jvm.fileLocks());
+			SessionSlots.Slot slot = slots.acquire(false);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(),
+				Clock.systemUTC(), Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+			NestedSession nested = manager.create("harnessa");
+			manager.recordHarnessSession(nested, SESSION_ID);
+			UUID generation = UUID.randomUUID();
+			Path permit = slot.root().resolve("startup-permit.json");
+			Files.writeString(permit, startupGeneration(generation, "pending").toString());
+			slots.retain(slot);
+
+			expectThrows(SessionRefusedException.class, () -> slots.acquireRetained(SESSION_ID, "harnessa"));
+			liveness.end();
+			requireThat(slots.acquireRetained(SESSION_ID, "harnessa"), "resumeAfterBrokerDeath").
+				isEqualTo(Optional.of(slot));
+			JsonNode cancelled = JsonMapper.builder().build().readTree(Files.readString(permit));
+			requireThat(cancelled.path("generation").asString(), "cancelledGeneration").isEqualTo(generation.toString());
+			requireThat(cancelled.path("state").asString(), "cancelledState").isEqualTo("cancelled");
+			slots.release(slot);
+		}
+	}
+
+	/**
+	 * Writes the original archive binding that a broker commits before attempting to start a runner.
+	 *
+	 * @param slot      the acquired slot
+	 * @param requestId the original launch archive
+	 * @throws IOException if the binding cannot be written
+	 */
+	private static void writeTrialBinding(SessionSlots.Slot slot, UUID requestId) throws IOException
+	{
+		ObjectNode binding = JsonMapper.builder().build().createObjectNode().put("format_version", 1).
+			put("request_id", requestId.toString());
+		Files.writeString(slot.root().resolve("launch-request.json"), binding.toString());
+	}
+
+	/**
+	 * Simulates claiming a generation with the exact runner identity produced by a real nested session manager.
+	 *
+	 * @param slot         the acquired slot
+	 * @param nested       the nested session the runner published
+	 * @param generation   the startup generation
+	 * @param manualResume whether a public resume has used the slot
+	 * @throws IOException if either ownership record cannot be read or written
+	 */
+	private static void writeClaimedGeneration(SessionSlots.Slot slot, NestedSession nested, UUID generation,
+		boolean manualResume) throws IOException
+	{
+		JsonNode manifest = JsonMapper.builder().build().readTree(
+			Files.readString(nested.directory().resolve("session.json")));
+		ObjectNode claimed = startupGeneration(generation, "claimed").put("manual_resume", manualResume).
+			put("runner_pid", manifest.path("owner_pid").longValue()).
+			put("runner_started_at", manifest.path("owner_started_at").asString());
+		Files.writeString(slot.root().resolve("startup-permit.json"), claimed.toString());
+	}
+
+	/**
+	 * Builds a startup record for a test that determines process liveness without spawning a runner.
+	 *
+	 * @param generation the startup generation
+	 * @param state      its startup state
+	 * @return the simulated startup record
+	 * @throws IOException if the broker's process start cannot be read
+	 */
+	private static ObjectNode startupGeneration(UUID generation, String state) throws IOException
+	{
+		long pid = ProcessHandle.current().pid();
+		String start = HarnessProcesses.system().find(pid).flatMap(ProcessDescription::start).orElseThrow();
+		return JsonMapper.builder().build().createObjectNode().put("format_version", 1).
+			put("generation", generation.toString()).put("broker_pid", pid).put("broker_started_at", start).
+			put("state", state).put("manual_resume", false).put("runner_pid", 0).putNull("runner_started_at");
 	}
 
 	/**

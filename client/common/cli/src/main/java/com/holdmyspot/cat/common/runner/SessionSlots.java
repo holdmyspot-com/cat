@@ -2,22 +2,37 @@ package com.holdmyspot.cat.common.runner;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+import tools.jackson.core.JacksonException;
+import tools.jackson.core.StreamReadFeature;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * A fixed set of session folders, one for each requested session that may run at once, which a requested session
@@ -85,9 +100,19 @@ public final class SessionSlots
 	 */
 	private static final Pattern SLOT_NAME = Pattern.compile("(?<part>[" + DEVELOPMENT + HELD_OUT +
 		"])(?<number>[1-9][0-9]{0,8})");
+	/**
+	 * The maximum size of an original request record, which holds a format version and one archive identifier.
+	 */
+	private static final int MAXIMUM_BINDING_BYTES = 512;
+	/**
+	 * Reads the private original launch record without accepting ambiguous JSON.
+	 */
+	private static final JsonMapper JSON = JsonMapper.builder().enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).
+		enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
 	private final Path base;
 	private final int count;
 	private final HarnessProcessLiveness liveness;
+	private final FileLocks fileLocks;
 	private final BitSet developmentTaken;
 	private final BitSet heldOutTaken;
 	/**
@@ -135,12 +160,29 @@ public final class SessionSlots
 	 */
 	public SessionSlots(Path base, int count, HarnessProcessLiveness liveness)
 	{
+		this(base, count, liveness, new FileLocks());
+	}
+
+	/**
+	 * Creates a site's slots using the process's shared coordinator for runner startup and slot cleanup.
+	 *
+	 * @param base      the absolute directory below which the slots live
+	 * @param count     how many sessions of each part may run at once
+	 * @param liveness  checks and stops the processes that a slot's nested session records
+	 * @param fileLocks the coordinator shared by the processes' local lock users
+	 * @throws NullPointerException     if any of the arguments are null
+	 * @throws IllegalArgumentException if {@code base} is relative or {@code count} is not positive
+	 */
+	public SessionSlots(Path base, int count, HarnessProcessLiveness liveness, FileLocks fileLocks)
+	{
 		requireThat(base, "base").isNotNull().isAbsolute();
 		requireThat(count, "count").isPositive();
 		requireThat(liveness, "liveness").isNotNull();
+		requireThat(fileLocks, "fileLocks").isNotNull();
 		this.base = base;
 		this.count = count;
 		this.liveness = liveness;
+		this.fileLocks = fileLocks;
 		this.developmentTaken = new BitSet(count);
 		this.heldOutTaken = new BitSet(count);
 	}
@@ -168,6 +210,7 @@ public final class SessionSlots
 	 */
 	public Slot acquire(boolean heldOut) throws IOException, InterruptedException
 	{
+		Files.createDirectories(base);
 		BitSet taken = taken(heldOut);
 		while (true)
 		{
@@ -310,7 +353,7 @@ public final class SessionSlots
 					if (waitedForHolder)
 					{
 						// The session that held the slot may have ended its nested session, which emptied the slot
-						if (!isRetained(slot))
+						if (!keepsSession(slot, sessionId, harness))
 							return Optional.empty();
 						waitedForHolder = false;
 					}
@@ -324,10 +367,21 @@ public final class SessionSlots
 		boolean ready = false;
 		try
 		{
-			if (!stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS))
+			Optional<ExclusiveFileLock> locked = SlotStartup.tryLock(fileLocks, slot.root());
+			if (locked.isEmpty())
+				throw new SessionRefusedException("A runner is still starting in the slot for session " + sessionId);
+			try (ExclusiveFileLock _ = locked.get())
 			{
-				throw new SessionRefusedException("A process that the nested session " + sessionId + " recorded is " +
-					"still alive");
+				if (!keepsSession(slot, sessionId, harness))
+					return Optional.empty();
+				Optional<SlotStartup.Permit> permit = readPermit(slot);
+				if (!startupSettled(permit) || !stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS))
+				{
+					throw new SessionRefusedException("A process that the nested session " + sessionId + " recorded is " +
+						"still alive");
+				}
+				if (permit.isPresent() && permit.get().state() == SlotStartup.State.PENDING)
+					SlotStartup.cancel(slot.root(), permit.get().generation());
 			}
 			ready = true;
 			return Optional.of(slot);
@@ -361,6 +415,7 @@ public final class SessionSlots
 		if (found.isEmpty())
 			return false;
 		Slot slot = found.get().slot();
+		String harness = found.get().harness();
 		BitSet taken = taken(slot.heldOut());
 		synchronized (this)
 		{
@@ -373,16 +428,26 @@ public final class SessionSlots
 				wait(RELEASE_WAIT_MILLIS);
 			}
 			// The session that held the slot may have ended its nested session, which emptied the slot
-			if (waitedForHolder && !isRetained(slot))
+			if (waitedForHolder && !keepsSession(slot, sessionId, harness))
 				return false;
 			taken.set(slot.number() - 1);
 		}
 		try
 		{
-			if (!stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS) || !empty(slot))
+			Optional<ExclusiveFileLock> locked = SlotStartup.tryLock(fileLocks, slot.root());
+			if (locked.isEmpty())
+				throw new SessionRefusedException("A runner is still starting in the slot for session " + sessionId);
+			try (ExclusiveFileLock _ = locked.get())
 			{
-				throw new SessionRefusedException("A process that the nested session " + sessionId + " recorded is " +
-					"still alive");
+				if (!keepsSession(slot, sessionId, harness))
+					return false;
+				List<RecordedNestedSession> records = manifests(slot.root());
+				if (!startupSettled(readPermit(slot)) || !stopRecordedProcesses(records, STOP_WAIT_MILLIS))
+				{
+					throw new SessionRefusedException("A process that the nested session " + sessionId + " recorded is " +
+						"still alive");
+				}
+				removeSlot(slot, records);
 			}
 			return true;
 		}
@@ -413,6 +478,363 @@ public final class SessionSlots
 	}
 
 	/**
+	 * Observes the slot of an original trial launch after the broker fences its archive and accepted work.
+	 *
+	 * @param requestId the original trial launch's archive identifier
+	 * @return its settled absence, active ownership, or retained resumption state
+	 * @throws NullPointerException if {@code requestId} is null
+	 * @throws IOException          if ownership or process liveness cannot be established
+	 */
+	public RetainedTrialResponse inspectTrial(UUID requestId) throws IOException
+	{
+		requireThat(requestId, "requestId").isNotNull();
+		return recoverTrial(RetainedTrialRequest.status(requestId));
+	}
+
+	/**
+	 * Removes the slot of a fenced trial launch if it still has the observed generation and session.
+	 *
+	 * @param requestId the original trial launch's archive identifier
+	 * @param expected  its observed generation and session, or empty if it never started
+	 * @return the discard result, forcing a new observation if the slot now has a different identity
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IOException          if ownership or process liveness cannot be established or cleanup fails
+	 */
+	public RetainedTrialResponse discardTrial(UUID requestId, Optional<Identity> expected) throws IOException
+	{
+		requireThat(requestId, "requestId").isNotNull();
+		requireThat(expected, "expected").isNotNull();
+		return recoverTrial(RetainedTrialRequest.discard(requestId, expected));
+	}
+
+	/**
+	 * Reserves the slot of a fenced trial launch only while its observed session, startup generation and entire
+	 * completed turn prefix still match. The caller keeps the reservation through prefix copying and runner startup,
+	 * and gives it back through {@link #release(Slot)} or {@link #retain(Slot)}.
+	 *
+	 * @param requestId      the original trial launch's archive identifier
+	 * @param expected       the observed generation and harness session
+	 * @param completedTurns the observed number of completed turns
+	 * @return the slot, or empty when the claim no longer matches or cannot be reserved
+	 * @throws NullPointerException     if any reference arguments are null
+	 * @throws IllegalArgumentException if {@code completedTurns} is negative
+	 * @throws IOException              if ownership or process liveness cannot be established
+	 */
+	public Optional<Slot> acquireRetained(UUID requestId, Identity expected, int completedTurns) throws IOException
+	{
+		requireThat(requestId, "requestId").isNotNull();
+		requireThat(expected, "expected").isNotNull();
+		requireThat(completedTurns, "completedTurns").isNotNegative();
+		Optional<Slot> found = findBoundTrial(requestId);
+		if (found.isEmpty())
+			return Optional.empty();
+		Slot slot = found.get();
+		if (!reserve(slot, true))
+			return Optional.empty();
+		boolean ready = false;
+		try
+		{
+			Optional<ExclusiveFileLock> locked = SlotStartup.tryLock(fileLocks, slot.root());
+			if (locked.isEmpty())
+				return Optional.empty();
+			try (ExclusiveFileLock _ = locked.get())
+			{
+				Optional<BoundTrial> observed = readBoundTrial(slot, requestId);
+				if (observed.isEmpty())
+					return Optional.empty();
+				BoundTrial trial = observed.get();
+				if (!trial.identity().equals(Optional.of(expected)))
+					return Optional.empty();
+				if (!startupSettled(trial.permit()) || !checkRecordedProcesses(trial.records(), false) ||
+					!trial.readyTurns().equals(OptionalInt.of(completedTurns)))
+					return Optional.empty();
+			}
+			ready = true;
+			return Optional.of(slot);
+		}
+		finally
+		{
+			if (!ready)
+				free(slot);
+		}
+	}
+
+	/**
+	 * Inspects or discards a trial while reserving its slot and excluding a concurrent runner startup.
+	 *
+	 * @param request the fenced original request and the recovery operation
+	 * @return the trial's recovery state
+	 * @throws IOException if ownership or process liveness cannot be established or cleanup fails
+	 */
+	private RetainedTrialResponse recoverTrial(RetainedTrialRequest request) throws IOException
+	{
+		UUID requestId = request.requestId();
+		Optional<Slot> found = findBoundTrial(requestId);
+		if (found.isEmpty())
+			return new RetainedTrialResponse(requestId, Status.ABSENT, Optional.empty(), OptionalInt.empty());
+		Slot slot = found.get();
+		if (!reserve(slot, false))
+			return new RetainedTrialResponse(requestId, Status.BUSY, Optional.empty(), OptionalInt.empty());
+		try
+		{
+			Optional<ExclusiveFileLock> locked = SlotStartup.tryLock(fileLocks, slot.root());
+			if (locked.isEmpty())
+				return new RetainedTrialResponse(requestId, Status.BUSY, Optional.empty(), OptionalInt.empty());
+			try (ExclusiveFileLock _ = locked.get())
+			{
+				Optional<BoundTrial> observed = readBoundTrial(slot, requestId);
+				if (observed.isEmpty())
+					return new RetainedTrialResponse(requestId, Status.ABSENT, Optional.empty(), OptionalInt.empty());
+				BoundTrial trial = observed.get();
+				Optional<Identity> identity = trial.identity();
+				if (request.operation() == RetainedTrialRequest.Operation.DISCARD)
+				{
+					if (!identity.equals(request.identity()))
+						return new RetainedTrialResponse(requestId, Status.UNSAFE, Optional.empty(), OptionalInt.empty());
+					if (!trialSettled(trial))
+						return new RetainedTrialResponse(requestId, Status.BUSY, Optional.empty(), OptionalInt.empty());
+					removeSlot(slot, trial.records());
+					return new RetainedTrialResponse(requestId, Status.DISCARDED, Optional.empty(), OptionalInt.empty());
+				}
+				if (!trialSettled(trial))
+					return new RetainedTrialResponse(requestId, Status.BUSY, Optional.empty(), OptionalInt.empty());
+				OptionalInt turns = trial.readyTurns();
+				if (turns.isPresent())
+					return new RetainedTrialResponse(requestId, Status.READY, identity, turns);
+				return new RetainedTrialResponse(requestId, Status.UNSAFE, identity, OptionalInt.empty());
+			}
+		}
+		finally
+		{
+			free(slot);
+		}
+	}
+
+	/**
+	 * Reserves a slot for an immediate inspection, discard or guarded launch.
+	 *
+	 * @param slot          the candidate slot
+	 * @param needsCapacity whether this reservation starts a runner
+	 * @return whether the slot is now reserved
+	 */
+	private boolean reserve(Slot slot, boolean needsCapacity)
+	{
+		BitSet taken = taken(slot.heldOut());
+		synchronized (this)
+		{
+			boolean canReserve = !taken.get(slot.number() - 1) && (!needsCapacity || taken.cardinality() < count);
+			if (canReserve)
+				taken.set(slot.number() - 1);
+			return canReserve;
+		}
+	}
+
+	/**
+	 * Finds the sole slot that records the original launch archive, independently of its harness or project.
+	 *
+	 * @param requestId the original launch's archive identifier
+	 * @return the binding's slot, or empty if no slot records it
+	 * @throws IOException if a binding cannot be read or more than one slot claims the request
+	 */
+	private Optional<Slot> findBoundTrial(UUID requestId) throws IOException
+	{
+		if (!slotDirectoryExists(base))
+			return Optional.empty();
+		Slot match = null;
+		try (Stream<Path> entries = Files.list(base))
+		{
+			for (Path directory : (Iterable<Path>) entries::iterator)
+			{
+				Matcher name = SLOT_NAME.matcher(directory.getFileName().toString());
+				if (!name.matches() || !slotDirectoryExists(directory))
+					continue;
+				Slot candidate = slot(name.group("part").equals(HELD_OUT), Integer.parseInt(name.group("number")));
+				if (!keepsRequest(candidate, requestId))
+					continue;
+				if (match != null)
+					throw new IOException("More than one slot records original launch request " + requestId);
+				match = candidate;
+			}
+		}
+		return Optional.ofNullable(match);
+	}
+
+	/**
+	 * Checks a protected directory without confusing unreadable or malformed ownership data with absence.
+	 *
+	 * @param directory the expected directory
+	 * @return whether the directory exists
+	 * @throws IOException if the directory cannot be checked or the path is of a different type
+	 */
+	private static boolean slotDirectoryExists(Path directory) throws IOException
+	{
+		try
+		{
+			if (!Files.readAttributes(directory, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isDirectory())
+				throw new IOException("Invalid session slot directory: " + directory);
+			return true;
+		}
+		catch (NoSuchFileException _)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Rechecks the original archive binding and its one nested session with the slot reserved and startup excluded.
+	 *
+	 * @param slot      the reserved slot
+	 * @param requestId the expected original launch archive
+	 * @return the slot's verified state, or empty when the binding no longer matches
+	 * @throws IOException if ownership is ambiguous or malformed
+	 */
+	private Optional<BoundTrial> readBoundTrial(Slot slot, UUID requestId) throws IOException
+	{
+		if (!slotDirectoryExists(slot.root()) || !keepsRequest(slot, requestId))
+			return Optional.empty();
+		Optional<SlotStartup.Permit> permit = readPermit(slot);
+		List<RecordedNestedSession> records = manifests(slot.root());
+		if (records.size() > 1)
+			throw new IOException("More than one session occupies the slot for trial request " + requestId);
+		if (records.isEmpty())
+			return Optional.of(new BoundTrial(permit, Optional.empty()));
+		RecordedNestedSession record = records.getFirst();
+		if (!record.slotId().equals(slot.slotId()))
+			throw new IOException("Unexpected session path in slot for trial request " + requestId);
+		NestedSessionManager.Manifest manifest = readSlotManifest(record);
+		if (permit.isEmpty())
+			throw new IOException("Missing startup generation for trial request " + requestId);
+		SlotStartup.Permit generation = permit.get();
+		boolean wrongOwner = generation.state() == SlotStartup.State.CLAIMED &&
+			(generation.runnerPid() != manifest.ownerPid() ||
+			!generation.runnerStart().equals(manifest.ownerStart()));
+		if (wrongOwner)
+			throw new IOException("The runner's manifest disagrees with the startup generation for trial " + requestId);
+		return Optional.of(new BoundTrial(permit, Optional.of(new TrialSession(record, manifest))));
+	}
+
+	/**
+	 * Checks a slot's original launch archive record without interpreting the current harness session.
+	 *
+	 * @param slot      the candidate slot
+	 * @param requestId the exact original archive identifier
+	 * @return whether the slot records that identifier
+	 * @throws IOException if the record exists and is invalid or unreadable
+	 */
+	private static boolean keepsRequest(Slot slot, UUID requestId) throws IOException
+	{
+		Path file = slot.root().resolve(SessionRequestBroker.ORIGINAL_REQUEST_FILE);
+		try
+		{
+			if (!Files.readAttributes(file, BasicFileAttributes.class, LinkOption.NOFOLLOW_LINKS).isRegularFile())
+				throw new IOException("Original launch request record is not a regular file: " + file);
+			String raw = BoundedInput.readUtf8(Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS), file,
+				MAXIMUM_BINDING_BYTES, "Original launch request");
+			JsonNode binding = JSON.readTree(raw);
+			if (binding == null || !binding.isObject() || binding.size() != 2)
+				throw new IOException("Invalid original launch request record: " + file);
+			JsonNode version = binding.path("format_version");
+			String id = binding.path("request_id").stringValue("");
+			if (!version.isInt() || version.intValue() != 1)
+				throw new IOException("Invalid original launch request record: " + file);
+			SessionRequestCli.validateId(id);
+			return requestId.toString().equals(id);
+		}
+		catch (NoSuchFileException _)
+		{
+			return false;
+		}
+		catch (IllegalArgumentException | JacksonException e)
+		{
+			throw new IOException("Invalid original launch request record: " + file, e);
+		}
+	}
+
+	/**
+	 * Checks that the slot's starter and any nested session processes have settled. An orphaned runner can be stopped
+	 * when the startup record and manifest agree on its identity. Its old harness is stopped after the runner exits.
+	 *
+	 * @param trial its verified state while startup is excluded
+	 * @return whether no process remains that can change the slot
+	 * @throws IOException if liveness or process identity cannot be established
+	 */
+	private boolean trialSettled(BoundTrial trial) throws IOException
+	{
+		if (startupSettled(trial.permit()))
+			return stopRecordedProcesses(trial.records());
+		SlotStartup.Permit permit = trial.permit().orElseThrow();
+		if (permit.state() == SlotStartup.State.CLAIMED && trial.session().isPresent() &&
+			permit.runnerPid() != ProcessHandle.current().pid() &&
+			!liveness.isAlive(permit.brokerPid(), permit.brokerStart()))
+		{
+			liveness.terminate(permit.runnerPid(), permit.runnerStart());
+			// An exited runner may have written new evidence after this probe read its manifest.
+		}
+		return false;
+	}
+
+	/**
+	 * Reads a slot's startup record while holding its stable lock.
+	 *
+	 * @param slot the reserved slot
+	 * @return its startup record, or empty when no generation has been issued
+	 * @throws IOException if the record is unreadable or invalid
+	 */
+	private static Optional<SlotStartup.Permit> readPermit(Slot slot) throws IOException
+	{
+		try
+		{
+			return Optional.of(SlotStartup.read(slot.root()));
+		}
+		catch (NoSuchFileException _)
+		{
+			return Optional.empty();
+		}
+	}
+
+	/**
+	 * Checks whether the startup record still authorizes a child to start or names a live child.
+	 *
+	 * @param permit the startup record read under the stable lock
+	 * @return whether startup cannot write to the slot
+	 * @throws IOException if liveness cannot be checked
+	 */
+	private boolean startupSettled(Optional<SlotStartup.Permit> permit) throws IOException
+	{
+		if (permit.isEmpty())
+			return true;
+		SlotStartup.Permit record = permit.get();
+		return switch (record.state())
+		{
+			case PENDING -> !liveness.isAlive(record.brokerPid(), record.brokerStart());
+			case CLAIMED -> !liveness.isAlive(record.runnerPid(), record.runnerStart());
+			case CANCELLED -> true;
+		};
+	}
+
+	/**
+	 * Rechecks the original native identity after waiting for a public resume or discard reservation.
+	 *
+	 * @param slot      the candidate slot
+	 * @param sessionId the original harness session
+	 * @param harness   the original harness
+	 * @return whether the slot still retains that session
+	 * @throws IOException if the manifest cannot be read or checked
+	 */
+	private static boolean keepsSession(Slot slot, String sessionId, String harness) throws IOException
+	{
+		for (RecordedNestedSession record : manifests(slot.root()))
+		{
+			if (!record.harness().equals(harness) || !record.slotId().equals(slot.slotId()))
+				continue;
+			NestedSessionManager.Manifest manifest = readSlotManifest(record);
+			if (isRetained(manifest) && sessionId.equals(manifest.harnessSessionId()))
+				return true;
+		}
+		return false;
+	}
+
+	/**
 	 * Finds the retained slot whose nested session records a harness session.
 	 *
 	 * @param sessionId the session
@@ -440,7 +862,7 @@ public final class SessionSlots
 			{
 				for (RecordedNestedSession record : manifests(slot.root()))
 				{
-					NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
+					NestedSessionManager.Manifest manifest = readSlotManifest(record);
 					if (isRetained(manifest) && sessionId.equals(manifest.harnessSessionId()))
 						return Optional.of(new Retained(slot, manifest.harness()));
 				}
@@ -575,13 +997,31 @@ public final class SessionSlots
 	 */
 	private boolean empty(Slot slot) throws IOException
 	{
-		List<RecordedNestedSession> records = manifests(slot.root());
-		if (!stopRecordedProcesses(records))
+		Optional<ExclusiveFileLock> locked = SlotStartup.tryLock(fileLocks, slot.root());
+		if (locked.isEmpty())
 			return false;
+		try (ExclusiveFileLock _ = locked.get())
+		{
+			List<RecordedNestedSession> records = manifests(slot.root());
+			if (!startupSettled(readPermit(slot)) || !stopRecordedProcesses(records))
+				return false;
+			removeSlot(slot, records);
+			return true;
+		}
+	}
+
+	/**
+	 * Removes the settled session and its ownership records while holding the stable lock outside the slot.
+	 *
+	 * @param slot    the slot to remove
+	 * @param records the nested sessions whose manifests are removed after their other files
+	 * @throws IOException if the slot cannot be removed
+	 */
+	private static void removeSlot(Slot slot, List<RecordedNestedSession> records) throws IOException
+	{
 		for (RecordedNestedSession record : records)
 			NestedSessionManager.deleteSessionFolder(record.manifest().getParent());
 		TemporaryDirectories.deleteRecursively(slot.root());
-		return true;
 	}
 
 	/**
@@ -593,12 +1033,23 @@ public final class SessionSlots
 	 */
 	private boolean stopRecordedProcesses(List<RecordedNestedSession> records) throws IOException
 	{
+		return checkRecordedProcesses(records, true);
+	}
+
+	/**
+	 * Checks recorded processes and optionally stops a native process whose runner has already exited.
+	 *
+	 * @param records     the nested sessions of the slot
+	 * @param stopOrphans whether to stop recorded native processes after verifying their runner has exited
+	 * @return {@code true} if no recorded process remains alive
+	 * @throws IOException if a nested session's manifest cannot be read or does not match its nested session
+	 */
+	private boolean checkRecordedProcesses(List<RecordedNestedSession> records, boolean stopOrphans) throws IOException
+	{
 		List<ValidatedNestedSession> validated = new ArrayList<>();
 		for (RecordedNestedSession record : records)
 		{
-			NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
-			if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.slotId()))
-				throw new IOException("Session manifest does not match its slot path: " + record.manifest());
+			NestedSessionManager.Manifest manifest = readSlotManifest(record);
 			if (manifest.harnessProcessState() == NestedSessionManager.HarnessProcessState.STARTING)
 				throw new IOException("Harness launch state is unknown; refusing to empty slot: " + record.manifest());
 			boolean currentOwner = manifest.ownerPid() == ProcessHandle.current().pid();
@@ -619,7 +1070,7 @@ public final class SessionSlots
 			if (!nestedSession.childAlive())
 				continue;
 			long pid = nestedSession.manifest().harnessPid();
-			if (pid == ProcessHandle.current().pid())
+			if (!stopOrphans || pid == ProcessHandle.current().pid())
 			{
 				ended = false;
 				continue;
@@ -629,6 +1080,21 @@ public final class SessionSlots
 				ended = false;
 		}
 		return ended;
+	}
+
+	/**
+	 * Reads a manifest and verifies its path-derived harness and slot identifier.
+	 *
+	 * @param record the manifest and its expected identity
+	 * @return the manifest with matching identity
+	 * @throws IOException if the manifest is unreadable or does not match its path
+	 */
+	private static NestedSessionManager.Manifest readSlotManifest(RecordedNestedSession record) throws IOException
+	{
+		NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
+		if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.slotId()))
+			throw new IOException("Session manifest does not match its slot path: " + record.manifest());
+		return manifest;
 	}
 
 	/**
@@ -704,5 +1170,67 @@ public final class SessionSlots
 	private record ValidatedNestedSession(NestedSessionManager.Manifest manifest, boolean currentOwner,
 		boolean ownerAlive, boolean childAlive)
 	{
+	}
+
+	/**
+	 * A parsed manifest and its location inside a bound trial's slot.
+	 *
+	 * @param record   the nested session's path and expected identity
+	 * @param manifest the verified manifest
+	 */
+	private record TrialSession(RecordedNestedSession record, NestedSessionManager.Manifest manifest)
+	{
+	}
+
+	/**
+	 * A trial slot's generation and nested session, read while the slot is reserved and startup is excluded.
+	 *
+	 * @param permit  the current startup record
+	 * @param session the slot's recorded session
+	 */
+	private record BoundTrial(Optional<SlotStartup.Permit> permit, Optional<TrialSession> session)
+	{
+		/**
+		 * Returns the generation and known native identity for comparison by a later request.
+		 *
+		 * @return the exact generation, with a harness session if the manifest names one
+		 */
+		Optional<Identity> identity()
+		{
+			Optional<HarnessSession> nativeSession = session.map(TrialSession::manifest).
+				filter(manifest -> manifest.harnessSessionId() != null).
+				map(manifest -> new HarnessSession(manifest.harness(), manifest.harnessSessionId()));
+			return permit.map(value -> new Identity(UUID.fromString(value.generation()), nativeSession));
+		}
+
+		/**
+		 * Returns a ready turn count only if the runner claimed the generation, no manual resume has occurred, and all
+		 * required prefix artifacts match the manifest's turn count.
+		 *
+		 * @return the verified completed turn count, or empty when it cannot be recovered
+		 * @throws IOException if the prefix artifacts cannot be read
+		 */
+		OptionalInt readyTurns() throws IOException
+		{
+			if (permit.isEmpty() || permit.get().state() != SlotStartup.State.CLAIMED ||
+				permit.get().manualResume() || session.isEmpty())
+				return OptionalInt.empty();
+			TrialSession trial = session.get();
+			int completedTurns = trial.manifest().turnNumber();
+			if (!isRetained(trial.manifest()) || !RetainedTrialPrefix.validates(trial.record().manifest().getParent(),
+				completedTurns))
+				return OptionalInt.empty();
+			return OptionalInt.of(completedTurns);
+		}
+
+		/**
+		 * Returns the trial's known session for process settlement and cleanup.
+		 *
+		 * @return the zero or one nested session in this slot
+		 */
+		List<RecordedNestedSession> records()
+		{
+			return session.map(TrialSession::record).stream().toList();
+		}
 	}
 }

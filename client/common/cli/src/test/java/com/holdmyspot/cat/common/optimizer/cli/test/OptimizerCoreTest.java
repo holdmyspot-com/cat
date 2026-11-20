@@ -4901,6 +4901,44 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * A campaign can read its format 3 pilot after a restart and keeps every decided control trial.
+	 *
+	 * @throws Exception if the test cannot create or run the campaign
+	 */
+	@Test
+	public void readsVersionThreePilot() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			repository.trialEnd().set(failingTrials(6, 8));
+			String id = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1")).get("campaign").
+				asString();
+			Path file = repository.directory(id).resolve("held_out/pilot.json");
+			JsonMapper mapper = JsonMapper.builder().build();
+			ObjectNode old = (ObjectNode) mapper.readTree(Files.readString(file));
+			requireThat(old.path("format_version").asInt(), "currentVersion").isEqualTo(4);
+			old.put("format_version", 3);
+			for (JsonNode test : old.path("tests"))
+				((ObjectNode) test).remove("pending_trials");
+			Files.writeString(file, old.toString());
+			repository.trialEnd().set(_ -> null);
+
+			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
+
+			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
+				isEqualTo(8 + 3 * GuardPilot.TRIALS - 5);
+			JsonNode upgraded = mapper.readTree(Files.readString(file));
+			requireThat(upgraded.path("format_version").asInt(), "upgradedVersion").isEqualTo(4);
+			for (JsonNode test : upgraded.path("tests"))
+				requireThat(test.path("pending_trials").size(), "pendingTrials").isEqualTo(0);
+		}
+	}
+
+	/**
 	 * Verifies that a {@code start} that the host ends in the middle of its guard pilot, as a failed host turn or a
 	 * killed command does, keeps the pilot trials that were decided, and that the next {@code start} presents the
 	 * stored proposal after running only the trials that were not decided.

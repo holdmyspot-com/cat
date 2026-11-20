@@ -11,10 +11,8 @@ import java.util.Optional;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Discards the interrupted nested sessions that a command's server retains: it sends each discard as a {@link
- * DiscardRequest} to whatever serves the command's launches, by the route of its worktree requests, and waits for the
- * answer. A command that nothing serves started no nested session that a server could retain, so it has nothing to
- * discard.
+ * Inspects and discards interrupted nested sessions through the authenticated route that serves the command's
+ * launches and worktree requests.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -68,7 +66,7 @@ public final class RetainedNestedSessionClient
 			Path requests = channel.requests().toAbsolutePath();
 			String id = request.publish(json, requests);
 			Path directory = requests.getParent().resolve("responses").resolve(id);
-			response = await(channel, directory);
+			response = await(channel, directory, "discard request", () -> WorktreeResponse.read(json, directory));
 			if (channel.removesResponses())
 				TemporaryDirectories.deleteRecursively(directory);
 		}
@@ -82,30 +80,79 @@ public final class RetainedNestedSessionClient
 	}
 
 	/**
+	 * Sends a retained trial status or discard request and waits for the broker's answer. After a lost discard reply,
+	 * the caller can send the same request again with its original launch identifier and observed identity.
+	 *
+	 * @param request the operation bound to its original trial launch
+	 * @return the broker's answer that matches the request
+	 * @throws NullPointerException if {@code request} is null
+	 * @throws IOException          if there is no authenticated channel, the request cannot be sent, or its response
+	 *                              cannot be read
+	 */
+	public RetainedTrialResponse request(RetainedTrialRequest request) throws IOException
+	{
+		requireThat(request, "request").isNotNull();
+		WorktreeRequestClient.Channel opened = router.open().orElseThrow(() ->
+			new IOException("No request server can settle the retained trial's original launch"));
+		try (WorktreeRequestClient.Channel channel = opened)
+		{
+			Path requests = channel.requests().toAbsolutePath();
+			String id = request.publish(json, requests);
+			Path directory = requests.getParent().resolve("responses").resolve(id);
+			RetainedTrialResponse response = await(channel, directory, "retained trial request",
+				() -> RetainedTrialResponse.read(json, directory, request));
+			if (channel.removesResponses())
+				TemporaryDirectories.deleteRecursively(directory);
+			return response;
+		}
+	}
+
+	/**
 	 * Waits for the answer to a request.
 	 *
-	 * @param channel   the channel that the request went through
-	 * @param directory the request's response directory
+	 * @param <T>         the response type
+	 * @param channel     the channel that the request went through
+	 * @param directory   the request's response directory
+	 * @param requestKind the operation's description for diagnostic messages
+	 * @param reader      the operation that reads the answer once it is available
 	 * @return the answer
 	 * @throws IOException if the receiver stops serving before it answers, or the answer cannot be read
 	 */
-	private WorktreeResponse await(WorktreeRequestClient.Channel channel, Path directory) throws IOException
+	private <T> T await(WorktreeRequestClient.Channel channel, Path directory, String requestKind,
+		Reader<T> reader) throws IOException
 	{
 		while (true)
 		{
-			Optional<WorktreeResponse> response = WorktreeResponse.read(json, directory);
+			Optional<T> response = reader.read();
 			if (response.isPresent())
 				return response.get();
 			if (!channel.isServed())
 			{
 				// The receiver may have answered just before it ended
-				response = WorktreeResponse.read(json, directory);
+				response = reader.read();
 				if (response.isPresent())
 					return response.get();
-				throw new IOException("The request server ended before it answered the discard request: " +
+				throw new IOException("The request server ended before it answered the " + requestKind + ": " +
 					directory.getFileName());
 			}
 			pause.pause();
 		}
+	}
+
+	/**
+	 * Reads the response of a particular request.
+	 *
+	 * @param <T> the response type
+	 */
+	@FunctionalInterface
+	private interface Reader<T>
+	{
+		/**
+		 * Reads the response if the broker published it.
+		 *
+		 * @return the answer, or empty while publication is pending
+		 * @throws IOException if the answer cannot be read
+		 */
+		Optional<T> read() throws IOException;
 	}
 }

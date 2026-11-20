@@ -3,9 +3,29 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Admission;
+import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
+import com.holdmyspot.cat.common.optimizer.campaign.AllocationRule;
+import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.Header;
+import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
+import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
+import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
+import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
+import com.holdmyspot.cat.common.optimizer.cli.CommandRefusedException;
 import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
+import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
+import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -18,7 +38,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.ZoneOffset;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.TreeMap;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /**
@@ -160,6 +184,147 @@ public final class PromptOptimizerCliTest
 				doesNotContain(".gitignore");
 			requireThat(contents(project), "contents").isEqualTo(before);
 		}
+	}
+
+	private enum Preflight
+	{
+		READY, BACKGROUND_READY, WRONG_HARNESS, WRONG_REQUEST, BAD_PREFIX, BUSY,
+		LEGACY, MISSING, NO_LOOKUP, TIMEOUT, CONFIRM
+	}
+
+	/**
+	 * Returns the outcomes of a preflight at spent allowance.
+	 *
+	 * @return the outcomes
+	 */
+	@DataProvider
+	public Object[][] retainedPreflights()
+	{
+		return Stream.of(Preflight.values()).map(value -> new Object[]{value}).toArray(Object[][]::new);
+	}
+
+	/**
+	 * A checked retained session reaches the next command guard. Other runs keep the original allowance refusal.
+	 *
+	 * @param preflight the local trial state and broker answer
+	 * @throws IOException if the test filesystem cannot be used
+	 * @throws CommandRefusedException if the test store cannot be opened
+	 */
+	@Test(dataProvider = "retainedPreflights")
+	public void runWithSpentAllowance(Preflight preflight) throws IOException, CommandRefusedException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("prompt-optimizer-cli-"));
+			Files.createDirectory(project.resolve(".git"));
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (TestOptimizerCommandScope<?> scope = TestOptimizerCommandScope.of(Harness.CLAUDE, project);
+				PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				UUID original = UUID.fromString("d031fc97-6965-4106-ab81-1ea2a0588ba1");
+				String campaign = "campaign-1";
+				if (preflight != Preflight.MISSING)
+					storeRunningTrial(scope, project, campaign, original, preflight != Preflight.LEGACY);
+				scope.nestedQuotaRefusal = "The nested session has spent its allowance.";
+				scope.sandboxRefusal = "The next command guard was reached.";
+				AtomicInteger probes = new AtomicInteger();
+				if (preflight != Preflight.NO_LOOKUP)
+				{
+					scope.retainedTrialLookup = requestId ->
+					{
+						requireThat(requestId, "originalRequest").isEqualTo(original);
+						probes.incrementAndGet();
+						return preflightResponse(preflight, original);
+					};
+				}
+				String[] args = switch (preflight)
+				{
+					case BACKGROUND_READY -> new String[]{"run", campaign, "--background"};
+					case CONFIRM -> new String[]{"confirm", campaign};
+					default -> new String[]{"run", campaign};
+				};
+				Map<String, String> before = contents(project);
+				int exit = PromptOptimizerCli.run(args, () -> scope, ZoneOffset.UTC, out);
+
+				int expectedProbes = switch (preflight)
+				{
+					case READY, BACKGROUND_READY, WRONG_HARNESS, WRONG_REQUEST, BAD_PREFIX, BUSY, TIMEOUT -> 1;
+					case LEGACY, MISSING, NO_LOOKUP, CONFIRM -> 0;
+				};
+				int expectedExit = 2;
+				String expectedMessage = scope.nestedQuotaRefusal;
+				if (preflight == Preflight.READY || preflight == Preflight.BACKGROUND_READY)
+				{
+					expectedExit = 1;
+					expectedMessage = scope.sandboxRefusal;
+				}
+				requireThat(exit, "exit").isEqualTo(expectedExit);
+				JsonNode result = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
+				requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+				requireThat(result.get("message").asString(), "message").isEqualTo(expectedMessage);
+				requireThat(probes.get(), "probes").isEqualTo(expectedProbes);
+				requireThat(contents(project), "contents").isEqualTo(before);
+			}
+		}
+	}
+
+	/**
+	 * Stores a running development trial and, when requested, its original launch binding.
+	 *
+	 * @param scope the command scope
+	 * @param project the project root
+	 * @param id the campaign identifier
+	 * @param original the original launch identifier
+	 * @param recoverable whether the trial has recovery state
+	 * @throws IOException if the campaign cannot be written
+	 * @throws CommandRefusedException if the store cannot be opened
+	 */
+	private static void storeRunningTrial(TestOptimizerCommandScope<?> scope, Path project, String id, UUID original,
+		boolean recoverable) throws IOException, CommandRefusedException
+	{
+		CampaignStore store = OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(scope);
+		Header header = new Header(id, project, project.resolve("CLAUDE.md"), Harness.CLAUDE, Lifecycle.ACTIVE);
+		Campaign campaign = new Builder().header(header).confirmed().build();
+		Campaign assigned = Transitions.apply(campaign, new CampaignEvent.Assign(new Admission.Assign(
+			Purpose.DEVELOPMENT, campaign.development().series(), campaign.development().working().snapshot(),
+			"safety", null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, campaign.evidenceRevision(),
+				scope.clock().instant()))));
+		LogicalTrial trial = assigned.trials().getLast();
+		store.writeAssignment(id, trial);
+		store.replaceSnapshot(Transitions.apply(assigned, new CampaignEvent.Start(trial.key())));
+		if (recoverable)
+			store.writeTrialRecovery(id, new TrialRecovery(trial.key(), TrialRecovery.attemptOrdinal(trial), original,
+				0, Map.of(), false));
+	}
+
+	/**
+	 * Returns the broker answer for a preflight that reaches the original launch.
+	 *
+	 * @param preflight the case under test
+	 * @param original the original launch identifier
+	 * @return the status
+	 * @throws IOException if a response does not arrive
+	 */
+	private static RetainedTrialResponse preflightResponse(Preflight preflight, UUID original) throws IOException
+	{
+		if (preflight == Preflight.TIMEOUT)
+			throw new IOException("Retained trial status timed out");
+		if (preflight == Preflight.BUSY)
+			return new RetainedTrialResponse(original, Status.BUSY, Optional.empty(), OptionalInt.empty());
+		String harness = "claude";
+		if (preflight == Preflight.WRONG_HARNESS)
+			harness = "codex";
+		UUID slot = UUID.fromString("4aaba386-e766-49fd-85d0-9ed548740596");
+		HarnessSession session = new HarnessSession(harness, slot.toString());
+		int completed = 1;
+		if (preflight == Preflight.BAD_PREFIX)
+			completed = 2;
+		UUID request = original;
+		if (preflight == Preflight.WRONG_REQUEST)
+			request = slot;
+		return new RetainedTrialResponse(request, Status.READY, Optional.of(new Identity(slot, Optional.of(session))),
+			OptionalInt.of(completed));
 	}
 
 	/**

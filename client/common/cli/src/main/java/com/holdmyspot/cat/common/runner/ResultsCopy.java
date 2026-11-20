@@ -132,10 +132,11 @@ public final class ResultsCopy
 	 *
 	 * @param source the nested session whose turn evidence is copied
 	 * @param target the nested session that receives it, which need not exist
+	 * @return the immutable list of relative project paths the copier skipped because its sandbox refused the writes
 	 * @throws NullPointerException if {@code source} or {@code target} are null
 	 * @throws IOException          if the target's earlier copy cannot be removed, or a file cannot be copied
 	 */
-	public static void copyTurn(Path source, Path target) throws IOException
+	public static List<String> copyTurn(Path source, Path target) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
@@ -143,6 +144,7 @@ public final class ResultsCopy
 		ResultsCopier copier = new ResultsCopier(source, target, ResultsCopy::includesTurnPath,
 			ResultsCopy::isRequiredTranscript, false);
 		Files.walkFileTree(source, copier);
+		return List.copyOf(copier.skipped);
 	}
 
 	/**
@@ -329,7 +331,8 @@ public final class ResultsCopy
 		 */
 		private boolean includes(Path relative)
 		{
-			return relative.toString().isEmpty() || included.test(relative);
+			return relative.toString().isEmpty() ||
+				!RetainedTrialPrefix.isPrivateSnapshot(relative) && included.test(relative);
 		}
 
 		/**

@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import java.io.IOException;
 import java.io.PrintWriter;
 import java.io.StringWriter;
@@ -204,6 +205,22 @@ public final class HarnessRunnerOptionsTest
 			"test-model", "--effort", "high"}, "harness", SESSION);
 
 		requireThat(result.slotId(), "slotId").isEqualTo("slot-1");
+	}
+
+	/**
+	 * Verifies a broker startup permit requires a slot and can be recovered from the runner's arguments.
+	 */
+	// Requirement: R-I9
+	@Test
+	public void parsesStartupPermit()
+	{
+		String generation = "6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a";
+		String[] args = launch("--project", absolute("project"), "--results", absolute("slot"), "--slot-id", "slot-1",
+			RunnerArguments.STARTUP_PERMIT_OPTION, generation);
+		HarnessRunnerOptions.parse(args, "harness", SESSION);
+		requireThat(HarnessRunnerOptions.startupPermit(args).orElseThrow(), "startupPermit").isEqualTo(generation);
+		expectThrows(IllegalArgumentException.class, () -> HarnessRunnerOptions.parse(launch(
+			RunnerArguments.STARTUP_PERMIT_OPTION, generation), "harness", SESSION));
 	}
 
 	/**

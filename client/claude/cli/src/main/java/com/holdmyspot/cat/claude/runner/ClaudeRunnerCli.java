@@ -429,14 +429,22 @@ public final class ClaudeRunnerCli
 			ClaudeRunner.requireLogin(process, environment, Platform.current());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(), options.resultsFolder(),
-				Clock.systemUTC(), replacer);
+				Clock.systemUTC(), replacer, options.slotId(),
+				HarnessRunnerOptions.startupPermit(args).orElse(null));
 			// A nested session in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
 			NestedSessionManager manager = inSlot(opened, options.slotId(), args);
-			HarnessCapacity capacity = null;
-			if (!options.capacityHeld())
-				capacity = capacityForMaximum.apply(options.maximumConcurrency());
-			serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, role, bound, extraPermissions, manager,
-				input, output, environment, replacer, capacity);
+			try
+			{
+				HarnessCapacity capacity = null;
+				if (!options.capacityHeld())
+					capacity = capacityForMaximum.apply(options.maximumConcurrency());
+				serve(scope, options, agent, readOnlyEvidence, instructionFilesMode, role, bound, extraPermissions, manager,
+					input, output, environment, replacer, capacity);
+			}
+			finally
+			{
+				manager.closeStartupLease();
+			}
 		}
 	}
 

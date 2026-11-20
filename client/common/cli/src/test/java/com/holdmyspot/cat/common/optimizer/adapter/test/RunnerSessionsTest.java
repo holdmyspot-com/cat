@@ -11,6 +11,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
@@ -35,6 +36,8 @@ import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.LiveNestedSession;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
@@ -44,7 +47,9 @@ import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.Reader;
 import java.io.StringWriter;
+import java.io.Writer;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,6 +63,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -1004,6 +1010,138 @@ public final class RunnerSessionsTest
 			requireThat(((SessionResult.Completed) result).responses(), "responses").isEqualTo(
 				List.of(List.of("interim-0", "final-0"), List.of("interim-1", "final-1")));
 		}
+	}
+
+	/**
+	 * Supplies receipts that cover the retained prefix boundary.
+	 *
+	 * @return the receipt, the turns to evaluate and the prompts that should still reach the runner
+	 */
+	@DataProvider
+	public Object[][] retainedReceipts()
+	{
+		return new Object[][]{
+			// The driver died before recording the turn, so evaluate it once and stop.
+			{new TurnObserver.Progress(0, Map.of(), false), List.of(1), List.of()},
+			// Restore an already recorded end decision without evaluating it again.
+			{new TurnObserver.Progress(1, Map.of("reply", 1), true), List.of(), List.of()},
+			// The previous decision left work, so send only the next prompt.
+			{new TurnObserver.Progress(1, Map.of(), false), List.of(), List.of("two")}};
+	}
+
+	/**
+	 * Restores one authenticated prefix from the served bridge. A previously visible local transcript may be partial.
+	 *
+	 * @param progress the observer receipt on disk
+	 * @param expectedEvaluations the turns that should be evaluated
+	 * @param expectedPrompts the prompts that should reach the harness
+	 * @throws IOException if a fixture cannot be created or read
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException if the session cannot determine a result
+	 * @throws TimeoutException if the session does not finish
+	 */
+	@Test(dataProvider = "retainedReceipts")
+	public void restoresRetainedTrialPrefix(TurnObserver.Progress progress, List<Integer> expectedEvaluations,
+		List<String> expectedPrompts) throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		try (TestJvmScope jvm = new TestJvmScope(); TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-retained-adapter-"));
+			Path results = root.resolve("results");
+			UUID requestId = UUID.randomUUID();
+			String sessionId = UUID.randomUUID().toString();
+			Path artifacts = Files.createDirectories(results.resolve(TestSessions.HARNESS).resolve(sessionId).
+				resolve("artifacts"));
+			Path transcript = Files.writeString(artifacts.resolve("transcript.jsonl"), "stale\n");
+			List<String> prompts = new CopyOnWriteArrayList<>();
+			List<Integer> evaluated = new ArrayList<>();
+			RetainedTrialResponse.HarnessSession retained =
+				new RetainedTrialResponse.HarnessSession(TestSessions.HARNESS, sessionId);
+			RetainedTrialClaim claim = new RetainedTrialClaim(requestId,
+				new RetainedTrialResponse.Identity(UUID.randomUUID(), Optional.of(retained)), 1);
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, results, List::of, false,
+				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
+			TestSessions sessions = new TestSessions(settings, retainedBridge(claim, prompts));
+			TurnObserver observer = new TurnObserver()
+			{
+				@Override
+				public boolean endAfter(int turn, SessionResult.Completed result)
+				{
+					evaluated.add(turn);
+					requireThat(result.responses(), "prefix").isEqualTo(List.of(List.of("first")));
+					return true;
+				}
+
+				@Override
+				public Progress progress()
+				{
+					return progress;
+				}
+
+				@Override
+				public Map<String, Integer> settledAssertions()
+				{
+					return Map.of("reply", 1);
+				}
+			};
+			SessionRequest trial = request(root, List.of(), "one", "two").withTurnObserver(observer);
+
+			SessionResult result = await(sessions.startTrial(trial, requestId, Optional.of(claim)));
+
+			requireThat(prompts, "sentPrompts").isEqualTo(expectedPrompts);
+			requireThat(evaluated, "evaluatedTurns").isEqualTo(expectedEvaluations);
+			requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
+			SessionResult.Completed completed = (SessionResult.Completed) result;
+			requireThat(completed.endedEarly(), "endedEarly").isEqualTo(expectedPrompts.isEmpty());
+			requireThat(completed.responses().getFirst(), "restoredReply").isEqualTo(List.of("first"));
+			requireThat(completed.model(), "restoredModel").isEqualTo("model-a");
+			requireThat(Files.readAllLines(transcript), "transcript").isEqualTo(List.of(TestSessions.MODEL_EVENT));
+		}
+	}
+
+	/**
+	 * Supplies the records that the broker's forwarder writes before permitting another turn.
+	 *
+	 * @param claim the exact checkpoint the adapter should request
+	 * @param prompts where the fixture records prompts that the driver sent
+	 * @return the fixture bridge
+	 */
+	private static Bridge retainedBridge(RetainedTrialClaim claim, List<String> prompts)
+	{
+		return new Bridge()
+		{
+			@Override
+			public void serve(List<String> arguments, Reader input, Writer output)
+			{
+				throw new AssertionError("A retained trial needs a bound bridge");
+			}
+
+			@Override
+			public void serveTrial(UUID requestId, Optional<RetainedTrialClaim> retained, Path source,
+				List<String> arguments, Reader input, Writer output) throws IOException
+			{
+				requireThat(requestId, "requestId").isEqualTo(claim.requestId());
+				requireThat(retained, "retained").contains(claim);
+				JsonMapper json = JsonMapper.builder().build();
+				String id = claim.identity().session().orElseThrow().sessionId();
+				output.write("{\"type\":\"retained_session_id\",\"session_id\":\"" + id + "\"}\n");
+				output.write("{\"type\":\"retained_turn_start\"}\n");
+				output.write(json.createObjectNode().put("type", "harness_event").put("event", TestSessions.MODEL_EVENT).
+					toString() + "\n");
+				output.write("{\"type\":\"turn_completed\",\"assistant_messages\":[\"first\"]}\n");
+				output.write("{\"type\":\"started\",\"resumed\":true}\n");
+				BufferedReader requests = new BufferedReader(input);
+				for (String line = requests.readLine(); line != null; line = requests.readLine())
+				{
+					JsonNode message = json.readTree(line);
+					if (message.path("type").stringValue("").equals("turn"))
+					{
+						prompts.add(message.path("prompt").stringValue());
+						output.write("{\"type\":\"turn_completed\",\"assistant_messages\":[\"continued\"]}\n");
+					}
+				}
+			}
+		};
 	}
 
 	/**

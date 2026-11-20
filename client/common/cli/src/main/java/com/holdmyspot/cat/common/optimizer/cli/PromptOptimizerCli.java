@@ -115,8 +115,8 @@ public final class PromptOptimizerCli
 		if (!Commands.isHelpRequest(args) && !Commands.isContractTool(args))
 		{
 			Optional<String> refusal = scope.noHarnessRefusal();
-			if (refusal.isEmpty() && commands.startsSessions(args))
-				refusal = scope.nestedSessionRefusal();
+			if (refusal.isEmpty())
+				refusal = nestedRefusal(scope, commands, args);
 			if (refusal.isPresent())
 			{
 				out.println(Commands.statusMessage(scope.json(), "refused", refusal.get()));
@@ -124,6 +124,32 @@ public final class PromptOptimizerCli
 			}
 		}
 		return commands.execute(args, out);
+	}
+
+	/**
+	 * Applies the nested launch preflight. An existing trial with a verified retained prefix can continue through a
+	 * guarded resume after the nested session spends its allowance.
+	 *
+	 * @param scope the command's scope
+	 * @param commands the command parser
+	 * @param args the launcher's arguments
+	 * @return the launch refusal, or empty if the command may run
+	 */
+	private static Optional<String> nestedRefusal(AbstractOptimizerCommandScope scope, Commands commands,
+		List<String> args)
+	{
+		Optional<Command> parsed = commands.sessionStartingCommand(args);
+		if (parsed.isEmpty())
+			return Optional.empty();
+		Optional<String> refusal = scope.nestedSessionRefusal();
+		if (refusal.isEmpty())
+			return refusal;
+		Command command = parsed.get();
+		if (command instanceof Command.Background background)
+			command = background.command();
+		if (command instanceof Command.Run run && scope.hasRecoverableTrial(run.campaign()))
+			return Optional.empty();
+		return refusal;
 	}
 
 	/**

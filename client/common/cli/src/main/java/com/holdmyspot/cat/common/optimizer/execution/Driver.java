@@ -103,6 +103,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.optimizer.port.TurnObserver.Progress;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
@@ -111,9 +112,14 @@ import com.holdmyspot.cat.common.optimizer.report.Status;
 import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibrationException;
 import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import com.holdmyspot.cat.common.optimizer.workspace.ControlSource;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialUnresumableException;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -132,6 +138,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.CompletionException;
 import java.util.stream.Stream;
 
@@ -167,6 +174,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private static final String UNRECEIVED_FILE_ROUTE = "To give trials such a file, run `revise` with feedback that " +
 		"names it, so that the contract declares it as a referenced file.";
+	private static final Duration RETAINED_STATUS_RECHECK = Duration.ofSeconds(1);
 	private final DriverContext context;
 	private final CampaignLock lock;
 	private final String campaignId;
@@ -179,6 +187,9 @@ public final class Driver implements AutoCloseable
 	private final HostLogin login;
 	private final SessionEvents events = new SessionEvents();
 	private final Map<Long, InFlight> inFlight = new LinkedHashMap<>();
+	private final Map<TrialKey, TrialRecovery> trialRequests;
+	private final Map<TrialKey, FailedContinuation> failedContinuations = new HashMap<>();
+	private final Object trialProgressLock = new Object();
 	private final List<Judging> judgingQueue = new ArrayList<>();
 	private final List<Triaging> triageQueue = new ArrayList<>();
 	private final List<NearMissJob> nearMissQueue = new ArrayList<>();
@@ -217,16 +228,18 @@ public final class Driver implements AutoCloseable
 	 *
 	 * @param context the driver's context
 	 * @param lock the campaign's write lock
-	 * @param campaign the reconciled campaign
+	 * @param recovery the reconciled campaign and the launches that the broker still owns
 	 * @param sliceStart when the slice started
 	 * @param login how the harness authenticates
 	 */
-	private Driver(DriverContext context, CampaignLock lock, Campaign campaign, Instant sliceStart, HostLogin login)
+	private Driver(DriverContext context, CampaignLock lock, Reconciler.Recovery recovery, Instant sliceStart,
+		HostLogin login)
 	{
 		this.context = context;
 		this.lock = lock;
-		this.campaign = campaign;
+		this.campaign = recovery.campaign();
 		this.campaignId = campaign.header().id();
+		this.trialRequests = new LinkedHashMap<>(recovery.requests());
 		this.sliceStart = sliceStart;
 		this.deadline = context.settings().deadline(sliceStart);
 		this.graceEnd = context.settings().graceEnd(sliceStart);
@@ -295,11 +308,11 @@ public final class Driver implements AutoCloseable
 		{
 			Instant now = context.clock().instant();
 			HostLogin login = context.sessions().hostLogin();
-			Campaign campaign = Reconciler.reconcile(context, load(context, campaignId), now);
+			Reconciler.Recovery recovery = Reconciler.reconcile(context, load(context, campaignId), now);
 			Instant began = now;
 			if (sliceStart != null)
 				began = sliceStart;
-			return new Driver(context, lock, campaign, began, login);
+			return new Driver(context, lock, recovery, began, login);
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -446,6 +459,14 @@ public final class Driver implements AutoCloseable
 		boolean started = startTriages(now);
 		started |= startJudges(now);
 		discardRemovedTrials();
+		boolean canResume = cancellationEnd == null && now.isBefore(deadline) && isAdmissible() &&
+			campaign.throttle().allowsAdmission(now);
+		started |= recoverTrials(now, canResume);
+		if (infrastructureFailure != null)
+		{
+			cancel(infrastructureFailure, now);
+			return stop();
+		}
 		if (cancellationEnd == null && now.isBefore(deadline))
 		{
 			started |= advanceMinimality();
@@ -455,7 +476,7 @@ public final class Driver implements AutoCloseable
 			started |= startNearMisses(now);
 			started |= admit(now);
 		}
-		if (!isDrained())
+		if (!isDrained() || !failedContinuations.isEmpty())
 			return new Step.Continue(nextWake(now));
 		if (deliver())
 			return stop();
@@ -491,9 +512,12 @@ public final class Driver implements AutoCloseable
 	@Override
 	public void close() throws IOException
 	{
-		if (closed)
-			return;
-		closed = true;
+		synchronized (trialProgressLock)
+		{
+			if (closed)
+				return;
+			closed = true;
+		}
 		try (lock; nearMissDirectories)
 		{
 			if (!isDrained())
@@ -552,7 +576,7 @@ public final class Driver implements AutoCloseable
 
 	/**
 	 * Returns the time by which the driver must step again while sessions run: the slice's deadline, then the end of
-	 * its grace period, or an earlier end of a throttle hold.
+	 * its grace period, an earlier end of a throttle hold, or the next check for a failed continuation's slot.
 	 *
 	 * @param now the current time
 	 * @return the time
@@ -565,6 +589,12 @@ public final class Driver implements AutoCloseable
 		Instant holdUntil = campaign.throttle().holdUntil();
 		if (holdUntil.isAfter(now) && holdUntil.isBefore(wake))
 			wake = holdUntil;
+		if (!failedContinuations.isEmpty())
+		{
+			Instant recheck = now.plus(RETAINED_STATUS_RECHECK);
+			if (recheck.isBefore(wake))
+				wake = recheck;
+		}
 		return wake;
 	}
 
@@ -638,8 +668,6 @@ public final class Driver implements AutoCloseable
 		// Every later session is refused the same way until the user acts, so the slice stops with the refusal
 		if (result instanceof SessionResult.LaunchRefused refused && infrastructureFailure == null)
 			infrastructureFailure = refused.reason();
-		if (session instanceof InFlight.Trial trial)
-			recordTrialSession(trial, result, now);
 		switch (session)
 		{
 			case InFlight.Trial trial -> trialEnded(trial, result, event.failure(), now);
@@ -763,6 +791,21 @@ public final class Driver implements AutoCloseable
 		throws IOException
 	{
 		TrialKey key = trial.key();
+		TrialRecovery recovery = trialRequests.get(key);
+		if (recovery != null && trial.claim() != null &&
+			sessionFailure(failure) instanceof RetainedTrialUnresumableException unresumable)
+		{
+			failedContinuations.put(key, new FailedContinuation(trial, unresumable));
+			return;
+		}
+		if (recovery != null && !(result instanceof SessionResult.Completed))
+		{
+			RetainedTrialResponse retained = retainedStatus(recovery);
+			if (!settleTrial(retained, false))
+				return;
+		}
+		trialRequests.remove(key);
+		recordTrialSession(trial, result, now);
 		switch (result)
 		{
 			case null -> fail(key, RunFailure.INFRASTRUCTURE, "The trial session failed: " + describe(failure), now);
@@ -2511,6 +2554,11 @@ public final class Driver implements AutoCloseable
 	private boolean admit(Instant now) throws IOException
 	{
 		int free = freeCapacity();
+		for (TrialKey key : trialRequests.keySet())
+		{
+			if (!hasLocalTrial(key) && findRunningTrial(key).isPresent())
+				--free;
+		}
 		if (free <= 0)
 			return false;
 		List<LogicalTrial> admitted = new ArrayList<>();
@@ -2536,7 +2584,7 @@ public final class Driver implements AutoCloseable
 			return false;
 		context.store().replaceSnapshot(campaign);
 		for (LogicalTrial trial : admitted)
-			startTrial(trial, now);
+			startTrial(trial, now, null);
 		return true;
 	}
 
@@ -2553,14 +2601,176 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
+	 * Reconciles requests without a local trial handle. The broker decides whether their slot can be reclaimed or
+	 * must be left alone, and confirms the old launch is settled before the driver queues its replacement.
+	 *
+	 * @param now the time of this step
+	 * @param canResume whether the slice can start a continuation
+	 * @return whether a trial was started or queued again
+	 * @throws IOException if the broker or campaign store cannot be read or written
+	 */
+	private boolean recoverTrials(Instant now, boolean canResume) throws IOException
+	{
+		boolean advanced = false;
+		for (TrialRecovery original : List.copyOf(trialRequests.values()))
+		{
+			TrialKey key = original.key();
+			if (hasLocalTrial(key))
+				continue;
+			LogicalTrial trial = findRunningTrial(key).orElse(null);
+			RetainedTrialResponse response = retainedStatus(original);
+			FailedContinuation failed = failedContinuations.get(key);
+			if (failed != null)
+			{
+				advanced |= settleFailedContinuation(failed, response, now);
+				continue;
+			}
+			if (trial != null && response.status() == RetainedTrialResponse.Status.READY)
+			{
+				TrialRecovery saved = context.store().readTrialRecovery(campaignId, key, original.attemptOrdinal()).
+					orElseThrow(() -> new IOException("The recovery record disappeared for trial " + key));
+				int completed = response.completedTurns().orElseThrow();
+				if (saved.canResumePrefix(trial, completed))
+				{
+					if (canResume && freeCapacity() > 0 && infrastructureFailure == null)
+					{
+						RetainedTrialClaim claim = new RetainedTrialClaim(original.requestId(),
+							response.identity().orElseThrow(), completed);
+						startTrial(trial, now, claim);
+						advanced = true;
+					}
+					continue;
+				}
+			}
+			if (settleTrial(response, true))
+			{
+				trialRequests.remove(key);
+				if (trial != null)
+				{
+					fail(key, RunFailure.INTERRUPTED, Reconciler.ABANDONED, now);
+					advanced = true;
+				}
+			}
+		}
+		return advanced;
+	}
+
+	/**
+	 * Discards a slot the native harness could not continue. The original launch and native session must still
+	 * match. A successful claim can rotate the spawn generation, so the discard uses the newly observed identity.
+	 *
+	 * @param failed the guarded continuation and its reported failure
+	 * @param response the broker's status for the original launch
+	 * @param now the time of this step
+	 * @return whether the original launch has been settled
+	 * @throws IOException if the broker or the trial record cannot be read or written
+	 */
+	private boolean settleFailedContinuation(FailedContinuation failed, RetainedTrialResponse response, Instant now)
+		throws IOException
+	{
+		InFlight.Trial trial = failed.trial();
+		RetainedTrialClaim claim = trial.claim();
+		if (!claim.requestId().equals(response.requestId()))
+			throw new IOException("The broker's status does not match the failed continuation");
+		if (response.identity().isPresent() &&
+			!response.identity().orElseThrow().session().equals(claim.identity().session()))
+		{
+			return false;
+		}
+		if (!settleTrial(response, true))
+			return false;
+		TrialKey key = trial.key();
+		if (findRunningTrial(key).isPresent())
+		{
+			recordTrialSession(trial, null, now);
+			fail(key, RunFailure.INFRASTRUCTURE, describe(failed.cause()), now);
+		}
+		trialRequests.remove(key);
+		failedContinuations.remove(key);
+		return true;
+	}
+
+	/**
+	 * Determines whether this driver already owns the trial's session handle.
+	 *
+	 * @param key the trial's key
+	 * @return whether the driver awaits that session's result
+	 */
+	private boolean hasLocalTrial(TrialKey key)
+	{
+		for (InFlight session : inFlight.values())
+		{
+			if (session instanceof InFlight.Trial trial && trial.key().equals(key))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Asks the broker what currently owns the exact original request.
+	 *
+	 * @param original the original launch
+	 * @return the broker's current status
+	 * @throws IOException if the broker cannot confirm status for that request
+	 */
+	private RetainedTrialResponse retainedStatus(TrialRecovery original) throws IOException
+	{
+		return retainedTrial(RetainedTrialRequest.status(original.requestId()));
+	}
+
+	/**
+	 * Checks for confirmed absence or asks the broker to discard the observed slot. An unsafe binding can have
+	 * no startup generation if the broker died before issuing one. Discard still checks the original request
+	 * and that no generation has appeared.
+	 *
+	 * @param status the broker's answer to a status request
+	 * @param discardReady whether the caller cannot use the ready slot
+	 * @return whether the broker confirms the original request no longer has a retained slot and cannot start
+	 * @throws IOException if the broker cannot answer a discard request
+	 */
+	private boolean settleTrial(RetainedTrialResponse status, boolean discardReady) throws IOException
+	{
+		if (status.status() == RetainedTrialResponse.Status.ABSENT ||
+			status.status() == RetainedTrialResponse.Status.DISCARDED)
+		{
+			return true;
+		}
+		if (status.status() == RetainedTrialResponse.Status.BUSY ||
+			(status.status() == RetainedTrialResponse.Status.READY && !discardReady))
+		{
+			return false;
+		}
+		RetainedTrialResponse discarded = retainedTrial(RetainedTrialRequest.discard(status.requestId(),
+			status.identity()));
+		return discarded.status() == RetainedTrialResponse.Status.DISCARDED ||
+			discarded.status() == RetainedTrialResponse.Status.ABSENT;
+	}
+
+	/**
+	 * Reads the broker's answer and verifies it responds to the exact launch requested.
+	 *
+	 * @param request the status or discard request
+	 * @return the broker's answer
+	 * @throws IOException if the answer is unavailable or addresses another launch
+	 */
+	private RetainedTrialResponse retainedTrial(RetainedTrialRequest request) throws IOException
+	{
+		RetainedTrialResponse response = context.sessions().retainedTrial(request);
+		if (!response.requestId().equals(request.requestId()))
+			throw new IOException("The broker returned recovery status for another trial request");
+		return response;
+	}
+
+	/**
 	 * Stages a started trial's candidate and its copies of the trial plugins, then starts its session. A failure to
-	 * start is an infrastructure failure.
+	 * start is an infrastructure failure after the broker settles any published request.
 	 *
 	 * @param trial the trial, whose start is persisted
 	 * @param now the current time
+	 * @param claim the claim for the same session, or null for a fresh launch
 	 * @throws IOException if the store cannot be written
 	 */
-	private void startTrial(LogicalTrial trial, Instant now) throws IOException
+	private void startTrial(LogicalTrial trial, Instant now, RetainedTrialClaim claim) throws IOException
 	{
 		TrialKey key = trial.key();
 		Path source;
@@ -2573,27 +2783,36 @@ public final class Driver implements AutoCloseable
 		}
 		catch (IOException e)
 		{
-			fail(key, RunFailure.INFRASTRUCTURE, "The trial session could not start: " + describe(e), now);
+			trialStartFailed(trial, e, now);
 			return;
 		}
 		Path target = campaign.header().root().relativize(campaign.header().target());
 		StagedTarget.read(source, candidate.snapshot(), target);
-		SessionHandle handle;
+		TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
+		PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
+		boolean control = key.purpose() == Purpose.CONTROL;
+		SessionRequest request;
 		try
 		{
-			TrialProfile profile = campaign.contract().findCell(trial.testCase().cellId()).orElseThrow().profile();
-			PromptTest test = campaign.contract().findTest(trial.testCase().testId()).orElseThrow();
-			boolean control = key.purpose() == Purpose.CONTROL;
 			List<Path> plugins = TrialPlugins.of(campaign.plugins().orElse(List.of()), campaign.contract(),
 				context.workspace(), source, control, context.json());
-			handle = context.sessions().start(new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
+			request = new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
-				TestWorkspace.of(test, trial.testCase().testCase()), plugins, Optional.empty(), control).
-				withTurnObserver(EarlyTrialEnd.forTest(test, trial.testCase().testCase(), context.sessions())));
+				TestWorkspace.of(test, trial.testCase().testCase()), plugins, Optional.empty(), control);
 		}
 		catch (IOException e)
 		{
-			fail(key, RunFailure.INFRASTRUCTURE, "The trial session could not start: " + describe(e), now);
+			trialStartFailed(trial, e, now);
+			return;
+		}
+		SessionHandle handle;
+		try
+		{
+			handle = launchTrial(trial, test, request, claim);
+		}
+		catch (IOException e)
+		{
+			trialStartFailed(trial, e, now);
 			return;
 		}
 		int concurrency = 1;
@@ -2602,7 +2821,92 @@ public final class Driver implements AutoCloseable
 			if (session instanceof InFlight.Trial)
 				++concurrency;
 		}
-		register(new InFlight.Trial(key, trial.testCase(), now, concurrency, handle));
+		register(new InFlight.Trial(key, trial.testCase(), now, concurrency, handle, claim));
+	}
+
+	/**
+	 * Starts the trial through its port, recording a fresh request before publication or restoring the observer for
+	 * the broker's claimed session.
+	 *
+	 * @param trial the persisted trial assignment
+	 * @param test the prompt test
+	 * @param request the trial session's input
+	 * @param claim the claim for the same session, or null for a fresh launch
+	 * @return the session handle
+	 * @throws IOException if the launch or its recovery state cannot be recorded
+	 */
+	private SessionHandle launchTrial(LogicalTrial trial, PromptTest test, SessionRequest request,
+		RetainedTrialClaim claim) throws IOException
+	{
+		if (!context.sessions().recoversTrials())
+		{
+			return context.sessions().start(request.withTurnObserver(
+				EarlyTrialEnd.forTest(test, trial.testCase().testCase(), context.sessions())));
+		}
+		int ordinal = TrialRecovery.attemptOrdinal(trial);
+		TrialRecovery recovery;
+		if (claim == null)
+		{
+			recovery = new TrialRecovery(trial.key(), ordinal, UUID.randomUUID(), 0, Map.of(), false);
+			context.store().writeTrialRecovery(campaignId, recovery);
+			trialRequests.put(trial.key(), recovery);
+		}
+		else
+		{
+			recovery = context.store().readTrialRecovery(campaignId, trial.key(), ordinal).orElseThrow(() ->
+				new IOException("The recovery record disappeared for trial " + trial.key()));
+		}
+		Progress saved = new Progress(recovery.observerTurn(), recovery.settledAssertions(), recovery.endedEarly());
+		EarlyTrialEnd observer = EarlyTrialEnd.forTest(test, trial.testCase().testCase(), context.sessions(), saved,
+			progress -> recordTrialProgress(recovery, progress));
+		return context.sessions().startTrial(request.withTurnObserver(observer), recovery.requestId(),
+			Optional.ofNullable(claim));
+	}
+
+	/**
+	 * Persists an observer decision while this driver still owns the campaign lock. Session tasks can outlive
+	 * their driver, so a callback after close must refuse the next turn.
+	 *
+	 * @param recovery the trial launch whose observer advanced
+	 * @param progress the observer's decision
+	 * @throws IOException if the trial's progress cannot be recorded
+	 */
+	private void recordTrialProgress(TrialRecovery recovery, Progress progress) throws IOException
+	{
+		synchronized (trialProgressLock)
+		{
+			if (closed)
+				throw new IOException("The campaign driver closed before recording trial " + recovery.key());
+			context.store().writeTrialRecovery(campaignId, new TrialRecovery(recovery.key(), recovery.attemptOrdinal(),
+				recovery.requestId(), progress.completedTurn(), progress.settledAssertions(), progress.endedEarly()));
+		}
+	}
+
+	/**
+	 * Handles a failed start attempt. A published request may have started even when the client received no handle.
+	 *
+	 * @param trial the persisted trial assignment
+	 * @param failure the start failure
+	 * @param now the time of the failure
+	 * @throws IOException if the broker or the campaign cannot be reconciled
+	 */
+	private void trialStartFailed(LogicalTrial trial, IOException failure, Instant now) throws IOException
+	{
+		TrialKey key = trial.key();
+		String detail = "The trial session could not start: " + describe(failure);
+		TrialRecovery recovery = trialRequests.get(key);
+		if (recovery == null)
+		{
+			fail(key, RunFailure.INFRASTRUCTURE, detail, now);
+			return;
+		}
+		if (settleTrial(retainedStatus(recovery), false))
+		{
+			trialRequests.remove(key);
+			fail(key, RunFailure.INTERRUPTED, detail, now);
+			return;
+		}
+		infrastructureFailure = detail;
 	}
 
 	/**
@@ -2701,7 +3005,11 @@ public final class Driver implements AutoCloseable
 		{
 			switch (session)
 			{
-				case InFlight.Trial trial -> abandoned.add(trial.key());
+				case InFlight.Trial trial ->
+				{
+					if (!trialRequests.containsKey(trial.key()))
+						abandoned.add(trial.key());
+				}
 				case InFlight.Judge judge -> abandoned.add(judge.judging().key());
 				case InFlight.Triage triage -> abandoned.add(triage.triaging().key());
 				// The prompt author copy is cleaned up by interrupt(); prompt authors have no logical trial to queue.
@@ -2952,9 +3260,7 @@ public final class Driver implements AutoCloseable
 	 */
 	static String describe(Throwable failure)
 	{
-		Throwable cause = failure;
-		if (cause instanceof CompletionException && cause.getCause() != null)
-			cause = cause.getCause();
+		Throwable cause = sessionFailure(failure);
 		String type = cause.getClass().getName();
 		String message = cause.getMessage();
 		if (message == null || message.isBlank())
@@ -2962,5 +3268,28 @@ public final class Driver implements AutoCloseable
 		if (cause.getClass() == IOException.class || type.startsWith("com.holdmyspot.cat."))
 			return message;
 		return type + ": " + message;
+	}
+
+	/**
+	 * Unwraps an asynchronous completion failure.
+	 *
+	 * @param failure the completion failure, or null for a normal result
+	 * @return its cause, or the supplied value when it has no completion wrapper
+	 */
+	private static Throwable sessionFailure(Throwable failure)
+	{
+		if (failure instanceof CompletionException && failure.getCause() != null)
+			return failure.getCause();
+		return failure;
+	}
+
+	/**
+	 * A guarded continuation whose failure must be settled with the broker before the trial can run again.
+	 *
+	 * @param trial the continued trial and its claim
+	 * @param cause the broker's failure from continuing the native session
+	 */
+	private record FailedContinuation(InFlight.Trial trial, RetainedTrialUnresumableException cause)
+	{
 	}
 }

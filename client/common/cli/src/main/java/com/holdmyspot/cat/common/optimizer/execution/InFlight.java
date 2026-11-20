@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 
 import java.nio.file.Path;
 import java.time.Instant;
@@ -40,9 +41,10 @@ sealed interface InFlight
 	 * @param startedAt when the session started
 	 * @param concurrency the number of trial sessions running immediately after this one started
 	 * @param handle the session
+	 * @param claim the retained checkpoint this session continued, or null for a fresh launch
 	 */
-	record Trial(TrialKey key, DrawnTestCase testCase, Instant startedAt, int concurrency, SessionHandle handle)
-		implements InFlight
+	record Trial(TrialKey key, DrawnTestCase testCase, Instant startedAt, int concurrency, SessionHandle handle,
+		RetainedTrialClaim claim) implements InFlight
 	{
 	}
 

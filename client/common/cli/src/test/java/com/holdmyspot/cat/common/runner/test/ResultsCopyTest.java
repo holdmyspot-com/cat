@@ -35,6 +35,32 @@ import org.testng.annotations.Test;
 public final class ResultsCopyTest
 {
 	/**
+	 * Verifies that normal results exclude the runner's private recovery snapshot and its staging directory.
+	 *
+	 * @throws IOException if fixture files cannot be created or copied
+	 */
+	@Test
+	public void excludesPrivateTrialSnapshot() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("kept-private-copy-"));
+			Path source = Files.createDirectory(root.resolve("source"));
+			Path target = root.resolve("target");
+			Files.writeString(Files.createDirectory(source.resolve("project")).resolve("file"), "results");
+			Files.writeString(Files.createDirectory(source.resolve("retained-turn")).resolve("snapshot.json"), "{}");
+			Files.createDirectory(source.resolve(".retained-turn-in-progress"));
+
+			ResultsCopy.Result copied = ResultsCopy.copy(source, target);
+
+			requireThat(copied.incomplete(), "incomplete").isEmpty();
+			requireThat(Files.readString(target.resolve("project/file")), "project").isEqualTo("results");
+			requireThat(Files.exists(target.resolve("retained-turn")), "retainedSnapshot").isFalse();
+			requireThat(Files.exists(target.resolve(".retained-turn-in-progress")), "retainedStaging").isFalse();
+		}
+	}
+
+	/**
 	 * Creates the test fixture.
 	 */
 	public ResultsCopyTest()

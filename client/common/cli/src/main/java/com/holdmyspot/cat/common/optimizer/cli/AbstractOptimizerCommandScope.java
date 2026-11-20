@@ -6,7 +6,12 @@ import com.holdmyspot.cat.common.HomeProject;
 import com.holdmyspot.cat.common.JvmScope;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.SessionIgnore;
+import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
+import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
@@ -17,8 +22,10 @@ import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.JudgeRecordingStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeAccess;
 import com.holdmyspot.cat.common.secrets.OptimizerCommandScopeSecrets;
 
@@ -28,6 +35,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.random.RandomGenerator;
 
 /**
@@ -197,6 +205,97 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract Optional<String> nestedSessionRefusal();
+
+	/**
+	 * Checks if an ordinary run can reach a recoverable trial. This reads campaign evidence and asks the broker for
+	 * status before the command acquires a campaign lock or resumes cleanup. The driver rechecks before it claims.
+	 *
+	 * @param campaignId the campaign identifier
+	 * @return whether the run has a verified retained trial it can continue
+	 */
+	final boolean hasRecoverableTrial(String campaignId)
+	{
+		try
+		{
+			Optional<RetainedTrialLookup> lookup = retainedTrialPreflight();
+			if (lookup.isEmpty())
+				return false;
+			CampaignStore store = store();
+			Optional<Campaign> loaded = store.load(campaignId);
+			if (loaded.isEmpty())
+				return false;
+			Campaign campaign = loaded.get();
+			if (campaign.header().harness() != harness() || campaign.lifecycle() != Lifecycle.ACTIVE ||
+				!campaign.isConfirmed() || campaign.pending() != null || campaign.revisionRequested() ||
+				campaign.awaitsTestRevision())
+				return false;
+			return hasReadyTrial(store, campaign, lookup.get());
+		}
+		catch (CommandRefusedException | IOException _)
+		{
+			return false;
+		}
+	}
+
+	/**
+	 * Looks for a running trial with no recorded terminal outcome, a current recovery record and a ready broker
+	 * checkpoint that fits its observer progress.
+	 *
+	 * @param store the campaign store
+	 * @param campaign the snapshot under consideration
+	 * @param lookup the authenticated broker status lookup
+	 * @return whether a trial has a matching recovery record and retained checkpoint
+	 * @throws IOException if campaign evidence or broker status cannot be verified
+	 */
+	private boolean hasReadyTrial(CampaignStore store, Campaign campaign, RetainedTrialLookup lookup) throws IOException
+	{
+		String campaignId = campaign.header().id();
+		List<CampaignEvent.Complete> outcomes = store.listUnadoptedOutcomes(campaign);
+		for (LogicalTrial trial : campaign.trials())
+		{
+			if (trial.state() != TrialState.RUNNING ||
+				outcomes.stream().anyMatch(outcome -> outcome.key().equals(trial.key())))
+				continue;
+			Optional<TrialRecovery> recovery = store.readTrialRecovery(campaignId, trial.key(),
+				TrialRecovery.attemptOrdinal(trial));
+			if (recovery.isEmpty())
+				continue;
+			TrialRecovery saved = recovery.get();
+			RetainedTrialResponse status = lookup.status(saved.requestId());
+			if (status.status() == RetainedTrialResponse.Status.READY && status.requestId().equals(saved.requestId()) &&
+				status.identity().orElseThrow().session().orElseThrow().harness().equals(harness().commandName()) &&
+				saved.canResumePrefix(trial, status.completedTurns().orElseThrow()))
+				return true;
+		}
+		return false;
+	}
+
+	/**
+	 * Opens a bounded status lookup for a nested command whose allowance is spent.
+	 *
+	 * @return the lookup, or empty if retained trials cannot be checked
+	 * @throws IOException if the nested request channel cannot be read
+	 */
+	protected Optional<RetainedTrialLookup> retainedTrialPreflight() throws IOException
+	{
+		return Optional.empty();
+	}
+
+	/**
+	 * Checks a retained trial through the nested session's request channel.
+	 */
+	@FunctionalInterface
+	protected interface RetainedTrialLookup
+	{
+		/**
+		 * Reads the broker's status of an original launch.
+		 *
+		 * @param requestId the original launch's identifier
+		 * @return the broker's answer
+		 * @throws IOException if a verified answer does not arrive
+		 */
+		RetainedTrialResponse status(UUID requestId) throws IOException;
+	}
 
 	/**
 	 * Returns the source of campaign identifiers and draw seeds.

@@ -10,12 +10,16 @@ import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions.RecordedProcess;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 
 import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 /**
  * Brings a campaign that an earlier driver left behind to a consistent state before a new driver advances it.
@@ -39,8 +43,8 @@ public final class Reconciler
 	 * <ol>
 	 *   <li>requests termination of the recorded processes of runs that an earlier driver left running;</li>
 	 *   <li>adopts every recorded outcome that the snapshot does not hold yet;</li>
-	 *   <li>returns every trial that started without an outcome to the queue, to rerun as the same logical
-	 *   trial;</li>
+	 *   <li>identifies original requests for the driver to reconcile with the broker and requeues older trials that
+	 *   have no such request;</li>
 	 *   <li>advances a completed minimality decision using the saved passing evidence;</li>
 	 *   <li>verifies the optimization worktree of an active campaign;</li>
 	 *   <li>records the measurement conditions that the driver observes outside trials;</li>
@@ -50,16 +54,33 @@ public final class Reconciler
 	 * @param context the driver's context
 	 * @param campaign the persisted snapshot
 	 * @param now the current time
-	 * @return the reconciled campaign, which is persisted
+	 * @return the reconciled campaign, which is persisted, and the requests that still need reconciliation
 	 * @throws IOException if the store, the worktree or the nested session records cannot be read or written
 	 */
-	static Campaign reconcile(DriverContext context, Campaign campaign, Instant now) throws IOException
+	static Recovery reconcile(DriverContext context, Campaign campaign, Instant now) throws IOException
 	{
 		for (RecordedProcess process : context.leftoverSessions().find())
 			context.terminator().terminate(process.pid(), process.start());
 
 		Candidate previous = campaign.development().working();
-		Campaign reconciled = recover(campaign, context.store().listUnadoptedOutcomes(campaign), now);
+		List<CampaignEvent.Complete> outcomes = context.store().listUnadoptedOutcomes(campaign);
+		Campaign adopted = adoptRecordedOutcomes(campaign, outcomes);
+		Map<TrialKey, TrialRecovery> requests = new LinkedHashMap<>();
+		if (context.sessions().recoversTrials())
+		{
+			String campaignId = campaign.header().id();
+			for (LogicalTrial trial : campaign.trials())
+			{
+				if (trial.state() != TrialState.RUNNING || outcomes.stream().
+					anyMatch(outcome -> outcome.key().equals(trial.key())))
+				{
+					continue;
+				}
+				context.store().readTrialRecovery(campaignId, trial.key(), TrialRecovery.attemptOrdinal(trial)).
+					ifPresent(request -> requests.put(trial.key(), request));
+			}
+		}
+		Campaign reconciled = requeueStartedTrials(adopted, requests.keySet(), now);
 		reconciled = MinimalityAdvancement.advance(context, reconciled);
 		if (reconciled.lifecycle() == Lifecycle.ACTIVE)
 			reconciled = WorktreeCheck.verify(context, reconciled, previous);
@@ -69,7 +90,7 @@ public final class Reconciler
 				new CampaignEvent.ChangeMeasurement(context.environment()));
 		}
 		context.store().replaceSnapshot(reconciled);
-		return reconciled;
+		return new Recovery(reconciled, requests);
 	}
 
 	/**
@@ -84,7 +105,7 @@ public final class Reconciler
 	 */
 	public static Campaign recover(Campaign campaign, List<CampaignEvent.Complete> outcomes, Instant now)
 	{
-		return requeueStartedTrials(adoptRecordedOutcomes(campaign, outcomes), now);
+		return requeueStartedTrials(adoptRecordedOutcomes(campaign, outcomes), Set.of(), now);
 	}
 
 	/**
@@ -111,18 +132,19 @@ public final class Reconciler
 	}
 
 	/**
-	 * Returns every trial whose session started without a recorded outcome to the queue.
+	 * Returns each trial that started without a recorded outcome or original launch request to the queue.
 	 *
 	 * @param campaign the campaign
+	 * @param recoverable the trials whose original launch the driver will reconcile
 	 * @param now the current time
-	 * @return the campaign without running trials
+	 * @return the campaign with only recoverable trials still running
 	 */
-	private static Campaign requeueStartedTrials(Campaign campaign, Instant now)
+	private static Campaign requeueStartedTrials(Campaign campaign, Set<TrialKey> recoverable, Instant now)
 	{
 		List<TrialKey> running = new ArrayList<>();
 		for (LogicalTrial trial : campaign.trials())
 		{
-			if (trial.state() == TrialState.RUNNING)
+			if (trial.state() == TrialState.RUNNING && !recoverable.contains(trial.key()))
 				running.add(trial.key());
 		}
 		Campaign requeued = campaign;
@@ -149,5 +171,15 @@ public final class Reconciler
 				return Optional.of(trial);
 		}
 		return Optional.empty();
+	}
+
+	/**
+	 * The persisted campaign and the original launches the driver must reconcile.
+	 *
+	 * @param campaign the reconciled campaign
+	 * @param requests the original requests, in trial order
+	 */
+	record Recovery(Campaign campaign, Map<TrialKey, TrialRecovery> requests)
+	{
 	}
 }

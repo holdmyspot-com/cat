@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 import static java.nio.file.StandardOpenOption.APPEND;
 import static java.nio.file.StandardOpenOption.CREATE;
+import static java.nio.file.StandardOpenOption.TRUNCATE_EXISTING;
 
 import com.holdmyspot.cat.common.secrets.EventSinkAccess;
 import com.holdmyspot.cat.common.secrets.EventSinkSecrets;
@@ -183,7 +184,9 @@ public final class EventSink extends Writer
 		switch (response.path("type").asString(""))
 		{
 			case "started" -> messages.add(new Message.Started());
-			case "session_id" -> start(response.path("session_id").asString(""));
+			case "session_id" -> start(response.path("session_id").asString(""), false);
+			case "retained_session_id" -> start(response.path("session_id").asString(""), true);
+			case "retained_turn_start" -> events.startTurn();
 			case "harness_event" ->
 			{
 				String event = response.path("event").asString("");
@@ -232,9 +235,10 @@ public final class EventSink extends Writer
 	 * session's directory, and records the harness events that arrived before it.
 	 *
 	 * @param sessionId the identifier
+	 * @param replaying whether the authenticated retained prefix will replace any surviving partial transcript
 	 * @throws IOException if the transcript cannot be created or written
 	 */
-	private void start(String sessionId) throws IOException
+	private void start(String sessionId, boolean replaying) throws IOException
 	{
 		Path sessionDirectory = harnessDirectory.resolve(sessionId);
 		Map<String, Path> directories = new HashMap<>(placeholders);
@@ -243,7 +247,10 @@ public final class EventSink extends Writer
 		if (transcript != null)
 			transcript.close();
 		Path artifacts = Files.createDirectories(sessionDirectory.resolve("artifacts"));
-		transcript = Files.newOutputStream(artifacts.resolve(TRANSCRIPT), CREATE, APPEND);
+		if (replaying)
+			transcript = Files.newOutputStream(artifacts.resolve(TRANSCRIPT), CREATE, TRUNCATE_EXISTING);
+		else
+			transcript = Files.newOutputStream(artifacts.resolve(TRANSCRIPT), CREATE, APPEND);
 		for (String event : early)
 			record(event);
 		early.clear();

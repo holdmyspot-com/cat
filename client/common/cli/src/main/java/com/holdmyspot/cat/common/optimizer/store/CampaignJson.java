@@ -140,6 +140,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import tools.jackson.databind.JsonNode;
@@ -198,6 +199,7 @@ final class CampaignJson
 	 * The version of the layout that this class writes.
 	 */
 	private static final int FORMAT_VERSION = 48;
+	private static final int TRIAL_RECOVERY_VERSION = 1;
 	/**
 	 * The names that version-43 to version-47 documents gave the arrays of promotion replays, mapped to their current
 	 * names.
@@ -1086,6 +1088,46 @@ final class CampaignJson
 			sessions.add(readSession(session));
 		return new TrialRecord(key, readTestCase(field(root, "test_case")), readIdentity(field(root, "identity")),
 			readAllocation(field(root, "allocation")), readInfrastructureAttempts(root), outcome, sessions);
+	}
+
+	/**
+	 * Converts the original trial launch and observer progress to a document.
+	 *
+	 * @param recovery the attempt's recovery state
+	 * @return the document
+	 */
+	ObjectNode writeTrialRecovery(TrialRecovery recovery)
+	{
+		ObjectNode root = json.createObjectNode();
+		root.put(VERSION, TRIAL_RECOVERY_VERSION);
+		root.set("key", writeKey(recovery.key()));
+		root.put("attempt_ordinal", recovery.attemptOrdinal());
+		root.put("request_id", recovery.requestId().toString());
+		root.put("observer_turn", recovery.observerTurn());
+		ObjectNode settled = root.putObject("settled_assertions");
+		new TreeMap<>(recovery.settledAssertions()).forEach(settled::put);
+		root.put("ended_early", recovery.endedEarly());
+		return root;
+	}
+
+	/**
+	 * Converts a document to the recovery state of a trial's launch attempt.
+	 *
+	 * @param root the document
+	 * @return the recovery state
+	 * @throws IllegalArgumentException if the document has a different format version or describes invalid state
+	 */
+	static TrialRecovery readTrialRecovery(JsonNode root)
+	{
+		JsonFields.requireVersion(root, TRIAL_RECOVERY_VERSION);
+		JsonNode values = field(root, "settled_assertions");
+		requireObject(values, "settled_assertions");
+		Map<String, Integer> settled = new HashMap<>();
+		for (Entry<String, JsonNode> entry : values.properties())
+			settled.put(entry.getKey(), intValue(entry.getValue(), entry.getKey()));
+		return new TrialRecovery(readKey(field(root, "key")), integer(root, "attempt_ordinal"),
+			UUID.fromString(text(root, "request_id")), integer(root, "observer_turn"), settled,
+			bool(root, "ended_early"));
 	}
 
 	/**

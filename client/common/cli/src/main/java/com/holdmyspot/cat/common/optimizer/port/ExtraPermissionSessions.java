@@ -3,12 +3,16 @@ package com.holdmyspot.cat.common.optimizer.port;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * A {@link SessionPort} that starts every session with the same extra permissions, such as the permissions that a
@@ -40,6 +44,25 @@ public final class ExtraPermissionSessions implements SessionPort
 	public SessionHandle start(SessionRequest request) throws IOException
 	{
 		return delegate.start(request.withExtraPermissions(extraPermissions));
+	}
+
+	@Override
+	public boolean recoversTrials()
+	{
+		return delegate.recoversTrials();
+	}
+
+	@Override
+	public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+		throws IOException
+	{
+		return delegate.startTrial(request.withExtraPermissions(extraPermissions), requestId, claim);
+	}
+
+	@Override
+	public RetainedTrialResponse retainedTrial(RetainedTrialRequest request) throws IOException
+	{
+		return delegate.retainedTrial(request);
 	}
 
 	@Override

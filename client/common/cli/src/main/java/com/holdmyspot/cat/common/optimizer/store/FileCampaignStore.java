@@ -33,8 +33,9 @@ import tools.jackson.databind.json.JsonMapper;
  * {@link SessionDirectory#campaigns() campaigns directory} of the session that started them. Another session's
  * store is read only. The campaign's {@code held_out} directory holds every file with held-out
  * content: the snapshot in {@code campaign.json}, the proposal in {@code proposal.json}, and one record per logical
- * trial in {@code trials/<sha256 of the trial key>.json}. The delivery journal is {@code delivery.json} in the
- * campaign directory. The {@code held_out} and {@code trials} directories exist from the first snapshot write.
+ * trial in {@code trials/<sha256 of the trial key>.json}. A trial's latest launch and observer progress are in
+ * {@code trials/<sha256 of the trial key>.recovery.json}. The delivery journal is {@code delivery.json} in the campaign
+ * directory. The {@code held_out} and {@code trials} directories exist from the first snapshot write.
  * <p>
  * The file {@code removal} in a campaign directory records that the removal of the campaign's files started. The
  * campaign directory is deleted by renaming it to {@code .deleting-<campaign-id>} and deleting that directory, so an
@@ -53,9 +54,9 @@ import tools.jackson.databind.json.JsonMapper;
  * storage device, renamed over the target, and the directory is forced. A crash leaves either the old or the new
  * content. Readers never read the temporary files, and the next write of the same target replaces a leftover one.
  * <p>
- * Only the holder of a campaign's {@link CampaignLock} may write the campaign's snapshot, trial records or delivery
- * journal. While that holds, a reader in any process sees each of these files with its previous or new content, never
- * part of it.
+ * Only the holder of a campaign's {@link CampaignLock} may write the campaign's snapshot, trial records, trial
+ * recovery state or delivery journal. While that holds, a reader in any process sees each of these files with its
+ * previous or new content, never part of it.
  */
 public final class FileCampaignStore extends AbstractCampaignStore
 {
@@ -68,6 +69,7 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	private static final String TRIALS = "trials";
 	private static final String JOURNAL = "delivery.json";
 	private static final String RECORD_SUFFIX = ".json";
+	private static final String RECOVERY_SUFFIX = ".recovery.json";
 	private static final String MALFORMED = "is malformed";
 	private static final String REMOVAL = "removal";
 	private static final String LOCK = "driver.lock";
@@ -393,6 +395,56 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	}
 
 	@Override
+	public Optional<TrialRecovery> readTrialRecovery(String campaignId, TrialKey key, int attemptOrdinal)
+		throws IOException
+	{
+		requireCampaignId(campaignId);
+		requireThat(attemptOrdinal, "attemptOrdinal").isPositive();
+		Path file = trialFile(campaignId, key, RECOVERY_SUFFIX);
+		if (Files.notExists(file))
+			return Optional.empty();
+		TrialRecovery recovery = readTrialRecoveryFile(campaignId, file, key);
+		if (recovery.attemptOrdinal() == attemptOrdinal)
+			return Optional.of(recovery);
+		return Optional.empty();
+	}
+
+	@Override
+	public void writeTrialRecovery(String campaignId, TrialRecovery recovery) throws IOException
+	{
+		requireCampaignId(campaignId);
+		Path file = trialFile(campaignId, recovery.key(), RECOVERY_SUFFIX);
+		TrialRecovery previous = null;
+		if (!Files.notExists(file))
+		{
+			previous = readTrialRecoveryFile(campaignId, file, recovery.key());
+			if (previous.equals(recovery))
+				return;
+		}
+		TrialRecovery.requireSuccessor(previous, recovery);
+		AtomicFiles.createDirectories(file.getParent());
+		JsonFiles.replace(json, replacer, file, codec.writeTrialRecovery(recovery), afterStep);
+	}
+
+	@Override
+	public List<TrialRecovery> listTrialRecoveries(String campaignId) throws IOException
+	{
+		requireCampaignId(campaignId);
+		Path directory = heldOutDirectory(campaigns, campaignId).resolve(TRIALS);
+		if (Files.notExists(directory))
+			return List.of();
+		List<TrialRecovery> recoveries = new ArrayList<>();
+		try (Stream<Path> entries = Files.list(directory))
+		{
+			List<Path> files = entries.filter(path -> path.getFileName().toString().endsWith(RECOVERY_SUFFIX)).
+				sorted().toList();
+			for (Path file : files)
+				recoveries.add(readTrialRecoveryFile(campaignId, file, null));
+		}
+		return List.copyOf(recoveries);
+	}
+
+	@Override
 	public List<Header> listHeaders() throws IOException
 	{
 		List<Header> headers = new ArrayList<>();
@@ -465,10 +517,44 @@ public final class FileCampaignStore extends AbstractCampaignStore
 	 */
 	private Path recordFile(String campaignId, TrialKey key)
 	{
+		return trialFile(campaignId, key, RECORD_SUFFIX);
+	}
+
+	/**
+	 * Returns the path for the given kind of file belonging to the trial.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key the trial's key
+	 * @param suffix the file name ending that identifies the kind
+	 * @return the path
+	 */
+	private Path trialFile(String campaignId, TrialKey key, String suffix)
+	{
 		String keyText = key.purpose().name() + "\n" + key.series() + "\n" + key.snapshot().hex() + "\n" +
 			key.cell() + "\n" + key.sequence();
 		return heldOutDirectory(campaigns, campaignId).resolve(TRIALS).resolve(Sha256.of(keyText.getBytes(UTF_8)).hex() +
-			RECORD_SUFFIX);
+			suffix);
+	}
+
+	/**
+	 * Reads recovery state and verifies that the file belongs to the trial it names.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param file the recovery file
+	 * @param key the requested key, or null when enumerating recovery records by file name
+	 * @return the recovery state
+	 * @throws IOException if the file is unreadable, is malformed, or belongs to a different trial
+	 */
+	private TrialRecovery readTrialRecoveryFile(String campaignId, Path file, TrialKey key) throws IOException
+	{
+		TrialRecovery recovery = JsonFiles.read(json, file, CampaignJson::readTrialRecovery, MALFORMED);
+		if (key != null && key.equals(recovery.key()) ||
+			key == null && file.equals(trialFile(campaignId, recovery.key(), RECOVERY_SUFFIX)))
+		{
+			return recovery;
+		}
+		throw new IOException("The trial recovery file " + file + " belongs to a different trial. It records " +
+			recovery.key());
 	}
 
 	/**

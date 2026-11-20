@@ -53,6 +53,25 @@ public final class JudgeRecordingStore implements CampaignStore
 	}
 
 	@Override
+	public Optional<TrialRecovery> readTrialRecovery(String campaignId, TrialKey key, int attemptOrdinal)
+		throws IOException
+	{
+		return delegate.readTrialRecovery(campaignId, key, attemptOrdinal);
+	}
+
+	@Override
+	public void writeTrialRecovery(String campaignId, TrialRecovery recovery) throws IOException
+	{
+		delegate.writeTrialRecovery(campaignId, recovery);
+	}
+
+	@Override
+	public List<TrialRecovery> listTrialRecoveries(String campaignId) throws IOException
+	{
+		return delegate.listTrialRecoveries(campaignId);
+	}
+
+	@Override
 	public void writeTrialSession(String campaignId, TrialKey key, TrialSession session) throws IOException
 	{
 		delegate.writeTrialSession(campaignId, key, session);

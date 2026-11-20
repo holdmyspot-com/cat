@@ -45,7 +45,7 @@ import java.util.function.Predicate;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class FakeSessionPort implements SessionPort
+public class FakeSessionPort implements SessionPort
 {
 	/**
 	 * The session environment version that every fake port reports.

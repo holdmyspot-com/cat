@@ -13,6 +13,7 @@ import static java.nio.file.attribute.PosixFilePermission.OWNER_WRITE;
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.ExclusiveFileLock;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -80,6 +81,12 @@ public final class NestedSessionManager
 	 */
 	public static final Duration DEFAULT_RETENTION = Duration.ofDays(7);
 	static final int MAXIMUM_MANIFEST_BYTES = 1_048_576;
+	static final String ARTIFACTS_DIRECTORY = "artifacts";
+	static final String TURN_CHECKPOINT_FILE = "turn-checkpoint.json";
+	static final String TURN_CHECKPOINT_READY = "ready";
+	private static final String TURN_CHECKPOINT_IN_PROGRESS = "turn_in_progress";
+	static final String TURN_REPLY_FILE_PREFIX = "turn-";
+	static final String TURN_REPLY_FILE_SUFFIX = ".reply.json";
 	/**
 	 * The name of a session folder, which is a generated slot ID.
 	 */
@@ -139,6 +146,43 @@ public final class NestedSessionManager
 		return manager;
 	}
 
+	/**
+	 * Opens a broker-managed slot after validating the broker's per-spawn permit. The broker manages stale slot
+	 * contents and may have reserved a running manifest for recovery. The stable sibling lock stays held until
+	 * {@link #create(String)} or {@link #reopen(String, String)} publishes this runner's process identity.
+	 *
+	 * @param fileLocks the process-wide lock coordinator
+	 * @param root the slot's absolute results folder
+	 * @param clock the clock used for generated identifiers
+	 * @param replacer atomically replaces manifests and output files
+	 * @param slotId the fixed nested-session identifier for this slot
+	 * @param startupPermit the per-spawn generation supplied by the broker
+	 * @return the manager whose first managed start claims the permit
+	 * @throws IOException if the permit is stale or the exact broker process is not alive
+	 */
+	public static NestedSessionManager openResultsFolder(FileLocks fileLocks, Path root, Clock clock,
+		FileReplacer replacer, String slotId, String startupPermit) throws IOException
+	{
+		if (startupPermit == null)
+			return openResultsFolder(fileLocks, root, clock, replacer);
+		if (!isSlotId(slotId))
+			throw new IOException("A runner startup permit requires a valid slot identifier");
+		if (!SlotStartup.isGeneration(startupPermit))
+			throw new IOException("The runner startup permit is malformed");
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, root, clock, replacer);
+		manager.startupLease = new StartupLease(SlotStartup.acquire(fileLocks, root), startupPermit, slotId);
+		try
+		{
+			SlotStartup.validatePending(root, startupPermit, manager.processLiveness);
+			return manager;
+		}
+		catch (IOException | RuntimeException e)
+		{
+			manager.closeStartupLease(e);
+			throw e;
+		}
+	}
+
 	private final FileLocks fileLocks;
 	private final Path root;
 	private final Clock clock;
@@ -154,6 +198,71 @@ public final class NestedSessionManager
 	 * sessions record none.
 	 */
 	private final List<String> launchArguments;
+	/**
+	 * The startup lock shared by this manager's fixed-slot copies until one publishes its runner identity.
+	 */
+	private StartupLease startupLease;
+
+	/**
+	 * Holds the stable slot lock from permit validation until the runner identity is durable.
+	 */
+	private static final class StartupLease
+	{
+		private final ExclusiveFileLock lock;
+		private final String generation;
+		private final String slotId;
+		private boolean closed;
+
+		/**
+		 * Holds the startup lock for the selected slot and generation.
+		 *
+		 * @param lock the held lock
+		 * @param generation the expected startup generation
+		 * @param slotId the fixed slot identifier
+		 */
+		private StartupLease(ExclusiveFileLock lock, String generation, String slotId)
+		{
+			this.lock = lock;
+			this.generation = generation;
+			this.slotId = slotId;
+		}
+
+		/**
+		 * Returns the generation the runner can claim.
+		 *
+		 * @return the expected startup generation
+		 */
+		private String generation()
+		{
+			return generation;
+		}
+
+		/**
+		 * Returns the slot the runner can open.
+		 *
+		 * @return the fixed slot identifier
+		 */
+		private String slotId()
+		{
+			return slotId;
+		}
+
+		/**
+		 * Releases this lease once, including when multiple manager copies share it.
+		 *
+		 * @throws IOException if releasing the lock fails
+		 */
+		private void close() throws IOException
+		{
+			synchronized (this)
+			{
+				if (closed)
+					return;
+				closed = true;
+				lock.close();
+			}
+		}
+	}
 
 	/**
 	 * Creates a manager rooted at an absolute directory.
@@ -238,6 +347,16 @@ public final class NestedSessionManager
 	}
 
 	/**
+	 * Returns the process-wide file lock coordinator shared by slot users.
+	 *
+	 * @return the coordinator
+	 */
+	FileLocks fileLocks()
+	{
+		return fileLocks;
+	}
+
+	/**
 	 * Returns a manager over the same root whose {@link #create(String) created} runs all have one identifier, so that
 	 * each nested session lives at the same path as the one before it. The caller must empty the nested session's
 	 * directory before every nested session, and must keep it from running two nested sessions at once.
@@ -251,7 +370,12 @@ public final class NestedSessionManager
 	public NestedSessionManager withFixedSlotId(String slotId)
 	{
 		requireThat(slotId, "slotId").isNotNull();
-		return new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness, slotId, launchArguments);
+		if (startupLease != null && !startupLease.slotId().equals(slotId))
+			throw new IllegalArgumentException("The startup permit belongs to another slot identifier");
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness, slotId,
+			launchArguments);
+		manager.startupLease = startupLease;
+		return manager;
 	}
 
 	/**
@@ -267,7 +391,10 @@ public final class NestedSessionManager
 	public NestedSessionManager withLaunchArguments(List<String> arguments)
 	{
 		requireThat(arguments, "arguments").isNotNull();
-		return new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness, fixedSlotId, arguments);
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness,
+			fixedSlotId, arguments);
+		manager.startupLease = startupLease;
+		return manager;
 	}
 
 	/**
@@ -411,44 +538,58 @@ public final class NestedSessionManager
 	 */
 	public NestedSession create(String harness) throws IOException
 	{
-		requireThat(harness, "harness").isNotBlank();
-		String id = fixedSlotId;
-		if (id == null)
-			id = newSlotId(clock);
-		Path directory = root.resolve(harness).resolve(id).normalize();
-		if (!directory.startsWith(root))
-			throw new IOException("Session folder escapes the configured root");
-		if (fixedSlotId != null)
+		try
 		{
-			// A nested session that reuses a path must start from nothing, so that it sees no file of the nested session
-			// before it
-			Files.createDirectories(directory.getParent());
-			try
+			requireThat(harness, "harness").isNotBlank();
+			String id = fixedSlotId;
+			if (id == null)
+				id = newSlotId(clock);
+			if (startupLease != null && !startupLease.slotId().equals(id))
+				throw new IOException("The startup permit belongs to another slot identifier");
+			Path directory = root.resolve(harness).resolve(id).normalize();
+			if (!directory.startsWith(root))
+				throw new IOException("Session folder escapes the configured root");
+			if (fixedSlotId != null)
 			{
-				Files.createDirectory(directory);
+				// A nested session that reuses a path must start from nothing, so that it sees no file of the nested session
+				// before it
+				Files.createDirectories(directory.getParent());
+				try
+				{
+					Files.createDirectory(directory);
+				}
+				catch (FileAlreadyExistsException e)
+				{
+					throw new IOException("The session folder is not empty, so a nested session cannot reuse it: " +
+							directory, e);
+				}
 			}
-			catch (FileAlreadyExistsException e)
-			{
-				throw new IOException("The session folder is not empty, so a nested session cannot reuse it: " + directory, e);
-			}
+			else
+				Files.createDirectories(directory);
+			setOwnerOnlyDirectoryPermissions(directory);
+			Files.createDirectories(directory.resolve("project"));
+			Files.createDirectories(directory.resolve("home"));
+			Files.createDirectories(directory.resolve("artifacts"));
+			Files.createFile(directory.resolve(".lock"));
+			NestedSession nestedSession = new NestedSession(harness, id, directory);
+			ProcessHandle owner = ProcessHandle.current();
+			String ownerStart = ownerStart(owner, directory);
+			writeManifest(new Manifest(harness, id, "running", "initializing", HarnessProcessState.ABSENT,
+				owner.pid(), ownerStart, null, null,
+				clock.instant(), null, 0,
+				"", "", "", "", null, 0, null, null, ""), directory);
+			if (launchArguments != null)
+				NestedSessionLaunch.write(JsonMapper.builder().build(), directory, launchArguments, replacer);
+			if (tracksTurnCheckpoints())
+				writeTurnCheckpoint(nestedSession, 0, TURN_CHECKPOINT_READY);
+			completeStartup(nestedSession, ownerStart);
+			return nestedSession;
 		}
-		else
-			Files.createDirectories(directory);
-		setOwnerOnlyDirectoryPermissions(directory);
-		Files.createDirectories(directory.resolve("project"));
-		Files.createDirectories(directory.resolve("home"));
-		Files.createDirectories(directory.resolve("artifacts"));
-		Files.createFile(directory.resolve(".lock"));
-		NestedSession nestedSession = new NestedSession(harness, id, directory);
-		ProcessHandle owner = ProcessHandle.current();
-		String ownerStart = ownerStart(owner, directory);
-		writeManifest(new Manifest(harness, id, "running", "initializing", HarnessProcessState.ABSENT,
-			owner.pid(), ownerStart, null, null,
-			clock.instant(), null, 0,
-			"", "", "", "", null, 0, null, null, ""), directory);
-		if (launchArguments != null)
-			NestedSessionLaunch.write(JsonMapper.builder().build(), directory, launchArguments, replacer);
-		return nestedSession;
+		catch (IOException | RuntimeException e)
+		{
+			closeStartupLease(e);
+			throw e;
+		}
 	}
 
 	/**
@@ -470,6 +611,62 @@ public final class NestedSessionManager
 	}
 
 	/**
+	 * Publishes this runner's exact identity after its session manifest has been written, then releases the startup lock.
+	 *
+	 * @param nestedSession the nested session in the selected slot
+	 * @param start this process's exact start identity
+	 * @throws IOException if the permit cannot be claimed or its lock cannot be released
+	 */
+	private void completeStartup(NestedSession nestedSession, String start) throws IOException
+	{
+		StartupLease lease = startupLease;
+		if (lease == null)
+			return;
+		try
+		{
+			if (!lease.slotId().equals(nestedSession.id()))
+				throw new IOException("The startup permit belongs to another slot identifier");
+			SlotStartup.claim(root, lease.generation(), processLiveness, ProcessHandle.current().pid(), start);
+		}
+		catch (IOException | RuntimeException e)
+		{
+			closeStartupLease(e);
+			throw e;
+		}
+		closeStartupLease();
+	}
+
+	/**
+	 * Releases a startup lock when setup fails before a nested-session manifest records the runner.
+	 *
+	 * @throws IOException if closing the lock fails
+	 */
+	public void closeStartupLease() throws IOException
+	{
+		StartupLease lease = startupLease;
+		startupLease = null;
+		if (lease != null)
+			lease.close();
+	}
+
+	/**
+	 * Releases the startup lock after a failure, preserving the original diagnostic.
+	 *
+	 * @param failure the failure that interrupted startup
+	 */
+	private void closeStartupLease(Throwable failure)
+	{
+		try
+		{
+			closeStartupLease();
+		}
+		catch (IOException e)
+		{
+			failure.addSuppressed(e);
+		}
+	}
+
+	/**
 	 * Reopens a nested session whose runner ended before the nested session did, so that a new runner continues the
 	 * nested session's harness session in the nested session's directory. The nested session must still be running, its
 	 * harness must have reported its session, and neither its runner nor its harness process may live. The current
@@ -488,38 +685,51 @@ public final class NestedSessionManager
 	 */
 	public NestedSession reopen(String harness, String slotId) throws IOException
 	{
-		synchronized (this)
+		try
 		{
-			requireThat(harness, "harness").isNotBlank();
-			requireThat(slotId, "slotId").matches(SLOT_ID);
-			Path directory = root.resolve(harness).resolve(slotId).normalize();
-			NestedSession nestedSession = new NestedSession(harness, slotId, directory);
-			try (NestedSessionLock lock = acquireLock(nestedSession))
+			synchronized (this)
 			{
-				if (!lock.isHeld())
-					throw new IOException("Another process holds the nested session: " + slotId);
-				Manifest manifest = readManifest(nestedSession);
-				if (!manifest.state().equals("running"))
-					throw new IOException("The nested session has ended, so its harness session cannot continue: " + slotId);
-				if (manifest.harnessSessionId() == null)
+				requireThat(harness, "harness").isNotBlank();
+				requireThat(slotId, "slotId").matches(SLOT_ID);
+				if (startupLease != null && !startupLease.slotId().equals(slotId))
+					throw new IOException("The startup permit belongs to another slot identifier");
+				Path directory = root.resolve(harness).resolve(slotId).normalize();
+				NestedSession nestedSession = new NestedSession(harness, slotId, directory);
+				try (NestedSessionLock lock = acquireLock(nestedSession))
 				{
-					throw new IOException("The nested session's harness reported no session, so the nested session has none " +
-						"to continue: " + slotId);
+					if (!lock.isHeld())
+						throw new IOException("Another process holds the nested session: " + slotId);
+					Manifest manifest = readManifest(nestedSession);
+					if (!manifest.state().equals("running"))
+						throw new IOException("The nested session has ended, so its harness session cannot continue: " + slotId);
+					if (manifest.harnessSessionId() == null)
+					{
+						throw new IOException("The nested session's harness reported no session, so the nested session has none " +
+							"to continue: " + slotId);
+					}
+					if (manifest.harnessProcessState() == HarnessProcessState.STARTING)
+						throw new IOException("The nested session's harness launch state is unknown: " + slotId);
+					if (isOwnerAlive(manifest))
+						throw new IOException("The nested session is still owned by a live process: " + slotId);
+					if (isHarnessProcessAlive(manifest))
+						throw new IOException("The nested session's harness process is still alive: " + slotId);
+					ProcessHandle owner = ProcessHandle.current();
+					String ownerStart = ownerStart(owner, directory);
+					writeManifest(new Manifest(manifest.harness(), manifest.id(), "running", "initializing",
+						HarnessProcessState.ABSENT, owner.pid(), ownerStart, null, null, manifest.createdAt(),
+						manifest.harnessSessionId(), manifest.requestsUsed(), manifest.artifactPath(), manifest.projectPath(),
+						manifest.transport(), manifest.harnessCommand(), manifest.startedAt(), manifest.turnNumber(),
+							null, null, ""),
+						directory);
+					completeStartup(nestedSession, ownerStart);
 				}
-				if (manifest.harnessProcessState() == HarnessProcessState.STARTING)
-					throw new IOException("The nested session's harness launch state is unknown: " + slotId);
-				if (isOwnerAlive(manifest))
-					throw new IOException("The nested session is still owned by a live process: " + slotId);
-				if (isHarnessProcessAlive(manifest))
-					throw new IOException("The nested session's harness process is still alive: " + slotId);
-				ProcessHandle owner = ProcessHandle.current();
-				writeManifest(new Manifest(manifest.harness(), manifest.id(), "running", "initializing",
-					HarnessProcessState.ABSENT, owner.pid(), ownerStart(owner, directory), null, null, manifest.createdAt(),
-					manifest.harnessSessionId(), manifest.requestsUsed(), manifest.artifactPath(), manifest.projectPath(),
-					manifest.transport(),
-					manifest.harnessCommand(), manifest.startedAt(), manifest.turnNumber(), null, null, ""), directory);
+				return nestedSession;
 			}
-			return nestedSession;
+		}
+		catch (IOException | RuntimeException e)
+		{
+			closeStartupLease(e);
+			throw e;
 		}
 	}
 
@@ -919,7 +1129,7 @@ public final class NestedSessionManager
 			requireThat(nestedSession, "nestedSession").isNotNull();
 			requireThat(result, "result").isNotNull();
 			requireThat(turnNumber, "turnNumber").isPositive();
-			Path artifacts = nestedSession.directory().resolve("artifacts");
+			Path artifacts = nestedSession.directory().resolve(ARTIFACTS_DIRECTORY);
 			if (Files.isSymbolicLink(artifacts) || !Files.isDirectory(artifacts, NOFOLLOW_LINKS))
 				throw new IOException("Session artifacts directory is not owned by this manager");
 			String prefix = "turn-" + turnNumber;
@@ -935,6 +1145,75 @@ public final class NestedSessionManager
 				previous.startedAt(), turnNumber, result.exitCode(), previous.finishedAt(), previous.diagnostic()),
 				nestedSession.directory());
 		}
+	}
+
+	/**
+	 * Indicates whether this manager owns a broker slot that can retain a turn checkpoint.
+	 *
+	 * @return whether the nested session has a fixed broker slot
+	 */
+	boolean tracksTurnCheckpoints()
+	{
+		return fixedSlotId != null;
+	}
+
+	/**
+	 * Records that a harness turn has started.
+	 *
+	 * @param nestedSession the owned nested session
+	 * @param turnNumber the positive one-based turn number
+	 * @throws IOException if the checkpoint cannot be persisted
+	 */
+	void recordTurnInProgress(NestedSession nestedSession, int turnNumber) throws IOException
+	{
+		synchronized (this)
+		{
+			requireThat(nestedSession, "nestedSession").isNotNull();
+			requireThat(turnNumber, "turnNumber").isPositive();
+			writeTurnCheckpoint(nestedSession, turnNumber, TURN_CHECKPOINT_IN_PROGRESS);
+		}
+	}
+
+	/**
+	 * Records the exact completed-turn response and makes its checkpoint ready for a later turn.
+	 *
+	 * @param nestedSession the owned nested session
+	 * @param turnNumber the positive one-based turn number
+	 * @param replyJson the serialized client response
+	 * @throws IOException if the response or checkpoint cannot be persisted
+	 */
+	void recordTurnCompleted(NestedSession nestedSession, int turnNumber, String replyJson) throws IOException
+	{
+		synchronized (this)
+		{
+			requireThat(nestedSession, "nestedSession").isNotNull();
+			requireThat(turnNumber, "turnNumber").isPositive();
+			requireThat(replyJson, "replyJson").isNotNull();
+			Path artifacts = nestedSession.directory().resolve(ARTIFACTS_DIRECTORY);
+			if (Files.isSymbolicLink(artifacts) || !Files.isDirectory(artifacts, NOFOLLOW_LINKS))
+				throw new IOException("Session artifacts directory is not owned by this manager");
+			String replyFileName = TURN_REPLY_FILE_PREFIX + turnNumber + TURN_REPLY_FILE_SUFFIX;
+			writeAtomically(artifacts.resolve(replyFileName), replyJson);
+			writeTurnCheckpoint(nestedSession, turnNumber, TURN_CHECKPOINT_READY);
+		}
+	}
+
+	/**
+	 * Atomically replaces the nested session's turn checkpoint.
+	 *
+	 * @param nestedSession the owned nested session
+	 * @param turnNumber the non-negative turn number
+	 * @param state the checkpoint state
+	 * @throws IOException if the checkpoint cannot be persisted
+	 */
+	private void writeTurnCheckpoint(NestedSession nestedSession, int turnNumber, String state) throws IOException
+	{
+		assert nestedSession != null;
+		assert turnNumber >= 0;
+		assert state != null;
+		String checkpoint = "{\"format_version\":1,\"turn_number\":" + turnNumber + ",\"state\":\"" + state +
+			"\"}";
+		writeAtomically(nestedSession.directory().resolve(TURN_CHECKPOINT_FILE), checkpoint);
 	}
 
 	/**

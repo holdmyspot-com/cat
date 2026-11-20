@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.LinkedHashMap;
+import java.util.Objects;
 
 /** Decides whether built-in assertions have fixed verdicts after a completed turn. */
 public final class EarlyTrialEnd implements TurnObserver
@@ -21,7 +22,9 @@ public final class EarlyTrialEnd implements TurnObserver
 	private final PromptTest test;
 	private final TestCase testCase;
 	private final SessionPort sessions;
+	private final ProgressReceipt receipt;
 	private final Map<String, Integer> settledAssertions = new LinkedHashMap<>();
+	private TurnObserver.Progress progress;
 
 	/**
 	 * Creates an observer for a trial's built-in assertions.
@@ -29,12 +32,18 @@ public final class EarlyTrialEnd implements TurnObserver
 	 * @param test the prompt test whose assertions are evaluated
 	 * @param testCase the case being evaluated
 	 * @param sessions the session archive and project store
+	 * @param progress the restored progress
+	 * @param receipt records completed-turn progress
 	 */
-	private EarlyTrialEnd(PromptTest test, TestCase testCase, SessionPort sessions)
+	private EarlyTrialEnd(PromptTest test, TestCase testCase, SessionPort sessions, TurnObserver.Progress progress,
+		ProgressReceipt receipt)
 	{
 		this.test = test;
 		this.testCase = testCase;
 		this.sessions = sessions;
+		this.progress = progress;
+		this.receipt = receipt;
+		settledAssertions.putAll(progress.settledAssertions());
 	}
 
 	/**
@@ -47,7 +56,30 @@ public final class EarlyTrialEnd implements TurnObserver
 	 */
 	public static EarlyTrialEnd forTest(PromptTest test, TestCase testCase, SessionPort sessions)
 	{
-		return new EarlyTrialEnd(test, testCase, sessions);
+		return forTest(test, testCase, sessions, new TurnObserver.Progress(0, Map.of(), false), _ -> {});
+	}
+
+	/**
+	 * Creates an observer restored from the trial's last durable completed-turn receipt.
+	 *
+	 * @param test the prompt test whose assertions are evaluated
+	 * @param testCase the case being evaluated
+	 * @param sessions the session archive and project store
+	 * @param progress the last durable completed-turn progress
+	 * @param receipt records progress after evaluating each completed turn
+	 * @return an observer that resumes the trial's settlement state
+	 * @throws NullPointerException if any argument is null
+	 */
+	public static EarlyTrialEnd forTest(PromptTest test, TestCase testCase, SessionPort sessions,
+		TurnObserver.Progress progress,
+		ProgressReceipt receipt)
+	{
+		Objects.requireNonNull(test, "test");
+		Objects.requireNonNull(testCase, "testCase");
+		Objects.requireNonNull(sessions, "sessions");
+		Objects.requireNonNull(progress, "progress");
+		Objects.requireNonNull(receipt, "receipt");
+		return new EarlyTrialEnd(test, testCase, sessions, progress, receipt);
 	}
 
 	@Override
@@ -62,6 +94,8 @@ public final class EarlyTrialEnd implements TurnObserver
 		}
 		catch (UndecidableToolException _)
 		{
+			progress = new TurnObserver.Progress(turn, progress.settledAssertions(), false);
+			receipt.record(progress);
 			return false;
 		}
 		for (Assertion assertion : test.allAssertions())
@@ -71,15 +105,42 @@ public final class EarlyTrialEnd implements TurnObserver
 			BuiltInTool tool = assertion.builtInTool().orElseThrow();
 			BuiltInToolResult result = results.get(assertion.id());
 			if (result != null && settledWithEvidence(tool, result, turn, evidence))
-				settledAssertions.putIfAbsent(assertion.id(), turn);
+			settledAssertions.putIfAbsent(assertion.id(), turn);
 		}
-		return settledAssertions.size() == test.allAssertions().size();
+		boolean endedEarly = progress.endedEarly() || settledAssertions.size() == test.allAssertions().size();
+		progress = new TurnObserver.Progress(turn, settledAssertions, endedEarly);
+		receipt.record(progress);
+		return endedEarly;
 	}
 
 	@Override
 	public Map<String, Integer> settledAssertions()
 	{
 		return Map.copyOf(settledAssertions);
+	}
+
+	/**
+	 * Returns the last completed-turn progress, including whether that turn ended the trial early.
+	 *
+	 * @return the last completed-turn progress
+	 */
+	@Override
+	public TurnObserver.Progress progress()
+	{
+		return progress;
+	}
+
+	/** Records the latest completed-turn progress durably. */
+	@FunctionalInterface
+	public interface ProgressReceipt
+	{
+		/**
+		 * Records the progress after evaluating a completed turn.
+		 *
+		 * @param progress the completed-turn progress
+		 * @throws IOException if the receipt cannot be recorded
+		 */
+		void record(TurnObserver.Progress progress) throws IOException;
 	}
 
 	/**

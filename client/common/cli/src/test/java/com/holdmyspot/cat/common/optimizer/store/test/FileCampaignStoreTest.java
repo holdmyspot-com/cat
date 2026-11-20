@@ -38,6 +38,7 @@ import com.holdmyspot.cat.common.optimizer.report.StatusReport;
 import com.holdmyspot.cat.common.optimizer.store.CampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.DeliveryJournal;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.store.WriteStep;
 import java.nio.file.attribute.PosixFilePermissions;
 import com.holdmyspot.cat.common.PortableFiles;
@@ -60,6 +61,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
+import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -91,6 +93,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -129,6 +132,137 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	public FileCampaignStoreTest()
 	{
+	}
+
+	/**
+	 * The original request and first-settled turns survive an independent store reopening and outcome writes.
+	 *
+	 * @throws IOException if the trial record cannot be stored or loaded
+	 */
+	@Test
+	public void trialRecoverySurvivesStoreRestart() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("trial-recovery"));
+			CampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(start());
+			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment(ID, trial);
+			TrialKey key = trial.key();
+			requireThat(store.readTrialRecovery(ID, key, 1).isEmpty(), "legacyAssignmentHasRecovery").isTrue();
+
+			UUID requestId = UUID.randomUUID();
+			TrialRecovery launch = new TrialRecovery(key, 1, requestId, 0, Map.of(), false);
+			store.writeTrialRecovery(ID, launch);
+			CampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			requireThat(reopened.readTrialRecovery(ID, key, 1).orElseThrow(), "reopenedLaunch").isEqualTo(launch);
+
+			reopened.writeTrialRecovery(ID, new TrialRecovery(key, 1, requestId, 1, Map.of("formatting", 1), false));
+			TrialRecovery ended = new TrialRecovery(key, 1, requestId, 2, Map.of("formatting", 1, "safety", 2), true);
+			reopened.writeTrialRecovery(ID, ended);
+			reopened.writeTrialRecovery(ID, ended);
+			Instant started = Instant.parse("2026-10-01T12:00:00Z");
+			reopened.writeTrialSession(ID, key, new TrialSession(started, started.plusSeconds(40), 1,
+				new Throttle(started, 1, 0, 1), List.of(), HostLogin.API_KEY, null, CommandSummary.UNKNOWN));
+			reopened.writeOutcome(ID, complete(key, Verdict.PASS));
+
+			CampaignStore restarted = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			requireThat(restarted.readTrialRecovery(ID, key, 1).orElseThrow(), "reopenedObserver").isEqualTo(ended);
+			requireThat(restarted.listTrialRecoveries(ID), "campaignRecoveries").isEqualTo(List.of(ended));
+		}
+	}
+
+	/**
+	 * A discarded measurement and a rate-limited session each make the previous launch ineligible for resumption.
+	 *
+	 * @throws IOException if the trial record cannot be stored or loaded
+	 */
+	@Test
+	public void rerunsUseNewLaunchOrdinals() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("trial-recovery-retry"));
+			CampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign start = start();
+			Instant now = Instant.parse("2026-10-01T12:00:00Z");
+			Campaign assigned = Transitions.apply(start, new CampaignEvent.Assign(new Admission.Assign(
+				Purpose.DEVELOPMENT, start.development().series(), start.development().working().snapshot(), "safety",
+				null, new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, start.evidenceRevision(), now))));
+			LogicalTrial trial = assigned.trials().getFirst();
+			TrialKey key = trial.key();
+			store.writeAssignment(ID, trial);
+			Campaign running = Transitions.apply(assigned, new CampaignEvent.Start(key));
+			store.replaceSnapshot(running);
+			int first = TrialRecovery.attemptOrdinal(trial);
+			TrialRecovery original = new TrialRecovery(key, first, UUID.randomUUID(), 0, Map.of(), false);
+			store.writeTrialRecovery(ID, original);
+
+			Campaign mismatch = Transitions.apply(running, new CampaignEvent.Complete(key, Verdict.PASS, "Passed",
+				List.of(), null, Builder.confirmedIdentity("model-b"), null, List.of(), Builder.FILES));
+			LogicalTrial retry = mismatch.trials().getFirst();
+			int second = TrialRecovery.attemptOrdinal(retry);
+			requireThat(second, "attemptAfterMeasurementMismatch").isEqualTo(2);
+			requireThat(store.readTrialRecovery(ID, key, second).isEmpty(), "recoveryForRetryAbsent").isTrue();
+			store.writeAssignment(ID, retry);
+			TrialRecovery replacement = new TrialRecovery(key, second, UUID.randomUUID(), 0, Map.of(), false);
+			store.writeTrialRecovery(ID, replacement);
+
+			Campaign retryRunning = Transitions.apply(mismatch, new CampaignEvent.Start(key));
+			Campaign rateLimited = Transitions.apply(retryRunning,
+				new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED, "Rate limited", now.plusSeconds(1)));
+			LogicalTrial next = rateLimited.trials().getFirst();
+			CampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			int third = TrialRecovery.attemptOrdinal(next);
+			requireThat(third, "attemptAfterRateLimit").isEqualTo(3);
+			requireThat(reopened.readTrialRecovery(ID, key, first).isEmpty(), "supersededRecoveryAbsent").isTrue();
+			requireThat(reopened.readTrialRecovery(ID, key, third).isEmpty(), "newRecoveryAbsent").isTrue();
+			requireThat(reopened.listTrialRecoveries(ID), "recordedRequestForCleanup").isEqualTo(List.of(replacement));
+		}
+	}
+
+	/**
+	 * An existing attempt keeps its original request when a different request is written for that attempt.
+	 *
+	 * @throws IOException if the trial record cannot be stored
+	 */
+	@Test(expectedExceptions = IllegalStateException.class, expectedExceptionsMessageRegExp = ".*original request.*")
+	public void trialAttemptKeepsOriginalRequest() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("trial-recovery-owner"));
+			CampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			TrialKey key = trial(1, TrialState.ASSIGNED).key();
+			store.writeTrialRecovery(ID, new TrialRecovery(key, 1, UUID.randomUUID(), 0, Map.of(), false));
+			store.writeTrialRecovery(ID, new TrialRecovery(key, 1, UUID.randomUUID(), 0, Map.of(), false));
+		}
+	}
+
+	/**
+	 * A later observer decision cannot change an assertion's first-settled turn.
+	 *
+	 * @throws IOException if the trial record cannot be stored
+	 */
+	@Test(expectedExceptions = IllegalStateException.class,
+		expectedExceptionsMessageRegExp = ".*change a recorded assertion settlement.*")
+	public void trialKeepsFirstSettlementTurn() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("trial-recovery-settlement"));
+			CampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			TrialKey key = trial(1, TrialState.ASSIGNED).key();
+			UUID requestId = UUID.randomUUID();
+			store.writeTrialRecovery(ID, new TrialRecovery(key, 1, requestId, 0, Map.of(), false));
+			store.writeTrialRecovery(ID, new TrialRecovery(key, 1, requestId, 1, Map.of("formatting", 1), false));
+			store.writeTrialRecovery(ID, new TrialRecovery(key, 1, requestId, 2, Map.of("formatting", 2), false));
+		}
 	}
 
 	/**

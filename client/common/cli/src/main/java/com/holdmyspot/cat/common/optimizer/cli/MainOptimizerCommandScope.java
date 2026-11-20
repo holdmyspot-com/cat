@@ -4,6 +4,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.MainJvmScope;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.SessionHarness;
@@ -23,6 +24,9 @@ import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
@@ -31,6 +35,8 @@ import io.github.cowwoc.pouch10.core.Reference;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -48,6 +54,10 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * The launcher's name in the runtime image's {@code bin} directory.
 	 */
 	private static final String LAUNCHER = "prompt-optimizer";
+	/**
+	 * The time allowed for broker observations before a spent-allowance command keeps its original refusal.
+	 */
+	private static final Duration RETAINED_TRIAL_PREFLIGHT_WAIT = Duration.ofSeconds(5);
 	private final Harness harness;
 	private final HarnessSandbox trialSandbox;
 	private final SessionHarness sessionHarness;
@@ -233,9 +243,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		Optional<String> refusal = HarnessEnvironment.nestedSessionRefusal(RunnerSessions.COMMAND, environment);
 		if (refusal.isPresent())
 			return refusal;
-		String id = harness.commandName();
-		if (!(LaunchRoute.decide(id, id, markers.running(environment), new String[0],
-			environment) instanceof LaunchRoute.Forward(Path requests)))
+		if (!(launchRoute() instanceof LaunchRoute.Forward(Path requests)))
 			return Optional.empty();
 		try
 		{
@@ -247,6 +255,54 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 			// The nested session's runner still refuses each session that its limits do not allow, which pauses the campaign
 			return Optional.empty();
 		}
+	}
+
+	@Override
+	protected final Optional<RetainedTrialLookup> retainedTrialPreflight() throws IOException
+	{
+		ensureOpen();
+		if (!(launchRoute() instanceof LaunchRoute.Forward(Path requests)))
+			return Optional.empty();
+		Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
+		if (refusal.isEmpty() || refusal.get().equals(SessionRequestAccess.NO_REQUESTS_REASON))
+			return Optional.empty();
+		Instant deadline = clock().instant().plus(RETAINED_TRIAL_PREFLIGHT_WAIT);
+		Pause pause = waiting().every(SessionRequestForwarder.RESPONSE_POLL);
+		RetainedNestedSessionClient client = retainedTrials(() ->
+		{
+			checkRetainedTrialPreflightDeadline(deadline);
+			pause.pause();
+		});
+		return Optional.of(requestId ->
+		{
+			checkRetainedTrialPreflightDeadline(deadline);
+			RetainedTrialResponse response = client.request(RetainedTrialRequest.status(requestId));
+			checkRetainedTrialPreflightDeadline(deadline);
+			return response;
+		});
+	}
+
+	/**
+	 * Enforces the preflight deadline also when the route is still being served.
+	 *
+	 * @param deadline the deadline shared by all status probes
+	 * @throws IOException if the deadline has passed
+	 */
+	private void checkRetainedTrialPreflightDeadline(Instant deadline) throws IOException
+	{
+		if (!clock().instant().isBefore(deadline))
+			throw new IOException("The retained trial status preflight timed out");
+	}
+
+	/**
+	 * Returns the route shared by nested launch preflight and worktree requests.
+	 *
+	 * @return the launch route
+	 */
+	private LaunchRoute launchRoute()
+	{
+		String id = harness.commandName();
+		return LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment);
 	}
 
 	/**
@@ -265,8 +321,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	protected final Optional<String> launchRefusal() throws IOException
 	{
 		ensureOpen();
-		String id = harness.commandName();
-		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
+		return switch (launchRoute())
 		{
 			case LaunchRoute.Served _ ->
 			{
@@ -297,9 +352,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	protected final Optional<String> worktreeRefusal() throws IOException
 	{
 		ensureOpen();
-		String id = harness.commandName();
-		if (!(LaunchRoute.decide(id, id, markers.running(environment), new String[0],
-			environment) instanceof LaunchRoute.Served))
+		if (!(launchRoute() instanceof LaunchRoute.Served))
 			return Optional.empty();
 		try (ToolScope tools = ToolScope.forSession(directory, environment, SessionHarness.installed(), waiting()))
 		{
@@ -322,8 +375,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 */
 	private Optional<WorktreeRequestClient.Channel> worktreeChannel() throws IOException
 	{
-		String id = harness.commandName();
-		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
+		return switch (launchRoute())
 		{
 			case LaunchRoute.Forward(Path requests) -> Optional.of(new NestedSessionChannel(requests));
 			case LaunchRoute.Refused(String reason) -> throw new WorktreeRefusedException(reason);
@@ -340,6 +392,27 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 			}
 			case LaunchRoute.Bounded _ -> Optional.empty();
 		};
+	}
+
+	/**
+	 * Creates the client for retained trial operations on the same authenticated route used for worktrees.
+	 *
+	 * @return the client for this invoking session
+	 */
+	protected final RetainedNestedSessionClient retainedTrials()
+	{
+		return retainedTrials(waiting().every(SessionRequestForwarder.RESPONSE_POLL));
+	}
+
+	/**
+	 * Creates a retained trial client with a caller-supplied response wait.
+	 *
+	 * @param pause the response wait
+	 * @return the client for this invoking session
+	 */
+	private RetainedNestedSessionClient retainedTrials(Pause pause)
+	{
+		return new RetainedNestedSessionClient(this::worktreeChannel, json(), pause);
 	}
 
 	/**

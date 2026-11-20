@@ -106,10 +106,14 @@ public final class RequestArchive
 	 * requester's server. A request that names it carries no project.
 	 */
 	static final String RESUME = "resume";
+	/**
+	 * The manifest field that binds a streamed trial resume to a previously inspected retained checkpoint.
+	 */
+	static final String RETAINED_TRIAL_CLAIM = "retained_trial_claim";
 	private static final Set<String> LAUNCH_FIELDS = Set.of("format_version", "harness", "project", "prompts",
 		"plugins", "model", "effort", "session_transcripts", "install_cat", EXTRA_PERMISSIONS,
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
-		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME);
+		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME, RETAINED_TRIAL_CLAIM);
 	/**
 	 * The manifest fields that a nested session fixed at its start, which a request that resumes the nested session's
 	 * harness session may not name.
@@ -1115,6 +1119,14 @@ public final class RequestArchive
 			throw new IOException("Request accepts only \"" + StreamedRequest.STREAM + "\" or \"" +
 				StreamedRequest.CONVERSATION + "\" as its " + StreamedRequest.INPUT_FIELD);
 		}
+		Optional<RetainedTrialClaim> claim = Optional.empty();
+		boolean turnCopy = flag(value, "turn_copy");
+		if (value.has(RETAINED_TRIAL_CLAIM))
+		{
+			if (resume.isEmpty() || !input.equals(StreamedRequest.STREAM) || !turnCopy)
+				throw new IOException("A retained trial checkpoint claim requires a streamed resume with turn copies");
+			claim = Optional.of(RetainedTrialClaim.read(value.path(RETAINED_TRIAL_CLAIM), harness, resume.get()));
+		}
 		if (streamed && !promptFiles.isEmpty())
 			throw new IOException("A request whose records follow it carries no prompts: prompts");
 		if (!streamed && promptFiles.isEmpty())
@@ -1137,9 +1149,10 @@ public final class RequestArchive
 		return new LaunchRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
 			flag(value, "install_cat"), extraPermissions(value), streamed, conversation, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), optionalText(value, "session_role"),
-			toolOutputTokenLimit, flag(value, "turn_copy"), agent,
+			toolOutputTokenLimit, turnCopy, agent,
 			nonNegative(value, "session_requests").orElse(0), nonNegative(value, "request_depth").orElse(0),
-			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume);
+			nonNegative(value, "capacity_wait"), positive(value, "max_concurrency"), flag(value, "held_out"), resume,
+			claim);
 	}
 
 	/**
@@ -1480,6 +1493,7 @@ public final class RequestArchive
 	 *                           its own; a request that does not say so is not held out
 	 * @param resume             the harness session that the request resumes in a retained nested session, or empty for a
 	 *                           request that starts a session; a request that resumes one has no {@code project}
+	 * @param retainedTrialClaim the required checkpoint of a guarded trial resume, or empty for another launch
 	 */
 	record LaunchRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
@@ -1487,7 +1501,8 @@ public final class RequestArchive
 		List<Path> deniedReads, Optional<String> instructionFiles, Optional<String> sessionRole,
 		Optional<Integer> toolOutputTokenLimit, boolean turnCopy, Optional<String> agent, int sessionRequests,
 		int requestDepth,
-		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume)
+		Optional<Integer> capacityWait, Optional<Integer> maximumConcurrency, boolean heldOut, Optional<String> resume,
+		Optional<RetainedTrialClaim> retainedTrialClaim)
 	{
 	}
 

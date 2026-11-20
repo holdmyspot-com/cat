@@ -12,6 +12,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
@@ -20,12 +21,18 @@ import com.holdmyspot.cat.common.runner.LiveNestedSession;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
+import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialPrefix;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.SessionSlots;
 import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.WorktreeResponse;
@@ -37,6 +44,8 @@ import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.PipedReader;
+import java.io.PipedWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.StringReader;
@@ -44,6 +53,7 @@ import java.io.StringWriter;
 import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
@@ -93,6 +103,10 @@ public final class SessionRequestBrokerTest
 	 * The harness session that a requested nested session records.
 	 */
 	private static final String CHILD_SESSION = "0a4e7c3b-9d2f-4b1a-8e6c-5f3d2a1b0c9e";
+	/**
+	 * The file that binds a slot to the archive that first took it.
+	 */
+	private static final String ORIGINAL_REQUEST_FILE = "launch-request.json";
 	/**
 	 * Creates the test.
 	 */
@@ -1148,8 +1162,8 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that a requested session whose launcher ended after its harness reported its session keeps its slot,
 	 * which no other session takes, and that a launch that resumes the harness session continues it in that slot,
-	 * without a project of its own and without using any of the requesting nested session's allowance, and empties the
-	 * slot once the resumed nested session ends.
+	 * without a project of its own and without using any of the requesting nested session's allowance. The slot
+	 * records the original request before starting either runner and is emptied once the resumed session ends.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1165,11 +1179,19 @@ public final class SessionRequestBrokerTest
 				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
 			List<List<String>> starts = new CopyOnWriteArrayList<>();
+			List<String> requestIds = new CopyOnWriteArrayList<>();
+			List<JsonNode> bindingsAtStart = new CopyOnWriteArrayList<>();
 			AtomicInteger checks = new AtomicInteger();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
-				fixture.options, (_, options, _) ->
+				fixture.options, (_, options, response) ->
 				{
 					starts.add(List.copyOf(options));
+					requestIds.add(response.getFileName().toString());
+					Path binding = Path.of(option(options, "--results")).resolve(ORIGINAL_REQUEST_FILE);
+					if (Files.exists(binding))
+						bindingsAtStart.add(fixture.json.readTree(binding.toFile()));
+					else
+						bindingsAtStart.add(fixture.json.createObjectNode());
 					FakeHarnessCli process = resumableRunner(fixture, fileLocks, options, child);
 					child.set(process);
 					return process;
@@ -1197,6 +1219,10 @@ public final class SessionRequestBrokerTest
 					Thread.yield();
 				requireThat(Files.readString(manifest), "retained").contains("\"state\": \"running\"").
 					contains(RESUMED_SESSION);
+				String originalRequest = requestIds.getFirst();
+				requireOriginalRequest(bindingsAtStart.getFirst(), originalRequest);
+				Path binding = slot.resolve(ORIGINAL_REQUEST_FILE);
+				requireOriginalRequest(fixture.json.readTree(binding.toFile()), originalRequest);
 
 				String[] resume = {RunnerArguments.RESUME_OPTION, RESUMED_SESSION, "--model", "haiku", "--effort",
 					"low", "--input", again.toString()};
@@ -1217,10 +1243,12 @@ public final class SessionRequestBrokerTest
 				requireThat(option(resumed, "--results"), "resultsFolder").isEqualTo(slot.toString());
 				requireThat(option(resumed, RunnerArguments.RESUME_SLOT_OPTION), "resumeSlot").isEqualTo(RESUMED_SESSION);
 				requireThat(resumed, "resumed").doesNotContain("--project");
+				requireThat(requestIds.get(1), "resumeRequestId").isNotEqualTo(originalRequest);
+				requireOriginalRequest(bindingsAtStart.get(1), originalRequest);
 				// The slot is emptied once the resumed session's response is published
-				for (int check = 0; check < 1_000_000 && Files.exists(manifest); ++check)
+				for (int check = 0; check < 1_000_000 && Files.exists(slot); ++check)
 					Thread.yield();
-				requireThat(Files.exists(manifest), "sessionRetained").isFalse();
+				requireThat(Files.exists(slot), "slotRetained").isFalse();
 			}
 		}
 	}
@@ -1415,6 +1443,362 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies that recovery settles an original queued launch whose sender ended, without admitting it or spending
+	 * the sole available session request. A later scan still cannot start the original.
+	 *
+	 * @throws IOException if the broker or fixture cannot read or write a request
+	 */
+	@Test(timeOut = 30_000)
+	public void retainedTrialFencesDeadQueuedLaunch() throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+		     SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager, fixture.options,
+			     (_, _, _) ->
+			     {
+				     throw new AssertionError("Recovery admitted a launch whose sender had ended");
+			     }))
+		{
+			UUID original = UUID.randomUUID();
+			ObjectNode launch = fixture.document().put("input", "stream");
+			launch.remove("prompts");
+			fixture.writeRequest(original.toString(), launch);
+			RetainedTrialRequest recovery = RetainedTrialRequest.status(original);
+			String id = recovery.publish(fixture.json, fixture.requests);
+
+			broker.scan();
+			requireThat(fixture.manager.requestsUsed(fixture.nestedSession), "requestsUsed").isEqualTo(0);
+			requireThat(retainedTrialStatus(fixture, id, recovery), "recovery").
+				isEqualTo(RetainedTrialResponse.Status.ABSENT);
+
+			broker.scan();
+			requireThat(fixture.manager.requestsUsed(fixture.nestedSession), "requestsUsedAfterAnotherScan").isEqualTo(0);
+		}
+	}
+
+	/**
+	 * Verifies that an original launch published after its absence was confirmed stays fenced across broker restart.
+	 *
+	 * @throws IOException if the broker or fixture cannot read or write a request
+	 */
+	@Test(timeOut = 30_000)
+	public void retainedTrialFenceSurvivesRestart() throws IOException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			UUID original = UUID.randomUUID();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (_, _, _) ->
+				{
+					throw new AssertionError("Recovery started a session");
+				}))
+			{
+				RetainedTrialRequest recovery = RetainedTrialRequest.status(original);
+				String id = recovery.publish(fixture.json, fixture.requests);
+				broker.scan();
+				requireThat(retainedTrialStatus(fixture, id, recovery), "recovery").
+					isEqualTo(RetainedTrialResponse.Status.ABSENT);
+				TemporaryDirectories.deleteRecursively(fixture.responses.resolve(id));
+				Files.deleteIfExists(fixture.requests.resolve(id + ".tar"));
+			}
+
+			Path lock = fixture.requests.resolve(original + ".lock");
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (_, _, _) ->
+				{
+					throw new AssertionError("The restarted broker admitted a fenced launch");
+				});
+			     FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+			     FileLock _ = channel.lock())
+			{
+				ObjectNode launch = fixture.document().put("input", "stream");
+				launch.remove("prompts");
+				fixture.writeRequest(original.toString(), launch);
+				broker.scan();
+				requireThat(fixture.await(original.toString()).path("status").asString(), "launchState").
+					isEqualTo("stopped");
+				requireThat(fixture.manager.requestsUsed(fixture.nestedSession), "requestsUsed").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Verifies that recovery reports a live sender as busy while its original launch can still publish an archive.
+	 *
+	 * @throws IOException if the broker or fixture cannot read or write a request
+	 */
+	@Test(timeOut = 30_000)
+	public void retainedTrialWaitsForLiveSender() throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+		     SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager, fixture.options,
+			     (_, _, _) ->
+			     {
+				     throw new AssertionError("A retained trial status request started a session");
+			     }))
+		{
+			UUID original = UUID.randomUUID();
+			RetainedTrialRequest recovery = RetainedTrialRequest.status(original);
+			Path lock = fixture.requests.resolve(original + ".lock");
+			try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+			     FileLock _ = channel.lock())
+			{
+				String id = recovery.publish(fixture.json, fixture.requests);
+				broker.scan();
+				requireThat(retainedTrialStatus(fixture, id, recovery), "liveSender").
+					isEqualTo(RetainedTrialResponse.Status.BUSY);
+			}
+			String id = recovery.publish(fixture.json, fixture.requests);
+			broker.scan();
+			requireThat(retainedTrialStatus(fixture, id, recovery), "endedSender").
+				isEqualTo(RetainedTrialResponse.Status.ABSENT);
+		}
+	}
+
+	/**
+	 * Verifies that a guarded resume replays the retained turn and continues the original harness session with only
+	 * the remaining prompt.
+	 *
+	 * @throws IOException if the fixture or guarded launch fails
+	 * @throws InterruptedException if the fixture cannot reserve its retained slot
+	 */
+	@Test(timeOut = 30_000)
+	public void guardedResumeReplaysAndContinues() throws IOException, InterruptedException
+	{
+		try (Fixture fixture = new Fixture())
+		{
+			UUID original = UUID.randomUUID();
+			SessionSlots.Slot slot = retainedTrialWithPrefix(fixture, original);
+			List<String> prompts = new CopyOnWriteArrayList<>();
+			AtomicReference<Exception> runnerFailure = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (harness, options, _) ->
+				{
+					Path resultsFolder = Path.of(option(options, "--results"));
+					requireThat(resultsFolder, "resumedSlot").isEqualTo(slot.root());
+					requireOriginalRequest(fixture.json.readTree(resultsFolder.resolve(ORIGINAL_REQUEST_FILE).toFile()),
+						original.toString());
+					return startGuardedBridge(fixture, harness, options, prompts, runnerFailure);
+				}))
+			{
+				RetainedNestedSessionClient retained = new RetainedNestedSessionClient(
+					() -> Optional.of(new NestedSessionChannel(fixture.requests)), fixture.json, broker::scan);
+				RetainedTrialResponse status = retained.request(RetainedTrialRequest.status(original));
+				requireThat(status.status(), "status").isEqualTo(RetainedTrialResponse.Status.READY);
+				RetainedTrialClaim claim = new RetainedTrialClaim(original, status.identity().orElseThrow(),
+					status.completedTurns().orElseThrow());
+				requireThat(claim.completedTurns(), "completedTurns").isEqualTo(1);
+
+				Path results = fixture.root.resolve("resumed-results");
+				StringWriter output = new StringWriter();
+				SessionRequestForwarder.serveRetainedTrial(SessionRequestForwarder.Route.RUN, claim, "test command",
+					"claude", fixture.root, fixture.project,
+					List.of("--resume", RESUMED_SESSION, "--results", results.toString(), "--model", "haiku",
+						"--effort", "low", "--session-transcripts"),
+					new StringReader("{\"type\":\"turn\",\"prompt\":\"remaining\"}\n{\"type\":\"complete\"}\n"),
+					output, fixture.requests, () ->
+					{
+						if (runnerFailure.get() != null)
+							throw new IOException("The resumed bridge failed", runnerFailure.get());
+						broker.scan();
+						Thread.yield();
+					});
+				requireThat(prompts, "harnessPrompts").isEqualTo(List.of("remaining"));
+				List<JsonNode> records = output.toString().lines().map(fixture.json::readTree).toList();
+				requireThat(records.getFirst().path("session_id").asString(), "resumedSession").isEqualTo(RESUMED_SESSION);
+				List<String> replies = records.stream().filter(record -> record.path("type").asString().
+					equals("turn_completed")).map(record -> record.path("assistant_response").asString()).toList();
+				requireThat(replies, "turnReplies").isEqualTo(List.of("retained reply", "resumed reply"));
+				requireThat(Files.readString(results.resolve("claude").resolve(RESUMED_SESSION).resolve("project/marker")),
+					"resumedProject").isEqualTo("retained project");
+			}
+		}
+	}
+
+	/**
+	 * Writes the one-turn evidence left by an ended runner, then gives up the slot.
+	 *
+	 * @param fixture the requesting session that owns the slots
+	 * @param original the request that originally took this slot
+	 * @return the retained slot
+	 * @throws IOException if the retained evidence cannot be written
+	 * @throws InterruptedException if the fixture cannot reserve its slot
+	 */
+	private static SessionSlots.Slot retainedTrialWithPrefix(Fixture fixture, UUID original)
+		throws IOException, InterruptedException
+	{
+		Path base = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession);
+		SessionSlots slots = new SessionSlots(base, 1, new ProcessHandleLiveness(), fixture.fileLocks);
+		SessionSlots.Slot slot = slots.acquire(false);
+		NestedSessionManager manager = new NestedSessionManager(fixture.fileLocks, slot.root(), Clock.systemUTC(),
+			Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
+		NestedSession session = manager.create("claude");
+		manager.recordHarnessSession(session, RESUMED_SESSION);
+		manager.writeTurnOutput(session, 1, new HarnessProcessResult(0, "retained event\n", ""));
+		Path directory = session.directory();
+		Files.writeString(directory.resolve("project/marker"), "retained project");
+		Files.createDirectory(directory.resolve("initial-project"));
+		Files.writeString(directory.resolve("artifacts/turn-1.reply.json"), """
+			{"type":"turn_completed","exit_code":0,"error":"","assistant_response":"retained reply",
+			 "assistant_messages":["retained reply"]}
+			""");
+		RetainedTrialPrefix.capture(directory, 1, Optional.empty());
+		Files.writeString(directory.resolve("turn-checkpoint.json"),
+			"{\"format_version\":1,\"turn_number\":1,\"state\":\"ready\"}");
+
+		// Keep the PID but give the old runner a different start identity to represent an ended process.
+		Path manifestFile = directory.resolve("session.json");
+		String rawManifest = Files.readString(manifestFile);
+		JsonNode manifest = fixture.json.readTree(rawManifest);
+		String currentStart = manifest.path("owner_started_at").asString();
+		String oldStart = currentStart + "0";
+		Files.writeString(manifestFile, rawManifest.replace("\"owner_started_at\": \"" + currentStart + "\"",
+			"\"owner_started_at\": \"" + oldStart + "\""));
+		long pid = manifest.path("owner_pid").asLong();
+		Files.writeString(slot.root().resolve("startup-permit.json"), fixture.json.createObjectNode().
+			put("format_version", 1).put("generation", UUID.randomUUID().toString()).put("state", "claimed").
+			put("manual_resume", false).put("broker_pid", pid).put("broker_started_at", oldStart).
+			put("runner_pid", pid).put("runner_started_at", oldStart).toString());
+		Files.writeString(slot.root().resolve(ORIGINAL_REQUEST_FILE), fixture.json.createObjectNode().
+			put("format_version", 1).put("request_id", original.toString()).toString());
+		slots.retain(slot);
+		return slot;
+	}
+
+	/**
+	 * Connects the broker's child process boundary to a production bridge with a scripted native harness.
+	 *
+	 * @param fixture the requesting session
+	 * @param harness the name selected by the broker
+	 * @param options the broker's child options
+	 * @param prompts receives the native harness's prompts
+	 * @param failure receives any exception on the bridge's thread
+	 * @return the transport for the bridge's standard input and exit
+	 * @throws IOException if the child transport cannot be opened
+	 */
+	private static FakeHarnessCli startGuardedBridge(Fixture fixture, String harness, List<String> options,
+		List<String> prompts, AtomicReference<Exception> failure) throws IOException
+	{
+		List<String> arguments = new ArrayList<>(List.of("--artifact", fixture.root.toString()));
+		arguments.addAll(options);
+		String[] args = arguments.toArray(String[]::new);
+		HarnessRunnerOptions parsed = HarnessRunnerOptions.parse(args, harness, HarnessTemporaryRoot.of(fixture.root));
+		PipedReader input = new PipedReader();
+		PipedWriter messages = new PipedWriter(input);
+		FakeHarnessCli transport = new FakeHarnessCli(line ->
+		{
+			try
+			{
+				messages.write(line + "\n");
+				messages.flush();
+			}
+			catch (IOException e)
+			{
+				throw new UncheckedIOException(e);
+			}
+		});
+		transport.whenExited(() ->
+		{
+			try
+			{
+				messages.close();
+			}
+			catch (IOException e)
+			{
+				failure.compareAndSet(null, e);
+			}
+		});
+		Thread.startVirtualThread(() ->
+		{
+			AtomicReference<ScriptedProcess> script = new AtomicReference<>();
+			Turn turn = Turn.replies("resumed reply").
+				withCheckpoint(_ -> script.get().reportHarnessSession(RESUMED_SESSION));
+			try (input; messages; ScriptedProcess nativeHarness = new ScriptedProcess(List.of(turn), prompts))
+			{
+				script.set(nativeHarness);
+				NestedSessionManager manager = NestedSessionManager.openResultsFolder(fixture.fileLocks,
+					parsed.resultsFolder(), Clock.systemUTC(), Yielding.fileReplacer(), parsed.slotId(),
+					HarnessRunnerOptions.startupPermit(args).orElseThrow()).withFixedSlotId(parsed.slotId());
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(manager.resume(harness, parsed.resumeSlot()),
+					nativeHarness, new TestHarnessRunnerScope()), manager, parsed, fixture.json, Yielding.fileReplacer(),
+					input, new StringWriter());
+			}
+			catch (IOException | RuntimeException e)
+			{
+				failure.set(e);
+			}
+			finally
+			{
+				transport.exit();
+			}
+		});
+		return transport;
+	}
+
+	/**
+	 * Verifies that the original launch remains busy after cancellation while its accepted starter can still return a
+	 * process and needs to finish releasing the slot.
+	 *
+	 * @throws IOException if the broker or fixture cannot read or write a request
+	 */
+	@Test(timeOut = 30_000)
+	public void retainedTrialWaitsForDelayedStarter() throws IOException
+	{
+		CountDownLatch entered = new CountDownLatch(1);
+		CountDownLatch release = new CountDownLatch(1);
+		try (Fixture fixture = new Fixture();
+		     SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager, fixture.options,
+			     (_, _, _) ->
+			     {
+				     entered.countDown();
+				     awaitStarted(release);
+				     return new FakeHarnessCli(_ -> {});
+			     }))
+		{
+			try
+			{
+				UUID original = UUID.randomUUID();
+				Path lock = fixture.requests.resolve(original + ".lock");
+				try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+				     FileLock _ = channel.lock())
+				{
+					ObjectNode launch = fixture.document().put("input", "stream");
+					launch.remove("prompts");
+					fixture.writeRequest(original.toString(), launch);
+					broker.scan();
+					awaitStarted(entered);
+				}
+				RetainedTrialRequest recovery = RetainedTrialRequest.discard(original, Optional.empty());
+				String id = recovery.publish(fixture.json, fixture.requests);
+				broker.scan();
+				requireThat(fixture.await(original.toString()).path("status").asString(), "launchState").
+					isEqualTo("stopped");
+				requireThat(retainedTrialStatus(fixture, id, recovery), "delayedStarter").
+					isEqualTo(RetainedTrialResponse.Status.BUSY);
+			}
+			finally
+			{
+				release.countDown();
+			}
+		}
+	}
+
+	/**
+	 * Reads the recovery status written by the broker for the request envelope.
+	 *
+	 * @param fixture the requesting nested session
+	 * @param id       the envelope identifier
+	 * @param request  the request that the answer must identify
+	 * @return the answer's classified status
+	 * @throws IOException if the answer cannot be read or does not identify the request
+	 */
+	private static RetainedTrialResponse.Status retainedTrialStatus(Fixture fixture, String id,
+		RetainedTrialRequest request) throws IOException
+	{
+		fixture.await(id);
+		return RetainedTrialResponse.read(fixture.json, fixture.responses.resolve(id), request).orElseThrow().status();
+	}
+
+	/**
 	 * Verifies that a broker of a nested session that resumes its harness session answers {@code ended} each request that
 	 * the nested session made before its interruption and that has no response, and leaves each answered request as it
 	 * was.
@@ -1548,6 +1932,86 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Refuses a guarded resume if it does not identify a current retained trial checkpoint. In particular, the
+	 * broker may never fall back to a public resume based only on the harness session ID.
+	 *
+	 * @throws IOException if the fixture, broker or launch I/O fails
+	 */
+	@Test
+	public void refusesMissingGuardedTrialCheckpoint() throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (_, _, _) ->
+				{
+					throw new AssertionError("A missing guarded checkpoint cannot start a session");
+				}))
+		{
+			String id = UUID.randomUUID().toString();
+			Path lock = fixture.requests.resolve(id + ".lock");
+			try (FileChannel channel = FileChannel.open(lock, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE);
+			     FileLock _ = channel.lock())
+			{
+				fixture.writeRequest(id, guardedResume(fixture, UUID.randomUUID()));
+				broker.scan();
+				JsonNode response = fixture.await(id);
+				requireThat(response.path("status").asString(), "status").isEqualTo("refused");
+				requireThat(response.path("reason").asString(), "reason").contains("retained trial checkpoint");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a guarded resume with its own envelope cannot enter admission after its sender ended and
+	 * recovery settled the original launch.
+	 *
+	 * @throws IOException if the fixture or broker cannot read or write a request
+	 */
+	@Test(timeOut = 30_000)
+	public void stopsDeadGuardedResumeBeforeAdmission() throws IOException
+	{
+		try (Fixture fixture = new Fixture();
+			SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (_, _, _) ->
+				{
+					throw new AssertionError("A guarded resume with a dead sender cannot start a session");
+				}))
+		{
+			UUID original = UUID.randomUUID();
+			RetainedTrialRequest recovery = RetainedTrialRequest.status(original);
+			String recoveryId = recovery.publish(fixture.json, fixture.requests);
+			broker.scan();
+			requireThat(retainedTrialStatus(fixture, recoveryId, recovery), "recovery").
+				isEqualTo(RetainedTrialResponse.Status.ABSENT);
+
+			String id = UUID.randomUUID().toString();
+			Files.createFile(fixture.requests.resolve(id + ".lock"));
+			fixture.writeRequest(id, guardedResume(fixture, original));
+			broker.scan();
+			JsonNode response = fixture.await(id);
+			requireThat(response.path("status").asString(), "status").isEqualTo("stopped");
+			requireThat(response.path("reason").asString(), "reason").contains("ended before admission");
+		}
+	}
+
+	/**
+	 * Builds a guarded resume archive manifest for a trial checkpoint.
+	 *
+	 * @param fixture the requesting session
+	 * @param original the original launch's request ID
+	 * @return the guarded resume manifest
+	 */
+	private static ObjectNode guardedResume(Fixture fixture, UUID original)
+	{
+		ObjectNode request = fixture.json.createObjectNode().put("format_version", 3).put("harness", "claude").
+			put("resume", RESUMED_SESSION).put("model", "haiku").put("effort", "low").put("input", "stream").
+			put("turn_copy", true);
+		request.putObject("retained_trial_claim").put("request_id", original.toString()).
+			put("slot_generation", UUID.randomUUID().toString()).put("completed_turns", 1);
+		return request;
+	}
+
+	/**
 	 * Verifies that {@code request-session --conversation} exits with status 2 when the nested session allows no
 	 * requested session, and that the conversation's last line says that the request was refused.
 	 *
@@ -1671,6 +2135,122 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
+	 * Verifies recovery that wins the slot after a broker starts a child prevents that delayed child from creating a
+	 * nested session in the recovered slot.
+	 *
+	 * @throws IOException if fixture or broker I/O fails
+	 * @throws InterruptedException if observing the child is interrupted
+	 */
+	@Test(timeOut = 30_000)
+	public void recoveredSlotRefusesDelayedRunner() throws IOException, InterruptedException
+	{
+		// Requirement: R-I9
+		try (Fixture fixture = new Fixture())
+		{
+			CountDownLatch childStarting = new CountDownLatch(1);
+			CountDownLatch allowChild = new CountDownLatch(1);
+			CountDownLatch childPrepared = new CountDownLatch(1);
+			CountDownLatch allowReturn = new CountDownLatch(1);
+			AtomicReference<Path> resultsFolder = new AtomicReference<>();
+			AtomicReference<IOException> startupFailure = new AtomicReference<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
+				fixture.options, (_, options, _) ->
+				{
+					resultsFolder.set(Path.of(option(options, "--results")));
+					childStarting.countDown();
+					try
+					{
+						allowChild.await();
+					}
+					catch (InterruptedException e)
+					{
+						Thread.currentThread().interrupt();
+						throw new IOException("Child start was interrupted", e);
+					}
+					FakeHarnessCli child;
+					try
+					{
+						String slotId = option(options, "--slot-id");
+						NestedSessionManager manager = NestedSessionManager.openResultsFolder(fixture.fileLocks,
+							resultsFolder.get(), Clock.systemUTC(), Yielding.fileReplacer(), slotId,
+							option(options, RunnerArguments.STARTUP_PERMIT_OPTION)).withFixedSlotId(slotId);
+						try
+						{
+							manager.create("claude");
+						}
+						finally
+						{
+							manager.closeStartupLease();
+						}
+						child = new FakeHarnessCli(_ ->
+						{
+						});
+					}
+					catch (IOException e)
+					{
+						startupFailure.set(e);
+						AtomicReference<FakeHarnessCli> refusedChild = new AtomicReference<>();
+						child = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, refusedChild),
+							HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
+						refusedChild.set(child);
+					}
+					childPrepared.countDown();
+					try
+					{
+						allowReturn.await();
+					}
+					catch (InterruptedException e)
+					{
+						Thread.currentThread().interrupt();
+						throw new IOException("Child return was interrupted", e);
+					}
+					return child;
+				}))
+			{
+				fixture.request("delayed");
+				broker.scan();
+				requireThat(childStarting.await(10, TimeUnit.SECONDS), "childStarting").isTrue();
+				Path slotBase = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession);
+				SessionSlots recovery = new SessionSlots(slotBase, 1, new HarnessProcessLiveness()
+				{
+					@Override
+					public boolean isAlive(long pid, String start)
+					{
+						return false;
+					}
+
+					@Override
+					public boolean terminate(long pid, String start)
+					{
+						return false;
+					}
+				});
+				SessionSlots.Slot recovered = recovery.acquire(false);
+				recovery.release(recovered);
+				Path replacementRoot = slotBase.resolve("d1");
+				Files.createDirectories(replacementRoot);
+				ObjectNode replacementBinding = fixture.json.createObjectNode().put("format_version", 1).
+					put("request_id", "replacement");
+				Files.writeString(replacementRoot.resolve(ORIGINAL_REQUEST_FILE),
+					fixture.json.writeValueAsString(replacementBinding));
+				allowChild.countDown();
+				requireThat(childPrepared.await(10, TimeUnit.SECONDS), "childPrepared").isTrue();
+				Path manifest = resultsFolder.get().resolve("claude").resolve("s-1").resolve("session.json");
+				try
+				{
+					requireThat(Files.exists(manifest), "delayedChildManifest").isFalse();
+						requireThat(startupFailure.get(), "startupFailure").isNotNull();
+				}
+				finally
+				{
+					allowReturn.countDown();
+				}
+				fixture.await("delayed");
+			}
+		}
+	}
+
+	/**
 	 * Verifies that a session that takes a slot finds nothing of the previous session's files, neither in its nested
 	 * session's home and project nor beside them.
 	 *
@@ -1694,7 +2274,10 @@ public final class SessionRequestBrokerTest
 				fixture.await("second");
 			}
 			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
-			requireThat(nestedSessions.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+			SlotNestedSession second = nestedSessions.getLast();
+			requireThat(second.entriesAtStart().stream().sorted().toList(), "entriesAtStart").
+				isEqualTo(List.of(ORIGINAL_REQUEST_FILE, "startup-permit.json"));
+			requireThat(second.originalRequestId(), "originalRequestId").isEqualTo("second");
 		}
 	}
 
@@ -1805,7 +2388,10 @@ public final class SessionRequestBrokerTest
 				fixture.await("second");
 			}
 			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
-			requireThat(nestedSessions.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+			SlotNestedSession second = nestedSessions.getLast();
+			requireThat(second.entriesAtStart().stream().sorted().toList(), "entriesAtStart").
+				isEqualTo(List.of(ORIGINAL_REQUEST_FILE, "startup-permit.json"));
+			requireThat(second.originalRequestId(), "originalRequestId").isEqualTo("second");
 		}
 	}
 
@@ -2090,7 +2676,7 @@ public final class SessionRequestBrokerTest
 				// Each request gives its slot back after the broker tried to answer it
 				Path slots = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession);
 				long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10);
-				while (started.get() < 2 || hasEntries(slots))
+				while (started.get() < 2 || hasSlotDirectories(slots))
 				{
 					if (System.nanoTime() > deadline)
 						throw new AssertionError("The broker did not try to answer both requests");
@@ -2116,19 +2702,19 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Indicates whether a directory has entries.
+	 * Indicates whether the slots directory still contains a slot. Startup lock files stay beside the slots.
 	 *
-	 * @param directory the directory
-	 * @return {@code true} if it has an entry, or {@code false} if it is empty or does not exist
+	 * @param slots the slots directory
+	 * @return {@code true} if a slot directory remains
 	 * @throws IOException if the directory cannot be listed
 	 */
-	private static boolean hasEntries(Path directory) throws IOException
+	private static boolean hasSlotDirectories(Path slots) throws IOException
 	{
-		if (!Files.isDirectory(directory))
+		if (!Files.isDirectory(slots, LinkOption.NOFOLLOW_LINKS))
 			return false;
-		try (Stream<Path> entries = Files.list(directory))
+		try (Stream<Path> entries = Files.list(slots))
 		{
-			return entries.findAny().isPresent();
+			return entries.anyMatch(path -> Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS));
 		}
 	}
 
@@ -2203,11 +2789,13 @@ public final class SessionRequestBrokerTest
 		{
 			entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).toList();
 		}
+		String originalRequestId = fixture.json.readTree(resultsFolder.resolve(ORIGINAL_REQUEST_FILE).toFile()).
+			path("request_id").stringValue("");
 		NestedSessionManager manager = new NestedSessionManager(fileLocks, resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer()).withFixedSlotId(option(options, "--slot-id"));
 		NestedSession nestedSession = manager.create("claude");
 		state.record(manager, nestedSession);
-		nestedSessions.add(new SlotNestedSession(resultsFolder, nestedSession, entries));
+		nestedSessions.add(new SlotNestedSession(resultsFolder, nestedSession, entries, originalRequestId));
 		Files.writeString(nestedSession.directory().resolve("left-behind"), "left behind");
 		Files.writeString(nestedSession.directory().resolve("result.txt"), String.valueOf(nestedSessions.size()));
 		Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
@@ -2285,11 +2873,13 @@ public final class SessionRequestBrokerTest
 	/**
 	 * What a session finds in its slot, and the nested session that it builds there.
 	 *
-	 * @param resultsFolder       the results folder that the session received
-	 * @param nestedSession           the nested session that it built
-	 * @param entriesAtStart the names of the entries of the results folder when the session started
+	 * @param resultsFolder     the results folder that the session received
+	 * @param nestedSession     the nested session that it built
+	 * @param entriesAtStart    the names of the entries of the results folder when the session started
+	 * @param originalRequestId the request that the slot's record names at startup
 	 */
-	private record SlotNestedSession(Path resultsFolder, NestedSession nestedSession, List<String> entriesAtStart)
+	private record SlotNestedSession(Path resultsFolder, NestedSession nestedSession, List<String> entriesAtStart,
+		String originalRequestId)
 	{
 	}
 
@@ -2352,6 +2942,19 @@ public final class SessionRequestBrokerTest
 			terminations.incrementAndGet();
 			return false;
 		}
+	}
+
+	/**
+	 * Verifies that a slot binds to the original launch's archive.
+	 *
+	 * @param binding   the observed slot record
+	 * @param requestId the original launch's request ID
+	 */
+	private static void requireOriginalRequest(JsonNode binding, String requestId)
+	{
+		requireThat(binding.path("format_version").asInt(-1), "bindingFormat").isEqualTo(1);
+		requireThat(binding.path("request_id").stringValue(""), "boundRequest").isEqualTo(requestId);
+		requireThat(binding.size(), "bindingFields").isEqualTo(2);
 	}
 
 	/**
@@ -2759,6 +3362,7 @@ public final class SessionRequestBrokerTest
 		private final TemporaryDirectories cleanup = new TemporaryDirectories();
 		private final JsonMapper json = JsonMapper.builder().build();
 		private final Path root;
+		private final FileLocks fileLocks;
 		private final NestedSessionManager manager;
 		private final NestedSession nestedSession;
 		private final Path project;
@@ -2789,7 +3393,8 @@ public final class SessionRequestBrokerTest
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
 				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
-				manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"), Clock.systemUTC(),
+				fileLocks = jvm.fileLocks();
+				manager = new NestedSessionManager(fileLocks, root.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				nestedSession = manager.create("claude");
 				project = nestedSession.directory().resolve("project");

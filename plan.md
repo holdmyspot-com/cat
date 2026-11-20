@@ -51,7 +51,9 @@ untracked files: they are sandbox placeholders and session data. Do not list, co
 **Next actions, in order**
 
 1. Confirm that the Build is green on all 5 platforms for HEAD.
-2. Republish v1.0. Before tagging, list what the release omits (uncommitted or untracked work) and ask the user. Then:
+2. Rehearse Release without publishing, including its affected Windows x64, Linux x64 and Linux ARM workers and the
+   assembly of all 15 assets. Before republishing v1.0, list what the release omits (uncommitted or untracked work)
+   and ask the user. Then:
    - delete the GitHub release;
    - move `refs/tags/v1.0` with `--force-with-lease`;
    - watch the Release workflow, which should produce 15 assets;
@@ -61,8 +63,8 @@ untracked files: they are sandbox placeholders and session data. Do not list, co
    - install in both harnesses, running the installer bare;
    - restart the request server.
 3. WI-147: one live launch per harness, starting with Codex. Then close the WI-147 row.
-4. WI-146 step 7: optimizer reconciliation per Q7. The forwarder's served `--resume` must skip the spent-allowance check
-   (`SessionRequestForwarder.serve()` still reads limits.json for `RequestArchive.RESUME`).
+4. WI-146 step 7: prove the installed Q7 reconciliation with a between-turn resume and a mid-turn discard, including
+   recovery after an interrupted launch and an ordinary resume at the spent request allowance.
 5. Get the Codex instances working and verify prompt optimization through installed Codex E1 before starting any
    Claude Code optimizer campaign. Then rerun E1 in Claude Code.
    - In the contract author's trial, check that the launcher exemption works live. No test checks that the runners'
@@ -4055,14 +4057,15 @@ requirement names.
 ### Continuation after the transfer
 
 - Build run [44671948793](https://github.com/holdmyspot-com/cat/actions/runs/44671948793) is the five-platform
-  run for the transfer commit `854efc264`. Its 40-minute watch ended with all five jobs queued at 23:48 Toronto time
-  on November 19. The two preceding runs, `44671745564` (`af8fdf789`) and `44670999925` (`45bf883ed`), were also
-  queued. A new dispatch would duplicate the queued jobs. The green hosted build, release and installed Codex checks
-  remain pending.
+  run for the transfer commit `854efc264`. All five `Verify` jobs eventually ran. Each reported one error, in
+  `FixtureCampaignTest.committedFixtureMatchesStoreOutput`. The local commit `4a5155b96` fixes the fixture by
+  matching the generated format 48 file byte for byte. A hosted build of the corrected revision, the release,
+  and the installed Codex checks remain pending.
 - The absent-home, uncached `clean verify` on `0e7e92e8c` stopped in `common/cli` after 3,829 tests. The newly
   generated campaign fixture differed from the committed copy only in its format version. The committed copy now
   matches the generated format 48 file byte for byte. Two OSHI integration tests also errored because their system
-  directory was absent in the sandbox. The build log is in this session's `temp/wi147-clean-build-VbPK96/`.
+  directory was absent. Both local execution environments lacked `/sys`. The build log is in this session's
+  `temp/wi147-clean-build-VbPK96/`.
 - The current Release workflow adds the Windows bootstrap check and its Linux setup installs `jq` since the last
   successful release. The no-publication Release run must exercise these steps before the tag update. The isolated
   workflow under this session's `temp/release-validation-5v2aAt/source/` passes actionlint and ShellCheck. Hosted
@@ -4080,8 +4083,23 @@ requirement names.
   session's `temp/wi146-resume-allowance-KuqALb/`. The runner turn checkpoint producer passed its focused tests in
   `temp/wi146-turn-checkpoint-ZnIWbd/`. On the combined candidate, all 263 tests passed across `HarnessRunnerBridgeTest`,
   `NestedSessionManagerTest`, `RequestServerTest`, `SessionRequestBrokerTest` and `SessionRequestForwarderTest`.
-  The combined patch and log are under `temp/wi146-producers-b95S8U/`. Broker startup fencing, lookup and claim,
-  adapter evidence restoration, optimizer recovery and cleanup, and native acceptance remain open.
+  The partial patch and log are under `temp/wi146-producers-b95S8U/`.
+- The isolated WI-146 components passed focused verification for the recovery store (125 file-store tests), retained
+  trial protocol (32 tests), prefix snapshots and results copy (14 tests), observer progress, and driver recovery
+  (172 tests). The evidence audit confirmed that the caller's results can lag the runner's checkpoint. Recovery
+  exports the claimed prefix from the retained slot, including the ordered harness events, each exact reply and the
+  project and native transcript evidence needed by the observer. A Codex interrupt can also report a completed
+  harness result. The focused bridge test reproduced that case and passed after the checkpoint was kept ineligible.
+  The combined candidate also includes broker startup permits, refusal of dead queued continuations, guarded
+  discard after an explicit native resume refusal, recovery for guard-pilot draws, and cleanup checks under the
+  campaign lock. The forwarder replays the broker's verified prefix when the runner starts. Claude supplies its native
+  session ID only after receiving a prompt, which the forwarder then checks against the claim. A launch whose broker
+  ended before issuing a startup permit can be discarded after the broker observes the original launch ID and no
+  permit generation. The combined model-free verification passed 1,203 tests in the common, Codex and Claude CLI
+  modules. The regression uses the real broker, forwarder and runner bridge with a scripted harness. It exposed that
+  the runner's general stale-session cleanup marked the reserved session failed before reopening it. The broker now
+  owns cleanup for managed slots, and the test confirms replay of the saved reply with only the remaining prompt sent.
+  Logs are under this session's `temp/wi146-trial-adapter-bRVU99/`. Installed Codex acceptance remains open.
 
 ### Continuation verification (2026-11-16, session `01a1e6ba`)
 

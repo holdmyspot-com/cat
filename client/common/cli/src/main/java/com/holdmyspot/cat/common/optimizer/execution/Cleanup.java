@@ -10,9 +10,13 @@ import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
+import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 
 import java.io.IOException;
 import java.nio.file.FileSystemException;
@@ -21,8 +25,11 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 
 import tools.jackson.core.JacksonException;
@@ -59,6 +66,8 @@ public final class Cleanup
 	private final JsonMapper json;
 	private final FileReplacer replacer;
 	private final Consumer<Step> beforeStep;
+	private final SessionPort sessions;
+	private final PendingPilotRequests pendingPilotRequests;
 
 	/**
 	 * Creates a cleanup.
@@ -97,6 +106,27 @@ public final class Cleanup
 	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> resultsFolders,
 		JsonMapper json, FileReplacer replacer, Consumer<Step> beforeStep)
 	{
+		this(fileLocks, base, campaigns, forks, resultsFolders, json, replacer, beforeStep, null, _ -> List.of());
+	}
+
+	/**
+	 * Creates a cleanup that first resolves persisted retained trial requests.
+	 *
+	 * @param fileLocks the process-owned lock coordinator
+	 * @param base the base worktree
+	 * @param campaigns the directory that holds the campaigns that this cleanup removes
+	 * @param forks creates and removes the campaigns' optimization worktrees
+	 * @param resultsFolders the directories that hold the nested sessions of those campaigns
+	 * @param json the JSON mapper that parses session manifests
+	 * @param replacer writes the record that a campaign's removal started
+	 * @param beforeStep receives each step before it runs
+	 * @param sessions inspects and discards retained trial sessions
+	 * @param pendingPilotRequests lists request IDs retained by guard pilots
+	 */
+	public Cleanup(FileLocks fileLocks, Path base, Path campaigns, Forks forks, List<Path> resultsFolders,
+		JsonMapper json, FileReplacer replacer, Consumer<Step> beforeStep, SessionPort sessions,
+		PendingPilotRequests pendingPilotRequests)
+	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(base, "base").isNotNull();
 		requireThat(campaigns, "campaigns").isNotNull();
@@ -105,6 +135,7 @@ public final class Cleanup
 		requireThat(json, "json").isNotNull();
 		requireThat(replacer, "replacer").isNotNull();
 		requireThat(beforeStep, "beforeStep").isNotNull();
+		requireThat(pendingPilotRequests, "pendingPilotRequests").isNotNull();
 		this.fileLocks = fileLocks;
 		this.base = base;
 		this.campaigns = campaigns;
@@ -113,6 +144,8 @@ public final class Cleanup
 		this.json = json;
 		this.replacer = replacer;
 		this.beforeStep = beforeStep;
+		this.sessions = sessions;
+		this.pendingPilotRequests = pendingPilotRequests;
 	}
 
 	/**
@@ -280,6 +313,7 @@ public final class Cleanup
 		// Deleting the open lock file releases nothing until the lock closes
 		try (CampaignLock _ = lock.get())
 		{
+			discardRetainedTrials(id);
 			beforeStep.accept(Step.WORKTREE);
 			forks.remove(base, directory);
 
@@ -296,6 +330,54 @@ public final class Cleanup
 			FileCampaignStore.delete(campaigns, id);
 		}
 		return true;
+	}
+
+	/**
+	 * Resolves each persisted request while the campaign lock prevents new trial publication.
+	 *
+	 * @param id the campaign's identifier
+	 * @throws IOException if retained trial state is active, ambiguous, or cannot be discarded
+	 */
+	private void discardRetainedTrials(String id) throws IOException
+	{
+		Set<UUID> requestIds = new LinkedHashSet<>();
+		for (TrialRecovery recovery : new FileCampaignStore(campaigns, json, replacer).listTrialRecoveries(id))
+			requestIds.add(recovery.requestId());
+		requestIds.addAll(pendingPilotRequests.requestIds(id));
+		if (requestIds.isEmpty())
+			return;
+		if (sessions == null || !sessions.recoversTrials())
+			throw new IOException("A retained trial request cannot be resolved by this session port");
+		for (UUID requestId : requestIds)
+		{
+			RetainedTrialResponse status = sessions.retainedTrial(RetainedTrialRequest.status(requestId));
+			if (!requestId.equals(status.requestId()))
+				throw new IOException("The retained trial response names a different request");
+			if (status.status() == RetainedTrialResponse.Status.ABSENT)
+				continue;
+			if (status.status() != RetainedTrialResponse.Status.READY &&
+				status.status() != RetainedTrialResponse.Status.UNSAFE)
+				throw new IOException("The retained trial request is still active or cannot be safely discarded");
+			RetainedTrialResponse discarded = sessions.retainedTrial(RetainedTrialRequest.discard(requestId,
+				status.identity()));
+			if (!requestId.equals(discarded.requestId()) || (discarded.status() != RetainedTrialResponse.Status.DISCARDED &&
+				discarded.status() != RetainedTrialResponse.Status.ABSENT))
+				throw new IOException("The retained trial slot could not be confirmed absent");
+		}
+	}
+
+	/** Lists request IDs that remain pending in a campaign's guard pilot. */
+	@FunctionalInterface
+	public interface PendingPilotRequests
+	{
+		/**
+		 * Returns request IDs whose pilot trial recovery state remains pending.
+		 *
+		 * @param campaignId the campaign's identifier
+		 * @return pending launch request IDs
+		 * @throws IOException if the pilot cannot be read
+		 */
+		List<UUID> requestIds(String campaignId) throws IOException;
 	}
 
 	/**

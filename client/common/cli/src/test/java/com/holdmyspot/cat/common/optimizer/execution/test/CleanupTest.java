@@ -22,7 +22,15 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Conflicted;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.execution.Cleanup;
+import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
+import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
@@ -33,9 +41,13 @@ import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
 
@@ -89,6 +101,107 @@ public final class CleanupTest
 				delivered(Outcome.CERTIFIED));
 
 			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
+			fixture.requireRemoved();
+		}
+	}
+
+	/**
+	 * A removable campaign discards each retained trial before its first destructive cleanup step.
+	 *
+	 * @throws IOException if cleanup fails
+	 */
+	@Test
+	public void discardsTrialsBeforeCleanup() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+			UUID requestId = UUID.randomUUID();
+			UUID pilotRequestId = UUID.randomUUID();
+			UUID generation = UUID.randomUUID();
+			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Sha256.of("snapshot".getBytes(UTF_8)), "test", 1);
+			new FileCampaignStore(fixture.campaigns, JSON, Yielding.fileReplacer()).writeTrialRecovery(CAMPAIGN,
+				new TrialRecovery(key, 1, requestId, 0, Map.of(), false));
+			List<String> events = new ArrayList<>();
+			SessionPort sessions = (SessionPort) java.lang.reflect.Proxy.newProxyInstance(SessionPort.class.getClassLoader(),
+				new Class<?>[] {SessionPort.class}, (proxy, method, args) ->
+				{
+					if (method.getName().equals("recoversTrials"))
+						return true;
+					if (method.getName().equals("retainedTrial"))
+					{
+						RetainedTrialRequest request = (RetainedTrialRequest) args[0];
+						events.add(request.operation().name() + ":" + request.requestId());
+						// The original launch may stop between writing its binding and issuing its startup permit.
+						Optional<Identity> observedIdentity = Optional.of(new Identity(generation, Optional.empty())).
+							filter(_ -> request.requestId().equals(pilotRequestId));
+						if (request.operation() == RetainedTrialRequest.Operation.STATUS)
+							return new RetainedTrialResponse(request.requestId(), RetainedTrialResponse.Status.UNSAFE,
+								observedIdentity, OptionalInt.empty());
+						requireThat(request.identity(), "discardIdentity").isEqualTo(observedIdentity);
+						return new RetainedTrialResponse(request.requestId(), RetainedTrialResponse.Status.DISCARDED,
+							Optional.empty(), OptionalInt.empty());
+					}
+					throw new UnsupportedOperationException(method.getName());
+				});
+			Cleanup guarded = fixture.cleanup(step -> events.add("STEP:" + step), sessions, _ -> List.of(pilotRequestId));
+
+			Cleanup.Removal removal = guarded.end(campaign, delivered(Outcome.CERTIFIED));
+
+			requireThat(removal, "removal").isEqualTo(new Cleanup.Removal.Removed());
+			requireThat(events.stream().limit(4).toList(), "retainedTrialOperations").isEqualTo(List.of("STATUS:" + requestId,
+				"DISCARD:" + requestId, "STATUS:" + pilotRequestId, "DISCARD:" + pilotRequestId));
+			requireThat(events.indexOf("STEP:WORKTREE") > 3, "requestsResolvedBeforeDestruction").isTrue();
+			fixture.requireRemoved();
+		}
+	}
+
+	/**
+	 * A busy retained request defers cleanup without removing files, and the recorded removal retries later.
+	 *
+	 * @throws IOException if cleanup fails
+	 */
+	@Test
+	public void busyTrialDefersCleanupThenRetries() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = Fixture.create(cleanup);
+			Campaign campaign = fixture.store(certified(new DeliveryRequest(CANDIDATE, 1, Outcome.CERTIFIED)));
+			UUID requestId = UUID.randomUUID();
+			TrialKey key = new TrialKey(Purpose.DEVELOPMENT, 1, Sha256.of("snapshot".getBytes(UTF_8)), "test", 1);
+			new FileCampaignStore(fixture.campaigns, JSON, Yielding.fileReplacer()).writeTrialRecovery(CAMPAIGN,
+				new TrialRecovery(key, 1, requestId, 0, Map.of(), false));
+			java.util.concurrent.atomic.AtomicInteger attempts = new java.util.concurrent.atomic.AtomicInteger();
+			SessionPort sessions = (SessionPort) java.lang.reflect.Proxy.newProxyInstance(SessionPort.class.getClassLoader(),
+				new Class<?>[] {SessionPort.class}, (proxy, method, args) ->
+				{
+					if (method.getName().equals("recoversTrials"))
+						return true;
+					if (method.getName().equals("retainedTrial"))
+					{
+						RetainedTrialRequest request = (RetainedTrialRequest) args[0];
+						requireThat(request.operation(), "operation").isEqualTo(RetainedTrialRequest.Operation.STATUS);
+						RetainedTrialResponse.Status status;
+						if (attempts.getAndIncrement() == 0)
+							status = RetainedTrialResponse.Status.BUSY;
+						else
+							status = RetainedTrialResponse.Status.ABSENT;
+						return new RetainedTrialResponse(requestId, status, Optional.empty(), OptionalInt.empty());
+					}
+					throw new UnsupportedOperationException(method.getName());
+				});
+			Cleanup guarded = fixture.cleanup(NO_HOOK, sessions, _ -> List.of());
+
+			Cleanup.Removal removal = guarded.end(campaign, delivered(Outcome.CERTIFIED));
+
+			requireThat(removal instanceof Cleanup.Removal.Failed, "removalFailedWhileBusy").isTrue();
+			requireThat(Files.exists(fixture.directory(CAMPAIGN)), "campaignRetainedWhileBusy").isTrue();
+			requireThat(guarded.resume(), "retryWarnings").isEmpty();
+			requireThat(attempts.get(), "statusAttempts").isEqualTo(2);
 			fixture.requireRemoved();
 		}
 	}
@@ -491,6 +604,21 @@ public final class CleanupTest
 		Cleanup cleanup(Forks forks)
 		{
 			return new Cleanup(fileLocks, base, campaigns, forks, resultsFolders, JSON, Yielding.fileReplacer(), NO_HOOK);
+		}
+
+		/**
+		 * Returns cleanup with retained trial recovery enabled.
+		 *
+		 * @param beforeStep receives each cleanup step
+		 * @param sessions inspects and discards retained trials
+		 * @param pendingPilotRequests lists retained pilot request IDs
+		 * @return cleanup
+		 */
+		Cleanup cleanup(Consumer<Cleanup.Step> beforeStep, SessionPort sessions,
+			Cleanup.PendingPilotRequests pendingPilotRequests)
+		{
+			return new Cleanup(fileLocks, base, campaigns, forks, resultsFolders, JSON, Yielding.fileReplacer(),
+				beforeStep, sessions, pendingPilotRequests);
 		}
 
 		/**

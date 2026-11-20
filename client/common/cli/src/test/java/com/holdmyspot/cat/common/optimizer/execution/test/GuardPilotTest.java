@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution.test;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
+import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
@@ -34,6 +35,7 @@ import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotSlice;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
+import com.holdmyspot.cat.common.optimizer.execution.PilotTrialRecovery;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
@@ -42,6 +44,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
+import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -52,6 +55,11 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
 import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
@@ -77,7 +85,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
 import java.util.SplittableRandom;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -960,6 +970,159 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A restarted pilot either resumes its original trial or fences off the old launch before replacing it.
+	 *
+	 * @param status what the broker reports for the original launch
+	 * @throws IOException if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test(dataProvider = "retainedStatuses")
+	public void reconcilesTheOriginalPilotTrial(Status status) throws IOException, InterruptedException
+	{
+		Contract contract = TierFixtures.tieredContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("retained-pilot"));
+			AtomicReference<Map<String, PilotResult>> checkpoint = new AtomicReference<>(Map.of());
+			AtomicReference<UUID> original = new AtomicReference<>();
+			AtomicReference<SessionRequest> originalRequest = new AtomicReference<>();
+			AtomicInteger writes = new AtomicInteger();
+			FakeSessionPort interrupted = new RetainingPort()
+			{
+				@Override
+				public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+					throws IOException
+				{
+					requireThat(writes.get(), "writesBeforeLaunch").isEqualTo(1);
+					requireThat(claim, "freshClaim").isEmpty();
+					PilotTrialRecovery launch = firstPendingTrial(checkpoint.get());
+					requireThat(launch.requestId(), "checkpointedLaunch").isEqualTo(Optional.of(requestId));
+					requireThat(launch.progress().completedTurn(), "initialTurn").isEqualTo(0);
+					original.set(requestId);
+					originalRequest.set(request);
+					SessionHandle handle = super.startTrial(request, requestId, claim);
+					SessionResult.Completed evidence =
+						(SessionResult.Completed) handle.completion().toCompletableFuture().getNow(null);
+					requireThat(request.turns().size(), "trialTurns").isGreaterThan(1);
+					request.turnObserver().orElseThrow().endAfter(1, evidence);
+					requireThat(writes.get(), "writesAfterTurn").isEqualTo(2);
+					requireThat(firstPendingTrial(checkpoint.get()).progress().completedTurn(),
+						"checkpointedTurn").isEqualTo(1);
+					throw new SimulatedHostCrash();
+				}
+			};
+			SessionScript first = new SessionScript(directory.resolve("first"), _ -> "pass", interrupted);
+			expectThrows(SimulatedHostCrash.class, () ->
+				pilot(first, workspace(directory), 1).run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(),
+					new SplittableRandom(9), pilots ->
+					{
+						checkpoint.set(pilots);
+						writes.incrementAndGet();
+					}));
+
+			Identity identity = new Identity(UUID.randomUUID(),
+				Optional.of(new RetainedTrialResponse.HarnessSession("codex", "retained-pilot")));
+			List<String> operations = new ArrayList<>();
+			FakeSessionPort restarted = new RetainingPort()
+			{
+				@Override
+				public RetainedTrialResponse retainedTrial(RetainedTrialRequest request)
+				{
+					requireThat(request.requestId(), "originalRequestId").isEqualTo(original.get());
+					operations.add(request.operation().name());
+					return switch (request.operation())
+					{
+						case STATUS ->
+						{
+							Optional<Identity> observed = Optional.empty();
+							if (status == Status.READY || status == Status.UNSAFE)
+								observed = Optional.of(identity);
+							OptionalInt turns = OptionalInt.empty();
+							if (status == Status.READY)
+								turns = OptionalInt.of(1);
+							yield new RetainedTrialResponse(request.requestId(), status, observed, turns);
+						}
+						case DISCARD ->
+						{
+							requireThat(request.identity(), "discardIdentity").isEqualTo(Optional.of(identity));
+							yield new RetainedTrialResponse(request.requestId(), Status.DISCARDED, Optional.empty(),
+								OptionalInt.empty());
+						}
+					};
+				}
+
+				@Override
+				public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+					throws IOException
+				{
+					if (!operations.contains("START"))
+					{
+						requireThat(request.turns(), "samePilotDraw").isEqualTo(originalRequest.get().turns());
+						if (status == Status.READY)
+						{
+							requireThat(requestId, "resumedId").isEqualTo(original.get());
+							requireThat(claim, "claim").isEqualTo(Optional.of(new RetainedTrialClaim(original.get(), identity, 1)));
+							requireThat(request.turnObserver().orElseThrow().progress().completedTurn(),
+								"restoredReceipt").isEqualTo(1);
+						}
+						else
+						{
+							requireThat(requestId, "replacementId").isNotEqualTo(original.get());
+							requireThat(claim, "freshClaim").isEmpty();
+						}
+					}
+					operations.add("START");
+					return super.startTrial(request, requestId, claim);
+				}
+			};
+			SessionScript second = new SessionScript(directory.resolve("second"), _ -> "pass", restarted);
+			GuardPilot recovery = pilot(second, workspace(directory), 1);
+			Map<String, PilotResult> stored = checkpoint.get();
+			if (status == Status.BUSY)
+			{
+				expectThrows(IOException.class, () -> recovery.run(contract, List.of(), control(), Set.of(),
+					SELECTION, stored, new SplittableRandom(17), checkpoint::set));
+				requireThat(operations, "operations").isEqualTo(List.of("STATUS"));
+				requireThat(checkpoint.get(), "unchangedCheckpoint").isEqualTo(stored);
+				return;
+			}
+			Map<String, PilotResult> recovered = recovery.run(contract, List.of(), control(), Set.of(), SELECTION,
+				stored, new SplittableRandom(17), checkpoint::set);
+			List<String> prefix = List.of("STATUS", "START");
+			int failures = 0;
+			if (status == Status.UNSAFE)
+				prefix = List.of("STATUS", "DISCARD", "START");
+			if (status == Status.UNSAFE || status == Status.ABSENT)
+				failures = 1;
+			requireThat(operations.subList(0, prefix.size()), "operationsBeforeReplacement").isEqualTo(prefix);
+			PilotTrial completed = recovered.values().iterator().next().trials().getFirst();
+			requireThat(completed.infrastructureAttempts().size(), "chargedAttempts").isEqualTo(failures);
+		}
+	}
+
+	/**
+	 * Returns the possible retained states used in the recovery test.
+	 *
+	 * @return the statuses
+	 */
+	@DataProvider
+	public Object[][] retainedStatuses()
+	{
+		return new Object[][]{{Status.READY}, {Status.UNSAFE}, {Status.ABSENT}, {Status.BUSY}};
+	}
+
+	/**
+	 * Returns the single pending trial recorded by a one-session pilot.
+	 *
+	 * @param checkpoint the stored pilots
+	 * @return the undecided trial's recovery state
+	 */
+	private static PilotTrialRecovery firstPendingTrial(Map<String, PilotResult> checkpoint)
+	{
+		return checkpoint.values().iterator().next().pendingTrials().values().iterator().next();
+	}
+
+	/**
 	 * A pilot that ends abnormally, as when the process that runs it is killed or its thread is interrupted, loses only
 	 * the trials in flight: every decided trial was handed to the checkpoint when it was decided, and a later run that
 	 * starts from the last checkpoint runs only the trials that were not decided, with the test cases already drawn.
@@ -1659,14 +1822,25 @@ public final class GuardPilotTest
 			Map<String, PilotResult> clean = pilot(reference, workspace(directory), 1).run(contract, List.of(),
 				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5));
 			ManualClock clock = new ManualClock(Instant.EPOCH);
-			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass");
+			AtomicReference<UUID> cancelled = new AtomicReference<>();
+			FakeSessionPort running = new RetainingPort()
+			{
+				@Override
+				public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+					throws IOException
+				{
+					cancelled.set(requestId);
+					return super.startTrial(request, requestId, claim);
+				}
+			};
+			SessionScript sliced = new SessionScript(directory.resolve("sliced"), _ -> "pass", running);
+			AtomicReference<Map<String, PilotResult>> checkpoint = new AtomicReference<>();
 			sliced.trialsTake(clock, Duration.ofMinutes(1));
 			sliced.stallTrialsAfter(7, () -> clock.advance(Duration.ofMinutes(40)));
 
 			Map<String, PilotResult> first = pilot(sliced, workspace(directory), 1).run(contract, List.of(),
-				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5), _ ->
-				{
-				}, slice(clock, new FakeHostInterruptSignal(), Duration.ofMinutes(30)));
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(5), checkpoint::set,
+				slice(clock, new FakeHostInterruptSignal(), Duration.ofMinutes(30)));
 
 			List<FakeSession> trials = sliced.port().sessions().stream().
 				filter(session -> session.request().role() == SessionRole.TRIAL).toList();
@@ -1685,9 +1859,43 @@ public final class GuardPilotTest
 					requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
 			}
 
-			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
+			Identity identity = new Identity(UUID.randomUUID(),
+				Optional.of(new RetainedTrialResponse.HarnessSession("codex", "cancelled-pilot")));
+			List<RetainedTrialRequest.Operation> operations = new ArrayList<>();
+			FakeSessionPort restarted = new RetainingPort()
+			{
+				@Override
+				public RetainedTrialResponse retainedTrial(RetainedTrialRequest request)
+				{
+					requireThat(request.requestId(), "cancelledRequestId").isEqualTo(cancelled.get());
+					operations.add(request.operation());
+					return switch (request.operation())
+					{
+						case STATUS ->
+							new RetainedTrialResponse(request.requestId(), Status.READY, Optional.of(identity), OptionalInt.of(0));
+						case DISCARD ->
+						{
+							requireThat(request.identity(), "discardIdentity").isEqualTo(Optional.of(identity));
+							yield new RetainedTrialResponse(request.requestId(), Status.DISCARDED, Optional.empty(),
+								OptionalInt.empty());
+						}
+					};
+				}
+
+				@Override
+				public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+					throws IOException
+				{
+					requireThat(operations, "cancelledLaunchSettlement").isEqualTo(List.of(
+						RetainedTrialRequest.Operation.STATUS, RetainedTrialRequest.Operation.DISCARD));
+					requireThat(requestId, "replacementRequestId").isNotEqualTo(cancelled.get());
+					requireThat(claim, "freshClaim").isEmpty();
+					return super.startTrial(request, requestId, claim);
+				}
+			};
+			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass", restarted);
 			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
-				control(), Set.of(), SELECTION, first, new SplittableRandom(99));
+				control(), Set.of(), SELECTION, checkpoint.get(), new SplittableRandom(99));
 
 			assertContinues(resumed, reference, second, clean, 7);
 		}
@@ -1983,6 +2191,33 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * A scripted port that supports the trial recovery protocol.
+	 */
+	private static class RetainingPort extends FakeSessionPort
+	{
+		@Override
+		public boolean recoversTrials()
+		{
+			return true;
+		}
+
+		@Override
+		public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+			throws IOException
+		{
+			return start(request);
+		}
+	}
+
+	/**
+	 * Simulates a process that disappears before unwinding its open sessions.
+	 */
+	private static final class SimulatedHostCrash extends RuntimeException
+	{
+		private static final long serialVersionUID = 1L;
+	}
+
+	/**
 	 * The test's script for the sessions of a {@link FakeSessionPort}, which it ends as soon as they start. A trial
 	 * replies with the text that the test's script chooses for its request; a judge replies, in the format of the
 	 * judge's result schema, with the verdict that the reply of the trial under evidence names. The judge reads that
@@ -1993,7 +2228,7 @@ public final class GuardPilotTest
 	 */
 	private static final class SessionScript
 	{
-		private final FakeSessionPort port = new FakeSessionPort();
+		private final FakeSessionPort port;
 		private final Path directory;
 		private final Function<SessionRequest, String> replies;
 		/**
@@ -2022,6 +2257,19 @@ public final class GuardPilotTest
 		 */
 		SessionScript(Path directory, Function<SessionRequest, String> replies)
 		{
+			this(directory, replies, new FakeSessionPort());
+		}
+
+		/**
+		 * Creates a script with a supplied session port.
+		 *
+		 * @param directory a directory that the test owns
+		 * @param replies the reply of each trial session
+		 * @param port the port that starts the scripted sessions
+		 */
+		SessionScript(Path directory, Function<SessionRequest, String> replies, FakeSessionPort port)
+		{
+			this.port = port;
 			this.directory = directory;
 			this.replies = replies;
 			Path judgeDirectory = directory.resolve("judge");

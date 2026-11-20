@@ -159,10 +159,17 @@ import com.holdmyspot.cat.common.optimizer.statistics.DecisionBoundaries;
 import com.holdmyspot.cat.common.optimizer.statistics.PairTally;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
+import com.holdmyspot.cat.common.optimizer.store.TrialRecovery;
 import com.holdmyspot.cat.common.optimizer.store.TrialRecord;
 import com.holdmyspot.cat.common.optimizer.store.TrialSession;
 import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
 import com.holdmyspot.cat.common.runner.HarnessCapacity.Hold;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
+import com.holdmyspot.cat.common.runner.RetainedTrialUnresumableException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
@@ -185,7 +192,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Stream;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
@@ -3146,6 +3155,181 @@ public final class DriverTest
 	private static List<LogicalTrial> trials(Campaign campaign, TrialState state)
 	{
 		return campaign.trials().stream().filter(trial -> trial.state() == state).toList();
+	}
+
+	/**
+	 * Supplies the broker responses that allow a ready continuation or a fresh retry.
+	 *
+	 * @return each status after the broker reports that the original launch owns active work
+	 */
+	@DataProvider
+	public static Object[][] recoveryStatuses()
+	{
+		return new Object[][]
+		{
+			// A checkpoint or a retained generation can be verified after the original runner has stopped.
+			{RetainedTrialResponse.Status.READY, true},
+			{RetainedTrialResponse.Status.UNSAFE, true},
+			// The original can be absent, or the slot can have a binding but no issued startup generation.
+			{RetainedTrialResponse.Status.ABSENT, false},
+			{RetainedTrialResponse.Status.UNSAFE, false}
+		};
+	}
+
+	/**
+	 * Uses the original launch if the broker finds a ready session, or retries only after that launch is settled.
+	 *
+	 * @param settledStatus the broker's answer after the original launch stops
+	 * @param hasGeneration whether the broker had issued a startup generation before it stopped
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test(dataProvider = "recoveryStatuses")
+	public void resumesTrialAfterBrokerIsReady(RetainedTrialResponse.Status settledStatus, boolean hasGeneration)
+		throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("driver-recovery"));
+			DriverHarness harness = new DriverHarness(directory, developing().ceiling(1).build());
+			FileCampaignStore store = new FileCampaignStore(directory.resolve("stored"), JsonMapper.builder().build(),
+				Yielding.fileReplacer());
+			String campaignId = DriverHarness.CAMPAIGN;
+			store.replaceSnapshot(harness.campaign());
+			RecoverySessions sessions = new RecoverySessions(harness.sessions(), store, campaignId);
+			DriverContext context = recoveryContext(harness, store, sessions);
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				requireThat(sessions.launches.size(), "durablyRecordedLaunches").isEqualTo(1);
+				SessionRequest request = harness.sessions().sessions().getFirst().request();
+				request.turnObserver().orElseThrow().endAfter(1, harness.passed());
+			}
+			TrialRecovery originalLaunch = sessions.launches.getFirst();
+			TrialRecovery observed = store.readTrialRecovery(campaignId, originalLaunch.key(),
+				originalLaunch.attemptOrdinal()).orElseThrow();
+			requireThat(observed.observerTurn(), "observedTurn").isEqualTo(1);
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				Campaign busy = store.load(campaignId).orElseThrow();
+				LogicalTrial running = trials(busy, TrialState.RUNNING).getFirst();
+				requireThat(running.key(), "runningKey").isEqualTo(originalLaunch.key());
+				requireThat(running.infrastructureAttempts(), "busyAttempts").isEmpty();
+				requireThat(sessions.launches, "busyLaunches").isEqualTo(List.of(originalLaunch));
+			}
+
+			sessions.status = settledStatus;
+			Optional<Identity> observedIdentity = Optional.of(sessions.identity).filter(_ -> hasGeneration);
+			sessions.unsafeIdentity = observedIdentity;
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				if (settledStatus == RetainedTrialResponse.Status.READY)
+				{
+					requireThat(sessions.claims, "claims").isEqualTo(List.of(new RetainedTrialClaim(
+						originalLaunch.requestId(), sessions.identity, 1)));
+					requireThat(sessions.launches, "launchesAfterResume").isEqualTo(List.of(originalLaunch));
+					SessionRequest request = harness.sessions().sessions().getLast().request();
+					requireThat(request.turnObserver().orElseThrow().progress().completedTurn(),
+						"restoredTurn").isEqualTo(1);
+				}
+				else
+				{
+					requireThat(sessions.claims, "claims").isEmpty();
+					requireThat(sessions.launches.size(), "freshLaunches").isEqualTo(2);
+					TrialRecovery replacement = sessions.launches.getLast();
+					requireThat(replacement.key(), "retriedKey").isEqualTo(originalLaunch.key());
+					requireThat(replacement.requestId(), "replacementRequest").isNotEqualTo(originalLaunch.requestId());
+					requireThat(replacement.attemptOrdinal(), "replacementOrdinal").isEqualTo(2);
+					if (settledStatus == RetainedTrialResponse.Status.UNSAFE)
+					{
+						requireThat(sessions.discards, "discards").isEqualTo(List.of(RetainedTrialRequest.discard(
+							originalLaunch.requestId(), observedIdentity)));
+					}
+					else
+						requireThat(sessions.discards, "discards").isEmpty();
+				}
+			}
+		}
+	}
+
+	/**
+	 * A native continuation failure waits for the broker and discards the newly claimed generation before a retry.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void discardsUnresumableGuardedContinuation() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("unresumable-continuation"));
+			DriverHarness harness = new DriverHarness(directory, developing().ceiling(1).build());
+			FileCampaignStore store = new FileCampaignStore(directory.resolve("stored"), JsonMapper.builder().build(),
+				Yielding.fileReplacer());
+			String campaignId = DriverHarness.CAMPAIGN;
+			store.replaceSnapshot(harness.campaign());
+			RecoverySessions sessions = new RecoverySessions(harness.sessions(), store, campaignId);
+			DriverContext context = recoveryContext(harness, store, sessions);
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+			}
+			TrialRecovery original = sessions.launches.getFirst();
+			sessions.status = RetainedTrialResponse.Status.READY;
+			try (Driver driver = Driver.open(context, campaignId).orElseThrow())
+			{
+				driver.step();
+				requireThat(sessions.claims.size(), "originalClaim").isEqualTo(1);
+				Identity claimed = new Identity(UUID.randomUUID(), sessions.identity.session());
+				sessions.identity = claimed;
+				sessions.status = RetainedTrialResponse.Status.BUSY;
+				harness.sessions().sessions().getLast().fail(new RetainedTrialUnresumableException(
+					"The harness could not continue the session"));
+				requireThat(driver.step(), "waitingForBroker").isInstanceOf(Step.Continue.class);
+				requireThat(sessions.discards, "discardsWhileBusy").isEmpty();
+				requireThat(sessions.launches, "launchesWhileBusy").isEqualTo(List.of(original));
+
+				sessions.status = RetainedTrialResponse.Status.READY;
+				sessions.identity = new Identity(claimed.slotGeneration(),
+					Optional.of(new HarnessSession("codex", "22222222-2222-4333-8444-555555555555")));
+				requireThat(driver.step(), "waitingForExactSession").isInstanceOf(Step.Continue.class);
+				requireThat(sessions.discards, "discardsForDifferentSession").isEmpty();
+				sessions.identity = claimed;
+				driver.step();
+				requireThat(sessions.discards, "guardedDiscard").isEqualTo(List.of(
+					RetainedTrialRequest.discard(original.requestId(), Optional.of(claimed))));
+				requireThat(sessions.claims.size(), "noSecondClaim").isEqualTo(1);
+				requireThat(sessions.launches.size(), "launchesAfterDiscard").isEqualTo(2);
+				TrialRecovery replacement = sessions.launches.getLast();
+				requireThat(replacement.key(), "sameTrial").isEqualTo(original.key());
+				requireThat(replacement.requestId(), "replacementRequest").isNotEqualTo(original.requestId());
+				requireThat(replacement.attemptOrdinal(), "replacementOrdinal").isEqualTo(2);
+				LogicalTrial retry = trials(store.load(campaignId).orElseThrow(), TrialState.RUNNING).getFirst();
+				requireThat(retry.infrastructureFailures(), "chargedFailures").isEqualTo(1);
+			}
+		}
+	}
+
+	/**
+	 * Uses the harness fixture's test ports with a real campaign store for durable launch recovery.
+	 *
+	 * @param harness the campaign fixture
+	 * @param store persists the campaign
+	 * @param sessions scripts the broker's responses
+	 * @return the driver's context
+	 */
+	private static DriverContext recoveryContext(DriverHarness harness, FileCampaignStore store, SessionPort sessions)
+	{
+		DriverContext original = harness.context(sessions);
+		return new DriverContext(original.fileLocks(), store, original.sessions(), original.workspace(),
+			original.interrupts(), original.clock(), original.overlays(), original.judge(), original.triage(),
+			original.ranking(), original.promptAuthor(), original.values(), original.deliverer(), original.calibrator(),
+			original.terminator(), original.leftoverSessions(), original.authority(), original.promptSources(),
+			original.environment(), original.lockFile(), original.random(), original.settings(), original.json(),
+			original.temporaryDirectory());
 	}
 
 	/**
@@ -6935,6 +7119,175 @@ public final class DriverTest
 				requireThat(trials(harness.campaign(), TrialState.RUNNING), "running").isEmpty();
 				requireThat(trials(harness.campaign(), TrialState.ASSIGNED), "queued").isNotEmpty();
 			}
+		}
+	}
+
+	/**
+	 * Scripts the retained-trial broker's answers and checks recovery state when a launch arrives.
+	 */
+	private static final class RecoverySessions implements SessionPort
+	{
+		private final SessionPort delegate;
+		private final FileCampaignStore store;
+		private final String campaignId;
+		private final List<TrialRecovery> launches = new ArrayList<>();
+		private final List<RetainedTrialClaim> claims = new ArrayList<>();
+		private final List<RetainedTrialRequest> discards = new ArrayList<>();
+		private Identity identity = new Identity(UUID.randomUUID(),
+			Optional.of(new HarnessSession("codex", "11111111-2222-4333-8444-555555555555")));
+		private Optional<Identity> unsafeIdentity = Optional.of(identity);
+		private RetainedTrialResponse.Status status = RetainedTrialResponse.Status.BUSY;
+
+		/**
+		 * Creates a broker fixture for one campaign.
+		 *
+		 * @param delegate starts the test's sessions
+		 * @param store exposes the trial record as seen at publication
+		 * @param campaignId the campaign whose sessions the fixture inspects
+		 */
+		private RecoverySessions(SessionPort delegate, FileCampaignStore store, String campaignId)
+		{
+			this.delegate = delegate;
+			this.store = store;
+			this.campaignId = campaignId;
+		}
+
+		@Override
+		public boolean recoversTrials()
+		{
+			return true;
+		}
+
+		@Override
+		public SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+			throws IOException
+		{
+			if (claim.isPresent())
+				claims.add(claim.orElseThrow());
+			else
+			{
+				TrialRecovery recorded = store.listTrialRecoveries(campaignId).stream().
+					filter(recovery -> recovery.requestId().equals(requestId)).findFirst().orElseThrow();
+				launches.add(recorded);
+			}
+			return delegate.start(request);
+		}
+
+		@Override
+		public RetainedTrialResponse retainedTrial(RetainedTrialRequest request)
+		{
+			if (request.operation() == RetainedTrialRequest.Operation.DISCARD)
+			{
+				discards.add(request);
+				return new RetainedTrialResponse(request.requestId(), RetainedTrialResponse.Status.DISCARDED,
+					Optional.empty(), OptionalInt.empty());
+			}
+			return switch (status)
+			{
+				case READY -> new RetainedTrialResponse(request.requestId(), status, Optional.of(identity),
+					OptionalInt.of(1));
+				case UNSAFE -> new RetainedTrialResponse(request.requestId(), status, unsafeIdentity,
+					OptionalInt.empty());
+				default -> new RetainedTrialResponse(request.requestId(), status, Optional.empty(), OptionalInt.empty());
+			};
+		}
+
+		@Override
+		public int sessionEnvironmentVersion()
+		{
+			return delegate.sessionEnvironmentVersion();
+		}
+
+		@Override
+		public String sessionEnvironmentRelease()
+		{
+			return delegate.sessionEnvironmentRelease();
+		}
+
+		@Override
+		public int judgeVersion()
+		{
+			return delegate.judgeVersion();
+		}
+
+		@Override
+		public SessionEvidence readEvidence(Path transcript) throws IOException
+		{
+			return delegate.readEvidence(transcript);
+		}
+
+		@Override
+		public boolean reportsExitStatus()
+		{
+			return delegate.reportsExitStatus();
+		}
+
+		@Override
+		public SessionHandle start(SessionRequest request) throws IOException
+		{
+			return delegate.start(request);
+		}
+
+		@Override
+		public Optional<Instant> sharedHoldUntil(Instant now) throws IOException
+		{
+			return delegate.sharedHoldUntil(now);
+		}
+
+		@Override
+		public List<Path> resultsFolders()
+		{
+			return delegate.resultsFolders();
+		}
+
+		@Override
+		public HostLogin hostLogin() throws IOException
+		{
+			return delegate.hostLogin();
+		}
+
+		@Override
+		public List<String> unapprovedHooks(Path plugin) throws IOException
+		{
+			return delegate.unapprovedHooks(plugin);
+		}
+
+		@Override
+		public Optional<String> findHeldOutExposure(Path project) throws IOException
+		{
+			return delegate.findHeldOutExposure(project);
+		}
+
+		@Override
+		public LoadedSources loadedSources(Path project, List<PluginBase> plugins) throws IOException
+		{
+			return delegate.loadedSources(project, plugins);
+		}
+
+		@Override
+		public List<HookRegistration> hookRegistrations(Path project, List<PluginBase> plugins)
+			throws IOException
+		{
+			return delegate.hookRegistrations(project, plugins);
+		}
+
+		@Override
+		public List<HookInvocation> earlyHooks(Path project, List<PluginBase> plugins, Optional<Path> home,
+			String prompt) throws IOException
+		{
+			return delegate.earlyHooks(project, plugins, home, prompt);
+		}
+
+		@Override
+		public List<Path> installedPlugins(String name) throws IOException
+		{
+			return delegate.installedPlugins(name);
+		}
+
+		@Override
+		public List<String> installedPluginNames() throws IOException
+		{
+			return delegate.installedPluginNames();
 		}
 	}
 

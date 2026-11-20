@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.runner;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.LockFileOpener;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.SessionDirectory;
@@ -502,7 +503,7 @@ public final class RequestServer
 			}
 			try (ExclusiveFileLock _ = lock.get())
 			{
-				serve(session, directory, bound, host, errors);
+				serve(session, directory, bound, host, errors, tools.fileLocks());
 			}
 		}
 		return 0;
@@ -603,16 +604,17 @@ public final class RequestServer
 	 * @param bound     bounds each requested session by the session's policy
 	 * @param host      what the plugin gives the server
 	 * @param errors    receives a line once the server serves the session
+	 * @param fileLocks coordinates startup and cleanup locks
 	 * @throws IOException if the request directories cannot be created or a request cannot be answered
 	 */
 	private static void serve(Session session, SessionDirectory directory, ChildBound bound, Host host,
-		PrintWriter errors) throws IOException
+		PrintWriter errors, FileLocks fileLocks) throws IOException
 	{
 		Path requests = directory(directory.directory().resolve(REQUESTS));
 		Path responses = directory(directory.directory().resolve(RESPONSES));
 		SessionSlots slots = new SessionSlots(directory.directory().resolve(RUNS), HarnessCapacity.MAXIMUM_CONCURRENCY,
-			new ProcessHandleLiveness());
-		ServerSite site = new ServerSite(requests, responses, slots, bound, session.askingThread(), directory,
+			new ProcessHandleLiveness(), fileLocks);
+		ServerSite site = new ServerSite(requests, responses, slots, fileLocks, bound, session.askingThread(), directory,
 			new WorktreeService(new GitWorktreeRegistrar()));
 		try (SessionRequestBroker broker = new SessionRequestBroker(site, host.starter()))
 		{
@@ -671,13 +673,14 @@ public final class RequestServer
 	 * @param responses    the directory that holds one response directory per request
 	 * @param slots        the slots, each a results folder, that the requested sessions take, which the server empties
 	 *                     for each session
+	 * @param fileLocks    coordinates access to slot startup records
 	 * @param bound        bounds each requested session by the session's policy
 	 * @param askingThread the thread of the session that runs the server, or empty for its main thread
 	 * @param session      the CAT session directory of the session that runs the server, in the project that the
 	 *                     session's transcript names
 	 * @param worktrees    carries out the session's worktree requests
 	 */
-	private record ServerSite(Path requests, Path responses, SessionSlots slots, ChildBound bound,
+	private record ServerSite(Path requests, Path responses, SessionSlots slots, FileLocks fileLocks, ChildBound bound,
 		Optional<String> askingThread, SessionDirectory session, WorktreeService worktrees)
 		implements SessionRequestBroker.Site
 	{

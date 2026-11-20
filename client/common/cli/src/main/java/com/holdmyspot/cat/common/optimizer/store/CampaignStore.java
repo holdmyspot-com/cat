@@ -16,7 +16,7 @@ import java.util.Optional;
  * The driver follows a write-ahead order: it writes each assignment before the trial's session starts, replaces the
  * snapshot that holds the assignment before the session starts, writes each outcome before adopting it, and replaces
  * the snapshot after adoption. Reconciliation adopts the outcomes that {@link #listUnadoptedOutcomes(Campaign)} returns
- * and reruns the snapshot's other unadopted trials.
+ * and reconciles the other unadopted trials with their recorded launch attempts.
  * <p>
  * Loading a campaign reads only its snapshot. Trial records are read only for the snapshot's unadopted trials.
  */
@@ -45,6 +45,56 @@ public interface CampaignStore
 	 * @throws IOException if the record cannot be read or written
 	 */
 	void writeAssignment(String campaignId, LogicalTrial trial) throws IOException;
+
+	/**
+	 * Reads the recovery state for the named launch attempt.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param key the trial's key
+	 * @param attemptOrdinal the one-based launch attempt number
+	 * @return the recovery state, or empty if no recovery state belongs to that attempt
+	 * @throws NullPointerException if a required argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment or
+	 *   {@code attemptOrdinal} is less than 1
+	 * @throws IOException if recovery state cannot be read or is malformed
+	 */
+	default Optional<TrialRecovery> readTrialRecovery(String campaignId, TrialKey key, int attemptOrdinal)
+		throws IOException
+	{
+		return Optional.empty();
+	}
+
+	/**
+	 * Atomically records the original request before publishing a launch, or the observer's next decision before
+	 * sending another turn. Repeating the current record does nothing.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @param recovery the trial's original request and observer progress
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IllegalStateException if {@code recovery} replaces a newer attempt, changes a recorded request or
+	 *   decision, or begins an attempt with recorded progress
+	 * @throws IOException if recovery state cannot be read or written, or the store does not persist it
+	 */
+	default void writeTrialRecovery(String campaignId, TrialRecovery recovery) throws IOException
+	{
+		throw new IOException("This campaign store does not persist trial recovery state");
+	}
+
+	/**
+	 * Lists the most recent recorded launch for each trial key, including trials the campaign has removed from its
+	 * queue. The caller checks each request with the server to determine whether it still owns a retained session.
+	 *
+	 * @param campaignId the campaign's identifier
+	 * @return the recorded requests in this campaign
+	 * @throws NullPointerException if {@code campaignId} is null
+	 * @throws IllegalArgumentException if {@code campaignId} is not a single path segment
+	 * @throws IOException if recovery state cannot be read or is malformed
+	 */
+	default List<TrialRecovery> listTrialRecoveries(String campaignId) throws IOException
+	{
+		return List.of();
+	}
 
 	/**
 	 * Appends the record of a finished trial session to the trial's assignment record.

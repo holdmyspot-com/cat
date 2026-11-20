@@ -8,9 +8,12 @@ import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
+import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialUnresumableException;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
@@ -76,6 +79,8 @@ final class Session implements SessionHandle
 	private final RunnerSessions sessions;
 	private final RunnerSessions.Settings settings;
 	private final SessionRequest request;
+	private final Optional<UUID> requestId;
+	private final Optional<RetainedTrialClaim> retained;
 	private final Clock clock;
 	/**
 	 * The longest time that the driver waits for the runner's next message before it checks the clock again.
@@ -111,9 +116,26 @@ final class Session implements SessionHandle
 	 */
 	Session(RunnerSessions sessions, SessionRequest request, Duration poll)
 	{
+		this(sessions, request, poll, Optional.empty(), Optional.empty());
+	}
+
+	/**
+	 * Creates a session, optionally bound to a durable trial request or retained checkpoint.
+	 *
+	 * @param sessions the port that starts the session
+	 * @param request what the session does
+	 * @param poll the longest wait for a runner message before the driver checks the clock
+	 * @param requestId the original trial request identifier, or empty for an untracked session
+	 * @param retained the checkpoint to resume, or empty for a fresh session
+	 */
+	Session(RunnerSessions sessions, SessionRequest request, Duration poll, Optional<UUID> requestId,
+		Optional<RetainedTrialClaim> retained)
+	{
 		this.sessions = sessions;
 		this.settings = sessions.settings();
 		this.request = request;
+		this.requestId = requestId;
+		this.retained = retained;
 		this.clock = settings.clock();
 		this.poll = poll;
 		this.events = sessions.newEvents(json);
@@ -191,8 +213,10 @@ final class Session implements SessionHandle
 	 */
 	private SessionResult drive() throws IOException
 	{
-		String brief = RoleRules.fill(settings.artifact(), request.role(),
-			sessions.ruleVariables(settings.artifact()), request.turns().getFirst());
+		String brief = request.turns().getFirst();
+		if (retained.isEmpty() || retained.get().completedTurns() == 0)
+			brief = RoleRules.fill(settings.artifact(), request.role(), sessions.ruleVariables(settings.artifact()),
+				brief);
 
 		Thread runner = Thread.ofPlatform().daemon().name("optimizer-runner").start(this::serve);
 		startupDeadline = clock.instant().plus(STARTUP_LIMIT);
@@ -202,8 +226,10 @@ final class Session implements SessionHandle
 			try
 			{
 				limitDeadline = clock.instant().plus(request.timeLimit());
-				int turn = 0;
-				while (turn < request.turns().size() && !isStopping())
+				int turn = restoredTurns();
+				if (turn > 0)
+					outcome = Outcome.TURN_COMPLETED;
+				while (turn < request.turns().size() && !isStopping() && !endedEarly)
 				{
 					turn += 1;
 					String prompt = request.turns().get(turn - 1);
@@ -212,13 +238,8 @@ final class Session implements SessionHandle
 					outcome = sendTurn(turn, prompt);
 					if (outcome != Outcome.TURN_COMPLETED)
 						break;
-					if (turn < request.turns().size() && request.turnObserver().isPresent() &&
-						request.turnObserver().get().endAfter(turn, completed()))
-					{
-						endedEarly = true;
-						settledAssertions = request.turnObserver().get().settledAssertions();
-						break;
-					}
+					if (turn < request.turns().size() && request.turnObserver().isPresent())
+						observeTurn(request.turnObserver().get(), turn);
 				}
 				if (outcome == Outcome.TURN_COMPLETED && !isStopping() && isTurnClean() &&
 					request.followUp().isPresent())
@@ -236,7 +257,12 @@ final class Session implements SessionHandle
 			{
 				try
 				{
-					stopRunner(runner, outcome);
+					// An observer or evidence error cannot complete a tracked trial. Disconnect so the broker
+					// settles the interrupted launch before a later driver decides whether to resume it.
+					if (requestId.isPresent())
+						stopRunner(runner, Outcome.STUCK);
+					else
+						stopRunner(runner, outcome);
 				}
 				catch (IOException | RuntimeException shutdownFailure)
 				{
@@ -248,6 +274,55 @@ final class Session implements SessionHandle
 		}
 		stopRunner(runner, outcome);
 		return result();
+	}
+
+	/**
+	 * Checks the prefix delivered by the broker and applies the last observer decision if the earlier driver did
+	 * not persist it.
+	 *
+	 * @return the number of turns already completed
+	 * @throws IOException if the delivered prefix or observer progress differs from the claimed checkpoint
+	 */
+	private int restoredTurns() throws IOException
+	{
+		if (retained.isEmpty())
+			return 0;
+		RetainedTrialClaim claim = retained.get();
+		int turns = claim.completedTurns();
+		if (!claim.identity().session().orElseThrow().sessionId().equals(sessionId) || responses.size() != turns)
+			throw new IOException("The retained trial did not deliver its claimed checkpoint");
+		if (request.turnObserver().isPresent())
+		{
+			TurnObserver observer = request.turnObserver().get();
+			TurnObserver.Progress progress = observer.progress();
+			if (progress.completedTurn() == turns)
+			{
+				endedEarly = progress.endedEarly();
+				if (endedEarly)
+					settledAssertions = progress.settledAssertions();
+			}
+			else if (progress.completedTurn() != turns - 1 || progress.endedEarly())
+				throw new IOException("The retained trial's observer progress differs from its checkpoint");
+			else if (turns < request.turns().size())
+				observeTurn(observer, turns);
+		}
+		return turns;
+	}
+
+	/**
+	 * Applies and remembers an observer's decision about a completed non-final turn.
+	 *
+	 * @param observer the trial's observer
+	 * @param turn the completed turn's number
+	 * @throws IOException if its evidence or decision cannot be recorded
+	 */
+	private void observeTurn(TurnObserver observer, int turn) throws IOException
+	{
+		if (observer.endAfter(turn, completed()))
+		{
+			endedEarly = true;
+			settledAssertions = observer.settledAssertions();
+		}
 	}
 
 	/**
@@ -289,9 +364,14 @@ final class Session implements SessionHandle
 		// Closing the sink releases the nested session's transcript
 		try (sink)
 		{
-			workspace = writeWorkspace();
+			if (retained.isEmpty())
+				workspace = writeWorkspace();
 			permissions = writeExtraPermissions();
-			sessions.bridge().serve(arguments(workspace, permissions), feed, sink);
+			List<String> options = arguments(workspace, permissions);
+			if (requestId.isPresent())
+				sessions.bridge().serveTrial(requestId.get(), retained, request.source(), options, feed, sink);
+			else
+				sessions.bridge().serve(options, feed, sink);
 		}
 		catch (IOException e)
 		{
@@ -546,6 +626,8 @@ final class Session implements SessionHandle
 				clock, settings.replacer()).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);
+		if (ended != null && ended.failure() instanceof RetainedTrialUnresumableException unresumable)
+			throw unresumable;
 		if (ended != null && ended.failure() instanceof LaunchRefusedException refused)
 		{
 			return new SessionResult.LaunchRefused(describe(refused, "The session was refused before it started"),
@@ -627,6 +709,8 @@ final class Session implements SessionHandle
 	 */
 	private List<String> arguments(Path workspace, Path permissions) throws IOException
 	{
+		if (retained.isPresent())
+			return resumeArguments(retained.get(), permissions);
 		List<String> arguments = new ArrayList<>();
 		Path artifact = settings.artifact();
 		boolean installCat = false;
@@ -675,6 +759,27 @@ final class Session implements SessionHandle
 			arguments.addAll(List.of("--deny-read", hostProject.toString()));
 		}
 		return arguments;
+	}
+
+	/**
+	 * Builds the options that can be supplied when resuming, retaining the original session's fixed options.
+	 *
+	 * @param claim the previously inspected checkpoint
+	 * @param permissions the current extra permissions file, or null
+	 * @return the resume options
+	 */
+	private List<String> resumeArguments(RetainedTrialClaim claim, Path permissions)
+	{
+		String retainedSession = claim.identity().session().orElseThrow().sessionId();
+		TrialProfile profile = request.profile();
+		List<String> options = new ArrayList<>(List.of(RunnerArguments.RESUME_OPTION, retainedSession,
+			"--results", resultsFolder().toString(), "--model", profile.model(), "--effort", profile.effort(),
+			"--session-transcripts"));
+		if (request.part() == Part.HELD_OUT)
+			options.add(RunnerArguments.HELD_OUT_OPTION);
+		if (permissions != null)
+			options.addAll(List.of(ExtraPermissions.OPTION, permissions.toString()));
+		return options;
 	}
 
 	/**

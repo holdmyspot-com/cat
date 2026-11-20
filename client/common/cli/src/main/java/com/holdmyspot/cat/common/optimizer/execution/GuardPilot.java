@@ -22,6 +22,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.UndecidableToolException;
+import com.holdmyspot.cat.common.optimizer.execution.PilotTrialRecovery.Discard;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -31,7 +32,12 @@ import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
+import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Status;
 import com.holdmyspot.cat.common.secrets.GuardPilotSecrets;
 
 import java.io.IOException;
@@ -49,6 +55,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
@@ -68,6 +75,8 @@ import tools.jackson.databind.json.JsonMapper;
  * test case. After {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} infrastructure failures of one logical trial, the
  * pilot pauses: it starts no further session, and its result says that the user must choose to retry or to stop. A
  * pilot that runs again keeps the trials that it decided.
+ * A trial interrupted by a host crash resumes in its original session when the broker can continue its completed
+ * prefix. An attempt whose prefix cannot be continued is counted only after the broker settles its original launch.
  * <p>
  * A pilot that runs in a {@link PilotSlice} stops admitting trials as the driver does, cancels the sessions that still
  * run when the grace period ends, and stays unfinished, so that the next command continues it. A cancelled session is
@@ -112,6 +121,9 @@ public final class GuardPilot
 	 * Why a pilot that ran in a slice stopped when the host interrupted the command.
 	 */
 	private static final String HOST_INTERRUPTED = "The host interrupted the command that ran the pilot";
+	private static final TurnObserver.Progress NO_PROGRESS = new TurnObserver.Progress(0, Map.of(), false);
+	private static final PilotTrialRecovery NO_RECOVERY =
+		new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, List.of(), Optional.empty());
 	private final SessionPort sessions;
 	private final WorkspacePort workspace;
 	private final Path target;
@@ -262,7 +274,7 @@ public final class GuardPilot
 	/**
 	 * Runs the pilot of each prompt test that a stored pilot does not describe, as
 	 * {@link #run(Contract, List, Overlay, Set, SourceSelection, Map, RandomGenerator)} does, and hands the pilots to a
-	 * checkpoint each time a trial is decided.
+	 * checkpoint before a new trial launches, after each observer decision and when a trial is decided.
 	 *
 	 * @param contract the proposed contract
 	 * @param plugins the campaign's trial plugins, which every trial installs
@@ -273,8 +285,8 @@ public final class GuardPilot
 	 * @param selection the files of the control source that the staged control source holds
 	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
 	 * @param random draws the seed of each test's development stream
-	 * @param checkpoint keeps the pilots after each trial that ended with a decision or without one that the proposal's
-	 *   tools could give. A pilot that has more trials to run at that point has a stop reason that says so.
+	 * @param checkpoint keeps the pilots' in-progress launches, observer decisions and trial results. A pilot that has
+	 *   more trials to run at that point has a stop reason that says so.
 	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if the control source or its copies of the trial plugins cannot be staged, the project
@@ -311,8 +323,7 @@ public final class GuardPilot
 	 * @param selection the files of the control source that the staged control source holds
 	 * @param stored the pilots that an earlier run of the same campaign stored, by prompt test
 	 * @param random draws the seed of each test's development stream
-	 * @param checkpoint keeps the pilots after each trial that ended with a decision or without one that the proposal's
-	 *   tools could give
+	 * @param checkpoint keeps the pilots' in-progress launches, observer decisions and trial results
 	 * @param slice the time bound, or {@code null} if the pilot runs until every trial ends or the pilot stops
 	 * @return the pilot of each prompt test that has one, by prompt test, in contract order
 	 * @throws NullPointerException if any of the arguments other than {@code slice} are null
@@ -339,6 +350,7 @@ public final class GuardPilot
 		// files in the fork
 		Sha256 files = controlIdentity(control.snapshot().identity(), selection);
 		Map<String, PilotResult> pilots = new LinkedHashMap<>();
+		Set<String> matching = new HashSet<>();
 		List<Pilot> pending = new ArrayList<>();
 		for (PromptTest test : contract.tests())
 		{
@@ -354,13 +366,19 @@ public final class GuardPilot
 			}
 			Pilot pilot;
 			if (earlier != null && earlier.ranIn(definition, cell.get().id(), files))
-				pilot = new Pilot(test, cell.get(), definition, earlier.seed(), earlier.trials());
+			{
+				matching.add(test.id());
+				pilot = new Pilot(test, cell.get(), definition, earlier.seed(), earlier.trials(), earlier.pendingTrials());
+				if (earlier.paused())
+					pilot.resetExhaustedAttempts();
+			}
 			else
-				pilot = new Pilot(test, cell.get(), definition, random.nextLong(), List.of());
+				pilot = new Pilot(test, cell.get(), definition, random.nextLong(), List.of(), Map.of());
 			pending.add(pilot);
 			// Reserves the test's place in contract order
 			pilots.put(test.id(), null);
 		}
+		discardObsolete(stored, matching);
 		Set<Path> selectedRoots = new HashSet<>(selection.roots());
 		selectedRoots.add(target);
 		SourceSelection controlSelection = new SourceSelection(selectedRoots, selection.names(), selection.patterns());
@@ -376,6 +394,66 @@ public final class GuardPilot
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
 		return pilots;
+	}
+
+	/**
+	 * Settles old launches whose pilot no longer describes the proposed test, cell or source.
+	 *
+	 * @param stored the previous pilots
+	 * @param matching the tests that will retain the previous pilot
+	 * @throws IOException if an obsolete launch cannot be settled
+	 */
+	private void discardObsolete(Map<String, PilotResult> stored, Set<String> matching) throws IOException
+	{
+		for (PilotResult previous : stored.values())
+		{
+			if (matching.contains(previous.testId()))
+				continue;
+			for (PilotTrialRecovery trial : previous.pendingTrials().values())
+			{
+				if (trial.requestId().isPresent())
+					discard(observe(trial.requestId().orElseThrow()));
+			}
+		}
+	}
+
+	/**
+	 * Gets the state of an original launch while keeping its request ID until the broker settles it.
+	 *
+	 * @param requestId the original launch
+	 * @return the broker's state
+	 * @throws IOException if the lookup fails or the launch is still live
+	 */
+	private RetainedTrialResponse observe(UUID requestId) throws IOException
+	{
+		RetainedTrialResponse response = sessions.retainedTrial(RetainedTrialRequest.status(requestId));
+		if (!requestId.equals(response.requestId()))
+			throw new IOException("The broker answered for a different pilot launch: " + response.requestId());
+		if (response.status() == Status.BUSY)
+			throw new IOException("The pilot launch " + requestId + " is still settling. Run the command again.");
+		if (response.status() == Status.DISCARDED)
+			throw new IOException("The broker reported a discard while inspecting pilot launch " + requestId);
+		return response;
+	}
+
+	/**
+	 * Requires a broker acknowledgement that the observed original launch cannot run again.
+	 *
+	 * @param observed the broker's last observation of the original launch
+	 * @throws IOException if the broker does not confirm that the launch is gone
+	 */
+	private void discard(RetainedTrialResponse observed) throws IOException
+	{
+		if (observed.status() == Status.ABSENT)
+			return;
+		UUID requestId = observed.requestId();
+		RetainedTrialResponse answer = sessions.retainedTrial(RetainedTrialRequest.discard(requestId, observed.identity()));
+		if (!requestId.equals(answer.requestId()) || (answer.status() != Status.DISCARDED &&
+			answer.status() != Status.ABSENT))
+		{
+			throw new IOException("The broker has not confirmed discard of pilot launch " + requestId +
+				". Run the command again.");
+		}
 	}
 
 	/**
@@ -415,10 +493,12 @@ public final class GuardPilot
 	}
 
 	/**
-	 * The pilot of one prompt test while it runs.
+	 * The pilot of one prompt test while it runs. The scheduling thread owns all state except the synchronized
+	 * recovery state and snapshots, which the turn observers also access.
 	 */
 	private static final class Pilot
 	{
+		private final Object stateLock = new Object();
 		private final PromptTest test;
 		private final Cell cell;
 		private final Sha256 definition;
@@ -428,9 +508,9 @@ public final class GuardPilot
 		 */
 		private final PilotTrial[] trials = new PilotTrial[TRIALS];
 		/**
-		 * Why each run of a logical trial ended without an outcome, by draw position.
+		 * Recovery and earlier infrastructure attempts of each undecided trial, by draw position.
 		 */
-		private final List<List<String>> attempts = new ArrayList<>();
+		private final Map<Integer, PilotTrialRecovery> recovery = new LinkedHashMap<>();
 		private final List<String> failedRuns = new ArrayList<>();
 		private int finished;
 		private String stopReason;
@@ -444,15 +524,16 @@ public final class GuardPilot
 		 * @param definition the identity of the test's definition
 		 * @param seed the seed of the test's development stream
 		 * @param kept the trials that an earlier run of this pilot decided, which this pilot keeps
+		 * @param undecided the earlier pilot's undecided trials, by draw position
 		 */
-		Pilot(PromptTest test, Cell cell, Sha256 definition, long seed, List<PilotTrial> kept)
+		Pilot(PromptTest test, Cell cell, Sha256 definition, long seed, List<PilotTrial> kept,
+			Map<Integer, PilotTrialRecovery> undecided)
 		{
 			this.test = test;
 			this.cell = cell;
 			this.definition = definition;
 			this.seed = seed;
-			for (int position = 0; position < TRIALS; ++position)
-				attempts.add(new ArrayList<>());
+			recovery.putAll(undecided);
 			for (PilotTrial trial : kept)
 			{
 				trials[trial.position()] = trial;
@@ -481,9 +562,13 @@ public final class GuardPilot
 		 */
 		void decided(int position, DrawnTestCase testCase, Map<String, Boolean> assertions, String record)
 		{
-			trials[position] = new PilotTrial(position, testCase.testCase().describedValues(),
-				testCase.testCase().expectedOutcome(), assertions, record, attempts.get(position));
-			++finished;
+			synchronized (stateLock)
+			{
+				trials[position] = new PilotTrial(position, testCase.testCase().describedValues(),
+					testCase.testCase().expectedOutcome(), assertions, record, recovery(position).infrastructureAttempts());
+				recovery.remove(position);
+				++finished;
+			}
 		}
 
 		/**
@@ -495,20 +580,129 @@ public final class GuardPilot
 		 */
 		List<String> infrastructureAttempt(int position, String reason)
 		{
-			List<String> runs = attempts.get(position);
-			runs.add(reason);
-			return List.copyOf(runs);
+			synchronized (stateLock)
+			{
+				List<String> runs = new ArrayList<>(recovery(position).infrastructureAttempts());
+				runs.add(reason);
+				recovery.put(position, new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, runs, Optional.empty()));
+				return runs;
+			}
+		}
+
+		/**
+		 * Returns the recovery state of a trial.
+		 *
+		 * @param position the trial's draw position
+		 * @return the stored state, or empty recovery if no launch or attempt has been recorded
+		 */
+		PilotTrialRecovery recovery(int position)
+		{
+			synchronized (stateLock)
+			{
+				return recovery.getOrDefault(position, NO_RECOVERY);
+			}
+		}
+
+		/**
+		 * Records a fresh launch without changing the trial's earlier infrastructure attempts.
+		 *
+		 * @param position the trial's draw position
+		 * @param requestId the fresh launch's original request identifier
+		 */
+		void begin(int position, UUID requestId)
+		{
+			synchronized (stateLock)
+			{
+				recovery.put(position, new PilotTrialRecovery(Optional.of(requestId), NO_PROGRESS,
+					recovery(position).infrastructureAttempts(), Optional.empty()));
+			}
+		}
+
+		/**
+		 * Records an observer decision for the current launch.
+		 *
+		 * @param position the trial's draw position
+		 * @param requestId the original request identifier
+		 * @param progress the completed-turn observer decision
+		 * @throws IOException if the launch has been retired, has been cancelled or the progress is out of order
+		 */
+		void receipt(int position, UUID requestId, TurnObserver.Progress progress) throws IOException
+		{
+			synchronized (stateLock)
+			{
+				PilotTrialRecovery current = recovery(position);
+				if (!current.requestId().equals(Optional.of(requestId)) || current.discard().isPresent())
+					throw new IOException("The pilot launch " + requestId + " is no longer accepting turns");
+				if (progress.completedTurn() != current.progress().completedTurn() + 1)
+					throw new IOException("Observer progress for pilot launch " + requestId + " is out of order");
+				recovery.put(position, new PilotTrialRecovery(current.requestId(), progress,
+					current.infrastructureAttempts(), current.discard()));
+			}
+		}
+
+		/**
+		 * Records an intention to retire the original launch before requesting cancellation or discard.
+		 *
+		 * @param position the trial's draw position
+		 * @param discard why this launch will be retired
+		 * @return whether an unresolved original launch was recorded
+		 */
+		boolean markDiscard(int position, Discard discard)
+		{
+			synchronized (stateLock)
+			{
+				PilotTrialRecovery current = recovery(position);
+				if (current.requestId().isEmpty())
+					return false;
+				recovery.put(position, new PilotTrialRecovery(current.requestId(), current.progress(),
+					current.infrastructureAttempts(), Optional.of(discard)));
+				return true;
+			}
+		}
+
+		/**
+		 * Clears a settled launch without charging an infrastructure attempt.
+		 *
+		 * @param position the trial's draw position
+		 */
+		void clearLaunch(int position)
+		{
+			synchronized (stateLock)
+			{
+				List<String> attempts = recovery(position).infrastructureAttempts();
+				if (attempts.isEmpty())
+					recovery.remove(position);
+				else
+					recovery.put(position, new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, attempts, Optional.empty()));
+			}
+		}
+
+		/**
+		 * Grants another budget after the caller chose to retry a paused pilot.
+		 */
+		void resetExhaustedAttempts()
+		{
+			synchronized (stateLock)
+			{
+				recovery.values().removeIf(trial -> trial.requestId().isEmpty() &&
+					trial.infrastructureAttempts().size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
+			}
 		}
 
 		/**
 		 * Records a trial that ended without a decision.
 		 *
+		 * @param position the trial's draw position
 		 * @param reason why the trial ended without a decision
 		 */
-		void failed(String reason)
+		void failed(int position, String reason)
 		{
-			failedRuns.add(reason);
-			++finished;
+			synchronized (stateLock)
+			{
+				recovery.remove(position);
+				failedRuns.add(reason);
+				++finished;
+			}
 		}
 
 		/**
@@ -531,9 +725,12 @@ public final class GuardPilot
 		 */
 		PilotResult interim(Sha256 control)
 		{
-			if (finished >= TRIALS)
-				return result(control, null, false);
-			return result(control, UNFINISHED, false);
+			synchronized (stateLock)
+			{
+				if (finished >= TRIALS)
+					return result(control, null, false);
+				return result(control, UNFINISHED, false);
+			}
 		}
 
 		/**
@@ -553,7 +750,7 @@ public final class GuardPilot
 					decided.add(trial);
 			}
 			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedRuns, reason,
-				pause);
+				pause, recovery);
 		}
 	}
 
@@ -605,8 +802,10 @@ public final class GuardPilot
 	 * @param pilot the pilot that the trial belongs to
 	 * @param position the trial's draw position
 	 * @param testCase the trial's test case
+	 * @param claim the prior launch's prefix to resume, or empty for a fresh launch
 	 */
-	private record TrialJob(Pilot pilot, int position, DrawnTestCase testCase) implements Job
+	private record TrialJob(Pilot pilot, int position, DrawnTestCase testCase, Optional<RetainedTrialClaim> claim)
+		implements Job
 	{
 	}
 
@@ -643,6 +842,7 @@ public final class GuardPilot
 	 */
 	private final class Run
 	{
+		private final Object checkpointLock = new Object();
 		private final Contract contract;
 		private final Path source;
 		private final FileInventory inventory;
@@ -681,6 +881,10 @@ public final class GuardPilot
 		 * {@code null} if every deletion succeeded.
 		 */
 		private IOException deletionFailure;
+		/**
+		 * The first checkpoint failure on a session's turn observer, reported to the pilot thread.
+		 */
+		private volatile IOException observerCheckpointFailure;
 
 		/**
 		 * Creates a run.
@@ -692,7 +896,7 @@ public final class GuardPilot
 		 * @param pilots the pilots to run, in contract order
 		 * @param places the pilot of each prompt test in contract order, with {@code null} for each of {@code pilots}
 		 * @param files the identity of the conditions that the trials run in
-		 * @param checkpoint keeps the pilots after each trial that ended
+		 * @param checkpoint keeps the pilots' in-progress launches, observer decisions and trial results
 		 * @param slice the slice's time bound, or {@code null} if the pilot runs until every trial ends or the pilot
 		 *   stops
 		 */
@@ -732,7 +936,7 @@ public final class GuardPilot
 					// A kept trial still draws, so that every later trial keeps its test case
 					DrawnTestCase drawn = generator.markTargeted(generator.draw(pilot.cell.id(), stream));
 					if (!pilot.isDecided(position))
-						queue.add(new TrialJob(pilot, position, drawn));
+						queue.add(new TrialJob(pilot, position, drawn, Optional.empty()));
 				}
 			}
 			try
@@ -747,6 +951,7 @@ public final class GuardPilot
 					if (ended == null)
 						break;
 					inFlight.remove(ended.job());
+					checkObserverFailure();
 					recordDuration(ended);
 					int endedBefore = endedTrials();
 					switch (ended.job())
@@ -754,24 +959,26 @@ public final class GuardPilot
 						case TrialJob trial -> trialEnded(trial, ended.result(), ended.failure());
 						case JudgeJob judge -> judgeEnded(judge, ended.result(), ended.failure());
 					}
-					// A process that ends from here on loses only the trials that are in flight
 					if (endedTrials() > endedBefore)
-						checkpoint.save(snapshot());
+						save();
 				}
 			}
-			catch (InterruptedException | IOException e)
+			catch (InterruptedException e)
 			{
-				for (SessionHandle handle : inFlight.values())
+				try
 				{
-					try
-					{
-						handle.interrupt();
-					}
-					catch (IOException suppressed)
-					{
-						e.addSuppressed(suppressed);
-					}
+					checkpointCancellation(HOST_INTERRUPTED);
 				}
+				catch (IOException suppressed)
+				{
+					e.addSuppressed(suppressed);
+				}
+				interruptSessions(e);
+				throw e;
+			}
+			catch (IOException e)
+			{
+				interruptSessions(e);
 				throw e;
 			}
 			if (deletionFailure != null)
@@ -789,6 +996,62 @@ public final class GuardPilot
 					pilot.paused = paused;
 				}
 			}
+		}
+
+		/**
+		 * Interrupts every running session while preserving the cause of the run's failure.
+		 *
+		 * @param failure the run's failure, which receives any failures to interrupt a session
+		 */
+		private void interruptSessions(Exception failure)
+		{
+			for (SessionHandle handle : inFlight.values())
+			{
+				try
+				{
+					handle.interrupt();
+				}
+				catch (IOException e)
+				{
+					failure.addSuppressed(e);
+				}
+			}
+		}
+
+		/**
+		 * Selects the retained prefix for an admitted trial, or settles the original launch before a replacement.
+		 *
+		 * @param trial the trial about to run
+		 * @return the broker's resumable prefix, or empty when a fresh launch is allowed
+		 * @throws IOException if the broker cannot settle an earlier launch, or the checkpoint fails
+		 */
+		private Optional<RetainedTrialClaim> reconcile(TrialJob trial) throws IOException
+		{
+			Pilot pilot = trial.pilot();
+			int position = trial.position();
+			PilotTrialRecovery state = pilot.recovery(position);
+			if (state.requestId().isEmpty())
+			{
+				pauseIfExhausted(pilot, position, state.infrastructureAttempts());
+				return Optional.empty();
+			}
+			UUID requestId = state.requestId().orElseThrow();
+			RetainedTrialResponse observed = observe(requestId);
+			if (observed.status() == Status.READY && state.discard().isEmpty())
+			{
+				int completed = observed.completedTurns().orElseThrow();
+				int remembered = state.progress().completedTurn();
+				if (completed <= trial.testCase().turns().size() && (completed == remembered ||
+					(completed == remembered + 1 && !state.progress().endedEarly())))
+				{
+					return Optional.of(new RetainedTrialClaim(requestId, observed.identity().orElseThrow(), completed));
+				}
+			}
+			discard(observed);
+			Discard intent = state.discard().orElse(new Discard(
+				"The previous pilot launch " + requestId + " did not have a resumable checkpoint", true));
+			finishRetirement(trial, intent);
+			return Optional.empty();
 		}
 
 		/**
@@ -846,6 +1109,7 @@ public final class GuardPilot
 		private void cancel(String reason) throws IOException
 		{
 			stop(reason);
+			checkpointCancellation(reason);
 			IOException failure = null;
 			for (SessionHandle handle : inFlight.values())
 			{
@@ -864,6 +1128,27 @@ public final class GuardPilot
 			inFlight.clear();
 			if (failure != null)
 				throw failure;
+		}
+
+		/**
+		 * Records noncharging cancellation intents before the pilot interrupts handles or drops queued judges.
+		 *
+		 * @param reason why the pilot cancelled the sessions
+		 * @throws IOException if those intents cannot be recorded
+		 */
+		private void checkpointCancellation(String reason) throws IOException
+		{
+			Discard intent = new Discard(reason, false);
+			boolean changed = false;
+			for (Job job : inFlight.keySet())
+				changed |= job.pilot().markDiscard(job.position(), intent);
+			for (Job job : queue)
+			{
+				if (job instanceof JudgeJob)
+					changed |= job.pilot().markDiscard(job.position(), intent);
+			}
+			if (changed)
+				save();
 		}
 
 		/**
@@ -905,8 +1190,63 @@ public final class GuardPilot
 		}
 
 		/**
+		 * Serializes snapshots from scheduling and turn-observer threads.
+		 *
+		 * @throws IOException if the checkpoint cannot be written
+		 */
+		private void save() throws IOException
+		{
+			synchronized (checkpointLock)
+			{
+				checkObserverFailure();
+				checkpoint.save(snapshot());
+			}
+		}
+
+		/**
+		 * Transfers a checkpoint failure from a turn observer to the pilot thread.
+		 *
+		 * @throws IOException if an observer could not write its checkpoint
+		 */
+		private void checkObserverFailure() throws IOException
+		{
+			IOException failure = observerCheckpointFailure;
+			if (failure != null)
+				throw failure;
+		}
+
+		/**
+		 * Records a completed turn before its session can send another turn.
+		 *
+		 * @param trial the trial that finished the turn
+		 * @param requestId the original launch
+		 * @param progress the observer's decision
+		 * @throws IOException if the launch no longer accepts turns or the checkpoint fails
+		 */
+		private void saveReceipt(TrialJob trial, UUID requestId, TurnObserver.Progress progress)
+			throws IOException
+		{
+			synchronized (checkpointLock)
+			{
+				trial.pilot().receipt(trial.position(), requestId, progress);
+				checkObserverFailure();
+				try
+				{
+					checkpoint.save(snapshot());
+				}
+				catch (IOException e)
+				{
+					observerCheckpointFailure = e;
+					throw e;
+				}
+			}
+		}
+
+		/**
 		 * Starts queued sessions while capacity is free and the pilot has not stopped. In a slice, a trial starts only if
 		 * the slice's admission rule admits it, and a judge starts until the grace period ends.
+		 *
+		 * @throws IOException if the control source, checkpoint or earlier launch cannot be used
 		 */
 		private void startSessions() throws IOException
 		{
@@ -915,27 +1255,37 @@ public final class GuardPilot
 				cancellationEnd = slice.clock().instant().plus(slice.settings().grace());
 			while (stopReason == null && inFlight.size() < ceiling)
 			{
+				checkObserverFailure();
 				Job job = nextAdmitted();
 				if (job == null)
 					return;
-				if (job instanceof TrialJob)
+				if (job instanceof TrialJob trial)
+				{
 					StagedTarget.read(source, inventory, target);
+					Optional<RetainedTrialClaim> claim = reconcile(trial);
+					if (stopReason != null)
+						return;
+					job = new TrialJob(trial.pilot(), trial.position(), trial.testCase(), claim);
+				}
 				SessionRequest request = switch (job)
 				{
-					case TrialJob trial -> new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source,
-						trial.testCase().turns(), List.of(), trial.pilot().test.timeLimit(), trial.pilot().cell.profile(),
-						TestWorkspace.of(trial.pilot().test, trial.testCase().testCase()), plugins, Optional.empty(), true).
-						withTurnObserver(EarlyTrialEnd.forTest(trial.pilot().test,
-							trial.testCase().testCase(), sessions));
+					case TrialJob trial -> trialRequest(trial);
 					case JudgeJob judging -> judge.request(contract.judge(), judging.testCase(), judging.trial(),
 						judging.judged(), judging.results(), judging.section());
 				};
 				if (slice != null)
 					startedAt.put(job, slice.clock().instant());
+				checkObserverFailure();
 				SessionHandle handle;
 				try
 				{
-					handle = sessions.start(request);
+					if (job instanceof TrialJob trial && sessions.recoversTrials())
+					{
+						UUID requestId = trial.pilot().recovery(trial.position()).requestId().orElseThrow();
+						handle = sessions.startTrial(request, requestId, trial.claim());
+					}
+					else
+						handle = sessions.start(request);
 				}
 				catch (IOException e)
 				{
@@ -944,8 +1294,47 @@ public final class GuardPilot
 					continue;
 				}
 				inFlight.put(job, handle);
-				handle.completion().whenComplete((result, failure) -> events.add(new Ended(job, result, failure)));
+				Job started = job;
+				handle.completion().whenComplete((result, failure) -> events.add(new Ended(started, result, failure)));
 			}
+		}
+
+		/**
+		 * Builds a trial request and checkpoints its original launch before it can be published.
+		 *
+		 * @param trial the assigned control trial
+		 * @return the session request with its observer
+		 * @throws IOException if a fresh launch cannot be checkpointed
+		 */
+		private SessionRequest trialRequest(TrialJob trial) throws IOException
+		{
+			Pilot pilot = trial.pilot();
+			return new SessionRequest(SessionRole.TRIAL, Part.DEVELOPMENT, source, trial.testCase().turns(), List.of(),
+				pilot.test.timeLimit(), pilot.cell.profile(), TestWorkspace.of(pilot.test, trial.testCase().testCase()),
+				plugins, Optional.empty(), true).withTurnObserver(trialObserver(trial));
+		}
+
+		/**
+		 * Creates the observer with the durable state for the trial's exact launch.
+		 *
+		 * @param trial the admitted trial
+		 * @return the observer
+		 * @throws IOException if a fresh launch cannot be checkpointed
+		 */
+		private TurnObserver trialObserver(TrialJob trial) throws IOException
+		{
+			Pilot pilot = trial.pilot();
+			if (!sessions.recoversTrials())
+				return EarlyTrialEnd.forTest(pilot.test, trial.testCase().testCase(), sessions);
+			if (trial.claim().isEmpty())
+			{
+				pilot.begin(trial.position(), UUID.randomUUID());
+				save();
+			}
+			PilotTrialRecovery state = pilot.recovery(trial.position());
+			UUID requestId = state.requestId().orElseThrow();
+			return EarlyTrialEnd.forTest(pilot.test, trial.testCase().testCase(), sessions, state.progress(),
+				progress -> saveReceipt(trial, requestId, progress));
 		}
 
 		/**
@@ -1007,22 +1396,29 @@ public final class GuardPilot
 		 * @param trial the trial
 		 * @param result the session's result, or {@code null} if the session failed with an exception
 		 * @param failure the exception, or {@code null}
+		 * @throws IOException if the checkpoint fails or the original launch has not settled
 		 */
-		private void trialEnded(TrialJob trial, SessionResult result, Throwable failure)
+		private void trialEnded(TrialJob trial, SessionResult result, Throwable failure) throws IOException
 		{
 			switch (result)
 			{
 				case null -> infrastructureFailed(trial, "The trial session failed: " + Driver.describe(failure));
 				case SessionResult.Completed completed -> decideTools(trial, completed);
-				// The trial reruns once the harness's shared hold ends
-				case SessionResult.RateLimited _ -> queue.addFirst(trial);
-				case SessionResult.Refused refused -> refused(trial, refused);
-				// An interruption by CAT says nothing about the trial, so it is not an infrastructure attempt: the pilot stops
-				// and a later run decides the trial
-				case SessionResult.Interrupted _ -> stop("The trial session was interrupted");
+				case SessionResult.RateLimited _ ->
+				{
+					retire(trial, new Discard("The provider rate-limited the pilot trial", false));
+					queue.addFirst(fresh(trial));
+				}
+				case SessionResult.Refused refused ->
+				{
+					retire(trial, new Discard("The provider refused the pilot trial", false));
+					refused(fresh(trial), refused);
+				}
+				case SessionResult.Interrupted _ -> stopCancelled(trial, "The trial session was interrupted");
 				case SessionResult.Failed failed -> infrastructureFailed(trial, failed.reason());
-				// Every later session is refused the same way until the user acts
-				case SessionResult.LaunchRefused refused -> stop(refused.reason());
+				case SessionResult.LaunchRefused refused when trial.claim().isPresent() ->
+					infrastructureFailed(trial, refused.reason());
+				case SessionResult.LaunchRefused refused -> stopCancelled(trial, refused.reason());
 			}
 		}
 
@@ -1037,8 +1433,9 @@ public final class GuardPilot
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
+		 * @throws IOException if the checkpoint fails or the original launch has not settled
 		 */
-		private void decideTools(TrialJob trial, SessionResult.Completed completed)
+		private void decideTools(TrialJob trial, SessionResult.Completed completed) throws IOException
 		{
 			Pilot pilot = trial.pilot();
 			DrawnTestCase testCase = trial.testCase();
@@ -1053,7 +1450,7 @@ public final class GuardPilot
 			}
 			catch (UndecidableToolException e)
 			{
-				pilot.failed("The built-in tools could not be decided: " + Driver.describe(e));
+				pilot.failed(trial.position(), "The built-in tools could not be decided: " + Driver.describe(e));
 				return;
 			}
 			catch (IOException e)
@@ -1089,8 +1486,9 @@ public final class GuardPilot
 		 * @param judging the judged trial
 		 * @param result the session's result, or {@code null} if the session failed with an exception
 		 * @param failure the exception, or {@code null}
+		 * @throws IOException if the checkpoint fails or the original launch has not settled
 		 */
-		private void judgeEnded(JudgeJob judging, SessionResult result, Throwable failure)
+		private void judgeEnded(JudgeJob judging, SessionResult result, Throwable failure) throws IOException
 		{
 			switch (result)
 			{
@@ -1109,9 +1507,9 @@ public final class GuardPilot
 				case SessionResult.RateLimited _ -> queue.addFirst(judging);
 				case SessionResult.Refused refused -> refused(judging, refused);
 				// Like an interrupted trial, an interrupted judge is not an attempt of the judge or of its trial
-				case SessionResult.Interrupted _ -> stop("The judge session was interrupted");
+				case SessionResult.Interrupted _ -> stopCancelled(judging, "The judge session was interrupted");
 				case SessionResult.Failed failed -> sessionFailed(judging, failed.reason());
-				case SessionResult.LaunchRefused refused -> stop(refused.reason());
+				case SessionResult.LaunchRefused refused -> stopCancelled(judging, refused.reason());
 			}
 		}
 
@@ -1175,8 +1573,9 @@ public final class GuardPilot
 		 *
 		 * @param job the session's work
 		 * @param reason why the session failed
+		 * @throws IOException if the checkpoint fails or the original launch has not settled
 		 */
-		private void sessionFailed(Job job, String reason)
+		private void sessionFailed(Job job, String reason) throws IOException
 		{
 			switch (job)
 			{
@@ -1196,17 +1595,27 @@ public final class GuardPilot
 		 *
 		 * @param job the session's work, which belongs to the logical trial
 		 * @param reason why the run ended without an outcome
+		 * @throws IOException if the checkpoint fails or the original launch has not settled
 		 */
-		private void infrastructureFailed(Job job, String reason)
+		private void infrastructureFailed(Job job, String reason) throws IOException
 		{
-			Pilot pilot = job.pilot();
-			List<String> runs = pilot.infrastructureAttempt(job.position(), reason);
+			retire(job, new Discard(reason, true));
+			if (job.pilot().recovery(job.position()).infrastructureAttempts().size() < Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
+				queue.addFirst(fresh(job));
+		}
+
+		/**
+		 * Pauses once the trial has spent its infrastructure allowance.
+		 *
+		 * @param pilot the trial's pilot
+		 * @param position the trial's draw position
+		 * @param runs why its earlier attempts ended
+		 */
+		private void pauseIfExhausted(Pilot pilot, int position, List<String> runs)
+		{
 			if (runs.size() < Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
-			{
-				queue.addFirst(new TrialJob(pilot, job.position(), job.testCase()));
 				return;
-			}
-			StringBuilder pause = new StringBuilder(128).append("Pilot trial ").append(job.position() + 1).
+			StringBuilder pause = new StringBuilder(128).append("Pilot trial ").append(position + 1).
 				append(" of `").append(pilot.test.id()).append("` ended without an outcome ").append(runs.size()).
 				append(" times:");
 			for (int i = 0; i < runs.size(); ++i)
@@ -1220,6 +1629,68 @@ public final class GuardPilot
 				stopReason = pause.toString();
 				paused = true;
 			}
+		}
+
+		/**
+		 * Records and settles a current launch before permitting a replacement.
+		 *
+		 * @param job the job associated with the original trial
+		 * @param intent why the launch will be retired
+		 * @throws IOException if the checkpoint fails or the broker has not settled the launch
+		 */
+		private void retire(Job job, Discard intent) throws IOException
+		{
+			Pilot pilot = job.pilot();
+			if (pilot.markDiscard(job.position(), intent))
+			{
+				save();
+				discard(observe(pilot.recovery(job.position()).requestId().orElseThrow()));
+			}
+			finishRetirement(job, intent);
+		}
+
+		/**
+		 * Records a settled launch's disposition and checkpoints it before the position can launch again.
+		 *
+		 * @param job the job associated with the original trial
+		 * @param intent why the launch was retired
+		 * @throws IOException if the checkpoint fails
+		 */
+		private void finishRetirement(Job job, Discard intent) throws IOException
+		{
+			Pilot pilot = job.pilot();
+			int position = job.position();
+			if (intent.charged())
+				pauseIfExhausted(pilot, position, pilot.infrastructureAttempt(position, intent.reason()));
+			else
+				pilot.clearLaunch(position);
+			if (sessions.recoversTrials())
+				save();
+		}
+
+		/**
+		 * Stops after a CAT interruption or launch refusal and preserves its noncharging disposition.
+		 *
+		 * @param job the job that was interrupted or refused
+		 * @param reason why the pilot stopped
+		 * @throws IOException if the checkpoint fails
+		 */
+		private void stopCancelled(Job job, String reason) throws IOException
+		{
+			if (job.pilot().markDiscard(job.position(), new Discard(reason, false)))
+				save();
+			stop(reason);
+		}
+
+		/**
+		 * Returns the same logical trial ready for a fresh launch.
+		 *
+		 * @param job the job that ran or judged the trial
+		 * @return the original assignment without an earlier launch to resume
+		 */
+		private static TrialJob fresh(Job job)
+		{
+			return new TrialJob(job.pilot(), job.position(), job.testCase(), Optional.empty());
 		}
 
 		/**

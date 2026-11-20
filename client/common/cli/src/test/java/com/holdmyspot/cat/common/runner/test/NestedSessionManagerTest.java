@@ -1540,7 +1540,8 @@ public final class NestedSessionManagerTest
 				nestedSession.directory().resolve("session.json"), nestedSession.directory().resolve(".lock"),
 				other.directory(), evidenceProject,
 				evidence.directory().resolve("home"), evidence.directory().resolve("session.json"),
-				evidence.directory().resolve(".lock"), workspaces, otherHarness));
+				evidence.directory().resolve(".lock"),
+				otherHarness, workspaces));
 		}
 	}
 
@@ -2060,6 +2061,9 @@ public final class NestedSessionManagerTest
 			// No process is alive, so the runner that owned the nested session has ended, along with its harness
 			NestedSessionManager first = manager(jvm, root, Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC));
 			NestedSession nestedSession = first.create("harness");
+			Path checkpoint = nestedSession.directory().resolve("turn-checkpoint.json");
+			String priorCheckpoint = "{\"format_version\":1,\"turn_number\":4,\"state\":\"turn_in_progress\"}";
+			Files.writeString(checkpoint, priorCheckpoint);
 			first.markHarnessStarting(nestedSession);
 			first.recordHarnessProcess(nestedSession, 4321, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			first.recordHarnessSession(nestedSession, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
@@ -2080,6 +2084,7 @@ public final class NestedSessionManagerTest
 				contains("\"harness_session_id\": \"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90\"");
 			requireThat(later.requestsUsed(reopened), "requestsUsed").isEqualTo(2);
 			requireThat(nestedSession.directory().resolve("home/session.jsonl"), "home").isRegularFile();
+			requireThat(Files.readString(checkpoint), "checkpoint").isEqualTo(priorCheckpoint);
 		}
 	}
 

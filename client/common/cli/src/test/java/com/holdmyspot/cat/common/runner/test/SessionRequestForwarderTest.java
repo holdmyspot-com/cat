@@ -7,10 +7,14 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ResultsCopy;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.ByteArrayOutputStream;
@@ -20,15 +24,21 @@ import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.Writer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
@@ -434,6 +444,235 @@ public final class SessionRequestForwarderTest
 			requireThat(copies, "copies").isEqualTo(List.of(results.resolve("harnessa").resolve(SESSION_ID)));
 			requireThat(Files.isDirectory(copies.getFirst().resolve("project")), "copiedProject").isTrue();
 			requireThat(Files.isDirectory(response[0].resolve("results-copy")), "responseCopy").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a caller-allocated request identifier names the archive and its held sender lock.
+	 *
+	 * @throws IOException if the request or response fixture cannot be written
+	 */
+	@Test
+	public void servesUsingCallerAllocatedRequestId() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I12
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"forward-fixed-id-")).toRealPath());
+			UUID requestId = UUID.fromString("07d8b2ce-723d-4b9e-a540-fb3e8f95c4d1");
+			Path artifact = Files.createDirectories(fixture.root.resolve("artifact"));
+			Path results = fixture.root.resolve("results");
+			JsonMapper json = JsonMapper.builder().build();
+			boolean[] exactArchivePublished = {false};
+			boolean[] senderLockHeld = {false};
+			Pause pause = () ->
+			{
+				fixture.readRequest();
+				exactArchivePublished[0] = Files.isRegularFile(fixture.requests.resolve(requestId + ".tar"));
+				requireThat(exactArchivePublished[0], "exactArchivePublished").isTrue();
+				Path lockPath = fixture.requests.resolve(requestId + ".lock");
+				try (FileChannel channel = FileChannel.open(lockPath, StandardOpenOption.READ,
+					StandardOpenOption.WRITE))
+				{
+					try
+					{
+						FileLock lock = channel.tryLock();
+						senderLockHeld[0] = lock == null;
+						if (lock != null)
+							lock.release();
+					}
+					catch (OverlappingFileLockException _)
+					{
+						senderLockHeld[0] = true;
+					}
+				}
+				Path response = Files.createDirectories(fixture.responseDirectory());
+				Path retainedRoot = Files.createDirectories(fixture.root.resolve("retained"));
+				NestedSessionManager manager = new NestedSessionManager(new FileLocks(), retainedRoot, Clock.systemUTC(),
+					Yielding.fileReplacer());
+				NestedSession retained = manager.create("harness");
+				manager.initialize(retained, artifact, fixture.project, "fixture", List.of("fixture"));
+				manager.markCompleted(retained);
+				Path kept = response.resolve("results-copy");
+				requireThat(ResultsCopy.copy(retained.directory(), kept).incomplete(), "resultsCopy").isEmpty();
+				Files.writeString(response.resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
+				json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
+					put("status", "completed").put("reason", "").put("session_id", SESSION_ID).
+					put("results_copy", kept.toString()).put("transcript", response.resolve("transcript.jsonl").toString()));
+			};
+			StringWriter output = new StringWriter();
+
+			SessionRequestForwarder.serve(SessionRequestForwarder.Route.RUN, requestId, "test command", "harness-a",
+				artifact, List.of("--project", fixture.project.toString(), "--results", results.toString(), "--model",
+					"model-a", "--effort", "effort-a"), new StringReader(""), output, fixture.requests, pause);
+
+			requireThat(exactArchivePublished[0], "exactArchivePublished").isTrue();
+			requireThat(senderLockHeld[0], "senderLockHeld").isTrue();
+			requireThat(fixture.entries.get("project/marker"), "projectArchive").isEqualTo("project bytes");
+			requireThat(output.toString(), "transcript").isEqualTo(Fixture.TRANSCRIPT);
+		}
+	}
+
+	/**
+	 * Verifies that a served resume uses its existing session allowance and carries no project copy.
+	 *
+	 * @throws IOException if the request or response fixture cannot be written
+	 */
+	@Test
+	public void resumesAtExhaustedSessionRequestLimit() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I12
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"forward-resume-limit-")).toRealPath());
+			Path responses = fixture.root.resolve("session/responses");
+			Path artifact = Files.createDirectories(fixture.root.resolve("artifact"));
+			Path results = fixture.root.resolve("results");
+			Files.writeString(responses.resolve("limits.json"), """
+				{"format_version":1,"requests_allowed":1,"requests_used":1,"depth_remaining":1}
+				""");
+			JsonMapper json = JsonMapper.builder().build();
+			String[] resume = {""};
+			boolean[] requestHasProject = {true};
+			boolean[] projectEntryArchived = {false};
+			Pause pause = () ->
+			{
+				fixture.readRequest();
+				JsonNode request = json.readTree(fixture.entries.get("request.json"));
+				resume[0] = request.path("resume").asString("");
+				requestHasProject[0] = request.has("project");
+				projectEntryArchived[0] = fixture.entries.keySet().stream().anyMatch(entry ->
+					entry.equals("project") || entry.startsWith("project/"));
+				Path response = Files.createDirectories(fixture.responseDirectory());
+				Path retainedRoot = Files.createDirectories(fixture.root.resolve("retained"));
+				NestedSessionManager manager = new NestedSessionManager(new FileLocks(), retainedRoot, Clock.systemUTC(),
+					Yielding.fileReplacer());
+				NestedSession retained = manager.create("harness");
+				manager.initialize(retained, artifact, fixture.project, "fixture", List.of("fixture"));
+				manager.markCompleted(retained);
+				Path kept = response.resolve("results-copy");
+				requireThat(ResultsCopy.copy(retained.directory(), kept).incomplete(), "resultsCopy").isEmpty();
+				Files.writeString(response.resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
+				json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
+					put("status", "completed").put("reason", "").put("session_id", SESSION_ID).
+					put("results_copy", kept.toString()).put("transcript", response.resolve("transcript.jsonl").toString()));
+			};
+
+			StringWriter output = new StringWriter();
+			SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "harness-a", artifact,
+				List.of("--resume", SESSION_ID, "--results", results.toString(), "--model", "model-a", "--effort",
+					"effort-a"), new StringReader("""
+					{"type":"turn","prompt":"resume"}
+					{"type":"complete"}
+					"""), output, fixture.requests, pause);
+
+			requireThat(resume[0], "resumeSessionId").isEqualTo(SESSION_ID);
+			requireThat(requestHasProject[0], "requestHasProject").isFalse();
+			requireThat(projectEntryArchived[0], "projectEntryArchived").isFalse();
+			requireThat(output.toString(), "transcript").isEqualTo(Fixture.TRANSCRIPT);
+		}
+	}
+
+	/**
+	 * Verifies that a guarded Claude resume publishes its replay before the native process identifies itself.
+	 *
+	 * @throws IOException if the request or response fixture cannot be written
+	 */
+	@Test
+	public void replaysBeforeNativeSessionId() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Claude waits for its next prompt before it reports the native session ID.
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"forward-retained-")).toRealPath());
+			Path artifact = Files.createDirectory(fixture.root.resolve("artifact"));
+			Path results = fixture.root.resolve("results");
+			StringWriter output = new StringWriter();
+			AtomicInteger pauses = new AtomicInteger();
+			RetainedTrialClaim claim = new RetainedTrialClaim(UUID.randomUUID(),
+				new Identity(UUID.randomUUID(), Optional.of(new HarnessSession("claude", SESSION_ID))), 1);
+			Pause pause = () ->
+			{
+				Path response = fixture.responseDirectory();
+				if (pauses.incrementAndGet() == 1)
+				{
+					Path prefix = Files.createDirectories(response.resolve("retained-prefix"));
+					writeTurnSnapshot(prefix, 1);
+					Files.writeString(prefix.resolve("turn-checkpoint.json"),
+						"{\"format_version\":1,\"turn_number\":1,\"state\":\"ready\"}\n");
+					Path artifacts = Files.createDirectory(prefix.resolve("artifacts"));
+					Files.writeString(artifacts.resolve("turn-1.events"), "previous event\n");
+					Files.writeString(artifacts.resolve("turn-1.reply.json"), """
+						{"type":"turn_completed","exit_code":0,"error":"","assistant_response":"previous",
+						 "assistant_messages":["previous"]}
+						""");
+					Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"started\",\"resumed\":true}\n");
+					return;
+				}
+				requireThat(output.toString(), "recordsBeforeNativeId").contains("retained_session_id").
+					contains("previous event").contains("turn_completed").contains("started");
+				requireThat(Files.readString(results.resolve("claude").resolve(SESSION_ID).resolve("project/marker")),
+					"retainedProjectBeforePrompt").isEqualTo("project-1");
+				JsonMapper json = JsonMapper.builder().build();
+				json.writeValue(response.resolve("response.json").toFile(),
+					json.createObjectNode().put("status", "refused").put("reason", "The fixture stopped"));
+			};
+
+			try
+			{
+				SessionRequestForwarder.serveRetainedTrial(SessionRequestForwarder.Route.RUN, claim, "test command",
+					"claude", artifact, fixture.project, List.of("--resume", SESSION_ID, "--results", results.toString(),
+						"--model", "model-a", "--effort", "effort-a"), new StringReader(""), output, fixture.requests,
+					pause);
+				throw new AssertionError("The fixture must end the request after startup");
+			}
+			catch (LaunchRefusedException e)
+			{
+				requireThat(e.getMessage(), "reason").isEqualTo("The fixture stopped");
+			}
+		}
+	}
+
+	/**
+	 * Verifies that a new served launch at the exhausted session request limit is refused before publication.
+	 *
+	 * @throws IOException if the request limit fixture cannot be written
+	 */
+	@Test
+	public void refusesLaunchAtExhaustedRequestLimit() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			// Requirement: R-I12
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"forward-launch-limit-")).toRealPath());
+			Path artifact = Files.createDirectories(fixture.root.resolve("artifact"));
+			Path results = fixture.root.resolve("results");
+			Files.writeString(fixture.root.resolve("session/responses/limits.json"), """
+				{"format_version":1,"requests_allowed":1,"requests_used":1,"depth_remaining":1}
+				""");
+
+			try
+			{
+				SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "harness-a", artifact,
+					List.of("--project", fixture.project.toString(), "--results", results.toString(), "--model", "model-a",
+						"--effort", "effort-a"), new StringReader(""), new StringWriter(), fixture.requests, () -> {});
+				throw new AssertionError("The launch was not refused");
+			}
+			catch (LaunchRefusedException _)
+			{
+				try (Stream<Path> published = Files.list(fixture.requests))
+				{
+					requireThat(published.toList(), "publishedRequests").isEmpty();
+				}
+			}
 		}
 	}
 

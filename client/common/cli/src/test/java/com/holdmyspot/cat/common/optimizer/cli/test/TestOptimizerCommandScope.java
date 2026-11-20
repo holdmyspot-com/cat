@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.proposal.SymbolicLinkProbe;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.secrets.ExecutableFilesSecrets;
 import com.holdmyspot.cat.common.test.SessionHarnesses;
 
@@ -34,6 +35,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Random;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.random.RandomGenerator;
@@ -77,6 +79,25 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private final FakeProfileInventory profiles = new FakeProfileInventory();
 	private String userLoaderSettings;
 	private String launchRefusal;
+	String nestedQuotaRefusal;
+	String sandboxRefusal;
+	TrialStatusResponder retainedTrialLookup;
+
+	/**
+	 * Supplies the broker's response to a preflight status request.
+	 */
+	@FunctionalInterface
+	interface TrialStatusResponder
+	{
+		/**
+		 * Answers a lookup for a persisted trial.
+		 *
+		 * @param requestId the original launch's identifier
+		 * @return the broker's status
+		 * @throws IOException if the broker does not answer
+		 */
+		RetainedTrialResponse status(UUID requestId) throws IOException;
+	}
 	private String worktreeRefusal;
 	Consumer<String> backgroundNotice = _ ->
 	{
@@ -368,7 +389,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	protected HarnessSandbox trialSandbox()
 	{
 		ensureOpen();
-		return _ -> Optional.empty();
+		return _ -> Optional.ofNullable(sandboxRefusal);
 	}
 
 	@Override
@@ -382,7 +403,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	protected Optional<String> nestedSessionRefusal()
 	{
 		ensureOpen();
-		return Optional.empty();
+		return Optional.ofNullable(nestedQuotaRefusal);
+	}
+
+	@Override
+	protected Optional<RetainedTrialLookup> retainedTrialPreflight()
+	{
+		return Optional.ofNullable(retainedTrialLookup).map(lookup -> lookup::status);
 	}
 
 	@Override

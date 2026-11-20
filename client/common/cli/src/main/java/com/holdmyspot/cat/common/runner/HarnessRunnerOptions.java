@@ -94,7 +94,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
 		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy",
-		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION);
+		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -135,6 +135,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		requireThat(args, "args").isNotNull();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
+		String startupPermit = startupPermit(args).orElse(null);
 		Path project = Path.of("").toAbsolutePath().normalize();
 		String explicitResultsFolder = null;
 		String model = "";
@@ -267,6 +268,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 				}
 				options.resumeSlot = value;
 			}
+			else if (option.equals(RunnerArguments.STARTUP_PERMIT_OPTION))
+			{
+				if (!SlotStartup.isGeneration(value))
+					throw new InvalidArgumentsException("Invalid " + RunnerArguments.STARTUP_PERMIT_OPTION + ": " + value);
+			}
 			else
 				options.input = Path.of(value);
 			index += 2;
@@ -284,6 +290,9 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires " +
 				RunnerArguments.SLOT_ID_OPTION);
 		}
+		if (startupPermit != null && options.slotId == null)
+			throw new InvalidArgumentsException(RunnerArguments.STARTUP_PERMIT_OPTION + " requires " +
+				RunnerArguments.SLOT_ID_OPTION);
 		requireProfile(harness, model, effort);
 		Path resultsFolder = temporaryRoot.resultsFolder(explicitResultsFolder);
 		return new HarnessRunnerOptions(options.artifact, project, resultsFolder, model, effort, options.output,
@@ -292,6 +301,34 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			options.capacityWait, options.requestDepth, options.input, options.conversation, options.policyBound,
 			options.capacityHeld, options.gitName, options.gitEmail, options.extraPermissions,
 			options.turnCopy, options.continueAfterFailedTurn, options.slotId, options.resumeSlot);
+	}
+
+	/**
+	 * Returns the broker-only startup generation from a validated runner command.
+	 *
+	 * @param args the runner's options
+	 * @return the generation, or empty if the command is not a broker-managed spawn
+	 * @throws NullPointerException if {@code args} is null
+	 * @throws InvalidArgumentsException if the option is duplicated, incomplete or malformed
+	 */
+	public static Optional<String> startupPermit(String[] args)
+	{
+		requireThat(args, "args").isNotNull();
+		String result = null;
+		for (int index = 0; index < args.length; ++index)
+		{
+			if (!args[index].equals(RunnerArguments.STARTUP_PERMIT_OPTION))
+				continue;
+			if (result != null)
+				throw new InvalidArgumentsException("Duplicate " + RunnerArguments.STARTUP_PERMIT_OPTION);
+			if (index + 1 >= args.length)
+				throw new InvalidArgumentsException("Missing value for " + RunnerArguments.STARTUP_PERMIT_OPTION);
+			++index;
+			result = args[index];
+			if (!SlotStartup.isGeneration(result))
+				throw new InvalidArgumentsException("Invalid " + RunnerArguments.STARTUP_PERMIT_OPTION + ": " + result);
+		}
+		return Optional.ofNullable(result);
 	}
 
 	/**

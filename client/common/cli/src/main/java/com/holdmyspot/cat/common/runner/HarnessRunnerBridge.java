@@ -189,6 +189,7 @@ public final class HarnessRunnerBridge
 		// A runner that resumes a nested session records no end until its harness reports the nested session's harness
 		// session, so that a session that the harness cannot continue stays retained
 		boolean resumes = options != null && options.resumeSlot() != null && manager != null;
+		boolean tracksTurnCheckpoints = manager != null && manager.tracksTurnCheckpoints();
 		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
 		// send the next turn once the cause is gone, such as a usage limit that resets
 		boolean continueAfterFailedTurn = conversation != null || (options != null && options.continueAfterFailedTurn());
@@ -247,8 +248,11 @@ public final class HarnessRunnerBridge
 									{
 										turnStarted.countDown();
 										HarnessProcessResult result;
+										boolean recoverableEvidence = true;
 										try
 										{
+											if (tracksTurnCheckpoints)
+												manager.recordTurnInProgress(session.nestedSession(), currentTurn);
 											if (manager != null)
 												manager.markWorking(session.nestedSession());
 											result = session.sendTurn(prompt, harnessEvent ->
@@ -267,7 +271,24 @@ public final class HarnessRunnerBridge
 												throw harnessTurnFailure(result, session.processIsAlive());
 											// The requester reads the copy once it reads this turn's response
 											if (options != null && options.turnCopy() != null)
-								ResultsCopy.copyTurn(session.nestedSession().directory(), options.turnCopy());
+											{
+												Path evidence = session.nestedSession().directory();
+												if (tracksTurnCheckpoints && options.sessionTranscripts() &&
+													!turnInterrupted.get())
+												{
+													try
+													{
+														evidence = captureRetainedTurn(session, currentTurn);
+													}
+													catch (IOException _)
+													{
+														// The ordinary results copy can still serve this turn. Recovery
+														// cannot use it as a complete prefix.
+														recoverableEvidence = false;
+													}
+												}
+												ResultsCopy.copyTurn(evidence, options.turnCopy());
+											}
 										}
 										catch (IOException | RuntimeException e)
 										{
@@ -304,6 +325,12 @@ public final class HarnessRunnerBridge
 										ArrayNode reply = response.putArray("assistant_messages");
 										for (String message : result.assistantMessages())
 											reply.add(message);
+										if (tracksTurnCheckpoints && recoverableEvidence && !turnInterrupted.get())
+										{
+											String replyJson = session.scope().json().writer().without(SerializationFeature.INDENT_OUTPUT).
+												writeValueAsString(response);
+											manager.recordTurnCompleted(session.nestedSession(), currentTurn, replyJson);
+										}
 										client.endTurn(response);
 										return null;
 									}
@@ -409,6 +436,27 @@ public final class HarnessRunnerBridge
 			// The caller may remove the nested session once the bridge returns, so the turn must have stopped writing to it
 			endTurn(activeTurn, activeTurnThread);
 		}
+	}
+
+	/**
+	 * Captures the same latest-turn evidence for the requester and any later recovery. Codex's observer uses the
+	 * root native rollout as well as the runner's events.
+	 *
+	 * @param session the running nested session
+	 * @param turn the completed turn number
+	 * @return the private snapshot directory
+	 * @throws IOException if the turn evidence cannot be captured
+	 */
+	private static Path captureRetainedTurn(LiveNestedSession session, int turn) throws IOException
+	{
+		Optional<String> nativeRoot = Optional.empty();
+		if (session.nestedSession().harness().equals("codex"))
+		{
+			Path transcript = session.sessionTranscript().orElseThrow(() ->
+				new IOException("The finished Codex turn has no native transcript"));
+			nativeRoot = Optional.of(transcript.getFileName().toString());
+		}
+		return RetainedTrialPrefix.capture(session.nestedSession().directory(), turn, nativeRoot);
 	}
 
 	/**

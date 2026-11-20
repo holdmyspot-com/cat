@@ -7,6 +7,7 @@ import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import java.math.BigDecimal;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 /**
@@ -29,9 +30,11 @@ import java.util.Set;
  * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times,
  *   which the user answers by choosing to retry or to stop; {@code false} if the pilot ran every trial or stopped for
  *   another reason
+ * @param pendingTrials recovery and earlier infrastructure attempts of each undecided trial, by draw position
  */
 public record PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, long seed,
-	List<PilotTrial> trials, List<String> failedRuns, String stopReason, boolean paused)
+	List<PilotTrial> trials, List<String> failedRuns, String stopReason, boolean paused,
+	Map<Integer, PilotTrialRecovery> pendingTrials)
 {
 	/**
 	 * Creates a pilot result.
@@ -45,11 +48,12 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 * @param failedRuns why each trial that the proposed built-in tools could not decide ended, one entry per trial
 	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
 	 * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times
+	 * @param pendingTrials recovery of undecided trials, by draw position
 	 * @throws NullPointerException if any argument other than {@code stopReason} is null, or {@code trials} or
-	 *   {@code failedRuns} contains null
+	 *   {@code failedRuns} contains null, or a pending position or state is null
 	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedRuns} or a non-null
 	 *   {@code stopReason} are blank, two trials hold one position, or {@code paused} is {@code true} and
-	 *   {@code stopReason} is null
+	 *   {@code stopReason} is null, or a pending position is already decided or outside the pilot
 	 */
 	public PilotResult
 	{
@@ -64,6 +68,12 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 			if (!positions.add(trial.position()))
 				throw new IllegalArgumentException("Two trials hold the position " + trial.position());
 		}
+		pendingTrials = Map.copyOf(pendingTrials);
+		for (int pending : pendingTrials.keySet())
+		{
+			if (pending < 0 || pending >= GuardPilot.TRIALS || positions.contains(pending))
+				throw new IllegalArgumentException("Invalid undecided trial position " + pending);
+		}
 		failedRuns = List.copyOf(failedRuns);
 		for (String reason : failedRuns)
 			requireThat(reason, "reason").isNotBlank();
@@ -71,6 +81,29 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 			requireThat(stopReason, "stopReason").isNotBlank();
 		else if (paused)
 			throw new IllegalArgumentException("A paused pilot must say why it paused");
+	}
+
+	/**
+	 * Creates a pilot result with no tracked undecided trials.
+	 *
+	 * @param testId the prompt test
+	 * @param definition the identity of the prompt test and the requirements that it checks when the pilot ran
+	 * @param cellId the cell that the trials ran in
+	 * @param control the identity of the conditions that the trials ran in
+	 * @param seed the seed of the development stream that draws the trials' test cases
+	 * @param trials the trials that the proposed built-in tools or judge decided, in draw order
+	 * @param failedRuns why each trial that the proposed built-in tools could not decide ended, one entry per trial
+	 * @param stopReason why the pilot stopped before running every trial, or {@code null} if it ran every trial
+	 * @param paused {@code true} if the pilot stopped because one of its trials ended without an outcome too many times
+	 * @throws NullPointerException if any argument other than {@code stopReason} is null, or {@code trials} or
+	 *   {@code failedRuns} contains null
+	 * @throws IllegalArgumentException if {@code testId}, {@code cellId}, a reason in {@code failedRuns} or a non-null
+	 *   {@code stopReason} are blank, two trials hold one position, or a paused pilot has no stop reason
+	 */
+	public PilotResult(String testId, Sha256 definition, String cellId, Sha256 control, long seed,
+		List<PilotTrial> trials, List<String> failedRuns, String stopReason, boolean paused)
+	{
+		this(testId, definition, cellId, control, seed, trials, failedRuns, stopReason, paused, Map.of());
 	}
 
 	/**
@@ -145,7 +178,7 @@ public record PilotResult(String testId, Sha256 definition, String cellId, Sha25
 	 */
 	public boolean appliesTo(Sha256 definition, String cellId, Sha256 control)
 	{
-		return stopReason == null && failedRuns.isEmpty() && ranIn(definition, cellId, control);
+		return stopReason == null && failedRuns.isEmpty() && pendingTrials.isEmpty() && ranIn(definition, cellId, control);
 	}
 
 	/**

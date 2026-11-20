@@ -1,6 +1,8 @@
 package com.holdmyspot.cat.common.runner;
 
 import com.holdmyspot.cat.common.BoundedInput;
+import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
@@ -13,17 +15,21 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.DirectoryStream;
+import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.OptionalInt;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -75,6 +81,16 @@ public final class SessionRequestBroker implements Closeable
 	 * the harness reported none.
 	 */
 	static final String SESSION_ID = "session_id";
+	/**
+	 * The record in a slot that identifies the request that first took it. The broker writes it before starting
+	 * the runner, and it stays until the slot is emptied.
+	 */
+	static final String ORIGINAL_REQUEST_FILE = "launch-request.json";
+	/**
+	 * Prefix of the files that fence admission of an original trial launch, in the site's private responses root.
+	 * Each fence survives removal of the request's response directory and stays for the lifetime of the site.
+	 */
+	private static final String TRIAL_ADMISSION_FENCE = ".retained-trial-fence-";
 	/**
 	 * The directory of a response directory that holds the copy of a requested session's project and initial project
 	 * as of the end of its last completed turn, for a request that asks for turn copies. The requester may still be
@@ -133,6 +149,10 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private final Map<String, Process> processes = new HashMap<>();
 	private final Map<String, String> harnesses = new HashMap<>();
+	/**
+	 * Original request IDs by accepted request ID, guarded by this instance's monitor until slot cleanup ends.
+	 */
+	private final Map<String, String> activeLaunches = new HashMap<>();
 	/**
 	 * The results folder of each request that holds a slot, which holds its child's nested session below the child's
 	 * harness.
@@ -246,7 +266,8 @@ public final class SessionRequestBroker implements Closeable
 		Path catPlugin, RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
 		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, limits, new SessionSlots(
-			SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(), liveness)), starter);
+			SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(), liveness,
+			manager.fileLocks())), starter);
 	}
 
 	/**
@@ -322,6 +343,8 @@ public final class SessionRequestBroker implements Closeable
 			}
 			Path requests = site.requests();
 			List<String> pending = RequestArchive.pendingIds(requests, "");
+			// A recovery request can fence a dead sender's archive before this scan would admit its launch.
+			pending.sort(Comparator.comparing(id -> !id.startsWith(RetainedTrialRequest.PREFIX)));
 			// The requests are listed before the ended launchers are stopped, so that a launch that resumes or discards
 			// the session of a launcher that ended before the launch was made finds that session being stopped, and
 			// waits for it instead of being refused as if another launch held it
@@ -366,14 +389,28 @@ public final class SessionRequestBroker implements Closeable
 			return takeWorktree(id, file, directory);
 		if (id.startsWith(DiscardRequest.PREFIX))
 			return takeDiscard(id, file, directory);
+		if (id.startsWith(RetainedTrialRequest.PREFIX))
+			return takeRetainedTrial(id, file, directory);
 		if (stopped)
 		{
 			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
 			return true;
 		}
+		if (!Files.notExists(trialAdmissionFence(id), LinkOption.NOFOLLOW_LINKS))
+		{
+			respond(id, "", "stopped", "Recovery settled this original trial launch", "", directory);
+			return true;
+		}
 		try
 		{
 			LaunchRequest request = read(file, directory);
+			// A guarded resume has its own envelope, separate from the original launch's admission fence.
+			if (request.retainedTrialClaim().isPresent() && !StreamedRequest.senderRuns(site.requests(), id))
+			{
+				respond(id, request.harness(), "stopped", "The launcher that requested the guarded resume ended before " +
+					"admission", "", directory);
+				return true;
+			}
 			// A request that resumes a session continues the session that an earlier request started
 			if (request.resume().isEmpty())
 			{
@@ -397,7 +434,7 @@ public final class SessionRequestBroker implements Closeable
 				// request-session makes, may outlive the program that made it.
 				held.put(id, directory);
 			}
-			children.submit(() -> execute(id, request, arguments, directory));
+			submitLaunch(id, request, arguments, directory);
 		}
 		catch (RequestArchiveBusyException _)
 		{
@@ -409,6 +446,35 @@ public final class SessionRequestBroker implements Closeable
 			respond(id, "", "refused", e.getMessage(), "", directory);
 		}
 		return true;
+	}
+
+	/**
+	 * Tracks accepted launches while their worker can still take, start or release a slot. The admitting thread
+	 * holds this instance's monitor. A guarded resume runs under a new envelope for the original request's slot.
+	 *
+	 * @param id        the accepted request ID
+	 * @param request   the captured launch
+	 * @param arguments the child runner options
+	 * @param directory the request's response directory
+	 */
+	private void submitLaunch(String id, LaunchRequest request, List<String> arguments, Path directory)
+	{
+		String original = request.retainedTrialClaim().map(RetainedTrialClaim::requestId).map(UUID::toString).orElse(id);
+		activeLaunches.put(id, original);
+		children.submit(() ->
+		{
+			try
+			{
+				execute(id, request, arguments, directory);
+			}
+			finally
+			{
+				synchronized (this)
+				{
+					activeLaunches.remove(id);
+				}
+			}
+		});
 	}
 
 	/**
@@ -539,6 +605,153 @@ public final class SessionRequestBroker implements Closeable
 				recordFailure(e);
 			}
 		}
+	}
+
+	/**
+	 * Takes a retained-trial request under the admission monitor. When the original sender and any accepted worker
+	 * have ended, creates the admission fence before the durable slot operation can report absence or discard.
+	 *
+	 * @param id        the recovery request's envelope ID
+	 * @param file      the recovery request's archive
+	 * @param directory the recovery request's response directory
+	 * @return {@code true} if the request was answered or submitted, or {@code false} if its archive is busy
+	 * @throws IOException if a response cannot be published
+	 */
+	private boolean takeRetainedTrial(String id, Path file, Path directory) throws IOException
+	{
+		if (stopped)
+		{
+			WorktreeResponse.failed(site.closedReason()).write(json, id, directory);
+			return true;
+		}
+		RetainedTrialRequest request;
+		Path inputs = directory.resolve("inputs");
+		try
+		{
+			unpack(file, directory, inputs);
+			request = RetainedTrialRequest.read(json, inputs);
+		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
+			return true;
+		}
+		finally
+		{
+			if (Files.exists(inputs, LinkOption.NOFOLLOW_LINKS))
+				TemporaryDirectories.deleteRecursively(inputs);
+		}
+		settleTrial(id, request, directory);
+		return true;
+	}
+
+	/**
+	 * Checks whether the original launch can still start, and otherwise fences it before submitting the slot
+	 * operation. The admitting thread holds this instance's monitor.
+	 *
+	 * @param id        the recovery request's envelope ID
+	 * @param request   the recovery operation and original request ID
+	 * @param directory the recovery request's response directory
+	 * @throws IOException if a response cannot be published
+	 */
+	private void settleTrial(String id, RetainedTrialRequest request, Path directory) throws IOException
+	{
+		String original = request.requestId().toString();
+		boolean busy;
+		try
+		{
+			busy = activeLaunches.containsValue(original) || StreamedRequest.senderRuns(site.requests(), original);
+			if (!busy)
+			{
+				try
+				{
+					Files.createFile(trialAdmissionFence(original));
+				}
+				catch (FileAlreadyExistsException _)
+				{
+					// A previous recovery request already fenced the launch.
+				}
+			}
+		}
+		catch (IOException e)
+		{
+			WorktreeResponse.failed(String.valueOf(e.getMessage())).write(json, id, directory);
+			return;
+		}
+		if (busy)
+			busyTrial(request.requestId()).write(json, id, directory);
+		else
+			worktrees.submit(() -> serveRetainedTrial(id, request, directory));
+	}
+
+	/**
+	 * Inspects or discards the bound slot on the broker's control thread, outside the admission monitor. A guarded
+	 * resume that the broker accepted during inspection makes the observation busy until that worker settles.
+	 *
+	 * @param id        the recovery request's envelope ID
+	 * @param request   the recovery operation and original request ID
+	 * @param directory the recovery request's response directory
+	 */
+	private void serveRetainedTrial(String id, RetainedTrialRequest request, Path directory)
+	{
+		try
+		{
+			RetainedTrialResponse response;
+			try
+			{
+				response = switch (request.operation())
+				{
+					case STATUS -> site.slots().inspectTrial(request.requestId());
+					case DISCARD -> site.slots().discardTrial(request.requestId(), request.identity());
+				};
+			}
+			catch (IOException e)
+			{
+				WorktreeResponse.failed(String.valueOf(e.getMessage())).write(json, id, directory);
+				return;
+			}
+			synchronized (this)
+			{
+				if (activeLaunches.containsValue(request.requestId().toString()))
+					response = busyTrial(request.requestId());
+				response.write(json, id, directory);
+			}
+		}
+		catch (IOException e)
+		{
+			synchronized (this)
+			{
+				recordFailure(e);
+			}
+		}
+	}
+
+	/**
+	 * Names the durable admission fence separately from the original request's response directory.
+	 *
+	 * @param original the original request ID
+	 * @return the path of the fence
+	 */
+	private Path trialAdmissionFence(String original)
+	{
+		return site.responses().resolve(TRIAL_ADMISSION_FENCE + original);
+	}
+
+	/**
+	 * Creates a busy response for an original trial launch.
+	 *
+	 * @param original the original request ID
+	 * @return the response
+	 */
+	private static RetainedTrialResponse busyTrial(UUID original)
+	{
+		return new RetainedTrialResponse(original, RetainedTrialResponse.Status.BUSY, Optional.empty(),
+			OptionalInt.empty());
 	}
 
 	/**
@@ -736,9 +949,18 @@ public final class SessionRequestBroker implements Closeable
 	{
 		Process process = null;
 		SessionSlots.Slot slot = null;
+		String startupGeneration = null;
 		try
 		{
-			if (request.resume().isPresent())
+			if (request.retainedTrialClaim().isPresent())
+			{
+				RetainedTrialClaim claim = request.retainedTrialClaim().get();
+				slot = site.slots().acquireRetained(claim.requestId(), claim.identity(), claim.completedTurns()).
+					orElseThrow(() -> new SessionRefusedException("The retained trial checkpoint changed"));
+				Path nestedSession = slot.root().resolve(request.harness()).resolve(slot.slotId());
+				RetainedTrialPrefix.publish(nestedSession, directory, claim.completedTurns());
+			}
+			else if (request.resume().isPresent())
 			{
 				String sessionId = request.resume().get();
 				Optional<SessionSlots.Slot> retained = site.slots().acquireRetained(sessionId, request.harness());
@@ -747,9 +969,21 @@ public final class SessionRequestBroker implements Closeable
 				slot = retained.get();
 			}
 			else
+			{
 				slot = site.slots().acquire(request.heldOut());
+				// Recovery needs the request ID even if the launcher exits before it reads the harness session ID
+				ObjectNode binding = json.createObjectNode().put("format_version", 1).put("request_id", id);
+				SessionRequestCli.write(json, slot.root().resolve(ORIGINAL_REQUEST_FILE), binding);
+			}
+			boolean manualResume = request.resume().isPresent() && request.retainedTrialClaim().isEmpty();
+			try (ExclusiveFileLock _ = SlotStartup.acquire(site.fileLocks(), slot.root()))
+			{
+				startupGeneration = SlotStartup.issue(slot.root(), ProcessHandle.current().pid(),
+					SlotStartup.currentProcessStart(), manualResume);
+			}
 			List<String> options = new ArrayList<>(List.of("--results", slot.root().toString(), "--slot-id",
 				slot.slotId()));
+			options.addAll(List.of(RunnerArguments.STARTUP_PERMIT_OPTION, startupGeneration));
 			options.addAll(arguments);
 			options.addAll(site.options(request, slot.root()));
 			synchronized (this)
@@ -842,6 +1076,8 @@ public final class SessionRequestBroker implements Closeable
 			{
 				try
 				{
+					if (startupGeneration != null)
+						cancelStartup(slot, startupGeneration);
 					// A nested session that recorded its harness session and no end was interrupted, and may continue. Any other
 					// nested session has ended, and its response is published, with its results copied out of the slot.
 					if (SessionSlots.isRetained(slot))
@@ -856,6 +1092,30 @@ public final class SessionRequestBroker implements Closeable
 					// broker's service of every later request.
 				}
 			}
+		}
+	}
+
+	/**
+	 * Cancels the permit if this broker still owns the pending startup.
+	 *
+	 * @param slot the reserved slot
+	 * @param generation the specific permit this launch issued
+	 */
+	private void cancelStartup(SessionSlots.Slot slot, String generation)
+	{
+		boolean interrupted = Thread.interrupted();
+		try (ExclusiveFileLock _ = SlotStartup.acquire(site.fileLocks(), slot.root()))
+		{
+			SlotStartup.cancel(slot.root(), generation);
+		}
+		catch (IOException _)
+		{
+			// Recovery still checks the durable slot manifest if cancellation could not take the lock.
+		}
+		finally
+		{
+			if (interrupted)
+				Thread.currentThread().interrupt();
 		}
 	}
 
@@ -1117,7 +1377,8 @@ public final class SessionRequestBroker implements Closeable
 			if (Files.exists(directory.resolve("response.json"), LinkOption.NOFOLLOW_LINKS))
 				continue;
 			String id = directory.getFileName().toString();
-			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX))
+			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX) ||
+				id.startsWith(RetainedTrialRequest.PREFIX))
 				WorktreeResponse.failed(ENDED).write(json, id, directory);
 			else
 				respond(id, "", "failed", ENDED, "", directory);
@@ -1378,6 +1639,13 @@ public final class SessionRequestBroker implements Closeable
 		SessionSlots slots();
 
 		/**
+		 * Returns the process-wide file lock coordinator used by the site's slots.
+		 *
+		 * @return the shared coordinator
+		 */
+		FileLocks fileLocks();
+
+		/**
 		 * Returns the options that the site adds to an accepted request's child, on the request's own thread before
 		 * the child starts.
 		 *
@@ -1536,6 +1804,12 @@ public final class SessionRequestBroker implements Closeable
 		public SessionSlots slots()
 		{
 			return slots;
+		}
+
+		@Override
+		public FileLocks fileLocks()
+		{
+			return manager.fileLocks();
 		}
 
 		/**

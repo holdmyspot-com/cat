@@ -5,6 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.JvmScope;
+import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
@@ -29,11 +30,19 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.RequestServer;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.Reader;
+import java.io.Writer;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
@@ -51,6 +60,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -140,6 +150,99 @@ public abstract class RunnerSessions implements SessionPort
 	private final String harness;
 	private final Settings settings;
 	private final Bridge bridge;
+	private final Optional<RetainedNestedSessionClient> retainedTrials;
+
+	/**
+	 * Creates a bridge that uses the current harness's request-server or nested-session route for every launch.
+	 *
+	 * @param settings how the runner is configured
+	 * @param harness the runner's harness
+	 * @param harnesses the harnesses running the optimizer command
+	 * @return the bridge
+	 * @throws NullPointerException if any argument is null
+	 */
+	protected static Bridge productionBridge(Settings settings, String harness, Set<String> harnesses)
+	{
+		requireThat(settings, "settings").isNotNull();
+		requireThat(harness, "harness").isNotNull();
+		Set<String> running = Set.copyOf(harnesses);
+		return new Bridge()
+		{
+			@Override
+			public void serve(List<String> arguments, Reader input, Writer output) throws IOException
+			{
+				serveRoute(Optional.empty(), Optional.empty(), Optional.empty(), arguments, input, output);
+			}
+
+			@Override
+			public void serveTrial(UUID requestId, Optional<RetainedTrialClaim> claim, Path source,
+				List<String> arguments, Reader input, Writer output) throws IOException
+			{
+				serveRoute(Optional.of(requestId), claim, Optional.of(source), arguments, input, output);
+			}
+
+			/**
+			 * Resolves the broker that owns the caller's launches.
+			 *
+			 * @param requestId the original tracked request identifier, or empty for an ordinary launch
+			 * @param claim the checkpoint that a continuation must claim
+			 * @param source the requesting trial's project, or empty if the launch is untracked
+			 * @param arguments the runner options
+			 * @param input the streamed requests
+			 * @param output the streamed replies
+			 * @throws IOException if no broker serves the launch or forwarding fails
+			 */
+			private void serveRoute(Optional<UUID> requestId, Optional<RetainedTrialClaim> claim, Optional<Path> source,
+				List<String> arguments, Reader input, Writer output) throws IOException
+			{
+				String[] args = arguments.toArray(String[]::new);
+				switch (LaunchRoute.decide(harness, harness, running, args, settings.environment()))
+				{
+					case LaunchRoute.Served _ -> forward(SessionRequestForwarder.Route.SERVER, servedRequests(settings),
+						requestId, claim, source, arguments, input, output);
+					case LaunchRoute.Forward(Path requests) -> forward(SessionRequestForwarder.Route.RUN, requests,
+						requestId, claim, source, arguments, input, output);
+					case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
+					case LaunchRoute.Bounded _ -> throw new LaunchRefusedException(
+						"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
+							"server serves it. Run the prompt optimizer from a Claude Code or Codex session.");
+				}
+			}
+
+			/**
+			 * Serves a launch through its resolved route.
+			 *
+			 * @param route which kind of broker serves the launch
+			 * @param requests the broker's request directory
+			 * @param requestId the original tracked request identifier, or empty for an ordinary launch
+			 * @param claim the checkpoint that a continuation must claim
+			 * @param source the requesting trial's project, or empty if the launch is untracked
+			 * @param arguments the runner options
+			 * @param input the streamed requests
+			 * @param output the streamed replies
+			 * @throws IOException if the launch fails
+			 */
+			private void forward(SessionRequestForwarder.Route route, Path requests, Optional<UUID> requestId,
+				Optional<RetainedTrialClaim> claim, Optional<Path> source, List<String> arguments, Reader input,
+				Writer output) throws IOException
+			{
+				Pause pause = settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL);
+				if (claim.isPresent())
+				{
+					SessionRequestForwarder.serveRetainedTrial(route, claim.get(), COMMAND, harness, settings.artifact(),
+						source.orElseThrow(), arguments, input, output, requests, pause);
+				}
+				else if (requestId.isPresent())
+				{
+					SessionRequestForwarder.serve(route, requestId.get(), COMMAND, harness, settings.artifact(),
+						arguments, input, output, requests, pause);
+				}
+				else
+					SessionRequestForwarder.serve(route, COMMAND, harness, settings.artifact(), arguments, input, output,
+						requests, pause);
+			}
+		};
+	}
 
 	/**
 	 * Creates a port.
@@ -152,18 +255,71 @@ public abstract class RunnerSessions implements SessionPort
 	 */
 	protected RunnerSessions(String harness, Settings settings, Bridge bridge)
 	{
+		this(harness, settings, bridge, Optional.empty());
+	}
+
+	/**
+	 * Creates a port that can use the same broker for trial launches and retained operations.
+	 *
+	 * @param harness the harness's identifier
+	 * @param settings how the runner is configured
+	 * @param bridge runs the harness bridge
+	 * @param retainedTrials the authenticated broker client, or empty when no broker is configured
+	 * @throws NullPointerException if an argument is null
+	 * @throws IllegalArgumentException if the harness identifier is blank
+	 */
+	protected RunnerSessions(String harness, Settings settings, Bridge bridge,
+		Optional<RetainedNestedSessionClient> retainedTrials)
+	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(settings, "settings").isNotNull();
 		requireThat(bridge, "bridge").isNotNull();
+		requireThat(retainedTrials, "retainedTrials").isNotNull();
 		this.harness = harness;
 		this.settings = settings;
 		this.bridge = bridge;
+		this.retainedTrials = retainedTrials;
 	}
 
 	@Override
 	public final SessionHandle start(SessionRequest request)
 	{
 		return start(request, POLL);
+	}
+
+	@Override
+	public final boolean recoversTrials()
+	{
+		return retainedTrials.isPresent();
+	}
+
+	@Override
+	public final RetainedTrialResponse retainedTrial(RetainedTrialRequest request) throws IOException
+	{
+		return retainedTrials.orElseThrow(() -> new IOException("No broker serves retained trial requests")).
+			request(request);
+	}
+
+	@Override
+	public final SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+	{
+		requireThat(request, "request").isNotNull();
+		requireThat(requestId, "requestId").isNotNull();
+		requireThat(claim, "claim").isNotNull();
+		if (request.role() != SessionRole.TRIAL)
+			throw new IllegalArgumentException("Only trials can be tracked for recovery");
+		if (claim.isPresent())
+		{
+			RetainedTrialClaim retained = claim.get();
+			if (!retained.requestId().equals(requestId) || retained.completedTurns() > request.turns().size() ||
+				!retained.identity().session().orElseThrow().harness().equals(harness))
+			{
+				throw new IllegalArgumentException("The retained checkpoint does not match the trial");
+			}
+		}
+		Session session = new Session(this, request, POLL, Optional.of(requestId), claim);
+		session.begin();
+		return session;
 	}
 
 	/**

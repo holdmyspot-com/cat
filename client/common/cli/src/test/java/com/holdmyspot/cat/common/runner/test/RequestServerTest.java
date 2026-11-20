@@ -612,7 +612,7 @@ public final class RequestServerTest
 	 * @throws InterruptedException if the test is interrupted
 	 */
 	@Test(timeOut = 60_000)
-	public void servedSessionFindsEmptySlot() throws IOException, InterruptedException
+	public void servedSessionFindsNoPriorSlotFiles() throws IOException, InterruptedException
 	{
 		try (Fixture fixture = new Fixture())
 		{
@@ -623,7 +623,8 @@ public final class RequestServerTest
 			{
 				serveUntilSlotReuse(fixture, server, resultsFolder, served);
 			}
-			requireThat(served.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+			requireThat(served.getLast().entriesAtStart().stream().sorted().toList(), "entriesAtStart").
+				isEqualTo(List.of("launch-request.json", "startup-permit.json"));
 		}
 	}
 

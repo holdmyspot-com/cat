@@ -27,6 +27,10 @@ public final class RunnerArguments
 	 */
 	public static final String RESUME_SLOT_OPTION = "--resume-slot";
 	/**
+	 * The broker-only per-spawn startup permit presented before a runner mutates a managed slot.
+	 */
+	public static final String STARTUP_PERMIT_OPTION = "--startup-permit";
+	/**
 	 * The launch option that resumes a harness session that an interrupted nested session of the launch's server
 	 * recorded.
 	 */

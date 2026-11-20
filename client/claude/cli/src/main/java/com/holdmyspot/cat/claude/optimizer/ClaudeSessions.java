@@ -5,6 +5,7 @@ import static com.holdmyspot.cat.claude.ClaudePluginInfo.HARNESS_ID;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.claude.runner.ClaudeSessionRole;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
@@ -17,9 +18,6 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.RuleVariableResolver;
-import com.holdmyspot.cat.common.runner.LaunchRoute;
-import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsAccess;
 import com.holdmyspot.cat.claude.secrets.ClaudeSessionsSecrets;
 
@@ -126,6 +124,19 @@ public final class ClaudeSessions extends RunnerSessions
 	public ClaudeSessions(Settings settings)
 	{
 		this(settings, productionBridge(settings), MANAGED_SETTINGS);
+	}
+
+	/**
+	 * Creates a production port whose trials can be recovered through the owning request server.
+	 *
+	 * @param settings how the runner is configured
+	 * @param retainedTrials the authenticated retained-trial client
+	 * @throws NullPointerException if an argument is null
+	 */
+	ClaudeSessions(Settings settings, RetainedNestedSessionClient retainedTrials)
+	{
+		super(HARNESS_ID, settings, productionBridge(settings), Optional.of(retainedTrials));
+		managedSettings = MANAGED_SETTINGS;
 	}
 
 	/**
@@ -725,50 +736,15 @@ public final class ClaudeSessions extends RunnerSessions
 	}
 
 	/**
-	 * Creates the bridge that runs the real runner. Each session follows the route that the runner's own launch
-	 * takes from the settings' environment:
-	 * <ul>
-	 * <li>When Claude Code runs the optimizer outside a nested session, the session is a request to the request server
-	 * of the
-	 *   host session, which starts the runner of the settings' CAT artifact outside the optimizer's sandbox; the
-	 *   session's results copy is copied into the optimizer's results folder. Without a request server that serves the
-	 *   host session, the session is refused, naming the command that starts the server.</li>
-	 *   <li>Inside a nested session whose runner lets its session request sessions, the session is a request to the
-	 *   nested session's runner, which starts it outside the optimizer's sandbox and counts it against the nested
-	 *   session's limit; the session's results copy is copied into the optimizer's results folder.</li>
-	 * <li>Inside a nested session whose runner lets its session request none, or when only Codex runs the optimizer,
-	 * the
-	 *   session is refused with the reason that the runner's launch gives.</li>
-	 *   <li>When no harness runs the optimizer, the session is refused, as every launch is that no harness session
-	 *   runs, and its commands refuse to run before they reach here.</li>
-	 * </ul>
-	 * A refused session fails with a {@link LaunchRefusedException}.
+	 * Creates the bridge through the production Claude launch route.
 	 *
 	 * @param settings how the runner is configured
-	 * @return the bridge
+	 * @return the runner bridge
+	 * @throws NullPointerException if settings is null
 	 */
 	private static Bridge productionBridge(Settings settings)
 	{
 		requireThat(settings, "settings").isNotNull();
-		return (arguments, input, output) ->
-		{
-			Map<String, String> environment = settings.environment();
-			String[] args = arguments.toArray(String[]::new);
-			switch (LaunchRoute.decide(HARNESS_ID, HARNESS_ID, ClaudeRunnerCli.MARKERS.running(environment), args,
-				environment))
-			{
-				case LaunchRoute.Served _ -> SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER,
-					COMMAND, HARNESS_ID, settings.artifact(), arguments, input, output,
-					servedRequests(settings),
-					settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL));
-				case LaunchRoute.Forward(Path requests) -> SessionRequestForwarder.serve(COMMAND,
-					HARNESS_ID, settings.artifact(), arguments, input, output, requests,
-					settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL));
-				case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
-				case LaunchRoute.Bounded _ -> throw new LaunchRefusedException(
-					"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
-						"server serves it. Run the prompt optimizer from a Claude Code or Codex session.");
-			}
-		};
+		return productionBridge(settings, HARNESS_ID, ClaudeRunnerCli.MARKERS.running(settings.environment()));
 	}
 }

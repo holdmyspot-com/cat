@@ -28,6 +28,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Function;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.SerializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
@@ -354,7 +355,31 @@ public final class SessionRequestForwarder
 	public static void serve(Route route, String command, String harness, Path ownArtifact, List<String> arguments,
 		Reader input, Writer output, Path requests, Pause pause) throws IOException
 	{
+		serve(route, UUID.randomUUID(), command, harness, ownArtifact, arguments, input, output, requests, pause);
+	}
+
+	/**
+	 * Serves one session with the given request identifier.
+	 *
+	 * @param route       the runner that serves the request
+	 * @param requestId   the request identifier
+	 * @param command     names the command in a refusal
+	 * @param harness     the harness of the session
+	 * @param ownArtifact the CAT artifact that the command runs from
+	 * @param arguments   the runner's options
+	 * @param input       the streamed records
+	 * @param output      receives the session's records
+	 * @param requests    the request directory
+	 * @param pause       paces progress checks
+	 * @param retained    the checkpoint and original project of a guarded resume
+	 * @throws IOException if forwarding fails
+	 */
+	private static void serveInternal(Route route, UUID requestId, String command, String harness, Path ownArtifact,
+		List<String> arguments, Reader input, Writer output, Path requests, Pause pause,
+		Optional<RetainedLaunch> retained) throws IOException
+	{
 		requireThat(route, "route").isNotNull();
+		requireThat(requestId, "requestId").isNotNull();
 		requireThat(command, "command").isNotBlank();
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(ownArtifact, "ownArtifact").isNotNull();
@@ -369,12 +394,26 @@ public final class SessionRequestForwarder
 			throw new InvalidArgumentsException("A served session takes its records from its input");
 		if (launch.resultsFolder() == null)
 			throw new InvalidArgumentsException("A served session names --results");
-		Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
-		if (refusal.isPresent())
-			throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, refusal.get()));
-		String id = UUID.randomUUID().toString();
+		if (!launch.request().has(RequestArchive.RESUME))
+		{
+			Optional<String> refusal = SessionRequestAccess.furtherRequestRefusal(requests);
+			if (refusal.isPresent())
+				throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, refusal.get()));
+		}
+		String id = requestId.toString();
 		ObjectNode request = launch.request().put(StreamedRequest.INPUT_FIELD, StreamedRequest.STREAM).
 			put("turn_copy", true);
+		Optional<RetainedTrialClaim> claim = retained.map(RetainedLaunch::claim);
+		if (claim.isPresent())
+		{
+			RetainedTrialResponse.HarnessSession session = claim.get().identity().session().orElseThrow();
+			if (!session.harness().equals(harness) ||
+				!session.sessionId().equals(request.path(RequestArchive.RESUME).stringValue("")))
+			{
+				throw new InvalidArgumentsException("The retained trial claim must match the resume harness and session");
+			}
+			request.set(RequestArchive.RETAINED_TRIAL_CLAIM, claim.get().write(json));
+		}
 		if (request.path("install_cat").asBoolean(false) && launch.artifact() != null &&
 			!isSame(launch.artifact(), ownArtifact))
 		{
@@ -383,7 +422,7 @@ public final class SessionRequestForwarder
 		JsonNode response;
 		Path responses = responses(requests, id);
 		try (RecordCopy copy = new RecordCopy(json, output, launch.resultsFolder().resolve(harness),
-			     responses.resolve(SessionRequestBroker.TURN_COPY));
+			     responses.resolve(SessionRequestBroker.TURN_COPY), claim);
 		     TurnFeed records = new TurnFeed(input);
 		     StreamedRequest.Sender sender = new StreamedRequest.Sender(requests.toAbsolutePath(), id))
 		{
@@ -404,7 +443,8 @@ public final class SessionRequestForwarder
 		String reason = response.path("reason").asString("");
 		boolean kept = !response.path(SessionRequestBroker.RESULTS_COPY_FIELD).asString("").isEmpty() &&
 			RecordCopy.isSessionId(response.path(SessionRequestBroker.SESSION_ID).asString(""));
-		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), launch.project());
+		Path project = retained.map(RetainedLaunch::project).orElse(launch.project());
+		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), project);
 		if (route == Route.SERVER)
 			TemporaryDirectories.deleteRecursively(responses(requests, id));
 		if (incomplete.isPresent() && status.equals("completed"))
@@ -417,8 +457,71 @@ public final class SessionRequestForwarder
 				throw new LaunchRefusedException(SessionRequestAccess.refusalMessage(command, reason));
 			throw new LaunchRefusedException(reason);
 		}
+		if (retained.isPresent() && status.equals(SessionRequestBroker.UNRESUMABLE))
+			throw new RetainedTrialUnresumableException(reason);
 		if (!status.equals("completed"))
 			throw new IOException("The requested session ended with status " + status + ": " + reason);
+	}
+
+	/**
+	 * Serves one session using the caller's request identifier, so a caller that durably records the identifier before
+	 * publication can recover the request after interruption.
+	 *
+	 * @param route       the runner that serves the request
+	 * @param requestId   the caller-allocated identifier of this request
+	 * @param command     names the command in a refusal
+	 * @param harness     the harness of the session
+	 * @param ownArtifact the CAT artifact that the command runs from
+	 * @param arguments   the runner's options, which name {@code --results}
+	 * @param input       the {@code turn}, {@code interrupt} and {@code complete} records, one per line
+	 * @param output      receives the session's records, one per line
+	 * @param requests    the directory into which the command writes its request
+	 * @param pause       paces checks for the session's progress
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException          if the session did not complete or its files cannot be read or written
+	 */
+	public static void serve(Route route, UUID requestId, String command, String harness, Path ownArtifact,
+		List<String> arguments, Reader input, Writer output, Path requests, Pause pause) throws IOException
+	{
+		serveInternal(route, requestId, command, harness, ownArtifact, arguments, input, output, requests, pause,
+			Optional.empty());
+	}
+
+	/**
+	 * Asks the broker to resume the exact retained trial checkpoint using a new publication identifier.
+	 *
+	 * @param route the runner that serves the request
+	 * @param claim the retained trial prefix observed by the caller
+	 * @param command names the command in a refusal
+	 * @param harness the harness of the session
+	 * @param ownArtifact the CAT artifact that the command runs from
+	 * @param project the original project that the resumed caller's results copy names
+	 * @param arguments the runner's options, including the matching resume ID and results directory
+	 * @param input the streamed records
+	 * @param output receives the session's records
+	 * @param requests the request directory
+	 * @param pause paces progress checks
+	 * @throws NullPointerException if any argument is null
+	 * @throws IOException if forwarding fails
+	 */
+	public static void serveRetainedTrial(Route route, RetainedTrialClaim claim, String command, String harness,
+		Path ownArtifact, Path project, List<String> arguments, Reader input, Writer output, Path requests, Pause pause)
+		throws IOException
+	{
+		requireThat(claim, "claim").isNotNull();
+		requireThat(project, "project").isNotNull();
+		serveInternal(route, UUID.randomUUID(), command, harness, ownArtifact, arguments, input, output, requests,
+			pause, Optional.of(new RetainedLaunch(claim, project)));
+	}
+
+	/**
+	 * The information that a guarded resume must carry besides its options.
+	 *
+	 * @param claim the prefix to claim
+	 * @param project the project that the results copy names
+	 */
+	private record RetainedLaunch(RetainedTrialClaim claim, Path project)
+	{
 	}
 
 	/**
@@ -859,11 +962,15 @@ public final class SessionRequestForwarder
 		 */
 		private final Path turnCopy;
 		/**
+		 * The checkpoint claimed by a guarded resume, or empty for an ordinary launch.
+		 */
+		private final Optional<RetainedTrialClaim> claim;
+		/**
 		 * The bytes of a record whose line terminator has not arrived.
 		 */
 		private final ByteArrayOutputStream partial = new ByteArrayOutputStream();
 		/**
-		 * The identifier that the harness gave the session, or an empty string until the runner reports it.
+		 * The native session identifier, supplied by a guarded claim or reported by the runner.
 		 */
 		private String sessionId = "";
 		/**
@@ -879,13 +986,16 @@ public final class SessionRequestForwarder
 		 * @param harnessResults the folder of the command's results copies of the session's harness
 		 * @param turnCopy       the runner's copy of the session's project, initial project and native transcripts as
 		 *                       of the end of its last completed turn, which exists once a turn has completed
+		 * @param claim          the checkpoint that the broker must deliver before the resumed runner starts
 		 */
-		RecordCopy(JsonMapper json, Writer output, Path harnessResults, Path turnCopy)
+		RecordCopy(JsonMapper json, Writer output, Path harnessResults, Path turnCopy,
+			Optional<RetainedTrialClaim> claim)
 		{
 			this.json = json;
 			this.output = output;
 			this.harnessResults = harnessResults;
 			this.turnCopy = turnCopy;
+			this.claim = claim;
 		}
 
 		/**
@@ -921,18 +1031,36 @@ public final class SessionRequestForwarder
 			}
 			String line = partial.toString(StandardCharsets.UTF_8);
 			partial.reset();
-			if (line.contains("\"session_id\"") || line.contains("\"turn_completed\""))
+			if (line.contains("\"session_id\"") || line.contains("\"turn_completed\"") ||
+				claim.isPresent() && line.contains("\"started\""))
 			{
 				try
 				{
 					JsonNode record = json.readTree(line);
 					String type = record.path("type").asString("");
 					String id = record.path("session_id").asString("");
-					if (type.equals("session_id") && sessionId.isEmpty() && isSessionId(id))
+					if (claim.isPresent() && type.equals("started"))
 					{
-						// The command writes into the session's results while the session runs
+						if (!sessionId.isEmpty() || !record.path("resumed").asBoolean(false))
+							throw new IOException("The runner did not identify a guarded trial resume");
+						// The broker checked this binding before starting the runner. Claude reports its native ID
+						// only after it receives a turn, so replay the prefix before forwarding the ready signal.
+						sessionId = claim.get().identity().session().orElseThrow().sessionId();
+						if (!isSessionId(sessionId))
+							throw new IOException("The guarded trial ID cannot name the session's results");
+						prepareResults();
+						replayPrefix(claim.get());
+					}
+					else if (type.equals("session_id") && claim.isPresent())
+					{
+						if (!id.equals(sessionId))
+							throw new IOException("The resumed runner reported a different trial session");
+						return;
+					}
+					else if (type.equals("session_id") && sessionId.isEmpty() && isSessionId(id))
+					{
 						sessionId = id;
-						Files.createDirectories(harnessResults.resolve(sessionId).resolve("artifacts"));
+						prepareResults();
 					}
 					else if (type.equals("turn_completed") && !sessionId.isEmpty() && Files.isDirectory(turnCopy))
 					{
@@ -946,6 +1074,62 @@ public final class SessionRequestForwarder
 				}
 			}
 			output.write(line);
+			output.write('\n');
+		}
+
+		/**
+		 * Creates the directory for the session's live results.
+		 *
+		 * @throws IOException if the directory cannot be created
+		 */
+		private void prepareResults() throws IOException
+		{
+			Files.createDirectories(harnessResults.resolve(sessionId).resolve("artifacts"));
+		}
+
+		/**
+		 * Supplies the retained project's evidence and prior turns before the driver can send a new turn.
+		 *
+		 * @param retained the checkpoint guarded by the broker
+		 * @throws IOException if the runner's identity or any evidence differs from the claimed prefix
+		 */
+		private void replayPrefix(RetainedTrialClaim retained) throws IOException
+		{
+			RetainedTrialPrefix prefix = RetainedTrialPrefix.open(turnCopy.getParent(), retained.completedTurns());
+			if (prefix.completedTurns() > 0)
+			{
+				ResultsCopy.copyTurn(prefix.directory(), harnessResults.resolve(sessionId));
+				turnCopied = true;
+			}
+			writeRecord(json.createObjectNode().put("type", "retained_session_id").put("session_id", sessionId));
+			for (int turn = 1; turn <= prefix.completedTurns(); ++turn)
+			{
+				writeRecord(json.createObjectNode().put("type", "retained_turn_start"));
+				try (BufferedReader events = prefix.openEvents(turn))
+				{
+					for (String event = events.readLine(); event != null; event = events.readLine())
+						writeRecord(json.createObjectNode().put("type", "harness_event").put("event", event));
+				}
+				try (InputStream reply = prefix.openReply(turn))
+				{
+					writeRecord(json.readTree(reply));
+				}
+				catch (JacksonException e)
+				{
+					throw new IOException("Cannot replay the retained reply for turn " + turn, e);
+				}
+			}
+		}
+
+		/**
+		 * Forwards an authenticated recovery record as one compact line.
+		 *
+		 * @param record the record to deliver
+		 * @throws IOException if writing fails
+		 */
+		private void writeRecord(JsonNode record) throws IOException
+		{
+			output.write(json.writer().without(SerializationFeature.INDENT_OUTPUT).writeValueAsString(record));
 			output.write('\n');
 		}
 

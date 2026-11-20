@@ -107,6 +107,147 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
+	 * Verifies the managed runner records turn progress before the harness starts and publishes the exact completed
+	 * response with a ready checkpoint before the client receives it.
+	 *
+	 * @throws IOException if the bridge or checkpoint persistence fails
+	 */
+	// Requirement: R-C12
+	@Test
+	public void checkpointPrecedesTurnReply() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		JsonMapper json = JsonMapper.builder().build();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession nestedSession = manager.create("harness");
+			Path checkpoint = nestedSession.directory().resolve("turn-checkpoint.json");
+			Path reply = nestedSession.directory().resolve("artifacts/turn-1.reply.json");
+			Turn turn = Turn.replies(List.of("interim", "final")).withCheckpoint(_ ->
+			{
+				JsonNode progress = json.readTree(Files.readString(checkpoint));
+				requireThat(progress.path("format_version").asInt(), "formatVersion").isEqualTo(1);
+				requireThat(progress.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
+				requireThat(progress.path("state").asString(), "state").isEqualTo("turn_in_progress");
+			});
+		try (ScriptedProcess process = new ScriptedProcess(List.of(turn), new ArrayList<>());
+			Writer output = new CheckpointWriter(json, checkpoint, reply))
+			{
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession, process,
+					new TestHarnessRunnerScope()), manager, input, output);
+			}
+		}
+	}
+
+	/**
+	 * Verifies a provider failure before turn output is written leaves the managed checkpoint in progress.
+	 *
+	 * @throws IOException if the bridge or checkpoint read fails
+	 */
+	// Requirement: R-C12
+	@Test
+	public void providerFailureCheckpoint() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.rejected()), new ArrayList<>());
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession nestedSession = manager.create("harness");
+			Path checkpoint = nestedSession.directory().resolve("turn-checkpoint.json");
+			try
+			{
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession, process,
+					new TestHarnessRunnerScope()), manager, input, new StringWriter());
+				throw new AssertionError("Expected the harness to reject the turn");
+			}
+			catch (IOException e)
+			{
+				requireThat(e.getMessage(), "message").contains("rejected the turn");
+			}
+
+			JsonNode saved = JsonMapper.builder().build().readTree(Files.readString(checkpoint));
+			requireThat(saved.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
+			requireThat(saved.path("state").asString(), "state").isEqualTo("turn_in_progress");
+		}
+	}
+
+	/**
+	 * Verifies an interrupted turn that fails in the provider leaves its managed checkpoint in progress.
+	 *
+	 * @throws IOException if the bridge or checkpoint read fails
+	 */
+	// Requirement: R-C12
+	@Test(timeOut = 10_000)
+	public void interruptedTurnCheckpoint() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted()), new ArrayList<>(),
+				InterruptedTurn.FAILS);
+			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
+				"{\"type\":\"interrupt\"}\n{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession nestedSession = manager.create("harness");
+			Path checkpoint = nestedSession.directory().resolve("turn-checkpoint.json");
+
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession, process,
+				new TestHarnessRunnerScope()), manager, input, new StringWriter());
+
+			JsonNode saved = JsonMapper.builder().build().readTree(Files.readString(checkpoint));
+			requireThat(saved.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
+			requireThat(saved.path("state").asString(), "state").isEqualTo("turn_in_progress");
+		}
+	}
+
+	/**
+	 * Verifies a native terminal result for an interrupted turn keeps the managed checkpoint in progress while preserving
+	 * the bridge's completed-response event.
+	 *
+	 * @throws IOException if the bridge or checkpoint read fails
+	 */
+	// Requirement: R-C12
+	@Test(timeOut = 10_000)
+	public void interruptedResultKeepsCheckpointOpen() throws IOException
+	{
+		CountDownLatch printed = new CountDownLatch(1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories();
+			ScriptedProcess process = new ScriptedProcess(List.of(Turn.blocksUntilInterrupted("partial").
+				announcing(printed)), new ArrayList<>());
+			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n", printed,
+				"{\"type\":\"interrupt\"}\n", new CountDownLatch(1), "{\"type\":\"complete\"}\n"))
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession nestedSession = manager.create("harness");
+			Path checkpoint = nestedSession.directory().resolve("turn-checkpoint.json");
+			Path reply = nestedSession.directory().resolve("artifacts/turn-1.reply.json");
+			StringWriter output = new StringWriter();
+
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(nestedSession, process,
+				new TestHarnessRunnerScope()), manager, input, output);
+
+			JsonNode saved = JsonMapper.builder().build().readTree(Files.readString(checkpoint));
+			requireThat(saved.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
+			requireThat(saved.path("state").asString(), "state").isEqualTo("turn_in_progress");
+			requireThat(Files.exists(reply), "reply").isFalse();
+			requireThat(output.toString(), "output").contains("\"type\":\"interrupted\"").
+				contains("\"type\":\"turn_completed\"").doesNotContain("\"type\":\"turn_failed\"");
+		}
+	}
+
+	/**
 	 * Verifies the harness-neutral transcript retains the exact final assistant response for evaluator consumption.
 	 *
 	 * @throws IOException if the bridge fails
@@ -2263,6 +2404,69 @@ public final class HarnessRunnerBridgeTest
 			{
 				Thread.currentThread().interrupt();
 			}
+		}
+	}
+
+	/**
+	 * Client output that checks the managed checkpoint when its started and completed responses are delivered.
+	 */
+	private static final class CheckpointWriter extends Writer
+	{
+		private final JsonMapper json;
+		private final Path checkpoint;
+		private final Path reply;
+		private final StringBuilder output = new StringBuilder();
+		private int observedLines;
+
+		/**
+		 * Creates the observing output.
+		 *
+		 * @param json       parses client responses
+		 * @param checkpoint the nested session checkpoint
+		 * @param reply      the durable completed-turn response
+		 */
+		private CheckpointWriter(JsonMapper json, Path checkpoint, Path reply)
+		{
+			this.json = json;
+			this.checkpoint = checkpoint;
+			this.reply = reply;
+		}
+
+		@Override
+		public void write(char[] characters, int offset, int length)
+		{
+			output.append(characters, offset, length);
+		}
+
+		@Override
+		public void flush() throws IOException
+		{
+			List<String> lines = output.toString().lines().toList();
+			while (observedLines < lines.size())
+			{
+				JsonNode event = json.readTree(lines.get(observedLines));
+				observedLines += 1;
+				String type = event.path("type").asString();
+				if (type.equals("started"))
+				{
+					JsonNode currentCheckpoint = json.readTree(Files.readString(checkpoint));
+					requireThat(currentCheckpoint.path("format_version").asInt(), "formatVersion").isEqualTo(1);
+					requireThat(currentCheckpoint.path("turn_number").asInt(), "turnNumber").isEqualTo(0);
+					requireThat(currentCheckpoint.path("state").asString(), "state").isEqualTo("ready");
+				}
+				else if (type.equals("turn_completed"))
+				{
+					JsonNode currentCheckpoint = json.readTree(Files.readString(checkpoint));
+					requireThat(currentCheckpoint.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
+					requireThat(currentCheckpoint.path("state").asString(), "state").isEqualTo("ready");
+					requireThat(json.readTree(Files.readString(reply)), "reply").isEqualTo(event);
+				}
+			}
+		}
+
+		@Override
+		public void close()
+		{
 		}
 	}
 

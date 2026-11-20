@@ -1,12 +1,16 @@
 package com.holdmyspot.cat.common.optimizer.port;
 
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
+import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 
 import java.io.IOException;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Starts nested sessions through the current harness's runner.
@@ -25,6 +29,45 @@ public interface SessionPort
 	 * @throws IOException if the session cannot be started
 	 */
 	SessionHandle start(SessionRequest request) throws IOException;
+
+	/**
+	 * Indicates whether the port supports recovery by original trial request ID.
+	 *
+	 * @return whether a broker can inspect and continue trials started by this port
+	 */
+	default boolean recoversTrials()
+	{
+		return false;
+	}
+
+	/**
+	 * Launches a tracked trial or continues its claimed prefix.
+	 *
+	 * @param request the trial's original inputs
+	 * @param requestId the request identifier recorded before the original launch
+	 * @param claim the prefix that the broker must recheck before a resume, or empty for a fresh launch
+	 * @return the running session's handle
+	 * @throws IOException if the trial cannot be started or continued
+	 */
+	default SessionHandle startTrial(SessionRequest request, UUID requestId, Optional<RetainedTrialClaim> claim)
+		throws IOException
+	{
+		if (claim.isPresent())
+			throw new IOException("This session port does not support trial recovery");
+		return start(request);
+	}
+
+	/**
+	 * Asks the broker to inspect or discard a trial that the port launched.
+	 *
+	 * @param request the operation and original trial request identifier
+	 * @return the broker's answer
+	 * @throws IOException if the port cannot obtain the broker's answer
+	 */
+	default RetainedTrialResponse retainedTrial(RetainedTrialRequest request) throws IOException
+	{
+		throw new IOException("This session port does not support trial recovery");
+	}
 
 	/**
 	 * Returns the end of the hold on the harness's shared capacity, which a rate-limited session of any campaign of the

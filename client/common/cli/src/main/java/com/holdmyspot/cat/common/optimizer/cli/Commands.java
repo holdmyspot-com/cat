@@ -497,17 +497,32 @@ public final class Commands
 	 */
 	public boolean startsSessions(List<String> args)
 	{
+		return sessionStartingCommand(args).isPresent();
+	}
+
+	/**
+	 * Parses the session-starting command for the launch preflight.
+	 *
+	 * @param args the arguments, starting with the command's name
+	 * @return the parsed command, or empty for invalid input and commands that cannot start sessions
+	 * @throws NullPointerException if {@code args} is null
+	 */
+	Optional<Command> sessionStartingCommand(List<String> args)
+	{
 		requireThat(args, "args").isNotNull();
 		if (isHelpRequest(args) || isContractTool(args))
-			return false;
+			return Optional.empty();
 		try
 		{
-			return canStartTrial(parse(args));
+			Command command = parse(args);
+			if (canStartTrial(command))
+				return Optional.of(command);
 		}
 		catch (InvalidCommandException _)
 		{
-			return false;
+			// The command runner reports invalid arguments.
 		}
+		return Optional.empty();
 	}
 
 	/**
