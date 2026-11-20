@@ -1,5 +1,5 @@
 ---
-description: Use when the user asks to test, run, or verify workflow or pipeline changes on a remote CI runner or hosted worker, or to set up, connect to, or troubleshoot an Upterm session on a runner, including retrying a failed job step on the same worker.
+description: Use when the user asks to test workflow changes on a remote CI worker, diagnose an unresolved CI job failure on its worker even with unchanged commands, retry a failed step on the same worker, or set up, connect to, or troubleshoot an Upterm session.
 allowed-tools: [Bash]
 ---
 
