@@ -31,6 +31,10 @@ public final class RunnerArguments
 	 */
 	public static final String STARTUP_PERMIT_OPTION = "--startup-permit";
 	/**
+	 * The broker-only option that adds a current parent read restriction when continuing a retained session.
+	 */
+	public static final String INHERITED_DENY_READ_OPTION = "--inherited-deny-read";
+	/**
 	 * The launch option that resumes a harness session that an interrupted nested session of the launch's server
 	 * recorded.
 	 */

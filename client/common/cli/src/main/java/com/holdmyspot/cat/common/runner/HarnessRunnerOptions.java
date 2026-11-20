@@ -94,7 +94,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		"--effort", "--output", "--receipt", "--deny-read", "--read-only-evidence", "--workspace", "--plugin", "--input",
 		"--session-requests", "--request-depth", "--capacity-wait", "--policy-bound", "--git-name", "--git-email",
 		ExtraPermissions.OPTION, Conversation.OPTION, "--turn-copy",
-		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION);
+		RunnerArguments.SLOT_ID_OPTION, RunnerArguments.RESUME_SLOT_OPTION, RunnerArguments.STARTUP_PERMIT_OPTION,
+		RunnerArguments.INHERITED_DENY_READ_OPTION);
 	/**
 	 * The name that a candidate CAT's manifest gives it.
 	 */
@@ -136,6 +137,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		String startupPermit = startupPermit(args).orElse(null);
+		boolean inheritsDeniedReads = false;
 		Path project = Path.of("").toAbsolutePath().normalize();
 		String explicitResultsFolder = null;
 		String model = "";
@@ -236,6 +238,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 				options.receipt = Path.of(value);
 			else if (option.equals("--deny-read"))
 				options.deniedReads.add(Path.of(value));
+			else if (option.equals(RunnerArguments.INHERITED_DENY_READ_OPTION))
+			{
+				inheritsDeniedReads = true;
+				options.deniedReads.add(Path.of(value));
+			}
 			else if (option.equals("--read-only-evidence"))
 				options.readOnlyEvidence.add(Path.of(value));
 			else if (option.equals("--workspace"))
@@ -293,6 +300,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		if (startupPermit != null && options.slotId == null)
 			throw new InvalidArgumentsException(RunnerArguments.STARTUP_PERMIT_OPTION + " requires " +
 				RunnerArguments.SLOT_ID_OPTION);
+		if (inheritsDeniedReads && (options.resumeSlot == null || startupPermit == null))
+		{
+			throw new InvalidArgumentsException(RunnerArguments.INHERITED_DENY_READ_OPTION + " requires " +
+				RunnerArguments.RESUME_SLOT_OPTION + " and " + RunnerArguments.STARTUP_PERMIT_OPTION);
+		}
 		requireProfile(harness, model, effort);
 		Path resultsFolder = temporaryRoot.resultsFolder(explicitResultsFolder);
 		return new HarnessRunnerOptions(options.artifact, project, resultsFolder, model, effort, options.output,

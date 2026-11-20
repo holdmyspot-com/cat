@@ -224,6 +224,28 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
+	 * Verifies that the runner accepts an inherited read restriction only with both a resumed session and a startup
+	 * permit.
+	 */
+	@Test
+	public void requiresManagedResumeForInheritedDenial()
+	{
+		String option = RunnerArguments.INHERITED_DENY_READ_OPTION;
+		String[] noResume = launch("--slot-id", "slot-1", RunnerArguments.STARTUP_PERMIT_OPTION,
+			"6b1f7c1e-5d0a-4c55-9a8e-2f6c0f1d2e3a", option, absolute("denied"));
+		String[] noPermit = launch("--slot-id", "slot-1", RunnerArguments.RESUME_SLOT_OPTION,
+			"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", option, absolute("denied"));
+
+		for (String[] args : List.of(noResume, noPermit))
+		{
+			IllegalArgumentException refusal = expectThrows(IllegalArgumentException.class,
+				() -> HarnessRunnerOptions.parse(args, "harness", SESSION));
+			requireThat(refusal.getMessage(), "refusal").contains(option).contains(RunnerArguments.RESUME_SLOT_OPTION).
+				contains(RunnerArguments.STARTUP_PERMIT_OPTION);
+		}
+	}
+
+	/**
 	 * Verifies that a launch for a session of the held-out part is accepted by the runner, which does not need the
 	 * part itself.
 	 */

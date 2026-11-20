@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LiveNestedSession;
 import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionLaunch;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
@@ -1163,7 +1164,8 @@ public final class SessionRequestBrokerTest
 	 * Verifies that a requested session whose launcher ended after its harness reported its session keeps its slot,
 	 * which no other session takes, and that a launch that resumes the harness session continues it in that slot,
 	 * without a project of its own and without using any of the requesting nested session's allowance. The slot
-	 * records the original request before starting either runner and is emptied once the resumed session ends.
+	 * records the original request before starting either runner and is emptied once the resumed session ends. The
+	 * resumed runner passes down the read restrictions fixed at launch and the current restrictions from its parent.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1171,19 +1173,23 @@ public final class SessionRequestBrokerTest
 	public void interruptedLaunchResumesInItsSlot() throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
-		try (Fixture fixture = new Fixture("--session-requests", "1"))
+		try (Fixture fixture = new Fixture("--session-requests", "1", "--request-depth", "1"))
 		{
+			Path originalDenial = Files.createDirectory(fixture.project.resolve("private-at-start"));
+			Path catPlugin = Files.createDirectories(fixture.options.resultsFolder().resolve("cat-plugin"));
 			Path held = Files.writeString(fixture.root.resolve("held.jsonl"),
 				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
 			Path again = Files.writeString(fixture.root.resolve("again.jsonl"),
 				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
 			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			AtomicReference<HarnessRunnerOptions> resumedOptions = new AtomicReference<>();
+			AtomicReference<List<Path>> grandchildDenials = new AtomicReference<>();
 			List<List<String>> starts = new CopyOnWriteArrayList<>();
 			List<String> requestIds = new CopyOnWriteArrayList<>();
 			List<JsonNode> bindingsAtStart = new CopyOnWriteArrayList<>();
 			AtomicInteger checks = new AtomicInteger();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
-				fixture.options, (_, options, response) ->
+				fixture.options, catPlugin, (harness, options, response) ->
 				{
 					starts.add(List.copyOf(options));
 					requestIds.add(response.getFileName().toString());
@@ -1192,13 +1198,24 @@ public final class SessionRequestBrokerTest
 						bindingsAtStart.add(fixture.json.readTree(binding.toFile()));
 					else
 						bindingsAtStart.add(fixture.json.createObjectNode());
+					if (options.contains(RunnerArguments.RESUME_SLOT_OPTION))
+					{
+						List<String> arguments = new ArrayList<>(List.of("--artifact", fixture.root.toString()));
+						arguments.addAll(options);
+						String[] effective = NestedSessionLaunch.resumedArguments(fixture.json, harness,
+							arguments.toArray(String[]::new));
+						HarnessRunnerOptions parsed = HarnessRunnerOptions.parse(effective, harness,
+							HarnessTemporaryRoot.of(fixture.root));
+						resumedOptions.set(parsed);
+						grandchildDenials.set(grandchildDenials(fixture, fileLocks, harness, parsed, again));
+					}
 					FakeHarnessCli process = resumableRunner(fixture, fileLocks, options, child);
 					child.set(process);
 					return process;
 				}))
 			{
 				String[] first = {"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
-					"--input", held.toString()};
+					"--deny-read", originalDenial.toString(), "--input", held.toString()};
 				expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude", first,
 					new StringReader(""), fixture.requests, () ->
 					{
@@ -1224,6 +1241,7 @@ public final class SessionRequestBrokerTest
 				Path binding = slot.resolve(ORIGINAL_REQUEST_FILE);
 				requireOriginalRequest(fixture.json.readTree(binding.toFile()), originalRequest);
 
+				Path currentDenial = Files.createDirectory(fixture.options.resultsFolder().resolve("private-added-later"));
 				String[] resume = {RunnerArguments.RESUME_OPTION, RESUMED_SESSION, "--model", "haiku", "--effort",
 					"low", "--input", again.toString()};
 				StringWriter errors = new StringWriter();
@@ -1237,6 +1255,10 @@ public final class SessionRequestBrokerTest
 					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+				requireThat(resumedOptions.get().deniedReads(), "effectiveDeniedReads").contains(originalDenial).
+					contains(fixture.denied).contains(currentDenial).doesNotContain(catPlugin);
+				requireThat(grandchildDenials.get(), "grandchildDeniedReads").contains(originalDenial).
+					contains(fixture.denied).contains(currentDenial).contains(slot);
 				requireThat(fixture.json.readTree(fixture.responses.resolve(SessionRequestAccess.LIMITS_FILE).toFile()).
 					path("requests_used").intValue(), "requestsUsed").isEqualTo(1);
 				List<String> resumed = starts.get(1);
@@ -1250,6 +1272,53 @@ public final class SessionRequestBrokerTest
 					Thread.yield();
 				requireThat(Files.exists(slot), "slotRetained").isFalse();
 			}
+		}
+	}
+
+	/**
+	 * Forwards a launch from a resumed requested session and returns the read restrictions received by its child.
+	 *
+	 * @param fixture   the original requesting session
+	 * @param fileLocks the file locks of the resumed session
+	 * @param harness   the resumed session's harness
+	 * @param resumed   the options of the resumed session
+	 * @param input     the bridge records to send to the grandchild
+	 * @return the grandchild's read restrictions
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	private static List<Path> grandchildDenials(Fixture fixture, FileLocks fileLocks, String harness,
+		HarnessRunnerOptions resumed, Path input) throws IOException
+	{
+		Path results = resumed.resultsFolder();
+		NestedSession session = new NestedSession(harness, resumed.slotId(),
+			results.resolve(harness).resolve(resumed.slotId()));
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, results, Clock.systemUTC(),
+			Yielding.fileReplacer());
+		SessionRequestAccess.allowing(session, fixture.root, resumed.sessionRequests(), Platform.current(),
+			SessionRequestAccess.Shell.POSIX);
+		AtomicReference<List<Path>> deniedReads = new AtomicReference<>();
+		try (SessionRequestBroker broker = new SessionRequestBroker(session, manager, resumed,
+			(childHarness, options, _) ->
+			{
+				List<String> arguments = new ArrayList<>(List.of("--artifact", fixture.root.toString()));
+				arguments.addAll(options);
+				HarnessRunnerOptions parsed = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), childHarness,
+					HarnessTemporaryRoot.of(fixture.root));
+				deniedReads.set(parsed.deniedReads());
+				return inSlot(fixture, fileLocks, options, new ArrayList<>(), 0);
+			}))
+		{
+			String[] launch = {"--project", session.directory().resolve("project").toString(), "--model", "haiku",
+				"--effort", "low", "--input", input.toString()};
+			StringWriter errors = new StringWriter();
+			int status = SessionRequestForwarder.forward(harness, launch, new StringReader(""),
+				SessionRequestAccess.requestsDirectory(session), () ->
+				{
+					broker.scan();
+					Thread.yield();
+				}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+			requireThat(status, "grandchildStatus").withContext(errors, "errors").isEqualTo(0);
+			return deniedReads.get();
 		}
 	}
 
@@ -1928,6 +1997,17 @@ public final class SessionRequestBrokerTest
 						throw new IOException("The refused launch made a request");
 					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
 				requireThat(fixed.getMessage(), "fixed").contains("--deny-read");
+
+				InvalidArgumentsException internal = expectThrows(InvalidArgumentsException.class,
+					() -> SessionRequestForwarder.forward("claude", new String[]{RunnerArguments.RESUME_OPTION,
+						RESUMED_SESSION, "--model", "haiku", "--effort", "low",
+						RunnerArguments.INHERITED_DENY_READ_OPTION, "/secret", "--input", again.toString()},
+						new StringReader(""), fixture.requests, () ->
+						{
+							throw new IOException("The refused launch made a request");
+						}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+				requireThat(internal.getMessage(), "internal").contains("Unsupported option").
+					contains(RunnerArguments.INHERITED_DENY_READ_OPTION);
 			}
 		}
 	}
@@ -3001,7 +3081,8 @@ public final class SessionRequestBrokerTest
 			Yielding.fileReplacer()).withFixedSlotId(slotId);
 		if (!options.contains(RunnerArguments.RESUME_SLOT_OPTION))
 		{
-			NestedSession nestedSession = manager.create("claude");
+			NestedSession nestedSession = manager.
+				withLaunchArguments(NestedSessionLaunch.fixedArguments(options.toArray(String[]::new))).create("claude");
 			manager.recordHarnessSession(nestedSession, RESUMED_SESSION);
 			return new FakeHarnessCli(_ ->
 			{

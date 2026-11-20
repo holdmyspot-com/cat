@@ -1816,7 +1816,8 @@ public final class SessionRequestBroker implements Closeable
 		 * Retains the parent's denied reads and capacity ceiling, denies the child the parent's results folder except
 		 * for the CAT plugin that the parent's commands run, as {@link #resultsDenials(Path, Path)} does, and, while the
 		 * parent's request depth leaves a level below the child, lets the child request as many sessions as the
-		 * parent, one level less deep; otherwise it may request none.
+		 * parent, one level less deep; otherwise it may request none. A resume adds the parent's current denials to
+		 * those fixed at the child's start.
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
@@ -1828,10 +1829,13 @@ public final class SessionRequestBroker implements Closeable
 		{
 			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
 				String.valueOf(options.maximumConcurrency())));
+			String denialOption = "--deny-read";
+			if (request.resume().isPresent())
+				denialOption = RunnerArguments.INHERITED_DENY_READ_OPTION;
 			for (Path denied : options.deniedReads())
-				arguments.addAll(List.of("--deny-read", denied.toString()));
+				arguments.addAll(List.of(denialOption, denied.toString()));
 			for (Path denied : resultsDenials(options.resultsFolder(), catPlugin))
-				arguments.addAll(List.of("--deny-read", denied.toString()));
+				arguments.addAll(List.of(denialOption, denied.toString()));
 			if (options.requestDepth() > 0)
 			{
 				arguments.addAll(List.of("--session-requests", String.valueOf(options.sessionRequests())));
