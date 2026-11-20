@@ -1686,7 +1686,8 @@ public final class OptimizerCoreTest
 			}
 			requireThat(proposalText(result), "proposal").isNotNull().contains("\n## Guard pilot\n").
 				contains("- `asks_before_deleting` (guard): 20 of 20 passed (100%)");
-			requireThat(proposalText(result).split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
+			requireThat(proposalText(result).split("20 trials decided, 0 ended without a decision\\.", -1).length,
+				"decidedPilots").
 				isEqualTo(4);
 			requireThat(result.status().tokens().roles().keySet(), "tokens").doesNotContain(SessionRole.TRIAL).
 				doesNotContain(SessionRole.JUDGE);
@@ -4766,8 +4767,8 @@ public final class OptimizerCoreTest
 
 	/**
 	 * Verifies that {@code start} pauses, with the retry and stop choice of a campaign and no proposal to confirm,
-	 * when one guard pilot trial ends without an outcome three times, and that a second {@code start} reports the
-	 * pause without running a session.
+	 * when one guard pilot trial ends without an outcome three times. A second {@code start} reports the pause
+	 * without starting a session, including when the pause is stored only in a version 4 pilot file.
 	 * <p>
 	 * This test can take one second or longer when it runs first in its JVM: it starts a campaign with its guard pilot
 	 * trials through the public commands; loading and compiling the classes of those commands, which the first test in
@@ -4811,7 +4812,14 @@ public final class OptimizerCoreTest
 			requireThat(choiceIds(again), "againChoices").isEqualTo(List.of("retry", "stop"));
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "againTrialSessions").isEqualTo(8);
 
-			// Recreate an ended host whose pilot pause reached disk before the campaign snapshot recorded it.
+			// Recover a stored version 4 pause that reached disk before the campaign snapshot recorded it.
+			Path pilotFile = repository.directory(id).resolve("held_out/pilot.json");
+			ObjectNode legacy = earlierPilot(pilotFile, 4);
+			ObjectNode firstPilot = (ObjectNode) legacy.path("tests").get(0);
+			requireThat(firstPilot.path("pending_trials").size(), "pendingTrials").isEqualTo(1);
+			firstPilot.put("paused", false);
+			firstPilot.putNull("stop_reason");
+			Files.writeString(pilotFile, legacy.toString());
 			Campaign beforePause = Transitions.apply(paused, new CampaignEvent.Choose(Choice.RETRY, 0, 0));
 			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
 				replaceSnapshot(beforePause);
@@ -4820,6 +4828,8 @@ public final class OptimizerCoreTest
 
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "recoveredTrialSessions").isEqualTo(8);
 			requireThat(choiceIds(recovered), "recoveredChoices").isEqualTo(List.of("retry", "stop"));
+			requireThat(recovered.path("pending").asString(), "recoveredPending").
+				contains("Pilot trial 6 of `formatting` ended without an outcome 3 times");
 			requireThat(recovered.get("proposal_file").isNull(), "recoveredProposal").isTrue();
 		}
 	}
@@ -4865,10 +4875,10 @@ public final class OptimizerCoreTest
 			repository.trialEnd().set(_ -> null);
 			ObjectNode resumed = output(repository, List.of("start", "CLAUDE.md"));
 
-			requireThat(proposalText(resumed).split("20 trials decided, 0 failed runs\\.", -1).length,
+			requireThat(proposalText(resumed).split("20 trials decided, 0 ended without a decision\\.", -1).length,
 				"decidedPilots").isEqualTo(4);
 			requireThat(proposalText(resumed), "resumedProposal").
-				doesNotContain("ended without an outcome and ran again").doesNotContain("stopped before it finished");
+				doesNotContain("before the trials were decided").doesNotContain("stopped before it finished");
 			requireThat(resumed.get("message").isNull(), "resumedMessage").isTrue();
 			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
 			requireThat(repository.load(id).isConfirmed(), "confirmed").isTrue();
@@ -4897,7 +4907,7 @@ public final class OptimizerCoreTest
 
 			requireThat(retried.get("proposal_file").isNull(), "proposal").isFalse();
 			requireThat(proposalText(retried), "proposalText").contains("\n## Guard pilot\n");
-			requireThat(proposalText(retried).split("20 trials decided, 0 failed runs\\.", -1).length,
+			requireThat(proposalText(retried).split("20 trials decided, 0 ended without a decision\\.", -1).length,
 				"decidedPilots").isEqualTo(4);
 			requireThat(retried.get("pending").isNull(), "pending").isTrue();
 			// The 5 trials decided before the pause are kept: 3 pilots of 20 trials less those 5 remain
@@ -4929,12 +4939,7 @@ public final class OptimizerCoreTest
 				asString();
 			Path file = repository.directory(id).resolve("held_out/pilot.json");
 			JsonMapper mapper = JsonMapper.builder().build();
-			ObjectNode old = (ObjectNode) mapper.readTree(Files.readString(file));
-			requireThat(old.path("format_version").asInt(), "currentVersion").isEqualTo(4);
-			old.put("format_version", 3);
-			for (JsonNode test : old.path("tests"))
-				((ObjectNode) test).remove("pending_trials");
-			Files.writeString(file, old.toString());
+			Files.writeString(file, earlierPilot(file, 3).toString());
 			repository.trialEnd().set(_ -> null);
 
 			ObjectNode retried = output(repository, List.of("choose", id, "retry"));
@@ -4943,10 +4948,38 @@ public final class OptimizerCoreTest
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
 				isEqualTo(8 + 3 * GuardPilot.TRIALS - 5);
 			JsonNode upgraded = mapper.readTree(Files.readString(file));
-			requireThat(upgraded.path("format_version").asInt(), "upgradedVersion").isEqualTo(4);
+			requireThat(upgraded.path("format_version").asInt(), "upgradedVersion").isEqualTo(5);
 			for (JsonNode test : upgraded.path("tests"))
+			{
 				requireThat(test.path("pending_trials").size(), "pendingTrials").isEqualTo(0);
+				requireThat(test.path("failed_trials").isArray(), "failedTrials").isTrue();
+				requireThat(test.has("failed_runs"), "legacyFailureField").isFalse();
+			}
 		}
+	}
+
+	/**
+	 * Converts a stored pilot to an earlier layout.
+	 *
+	 * @param file    the stored pilot
+	 * @param version the historical format version, 3 or 4
+	 * @return the converted pilot
+	 * @throws IOException if the pilot cannot be read
+	 */
+	private static ObjectNode earlierPilot(Path file, int version) throws IOException
+	{
+		JsonMapper mapper = JsonMapper.builder().build();
+		ObjectNode old = (ObjectNode) mapper.readTree(Files.readString(file));
+		requireThat(old.path("format_version").asInt(), "currentVersion").isEqualTo(5);
+		old.put("format_version", version);
+		for (JsonNode test : old.path("tests"))
+		{
+			ObjectNode testObject = (ObjectNode) test;
+			testObject.set("failed_runs", testObject.remove("failed_trials"));
+			if (version == 3)
+				testObject.remove("pending_trials");
+		}
+		return old;
 	}
 
 	/**
@@ -4990,7 +5023,7 @@ public final class OptimizerCoreTest
 			ObjectNode resumed = output(repository, List.of("start", "CLAUDE.md", "--max-concurrency", "1"));
 
 			String id = resumed.get("campaign").asString();
-			requireThat(proposalText(resumed).split("20 trials decided, 0 failed runs\\.", -1).length,
+			requireThat(proposalText(resumed).split("20 trials decided, 0 ended without a decision\\.", -1).length,
 				"decidedPilots").isEqualTo(4);
 			// The 5 trials decided before the end are kept: 3 pilots of 20 trials less those 5 remain
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
@@ -5057,7 +5090,8 @@ public final class OptimizerCoreTest
 			requireThat(slices, "slices").isGreaterThan(1);
 			requireThat(slice.get("status").asString(), "finalStatus").isEqualTo("awaiting_user");
 			requireThat(slice.get("campaign").asString(), "campaign").isEqualTo(id);
-			requireThat(proposalText(slice).split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
+			requireThat(proposalText(slice).split("20 trials decided, 0 ended without a decision\\.", -1).length,
+				"decidedPilots").
 				isEqualTo(4);
 			// No trial that a slice decided ran again, and no trial that a slice cancelled stayed undecided
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").
@@ -5151,7 +5185,8 @@ public final class OptimizerCoreTest
 				++slices;
 			}
 
-			requireThat(proposalText(slice).split("20 trials decided, 0 failed runs\\.", -1).length, "decidedPilots").
+			requireThat(proposalText(slice).split("20 trials decided, 0 ended without a decision\\.", -1).length,
+				"decidedPilots").
 				isEqualTo(4);
 			// The 5 trials decided before the pause are kept, and the 3 that failed ran again
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "trialSessions").

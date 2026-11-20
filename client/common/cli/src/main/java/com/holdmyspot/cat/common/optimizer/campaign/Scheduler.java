@@ -757,8 +757,8 @@ public final class Scheduler
 	/**
 	 * Plans the incumbent's baseline trials in the certification scope's cells on the remaining capacity, one cell at a
 	 * time in turn, until each cell's unadopted and adopted trials reach its target. A baseline trial's failure decides
-	 * nothing that wastes another trial, so baseline trials run up to the campaign's ceiling, halved after runs without
-	 * an outcome.
+	 * nothing that wastes another trial, so baseline trials run up to the campaign's ceiling, halved after attempts
+	 * without an outcome.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far

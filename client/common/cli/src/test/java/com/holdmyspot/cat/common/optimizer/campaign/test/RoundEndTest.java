@@ -17,10 +17,10 @@ import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -394,10 +394,10 @@ public final class RoundEndTest
 		Round beforeInterruption = campaign.development().round();
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.INFRASTRUCTURE,
 			"provider error", NOW));
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.INTERRUPTED,
 			"slice ended", NOW));
 
 		requireThat(campaign.outcome(), "outcome").isNull();

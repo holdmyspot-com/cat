@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * A candidate's adopted outcomes on one trial's content, including representative and targeted runs.
+ * A candidate's adopted outcomes on one trial's content, including representative and targeted trials.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *

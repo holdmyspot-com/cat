@@ -28,9 +28,9 @@ import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
@@ -504,7 +504,7 @@ public final class TransitionsTest
 	}
 
 	/**
-	 * Verifies that a run observed under other conditions yields no outcome, is kept as an observation without
+	 * Verifies that a trial attempt under other conditions yields no outcome, is kept as an observation without
 	 * counting as an infrastructure failure, and reruns the same test case after a restore.
 	 */
 	@Test
@@ -518,7 +518,7 @@ public final class TransitionsTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT - 1; ++failure)
 		{
-			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.INFRASTRUCTURE,
 				"provider error", NOW));
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		}
@@ -678,7 +678,7 @@ public final class TransitionsTest
 		{
 			requireThat(campaign.pending(), "pending[" + failure + "]").isNull();
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.INFRASTRUCTURE,
 				"provider error", NOW));
 		}
 		requireThat(campaign.pending(), "pending").isEqualTo(new PendingDecision.TrialFailures(key));
@@ -766,7 +766,7 @@ public final class TransitionsTest
 		for (int failure = 0; failure < Campaign.INFRASTRUCTURE_FAILURE_LIMIT; ++failure)
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INFRASTRUCTURE,
+			campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.INFRASTRUCTURE,
 				"provider error", NOW));
 		}
 		return campaign;
@@ -825,7 +825,7 @@ public final class TransitionsTest
 		Campaign campaign = TransitionSteps.assign(new Builder().confirmed().build(), Purpose.DEVELOPMENT,
 			"safety");
 		LogicalTrial trial = campaign.trials().getFirst();
-		List<InfrastructureAttempt> attempts = List.of(new InfrastructureAttempt(NOW, RunFailure.RATE_LIMITED,
+		List<InfrastructureAttempt> attempts = List.of(new InfrastructureAttempt(NOW, TrialAttemptFailure.RATE_LIMITED,
 			"The provider returned HTTP 429"));
 		new LogicalTrial(trial.key(), trial.testCase(), trial.identity(), trial.allocation(), TrialState.ASSIGNED,
 			null, null, List.of(), null, 1, attempts, 0, List.of(), null);
@@ -852,7 +852,7 @@ public final class TransitionsTest
 	}
 
 	/**
-	 * Verifies that every run that ends without an outcome is recorded on the trial with its time, classification
+	 * Verifies that every attempt that ends without an outcome is recorded on its trial with the time, classification
 	 * and detail, and that a retry resets only the count toward the limit.
 	 */
 	@Test
@@ -863,11 +863,11 @@ public final class TransitionsTest
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "safety");
 		TrialKey key = TransitionSteps.last(campaign);
 		List<InfrastructureAttempt> expected = List.of(
-			new InfrastructureAttempt(NOW, RunFailure.INFRASTRUCTURE, "provider returned HTTP 500"),
-			new InfrastructureAttempt(NOW.plusSeconds(10), RunFailure.RATE_LIMITED, "rate limit reached"),
-			new InfrastructureAttempt(NOW.plusSeconds(20), RunFailure.INTERRUPTED, "slice ended"),
-			new InfrastructureAttempt(NOW.plusSeconds(30), RunFailure.INFRASTRUCTURE, "runner crashed"),
-			new InfrastructureAttempt(NOW.plusSeconds(40), RunFailure.INFRASTRUCTURE, "invalid judge result"));
+			new InfrastructureAttempt(NOW, TrialAttemptFailure.INFRASTRUCTURE, "provider returned HTTP 500"),
+			new InfrastructureAttempt(NOW.plusSeconds(10), TrialAttemptFailure.RATE_LIMITED, "rate limit reached"),
+			new InfrastructureAttempt(NOW.plusSeconds(20), TrialAttemptFailure.INTERRUPTED, "slice ended"),
+			new InfrastructureAttempt(NOW.plusSeconds(30), TrialAttemptFailure.INFRASTRUCTURE, "runner crashed"),
+			new InfrastructureAttempt(NOW.plusSeconds(40), TrialAttemptFailure.INFRASTRUCTURE, "invalid judge result"));
 		for (InfrastructureAttempt attempt : expected)
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));

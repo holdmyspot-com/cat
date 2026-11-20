@@ -30,7 +30,7 @@ public enum Purpose
 	 */
 	DIAGNOSTIC,
 	/**
-	 * A targeted run of a prompt author attempt or of the working candidate on a regression test case, which is never
+	 * A replay of a regression test case against a prompt author attempt or the working candidate, which is never
 	 * counted.
 	 */
 	PROMOTION,

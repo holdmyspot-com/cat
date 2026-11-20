@@ -26,10 +26,10 @@ import java.util.Optional;
  *   built-in tools, then those that its judge named; empty unless the trial failed
  * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
  *   another purpose or was judged by a build that did not decide impacts
- * @param infrastructureFailures the runs that ended without an outcome and count toward
+ * @param infrastructureFailures the attempts that ended without an outcome and count toward
  *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}; a {@link Choice#RETRY} resets it to 0
- * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
- * @param observations the runs that ended under conditions that differ from the trial's identity
+ * @param infrastructureAttempts every attempt that ended without an outcome, in the order the attempts ended
+ * @param observations the attempts that ended under conditions that differ from the trial's identity
  * @param responses each completed turn's assistant messages in order; empty before the trial is judged
  * @param files where the trial session's harness events and file changes were retained, or {@code null} if the trial
  *   is not judged
@@ -58,10 +58,10 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	 *   failed
 	 * @param triage the impact of a failed development trial, or {@code null} if the trial passed, is not judged, has
 	 *   another purpose or was judged by a build that did not decide impacts
-	 * @param infrastructureFailures the runs that ended without an outcome and count toward
+	 * @param infrastructureFailures the attempts that ended without an outcome and count toward
 	 *   {@link Campaign#INFRASTRUCTURE_FAILURE_LIMIT}
-	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
-	 * @param observations the runs that ended under conditions that differ from the trial's identity
+	 * @param infrastructureAttempts every attempt that ended without an outcome, in the order the attempts ended
+	 * @param observations the attempts that ended under conditions that differ from the trial's identity
 	 * @param responses each completed turn's assistant messages in order; empty before the trial is judged
 	 * @param files where the trial session's harness events and file changes were retained, or {@code null} if the
 	 *   trial is not judged
@@ -76,7 +76,7 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	 *   {@code failedAssertions} is not empty for a trial that did not fail, a
 	 *   {@code triage} exists for a trial that is not a failed {@link Purpose#DEVELOPMENT development} or
 	 *   {@link Purpose#RACE race} trial, or
-	 *   {@code infrastructureFailures} exceeds the number of {@link RunFailure#INFRASTRUCTURE} attempts
+	 *   {@code infrastructureFailures} exceeds the number of {@link TrialAttemptFailure#INFRASTRUCTURE} attempts
 	 */
 	public LogicalTrial
 	{
@@ -110,7 +110,7 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 		infrastructureAttempts = List.copyOf(infrastructureAttempts);
 		responses = responses.stream().map(List::copyOf).toList();
 		long infrastructure = infrastructureAttempts.stream().
-			filter(attempt -> attempt.failure() == RunFailure.INFRASTRUCTURE).
+			filter(attempt -> attempt.failure() == TrialAttemptFailure.INFRASTRUCTURE).
 			count();
 		requireThat((long) infrastructureFailures, "infrastructureFailures").
 			isLessThanOrEqualTo(infrastructure, "infrastructureAttempts(INFRASTRUCTURE)");
@@ -128,9 +128,9 @@ public record LogicalTrial(TrialKey key, DrawnTestCase testCase, MeasurementIden
 	 * @param rationale the judge's explanation of {@code verdict}, or {@code null} if the trial is not judged
 	 * @param failedAssertions the assertions that a failed trial failed, each with its behavior
 	 * @param triage the impact of a failed development trial, or {@code null}
-	 * @param infrastructureFailures the runs that ended without an outcome and count toward the limit
-	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
-	 * @param observations the runs that ended under conditions that differ from the trial's identity
+	 * @param infrastructureFailures the attempts that ended without an outcome and count toward the limit
+	 * @param infrastructureAttempts every attempt that ended without an outcome, in the order the attempts ended
+	 * @param observations the attempts that ended under conditions that differ from the trial's identity
 	 * @param responses each completed turn's assistant messages in order
 	 * @param files where the trial session's harness events and file changes were retained, or {@code null}
 	 * @throws NullPointerException if the canonical constructor rejects the arguments

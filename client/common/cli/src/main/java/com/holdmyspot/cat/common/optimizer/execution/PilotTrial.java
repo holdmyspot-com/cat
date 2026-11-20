@@ -21,8 +21,8 @@ import java.util.Map;
  * @param assertions indicates whether the trial passed each assertion that it decided, by assertion identifier. A
  *   failed built-in tool ends the trial without a judge, so the assertions that the judge decides are absent.
  * @param record the judge's rationale, or the record of the failed built-in tools
- * @param infrastructureAttempts why each earlier run of this logical trial ended without an outcome, in the order the
- *   runs ended; the trial reran with the same test case until a run decided it
+ * @param infrastructureAttempts why each earlier attempt of this trial ended without an outcome, in the order the
+ *   attempts ended. The trial used the same test case on every retry.
  */
 public record PilotTrial(int position, Map<String, String> values, String expectedOutcome,
 	Map<String, Boolean> assertions, String record, List<String> infrastructureAttempts)
@@ -36,7 +36,7 @@ public record PilotTrial(int position, Map<String, String> values, String expect
 	 * @param expectedOutcome the result that a compliant reply gives
 	 * @param assertions whether the trial passed each assertion that it decided, by assertion identifier
 	 * @param record the judge's rationale, or the record of the failed built-in tools
-	 * @param infrastructureAttempts why each earlier run of this logical trial ended without an outcome
+	 * @param infrastructureAttempts why each earlier attempt of this trial ended without an outcome
 	 * @throws NullPointerException if any of the arguments are null, or a map or list holds null
 	 * @throws IllegalArgumentException if {@code position} is negative, {@code expectedOutcome}, {@code record} or a
 	 *   reason in {@code infrastructureAttempts} are blank, or {@code assertions} is empty

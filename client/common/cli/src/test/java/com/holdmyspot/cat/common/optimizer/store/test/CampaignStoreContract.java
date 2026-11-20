@@ -10,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorDiagnosis;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorKind;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
 import com.holdmyspot.cat.common.optimizer.campaign.Window;
 import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyWindows;
@@ -47,7 +48,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Predecessor;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
@@ -702,9 +702,9 @@ public abstract class CampaignStoreContract
 			LogicalTrial assigned = trial(7, TrialState.ASSIGNED);
 			store.writeAssignment("campaign-1", assigned);
 			List<InfrastructureAttempt> attempts = List.of(
-				new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), RunFailure.INFRASTRUCTURE,
+				new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), TrialAttemptFailure.INFRASTRUCTURE,
 					"provider returned \"overloaded\"\nretry later"),
-				new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.25Z"), RunFailure.RATE_LIMITED,
+				new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.25Z"), TrialAttemptFailure.RATE_LIMITED,
 					"rate limit reached"));
 			LogicalTrial retried = new LogicalTrial(assigned.key(), assigned.testCase(), assigned.identity(),
 				assigned.allocation(), TrialState.ASSIGNED, null, null, List.of(), null, 1, attempts, 0, List.of(), null);
@@ -1336,20 +1336,20 @@ public abstract class CampaignStoreContract
 				allocation(AllocationRule.COVERAGE_FLOOR, 41))).
 			trial(new LogicalTrial(baselineKey, testCase("formatting", 11, false), identity,
 				allocation(AllocationRule.BASELINE, 39), TrialState.RUNNING, null, null, List.of(), null, 2, List.of(
-					new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), RunFailure.INFRASTRUCTURE,
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:00:00Z"), TrialAttemptFailure.INFRASTRUCTURE,
 						"provider returned \"overloaded\"\nretry later"),
-					new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.5Z"), RunFailure.RATE_LIMITED,
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:01:00.5Z"), TrialAttemptFailure.RATE_LIMITED,
 						"rate limit reached"),
-					new InfrastructureAttempt(Instant.parse("2026-10-01T10:02:00Z"), RunFailure.INTERRUPTED,
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:02:00Z"), TrialAttemptFailure.INTERRUPTED,
 						"slice ended"),
-					new InfrastructureAttempt(Instant.parse("2026-10-01T10:03:00Z"), RunFailure.INFRASTRUCTURE,
+					new InfrastructureAttempt(Instant.parse("2026-10-01T10:03:00Z"), TrialAttemptFailure.INFRASTRUCTURE,
 						"runner crashed")), 1, List.of(), null)).
 			trial(new LogicalTrial(formalKey, testCase("safety", 12, false), identity,
 				allocation(AllocationRule.FORMAL, 40), TrialState.JUDGED, Verdict.FAIL, "The reply deleted the file.",
 				List.of(new FailedAssertion("uses_requested_tone", "wrong_tone"),
 					new FailedAssertion("asks_before_deleting", "deleted_without_asking")),
 				null, 1,
-				List.of(new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), RunFailure.INFRASTRUCTURE,
+				List.of(new InfrastructureAttempt(Instant.parse("2026-10-01T11:00:00Z"), TrialAttemptFailure.INFRASTRUCTURE,
 						"invalid judge result")), 0, List.of(), Builder.FILES)).
 			trial(new LogicalTrial(diagnostic, testCase("safety", 4, true), identity,
 				allocation(AllocationRule.TARGETED, 38), TrialState.ASSIGNED, null, null, List.of(), null, 0, List.of(), 0,

@@ -1564,7 +1564,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param configurationDirectory the host's harness configuration directory, which holds the login
 	 * @param capacity the shared capacity from which every session takes one permit
 	 * @param clock the clock for time limits
-	 * @param replacer replaces the files of the sessions' runs
+	 * @param replacer replaces files in the nested session directories
 	 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they load
 	 *   none
 	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
@@ -1587,7 +1587,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
-		 * @param replacer replaces the files of the sessions' runs
+		 * @param replacer replaces files in the nested session directories
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
 		 * @param hostProject the project of the host session that starts the sessions, whose files no session may
@@ -1633,7 +1633,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
-		 * @param replacer replaces the files of the sessions' runs
+		 * @param replacer replaces files in the nested session directories
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
 		 * @throws NullPointerException if any argument is null
@@ -1660,7 +1660,7 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param configurationDirectory the host's harness configuration directory, which holds the login
 		 * @param capacity the shared capacity from which every session takes one permit
 		 * @param clock the clock for time limits
-		 * @param replacer replaces the files of the sessions' runs
+		 * @param replacer replaces files in the nested session directories
 		 * @throws NullPointerException if any argument is null
 		 * @throws IllegalArgumentException if {@code resultsFolder} is not absolute or is a file system root
 		 */

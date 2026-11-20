@@ -152,7 +152,7 @@ final class Draft
 	 */
 	long evidenceRevision;
 	/**
-	 * The concurrency windows of the units of work, and the halvings after runs without an outcome.
+	 * The concurrency windows of the units of work, and the halvings after trial attempts without an outcome.
 	 */
 	ConcurrencyWindows windows;
 	/**

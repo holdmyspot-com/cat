@@ -5,21 +5,21 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import java.time.Instant;
 
 /**
- * A run of a logical trial that ended without a pass or fail outcome. The trial runs again with the same test case.
+ * A trial attempt that ended without a pass or fail outcome. The trial runs again with the same test case.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param endedAt when the run ended
- * @param failure why the run ended
+ * @param endedAt when the attempt ended
+ * @param failure why the attempt ended
  * @param detail what the harness or CAT reported about the failure
  */
-public record InfrastructureAttempt(Instant endedAt, RunFailure failure, String detail)
+public record InfrastructureAttempt(Instant endedAt, TrialAttemptFailure failure, String detail)
 {
 	/**
 	 * Creates an attempt.
 	 *
-	 * @param endedAt when the run ended
-	 * @param failure why the run ended
+	 * @param endedAt when the attempt ended
+	 * @param failure why the attempt ended
 	 * @param detail what the harness or CAT reported about the failure
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code detail} is blank

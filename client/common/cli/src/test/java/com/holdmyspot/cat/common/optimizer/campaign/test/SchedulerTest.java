@@ -415,7 +415,7 @@ public final class SchedulerTest
 	/**
 	 * Verifies that the promotion replays of a prompt author attempt are admitted, each with its snapshot, and that its
 	 * regression replays follow once a triggering test case has passed twice. With one triggering test case, its first
-	 * failing run rejects the attempt, so the runs start one at a time, and the window doubles after a full window of
+	 * failing replay rejects the attempt, so replays start one at a time and the window doubles after a full window of
 	 * passes.
 	 */
 	@Test

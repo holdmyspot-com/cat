@@ -115,8 +115,8 @@ public final class LinkReportTest
 	}
 
 	/**
-	 * Verifies that the report over the project that a run holds lists a link to a file outside the project, as the
-	 * original project's does: the run keeps the link, retargeted to a read-only copy of the file beside the project,
+	 * Verifies that the report over a nested session's project copy lists a link to a file outside the project, as the
+	 * original project's does. The nested session keeps the link, retargeted to a read-only copy beside the project,
 	 * so the report names the link, the copy as its target outside the project, and the read-only limit.
 	 *
 	 * @throws IOException if fixture I/O fails

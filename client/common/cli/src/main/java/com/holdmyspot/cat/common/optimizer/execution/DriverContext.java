@@ -43,7 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param deliverer delivers the candidate that the campaign selects
  * @param calibrator calibrates the cap of a certification attempt
  * @param terminator requests termination of processes that an earlier driver left running
- * @param leftoverSessions finds the harness processes of runs that an earlier driver left running, in the session
+ * @param leftoverSessions finds the processes of sessions that an earlier driver left running, in the session
  *   port's results folders
  * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits that
  *   prompt authors report needing
@@ -90,7 +90,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverSessions finds the harness processes of runs that an earlier driver left running, in the session
+	 * @param leftoverSessions finds the processes of sessions that an earlier driver left running, in the session
  *   port's results folders
 	 * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits
 	 *   that prompt authors report needing
@@ -159,7 +159,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverSessions finds the harness processes of runs that an earlier driver left running
+	 * @param leftoverSessions finds the processes of sessions that an earlier driver left running
 	 * @param authority the confirmed edit authority
 	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials
@@ -202,7 +202,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param deliverer delivers the candidate that the campaign selects
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
-	 * @param leftoverSessions finds the harness processes of runs that an earlier driver left running
+	 * @param leftoverSessions finds the processes of sessions that an earlier driver left running
 	 * @param authority the confirmed edit authority
 	 * @param promptSources the in-project prompt sources, relative to the project
 	 * @param environment the measurement conditions that the driver observes outside trials

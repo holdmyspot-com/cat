@@ -7,10 +7,10 @@ import java.util.Map;
 import java.util.function.Predicate;
 
 /**
- * The concurrency windows of the units of work that adopted an outcome, and the halving of every window after runs
- * that ended without an outcome.
+ * The concurrency windows of the units of work that adopted an outcome and the halvings after trial attempts
+ * without an outcome.
  * <p>
- * Each run of a provider error, crash, rate-limit rejection or refusal halves every window, down to 1. A full window
+ * Each provider error, crash, rate-limit rejection or refusal halves every window, down to 1. A full window
  * of trials that complete with an outcome, counted against the campaign's window when each completes, undoes one
  * halving.
  * <p>
@@ -134,8 +134,8 @@ public record ConcurrencyWindows(Map<WorkUnit, Window> windows, int halvings, in
 	}
 
 	/**
-	 * Returns these windows after a run ended without an outcome because of the provider or the harness: one more
-	 * halving, and no completed trial since.
+	 * Returns these windows with another halving and no completions after a trial attempt ended without an outcome
+	 * because of the provider or harness.
 	 *
 	 * @return the updated windows
 	 */

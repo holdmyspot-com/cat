@@ -19,8 +19,8 @@ import java.util.Optional;
  * attempt, one round of a formal failure group's reproduction, or one prompt author attempt's promotion replays. A
  * unit's spare failures are the further failures that consume one, which it can absorb before the next one decides it
  * and wastes the trials still running. A unit starts at its spare failures plus one, at most the campaign's ceiling,
- * and its window grows and drops as {@link Window} describes. A run without an outcome halves every window, as
- * {@link ConcurrencyWindows} describes.
+ * and its window grows and drops as {@link Window} describes. An attempt without an outcome halves every window.
+ * See {@link ConcurrencyWindows}.
  * <p>
  * The campaign's window is the sum of the limits of the units that admit trials now, at most the ceiling and the
  * throttle's limit. Each unit admits at most its own limit; a formal cell also admits at most its cell limit.

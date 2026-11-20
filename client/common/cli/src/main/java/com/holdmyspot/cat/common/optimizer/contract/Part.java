@@ -7,7 +7,7 @@ package com.holdmyspot.cat.common.optimizer.contract;
 public enum Part
 {
 	/**
-	 * The test cases that development trials, targeted runs, triage, diagnosis and prompt author sessions draw or
+	 * The test cases that development trials, targeted trials, triage, diagnosis and prompt author sessions draw or
 	 * receive.
 	 */
 	DEVELOPMENT,

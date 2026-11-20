@@ -159,7 +159,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 	 *
 	 * @param window the most trials that may run at once for the work that the campaign does now
 	 * @param ceiling the campaign's ceiling
-	 * @param infrastructureHalvings the halvings of every concurrency window after runs without an outcome
+	 * @param infrastructureHalvings the halvings of every concurrency window after trial attempts without an outcome
 	 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 	 * @param windowCap the window that the last rate-limit response set, or 0 if none
 	 * @param backoffs the consecutive rate-limit backoffs
@@ -176,7 +176,7 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		 *
 		 * @param window the most trials that may run at once for the work that the campaign does now
 		 * @param ceiling the campaign's ceiling
-		 * @param infrastructureHalvings the halvings of every concurrency window after runs without an outcome
+		 * @param infrastructureHalvings the halvings of every concurrency window after trial attempts without an outcome
 		 * @param holdUntil the instant before which no trial is admitted, or {@code null} if none
 		 * @param windowCap the window that the last rate-limit response set, or 0 if none
 		 * @param backoffs the consecutive rate-limit backoffs

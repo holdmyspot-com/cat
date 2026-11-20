@@ -227,7 +227,7 @@ public final class GuardPilot
 	 * <p>
 	 * A stored pilot is reused when it ran every trial, every trial ended with a decision, and its test's definition,
 	 * its cell, the control source's files, the selection, the session environment version and the judge version are
-	 * unchanged, so a revision reruns only the tests whose definition changed or whose earlier pilot has a failed run,
+	 * unchanged, so a revision reruns only the tests whose definition changed or whose earlier pilot has a failed trial,
 	 * and every test once the trials' projects or the sessions change what the model receives or how the judge
 	 * decides. A stored pilot that is unfinished but otherwise unchanged keeps the trials that it decided, with their
 	 * test cases, and runs only the others. A test whose cell is unknown, or that
@@ -244,7 +244,7 @@ public final class GuardPilot
 	 * attempt, and nothing pauses on interruptions alone: no further session starts, each unfinished test's result
 	 * records the interruption as why the pilot stopped, and a later run keeps the decided trials and decides the
 	 * others. A trial whose built-in tool cannot be decided from its record is not an
-	 * infrastructure attempt: the proposal's tool is the cause, so the trial is a failed run that says why.
+	 * infrastructure attempt. The pilot records that the proposed tool could not decide the trial.
 	 *
 	 * @param contract the proposed contract
 	 * @param plugins the campaign's trial plugins, which every trial installs
@@ -423,7 +423,7 @@ public final class GuardPilot
 			if (!pilot.paused() && !resetPositions)
 				return pilot;
 			return new PilotResult(pilot.testId(), pilot.definition(), pilot.cellId(), pilot.control(), pilot.seed(),
-				pilot.trials(), pilot.failedRuns(), UNFINISHED, false, recovery);
+				pilot.trials(), pilot.failedTrials(), UNFINISHED, false, recovery);
 		});
 		return reset;
 	}
@@ -458,20 +458,20 @@ public final class GuardPilot
 	/**
 	 * Describes the exhausted draw and every prior failure in its current budget.
 	 *
-	 * @param test the test's identifier
+	 * @param test     the test's identifier
 	 * @param position the zero-based draw position
-	 * @param runs why the attempts ended
+	 * @param attempts why the attempts ended
 	 * @return the reason the pilot paused
 	 */
-	private static String exhaustionReason(String test, int position, List<String> runs)
+	private static String exhaustionReason(String test, int position, List<String> attempts)
 	{
 		StringBuilder reason = new StringBuilder(128).append("Pilot trial ").append(position + 1).
-			append(" of `").append(test).append("` ended without an outcome ").append(runs.size()).append(" times:");
-		for (int i = 0; i < runs.size(); ++i)
+			append(" of `").append(test).append("` ended without an outcome ").append(attempts.size()).append(" times:");
+		for (int i = 0; i < attempts.size(); ++i)
 		{
 			if (i > 0)
 				reason.append(';');
-			reason.append(" (").append(i + 1).append(") ").append(runs.get(i));
+			reason.append(" (").append(i + 1).append(") ").append(attempts.get(i));
 		}
 		return reason.toString();
 	}
@@ -540,7 +540,7 @@ public final class GuardPilot
 	 * Returns why the pilots paused.
 	 *
 	 * @param pilots the pilot of each prompt test that has one, by prompt test
-	 * @return the reason, which names the logical trial whose runs ended without an outcome; empty if no pilot paused
+	 * @return the reason, which names the logical trial whose attempts ended without an outcome; empty if no pilot paused
 	 * @throws NullPointerException if {@code pilots} is null
 	 */
 	public static Optional<String> pauseReason(Map<String, PilotResult> pilots)
@@ -591,7 +591,7 @@ public final class GuardPilot
 		 * Recovery and earlier infrastructure attempts of each undecided trial, by draw position.
 		 */
 		private final Map<Integer, PilotTrialRecovery> recovery = new LinkedHashMap<>();
-		private final List<String> failedRuns = new ArrayList<>();
+		private final List<String> failedTrials = new ArrayList<>();
 		private int finished;
 		private String stopReason;
 		private boolean paused;
@@ -652,20 +652,20 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Records a run of a logical trial that ended without an outcome.
+		 * Records a trial attempt that ended without an outcome.
 		 *
 		 * @param position the trial's draw position
-		 * @param reason why the run ended without an outcome
-		 * @return the runs of the logical trial that ended without an outcome so far, including this one
+		 * @param reason why the attempt ended without an outcome
+		 * @return the attempts that ended without an outcome so far, including this one
 		 */
 		List<String> infrastructureAttempt(int position, String reason)
 		{
 			synchronized (stateLock)
 			{
-				List<String> runs = new ArrayList<>(recovery(position).infrastructureAttempts());
-				runs.add(reason);
-				recovery.put(position, new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, runs, Optional.empty()));
-				return runs;
+				List<String> attempts = new ArrayList<>(recovery(position).infrastructureAttempts());
+				attempts.add(reason);
+				recovery.put(position, new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, attempts, Optional.empty()));
+				return attempts;
 			}
 		}
 
@@ -768,7 +768,7 @@ public final class GuardPilot
 			synchronized (stateLock)
 			{
 				recovery.remove(position);
-				failedRuns.add(reason);
+				failedTrials.add(reason);
 				++finished;
 			}
 		}
@@ -817,7 +817,7 @@ public final class GuardPilot
 				if (trial != null)
 					decided.add(trial);
 			}
-			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedRuns, reason,
+			return new PilotResult(test.id(), definition, cell.id(), control, seed, decided, failedTrials, reason,
 				pause, recovery);
 		}
 	}
@@ -1496,8 +1496,7 @@ public final class GuardPilot
 		 * judge of the assertions without a {@code tool}, the assertions whose failed tool leaves them to the judge,
 		 * and the assertion {@value TestCase#EXPECTED_OUTCOME} unless the test gives it a built-in tool. A trial whose
 		 * tools decide every assertion starts no judge. A tool that the trial's record cannot decide makes the trial a
-		 * failed run that records why; evidence that cannot be read or rendered makes the run an infrastructure
-		 * attempt.
+		 * failed trial with a recorded reason. Unreadable or unrenderable evidence makes it an infrastructure attempt.
 		 *
 		 * @param trial the trial
 		 * @param completed the trial session's result
@@ -1657,12 +1656,12 @@ public final class GuardPilot
 		}
 
 		/**
-		 * Records a run of a logical trial that ended without an outcome. The logical trial runs again with the same
+		 * Records a trial attempt that ended without an outcome. The logical trial runs again with the same
 		 * test case, unless it has now ended without an outcome {@value Campaign#INFRASTRUCTURE_FAILURE_LIMIT} times:
 		 * then the pilot pauses.
 		 *
-		 * @param job the session's work, which belongs to the logical trial
-		 * @param reason why the run ended without an outcome
+		 * @param job    the session's work, which belongs to the logical trial
+		 * @param reason why the attempt ended without an outcome
 		 * @throws IOException if the checkpoint fails or the original launch has not settled
 		 */
 		private void infrastructureFailed(Job job, String reason) throws IOException
@@ -1675,15 +1674,15 @@ public final class GuardPilot
 		/**
 		 * Pauses once the trial has spent its infrastructure allowance.
 		 *
-		 * @param pilot the trial's pilot
+		 * @param pilot    the trial's pilot
 		 * @param position the trial's draw position
-		 * @param runs why its earlier attempts ended
+		 * @param attempts why its earlier attempts ended
 		 */
-		private void pauseIfExhausted(Pilot pilot, int position, List<String> runs)
+		private void pauseIfExhausted(Pilot pilot, int position, List<String> attempts)
 		{
-			if (stopReason == null && runs.size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
+			if (stopReason == null && attempts.size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
 			{
-				stopReason = exhaustionReason(pilot.test.id(), position, runs);
+				stopReason = exhaustionReason(pilot.test.id(), position, attempts);
 				paused = true;
 			}
 		}

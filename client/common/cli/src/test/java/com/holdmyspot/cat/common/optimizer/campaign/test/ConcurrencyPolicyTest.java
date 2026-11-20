@@ -9,11 +9,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
@@ -29,7 +29,7 @@ import org.testng.annotations.Test;
 
 /**
  * Tests how many trials run at once: each unit of work starts at its spare failures plus one, grows after full
- * windows of passes, drops at a failure that consumes a spare failure, and halves after a run without an outcome.
+ * windows of passes, drops at a failure that consumes a spare failure, and halves after an attempt without an outcome.
  */
 public final class ConcurrencyPolicyTest
 {
@@ -117,28 +117,28 @@ public final class ConcurrencyPolicyTest
 	}
 
 	/**
-	 * Returns the run failures that halve the window.
+	 * Returns the trial attempt failures that halve the window.
 	 *
-	 * @return rows of run failures
+	 * @return rows of trial attempt failures
 	 */
 	@DataProvider
 	public static Object[][] infrastructureAttempts()
 	{
 		return new Object[][]
 			{
-				{RunFailure.INFRASTRUCTURE},
-				{RunFailure.RATE_LIMITED}
+				{TrialAttemptFailure.INFRASTRUCTURE},
+				{TrialAttemptFailure.RATE_LIMITED}
 			};
 	}
 
 	/**
-	 * Verifies that a run without an outcome halves the window, and that a full window of trials completed with an
-	 * outcome doubles it again.
+	 * Verifies that a trial attempt without an outcome halves the window. A full window of completed trials with
+	 * outcomes doubles it again.
 	 *
-	 * @param failure why the run ended without an outcome
+	 * @param failure why the trial attempt ended without an outcome
 	 */
 	@Test(dataProvider = "infrastructureAttempts")
-	public void infrastructureAttemptHalvesWindow(RunFailure failure)
+	public void infrastructureAttemptHalvesWindow(TrialAttemptFailure failure)
 	{
 		// Requirement: R-E4
 		Campaign campaign = pass(developing().build(), 7);
@@ -156,17 +156,18 @@ public final class ConcurrencyPolicyTest
 	}
 
 	/**
-	 * Verifies that a run that CAT interrupted leaves the window unchanged.
+	 * Verifies that a trial attempt that CAT interrupted leaves the window unchanged.
 	 */
 	@Test
-	public void interruptedRunKeepsWindow()
+	public void interruptedAttemptKeepsWindow()
 	{
 		// Requirement: R-E4
 		Campaign campaign = pass(developing().build(), 7);
 		campaign = TransitionSteps.assign(campaign, Purpose.DEVELOPMENT, "formatting");
 		TrialKey key = TransitionSteps.last(campaign);
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, "stopped", NOW));
+		campaign = Transitions.apply(campaign,
+			new CampaignEvent.Fail(key, TrialAttemptFailure.INTERRUPTED, "stopped", NOW));
 		requireThat(ConcurrencyPolicy.window(campaign), "window").isEqualTo(8);
 	}
 

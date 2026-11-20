@@ -192,7 +192,7 @@ public final class Generator
 		Part part = testCase.streamKind().part();
 		if (part != Part.DEVELOPMENT)
 		{
-			throw new GeneratorValidationException("A targeted run uses development test cases only, but the test case " +
+			throw new GeneratorValidationException("A targeted trial uses development test cases only, but the test case " +
 				"is " + part + ": a " + testCase.streamKind().name().toLowerCase(Locale.ROOT) + " stream drew it");
 		}
 		return new DrawnTestCase(testCase.cellId(), testCase.testId(), testCase.testCase(), testCase.turns(),

@@ -48,8 +48,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialFiles;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
@@ -640,7 +640,7 @@ public final class Driver implements AutoCloseable
 	 * @param now the current time
 	 * @throws IOException if the store cannot be written
 	 */
-	private void fail(TrialKey key, RunFailure failure, String detail, Instant now) throws IOException
+	private void fail(TrialKey key, TrialAttemptFailure failure, String detail, Instant now) throws IOException
 	{
 		if (findRunningTrial(key).isPresent())
 			record(new CampaignEvent.Fail(key, failure, detail, now));
@@ -808,7 +808,7 @@ public final class Driver implements AutoCloseable
 		recordTrialSession(trial, result, now);
 		switch (result)
 		{
-			case null -> fail(key, RunFailure.INFRASTRUCTURE, "The trial session failed: " + describe(failure), now);
+			case null -> fail(key, TrialAttemptFailure.INFRASTRUCTURE, "The trial session failed: " + describe(failure), now);
 			case SessionResult.Completed completed ->
 			{
 				evidence.recordDuration(Duration.between(trial.startedAt(), now));
@@ -816,15 +816,15 @@ public final class Driver implements AutoCloseable
 					decideTools(trial, completed, now);
 			}
 			case SessionResult.Interrupted _ ->
-				fail(key, RunFailure.INTERRUPTED, "The trial session was interrupted", now);
+				fail(key, TrialAttemptFailure.INTERRUPTED, "The trial session was interrupted", now);
 			// The trial reruns once the harness's shared hold ends
-			case SessionResult.RateLimited _ -> fail(key, RunFailure.RATE_LIMITED,
+			case SessionResult.RateLimited _ -> fail(key, TrialAttemptFailure.RATE_LIMITED,
 				"The provider rejected the trial session because of a rate limit", now);
-			case SessionResult.Refused _ -> fail(key, RunFailure.RATE_LIMITED,
+			case SessionResult.Refused _ -> fail(key, TrialAttemptFailure.RATE_LIMITED,
 				"The provider refused the trial session", now);
-			case SessionResult.Failed failed -> fail(key, RunFailure.INFRASTRUCTURE, failed.reason(), now);
+			case SessionResult.Failed failed -> fail(key, TrialAttemptFailure.INFRASTRUCTURE, failed.reason(), now);
 			// The trial waits in the queue, without counting the refusal, until the user runs the command again
-			case SessionResult.LaunchRefused refused -> fail(key, RunFailure.INTERRUPTED, refused.reason(), now);
+			case SessionResult.LaunchRefused refused -> fail(key, TrialAttemptFailure.INTERRUPTED, refused.reason(), now);
 		}
 	}
 
@@ -836,8 +836,8 @@ public final class Driver implements AutoCloseable
 	 * or failed. The judge receives the tool results as evidence. A trial whose tools decide every assertion starts no
 	 * judge: it passes with the record of its tools, or fails with the record of each failed tool, and a failed
 	 * development trial waits for its triage before the failure is recorded. A tool that the record cannot decide, or
-	 * evidence that cannot be rendered, makes the run an infrastructure failure; a failure to read required trial
-	 * evidence escapes.
+	 * evidence that cannot be rendered, makes the attempt an infrastructure failure. A failure to read required
+	 * trial evidence escapes.
 	 *
 	 * @param trial the trial session
 	 * @param completed the trial session's result
@@ -858,7 +858,7 @@ public final class Driver implements AutoCloseable
 		}
 		catch (IOException | UndecidableToolException e)
 		{
-			fail(trial.key(), RunFailure.INFRASTRUCTURE, "The built-in tools could not be decided: " +
+			fail(trial.key(), TrialAttemptFailure.INFRASTRUCTURE, "The built-in tools could not be decided: " +
 				describe(e), now);
 			return;
 		}
@@ -1074,7 +1074,7 @@ public final class Driver implements AutoCloseable
 		}
 		catch (IOException e)
 		{
-			fail(key, RunFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " + describe(e), now);
+			fail(key, TrialAttemptFailure.INFRASTRUCTURE, "The trial evidence could not be rendered: " + describe(e), now);
 			return Optional.empty();
 		}
 	}
@@ -1320,12 +1320,12 @@ public final class Driver implements AutoCloseable
 		switch (judging.seat())
 		{
 			case FROZEN_ALONE ->
-				fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
+				fail(judging.key(), TrialAttemptFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
 					"failure: " + reason, now);
 			case FROZEN_OF_GROUP ->
 			{
 				judging.group().abandon();
-				fail(judging.key(), RunFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
+				fail(judging.key(), TrialAttemptFailure.INFRASTRUCTURE, "The judge failed " + JUDGE_ATTEMPTS + " times. Last " +
 					"failure: " + reason, now);
 			}
 			case CANDIDATE_OF_GROUP ->
@@ -2647,7 +2647,7 @@ public final class Driver implements AutoCloseable
 				trialRequests.remove(key);
 				if (trial != null)
 				{
-					fail(key, RunFailure.INTERRUPTED, Reconciler.ABANDONED, now);
+					fail(key, TrialAttemptFailure.INTERRUPTED, Reconciler.ABANDONED, now);
 					advanced = true;
 				}
 			}
@@ -2683,7 +2683,7 @@ public final class Driver implements AutoCloseable
 		if (findRunningTrial(key).isPresent())
 		{
 			recordTrialSession(trial, null, now);
-			fail(key, RunFailure.INFRASTRUCTURE, describe(failed.cause()), now);
+			fail(key, TrialAttemptFailure.INFRASTRUCTURE, describe(failed.cause()), now);
 		}
 		trialRequests.remove(key);
 		failedContinuations.remove(key);
@@ -2897,13 +2897,13 @@ public final class Driver implements AutoCloseable
 		TrialRecovery recovery = trialRequests.get(key);
 		if (recovery == null)
 		{
-			fail(key, RunFailure.INFRASTRUCTURE, detail, now);
+			fail(key, TrialAttemptFailure.INFRASTRUCTURE, detail, now);
 			return;
 		}
 		if (settleTrial(retainedStatus(recovery), false))
 		{
 			trialRequests.remove(key);
-			fail(key, RunFailure.INTERRUPTED, detail, now);
+			fail(key, TrialAttemptFailure.INTERRUPTED, detail, now);
 			return;
 		}
 		infrastructureFailure = detail;
@@ -3043,7 +3043,7 @@ public final class Driver implements AutoCloseable
 		for (TrialKey key : abandoned)
 		{
 			if (findRunningTrial(key).isPresent())
-				campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, reason,
+				campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.INTERRUPTED, reason,
 					now));
 		}
 		if (campaign != before)

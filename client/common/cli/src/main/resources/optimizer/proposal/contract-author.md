@@ -27,7 +27,7 @@
 - Give CAT what it needs to certify the contract: the judge's rubric and decision rule, a minimum pass rate (0.95
 	unless the prompt's purpose needs another), and a profile restriction, capability ranking and certification scope
 	only where the user's feedback sets them.
-- List each gap in what the contract requires or tests as a limitation, leaving out the results of any one run, and
+- List each gap in what the contract requires or tests as a limitation, leaving out the results of any single trial, and
 	resolve each guard assertion that the guard pilot shows below the minimum pass rate, so that the user confirms a
 	contract whose weak points are visible.
 - Keep every recorded prompt test of the target in the proposal, converting one in an earlier format to the current
@@ -156,8 +156,8 @@ Otherwise keep it unchanged; the user decides whether the agent really fails it 
 
 - `limitations`: every known limitation of the contract, such as an obligation that no test covers. List only a gap in
 	what the contract requires or tests. Leave out the results of a guard pilot, including one that stopped before its
-	trials finished, and any other fact about one run: CAT shows the latest pilot results with each proposal, and a copy
-	in `limitations` stays in the contract after a later pilot changes them.
+	trials finished, and any other fact about a specific pilot trial. CAT shows the latest pilot results with each
+	proposal. A copy in `limitations` stays in the contract after a later pilot changes the results.
 
 ### Recorded prompt tests
 

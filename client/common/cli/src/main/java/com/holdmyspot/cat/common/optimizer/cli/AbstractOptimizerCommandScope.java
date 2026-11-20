@@ -49,8 +49,8 @@ import java.util.random.RandomGenerator;
  * first needs them, so that a working directory outside a Git repository is refused by the command rather than by the
  * scope's creation.
  * <p>
- * The campaigns and runs of a command live in the CAT session directory of the host session that runs it. The other
- * sessions' campaigns are only read.
+ * The campaigns and nested sessions of a command live in the CAT session directory of its host session.
+ * The other sessions' campaigns are only read.
  */
 public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope implements OptimizerCommandScope
 {

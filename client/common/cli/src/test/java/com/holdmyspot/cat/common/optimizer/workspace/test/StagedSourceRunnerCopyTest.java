@@ -33,7 +33,7 @@ import org.testng.annotations.Test;
  * Verifies that the runner's project copy accepts a staged source that is built from a project with links.
  * <p>
  * Both harness runners copy their project through {@link NestedSessionManager#copyProject(Path, NestedSession)}, so the
- * test registers a run for each harness and copies into it. It starts no model and no harness process.
+ * test registers a nested session for each harness and copies into it. It starts no model and no harness process.
  */
 public final class StagedSourceRunnerCopyTest
 {

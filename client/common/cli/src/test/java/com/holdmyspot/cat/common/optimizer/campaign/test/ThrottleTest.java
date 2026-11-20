@@ -9,11 +9,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.ConcurrencyPolicy;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
@@ -120,7 +120,7 @@ public final class ThrottleTest
 		campaign = Transitions.apply(campaign, new CampaignEvent.Start(key));
 		Instant reset = NOW.plus(Duration.ofMinutes(5));
 		campaign = Transitions.apply(campaign, new CampaignEvent.HoldAdmissions(reset, 2));
-		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED,
+		campaign = Transitions.apply(campaign, new CampaignEvent.Fail(key, TrialAttemptFailure.RATE_LIMITED,
 			"rate limit reached", NOW));
 
 		LogicalTrial trial = campaign.trials().getFirst();

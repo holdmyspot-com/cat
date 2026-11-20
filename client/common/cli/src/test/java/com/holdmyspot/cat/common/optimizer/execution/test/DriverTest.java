@@ -53,11 +53,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
 import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisionRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
@@ -1806,7 +1806,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that promotion removes an unneeded hunk and keeps targeted runs outside the evidence counts.
+	 * Verifies that promotion removes an unneeded hunk and keeps replays outside the evidence counts.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -4451,7 +4451,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Mid-attempt, a run reports a different model. Its record holds no outcome and the campaign pauses.
+	 * Mid-attempt, a trial session reports a different model. Its record holds no outcome and the campaign pauses.
 	 * Restoring reruns the same test case and the attempt continues. A second change followed by a new measurement
 	 * identity ends the attempt, returns to development and starts a new incumbent baseline; the qualifying attempt
 	 * from before the change is offered as historical.
@@ -6670,7 +6670,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * Verifies that a run whose session observed different prompt sources loading is a measurement change: its record
+	 * Verifies that different prompt sources loading in a trial session is a measurement change. Its record
 	 * holds no outcome and the campaign pauses, naming the changed condition.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -7439,7 +7439,7 @@ public final class DriverTest
 			requireThat(trial.verdict(), "verdict").isNull();
 			requireThat(trial.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
 			requireThat(trial.infrastructureAttempts().stream().noneMatch(attempt ->
-				attempt.failure() == RunFailure.INFRASTRUCTURE), "infrastructureAttempt").isTrue();
+				attempt.failure() == TrialAttemptFailure.INFRASTRUCTURE), "infrastructureAttempt").isTrue();
 		}
 		try (CampaignLock lock = CampaignLock.tryAcquire(harness.context().fileLocks(),
 			harness.context().lockFile()).orElseThrow())
@@ -7828,7 +7828,7 @@ public final class DriverTest
 
 	/**
 	 * Verifies that sessions that fail without an outcome rerun the same logical trial, with its assignment record
-	 * rewritten before each run, until the third failure pauses the campaign. A completed session, including one
+	 * rewritten before each retry, until the third failure pauses the campaign. A completed session, including one
 	 * that the time limit cut off, is judged as behaviour and never rerun.
 	 *
 	 * @throws IOException if the test directory cannot be used
@@ -7862,7 +7862,7 @@ public final class DriverTest
 				requireThat(failed.infrastructureFailures(), "infrastructureFailures").
 					isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
 			}
-			// The next run outlives its time limit and completes; the judge fails its behaviour
+			// The next session outlives its time limit and completes; the judge fails its behaviour
 			harness.trials(_ -> harness.failed());
 			try (Driver driver = harness.open())
 			{

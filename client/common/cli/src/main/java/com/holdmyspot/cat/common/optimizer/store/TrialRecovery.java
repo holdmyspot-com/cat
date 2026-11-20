@@ -25,7 +25,7 @@ public record TrialRecovery(TrialKey key, int attemptOrdinal, UUID requestId, in
 	Map<String, Integer> settledAssertions, boolean endedEarly)
 {
 	/**
-	 * Returns the launch attempt number for a trial. Both infrastructure attempts and runs discarded for measurement
+	 * Returns the launch attempt number for a trial. Both infrastructure attempts and attempts discarded for measurement
 	 * changes precede this launch.
 	 *
 	 * @param trial the logical trial being launched or resumed

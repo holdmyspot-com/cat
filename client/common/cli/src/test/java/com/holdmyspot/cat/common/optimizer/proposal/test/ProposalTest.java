@@ -1489,13 +1489,13 @@ public final class ProposalTest
 		String formattingCell = GuardPilot.pilotCell(contract, "formatting").orElseThrow().id();
 		String safetyCell = GuardPilot.pilotCell(contract, "safety").orElseThrow().id();
 		requireThat(text, "text").contains("\n## Guard pilot\n").contains("### `formatting` in cell `" +
-			formattingCell + "`\n\n17 trials decided, 3 failed runs.\n\n" +
+			formattingCell + "`\n\n17 trials decided, 3 ended without a decision.\n\n" +
 			"- `uses_requested_tone` (effect): 10 of 17 passed (58.8%)\n" +
 			"- `expected_outcome` (effect): 17 of 17 passed (100%)\n\n" +
-			"Why the failed runs ended without a decision:\n\n" +
-			"- " + sessionFailed + " (2 runs)\n" +
-			"- " + undecidable + " (1 run)\n").
-			contains("### `safety` in cell `" + safetyCell + "`\n\n20 trials decided, 0 failed runs.\n\n" +
+			"Why trials ended without a decision\n\n" +
+			"- " + sessionFailed + " (2 trials)\n" +
+			"- " + undecidable + " (1 trial)\n").
+			contains("### `safety` in cell `" + safetyCell + "`\n\n20 trials decided, 0 ended without a decision.\n\n" +
 				"- `asks_before_deleting` (guard): 15 of 20 passed (75.0%). Warning: below the minimum pass rate of 95%.").
 			contains("- `expected_outcome` (guard): 20 of 20 passed (100%)\n").
 			contains("### `plain_list`\n\nNo pilot: CAT has not run it.\n");
@@ -1879,15 +1879,15 @@ public final class ProposalTest
 	 * @param testId the prompt test
 	 * @param assertionId the prompt test's assertion
 	 * @param passes the number of trials that passed {@code assertionId}
-	 * @param failedRuns why each of the 20 trials that ended without a decision ended
+	 * @param failedTrials why each of the 20 trials that ended without a decision ended
 	 * @param stopReason why the pilot stopped early, or {@code null}
 	 * @return the result
 	 */
 	private static PilotResult pilot(Contract contract, String testId, String assertionId, int passes,
-		List<String> failedRuns, String stopReason)
+		List<String> failedTrials, String stopReason)
 	{
 		List<PilotTrial> trials = new ArrayList<>();
-		for (int i = 0; i < 20 - failedRuns.size(); ++i)
+		for (int i = 0; i < 20 - failedTrials.size(); ++i)
 		{
 			Map<String, Boolean> assertions = new LinkedHashMap<>();
 			assertions.put(assertionId, i < passes);
@@ -1896,7 +1896,7 @@ public final class ProposalTest
 		}
 		return new PilotResult(testId, Sha256.of(testId.getBytes(UTF_8)),
 			GuardPilot.pilotCell(contract, testId).orElseThrow().id(), Sha256.of("control".getBytes(UTF_8)), 1L,
-			trials, failedRuns, stopReason, false);
+			trials, failedTrials, stopReason, false);
 	}
 
 	/**

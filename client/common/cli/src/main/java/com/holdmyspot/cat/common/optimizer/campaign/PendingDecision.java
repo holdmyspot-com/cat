@@ -17,7 +17,7 @@ import java.util.List;
 public sealed interface PendingDecision
 {
 	/**
-	 * A run observed conditions that differ from the campaign's measurement identity.
+	 * A trial attempt observed conditions that differ from the campaign's measurement identity.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *

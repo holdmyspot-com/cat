@@ -20,7 +20,7 @@ import java.util.List;
  * @param testCase the assigned test case
  * @param identity the measurement conditions at assignment
  * @param allocation the allocation decision that assigned the trial
- * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
+ * @param infrastructureAttempts every attempt that ended without an outcome, in the order the attempts ended
  * @param outcome the judged outcome, or null if the trial has none yet
  * @param sessions the record of each finished trial session, in completion order
  */
@@ -34,7 +34,7 @@ public record TrialRecord(TrialKey key, DrawnTestCase testCase, MeasurementIdent
 	 * @param testCase the assigned test case
 	 * @param identity the measurement conditions at assignment
 	 * @param allocation the allocation decision that assigned the trial
-	 * @param infrastructureAttempts every run that ended without an outcome, in the order the runs ended
+	 * @param infrastructureAttempts every attempt that ended without an outcome, in the order the attempts ended
 	 * @param outcome the judged outcome, or null if the trial has none yet
 	 * @param sessions the record of each finished trial session, in completion order
 	 * @throws NullPointerException if any argument other than {@code outcome} is null

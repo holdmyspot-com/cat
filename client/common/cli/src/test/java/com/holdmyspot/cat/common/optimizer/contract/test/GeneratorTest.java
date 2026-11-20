@@ -483,7 +483,7 @@ public final class GeneratorTest
 	}
 
 	/**
-	 * Verifies that a held-out test case cannot be marked for a targeted run, while a development test case can.
+	 * Verifies that a held-out test case cannot be marked for a targeted trial, while a development test case can.
 	 */
 	@Test
 	public void targetedRunsUseDevelopmentTestCasesOnly()

@@ -767,9 +767,9 @@ public final class Transitions
 	{
 		int index = indexOfRunningTrial(draft, fail.key());
 		LogicalTrial trial = draft.trials.get(index);
-		// A provider error, crash, rate-limit rejection or refusal halves every window; a run that CAT interrupted
+		// A provider error, crash, rate-limit rejection or refusal halves every window; an attempt that CAT interrupted
 		// says nothing about the provider
-		if (fail.failure() != RunFailure.INTERRUPTED)
+		if (fail.failure() != TrialAttemptFailure.INTERRUPTED)
 			draft.windows = draft.windows.afterInfrastructureAttempt();
 		if (TrialAdoption.isStale(draft, trial))
 		{
@@ -888,7 +888,7 @@ public final class Transitions
 	 *
 	 * @param draft the state
 	 * @param snapshot the saved overlay of the next reduction
-	 * @throws IllegalStateException if there is no completed promotion decision or targeted runs remain
+	 * @throws IllegalStateException if there is no completed promotion decision or targeted trials remain
 	 */
 	private static void advanceMinimality(Draft draft, Sha256 snapshot)
 	{

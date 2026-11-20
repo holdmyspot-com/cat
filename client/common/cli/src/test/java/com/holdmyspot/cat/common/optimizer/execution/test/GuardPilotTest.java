@@ -185,7 +185,7 @@ public final class GuardPilotTest
 			PilotResult formatting = pilots.get("formatting");
 			requireThat(formatting.cellId(), "formattingCell").isEqualTo(TierFixtures.SMALL_HIGH);
 			requireThat(formatting.trials().size(), "formattingTrials").isEqualTo(GuardPilot.TRIALS);
-			requireThat(formatting.failedRuns(), "failedRuns").isEmpty();
+			requireThat(formatting.failedTrials(), "failedTrials").isEmpty();
 			requireThat(formatting.stopReason(), "stopReason").isNull();
 			requireThat(formatting.passes("uses_requested_tone"), "passes").isEqualTo(GuardPilot.TRIALS);
 			requireThat(formatting.decided("uses_requested_tone"), "decided").isEqualTo(GuardPilot.TRIALS);
@@ -610,7 +610,7 @@ public final class GuardPilotTest
 	/**
 	 * A trial whose judge never returns valid output, after {@value Driver#JUDGE_ATTEMPTS} attempts, is an
 	 * infrastructure attempt: the trial runs again, and when one logical trial has ended without an outcome three
-	 * times, the pilot pauses, names the logical trial and why each run ended, and is not reused.
+	 * times, the pilot pauses, names the logical trial and why each attempt ended, and is not reused.
 	 * <p>
 	 * Runtime includes the 20 trials of the test that runs before the failing one, one session at a time so that the
 	 * failing trial's runs follow each other, with a scripted judge session for each. Fewer trials or concurrent
@@ -639,7 +639,7 @@ public final class GuardPilotTest
 
 			PilotResult safety = pilots.get("safety");
 			requireThat(safety.trials(), "trials").isEmpty();
-			requireThat(safety.failedRuns(), "failedRuns").isEmpty();
+			requireThat(safety.failedTrials(), "failedTrials").isEmpty();
 			requireThat(safety.paused(), "paused").isTrue();
 			String judgeFailure = "The judge failed " + Driver.JUDGE_ATTEMPTS + " times. Last failure: The judge's " +
 				"output does not match its result schema";
@@ -657,7 +657,7 @@ public final class GuardPilotTest
 	}
 
 	/**
-	 * A trial whose built-in tool cannot be decided from its record counts as a failed run that says why.
+	 * A trial whose built-in tool cannot be decided from its record counts as a failed trial that says why.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 * @throws InterruptedException if the thread is interrupted
@@ -680,7 +680,7 @@ public final class GuardPilotTest
 				SELECTION, Map.of(), new SplittableRandom(5)).get("safety");
 
 			requireThat(safety.trials(), "trials").isEmpty();
-			requireThat(safety.failedRuns(), "failedRuns").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
+			requireThat(safety.failedTrials(), "failedTrials").isEqualTo(Collections.nCopies(GuardPilot.TRIALS,
 				"The built-in tools could not be decided: `notes.md` was not a file when the trial started"));
 		}
 	}
@@ -715,7 +715,7 @@ public final class GuardPilotTest
 			for (PilotResult pilot : pilots.values())
 			{
 				requireThat(pilot.trials(), "trials").isEmpty();
-				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.failedTrials(), "failedTrials").isEmpty();
 				requireThat(pilot.paused(), "paused").isTrue();
 				requireThat(pilot.stopReason(), "stopReason").isEqualTo(expected);
 			}
@@ -751,7 +751,7 @@ public final class GuardPilotTest
 			for (PilotResult pilot : pilots.values())
 			{
 				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
-				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.failedTrials(), "failedTrials").isEmpty();
 				requireThat(pilot.stopReason(), "stopReason").isNull();
 				requireThat(pilot.paused(), "paused").isFalse();
 				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
@@ -831,7 +831,7 @@ public final class GuardPilotTest
 			for (PilotResult pilot : first.values())
 			{
 				requireThat(pilot.trials(), "trials").isEmpty();
-				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.failedTrials(), "failedTrials").isEmpty();
 				requireThat(pilot.paused(), "paused").isFalse();
 				requireThat(pilot.stopReason(), "stopReason").isEqualTo("The trial session was interrupted");
 				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
@@ -1402,7 +1402,7 @@ public final class GuardPilotTest
 			requireThat(trials.getFirst().turns(), "turns").isEqualTo(complete.requests(SessionRole.TRIAL).
 				stream().filter(GuardPilotTest::isSafety).toList().getLast().turns());
 			requireThat(second.get("formatting"), "formatting").isEqualTo(clean.get("formatting"));
-			requireThat(second.get("safety").failedRuns(), "failedRuns").isEmpty();
+			requireThat(second.get("safety").failedTrials(), "failedTrials").isEmpty();
 			requireThat(second.get("safety").trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
 			requireThat(second.get("safety").trials().subList(0, GuardPilot.TRIALS - 1), "keptTrials").
 				isEqualTo(failed.trials());
@@ -1664,7 +1664,7 @@ public final class GuardPilotTest
 			{
 				PilotResult pilot = pilots.get(test.id());
 				requireThat(pilot.trials().size(), "decided").isEqualTo(GuardPilot.TRIALS);
-				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.failedTrials(), "failedTrials").isEmpty();
 				requireThat(pilot.stopReason(), "stopReason").isNull();
 				requireThat(pilot.appliesTo(pilot.definition(), pilot.cellId(), pilot.control()), "applies").
 					isTrue();
@@ -1751,7 +1751,7 @@ public final class GuardPilotTest
 					requireThat(pilot.stopReason(), "stopReason").isNotNull();
 					requireThat(pilot.paused(), "paused").isFalse();
 				}
-				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.failedTrials(), "failedTrials").isEmpty();
 			}
 			requireThat(GuardPilot.pauseReason(first), "pauseReason").isEqualTo(Optional.empty());
 
@@ -1854,7 +1854,7 @@ public final class GuardPilotTest
 			for (PilotResult pilot : first.values())
 			{
 				requireThat(pilot.paused(), "paused").isFalse();
-				requireThat(pilot.failedRuns(), "failedRuns").isEmpty();
+				requireThat(pilot.failedTrials(), "failedTrials").isEmpty();
 				for (PilotTrial trial : pilot.trials())
 					requireThat(trial.infrastructureAttempts(), "infrastructureAttempts").isEmpty();
 			}

@@ -27,6 +27,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.HunkEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
@@ -76,7 +77,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.ApproachOrder;
 import com.holdmyspot.cat.common.optimizer.campaign.ApproachAssignment;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.SequenceGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
@@ -2509,7 +2509,7 @@ final class CampaignJson
 		for (JsonNode element : elements(node, "infrastructure_attempts"))
 		{
 			attempts.add(new InfrastructureAttempt(instant(element, "ended_at"),
-				constant(element, "failure", RunFailure.class), text(element, "detail")));
+				constant(element, "failure", TrialAttemptFailure.class), text(element, "detail")));
 		}
 		return attempts;
 	}

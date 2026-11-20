@@ -44,7 +44,11 @@ final class PilotFile
 	/**
 	 * The version of the file's layout.
 	 */
-	private static final int FORMAT_VERSION = 4;
+	private static final int FORMAT_VERSION = 5;
+	/**
+	 * The first version to store unfinished trials.
+	 */
+	private static final int PENDING_TRIALS_VERSION = 4;
 	private final Path file;
 	private final JsonMapper json;
 	private final FileReplacer replacer;
@@ -89,8 +93,8 @@ final class PilotFile
 			test.put("control", pilot.control().hex());
 			test.put("seed", pilot.seed());
 			test.put("paused", pilot.paused());
-			ArrayNode failedRuns = test.putArray("failed_runs");
-			pilot.failedRuns().forEach(failedRuns::add);
+			ArrayNode failedTrials = test.putArray("failed_trials");
+			pilot.failedTrials().forEach(failedTrials::add);
 			if (pilot.stopReason() == null)
 				test.putNull("stop_reason");
 			else
@@ -154,10 +158,10 @@ final class PilotFile
 			return pilots;
 		JsonNode root = json.readTree(Files.readString(file, StandardCharsets.UTF_8));
 		int version = root.path("format_version").asInt();
-		if (version != FORMAT_VERSION && version != 3)
+		if (version < 3 || version > FORMAT_VERSION)
 		{
 			throw new IOException(file + " is a version " + version + " pilot file, but this version of CAT reads " +
-				"versions 3 and " + FORMAT_VERSION + ". Run `start` again to rerun the pilot.");
+				"versions 3 through " + FORMAT_VERSION + ". Run `start` again to rerun the pilot.");
 		}
 		try
 		{
@@ -212,17 +216,21 @@ final class PilotFile
 		String stopReason = null;
 		if (!test.path("stop_reason").isNull())
 			stopReason = text(test.path("stop_reason"));
-		if (!test.path("failed_runs").isArray())
-			throw new IllegalArgumentException("\"failed_runs\" must be an array: " + test);
-		List<String> failedRuns = new ArrayList<>();
-		for (JsonNode reason : test.get("failed_runs"))
-			failedRuns.add(text(reason));
+		String failedTrialsField = "failed_trials";
+		if (version == 3 || version == 4)
+			failedTrialsField = "failed_runs";
+		JsonNode failures = test.path(failedTrialsField);
+		if (!failures.isArray())
+			throw new IllegalArgumentException("\"" + failedTrialsField + "\" must be an array: " + test);
+		List<String> failedTrials = new ArrayList<>();
+		for (JsonNode reason : failures)
+			failedTrials.add(text(reason));
 		if (!test.path("seed").isIntegralNumber())
 			throw new IllegalArgumentException("\"seed\" must be an integer: " + test);
 		if (!test.path("paused").isBoolean())
 			throw new IllegalArgumentException("\"paused\" must be a boolean: " + test);
 		Map<Integer, PilotTrialRecovery> pending = new LinkedHashMap<>();
-		if (version >= FORMAT_VERSION)
+		if (version >= PENDING_TRIALS_VERSION)
 		{
 			if (!test.path("pending_trials").isArray())
 				throw new IllegalArgumentException("A pilot's pending trials must be an array: " + test);
@@ -237,7 +245,7 @@ final class PilotFile
 		}
 		return new PilotResult(text(test.path("test")), new Sha256(text(test.path("definition"))),
 			text(test.path("cell")), new Sha256(text(test.path("control"))), test.get("seed").asLong(), trials,
-			failedRuns, stopReason, test.get("paused").asBoolean(), pending);
+			failedTrials, stopReason, test.get("paused").asBoolean(), pending);
 	}
 
 	/**

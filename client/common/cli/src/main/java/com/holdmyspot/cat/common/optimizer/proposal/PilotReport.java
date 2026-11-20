@@ -86,16 +86,16 @@ final class PilotReport
 	 */
 	private static void test(StringBuilder text, Contract contract, PromptTest test, PilotResult pilot)
 	{
-		int reruns = 0;
+		int infrastructureAttempts = 0;
 		for (PilotTrial trial : pilot.trials())
-			reruns += trial.infrastructureAttempts().size();
+			infrastructureAttempts += trial.infrastructureAttempts().size();
 		text.append("\n### `").append(test.id()).append("` in cell `").append(pilot.cellId()).append("`\n\n").
 			append(count(pilot.trials().size(), "trial", "trials")).append(" decided, ").
-			append(count(pilot.failedRuns().size(), "failed run", "failed runs"));
-		if (reruns > 0)
+			append(pilot.failedTrials().size()).append(" ended without a decision");
+		if (infrastructureAttempts > 0)
 		{
-			text.append(", ").append(count(reruns, "run", "runs")).
-				append(" that ended without an outcome and ran again");
+			text.append(", ").append(count(infrastructureAttempts, "infrastructure attempt", "infrastructure attempts")).
+				append(" before the trials were decided");
 		}
 		text.append(".\n");
 		if (pilot.paused())
@@ -131,16 +131,16 @@ final class PilotReport
 			}
 			text.append('\n');
 		}
-		if (pilot.failedRuns().isEmpty())
+		if (pilot.failedTrials().isEmpty())
 			return;
-		// Each distinct reason once, in the order that the runs failed
-		Map<String, Integer> runsByReason = new LinkedHashMap<>();
-		for (String reason : pilot.failedRuns())
-			runsByReason.merge(reason, 1, Integer::sum);
-		text.append("\nWhy the failed runs ended without a decision:\n\n");
-		for (Map.Entry<String, Integer> entry : runsByReason.entrySet())
+		// Each distinct reason once, in the order the trials ended
+		Map<String, Integer> trialsByReason = new LinkedHashMap<>();
+		for (String reason : pilot.failedTrials())
+			trialsByReason.merge(reason, 1, Integer::sum);
+		text.append("\nWhy trials ended without a decision\n\n");
+		for (Map.Entry<String, Integer> entry : trialsByReason.entrySet())
 		{
-			text.append("- ").append(entry.getKey()).append(" (").append(count(entry.getValue(), "run", "runs")).
+			text.append("- ").append(entry.getKey()).append(" (").append(count(entry.getValue(), "trial", "trials")).
 				append(")\n");
 		}
 	}
@@ -170,7 +170,7 @@ final class PilotReport
 	 * @param count the count
 	 * @param singular the noun for a count of one
 	 * @param plural the noun for any other count
-	 * @return text such as {@code 1 failed run} or {@code 0 failed runs}
+	 * @return text such as {@code 1 trial} or {@code 0 trials}
 	 */
 	private static String count(int count, String singular, String plural)
 	{

@@ -380,24 +380,24 @@ public sealed interface CampaignEvent
 	}
 
 	/**
-	 * A run of a logical trial ended without an outcome. The trial records it as an infrastructure attempt.
+	 * A trial attempt ended without an outcome. The trial records it as an infrastructure attempt.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
 	 * @param key the trial
-	 * @param failure why the run ended
+	 * @param failure why the attempt ended
 	 * @param detail what the harness or CAT reported about the failure
-	 * @param at when the run ended
+	 * @param at when the attempt ended
 	 */
-	record Fail(TrialKey key, RunFailure failure, String detail, Instant at) implements CampaignEvent
+	record Fail(TrialKey key, TrialAttemptFailure failure, String detail, Instant at) implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
 		 *
 		 * @param key the trial
-		 * @param failure why the run ended
+		 * @param failure why the attempt ended
 		 * @param detail what the harness or CAT reported about the failure
-		 * @param at when the run ended
+		 * @param at when the attempt ended
 		 * @throws NullPointerException if {@code key}, {@code failure}, {@code detail} or {@code at} are null
 		 * @throws IllegalArgumentException if {@code detail} is blank
 		 */

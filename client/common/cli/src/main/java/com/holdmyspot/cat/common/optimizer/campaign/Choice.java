@@ -26,7 +26,7 @@ public enum Choice
 	 */
 	RESUME,
 	/**
-	 * Run the paused trial again after a run ended without a pass or fail result, or retry trial-cap calibration.
+	 * Retry the paused trial after an attempt ended without a pass or fail result, or retry trial-cap calibration.
 	 */
 	RETRY,
 	/**

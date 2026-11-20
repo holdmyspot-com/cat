@@ -23,6 +23,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
@@ -61,7 +62,6 @@ import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Triage;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
@@ -213,7 +213,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 
 			Campaign retryRunning = Transitions.apply(mismatch, new CampaignEvent.Start(key));
 			Campaign rateLimited = Transitions.apply(retryRunning,
-				new CampaignEvent.Fail(key, RunFailure.RATE_LIMITED, "Rate limited", now.plusSeconds(1)));
+				new CampaignEvent.Fail(key, TrialAttemptFailure.RATE_LIMITED, "Rate limited", now.plusSeconds(1)));
 			LogicalTrial next = rateLimited.trials().getFirst();
 			CampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
 			int third = TrialRecovery.attemptOrdinal(next);

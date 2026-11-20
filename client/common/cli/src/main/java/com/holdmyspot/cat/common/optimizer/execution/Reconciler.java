@@ -5,8 +5,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
-import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
+import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
 import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions.RecordedProcess;
@@ -41,7 +41,7 @@ public final class Reconciler
 	/**
 	 * Reconciles a campaign. In order, this:
 	 * <ol>
-	 *   <li>requests termination of the recorded processes of runs that an earlier driver left running;</li>
+	 *   <li>requests termination of the recorded processes of sessions that an earlier driver left running;</li>
 	 *   <li>adopts every recorded outcome that the snapshot does not hold yet;</li>
 	 *   <li>identifies original requests for the driver to reconcile with the broker and requeues older trials that
 	 *   have no such request;</li>
@@ -151,7 +151,7 @@ public final class Reconciler
 		for (TrialKey key : running)
 		{
 			requeued = Transitions.apply(requeued,
-				new CampaignEvent.Fail(key, RunFailure.INTERRUPTED, ABANDONED, now));
+				new CampaignEvent.Fail(key, TrialAttemptFailure.INTERRUPTED, ABANDONED, now));
 		}
 		return requeued;
 	}

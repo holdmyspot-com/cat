@@ -36,7 +36,7 @@ import java.util.Set;
  * @param sequences the last sequence number assigned in each sequence group
  * @param evidenceRevision the number of outcomes the campaign has adopted, so that each {@link Allocation} identifies
  *   the evidence its decision used
- * @param windows the concurrency windows of the units of work, and the halvings after runs without an outcome
+ * @param windows the concurrency windows per unit of work and their halvings after attempts without an outcome
  * @param throttle the provider's rate-limit waiting and concurrency limits
  * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
  *   asked now
@@ -91,7 +91,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param trials the assigned trials whose outcomes have not entered campaign evidence, in assignment order
 	 * @param sequences the last sequence number assigned in each sequence group
 	 * @param evidenceRevision the number of outcomes the campaign has adopted
-	 * @param windows the concurrency windows of the units of work, and the halvings after runs without an outcome
+	 * @param windows the concurrency windows per unit of work and their halvings after attempts without an outcome
 	 * @param throttle the provider's rate-limit waiting and concurrency limits
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose; the first one is
 	 *   asked now
@@ -181,7 +181,7 @@ public record Campaign(Header header, int ceiling, List<Lineage> lineages, Measu
 	 * @param trials the assigned trials whose outcomes have not entered campaign evidence, in assignment order
 	 * @param sequences the last sequence number assigned in each sequence group
 	 * @param evidenceRevision the number of outcomes the campaign has adopted
-	 * @param windows the concurrency windows of the units of work, and the halvings after runs without an outcome
+	 * @param windows the concurrency windows per unit of work and their halvings after attempts without an outcome
 	 * @param throttle the provider's rate-limit waiting and concurrency limits
 	 * @param pendingDecisions the decisions that the campaign waits for, in the order they arose
 	 * @param revisionRequested {@code true} if the user asked to revise the contract and no new contract is confirmed
