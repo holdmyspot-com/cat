@@ -107,6 +107,22 @@ public final class ResultsCopyTest
 				Path receipt = copy.resolve("responses/request-id/results-copy/artifacts/receipt.json");
 				requireThat(Files.readString(receipt), "receipt").isEqualTo("requested session evidence");
 			}
+			Path privateSlots = source.resolve("slots");
+			if (PortableFiles.hasModes(privateSlots))
+			{
+				Set<java.nio.file.attribute.PosixFilePermission> permissions =
+					Files.getPosixFilePermissions(privateSlots);
+				try
+				{
+					denyReading(privateSlots);
+					ResultsCopy.Result protectedCopy = ResultsCopy.copy(source, root.resolve("protected-copy"));
+					requireThat(protectedCopy.incomplete(), "protectedCopy").isEmpty();
+				}
+				finally
+				{
+					Files.setPosixFilePermissions(privateSlots, permissions);
+				}
+			}
 		}
 	}
 

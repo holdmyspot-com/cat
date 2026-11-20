@@ -46,6 +46,10 @@ public final class ResultsCopy
 	private static final String SESSION_ARTIFACTS = "artifacts";
 	private static final String SESSION_TRANSCRIPTS = "session-transcripts";
 	/**
+	 * The runner-owned slots relative to the session folder.
+	 */
+	private static final Path PRIVATE_SLOTS = Path.of(SessionRequestAccess.REQUESTED_SLOTS);
+	/**
 	 * The directories of a nested session that {@link #copyTurn(Path, Path)} replaces.
 	 */
 	private static final Set<String> TURN_COPIES = Set.of(SESSION_PROJECT, SESSION_INITIAL_PROJECT);
@@ -332,7 +336,7 @@ public final class ResultsCopy
 		private boolean includes(Path relative)
 		{
 			return relative.toString().isEmpty() ||
-				!relative.equals(Path.of(SessionRequestAccess.REQUESTED_SLOTS)) &&
+				!relative.equals(PRIVATE_SLOTS) &&
 					!RetainedTrialPrefix.isPrivateSnapshot(relative) && included.test(relative);
 		}
 
@@ -422,6 +426,9 @@ public final class ResultsCopy
 		@Override
 		public FileVisitResult visitFileFailed(Path file, IOException failure) throws IOException
 		{
+			// A directory can be rejected before preVisitDirectory has a chance to prune it.
+			if (source.relativize(file).equals(PRIVATE_SLOTS))
+				return FileVisitResult.CONTINUE;
 			attempted = copyOf(file);
 			if (file.equals(source))
 				throw failure;
