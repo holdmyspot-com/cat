@@ -4,7 +4,89 @@ This plan turns `design.md` into code and acceptance evidence. It is written for
 `design.md` is the product and technical authority; this plan is the execution and acceptance authority. If they
 disagree, fix `design.md` first, then this plan, before dependent work continues.
 
-## Current transfer handoff: session `01a1e6ba`
+## Current transfer handoff: session `25d7df4d` (2026-11-20)
+
+The user asked for a wind-down and a transfer to another agent. The goal **implement `design.md` and `plan.md`** is still
+incomplete. This section supersedes every older current-status, next-action and publication statement below it, including
+the `01a1e6ba` handoff, whose steps are done. Resume in `/home/gili/cat/worktrees/v1.0`, on branch `v1.0`. Preserve the
+untracked files: they are sandbox placeholders and session data. Do not list, commit, reset, clean or stash them.
+
+**State at hand-off**
+
+- **Branch:** `v1.0` HEAD is `af8fdf789`, pushed to `https://github.com/holdmyspot-com/cat.git`. No agent or background
+  job is running, and no delegate clone is left with unintegrated work. `/home/gili/cat/worktrees/pi-research` holds
+  WI-148 research (`report.md`, `report2.md`), kept for WI-148.
+- **Builds:**
+  - Build runs 44670999925 (`45bf883ed`) and 44671745564 (`af8fdf789`) were queued and have not been checked.
+  - The two runs before them passed on all 5 platforms: 44654349000 at `3563bf0ac`, and the run at `4bd98dbff`.
+  - Since `3563bf0ac`, the replay renames and campaign format 48 (`577bc7e6b`..`45bf883ed`) have had no confirmed full
+    build. Their delegate's report was lost, so check run 44671745564 first. If it fails, fix through a delegate.
+- **Installed:** the installed plugin is still `1.0+bf20a8532c685`, in both harnesses. It predates everything below. The
+  session that wound down stopped its request server.
+
+**Landed in session `25d7df4d`**
+
+- **Session-request quota:** a resume uses none of the `--session-requests` allowance, and `requests_used` is stored in
+  `session.json`.
+- **Q7 ruling:** only a trial interrupted between turns is resumed. One interrupted mid-turn is discarded and rerun.
+- **Testing rule:**
+  - Scripts, launchers and hook commands are tested only in Bats.
+  - Java tests that ran scripts moved to Bats, including `CatPs1Test`, which moved to `bootstrap-windows.bats`.
+  - A test's inputs are grouped by category, each group under a comment that says why it gets the expected outcome.
+- **WI-148 (pi harness):** added to the end of the plan.
+- **Launcher denial:** a requested session may read and run the requesting session's installed CAT plugin, read-only, in
+  Claude and Codex (`89ecf5ab8`..`ece9d1190`).
+- **CI races:** three resume and cleanup races are fixed in the product (`b48fc37f3`, `30c36b75e`, `4bd98dbff`).
+- **WI-147 renames, apart from the live launches:**
+  - `CAT_NESTED_SESSION`;
+  - `results_copy` and `results-copy`;
+  - `optimizer-nested-sessions/`;
+  - session environment versions 27 (Claude) and 21 (Codex);
+  - `BackgroundDriver`, `PromotionReplay` and `TrainingLaunch`;
+  - promotion "replays", with campaign format 48 upgrading formats 43 to 47 on read;
+  - the capture scripts.
+
+  §2's WI-147 row has the details.
+
+**Next actions, in order**
+
+1. Confirm that the Build is green on all 5 platforms for HEAD.
+2. Republish v1.0. Before tagging, list what the release omits (uncommitted or untracked work) and ask the user. Then:
+   - delete the GitHub release;
+   - move `refs/tags/v1.0` with `--force-with-lease`;
+   - watch the Release workflow, which should produce 15 assets;
+   - run `verify-release.py` from
+     `.cat/sessions/01a1eaf4-*/temp/republish-verifier-3iGJKp/`, fingerprint
+     `8be98cd395e57f622cd2e1a153050472de54e580c3812f4c31e462ccf0c8d9a8`;
+   - install in both harnesses, running the installer bare;
+   - restart the request server.
+3. WI-147: one live launch per harness. Then close the WI-147 row.
+4. WI-146 step 7: optimizer reconciliation per Q7. The forwarder's served `--resume` must skip the spent-allowance check
+   (`SessionRequestForwarder.serve()` still reads limits.json for `RequestArchive.RESUME`).
+5. Rerun E1 in both harnesses.
+   - In the contract author's trial, check that the launcher exemption works live. No test checks that the runners'
+     `start` passes the plugin folder.
+   - In Codex, watch for refusals to read the trial's own project caused by the longer denied-path list (H35).
+   - Check whether Claude Code exports `TMPDIR` from `CLAUDE_CODE_TMPDIR`.
+6. Then E2 to E8 (E8 alone in its harness), T3/T6, G6, gates 5 to 8, and the failure-reporting runs for both harnesses.
+7. Queued, still open:
+   - the per-harness shell-features rule;
+   - the `PerfDisableSharedMem` answer;
+   - the session-estimate defect;
+   - an optional review of the remaining test doubles.
+
+   WI-148 runs at the end of the plan.
+
+**Cautions**
+
+- **`.m2` artifacts:** a delegate's `install -pl codex/cli -am` put 1.0 artifacts into `/home/gili/cat/home/.m2`. Builds
+  must use `verify`, and a `-pl` build without `-am` may resolve those stale artifacts.
+- **Safeguards blocks:** the launcher fix passed safeguards only after it was split into small sequential pieces. Brief
+  large or sensitive changes the same way.
+- **Delegate reports:** a delegate's second `SubagentHandback` is refused. Ask for follow-up reports as plain messages,
+  or read the delegate's commit messages.
+
+## Earlier transfer handoff: session `01a1e6ba`
 
 The user requested wind-down and transfer to another agent. The goal **implement `design.md` and `plan.md`** remains
 incomplete. This section supersedes every older current-status, ownership, next-action, publication and build-currency
