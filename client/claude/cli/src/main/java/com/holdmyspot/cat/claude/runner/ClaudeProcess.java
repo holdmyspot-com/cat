@@ -6,6 +6,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessEventListener;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
+import com.holdmyspot.cat.common.runner.TerminalHarnessTurnFailure;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
@@ -294,7 +295,8 @@ public final class ClaudeProcess implements HarnessProcess
 					{
 						Optional<String> error = boundary.errorResult();
 						if (error.isPresent())
-							return new HarnessProcessResult(1, events.toString(), error.get(), false, true);
+							throw new TerminalHarnessTurnFailure(new HarnessProcessResult(1, events.toString(), error.get(),
+								false, true));
 						return completedTurn(events.toString(), events.substring(replyStart), diagnostics.toString());
 					}
 					case EARLIER_FOLLOW_UP_ENDS ->

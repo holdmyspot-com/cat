@@ -294,6 +294,9 @@ public final class HarnessRunnerBridge
 										}
 										catch (IOException | RuntimeException e)
 										{
+											TerminalHarnessTurnFailure terminalFailure = terminalHarnessFailure(e);
+											if (terminalFailure != null)
+												persistTerminalFailure(manager, session, currentTurn, terminalFailure);
 											if (broker != null)
 												broker.stopChildren();
 											reportTurnFailure(session, client, e);
@@ -303,10 +306,11 @@ public final class HarnessRunnerBridge
 												if (turnInterrupted.get())
 												{
 													if (manager != null)
-									{
-										manager.recordTurnEnded(session.nestedSession(), currentTurn);
+													{
+														if (terminalFailure == null)
+															manager.recordTurnEnded(session.nestedSession(), currentTurn);
 														manager.markIdle(session.nestedSession());
-									}
+													}
 													return null;
 												}
 												// The turn failed, and the harness serves the next one. The conversation's end still reports
@@ -829,6 +833,43 @@ public final class HarnessRunnerBridge
 	 */
 	private HarnessRunnerBridge()
 	{
+	}
+
+	/**
+	 * Persists a provider-reported terminal failure without replacing that failure if persistence itself fails.
+	 *
+	 * @param manager the nested session manager, or null when the session is unmanaged
+	 * @param session the live nested session
+	 * @param turnNumber the terminal turn number
+	 * @param failure the provider-reported terminal failure
+	 */
+	private static void persistTerminalFailure(NestedSessionManager manager, LiveNestedSession session, int turnNumber,
+		TerminalHarnessTurnFailure failure)
+	{
+		if (manager == null)
+			return;
+		try
+		{
+			manager.writeTurnOutput(session.nestedSession(), turnNumber, failure.result());
+			manager.recordTurnEnded(session.nestedSession(), turnNumber);
+		}
+		catch (IOException | RuntimeException persistFailure)
+		{
+			failure.addSuppressed(persistFailure);
+		}
+	}
+
+	/**
+	 * Returns whether a caught exception contains a provider-reported terminal turn result.
+	 *
+	 * @param failure the caught exception
+	 * @return the typed terminal failure, or null when it is an ordinary exception
+	 */
+	private static TerminalHarnessTurnFailure terminalHarnessFailure(Exception failure)
+	{
+		if (failure instanceof TerminalHarnessTurnFailure terminalFailure)
+			return terminalFailure;
+		return null;
 	}
 
 	/**
