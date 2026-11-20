@@ -115,9 +115,10 @@ public final class NestedSessionReceipt
 			{
 				for (Path directory : directories)
 				{
-					// A worktree request's response names no harness and no session, because no session served it
-					boolean isWorktreeResponse = directory.getFileName().toString().startsWith(WorktreeRequest.PREFIX);
-					if (!Files.isDirectory(directory) || isWorktreeResponse)
+					String requestId = directory.getFileName().toString();
+					boolean isControlResponse = requestId.startsWith(WorktreeRequest.PREFIX) ||
+						requestId.startsWith(DiscardRequest.PREFIX) || requestId.startsWith(RetainedTrialRequest.PREFIX);
+					if (!Files.isDirectory(directory) || isControlResponse)
 						continue;
 					Path responsePath = directory.resolve("response.json").toAbsolutePath().normalize();
 					if (!responsePath.startsWith(base) || !Files.isRegularFile(responsePath))

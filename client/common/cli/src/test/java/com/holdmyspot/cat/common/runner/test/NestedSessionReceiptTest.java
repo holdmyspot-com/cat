@@ -7,16 +7,24 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
+import com.holdmyspot.cat.common.runner.DiscardRequest;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ResultsCopy;
+import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
+import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
+import com.holdmyspot.cat.common.runner.WorktreeRequest;
+import com.holdmyspot.cat.common.runner.WorktreeResponse;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
+import java.util.Optional;
+import java.util.OptionalInt;
+import java.util.UUID;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
@@ -241,15 +249,12 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
-	 * Verifies a nested session whose session asked for a worktree still gets a receipt that lists only its requested
-	 * sessions. The response to a worktree request names no harness and no child session, because no session served it,
-	 * so the receipt must not take it for a requested session. A nested session that failed this way ended its runner
-	 * with status 1 after its last turn had completed.
+	 * Verifies receipt writing lists the requested child session when its broker also answered control requests.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void ignoresWorktreeResponseAmongResponses() throws IOException
+	public void listsOnlyRequestedSessions() throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
@@ -260,10 +265,21 @@ public final class NestedSessionReceiptTest
 			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
 				"completed response");
 			Path responses = Files.createDirectories(nestedSession.directory().resolve("responses"));
-			Path worktree = Files.createDirectories(responses.resolve("worktree-62099d29-79f4-49d7-be67-142b73709c53"));
+			String worktreeId = WorktreeRequest.PREFIX + "62099d29-79f4-49d7-be67-142b73709c53";
+			Path worktree = Files.createDirectories(responses.resolve(worktreeId));
 			ObjectNode done = scope.json().createObjectNode().put("format_version", 1).
-				put("id", "worktree-62099d29-79f4-49d7-be67-142b73709c53").put("status", "done").put("reason", "");
-			scope.json().writeValue(worktree.resolve("response.json").toFile(), done);
+				put("id", worktreeId).put("status", WorktreeRequest.DONE).put("reason", "");
+			scope.json().writeValue(worktree.resolve(WorktreeResponse.FILE_NAME).toFile(), done);
+			String discardId = DiscardRequest.PREFIX + "bc698d5e-46f5-49ce-9163-4bcd476df882";
+			Path discard = Files.createDirectories(responses.resolve(discardId));
+			ObjectNode discarded = scope.json().createObjectNode().put("format_version", 1).put("id", discardId).
+				put("status", WorktreeRequest.DONE).put("reason", "").put("result", DiscardRequest.DISCARDED);
+			scope.json().writeValue(discard.resolve(WorktreeResponse.FILE_NAME).toFile(), discarded);
+			String retainedTrialId = RetainedTrialRequest.PREFIX + "9cb3dcc6-2c42-48a4-969b-8adb733a4b6c";
+			Path retainedTrial = Files.createDirectories(responses.resolve(retainedTrialId));
+			new RetainedTrialResponse(UUID.fromString("a95be430-303a-4b22-a9bc-5637f371e277"),
+				RetainedTrialResponse.Status.ABSENT, Optional.empty(), OptionalInt.empty()).
+				write(scope.json(), retainedTrialId, retainedTrial);
 			Path child = Files.createDirectories(responses.resolve("first")).resolve("response.json");
 			ObjectNode result = scope.json().createObjectNode().put("id", "first").put("harness", "harness").
 				put("status", "completed").put("session_id", "child-session");
