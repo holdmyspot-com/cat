@@ -1535,7 +1535,8 @@ optimizer never starts its sessions in place (user ruling, 2026-11-07). Its data
 
 The results copies of the nested sessions of formal and baseline trials and of judges go under a held-out results folder
 beside the runner's own results folder, so that sessions whose output reaches development can be denied them as one
-directory. Both results folders are in the owning session's CAT session directory, under `optimizer-runs/`.
+directory. Both results folders are in the owning session's CAT session directory, under
+`optimizer-nested-sessions/`.
 
 The user's home folder is never a project, and neither is any folder that contains it, such as `/home` or the
 filesystem's root. The home folder holds CAT's user-level state in `~/.cat/`, such as the user rules, the installed
@@ -3630,11 +3631,14 @@ the ID that the session's harness reported. The folder's owner deletes a copy on
 `temporary-resources/agent-cleanup.md` asks of an agent, and the optimizer's cleanup deletes the copies of its campaigns
 ([§4.1](#41-storage)). A nested session that is interrupted makes no copy: it stays retained for a resume (below).
 
-**Names (user rulings, 2026-11-19):** a session that a runner starts is a **nested session**, and the trial session is
-one; its folder records it in `session.json`, and its ID is its harness's own session ID. A runner names the slot that
-it starts a nested session in with the internal option `--slot-id`, and resumes the session retained in a slot with
-`--resume-slot`. Pre-release builds wrote `run.json` and took `--run-root`, `--keep-run`, `--run-id` and
-`--resume-run`; no release did, so CAT reads none of those names.
+**Names (user rulings, 2026-11-19 and 2026-11-20):** a session that a runner starts is a **nested session**, and the
+trial session is one; its folder records it in `session.json`, and its ID is its harness's own session ID. A runner
+names the slot that it starts a nested session in with the internal option `--slot-id`, and resumes the session
+retained in a slot with `--resume-slot`. Every name and value that CAT gives a nested session, its folder, its results
+copy or its slot says so, never "run": the runner marks a nested session's environment with `CAT_NESTED_SESSION=1`,
+and a response names its results copy `results_copy`. Pre-release builds wrote `run.json`, set `CAT_RUN`, kept the
+optimizer's results folders in `optimizer-runs/` and took `--run-root`, `--keep-run`, `--run-id` and `--resume-run`;
+no release did, so CAT reads none of those names.
 
 **Resuming a nested session (user rulings, 2026-11-19):** a nested session is **interrupted** when its launcher, its
 server (the session's request server, or inside a nested session the nested session's runner) or the session that
