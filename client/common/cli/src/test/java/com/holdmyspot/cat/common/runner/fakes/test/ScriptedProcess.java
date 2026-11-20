@@ -221,7 +221,7 @@ public final class ScriptedProcess implements HarnessProcess
 				}
 				case REJECTED -> throw new IOException("The harness rejected the turn");
 				case FAILS_AND_RUNS -> new HarnessProcessResult(turn.exitStatus(), output.toString(),
-					turn.messages().getFirst(), false);
+					turn.messages().getFirst(), false, true);
 				case BLOCKS_UNTIL_INTERRUPTED ->
 				{
 					await(interrupt);

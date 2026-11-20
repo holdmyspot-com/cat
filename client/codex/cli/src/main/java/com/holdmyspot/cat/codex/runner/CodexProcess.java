@@ -706,7 +706,7 @@ public final class CodexProcess implements HarnessProcess
 			JsonNode error = turn.path("error").path("message");
 			if (error.isString() && !error.stringValue().isBlank())
 				diagnostic += ": " + error.stringValue();
-			return new HarnessProcessResult(1, events, diagnostic);
+			return new HarnessProcessResult(1, events, diagnostic, false, true);
 		}
 		catch (JacksonException e)
 		{

@@ -2078,6 +2078,7 @@ public final class NestedSessionManagerTest
 			first.recordHarnessSession(nestedSession, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 			first.recordRequestsUsed(nestedSession, 2);
 			first.writeTurnOutput(nestedSession, 1, new HarnessProcessResult(0, "first", ""));
+			first.recordTurnEnded(nestedSession, 1);
 			Files.writeString(nestedSession.directory().resolve("home/session.jsonl"), "kept");
 			NestedSessionManager later = manager(jvm, root, Clock.fixed(Instant.parse("2026-09-01T00:00:00Z"), UTC));
 
@@ -2114,6 +2115,7 @@ public final class NestedSessionManagerTest
 			NestedSession nestedSession = first.create("harness");
 			first.recordHarnessSession(nestedSession, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 			first.writeTurnOutput(nestedSession, 2, new HarnessProcessResult(0, "second", ""));
+			first.recordTurnEnded(nestedSession, 2);
 			NestedSessionManager later = manager(jvm, root, Clock.systemUTC()).withFixedSlotId("s-1");
 
 			IOException other = expectThrows(IOException.class,

@@ -294,7 +294,7 @@ public final class ClaudeProcess implements HarnessProcess
 					{
 						Optional<String> error = boundary.errorResult();
 						if (error.isPresent())
-							throw new IOException(error.get());
+							return new HarnessProcessResult(1, events.toString(), error.get(), false, true);
 						return completedTurn(events.toString(), events.substring(replyStart), diagnostics.toString());
 					}
 					case EARLIER_FOLLOW_UP_ENDS ->

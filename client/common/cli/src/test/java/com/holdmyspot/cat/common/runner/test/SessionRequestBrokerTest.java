@@ -1634,6 +1634,7 @@ public final class SessionRequestBrokerTest
 		NestedSession session = manager.create("claude");
 		manager.recordHarnessSession(session, RESUMED_SESSION);
 		manager.writeTurnOutput(session, 1, new HarnessProcessResult(0, "retained event\n", ""));
+		manager.recordTurnEnded(session, 1);
 		Path directory = session.directory();
 		Files.writeString(directory.resolve("project/marker"), "retained project");
 		Files.createDirectory(directory.resolve("initial-project"));

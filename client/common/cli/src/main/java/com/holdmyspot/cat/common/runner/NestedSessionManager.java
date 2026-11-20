@@ -1137,12 +1137,35 @@ public final class NestedSessionManager
 			writeAtomically(artifacts.resolve(prefix + ".stderr"), result.standardError());
 			Manifest previous = readManifest(nestedSession);
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
-				previous.harnessProcessState(),
-				previous.ownerPid(),
-				previous.ownerStart(), previous.harnessPid(), previous.harnessStart(), previous.createdAt(),
-				previous.harnessSessionId(), previous.requestsUsed(),
+				previous.harnessProcessState(), previous.ownerPid(), previous.ownerStart(), previous.harnessPid(),
+				previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(), previous.requestsUsed(),
 				previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
-				previous.startedAt(), turnNumber, result.exitCode(), previous.finishedAt(), previous.diagnostic()),
+				previous.startedAt(), previous.turnNumber(), result.exitCode(), previous.finishedAt(), previous.diagnostic()),
+				nestedSession.directory());
+		}
+	}
+
+	/**
+	 * Records a terminal harness outcome as the last ended turn, preserving an unfinished recovery checkpoint.
+	 *
+	 * @param nestedSession the owned nested session
+	 * @param turnNumber the positive one-based turn number
+	 * @throws IOException if the manifest cannot be persisted
+	 */
+	public void recordTurnEnded(NestedSession nestedSession, int turnNumber) throws IOException
+	{
+		synchronized (this)
+		{
+			requireThat(nestedSession, "nestedSession").isNotNull();
+			requireThat(turnNumber, "turnNumber").isPositive();
+			Manifest previous = readManifest(nestedSession);
+			if (turnNumber < previous.turnNumber())
+				throw new IOException("Cannot move the last ended turn backwards");
+			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
+				previous.harnessProcessState(), previous.ownerPid(), previous.ownerStart(), previous.harnessPid(),
+				previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(), previous.requestsUsed(),
+				previous.artifactPath(), previous.projectPath(), previous.transport(), previous.harnessCommand(),
+				previous.startedAt(), turnNumber, previous.exitCode(), previous.finishedAt(), previous.diagnostic()),
 				nestedSession.directory());
 		}
 	}

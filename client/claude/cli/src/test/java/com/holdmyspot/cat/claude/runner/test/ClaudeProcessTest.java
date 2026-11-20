@@ -645,9 +645,7 @@ public final class ClaudeProcessTest
 	 *
 	 * @throws IOException if the turn fails
 	 */
-	@Test(timeOut = 10_000, expectedExceptions = IOException.class, expectedExceptionsMessageRegExp =
-		"Claude reported an error result \\(api_error_status=none, terminal_reason=api_error\\): " +
-			"API Error: Connection refused .*")
+	@Test(timeOut = 10_000)
 	public void failsTurnAtErrorResult() throws IOException
 	{
 		FakeHarnessCli claude = new FakeHarnessCli(_ ->
@@ -657,7 +655,12 @@ public final class ClaudeProcessTest
 		{
 			claude.emit(STATE_RUNNING, INIT, ERROR_REPLY, ERROR_RESULT, STATE_IDLE);
 
-			process.sendTurn("Reply LAUNCHED.");
+			HarnessProcessResult result = process.sendTurn("Reply LAUNCHED.");
+			requireThat(result.completed(), "completed").isFalse();
+			requireThat(result.terminal(), "terminal").isTrue();
+			requireThat(result.exitCode(), "exitCode").isNotEqualTo(0);
+			requireThat(result.standardError(), "diagnostic").contains("api_error_status=none").
+				contains("terminal_reason=api_error").contains("API Error: Connection refused");
 		}
 	}
 

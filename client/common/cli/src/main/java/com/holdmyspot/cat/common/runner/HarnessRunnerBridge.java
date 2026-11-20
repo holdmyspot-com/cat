@@ -267,6 +267,8 @@ public final class HarnessRunnerBridge
 											recordHarnessSession(session, manager, client, harnessSessionRecorded);
 											if (manager != null)
 												manager.writeTurnOutput(session.nestedSession(), currentTurn, result);
+											if (manager != null && result.terminal())
+												manager.recordTurnEnded(session.nestedSession(), currentTurn);
 											if (!result.completed())
 												throw harnessTurnFailure(result, session.processIsAlive());
 											// The requester reads the copy once it reads this turn's response
@@ -301,7 +303,10 @@ public final class HarnessRunnerBridge
 												if (turnInterrupted.get())
 												{
 													if (manager != null)
+									{
+										manager.recordTurnEnded(session.nestedSession(), currentTurn);
 														manager.markIdle(session.nestedSession());
+									}
 													return null;
 												}
 												// The turn failed, and the harness serves the next one. The conversation's end still reports

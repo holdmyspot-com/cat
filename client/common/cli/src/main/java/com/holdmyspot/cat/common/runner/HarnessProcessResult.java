@@ -14,15 +14,60 @@ import java.util.List;
  *
  * @param standardError captured standard error
  *
- * @param completed indicates whether the harness emitted the terminal event for the requested turn
+ * @param completed indicates whether the requested turn completed successfully
+ * @param terminal indicates whether the harness reported a terminal outcome for the requested turn
  *
  * @param assistantResponse the harness-specific adapter's extracted final assistant response
  *
  * @param assistantMessages every assistant text message in the turn, in order
  */
 public record HarnessProcessResult(int exitCode, String standardOutput, String standardError, boolean completed,
-	String assistantResponse, List<String> assistantMessages)
+	boolean terminal, String assistantResponse, List<String> assistantMessages)
 {
+	/**
+	 * Creates a result using success as its terminal state.
+	 *
+	 * @param exitCode harness process exit code
+	 * @param standardOutput captured standard output
+	 * @param standardError captured standard error
+	 * @param completed whether the turn completed successfully
+	 * @param assistantResponse final assistant response
+	 * @param assistantMessages assistant text messages in order
+	 */
+	public HarnessProcessResult(int exitCode, String standardOutput, String standardError, boolean completed,
+		String assistantResponse, List<String> assistantMessages)
+	{
+		this(exitCode, standardOutput, standardError, completed, completed, assistantResponse, assistantMessages);
+	}
+
+	/**
+	 * Creates a result without an extracted assistant response.
+	 *
+	 * @param exitCode harness process exit code
+	 * @param standardOutput captured standard output
+	 * @param standardError captured standard error
+	 * @param completed whether the turn completed successfully
+	 */
+	public HarnessProcessResult(int exitCode, String standardOutput, String standardError, boolean completed)
+	{
+		this(exitCode, standardOutput, standardError, completed, completed, "", List.of());
+	}
+
+	/**
+	 * Creates a result with separate success and terminal states.
+	 *
+	 * @param exitCode harness process exit code
+	 * @param standardOutput captured standard output
+	 * @param standardError captured standard error
+	 * @param completed whether the turn completed successfully
+	 * @param terminal whether the harness reported a terminal outcome
+	 */
+	public HarnessProcessResult(int exitCode, String standardOutput, String standardError, boolean completed,
+		boolean terminal)
+	{
+		this(exitCode, standardOutput, standardError, completed, terminal, "", List.of());
+	}
+
 	/**
 	 * Creates a result whose success requires both a zero exit code and no terminal diagnostic.
 	 *
@@ -34,23 +79,8 @@ public record HarnessProcessResult(int exitCode, String standardOutput, String s
 	 */
 	public HarnessProcessResult(int exitCode, String standardOutput, String standardError)
 	{
-		this(exitCode, standardOutput, standardError, exitCode == 0 && standardError.isBlank(), "", List.of());
-	}
-
-	/**
-	 * Creates a result with an explicit terminal state and no extracted assistant response.
-	 *
-	 * @param exitCode the harness process exit code
-	 *
-	 * @param standardOutput captured standard output
-	 *
-	 * @param standardError captured standard error or terminal diagnostic
-	 *
-	 * @param completed indicates whether the harness emitted the terminal event for the requested turn
-	 */
-	public HarnessProcessResult(int exitCode, String standardOutput, String standardError, boolean completed)
-	{
-		this(exitCode, standardOutput, standardError, completed, "", List.of());
+		this(exitCode, standardOutput, standardError, exitCode == 0 && standardError.isBlank(),
+			exitCode == 0 && standardError.isBlank(), "", List.of());
 	}
 
 	/**
@@ -77,6 +107,8 @@ public record HarnessProcessResult(int exitCode, String standardOutput, String s
 		requireThat(standardError, "standardError").isNotNull();
 		requireThat(assistantResponse, "assistantResponse").isNotNull();
 		requireThat(assistantMessages, "assistantMessages").isNotNull();
+		if (completed && !terminal)
+			throw new IllegalArgumentException("A completed turn must be terminal");
 		assistantMessages = List.copyOf(assistantMessages);
 	}
 }

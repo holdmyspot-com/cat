@@ -207,6 +207,9 @@ public final class HarnessRunnerBridgeTest
 			JsonNode saved = JsonMapper.builder().build().readTree(Files.readString(checkpoint));
 			requireThat(saved.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
 			requireThat(saved.path("state").asString(), "state").isEqualTo("turn_in_progress");
+			JsonNode manifest = JsonMapper.builder().build().readTree(Files.readString(
+				nestedSession.directory().resolve("session.json")));
+			requireThat(manifest.path("turn_number").asInt(), "lastEndedTurn").isEqualTo(1);
 		}
 	}
 
@@ -242,6 +245,9 @@ public final class HarnessRunnerBridgeTest
 			requireThat(saved.path("turn_number").asInt(), "turnNumber").isEqualTo(1);
 			requireThat(saved.path("state").asString(), "state").isEqualTo("turn_in_progress");
 			requireThat(Files.exists(reply), "reply").isFalse();
+			JsonNode manifest = JsonMapper.builder().build().readTree(Files.readString(
+				nestedSession.directory().resolve("session.json")));
+			requireThat(manifest.path("turn_number").asInt(), "lastEndedTurn").isEqualTo(1);
 			requireThat(output.toString(), "output").contains("\"type\":\"interrupted\"").
 				contains("\"type\":\"turn_completed\"").doesNotContain("\"type\":\"turn_failed\"");
 		}
@@ -1521,6 +1527,49 @@ public final class HarnessRunnerBridgeTest
 		}
 	}
 
+	/** Verifies an input disconnect during turn three retains turn two as the last ended checkpoint. */
+	@Test(timeOut = 10_000)
+	public void lostTurnKeepsPreviousEndedTurn() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		CountDownLatch printed = new CountDownLatch(1);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
+				Yielding.fileReplacer()).withFixedSlotId("s-1");
+			NestedSession nestedSession = manager.create("harness");
+			manager.recordHarnessSession(nestedSession, RESUMED_SESSION);
+			manager.recordTurnEnded(nestedSession, 1);
+			manager.recordTurnEnded(nestedSession, 2);
+			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
+			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
+				"effort-a", evidence.resolve("transcript.jsonl"), null, false, false, 1,
+				List.of(), List.of(), null, List.of(), 0, null, 0, null, null, null, true, null,
+				null, null, null, false, "s-1", RESUMED_SESSION);
+			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(143, "partial harness event").
+				withCheckpoint(_ -> printed.countDown())), new ArrayList<>());
+				FailingReader input = FailingReader.ending("{\"type\":\"turn\",\"prompt\":\"third\"}\n", printed))
+			{
+				expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
+					() -> new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()), manager, options,
+					JsonMapper.builder().build(), Yielding.fileReplacer(), input, new StringWriter()));
+			}
+			JsonMapper json = JsonMapper.builder().build();
+			JsonNode manifest = json.readTree(Files.readString(nestedSession.directory().resolve("session.json")));
+			JsonNode checkpoint = json.readTree(Files.readString(
+				nestedSession.directory().resolve("turn-checkpoint.json")));
+			requireThat(manifest.path("phase").asString(), "phase").isEqualTo("working");
+			requireThat(manifest.path("turn_number").asInt(), "lastEndedTurn").isEqualTo(2);
+			requireThat(checkpoint.path("turn_number").asInt(), "activeTurn").isEqualTo(3);
+			requireThat(checkpoint.path("state").asString(), "checkpoint").isEqualTo("turn_in_progress");
+			requireThat(Files.readString(nestedSession.directory().resolve("artifacts/turn-3.events")), "events").
+				contains("partial harness event");
+			requireThat(Files.exists(nestedSession.directory().resolve("artifacts/turn-3.reply.json")), "reply").
+				isFalse();
+		}
+	}
+
 	/**
 	 * Verifies that a runner that resumes a nested session says so in its {@code started} record, numbers its turns after
 	 * the last turn that ended, and ends the nested session normally once its harness has reported the nested session's
@@ -1542,6 +1591,7 @@ public final class HarnessRunnerBridgeTest
 			NestedSession nestedSession = manager.create("harness");
 			manager.recordHarnessSession(nestedSession, RESUMED_SESSION);
 			manager.writeTurnOutput(nestedSession, 1, new HarnessProcessResult(0, "first", ""));
+			manager.recordTurnEnded(nestedSession, 1);
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
