@@ -81,8 +81,8 @@ public final class CodexSessionEnvironmentVersionTest
 					Clock.systemUTC(),
 					Yielding.fileReplacer());
 				NestedSession nestedSession = manager.create("codex");
-				// The session's project links to a file outside it, so the run holds a read-only copy of that file, which
-				// the session's profile lets it read
+				// The session's project links to a file outside it, so the nested session holds a read-only copy of that file,
+				// which the session's profile lets it read
 				Files.writeString(root.resolve("outside.md"), "Outside.", UTF_8);
 				Path linkedProject = Files.createDirectories(root.resolve("linked-project"));
 				Files.createSymbolicLink(linkedProject.resolve("outside.md"), Path.of("../outside.md"));
@@ -139,8 +139,8 @@ public final class CodexSessionEnvironmentVersionTest
 					nestedSession.directory().resolve("project"), nestedSession.directory().resolve("home"), "").
 					replace(root.toRealPath().toString(), "<root>").replace(root.toString(), "<root>").replace('\\', '/');
 
-				// Run directories differ per run, so the hash covers the configuration and instructions with their root
-				// and the run's identifier replaced
+				// Session folders differ per nested session, so the hash covers the configuration and instructions with their
+				// root and the nested session's identifier replaced
 				String configuration = (replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root) +
 					"\ninstructions = " + instructions + "\n").replace(nestedSession.id(), "<run>");
 				RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(jvm, root, root, List::of, false,

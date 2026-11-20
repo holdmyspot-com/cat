@@ -34,14 +34,15 @@ import tools.jackson.databind.node.ObjectNode;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * A run whose session requests sessions, served by the run's real {@link SessionRequestBroker}, which discovers
- * requests on the production heartbeat ticker's thread. Each requested session is a {@link FakeHarnessCli} that plays
- * a harness runner's bridge: it reports its start, answers each turn with the reply {@code reply <n>}, and completes
- * with a retained-evidence receipt. A turn whose prompt is {@value #HOLD} gets no reply until an {@code interrupt}
- * record arrives, which the session answers with an {@code interrupted} record and the turn's completion, as a Claude
- * runner does. A turn whose prompt is {@value #WRITE_OUTPUT} writes {@value #OUTPUT_FILE} to the session's project.
- * A session that the broker asks for turn copies copies its project and initial project, as the bridge does, before
- * it reports a turn's completion. Its run holds {@code project/result.txt} and a login in its home.
+ * A nested session whose session requests sessions, served by the nested session's real {@link SessionRequestBroker},
+ * which discovers requests on the production heartbeat ticker's thread. Each requested session is a {@link
+ * FakeHarnessCli} that plays a harness runner's bridge: it reports its start, answers each turn with the reply {@code
+ * reply <n>}, and completes with a retained-evidence receipt. A turn whose prompt is {@value #HOLD} gets no reply until
+ * an {@code interrupt} record arrives, which the session answers with an {@code interrupted} record and the turn's
+ * completion, as a Claude runner does. A turn whose prompt is {@value #WRITE_OUTPUT} writes {@value #OUTPUT_FILE} to
+ * the session's project. A session that the broker asks for turn copies copies its project and initial project, as the
+ * bridge does, before it reports a turn's completion. Its nested session holds {@code project/result.txt} and a login
+ * in its home.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -82,12 +83,12 @@ public final class RequestingNestedSession implements AutoCloseable
 	private final IntFunction<String> replyForTurn;
 
 	/**
-	 * Creates the run and starts its broker.
+	 * Creates the nested session and starts its broker.
 	 *
-	 * @param root            the folder that holds the run and its artifact
-	 * @param fileLocks       the file locks of the runs
-	 * @param sessionRequests how many sessions the run allows
-	 * @throws IOException if the run cannot be created or its broker cannot start
+	 * @param root            the folder that holds the nested session and its artifact
+	 * @param fileLocks       the file locks of the nested sessions
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @throws IOException if the nested session cannot be created or its broker cannot start
 	 */
 	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests) throws IOException
 	{
@@ -95,13 +96,13 @@ public final class RequestingNestedSession implements AutoCloseable
 	}
 
 	/**
-	 * Creates the run and starts its broker with caller-controlled normal-turn replies.
+	 * Creates the nested session and starts its broker with caller-controlled normal-turn replies.
 	 *
-	 * @param root the folder that holds the run and its artifact
-	 * @param fileLocks the file locks of the runs
-	 * @param sessionRequests how many sessions the run allows
+	 * @param root the folder that holds the nested session and its artifact
+	 * @param fileLocks the file locks of the nested sessions
+	 * @param sessionRequests how many sessions the nested session allows
 	 * @param replyForTurn returns the reply for a one-based turn number; it must be immutable and thread-safe
-	 * @throws IOException if the run cannot be created or its broker cannot start
+	 * @throws IOException if the nested session cannot be created or its broker cannot start
 	 */
 	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests, IntFunction<String> replyForTurn)
 		throws IOException
@@ -126,7 +127,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	}
 
 	/**
-	 * Returns the run's requests directory, which a session's environment names.
+	 * Returns the nested session's requests directory, which a session's environment names.
 	 *
 	 * @return the directory
 	 */
@@ -136,8 +137,8 @@ public final class RequestingNestedSession implements AutoCloseable
 	}
 
 	/**
-	 * Returns the home directory of the run's session, where the run's runner installs the CAT plugin that the
-	 * session's commands run from.
+	 * Returns the home directory of the nested session's harness session, where the nested session's runner installs the
+	 * CAT plugin that the session's commands run from.
 	 *
 	 * @return the directory, which may not exist
 	 */
@@ -147,8 +148,9 @@ public final class RequestingNestedSession implements AutoCloseable
 	}
 
 	/**
-	 * Returns the directory, in the run's {@link #home() home}, of the CAT plugin that the run's session's commands
-	 * run, which the run's broker lets the run's requested sessions read.
+	 * Returns the directory, in the nested session's {@link #home() home}, of the CAT plugin that the nested session's
+	 * harness session's commands run, which the nested session's broker lets the nested session's requested sessions
+	 * read.
 	 *
 	 * @return the directory, which may not exist
 	 */
@@ -158,7 +160,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	}
 
 	/**
-	 * Returns the run's responses directory.
+	 * Returns the nested session's responses directory.
 	 *
 	 * @return the directory
 	 */
@@ -205,7 +207,7 @@ public final class RequestingNestedSession implements AutoCloseable
 	 * @param harness   the requested harness
 	 * @param arguments the requested runner's options
 	 * @return the session
-	 * @throws IOException if its run cannot be created
+	 * @throws IOException if its nested session cannot be created
 	 */
 	private FakeHarnessCli child(String harness, List<String> arguments) throws IOException
 	{

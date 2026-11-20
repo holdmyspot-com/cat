@@ -22,7 +22,7 @@ public final class ClaudeRequestServerCliTest
 	}
 
 	/**
-	 * Verifies that the server refuses to run in a session of a CAT run, on every platform, so that a session that
+	 * Verifies that the server refuses to run in a nested session, on every platform, so that a session that
 	 * starts it as a background command is not left with a command that never ends and keeps its turn open, and that
 	 * any other session gets only the platform's refusal, if there is one.
 	 */

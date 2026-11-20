@@ -25,8 +25,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 /**
  * Tests that a CAT command that starts sessions inside a nested session, such as the prompt optimizer, starts each
- * through the run's runner with {@link SessionRequestForwarder#serve}, and that it is refused before it changes
- * anything when the run allows no further session.
+ * through the nested session's runner with {@link SessionRequestForwarder#serve}, and that it is refused before it
+ * changes anything when the nested session allows no further session.
  */
 public final class ServedSessionTest
 {
@@ -48,8 +48,8 @@ public final class ServedSessionTest
 	 * Verifies that a served session gets, as copies inside the request, the workspace files and read-only evidence
 	 * that the command names, together with its further denied reads, instruction files, session role, tool-output
 	 * token limit and the command's CAT candidate as a plugin; that the command receives the session's records; and
-	 * that the session's kept run, without its home, lands in the command's results folder, whose run has its artifacts
-	 * directory.
+	 * that the session's results copy, without its home, lands in the command's results folder, whose nested session has
+	 * its artifacts directory.
 	 *
 	 * @throws IOException if fixture or session I/O fails
 	 */
@@ -141,10 +141,10 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Supplies the session requests of a run whose runner refuses the next session, and whether the run first serves
-	 * the one session it allows.
+	 * Supplies the session requests of a nested session whose runner refuses the next session, and whether the nested
+	 * session first serves the one session it allows.
 	 *
-	 * @return the session requests of the run and whether one session is served first
+	 * @return the session requests of the nested session and whether one session is served first
 	 */
 	@DataProvider
 	public Object[][] spentSessions()
@@ -153,12 +153,12 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Verifies that a run that allows no session, or whose sessions are spent, refuses the next session with the
-	 * message that names the caller's options that would allow it, before the command publishes a request or writes
+	 * Verifies that a nested session that allows no session, or whose sessions are spent, refuses the next session with
+	 * the message that names the caller's options that would allow it, before the command publishes a request or writes
 	 * into its results folder.
 	 *
-	 * @param sessionRequests how many sessions the run allows
-	 * @param serveFirst      indicates whether the run serves one session before
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @param serveFirst      indicates whether the nested session serves one session before
 	 * @throws IOException if fixture or session I/O fails
 	 */
 	@Test(dataProvider = "spentSessions", timeOut = 30_000)
@@ -197,8 +197,8 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Verifies that a session that the nested session's runner refuses because the run's limit ran out after the command
-	 * checked it is refused with the same message, so that a campaign pauses instead of counting a failure.
+	 * Verifies that a session that the nested session's runner refuses because the nested session's limit ran out after
+	 * the command checked it is refused with the same message, so that a campaign pauses instead of counting a failure.
 	 *
 	 * @throws IOException if fixture or session I/O fails
 	 */
@@ -272,8 +272,8 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Verifies that a served session takes its records from the command and keeps its run in the command's results
-	 * folder, so a launch that names other records is refused before it publishes a request.
+	 * Verifies that a served session takes its records from the command and keeps its nested session in the command's
+	 * results folder, so a launch that names other records is refused before it publishes a request.
 	 *
 	 * @param added   the options that the launch adds
 	 * @param removed the options that the launch leaves out
@@ -308,9 +308,9 @@ public final class ServedSessionTest
 	}
 
 	/**
-	 * Serves a session that the run must refuse.
+	 * Serves a session that the nested session must refuse.
 	 *
-	 * @param parent the run
+	 * @param parent the nested session
 	 * @param inputs the session's inputs
 	 * @return the refusal
 	 * @throws IOException if the session fails for another reason
@@ -326,15 +326,15 @@ public final class ServedSessionTest
 		{
 			return e;
 		}
-		throw new AssertionError("The run served a session that it does not allow");
+		throw new AssertionError("The nested session served a session that it does not allow");
 	}
 
 	/**
-	 * Returns the response of the run's only request.
+	 * Returns the response of the nested session's only request.
 	 *
-	 * @param parent the run
+	 * @param parent the nested session
 	 * @return the response
-	 * @throws IOException if the run has no single response
+	 * @throws IOException if the nested session has no single response
 	 */
 	private JsonNode onlyResponse(RequestingNestedSession parent) throws IOException
 	{

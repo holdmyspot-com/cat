@@ -39,9 +39,9 @@ import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequ
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests that a session that the optimizer requests through its run's runner shows its follow-up the files that the
- * session has written so far, as a session that the optimizer runs directly does, using the optimizer's own session,
- * the run's own runner and the run's own broker.
+ * Tests that a session that the optimizer requests through its nested session's runner shows its follow-up the files
+ * that the session has written so far, as a session that the optimizer runs directly does, using the optimizer's own
+ * session, the nested session's own runner and the nested session's own broker.
  */
 public final class TurnCopyServedSessionTest
 {
@@ -56,7 +56,7 @@ public final class TurnCopyServedSessionTest
 	}
 
 	/**
-	 * Supplies the harnesses that a run's runner serves.
+	 * Supplies the harnesses that a nested session's runner serves.
 	 *
 	 * @return the harness of each case
 	 */

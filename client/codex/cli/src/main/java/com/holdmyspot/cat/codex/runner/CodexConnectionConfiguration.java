@@ -506,8 +506,8 @@ public final class CodexConnectionConfiguration
 
 	/**
 	 * Copies the configuration as {@link #copy(Path, Path, Path, HarnessDependencyCaches, Path, int, Platform)} does,
-	 * except that a session that may request sessions can also write the run's requests directory. Its commands receive
-	 * the variables that name that directory and the {@code request-session} launcher.
+	 * except that a session that may request sessions can also write the nested session's requests directory. Its
+	 * commands receive the variables that name that directory and the {@code request-session} launcher.
 	 *
 	 * @param source               the host configuration file
 	 * @param destination          the isolated configuration file
@@ -686,7 +686,7 @@ public final class CodexConnectionConfiguration
 			copied.append(System.lineSeparator()).append("[sandbox_workspace_write]").append(System.lineSeparator()).
 				append("writable_roots = ").append(roots).append(System.lineSeparator());
 		}
-		// The commands that a session runs get the run's home as their home and no harness credential, so that a
+		// The commands that a session runs get the nested session's home as their home and no harness credential, so that a
 		// harness started from a command finds neither the user's login nor the user's configuration
 		StringJoiner credentials = new StringJoiner(", ", "[", "]");
 		for (String credential : new TreeSet<>(SessionCommandLimits.CREDENTIAL_VARIABLES))
@@ -840,8 +840,8 @@ public final class CodexConnectionConfiguration
 	 * @param configuration      the isolated configuration being assembled
 	 * @param isolatedHome       the fresh runtime home that the runner owns
 	 * @param writable           the other directories that the session may write: the verified shared dependency caches
-	 *                           and the extra writes that its launch asks for, which the policy keeps, and the run's
-	 *                           requests directory when the session may request sessions
+	 *                           and the extra writes that its launch asks for, which the policy keeps, and the nested
+	 *                           session's requests directory when the session may request sessions
 	 * @param temporaryDirectory the fresh harness temporary directory owned by the runner
 	 * @param project            the copied project that the isolated session runs in
 	 * @param platform           the platform that the session runs on
@@ -941,8 +941,8 @@ public final class CodexConnectionConfiguration
 	 * The app server reads a hook's declaration and its approval but never its script, so a command that rewrote the
 	 * script would have the app server run the new program outside the command sandbox. The runner writes these files
 	 * before the session starts, from outside the command sandbox, so making them read-only to the commands leaves the
-	 * run's setup unaffected. A read entry also forbids creating the path, so a command cannot plant a user-level
-	 * {@code hooks.json} that Codex would trust without an approval.
+	 * nested session's setup unaffected. A read entry also forbids creating the path, so a command cannot plant a
+	 * user-level {@code hooks.json} that Codex would trust without an approval.
 	 * <p>
 	 * The sandbox puts an empty regular file at a read entry's path when nothing exists there, and a configuration
 	 * reader rejects an empty file. The method therefore first writes a {@code hooks.json} that defines no hooks when
@@ -1221,7 +1221,7 @@ public final class CodexConnectionConfiguration
 	}
 
 	/**
-	 * Copies the user's approvals of a plugin's hooks into an isolated configuration, under the run-local marketplace
+	 * Copies the user's approvals of a plugin's hooks into an isolated configuration, under the session-local marketplace
 	 * that bears the plugin's name. Codex keys an approval by the plugin, its marketplace and the hook, and rejects an
 	 * approval whose recorded hash differs from the hook's normalized declaration, so an approval of another version of
 	 * the hook gives it no trust.
@@ -1238,7 +1238,7 @@ public final class CodexConnectionConfiguration
 		requireThat(source, "source").isNotNull();
 		requireThat(destination, "destination").isNotNull();
 		requireThat(plugin, "plugin").isNotBlank();
-		// The user's approval names the marketplace that the user installed the plugin from; the run-local marketplace
+		// The user's approval names the marketplace that the user installed the plugin from; the session-local marketplace
 		// bears the plugin's name instead, so each approval is rewritten under it
 		StringBuilder approvals = new StringBuilder(256);
 		for (Entry<String, String> approval : pluginHookApprovals(source, plugin).entrySet())

@@ -12,7 +12,7 @@ import java.io.OutputStream;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Tests that a terminated run's process tree stops without starting processes.
+ * Tests that a terminated nested session's process tree stops without starting processes.
  */
 public final class HarnessProcessTerminationTest
 {
@@ -24,7 +24,7 @@ public final class HarnessProcessTerminationTest
 	}
 
 	/**
-	 * Verifies that ending a run stops its process, children and grandchildren.
+	 * Verifies that ending a nested session stops its process, children and grandchildren.
 	 *
 	 * @throws IOException if termination fails
 	 */
@@ -43,7 +43,7 @@ public final class HarnessProcessTerminationTest
 	}
 
 	/**
-	 * Verifies that shutdown stops the run's process, children and grandchildren.
+	 * Verifies that shutdown stops the nested session's process, children and grandchildren.
 	 */
 	@Test
 	public void immediatelyTerminatesVisibleChildren()

@@ -28,10 +28,10 @@ public final class NestedSessionLockTest
 	}
 
 	/**
-	 * Verifies that while this JVM holds a run's lock, a second attempt reports the run active without opening the
-	 * lock file, and that the lock can be taken again once it is released. On Linux, closing any channel on a file
-	 * releases every lock that the process holds on it, so opening and closing the held file would let another
-	 * process take an active run.
+	 * Verifies that while this JVM holds a nested session's lock, a second attempt reports the nested session active
+	 * without opening the lock file, and that the lock can be taken again once it is released. On Linux, closing any
+	 * channel on a file releases every lock that the process holds on it, so opening and closing the held file would let
+	 * another process take an active nested session.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -58,7 +58,7 @@ public final class NestedSessionLockTest
 				}
 				catch (IOException e)
 				{
-					requireThat(e.getMessage(), "message").startsWith("Run is already active");
+					requireThat(e.getMessage(), "message").startsWith("Nested session is already active");
 				}
 				requireThat(opened, "opened").isEmpty();
 				requireThat(held.isHeld(), "heldAfterSecondAttempt").isTrue();

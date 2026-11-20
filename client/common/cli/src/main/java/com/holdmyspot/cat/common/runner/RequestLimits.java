@@ -22,7 +22,7 @@ public record RequestLimits(int entries, long entryBytes, long totalBytes, long 
 	public static final RequestLimits IN_NESTED_SESSION = new RequestLimits(10_000, 67_108_864, 268_435_456, 300_000_000);
 	/**
 	 * The bounds of a request made at session level, which no archive reaches: such a request carries a project of any
-	 * size, as a run started outside a session copies one, and only the free disk space bounds it.
+	 * size, as a nested session started outside a session copies one, and only the free disk space bounds it.
 	 */
 	public static final RequestLimits UNBOUNDED = new RequestLimits(Integer.MAX_VALUE, Long.MAX_VALUE, Long.MAX_VALUE,
 		Long.MAX_VALUE);

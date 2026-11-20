@@ -120,8 +120,8 @@ public final class ClaudeConnectionSettingsTest
 	}
 
 	/**
-	 * Grants reads of the run's {@code link-targets} directory, which the project's links to targets outside it lead
-	 * to, and grants no write of it: no sandbox write path or edit rule lets the session write there.
+	 * Grants reads of the nested session's {@code link-targets} directory, which the project's links to targets outside
+	 * it lead to, and grants no write of it: no sandbox write path or edit rule lets the session write there.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -616,7 +616,7 @@ public final class ClaudeConnectionSettingsTest
 
 	/**
 	 * Verifies that isolated settings exclude every instruction file that Claude Code loads from a directory above
-	 * the isolation root, so that a session whose run directory lies inside another project does not receive that
+	 * the isolation root, so that a session whose session folder lies inside another project does not receive that
 	 * project's instructions, while the files at or below the isolation root still load.
 	 *
 	 * @throws IOException if fixture I/O fails

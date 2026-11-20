@@ -43,7 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * did in the recording.
  * <p>
  * The adapter owns the transcript under test. The bridge's caller-owned lifecycle avoids also persisting every event
- * to a second turn archive; the run manager marks completion before the adapter cleans the runtime home.
+ * to a second turn archive; the nested-session manager marks completion before the adapter cleans the runtime home.
  */
 final class RecordedClaude implements Bridge
 {
@@ -67,9 +67,9 @@ final class RecordedClaude implements Bridge
 	 */
 	private List<String> afterInterrupt = List.of();
 	/**
-	 * The identifier of the run that the replay serves, which replaces the recorded session identifier. No launcher
-	 * copies the run, so the session is named after the run, whose folder then holds the session's results where the
-	 * launcher's copy would.
+	 * The identifier of the nested session that the replay serves, which replaces the recorded session identifier. No
+	 * launcher copies the nested session, so the session is named after the nested session, whose folder then holds the
+	 * session's results where the launcher's copy would.
 	 */
 	private volatile String sessionId = "";
 
@@ -147,11 +147,11 @@ final class RecordedClaude implements Bridge
 	}
 
 	/**
-	 * Returns recorded lines as a replay served them: with the run's identifier in place of the recorded session
-	 * identifier.
+	 * Returns recorded lines as a replay served them: with the nested session's identifier in place of the recorded
+	 * session identifier.
 	 *
 	 * @param lines      the recorded lines
-	 * @param transcript the transcript of the session that the replay served, which lies in its run's
+	 * @param transcript the transcript of the session that the replay served, which lies in its nested session's
 	 *                   {@code artifacts} folder
 	 * @return the lines that the session received
 	 */

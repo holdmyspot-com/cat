@@ -16,9 +16,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Signals that the runner refuses to start a session because the session needs writes or hosts that the sandbox of the
  * session that requested it does not allow. The session's commands never run.
  * <p>
- * The message of the exception names every missing write and host for a requesting session that is a run's session,
- * and says to name them with {@code --extra-permissions} on the runner launcher command that started that session.
- * {@link #messageFor(String, String)} instead tells the user which settings of a harness session to change.
+ * The message of the exception names every missing write and host for a requesting session that is a nested session's
+ * harness session, and says to name them with {@code --extra-permissions} on the runner launcher command that started
+ * that session. {@link #messageFor(String, String)} instead tells the user which settings of a harness session to
+ * change.
  */
 public final class MissingPermissionsException extends SessionRefusedException
 {
@@ -56,9 +57,9 @@ public final class MissingPermissionsException extends SessionRefusedException
 	}
 
 	/**
-	 * Returns the message for a requesting session that is a run's session, whose sandbox CAT wrote from the options
-	 * of the runner launcher command that started the run. The user changes it only through that command's
-	 * {@code --extra-permissions}.
+	 * Returns the message for a requesting session that is a nested session's harness session, whose sandbox CAT wrote
+	 * from the options of the runner launcher command that started the nested session. The user changes it only through
+	 * that command's {@code --extra-permissions}.
 	 *
 	 * @param missingWrites the writes that no folder the requesting session may write contains
 	 * @param deniedWrites  the writes inside a path that the requesting session may not write, each with that path
@@ -87,7 +88,7 @@ public final class MissingPermissionsException extends SessionRefusedException
 				denials.add(denial.toString());
 			sentences.add(ExtraPermissions.OPTION + " does not lift a denial: remove the denial of " +
 				String.join(", ", denials) + " from the sandbox settings of the session that started the " +
-				"requesting session's run.");
+				"requesting nested session.");
 		}
 		return String.join(" ", sentences);
 	}

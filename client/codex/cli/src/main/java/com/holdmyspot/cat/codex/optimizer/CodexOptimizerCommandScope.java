@@ -216,12 +216,12 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	 * @param environment            the process environment
 	 * @param home                   the user's home directory
 	 * @param hostProject            the project of the host session, which holds the results folder
-	 * @param resultsFolder                the directory that holds the runs of the host session's campaigns
+	 * @param resultsFolder                the directory that holds the nested sessions of the host session's campaigns
 	 * @param artifact               the complete Codex artifact that nested sessions install
 	 * @param configurationDirectory the host's Codex configuration directory
 	 * @param heldOut                lists the campaigns' held-out directories
 	 * @param clock                  the clock
-	 * @param replacer               replaces the files of the sessions' runs
+	 * @param replacer               replaces the files of the sessions' folders
 	 * @return the port
 	 */
 	private static SessionPort sessions(JvmScope jvm, Map<String, String> environment, Path home, Path hostProject,

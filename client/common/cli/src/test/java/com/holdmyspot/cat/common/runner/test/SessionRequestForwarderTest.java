@@ -132,7 +132,7 @@ public final class SessionRequestForwarderTest
 	/**
 	 * Verifies the served command sees each root and child transcript copy before its matching completed-turn record.
 	 *
-	 * @throws IOException if the served session or its kept run cannot be copied
+	 * @throws IOException if the served session or its results copy cannot be copied
 	 */
 	@Test
 	public void copiesTranscriptsBeforeTurnCompletion() throws IOException
@@ -306,12 +306,12 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that the kept run that a served session's runner copies into the command's results folder names, as its
-	 * project, the project that the command's launch named, as a run that the command started itself would. The
-	 * runner ran the session in the copy of that project that the request carried, below its own folder, so the run's
-	 * manifest that it copies names that copy instead.
+	 * Verifies that the results copy that a served session's runner copies into the command's results folder names, as
+	 * its project, the project that the command's launch named, as a nested session that the command started itself
+	 * would. The runner ran the session in the copy of that project that the request carried, below its own folder, so
+	 * the nested session's manifest that it copies names that copy instead.
 	 *
-	 * @throws IOException if the served session or its kept run cannot be copied
+	 * @throws IOException if the served session or its results copy cannot be copied
 	 */
 	@Test
 	public void resultsCopyNamesTheLaunchProject() throws IOException
@@ -384,9 +384,9 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * Verifies that a launch inside a nested session that names a results folder gets the copy of its session's run
-	 * that the run's runner put in its response copied into that folder, as a launch outside a nested session does, and
-	 * that the nested session's runner, which owns the response, still finds it.
+	 * Verifies that a launch inside a nested session that names a results folder gets the copy of its session's nested
+	 * session that the nested session's runner put in its response copied into that folder, as a launch outside a nested
+	 * session does, and that the nested session's runner, which owns the response, still finds it.
 	 *
 	 * @throws IOException if the launch or its copy fails
 	 */
@@ -440,7 +440,7 @@ public final class SessionRequestForwarderTest
 	/**
 	 * Replaces a turn's project and native transcript inputs for the next response.
 	 *
-	 * @param turnCopy the run snapshot the forwarder copies
+	 * @param turnCopy the nested session snapshot the forwarder copies
 	 * @param turn the snapshot number
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -741,7 +741,7 @@ public final class SessionRequestForwarderTest
 	}
 
 	/**
-	 * A run's requests directory with a fake parent runner that answers the first request.
+	 * A nested session's requests directory with a fake parent runner that answers the first request.
 	 */
 	private static final class Fixture
 	{

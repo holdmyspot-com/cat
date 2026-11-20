@@ -94,9 +94,9 @@ public final class CodexRunner
 	private final Waiting waiting;
 
 	/**
-	 * Creates a Codex artifact runner. Each run obtains executable-file services from its owned scope.
+	 * Creates a Codex artifact runner. Each nested session obtains executable-file services from its owned scope.
 	 *
-	 * @param waiting how each run waits between the attempts of a retried operation
+	 * @param waiting how each nested session waits between the attempts of a retried operation
 	 * @throws NullPointerException if {@code waiting} is null
 	 */
 	public CodexRunner(Waiting waiting)
@@ -114,7 +114,7 @@ public final class CodexRunner
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
 	 *   manifest's name, beside CAT when {@code installCat} is set, with the user's approvals of its hooks
-	 * @param manager the run manager
+	 * @param manager the nested-session manager
 	 * @param executable the Codex executable
 	 * @param environment the scrubbed isolated environment
 	 * @param model the Codex model name
@@ -124,24 +124,24 @@ public final class CodexRunner
 	 *   {@code effort}
 	 * @param readOnlyEvidence the completed evidence files and directories that the session may read but not change
 	 * @param deniedReads the existing files and directories that the session must not read, besides the records of
-	 *   its own run
+	 *   its own nested session
 	 * @param toolOutputTokenLimit the most tokens of each tool output that the session keeps, or {@code 0} for
 	 *   Codex's default
-	 * @param sessionTranscripts whether the run copies its threads' rollouts into its session transcripts directory
-	 *   when the session closes. Codex keeps every thread in the run's home either way, so that the run's session can
-	 *   continue after its runner ends
-	 * @param sessionRequests how many sessions the session may request over its run, or {@code 0} if it may request
-	 *   none
-	 * @param bound the policy that bounds the session's sandbox: the session gets its run directory, the dependency
+	 * @param sessionTranscripts whether the nested session copies its threads' rollouts into its session transcripts
+	 *   directory when the session closes. Codex keeps every thread in the nested session's home either way, so that the
+	 *   nested session's harness session can continue after its runner ends
+	 * @param sessionRequests how many sessions the session may request over its nested session, or {@code 0} if it may
+	 *   request none
+	 * @param bound the policy that bounds the session's sandbox: the session gets its session folder, the dependency
 	 *   caches and its model host only within it
 	 * @param policyListener receives the session's sandbox policy before its Codex process starts
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read {@code project}'s
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Codex needs
-	 * @param resumedSession the thread that the run of {@code manager}'s slot records and that the runner continues,
-	 *   or {@code null} to start a thread in a new run. A resumed run keeps its project and its installed plugins, and
-	 *   its thread keeps the developer instructions and agent contract that its start gave it, but runs under
-	 *   {@code model} and {@code effort} and the sandbox that {@code bound} allows now.
+	 * @param resumedSession the thread that the nested session of {@code manager}'s slot records and that the runner
+	 *   continues, or {@code null} to start a thread in a new nested session. A resumed nested session keeps its project
+	 *   and its installed plugins, and its thread keeps the developer instructions and agent contract that its start gave
+	 *   it, but runs under {@code model} and {@code effort} and the sandbox that {@code bound} allows now.
 	 * @return the live owned Codex run session
 	 * @throws SessionRefusedException if the session's sandbox would be wider than its policy or cannot confine it
 	 * @throws IOException             if validation, copying, or process startup fails
@@ -181,7 +181,7 @@ public final class CodexRunner
 		ExecutableFiles executables = scope.executableFiles();
 		try
 		{
-			// A resumed run keeps the project that its start copied, as its thread left it
+			// A resumed nested session keeps the project that its start copied, as its thread left it
 			if (!resumes)
 			{
 				manager.copyProject(project, nestedSession);
@@ -229,7 +229,7 @@ public final class CodexRunner
 			Path worktree = nestedSession.directory().resolve("project");
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
 				executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
-			// A resumed run keeps the plugins that its start installed in its home
+			// A resumed nested session keeps the plugins that its start installed in its home
 			if (!resumes)
 			{
 				installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome,
@@ -302,7 +302,7 @@ public final class CodexRunner
 					e.addSuppressed(failure);
 			}
 			scope.close();
-			// A resumed run whose thread could not continue stays retained for a later launch
+			// A resumed nested session whose thread could not continue stays retained for a later launch
 			if (!resumes)
 				manager.fail(nestedSession, e.getMessage());
 			throw e;
@@ -314,8 +314,8 @@ public final class CodexRunner
 	 *
 	 * @param child the raw process returned by the operating system, if spawned
 	 * @param wrapper the process wrapper, if constructed
-	 * @param manager the run manager
-	 * @param nestedSession the run being launched
+	 * @param manager the nested-session manager
+	 * @param nestedSession the nested session being launched
 	 * @param identityRecorded whether the manifest already contains the child identity
 	 * @param primary the launch failure
 	 */
@@ -362,7 +362,7 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Owns a raw child until its durable identity and wrapper have been accepted by the run session.
+	 * Owns a raw child until its durable identity and wrapper have been accepted by the nested session.
 	 */
 	private static final class ProcessOwnership
 	{
@@ -413,17 +413,18 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the environment of a run's app-server. It holds the caller's generic operating-system variables, its
-	 * Codex authentication variables and the shared dependency caches, names the run's isolated home as the Codex home,
-	 * and stops Git from finding a repository above the run directory. On Linux, it also names the run's temporary
-	 * directory as {@code TMPDIR}, the directory that the run's configuration gives the session's shell commands.
+	 * Returns the environment of a nested session's app-server. It holds the caller's generic operating-system variables,
+	 * its Codex authentication variables and the shared dependency caches, names the nested session's isolated home as
+	 * the Codex home, and stops Git from finding a repository above the session folder. On Linux, it also names the
+	 * nested session's temporary directory as {@code TMPDIR}, the directory that the nested session's configuration gives
+	 * the session's shell commands.
 	 *
 	 * @param environment        the caller's environment
 	 * @param caches             the shared dependency caches
-	 * @param isolatedHome       the run's isolated home
-	 * @param sessionFolder      the run's directory
-	 * @param temporaryDirectory the run's temporary directory, which the run's configuration names as the shell
-	 *                           commands' {@code TMPDIR}
+	 * @param isolatedHome       the nested session's isolated home
+	 * @param sessionFolder      the nested session's directory
+	 * @param temporaryDirectory the nested session's temporary directory, which the nested session's configuration names
+	 *                           as the shell commands' {@code TMPDIR}
 	 * @param platform           the platform that the app-server runs on
 	 * @return the environment, which the caller may change
 	 * @throws NullPointerException     if any of the arguments are null
@@ -440,12 +441,12 @@ public final class CodexRunner
 		requireThat(platform, "platform").isNotNull();
 		Map<String, String> isolatedEnvironment = new HashMap<>(HarnessEnvironment.scrub(environment));
 		HarnessEnvironment.copyAllowed(environment, isolatedEnvironment, AUTHENTICATION_VARIABLES);
-		// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
-		// independent trials do not redownload the same immutable registry artifacts.
+		// Each nested session gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches
+		// so independent trials do not redownload the same immutable registry artifacts.
 		isolatedEnvironment.putAll(caches.environment());
 		isolatedEnvironment.put(CODEX_HOME, isolatedHome.toString());
 		HarnessEnvironment.preventGitDiscoveryAbove(isolatedEnvironment, sessionFolder);
-		// The session's commands send their sessions to this run's runner
+		// The session's commands send their sessions to this nested session's runner
 		isolatedEnvironment.put(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 		if (platform.isLinux())
 		{
@@ -530,8 +531,8 @@ public final class CodexRunner
 	 * folder, cannot start without that bubblewrap, so the method refuses it before it changes the configuration.
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
-	 * @param manager          the run manager
-	 * @param nestedSession    the session's run
+	 * @param manager          the nested-session manager
+	 * @param nestedSession    the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param platform         the platform that the session runs on
@@ -573,9 +574,9 @@ public final class CodexRunner
 	 * has no bubblewrap. The Linux sandbox of Codex hides read-only paths inside a denied directory, so only the
 	 * bubblewrap around the app-server can show the session its evidence while it hides the rest of that directory.
 	 * Denying each other path under the directory instead makes the permission profile of a session beside thousands of
-	 * runs too long for Codex's sandbox helper, which then fails to start the session's thread.
+	 * nested sessions too long for Codex's sandbox helper, which then fails to start the session's thread.
 	 *
-	 * @param manager          the run manager
+	 * @param manager          the nested-session manager
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param platform         the platform that the session runs on
@@ -614,8 +615,8 @@ public final class CodexRunner
 	 * Platform, Map, SessionRequestAccess)} returns.
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
-	 * @param manager          the run manager
-	 * @param nestedSession    the session's run
+	 * @param manager          the nested-session manager
+	 * @param nestedSession    the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param platform         the platform that the session runs on
@@ -638,11 +639,11 @@ public final class CodexRunner
 
 	/**
 	 * Returns the completed files and directories that a session may read but not change: the caller's read-only
-	 * evidence, the run's link-targets directory if the run has one, which holds the copies that the project's links to
-	 * targets outside it lead to, and the run's responses directory when the session may request sessions, so that a
-	 * link that the session plants there cannot redirect the runner's answers.
+	 * evidence, the nested session's link-targets directory if the nested session has one, which holds the copies that
+	 * the project's links to targets outside it lead to, and the nested session's responses directory when the session
+	 * may request sessions, so that a link that the session plants there cannot redirect the runner's answers.
 	 *
-	 * @param nestedSession    the session's run
+	 * @param nestedSession    the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the caller lets the session read
 	 * @param requestAccess    the session's access to requested sessions, or {@code null} if it may request none
 	 * @return the files and directories
@@ -663,18 +664,18 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
-	 * and directory under the results folder except the session's project, home, link-targets directory and evidence,
-	 * the directory where Codex logs the session's events unless the session may request sessions, and every harness's
-	 * login and configuration files in the session's home and in the user's home, as {@link
-	 * SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's own Codex home:
-	 * its {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's
-	 * tool output limit, and its {@code auth.json}, the copy of the user's login that the runner puts there, which a
-	 * Codex process that the session starts from a command, such as the prompt optimizer's sessions, reads. The session
-	 * therefore cannot read the runner's records of its own run or of any other run, the workspace files of any run,
-	 * any login but that copy, such as the user's own Codex and Claude logins, or the user's configuration. The method
-	 * creates the session log directory, because the sandbox skips a denied path that does not exist yet; for the same
-	 * reason, it leaves out a login or configuration file that does not exist.
+	 * Returns the files and directories that a session of a nested session must not read: those that the caller denies,
+	 * every file and directory under the results folder except the session's project, home, link-targets directory and
+	 * evidence, the directory where Codex logs the session's events unless the session may request sessions, and every
+	 * harness's login and configuration files in the session's home and in the user's home, as {@link
+	 * SessionCommandLimits#harnessFiles(Map, Platform)} names them, except two files in the session's own Codex home: its
+	 * {@code config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's tool
+	 * output limit, and its {@code auth.json}, the copy of the user's login that the runner puts there, which a Codex
+	 * process that the session starts from a command, such as the prompt optimizer's sessions, reads. The session
+	 * therefore cannot read the runner's records of its own nested session or of any other nested session, the workspace
+	 * files of any nested session, any login but that copy, such as the user's own Codex and Claude logins, or the user's
+	 * configuration. The method creates the session log directory, because the sandbox skips a denied path that does not
+	 * exist yet; for the same reason, it leaves out a login or configuration file that does not exist.
 	 * <p>
 	 * A session that may request sessions is not denied the session log directory, because the commands that it
 	 * runs include the prompt optimizer's {@code nestedSession}, which reads the session's rollout there to learn that
@@ -683,20 +684,20 @@ public final class CodexRunner
 	 * keeps those hidden.
 	 * <p>
 	 * The result names the results folder and each directory that the caller denies rather than each path under them,
-	 * which also denies the runs that start after the session. It omits a path inside another directory that it names,
-	 * except the session log directory and the denied files inside the session's home. Every platform's sandbox still
-	 * lets the session read and write its project and home inside a denied directory, such as the project that holds
-	 * the results folder, but the Linux sandbox would also hide read-only evidence there. The result therefore omits
-	 * each directory that {@link #hiddenDirectories(NestedSessionManager, List, List, Platform, Map)} returns, which the
-	 * app-server's bubblewrap hides instead, and the paths under it. Where the caller's {@code PATH} has no bubblewrap,
-	 * a Linux session is instead denied each other file and directory under a denied directory that holds any of {@code
-	 * readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as {@link
-	 * #sessionSandbox(Path, NestedSessionManager, NestedSession, List, List, Platform, Map, SessionRequestAccess, List)}
-	 * describes, so this listing covers only the run's own link-targets and responses directories, which lie inside the
-	 * results folder.
+	 * which also denies the nested sessions that start after the session. It omits a path inside another directory that
+	 * it names, except the session log directory and the denied files inside the session's home. Every platform's sandbox
+	 * still lets the session read and write its project and home inside a denied directory, such as the project that
+	 * holds the results folder, but the Linux sandbox would also hide read-only evidence there. The result therefore
+	 * omits each directory that {@link #hiddenDirectories(NestedSessionManager, List, List, Platform, Map)} returns,
+	 * which the app-server's bubblewrap hides instead, and the paths under it. Where the caller's {@code PATH} has no
+	 * bubblewrap, a Linux session is instead denied each other file and directory under a denied directory that holds any
+	 * of {@code readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as
+	 * {@link #sessionSandbox(Path, NestedSessionManager, NestedSession, List, List, Platform, Map, SessionRequestAccess,
+	 * List)} describes, so this listing covers only the nested session's own link-targets and responses directories,
+	 * which lie inside the results folder.
 	 *
-	 * @param manager the run manager
-	 * @param nestedSession the session's run
+	 * @param manager the nested-session manager
+	 * @param nestedSession the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @param platform the platform that the session runs on
@@ -713,14 +714,15 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read, as
+	 * Returns the files and directories that a session of a nested session must not read, as
 	 * {@link #sessionDeniedReads(NestedSessionManager, NestedSession, List, List, Platform, Map)} does, except that a
-	 * Linux session that is denied each path under a directory by its own path also keeps the run's requests directory
-	 * when it may request sessions. The run's link-targets directory and its responses directory are among {@code
-	 * readOnlyEvidence}, as {@link #sessionReadOnly(NestedSession, List, SessionRequestAccess)} returns them.
+	 * Linux session that is denied each path under a directory by its own path also keeps the nested session's requests
+	 * directory when it may request sessions. The nested session's link-targets directory and its responses directory are
+	 * among {@code readOnlyEvidence}, as {@link #sessionReadOnly(NestedSession, List, SessionRequestAccess)} returns
+	 * them.
 	 *
-	 * @param manager the run manager
-	 * @param nestedSession the session's run
+	 * @param manager the nested-session manager
+	 * @param nestedSession the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @param platform the platform that the session runs on
@@ -765,9 +767,9 @@ public final class CodexRunner
 		// outer directory hides it anyway
 		Set<Path> named = Set.copyOf(result);
 		result.removeIf(path -> named.stream().anyMatch(other -> !other.equals(path) && path.startsWith(other)));
-		// The session's events are the same record as the run's artifacts, kept by Codex instead of the runner. A
-		// session that may request sessions runs the prompt optimizer's commands, whose run command reads the
-		// session's rollout here to learn that the user interrupted the session's turn
+		// The session's events are the same record as the nested session's artifacts, kept by Codex instead of the runner.
+		// A session that may request sessions runs the prompt optimizer's commands, whose run command reads the session's
+		// rollout here to learn that the user interrupted the session's turn
 		Path sessionLogs = Files.createDirectories(home.resolve("sessions"));
 		if (requestAccess == null || !requestAccess.allowsRequests())
 			result.add(sessionLogs);
@@ -796,10 +798,10 @@ public final class CodexRunner
 	 * caller denies, and the results folder, that holds read-only evidence, except one inside another. The Linux
 	 * sandbox of Codex hides read-only paths inside a directory that a permission profile denies, so such a directory
 	 * cannot be denied in the profile. Denying each other path under it instead made the profile of a judge that ran
-	 * beside thousands of runs too long for Codex to pass to its sandbox helper, which then failed to start the judge's
-	 * thread.
+	 * beside thousands of nested sessions too long for Codex to pass to its sandbox helper, which then failed to start
+	 * the judge's thread.
 	 *
-	 * @param manager          the run manager
+	 * @param manager          the nested-session manager
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param platform         the platform that the session runs on
@@ -830,7 +832,7 @@ public final class CodexRunner
 	 * Returns the directories that a session must not read as a whole, as
 	 * {@link #deniedDirectories(NestedSessionManager, List)} lists them, that hold any of its read-only paths.
 	 *
-	 * @param manager     the run manager
+	 * @param manager     the nested-session manager
 	 * @param readOnly    the files and directories that the session may read but not change
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @return the directories, absolute and normalized, in the order of
@@ -852,7 +854,7 @@ public final class CodexRunner
 	 * Returns the directories that a session must not read as a whole: those that the caller denies, followed by the
 	 * results folder.
 	 *
-	 * @param manager     the run manager
+	 * @param manager     the nested-session manager
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @return the directories, absolute and normalized
 	 */
@@ -874,8 +876,8 @@ public final class CodexRunner
 	 * plugin version: the execution-policy rules for its installer and request server, and the hash of each of its
 	 * hooks in {@code config.toml}, which replaces a copied approval that the version's hooks no longer match. The
 	 * installer's other entries, which cover the user's sandbox mode, shell startup files, capacity locks and the other
-	 * harness's installation, are left out: the run's own sandbox policy covers its files, and the run shares neither
-	 * locks nor an installation with the user's.
+	 * harness's installation, are left out: the nested session's own sandbox policy covers its files, and the nested
+	 * session shares neither locks nor an installation with the user's.
 	 *
 	 * @param executable the Codex executable
 	 * @param artifact the complete Codex artifact, which is installed as CAT
@@ -919,8 +921,8 @@ public final class CodexRunner
 			CodexConnectionConfiguration.copyTrustedCatHooks(hostConfiguration, isolatedConfiguration);
 			CodexCuratedPluginCache.seed(hostHome, isolatedHome, isolatedEnvironment, executables);
 			// Codex resolves custom agents from CODEX_HOME/agents, not the installed plugin. Copy the definitions from
-			// this run's artifact so delegated agents receive the same CAT contract as the primary isolated process,
-			// rather than an unrelated version from the host's global Codex home.
+			// this nested session's artifact so delegated agents receive the same CAT contract as the primary isolated
+			// process, rather than an unrelated version from the host's global Codex home.
 			CodexAgents.install(artifact, isolatedHome);
 			Path marketplace = CodexMarketplace.create(artifact, new CodexInstallation(isolatedHome.toAbsolutePath()));
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace);
@@ -933,7 +935,7 @@ public final class CodexRunner
 			String name = names.get(i);
 			Path marketplace = CodexMarketplace.create(trialPlugins.get(i), name, name, isolatedHome);
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, name);
-			// Each plugin's steps are named after it, so that the run's log tells the plugins apart
+			// Each plugin's steps are named after it, so that the nested session's log tells the plugins apart
 			commands.execute(pluginCommands.get(0), "trial-plugin-" + name + "-marketplace-add");
 			commands.execute(pluginCommands.get(1), "trial-plugin-" + name + "-add");
 		}
@@ -955,7 +957,7 @@ public final class CodexRunner
 		new CodexIntegration().installPermissions(isolatedEnvironment, home,
 			installedCat(home).resolve(PluginDirectory.INSTALLER), replacer, entries ->
 			{
-				// The run owns and removes this entire isolated configuration.
+				// The nested session owns and removes this entire isolated configuration.
 			});
 	}
 
@@ -984,7 +986,7 @@ public final class CodexRunner
 
 	/**
 	 * Returns the command that starts the app-server. With a plugin installed, the app-server enables hooks so the
-	 * plugin's hooks run; without one, the app-server disables plugins so no installed plugin affects the run.
+	 * plugin's hooks run; without one, the app-server disables plugins so no installed plugin affects the nested session.
 	 *
 	 * @param executable the Codex executable
 	 * @param pluginsInstalled {@code true} if CAT or a trial plugin is installed into the isolated home
@@ -1053,15 +1055,15 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Runs the session's Codex and returns what it prints, keeping its output among the run's artifacts.
+	 * Runs the session's Codex and returns what it prints, keeping its output among the nested session's artifacts.
 	 *
 	 * @param executable    the Codex executable
 	 * @param arguments     the arguments
 	 * @param worktree      the session's project, which Codex runs in
 	 * @param environment   the session's environment
 	 * @param executables   runs Codex
-	 * @param manager       the run manager
-	 * @param nestedSession the session's run
+	 * @param manager       the nested-session manager
+	 * @param nestedSession the session's nested session
 	 * @return the stdout
 	 * @throws IOException if Codex fails or its output cannot be kept or read
 	 */
@@ -1187,10 +1189,10 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the isolated setup commands that install CAT from this run's marketplace artifact.
+	 * Returns the isolated setup commands that install CAT from this nested session's marketplace artifact.
 	 *
 	 * @param executable the Codex executable
-	 * @param marketplace the run-local marketplace directory
+	 * @param marketplace the session-local marketplace directory
 	 * @return the ordered marketplace-add and plugin-add commands
 	 */
 	public static List<List<String>> pluginSetupCommands(String executable, Path marketplace)
@@ -1199,11 +1201,11 @@ public final class CodexRunner
 	}
 
 	/**
-	 * Returns the isolated setup commands that install a plugin from its own run-local marketplace, which bears the
+	 * Returns the isolated setup commands that install a plugin from its own session-local marketplace, which bears the
 	 * plugin's name.
 	 *
 	 * @param executable the Codex executable
-	 * @param marketplace the run-local marketplace directory
+	 * @param marketplace the session-local marketplace directory
 	 * @param name the plugin's manifest name
 	 * @return the ordered marketplace-add and plugin-add commands
 	 */

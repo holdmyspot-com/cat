@@ -11,9 +11,10 @@ import java.util.Optional;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Discards the interrupted runs that a command's server retains: it sends each discard as a {@link DiscardRequest} to
- * whatever serves the command's launches, by the route of its worktree requests, and waits for the answer. A command
- * that nothing serves started no run that a server could retain, so it has nothing to discard.
+ * Discards the interrupted nested sessions that a command's server retains: it sends each discard as a {@link
+ * DiscardRequest} to whatever serves the command's launches, by the route of its worktree requests, and waits for the
+ * answer. A command that nothing serves started no nested session that a server could retain, so it has nothing to
+ * discard.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -42,15 +43,16 @@ public final class RetainedNestedSessionClient
 	}
 
 	/**
-	 * Discards the interrupted run that records a harness session, emptying its slot once the processes that it
-	 * recorded have stopped.
+	 * Discards the interrupted nested session that records a harness session, emptying its slot once the processes that
+	 * it recorded have stopped.
 	 *
-	 * @param sessionId the harness session that the run records
-	 * @return {@code true} if a retained run recorded the session and was discarded, or {@code false} if none did
+	 * @param sessionId the harness session that the nested session records
+	 * @return {@code true} if a retained nested session recorded the session and was discarded, or {@code false} if none
+	 *         did
 	 * @throws NullPointerException     if {@code sessionId} is null
 	 * @throws IllegalArgumentException if {@code sessionId} is not shaped like a harness session identifier
-	 * @throws SessionRefusedException  if the server refused the request, such as while a launch resumes the run or a
-	 *                                  process that the run recorded stays alive
+	 * @throws SessionRefusedException  if the server refused the request, such as while a launch resumes the nested
+	 *                                  session or a process that the nested session recorded stays alive
 	 * @throws IOException              if the request cannot be sent, the server fails to carry it out or ends before
 	 *                                  it answers, or its answer cannot be read
 	 */
@@ -74,7 +76,7 @@ public final class RetainedNestedSessionClient
 		{
 			case WorktreeRequest.DONE -> response.result().equals(Optional.of(DiscardRequest.DISCARDED));
 			case WorktreeRequest.REFUSED -> throw new SessionRefusedException(response.reason());
-			default -> throw new IOException("CAT could not discard the interrupted run of the session " + sessionId +
+			default -> throw new IOException("CAT could not discard the interrupted nested session " + sessionId +
 				": " + response.reason());
 		};
 	}

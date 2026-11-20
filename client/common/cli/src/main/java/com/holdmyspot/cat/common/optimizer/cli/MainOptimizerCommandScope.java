@@ -223,8 +223,8 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 * {@inheritDoc}
 	 * <p>
 	 * Inside a nested session whose runner lets its session request sessions, the command's sessions are requests to
-	 * that runner, so the command is also refused when the run's limits, as its runner states them, allow no further
-	 * session.
+	 * that runner, so the command is also refused when the nested session's limits, as its runner states them, allow no
+	 * further session.
 	 */
 	@Override
 	protected final Optional<String> nestedSessionRefusal()
@@ -394,10 +394,10 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	}
 
 	/**
-	 * The channel to the runner of the run whose session runs the command. The runner lives as long as the run, and
-	 * removes the run's responses with it.
+	 * The channel to the runner of the nested session whose session runs the command. The runner lives as long as the
+	 * nested session, and removes the nested session's responses with it.
 	 *
-	 * @param requests the run's requests directory
+	 * @param requests the nested session's requests directory
 	 */
 	private record NestedSessionChannel(Path requests) implements WorktreeRequestClient.Channel
 	{

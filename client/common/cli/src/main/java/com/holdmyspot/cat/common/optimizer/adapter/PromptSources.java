@@ -19,8 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * The value lists the sources that the harness's events report, one entry per line in sorted order. A subclass
  * reads one harness's event format and adds an entry for each source. A path inside one of the supplied directories
- * appears relative to that directory's placeholder, so the value does not depend on where the run's files were
- * staged. The value records no file content and no content hash, so it does not change when a candidate edits a
+ * appears relative to that directory's placeholder, so the value does not depend on where the nested session's files
+ * were staged. The value records no file content and no content hash, so it does not change when a candidate edits a
  * prompt file. It changes only when the set of loaded sources changes.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe. {@link #read(JsonNode)} never runs concurrently with itself or

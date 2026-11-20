@@ -79,7 +79,7 @@ public final class RequestedSessionProtocolContract
 		 * Runs a requested session using the supplied prompts and evidence paths.
 		 *
 		 * @param inputs the controlled session inputs
-		 * @return the transcript, receipt, retained run and prompts received by the session
+		 * @return the transcript, receipt, retained nested session and prompts received by the session
 		 * @throws IOException if the session fails
 		 */
 		Observation run(Inputs inputs) throws IOException;
@@ -90,7 +90,7 @@ public final class RequestedSessionProtocolContract
 	 *
 	 * @param root the fixture root
 	 * @param artifact the artifact directory
-	 * @param resultsFolder the destination for the copied requested run
+	 * @param resultsFolder the destination for the copied requested nested session
 	 * @param transcript the retained transcript path
 	 * @param receipt the retained receipt path
 	 * @param prompts the requested turn prompts, in order
@@ -104,7 +104,7 @@ public final class RequestedSessionProtocolContract
 		 *
 		 * @param root the fixture root
 		 * @param artifact the artifact directory
-		 * @param resultsFolder the destination for the copied requested run
+		 * @param resultsFolder the destination for the copied requested nested session
 		 * @param transcript the retained transcript path
 		 * @param receipt the retained receipt path
 		 * @param prompts the controlled turn prompts, in order
@@ -136,7 +136,7 @@ public final class RequestedSessionProtocolContract
 	 *
 	 * @param transcript the durable session transcript
 	 * @param receipt the retained-evidence receipt
-	 * @param retainedSession the run named by the receipt
+	 * @param retainedSession the nested session named by the receipt
 	 * @param receivedPrompts the turn prompts observed by the subject
 	 */
 	public record Observation(Path transcript, Path receipt, Path retainedSession, List<String> receivedPrompts)
@@ -146,7 +146,7 @@ public final class RequestedSessionProtocolContract
 		 *
 		 * @param transcript the durable session transcript
 		 * @param receipt the retained-evidence receipt
-		 * @param retainedSession the run named by the receipt
+		 * @param retainedSession the nested session named by the receipt
 		 * @param receivedPrompts the prompts observed by the subject
 		 */
 		public Observation

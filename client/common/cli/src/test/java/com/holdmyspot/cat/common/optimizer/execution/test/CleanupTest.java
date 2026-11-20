@@ -43,13 +43,13 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link Cleanup} against a test-owned base worktree whose campaigns hold optimization worktrees, and the two run
- * roots of the CAT session directory that holds the campaigns. The campaigns are removed through {@link GitlessForks},
- * which supplies what Git would answer, since {@code ForkTest} covers removing a Git worktree.
+ * Tests {@link Cleanup} against a test-owned base worktree whose campaigns hold optimization worktrees, and the two
+ * results folders of the CAT session directory that holds the campaigns. The campaigns are removed through {@link
+ * GitlessForks}, which supplies what Git would answer, since {@code ForkTest} covers removing a Git worktree.
  * <p>
  * Every test stores two campaigns in the base: the campaign under test and another campaign. Each results folder holds
- * a run of each campaign, identified by a project path below that campaign's directory, and a run whose manifest is
- * malformed.
+ * a nested session of each campaign, identified by a project path below that campaign's directory, and a nested session
+ * whose manifest is malformed.
  */
 public final class CleanupTest
 {
@@ -495,7 +495,7 @@ public final class CleanupTest
 
 		/**
 		 * Requires every file of {@link #CAMPAIGN} to be removed, and every file of {@link #OTHER} and the malformed
-		 * runs to remain.
+		 * nested sessions to remain.
 		 *
 		 * @throws IOException if a directory cannot be listed
 		 */
@@ -517,7 +517,7 @@ public final class CleanupTest
 		}
 
 		/**
-		 * Requires every file of both campaigns and the malformed runs to remain.
+		 * Requires every file of both campaigns and the malformed nested sessions to remain.
 		 *
 		 * @param context the case that the check belongs to
 		 * @throws IOException if a file's type cannot be read
@@ -537,7 +537,7 @@ public final class CleanupTest
 		}
 
 		/**
-		 * Requires every file of {@link #OTHER} and the malformed runs to remain.
+		 * Requires every file of {@link #OTHER} and the malformed nested sessions to remain.
 		 *
 		 * @param context the case that the check belongs to
 		 * @throws IOException if a file's type cannot be read

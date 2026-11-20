@@ -41,7 +41,7 @@ import tools.jackson.databind.json.JsonMapper;
  * Initialization replies model the documented handshake. Closing the process's input uses the existing double's
  * documented EOF lifecycle. The fixture does not model file effects or credential access.
  * The adapter owns the transcript under test. The bridge's caller-owned lifecycle avoids also persisting every event
- * to a second turn archive; the run manager marks completion before the adapter cleans the runtime home.
+ * to a second turn archive; the nested-session manager marks completion before the adapter cleans the runtime home.
  */
 final class RecordedAppServer implements Bridge
 {
@@ -55,9 +55,9 @@ final class RecordedAppServer implements Bridge
 	private List<String> interruptEvents = List.of();
 	private volatile Path transcript;
 	/**
-	 * The identifier of the run that the replay serves, which replaces the recorded thread identifier. No launcher
-	 * copies the run, so the thread is named after the run, whose folder then holds the session's results where the
-	 * launcher's copy would.
+	 * The identifier of the nested session that the replay serves, which replaces the recorded thread identifier. No
+	 * launcher copies the nested session, so the thread is named after the nested session, whose folder then holds the
+	 * session's results where the launcher's copy would.
 	 */
 	private volatile String threadId = "";
 
@@ -184,10 +184,11 @@ final class RecordedAppServer implements Bridge
 	}
 
 	/**
-	 * Replaces the recorded thread identifier in a recorded line with the identifier of the run that the replay serves.
+	 * Replaces the recorded thread identifier in a recorded line with the identifier of the nested session that the
+	 * replay serves.
 	 *
 	 * @param line the recorded line
-	 * @return the line that names the run's thread
+	 * @return the line that names the nested session's thread
 	 */
 	private String rename(String line)
 	{

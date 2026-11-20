@@ -60,8 +60,8 @@ public record ChildPolicy(List<Path> writeRoots, List<Path> writeDenials, List<P
 	 * @param needs  the child's needs
 	 * @return the child's policy, whose paths are resolved
 	 * @throws NullPointerException        if any of the arguments are null
-	 * @throws MissingPermissionsException if the parent is sandboxed and does not allow a write outside the child's run
-	 *                                     folder, or a host, that the child needs
+	 * @throws MissingPermissionsException if the parent is sandboxed and does not allow a write outside the child's
+	 *                                     session folder, or a host, that the child needs
 	 * @throws IOException                 if a symbolic link in a path cannot be read, or a path follows more than 40
 	 *                                     links
 	 */

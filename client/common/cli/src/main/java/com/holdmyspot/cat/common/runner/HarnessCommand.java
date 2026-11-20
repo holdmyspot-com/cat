@@ -45,7 +45,7 @@ public final class HarnessCommand
 	}
 
 	/**
-	 * Executes a harness setup command, retaining bounded diagnostics under an owned run.
+	 * Executes a harness setup command, retaining bounded diagnostics under an owned nested session.
 	 *
 	 * @param command the non-empty command and arguments
 	 *
@@ -55,9 +55,9 @@ public final class HarnessCommand
 	 *
 	 * @param executables runs the command's file
 	 *
-	 * @param manager the owned-run lifecycle manager
+	 * @param manager the nested-session lifecycle manager
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 *
 	 * @param commandName the generated command artifact name
 	 *

@@ -43,7 +43,7 @@ public final class HarnessRunnerBridgeProtocolContractTest
 	}
 
 	/**
-	 * Runs the controlled session through the options-aware production bridge with a real run manager.
+	 * Runs the controlled session through the options-aware production bridge with a real nested-session manager.
 	 *
 	 * @param inputs the controlled session inputs
 	 * @return the session evidence

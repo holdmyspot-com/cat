@@ -31,8 +31,8 @@ import org.testng.annotations.Test;
 public final class CodexRunningCommandTest
 {
 	/**
-	 * The recorded run artifacts of a trial whose child received an empty result from {@code cat docs/facts.md} after
-	 * Codex's yield time, while the command later ended with the file's content.
+	 * The recorded nested session artifacts of a trial whose child received an empty result from {@code cat
+	 * docs/facts.md} after Codex's yield time, while the command later ended with the file's content.
 	 */
 	private static final Path TRANSCRIPT = Path.of("src/test/resources/optimizer/running-command/transcript.jsonl");
 	/**
@@ -227,7 +227,7 @@ public final class CodexRunningCommandTest
 	}
 
 	/**
-	 * Returns a port whose run directories are below a directory.
+	 * Returns a port whose session folders are below a directory.
 	 *
 	 * @param jvm  the borrowed process scope
 	 * @param root the directory

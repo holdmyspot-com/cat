@@ -19,12 +19,13 @@ import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Writes the retained evidence locations that an independent evaluator needs after a successful harness run.
+ * Writes the retained evidence locations that an independent evaluator needs after a successful nested session.
  */
 public final class NestedSessionReceipt
 {
 	/**
-	 * The optional receipt field that lists paths a kept-run copy skipped, relative to the run. An evaluator ignores it.
+	 * The optional receipt field that lists paths a results copy skipped, relative to the nested session. An evaluator
+	 * ignores it.
 	 */
 	public static final String SKIPPED_COPY_PATHS = "skipped_copy_paths";
 	private static final String FORMAT_VERSION = "format_version";
@@ -39,13 +40,13 @@ public final class NestedSessionReceipt
 
 
 	/**
-	 * Writes one portable receipt after verifying that its referenced artifacts are retained in the run.
+	 * Writes one portable receipt after verifying that its referenced artifacts are retained in the nested session.
 	 *
 	 * @param json the operation-owned JSON mapper
 	 * @param replacer replaces files atomically
 	 * @param destination the receipt destination
-	 * @param nestedSession the retained harness run
-	 * @param rawResult the harness response, retained in the run if it is outside the run
+	 * @param nestedSession the retained nested session
+	 * @param rawResult the harness response, retained in the nested session if it is outside the nested session
 	 * @param sessionTranscripts the copies of the harness's native session transcripts
 	 * @throws IOException if retained evidence cannot be verified, copied, or written
 	 */
@@ -87,7 +88,7 @@ public final class NestedSessionReceipt
 		{
 			Path normalized = transcript.toAbsolutePath().normalize();
 			if (!normalized.startsWith(base))
-				throw new IOException("Harness transcript is outside its run: " + transcript);
+				throw new IOException("Harness transcript is outside its nested session: " + transcript);
 			transcripts.add(normalized);
 		}
 		HarnessEvaluationResult result = HarnessEvaluationResult.retained(project, response, transcripts);
@@ -120,7 +121,7 @@ public final class NestedSessionReceipt
 						continue;
 					Path responsePath = directory.resolve("response.json").toAbsolutePath().normalize();
 					if (!responsePath.startsWith(base) || !Files.isRegularFile(responsePath))
-						throw new IOException("Requested-session response is not retained in its run: " + responsePath);
+						throw new IOException("Requested-session response is not retained in its nested session: " + responsePath);
 					JsonNode resultDocument = json.readTree(responsePath.toFile());
 					ObjectNode entry = sessions.addObject();
 					for (String field : List.of("id", "harness", "status", "session_id"))
@@ -235,7 +236,7 @@ public final class NestedSessionReceipt
 	 *
 	 * @param receipt the parsed receipt
 	 * @param source the receipt path for diagnostics
-	 * @param base the retained run directory
+	 * @param base the retained session folder
 	 * @throws IOException if the list contains malformed or unsupported entries
 	 */
 	private static void validateRequestedSessions(ObjectNode receipt, Path source, Path base) throws IOException
@@ -263,26 +264,26 @@ public final class NestedSessionReceipt
 	/**
 	 * Returns a portable path under its base.
 	 *
-	 * @param base the retained run directory
+	 * @param base the retained session folder
 	 * @param path the absolute path to encode
 	 * @param field the field used in diagnostics
 	 * @return the portable path
-	 * @throws IOException if the path is outside the retained run
+	 * @throws IOException if the path is outside the retained nested session
 	 */
 	private static String relative(Path base, Path path, String field) throws IOException
 	{
 		Path normalized = path.toAbsolutePath().normalize();
 		if (!normalized.startsWith(base))
-			throw new IOException("Harness receipt " + field + " is outside the retained run: " + path);
+			throw new IOException("Harness receipt " + field + " is outside the retained nested session: " + path);
 		return PortablePaths.text(base.relativize(normalized));
 	}
 
 	/**
-	 * Resolves one portable receipt field against its retained run directory.
+	 * Resolves one portable receipt field against its retained session folder.
 	 *
 	 * @param value the JSON field
 	 * @param field the field used in diagnostics
-	 * @param base the retained run directory
+	 * @param base the retained session folder
 	 * @param source the receipt path used in diagnostics
 	 * @return the resolved path
 	 * @throws IOException if the field is not a safe portable relative path

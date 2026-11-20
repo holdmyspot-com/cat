@@ -478,7 +478,7 @@ public final class RunnerRelayTest
 	 * Answers the only request as a fake parent runner would: it completes a request for {@code harness-b} and refuses
 	 * any other.
 	 *
-	 * @param requests the run's requests directory
+	 * @param requests the nested session's requests directory
 	 * @throws IOException if the request cannot be read or the response written
 	 */
 	private static void answer(Path requests) throws IOException

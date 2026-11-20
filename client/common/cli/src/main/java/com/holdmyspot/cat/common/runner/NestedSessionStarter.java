@@ -10,11 +10,11 @@ import java.io.IOException;
 public interface NestedSessionStarter
 {
 	/**
-	 * Starts one live isolated run.
+	 * Starts one live isolated nested session.
 	 *
-	 * @return the live run session
+	 * @return the live nested session
 	 *
-	 * @throws IOException if the run cannot be started
+	 * @throws IOException if the nested session cannot be started
 	 */
 	LiveNestedSession start() throws IOException;
 }

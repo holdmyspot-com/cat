@@ -254,9 +254,9 @@ public final class ExtraPermissionsTest
 	}
 
 	/**
-	 * Verifies that the refusal of a session that a run's session requested tells the caller to name the missing write
-	 * and host with {@code --extra-permissions} on the runner launcher command that started the requesting session,
-	 * and does not send it to sandbox settings, which would change nothing for that session.
+	 * Verifies that the refusal of a session that a nested session's session requested tells the caller to name the
+	 * missing write and host with {@code --extra-permissions} on the runner launcher command that started the requesting
+	 * session, and does not send it to sandbox settings, which would change nothing for that session.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */

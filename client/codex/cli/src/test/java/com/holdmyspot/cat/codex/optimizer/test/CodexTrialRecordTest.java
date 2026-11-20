@@ -41,7 +41,8 @@ public final class CodexTrialRecordTest
 	private static final String SANDBOX_ERROR = "error building bubblewrap command: app-server socket directory must " +
 		"be a user-owned directory with mode 0700\n";
 	/**
-	 * The recorded run artifacts of a trial whose child received a result from a command that was still running.
+	 * The recorded nested session artifacts of a trial whose child received a result from a command that was still
+	 * running.
 	 */
 	private static final Path RUNNING = Path.of("src/test/resources/optimizer/running-command/transcript.jsonl");
 

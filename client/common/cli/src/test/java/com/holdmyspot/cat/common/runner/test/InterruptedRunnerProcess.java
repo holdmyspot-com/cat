@@ -15,14 +15,14 @@ import java.util.concurrent.TimeUnit;
 
 /**
  * Plays, in a separate JVM for {@link NestedSessionManagerTest}, a runner whose harness reported its session: it
- * records its run's end once its harness ends, as a runner does, and it stops its harness when it is stopped, as a
- * runner launcher does, and its process ends only once it has handled its harness's end. Its harness is a second JVM
- * that runs until it is stopped.
+ * records its nested session's end once its harness ends, as a runner does, and it stops its harness when it is
+ * stopped, as a runner launcher does, and its process ends only once it has handled its harness's end. Its harness is a
+ * second JVM that runs until it is stopped.
  */
 public final class InterruptedRunnerProcess
 {
 	/**
-	 * The harness session identifier that the run records.
+	 * The harness session identifier that the nested session records.
 	 */
 	public static final String HARNESS_SESSION_ID = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 
@@ -34,12 +34,12 @@ public final class InterruptedRunnerProcess
 	}
 
 	/**
-	 * With {@code runner} and a results folder, creates a run there, starts its harness, prints the run's directory and
-	 * the harness's process identifier, and records the run failed once the harness ends. With {@code harness}, runs
-	 * until it is stopped.
+	 * With {@code runner} and a results folder, creates a nested session there, starts its harness, prints the nested
+	 * session's directory and the harness's process identifier, and records the nested session failed once the harness
+	 * ends. With {@code harness}, runs until it is stopped.
 	 *
 	 * @param args {@code runner} and the absolute results folder, or {@code harness}
-	 * @throws IOException          if the run cannot be created or its harness cannot start
+	 * @throws IOException          if the nested session cannot be created or its harness cannot start
 	 * @throws InterruptedException if the runner is interrupted while it waits for its harness
 	 */
 	public static void main(String[] args) throws IOException, InterruptedException

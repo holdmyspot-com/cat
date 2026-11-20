@@ -66,7 +66,8 @@ public final class ClaudeRunnerCliTest
 	 */
 	private static final String SESSION_ID = "5d2c8e4a-7b1f-4c3d-9e6a-1f2b3c4d5e6f";
 	/**
-	 * The environment of a launch that holds a Claude login, which a run requires before it takes a capacity slot.
+	 * The environment of a launch that holds a Claude login, which a nested session requires before it takes a capacity
+	 * slot.
 	 */
 	private static final Map<String, String> LOGIN = Map.of("CLAUDE_CODE_OAUTH_TOKEN", "fake-token");
 
@@ -120,8 +121,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that starting {@code claude-runner} marks a Claude run as failed when the runner that owned it has
-	 * ended, so that the run does not stay running after its runner died.
+	 * Verifies that starting {@code claude-runner} marks a Claude nested session as failed when the runner that owned it
+	 * has ended, so that the nested session does not stay running after its runner died.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -134,7 +135,7 @@ public final class ClaudeRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path manifest = createSession(jvm, root.resolve("runs"));
 			// A start that differs from the one of the process holding the recorded identifier means that the
-			// identifier now belongs to another process, so the runner that created the run has ended
+			// identifier now belongs to another process, so the runner that created the nested session has ended
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
 				"\"owner_started_at\": \"0\""));
 
@@ -146,7 +147,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that starting {@code claude-runner} leaves a Claude run running when the runner that owns it is alive.
+	 * Verifies that starting {@code claude-runner} leaves a Claude nested session running when the runner that owns it is
+	 * alive.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -157,7 +159,7 @@ public final class ClaudeRunnerCliTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			// The process that runs the test owns the run and is alive
+			// The process that runs the test owns the nested session and is alive
 			Path manifest = createSession(jvm, root.resolve("runs"));
 
 			startUntilCapacityIsRequested(jvm, root);
@@ -167,12 +169,12 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Creates a running run that the process executing the test owns.
+	 * Creates a running nested session that the process executing the test owns.
 	 *
 	 * @param jvm           the test's process scope
-	 * @param resultsFolder the directory that holds the runs
-	 * @return the run's manifest
-	 * @throws IOException if the run cannot be created
+	 * @param resultsFolder the directory that holds the nested sessions
+	 * @return the nested session's manifest
+	 * @throws IOException if the nested session cannot be created
 	 */
 	private static Path createSession(TestJvmScope jvm, Path resultsFolder) throws IOException
 	{
@@ -183,10 +185,10 @@ public final class ClaudeRunnerCliTest
 
 	/**
 	 * Starts {@code claude-runner}, which stops when it asks for capacity: it asks only after the steps that it takes
-	 * when it starts to prepare its runs.
+	 * when it starts to prepare its nested sessions.
 	 *
 	 * @param jvm  the test's process scope
-	 * @param root the test's directory, whose {@code runs} subdirectory holds the runs
+	 * @param root the test's directory, whose {@code runs} subdirectory holds the nested sessions
 	 * @throws IOException if the launch fails before it asks for capacity
 	 */
 	private static void startUntilCapacityIsRequested(TestJvmScope jvm, Path root) throws IOException
@@ -603,7 +605,7 @@ public final class ClaudeRunnerCliTest
 
 	/**
 	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
-	 * run, since only a request server starts a session and it always bounds the session's policy.
+	 * nested session, since only a request server starts a session and it always bounds the session's policy.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -790,9 +792,9 @@ public final class ClaudeRunnerCliTest
 	 * Verifies that a launch whose environment holds no Claude authentication variable is refused on Linux and
 	 * macOS when the user's login store holds no login, here neither {@code .credentials.json} in the user's Claude
 	 * configuration directory nor, on macOS, the Keychain's login item: the reason tells the user to log in to Claude
-	 * Code with {@code /login} and names the directory, and the launch creates no run and takes no capacity slot. On
-	 * Windows, where Claude Code may keep the login in the Windows Credential Manager, the runner cannot tell that no
-	 * login exists, and the launch goes on to take a capacity slot.
+	 * Code with {@code /login} and names the directory, and the launch creates no nested session and takes no capacity
+	 * slot. On Windows, where Claude Code may keep the login in the Windows Credential Manager, the runner cannot tell
+	 * that no login exists, and the launch goes on to take a capacity slot.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -838,7 +840,7 @@ public final class ClaudeRunnerCliTest
 	/**
 	 * Verifies that a launch of a session in this process whose environment holds no authentication variable is not
 	 * refused for lack of a login when the user's Claude configuration directory holds Claude Code's login file, so
-	 * that its run goes on to start, as far as a test without a CAT artifact goes.
+	 * that its nested session goes on to start, as far as a test without a CAT artifact goes.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -872,7 +874,7 @@ public final class ClaudeRunnerCliTest
 
 	/**
 	 * Verifies that a launch of a session in this process that holds an authentication variable is not refused for
-	 * lack of a login, so that its run goes on to start, as far as a test without a CAT artifact goes.
+	 * lack of a login, so that its nested session goes on to start, as far as a test without a CAT artifact goes.
 	 *
 	 * @param variable the authentication variable
 	 * @throws IOException if the test filesystem cannot be used
@@ -1096,8 +1098,8 @@ public final class ClaudeRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that only Codex runs, or from a run whose runner lets its session request
-	 * no sessions, is refused with the refusal status and the reason, and starts nothing.
+	 * Verifies that a launch from a command that only Codex runs, or from a nested session whose runner lets its session
+	 * request no sessions, is refused with the refusal status and the reason, and starts nothing.
 	 *
 	 * @param environment the command's environment
 	 * @param reason      a part of the reason

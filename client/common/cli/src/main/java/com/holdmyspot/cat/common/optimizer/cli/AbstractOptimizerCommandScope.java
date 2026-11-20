@@ -188,12 +188,12 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	protected abstract Optional<String> noHarnessRefusal();
 
 	/**
-	 * Returns why a command that starts sessions is refused because it runs in a session of a CAT run whose caller
+	 * Returns why a command that starts sessions is refused because it runs in a nested session whose caller
 	 * lets it request no sessions, or whose request depth or limit is spent, found before the command reads or changes
 	 * any state.
 	 *
 	 * @return the message that names the caller's options that would allow the sessions, or empty if the command does
-	 *   not run in a CAT run or the run allows a further session
+	 *   not run in a nested session or the nested session allows a further session
 	 * @throws IllegalStateException if this scope is closed
 	 */
 	protected abstract Optional<String> nestedSessionRefusal();
@@ -461,8 +461,8 @@ public abstract class AbstractOptimizerCommandScope extends AbstractJvmScope imp
 	}
 
 	/**
-	 * Returns the directory that holds the runs of the nested sessions that this command's campaigns start through
-	 * the harness's runner. The held-out results folder is its sibling.
+	 * Returns the directory that holds the session folders of the nested sessions that this command's campaigns start
+	 * through the harness's runner. The held-out results folder is its sibling.
 	 *
 	 * @return the directory, which may not exist
 	 * @throws IllegalStateException if this scope is closed

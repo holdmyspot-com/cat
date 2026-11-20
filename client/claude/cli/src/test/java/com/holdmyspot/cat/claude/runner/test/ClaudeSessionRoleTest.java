@@ -115,8 +115,8 @@ public final class ClaudeSessionRoleTest
 			List<String> expectedDenials = new ArrayList<>(previousDenials);
 			expectedDenials.add("mcp__*");
 			requireThat(strings(judge.path("permissions").path("deny")), "judgeDenials").isEqualTo(expectedDenials);
-			// The file tools follow the project's links to targets outside it into the run's link-targets directory; the
-			// judge requests no session, so nothing else is allowed
+			// The file tools follow the project's links to targets outside it into the nested session's link-targets
+			// directory; the judge requests no session, so nothing else is allowed
 			requireThat(strings(judge.path("permissions").path("allow")), "judgeAllows").
 				isEqualTo(List.of(fixture.linkTargetsRule()));
 			for (String rule : strings(judge.path("permissions").path("deny")))
@@ -320,7 +320,7 @@ public final class ClaudeSessionRoleTest
 	}
 
 	/**
-	 * A run of a session, with the files and directories that it must not read, and the settings that the runner writes
+	 * A nested session, with the files and directories that it must not read, and the settings that the runner writes
 	 * for it.
 	 */
 	private static final class Fixture
@@ -336,7 +336,7 @@ public final class ClaudeSessionRoleTest
 		private final List<Path> evidence;
 
 		/**
-		 * Creates the run.
+		 * Creates the nested session.
 		 *
 		 * @param scope   the scope
 		 * @param cleanup removes the fixture's directories
@@ -376,7 +376,7 @@ public final class ClaudeSessionRoleTest
 		}
 
 		/**
-		 * Returns the rule that lets the file tools read the run's link-targets directory.
+		 * Returns the rule that lets the file tools read the nested session's link-targets directory.
 		 *
 		 * @return the rule
 		 */

@@ -515,9 +515,9 @@ public final class ReconciliationTest
 	}
 
 	/**
-	 * Writes a run manifest.
+	 * Writes a session manifest.
 	 *
-	 * @param sessionFolder the run's directory
+	 * @param sessionFolder the nested session's directory
 	 * @param manifest the manifest's content
 	 * @throws IOException if the file cannot be written
 	 */

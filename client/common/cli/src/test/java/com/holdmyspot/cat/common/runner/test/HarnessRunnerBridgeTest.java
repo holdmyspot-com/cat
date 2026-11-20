@@ -63,7 +63,7 @@ import static org.testng.Assert.expectThrows;
 public final class HarnessRunnerBridgeTest
 {
 	/**
-	 * The harness session that an interrupted run records.
+	 * The harness session that an interrupted nested session records.
 	 */
 	private static final String RESUMED_SESSION = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 	/**
@@ -268,8 +268,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a bridge whose options name a turn copy replaces the copy of the run's project and initial project
-	 * at the end of each completed turn, before it writes the turn's {@code turn_completed} response.
+	 * Verifies that a bridge whose options name a turn copy replaces the copy of the nested session's project and initial
+	 * project at the end of each completed turn, before it writes the turn's {@code turn_completed} response.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -316,8 +316,8 @@ public final class HarnessRunnerBridgeTest
 				}
 
 				/**
-				 * Records what the copy holds when a turn's completion is written, and then changes the run's project
-				 * as its next turn would.
+				 * Records what the copy holds when a turn's completion is written, and then changes the nested session's
+				 * project as its next turn would.
 				 *
 				 * @throws IOException if the copy cannot be read or the project cannot be changed
 				 */
@@ -432,7 +432,7 @@ public final class HarnessRunnerBridgeTest
 
 	/**
 	 * Supplies changes that a session makes to the read-only copies that stand in for its project's symbolic links to
-	 * targets outside the project, each with how the run's diagnostic names the changed path.
+	 * targets outside the project, each with how the nested session's diagnostic names the changed path.
 	 *
 	 * @return the change and the named path with how it changed, where {@code <notes>} stands for the folder of the
 	 *   copy that {@code notes.md} leads to and {@code <tree>} for the folder of the one that {@code tree} leads to
@@ -450,10 +450,10 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a run whose session changes a read-only copy that stands in for a project link to a target outside
-	 * the project fails: the bridge fails with a diagnostic that names the changed path and says that it is a copy of a
-	 * link target outside the project that the session changed, the run's manifest records the failure, and no receipt
-	 * is written.
+	 * Verifies that a nested session whose session changes a read-only copy that stands in for a project link to a target
+	 * outside the project fails: the bridge fails with a diagnostic that names the changed path and says that it is a
+	 * copy of a link target outside the project that the session changed, the nested session's manifest records the
+	 * failure, and no receipt is written.
 	 *
 	 * @param change   the session's change
 	 * @param expected the changed path and how the diagnostic names its change, as {@link #linkCopyChanges()} gives it
@@ -479,7 +479,7 @@ public final class HarnessRunnerBridgeTest
 				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.nestedSession(), process,
 					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
 					Yielding.fileReplacer(), input, new StringWriter());
-				throw new AssertionError("The run whose session changed a copy completed");
+				throw new AssertionError("The nested session whose session changed a copy completed");
 			}
 			catch (IOException e)
 			{
@@ -510,8 +510,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a run that fails for another reason after its session changed a read-only copy that stands in for
-	 * a project link to a target outside the project names the changed copy as well as the other reason: here the
+	 * Verifies that a nested session that fails for another reason after its session changed a read-only copy that stands
+	 * in for a project link to a target outside the project names the changed copy as well as the other reason: here the
 	 * harness exits during the turn.
 	 *
 	 * @throws IOException if fixture I/O fails
@@ -535,7 +535,7 @@ public final class HarnessRunnerBridgeTest
 				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.nestedSession(), process,
 					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
 					Yielding.fileReplacer(), input, new StringWriter());
-				throw new AssertionError("The run whose harness exited completed");
+				throw new AssertionError("The nested session whose harness exited completed");
 			}
 			catch (IOException e)
 			{
@@ -548,8 +548,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a run whose session leaves the read-only copies of its project's links to targets outside the
-	 * project unchanged completes and writes its receipt, although the session changed a file of the project that a
+	 * Verifies that a nested session whose session leaves the read-only copies of its project's links to targets outside
+	 * the project unchanged completes and writes its receipt, although the session changed a file of the project that a
 	 * link to a target inside the project leads to, and a file of the project's own.
 	 *
 	 * @throws IOException if the bridge fails
@@ -588,7 +588,7 @@ public final class HarnessRunnerBridgeTest
 	 * Makes one change that a session may make to the read-only copies of its project's links to targets outside the
 	 * project, first making writable what the change needs, as a session that undoes the protection would.
 	 *
-	 * @param project the run's project
+	 * @param project the nested session's project
 	 * @param change  the change, as {@link #linkCopyChanges()} names it
 	 * @throws IOException if the change fails
 	 */
@@ -626,14 +626,14 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * A managed run whose project the runner copied from a project with symbolic links: {@code notes.md} and
+	 * A managed nested session whose project the runner copied from a project with symbolic links: {@code notes.md} and
 	 * {@code tree} lead to a file and a directory outside the project, so the project's links lead to read-only copies
 	 * of them beside it, and {@code docs/guide.md} leads to {@code shared/guide.md} inside it. Its options name a
 	 * transcript and a receipt.
 	 *
-	 * @param manager       the run's manager
-	 * @param nestedSession the run
-	 * @param project       the run's project
+	 * @param manager       the nested session's manager
+	 * @param nestedSession the nested session
+	 * @param project       the nested session's project
 	 * @param options       the runner options
 	 * @param receipt       the receipt that the options name
 	 */
@@ -641,9 +641,9 @@ public final class HarnessRunnerBridgeTest
 		HarnessRunnerOptions options, Path receipt)
 	{
 		/**
-		 * Creates the run.
+		 * Creates the nested session.
 		 *
-		 * @param cleanup deletes the run's files
+		 * @param cleanup deletes the nested session's files
 		 * @throws IOException if fixture I/O fails
 		 */
 		LinkedNestedSession(TemporaryDirectories cleanup) throws IOException
@@ -652,7 +652,7 @@ public final class HarnessRunnerBridgeTest
 		}
 
 		/**
-		 * Creates the run in a directory.
+		 * Creates the nested session in a directory.
 		 *
 		 * @param root the directory
 		 * @throws IOException if fixture I/O fails
@@ -664,9 +664,9 @@ public final class HarnessRunnerBridgeTest
 		}
 
 		/**
-		 * Creates the run with a manager.
+		 * Creates the nested session with a manager.
 		 *
-		 * @param manager the run's manager
+		 * @param manager the nested session's manager
 		 * @param root    the directory
 		 * @throws IOException if fixture I/O fails
 		 */
@@ -676,11 +676,11 @@ public final class HarnessRunnerBridgeTest
 		}
 
 		/**
-		 * Creates the run's project.
+		 * Creates the nested session's project.
 		 *
-		 * @param manager       the run's manager
+		 * @param manager       the nested session's manager
 		 * @param root          the directory
-		 * @param nestedSession the run
+		 * @param nestedSession the nested session
 		 * @throws IOException if fixture I/O fails
 		 */
 		private LinkedNestedSession(NestedSessionManager manager, Path root, NestedSession nestedSession) throws IOException
@@ -693,10 +693,11 @@ public final class HarnessRunnerBridgeTest
 		}
 
 		/**
-		 * Returns the name that the run's record gives the copy that a link of the run's project leads to.
+		 * Returns the name that the nested session's record gives the copy that a link of the nested session's project
+		 * leads to.
 		 *
 		 * @param link the link's path relative to the project
-		 * @return the copy's path relative to the run's directory, with {@code /} between names
+		 * @return the copy's path relative to the nested session's directory, with {@code /} between names
 		 * @throws UncheckedIOException if the link cannot be resolved
 		 */
 		String copyName(String link)
@@ -713,12 +714,12 @@ public final class HarnessRunnerBridgeTest
 		}
 
 		/**
-		 * Copies the source project into the run.
+		 * Copies the source project into the nested session.
 		 *
-		 * @param manager       the run's manager
+		 * @param manager       the nested session's manager
 		 * @param root          the directory
-		 * @param nestedSession the run
-		 * @return the run's project
+		 * @param nestedSession the nested session
+		 * @return the nested session's project
 		 * @throws IOException if fixture I/O fails
 		 */
 		private static Path copy(NestedSessionManager manager, Path root, NestedSession nestedSession) throws IOException
@@ -1201,7 +1202,7 @@ public final class HarnessRunnerBridgeTest
 	/**
 	 * Verifies that a bridge writes one {@code session_transcript} record with the native transcript's path once the
 	 * process names the session's transcript, not once per turn, and that the receipt lists the transcript copies that
-	 * the session left in the run before the run's runtime files were pruned.
+	 * the session left in the nested session before the nested session's runtime files were pruned.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -1252,8 +1253,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that the bridge records the identifier that the harness gave its session in the run's manifest as soon as
-	 * the harness reports it, and tells its client the identifier in one record.
+	 * Verifies that the bridge records the identifier that the harness gave its session in the nested session's manifest
+	 * as soon as the harness reports it, and tells its client the identifier in one record.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -1302,8 +1303,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a run in a slot whose input ends before its {@code complete} record, because the server that
-	 * feeds it ended, records no end and keeps its home, so that its harness session can continue.
+	 * Verifies that a nested session in a slot whose input ends before its {@code complete} record, because the server
+	 * that feeds it ended, records no end and keeps its home, so that its harness session can continue.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -1342,8 +1343,8 @@ public final class HarnessRunnerBridgeTest
 
 	/**
 	 * Verifies that a bridge whose input ends while its turn runs returns only after the turn has stopped writing the
-	 * run, so that the caller can remove the run once the bridge has returned. The turn's first write to the run is held
-	 * until the bridge has stopped the turn and then either waits or has returned.
+	 * nested session, so that the caller can remove the nested session once the bridge has returned. The turn's first
+	 * write to the nested session is held until the bridge has stopped the turn and then either waits or has returned.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -1379,8 +1380,9 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a runner that resumes a run says so in its {@code started} record, numbers its turns after the last
-	 * turn that ended, and ends the run normally once its harness has reported the run's session.
+	 * Verifies that a runner that resumes a nested session says so in its {@code started} record, numbers its turns after
+	 * the last turn that ended, and ends the nested session normally once its harness has reported the nested session's
+	 * harness session.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -1424,8 +1426,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies that a runner whose harness continues another session than the run that it resumes records, or none,
-	 * fails without ending the run, so that the run stays retained for a later launch.
+	 * Verifies that a runner whose harness continues another session than the nested session that it resumes records, or
+	 * none, fails without ending the nested session, so that the nested session stays retained for a later launch.
 	 *
 	 * @throws IOException if the bridge fails
 	 */
@@ -1504,7 +1506,7 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies a bridge protocol failure retains an owned run with its failed state.
+	 * Verifies a bridge protocol failure retains an owned nested session with its failed state.
 	 *
 	 * @throws IOException if the bridge fails unexpectedly
 	 */
@@ -1537,8 +1539,8 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Verifies a harness process that exits before completing a turn records its exit status and leaves the owned run
-	 * failed rather than allowing the bridge to complete it.
+	 * Verifies a harness process that exits before completing a turn records its exit status and leaves the owned nested
+	 * session failed rather than allowing the bridge to complete it.
 	 *
 	 * @throws IOException if filesystem setup fails
 	 */
@@ -1961,7 +1963,7 @@ public final class HarnessRunnerBridgeTest
 	/**
 	 * Runs a quiet turn whose clock and heartbeat the scope supplies, and verifies the bridge's records.
 	 *
-	 * @param scope the scope of the run's process, whose clock and heartbeat the test moves
+	 * @param scope the scope of the nested session's process, whose clock and heartbeat the test moves
 	 * @throws IOException if the bridge fails
 	 */
 	private static void verifyQuietTurnReports(TestHarnessRunnerScope scope) throws IOException
@@ -2045,9 +2047,9 @@ public final class HarnessRunnerBridgeTest
 	}
 
 	/**
-	 * Serves a conversation in this process, as a runner that a request server or a run's runner starts does.
+	 * Serves a conversation in this process, as a runner that a request server or a nested session's runner starts does.
 	 *
-	 * @param cleanup       removes the run that the bridge creates
+	 * @param cleanup       removes the nested session that the bridge creates
 	 * @param folder        the conversation's folder
 	 * @param process       the harness
 	 * @param standardInput the bridge's standard input, which a conversation does not read

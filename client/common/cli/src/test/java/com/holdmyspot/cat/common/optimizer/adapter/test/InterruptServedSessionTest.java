@@ -34,8 +34,8 @@ import static com.holdmyspot.cat.common.optimizer.adapter.fakes.test.SessionRequ
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Tests that a session that the optimizer requests through its run's runner ends when CAT interrupts it, using the
- * optimizer's own session and the run's own runner to carry the interrupt.
+ * Tests that a session that the optimizer requests through its nested session's runner ends when CAT interrupts it,
+ * using the optimizer's own session and the nested session's own runner to carry the interrupt.
  */
 public final class InterruptServedSessionTest
 {
@@ -50,7 +50,7 @@ public final class InterruptServedSessionTest
 	}
 
 	/**
-	 * Supplies the harnesses that a run's runner serves.
+	 * Supplies the harnesses that a nested session's runner serves.
 	 *
 	 * @return the harness of each case
 	 */
@@ -113,7 +113,7 @@ public final class InterruptServedSessionTest
 	/**
 	 * Waits until the requested session holds a turn.
 	 *
-	 * @param parent the run that serves the request
+	 * @param parent the nested session that serves the request
 	 * @param handle the session
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws AssertionError       if the session ends or the turn does not arrive within the time limit

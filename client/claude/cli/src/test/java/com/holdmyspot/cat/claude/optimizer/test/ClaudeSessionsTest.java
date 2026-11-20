@@ -124,7 +124,7 @@ public final class ClaudeSessionsTest
 	 * Creates a port whose runner plays a script.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param resultsFolder the directory for run directories
+	 * @param resultsFolder the directory for session folders
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
@@ -141,7 +141,7 @@ public final class ClaudeSessionsTest
 	 * Creates a port and observes the prompts that CAT sends through the bridge.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param resultsFolder the directory for run directories
+	 * @param resultsFolder the directory for session folders
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
@@ -353,7 +353,7 @@ public final class ClaudeSessionsTest
 
 	/**
 	 * Verifies that every session passes the host session's project to the runner through {@code --deny-read}, so
-	 * that the session cannot read the project's files around its own run.
+	 * that the session cannot read the project's files around its own nested session.
 	 *
 	 * @param role the session's role
 	 * @param part the part that the session may read
@@ -733,8 +733,9 @@ public final class ClaudeSessionsTest
 
 	/**
 	 * Verifies that CAT preserves prompt and response order through the bridge, records the unchanged event lines,
-	 * selects the run's project directory, removes its isolated home and derives usage, tool calls and prompt sources
-	 * from recorded events. The observed model and parsed rate-limit windows are retained in the completed result.
+	 * selects the nested session's project directory, removes its isolated home and derives usage, tool calls and prompt
+	 * sources from recorded events. The observed model and parsed rate-limit windows are retained in the completed
+	 * result.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -793,7 +794,7 @@ public final class ClaudeSessionsTest
 	 * Creates a port whose runner must never be started.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param root the directory for run directories and the host configuration
+	 * @param root the directory for session folders and the host configuration
 	 * @param environment the host environment
 	 * @return the port
 	 */
@@ -1781,9 +1782,9 @@ public final class ClaudeSessionsTest
 
 	/**
 	 * Verifies that each of the optimizer's sessions takes its route: to the host session's request server when Claude
-	 * Code runs the command, and refused when only Codex runs it or when it runs in a CAT run that lets its session
-	 * request no sessions. On the refused routes, {@code claude-runner} gives a launch from the same command the same
-	 * refusal. No route starts a harness here, so the session ends as a launch refusal, which the optimizer does not
+	 * Code runs the command, and refused when only Codex runs it or when it runs in a nested session that lets its
+	 * session request no sessions. On the refused routes, {@code claude-runner} gives a launch from the same command the
+	 * same refusal. No route starts a harness here, so the session ends as a launch refusal, which the optimizer does not
 	 * retry.
 	 *
 	 * @param variables        the harness and run variables of the command's environment
@@ -1874,7 +1875,7 @@ public final class ClaudeSessionsTest
 	/**
 	 * Verifies that inside a nested session that allows sessions, each of the optimizer's sessions goes to the nested
 	 * session's runner, which starts it, and that the session completes with the requested session's reply and with its
-	 * kept run where the optimizer reads its sessions' runs.
+	 * results copy where the optimizer reads its sessions' results copies.
 	 *
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the wait is interrupted
@@ -1902,7 +1903,7 @@ public final class ClaudeSessionsTest
 				requireThat(result, "result").isInstanceOf(SessionResult.Completed.class);
 				SessionResult.Completed completed = (SessionResult.Completed) result;
 				requireThat(completed.responses(), "responses").isEqualTo(List.of(List.of("reply 1")));
-				// The optimizer reads the requested session's kept run, without its home, in its own results folder
+				// The optimizer reads the requested session's results copy, without its home, in its own results folder
 				Path sessionFolder = completed.transcript().getParent().getParent();
 				requireThat(Files.readString(sessionFolder.resolve("project/result.txt")), "result").isEqualTo("result");
 				requireThat(Files.exists(sessionFolder.resolve("home")), "home").isFalse();
@@ -1914,10 +1915,10 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Supplies the session requests of a run whose runner refuses the optimizer's next session, and whether the run
-	 * first serves the one session it allows.
+	 * Supplies the session requests of a nested session whose runner refuses the optimizer's next session, and whether
+	 * the nested session first serves the one session it allows.
 	 *
-	 * @return the session requests of the run and whether one session is served first
+	 * @return the session requests of the nested session and whether one session is served first
 	 */
 	@DataProvider
 	public static Object[][] spentSessions()
@@ -1928,11 +1929,11 @@ public final class ClaudeSessionsTest
 	/**
 	 * Verifies that inside a nested session that allows no session, or whose sessions are spent, the optimizer's
 	 * session ends as a launch refusal, which pauses the optimizer instead of counting a failure, with the message that
-	 * names the caller's options that would allow the session, and that it publishes no request and writes no run
-	 * first.
+	 * names the caller's options that would allow the session, and that it publishes no request and writes no nested
+	 * session first.
 	 *
-	 * @param sessionRequests how many sessions the run allows
-	 * @param serveFirst      indicates whether the run serves one session before
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @param serveFirst      indicates whether the nested session serves one session before
 	 * @throws IOException          if a fixture cannot be created
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException   if the session cannot determine a result
@@ -1981,8 +1982,8 @@ public final class ClaudeSessionsTest
 	 *
 	 * @param jvm           the borrowed process scope
 	 * @param home          the user's home and the port's artifact
-	 * @param resultsFolder the directory for run directories
-	 * @param parent        the run
+	 * @param resultsFolder the directory for session folders
+	 * @param parent        the nested session
 	 * @return the port
 	 */
 	private static ClaudeSessions inNestedSession(JvmScope jvm, Path home, Path resultsFolder,
@@ -2000,15 +2001,15 @@ public final class ClaudeSessionsTest
 	}
 
 	/**
-	 * Returns the runs that the optimizer's sessions keep, which are the directories that hold an {@code artifacts}
-	 * directory outside the requesting run.
+	 * Returns the nested sessions that the optimizer's sessions keep, which are the directories that hold an {@code
+	 * artifacts} directory outside the requesting nested session.
 	 * <p>
-	 * The walk does not enter the requesting run: its broker answers a session before it empties the session's slot,
-	 * so the slot's folders can disappear while the caller looks for runs.
+	 * The walk does not enter the requesting nested session: its broker answers a session before it empties the session's
+	 * slot, so the slot's folders can disappear while the caller looks for nested sessions.
 	 *
 	 * @param home       the folder that holds the optimizer's files
-	 * @param requesting the folder of the requesting run, which is left out
-	 * @return the runs, sorted
+	 * @param requesting the folder of the requesting nested session, which is left out
+	 * @return the nested sessions, sorted
 	 * @throws IOException if the folder cannot be walked
 	 */
 	private static List<Path> runs(Path home, Path requesting) throws IOException

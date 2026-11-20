@@ -193,7 +193,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a launch may name the identifier of the run, which a slot gives so that the run keeps its paths.
+	 * Verifies that a launch may name the identifier of the nested session, which a slot gives so that the nested session
+	 * keeps its paths.
 	 */
 	@Test
 	public void parsesSlotId()
@@ -220,7 +221,7 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a launch that names no run identifier leaves the run's identifier to the runner.
+	 * Verifies that a launch that names no slot ID leaves the nested session's identifier to the runner.
 	 */
 	@Test
 	public void leavesSlotIdToRunner()
@@ -233,7 +234,7 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a run identifier that could name another directory is refused.
+	 * Verifies that a slot ID that could name another directory is refused.
 	 */
 	@Test(expectedExceptions = IllegalArgumentException.class)
 	public void refusesSlotIdThatIsNotAnIdentifier()
@@ -422,8 +423,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that {@code --session-transcripts} asks for the harness's native transcripts, and that a run asks for
-	 * none unless it is given.
+	 * Verifies that {@code --session-transcripts} asks for the harness's native transcripts, and that a nested session
+	 * asks for none unless it is given.
 	 */
 	@Test
 	public void parsesSessionTranscripts()
@@ -456,8 +457,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that {@code --session-requests} sets how many sessions the session may request, and that a run allows
-	 * none unless it is given.
+	 * Verifies that {@code --session-requests} sets how many sessions the session may request, and that a nested session
+	 * allows none unless it is given.
 	 */
 	@Test
 	public void parsesSessionRequests()
@@ -492,7 +493,7 @@ public final class HarnessRunnerOptionsTest
 
 	/**
 	 * Verifies that {@code --request-depth} sets how many levels of requested sessions may request sessions in turn,
-	 * and that a run's requested sessions may request none unless it is given.
+	 * and that a nested session's requested sessions may request none unless it is given.
 	 */
 	@Test
 	public void parsesRequestDepth()
@@ -507,8 +508,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that a request depth is refused unless the run's session may request sessions, since no requested
-	 * session would exist to use it.
+	 * Verifies that a request depth is refused unless the nested session's harness session may request sessions, since no
+	 * requested session would exist to use it.
 	 */
 	@Test
 	public void requiresSessionRequestsForRequestDepth()
@@ -527,8 +528,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that {@code --input} names the file that holds the run's JSON Lines records, and that the records come
-	 * from standard input unless it is given.
+	 * Verifies that {@code --input} names the file that holds the nested session's JSON Lines records, and that the
+	 * records come from standard input unless it is given.
 	 */
 	@Test
 	public void parsesInputFile()
@@ -544,8 +545,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that {@code --capacity-wait} bounds the wait for a capacity slot, and that a run waits without a bound
-	 * unless it is given.
+	 * Verifies that {@code --capacity-wait} bounds the wait for a capacity slot, and that a nested session waits without
+	 * a bound unless it is given.
 	 */
 	@Test
 	public void parsesCapacityWait()
@@ -628,8 +629,8 @@ public final class HarnessRunnerOptionsTest
 	}
 
 	/**
-	 * Verifies that without {@code --results} the runs go to {@code nested-sessions} in the temporary directory of the
-	 * CAT session directory of the session that the session variable names.
+	 * Verifies that without {@code --results} the nested sessions go to {@code nested-sessions} in the temporary
+	 * directory of the CAT session directory of the session that the session variable names.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -685,7 +686,7 @@ public final class HarnessRunnerOptionsTest
 
 	/**
 	 * Verifies that without a session variable the command line must name {@code --results}, that the refusal names
-	 * both session variables, and that {@code --results} selects the runs' directory.
+	 * both session variables, and that {@code --results} selects the nested sessions' directory.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */

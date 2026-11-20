@@ -26,7 +26,7 @@ public final class LaunchRouteTest
 	private static final List<String> LAUNCH = List.of("--project", "project", "--model", "model-a", "--effort",
 		"effort-a");
 	/**
-	 * The options of a launch that a run's runner started.
+	 * The options of a launch that a nested session's runner started.
 	 */
 	private static final List<String> BOUND_LAUNCH = List.of("--project", "project", "--model", "model-a",
 		"--effort", "effort-a", PolicyBoundFile.OPTION, "/run/policy-bound.json");
@@ -78,7 +78,7 @@ public final class LaunchRouteTest
 
 	/**
 	 * Verifies that a launch that names a policy bound, from a command that no harness runs, serves its session in
-	 * its own process within that bound, as CAT's own starters, a request server and a run's runner, start it.
+	 * its own process within that bound, as CAT's own starters, a request server and a nested session's runner, start it.
 	 */
 	@Test
 	public void servesBoundLaunch()
@@ -92,7 +92,7 @@ public final class LaunchRouteTest
 
 	/**
 	 * Verifies that a harness session's launch may not name the option with which a server starts a runner in a
-	 * retained run, so that only a server that found the run starts its runner there.
+	 * retained nested session, so that only a server that found the nested session starts its runner there.
 	 */
 	@Test
 	public void refusesResumeSlotOption()
@@ -105,7 +105,7 @@ public final class LaunchRouteTest
 
 	/**
 	 * Verifies that a launch that resumes a session, from a command that no harness runs, is refused, bound or not,
-	 * since only a request server or a run's runner keeps an interrupted session's run.
+	 * since only a request server or a nested session's runner keeps an interrupted session's nested session.
 	 */
 	@Test
 	public void refusesResumeOutsideHarnessSession()

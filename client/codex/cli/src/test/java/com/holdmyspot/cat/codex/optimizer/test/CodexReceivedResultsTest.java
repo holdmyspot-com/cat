@@ -170,7 +170,7 @@ public final class CodexReceivedResultsTest
 	}
 
 	/**
-	 * Returns a port whose run directories are below a directory.
+	 * Returns a port whose session folders are below a directory.
 	 *
 	 * @param jvm the borrowed process scope
 	 * @param root the directory

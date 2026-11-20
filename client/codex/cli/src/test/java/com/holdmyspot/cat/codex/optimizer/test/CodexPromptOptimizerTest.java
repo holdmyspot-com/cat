@@ -366,7 +366,7 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that each command that may start sessions, run in a session of a CAT run whose caller lets it request
+	 * Verifies that each command that may start sessions, run in a nested session whose caller lets it request
 	 * no sessions, is refused with exit code 2 before it changes anything, with a message that names the caller's
 	 * options that would allow the sessions and does not suggest starting Codex with {@code --no-daemon}.
 	 *
@@ -396,10 +396,11 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Returns every command that may start sessions, each with the session requests of a run whose runner refuses the
-	 * next session and whether the run first serves the one session it allows.
+	 * Returns every command that may start sessions, each with the session requests of a nested session whose runner
+	 * refuses the next session and whether the nested session first serves the one session it allows.
 	 *
-	 * @return the commands and their arguments, the run's session requests and whether one session is served first
+	 * @return the commands and their arguments, the nested session's session requests and whether one session is served
+	 *         first
 	 */
 	@DataProvider
 	public static Object[][] spentSessions()
@@ -414,13 +415,13 @@ public final class CodexPromptOptimizerTest
 	}
 
 	/**
-	 * Verifies that each command that may start sessions, run in a session of a CAT run whose runner serves its
+	 * Verifies that each command that may start sessions, run in a nested session whose runner serves its
 	 * sessions but whose limits, as the runner states them, allow no further session, is refused with exit code 2
 	 * before it changes anything, with the message that names the caller's options that would allow the sessions.
 	 *
 	 * @param command         the command and its arguments
-	 * @param sessionRequests how many sessions the run allows
-	 * @param serveFirst      indicates whether the run serves one session before
+	 * @param sessionRequests how many sessions the nested session allows
+	 * @param serveFirst      indicates whether the nested session serves one session before
 	 * @throws IOException if a file cannot be read or written
 	 */
 	@Test(dataProvider = "spentSessions", timeOut = 30_000)

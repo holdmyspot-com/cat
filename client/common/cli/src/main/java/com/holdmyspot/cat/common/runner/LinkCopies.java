@@ -32,15 +32,16 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * The record of the read-only copies that the symbolic links of a run's project whose targets lie outside the project
- * lead to, and the check that tells, once the run's session has ended, whether the session changed one of them. Each
- * copy lies in a folder of the run's {@code link-targets} directory, beside the project. The run keeps the record in
- * its own directory, which the session's sandbox does not let it write.
+ * The record of the read-only copies that the symbolic links of a nested session's project whose targets lie outside
+ * the project lead to, and the check that tells, once the nested session's harness session has ended, whether the
+ * session changed one of them. Each copy lies in a folder of the nested session's {@code link-targets} directory,
+ * beside the project. The nested session keeps the record in its own directory, which the session's sandbox does not
+ * let it write.
  * <p>
  * The record is a JSON Lines file. Its first line is {@code {"format_version": 1}}. Each further line describes one
- * file or directory of a copy: its {@code path} relative to the run's directory, with {@code /} between names; its
- * {@code type}, {@code file} or {@code directory}; its {@code mode}, the POSIX permissions such as {@code r--r--r--}
- * where the file system records them and otherwise {@code read_only} or {@code writable}; whether it is a
+ * file or directory of a copy: its {@code path} relative to the nested session's directory, with {@code /} between
+ * names; its {@code type}, {@code file} or {@code directory}; its {@code mode}, the POSIX permissions such as {@code
+ * r--r--r--} where the file system records them and otherwise {@code read_only} or {@code writable}; whether it is a
  * {@code copy_root}, the file or directory that a link leads to; and, for a file, the {@code sha256} digest of its
  * content in lower-case hexadecimal. The lines of each copy follow its root, in the order of a walk that visits each
  * directory before its entries and the entries of a directory in the order of their names.
@@ -50,7 +51,7 @@ import tools.jackson.databind.node.ObjectNode;
 final class LinkCopies
 {
 	/**
-	 * The name of the record in a run's directory.
+	 * The name of the record in a nested session's directory.
 	 */
 	static final String FILE_NAME = "link-copies.jsonl";
 	private static final int VERSION = 1;
@@ -70,9 +71,9 @@ final class LinkCopies
 	private static final JsonMapper JSON = JsonMapper.builder().build();
 
 	/**
-	 * Records the copies of a run, as they are before its session starts.
+	 * Records the copies of a nested session, as they are before its session starts.
 	 *
-	 * @param sessionFolder the run's directory
+	 * @param sessionFolder the nested session's directory
 	 * @param roots         the path of each copy relative to {@code sessionFolder}, none inside another
 	 * @param record        the record to write
 	 * @throws IOException if a copy cannot be read or the record cannot be written
@@ -101,16 +102,16 @@ final class LinkCopies
 					first = false;
 				}
 				if (first)
-					throw new IOException("The run's copy of a link target is missing: " + root);
+					throw new IOException("The nested session's copy of a link target is missing: " + root);
 			}
 		}
 	}
 
 	/**
-	 * Compares the copies of a run with their record: a copy changed if a file or directory of it was added, removed,
-	 * replaced by one of another type, given other content, or given another mode.
+	 * Compares the copies of a nested session with their record: a copy changed if a file or directory of it was added,
+	 * removed, replaced by one of another type, given other content, or given another mode.
 	 *
-	 * @param sessionFolder the run's directory
+	 * @param sessionFolder the nested session's directory
 	 * @param record        the record
 	 * @return a diagnostic that names each changed path, or empty if no copy changed
 	 * @throws IOException if the record is malformed or a copy cannot be read
@@ -226,7 +227,7 @@ final class LinkCopies
 	 * Orders two paths as a walk visits them: name by name, so that a directory comes before its entries and the
 	 * entries of a directory come in the order of their names.
 	 *
-	 * @param first  a path relative to the run's directory, with {@code /} between names
+	 * @param first  a path relative to the nested session's directory, with {@code /} between names
 	 * @param second another such path
 	 * @return a negative number if a walk visits {@code first} first, zero if they are the same, and a positive
 	 *   number otherwise
@@ -245,7 +246,7 @@ final class LinkCopies
 	}
 
 	/**
-	 * Returns the name of a path relative to the run's directory, with {@code /} between names.
+	 * Returns the name of a path relative to the nested session's directory, with {@code /} between names.
 	 *
 	 * @param relative the path
 	 * @return its name
@@ -330,7 +331,7 @@ final class LinkCopies
 	/**
 	 * A file or directory of a copy as the record describes it.
 	 *
-	 * @param path     the path relative to the run's directory, with {@code /} between names
+	 * @param path     the path relative to the nested session's directory, with {@code /} between names
 	 * @param type     the type, a file or a directory
 	 * @param mode     its mode
 	 * @param root     whether it is the root of its copy
@@ -456,15 +457,15 @@ final class LinkCopies
 		 */
 		private IOException malformed(String reason)
 		{
-			return new IOException("The record of the run's copies of link targets is malformed at line " + number +
-				": " + reason);
+			return new IOException("The record of the nested session's copies of link targets is malformed at line " +
+				number + ": " + reason);
 		}
 	}
 
 	/**
-	 * A file or directory of a copy as the run holds it now.
+	 * A file or directory of a copy as the nested session holds it now.
 	 *
-	 * @param path the path relative to the run's directory, with {@code /} between names
+	 * @param path the path relative to the nested session's directory, with {@code /} between names
 	 * @param file the file or directory
 	 * @param type its type
 	 */
@@ -500,7 +501,7 @@ final class LinkCopies
 	}
 
 	/**
-	 * Visits one copy in a run: its root, then each directory before its entries and the entries of a
+	 * Visits one copy in a nested session: its root, then each directory before its entries and the entries of a
 	 * directory in the order of their names, without following symbolic links. A copy whose root, or a directory above
 	 * it, is missing or is no longer a directory has nothing to visit.
 	 */
@@ -516,8 +517,8 @@ final class LinkCopies
 		/**
 		 * Creates a walk.
 		 *
-		 * @param sessionFolder the run's directory
-		 * @param root          the copy's path relative to the run's directory, with {@code /} between names
+		 * @param sessionFolder the nested session's directory
+		 * @param root          the copy's path relative to the nested session's directory, with {@code /} between names
 		 */
 		private Walk(Path sessionFolder, String root)
 		{
@@ -610,7 +611,7 @@ final class LinkCopies
 		/**
 		 * Adds one changed path.
 		 *
-		 * @param path   the path relative to the run's directory, with {@code /} between names
+		 * @param path   the path relative to the nested session's directory, with {@code /} between names
 		 * @param change how it changed
 		 */
 		private void add(String path, String change)
@@ -633,7 +634,7 @@ final class LinkCopies
 			if (count > MAXIMUM_NAMED_CHANGES)
 				rest = ", and " + (count - MAXIMUM_NAMED_CHANGES) + " more";
 			return Optional.of("The session changed read-only copies of symbolic link targets outside the project, " +
-				"which the project's links lead to: " + named + rest + ". The run fails, because its result " +
+				"which the project's links lead to: " + named + rest + ". The nested session fails, because its result " +
 				"would rest on files that differ from the targets.");
 		}
 	}

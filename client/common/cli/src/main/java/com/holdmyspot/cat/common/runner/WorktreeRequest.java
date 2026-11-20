@@ -18,9 +18,9 @@ import tools.jackson.databind.node.ObjectNode;
 
 /**
  * A request for an operation on the registration of a campaign's optimization worktree, which a request server or a
- * run's runner carries out outside the requesting session's sandbox. Its document names the operation and the
- * campaign's identifier and nothing else: the receiver takes the project and the session from what the session cannot
- * change.
+ * nested session's runner carries out outside the requesting session's sandbox. Its document names the operation and
+ * the campaign's identifier and nothing else: the receiver takes the project and the session from what the session
+ * cannot change.
  * <p>
  * The request travels as a request archive whose name starts with {@link #PREFIX}, in the same {@code requests}
  * directory as a launch, and is answered by a {@code response.json} in the same {@code responses} directory.

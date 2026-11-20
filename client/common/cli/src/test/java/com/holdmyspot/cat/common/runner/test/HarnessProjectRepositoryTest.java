@@ -118,8 +118,8 @@ public final class HarnessProjectRepositoryTest
 	}
 
 	/**
-	 * Verifies Git runs with a run-owned home, without system configuration or prompts, and keeps only the approved
-	 * parent variables.
+	 * Verifies Git runs with a session-owned home, without system configuration or prompts, and keeps only the
+	 * approved parent variables.
 	 */
 	@Test
 	public void isolatesGitFromUserConfiguration()
@@ -139,7 +139,7 @@ public final class HarnessProjectRepositoryTest
 	 * Copies a one-file fixture to a new project, initializes it and returns its baseline commit hash.
 	 *
 	 * @param sourceProject the source project whose Git identity is inherited
-	 * @param sessionFolder the run directory, created by this method; the project is its {@code project} child
+	 * @param sessionFolder the session folder, created by this method; the project is its {@code project} child
 	 * @param content       the fixture file's content
 	 * @param parent        the parent environment
 	 * @return the hash of the project's {@code HEAD}

@@ -99,7 +99,8 @@ public final class PromptOptimizerCli
 	 * @param platform the platform that runs the command
 	 * @param out      where the JSON goes
 	 * @return the exit code: 0 for a result, 1 for a refusal or a failure, 2 for invalid input, for a command that
-	 *   no harness session runs, or for a command that would start sessions inside a CAT run whose caller allows none
+	 *   no harness session runs, or for a command that would start sessions inside a nested session whose caller allows
+	 *   none
 	 * @throws NullPointerException if any argument is null
 	 */
 	public static int run(AbstractOptimizerCommandScope scope, List<String> args, ZoneId zone, Platform platform,

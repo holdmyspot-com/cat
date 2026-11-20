@@ -17,7 +17,7 @@ import java.util.Optional;
 /**
  * Carries out a worktree request outside the requesting session's sandbox, after the checks that keep the session
  * from pointing the operation at anything but its own campaign's worktree, or from choosing a program that Git would
- * run. A request server and a run's runner serve requests through it.
+ * run. A request server and a nested session's runner serve requests through it.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */

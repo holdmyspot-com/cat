@@ -66,7 +66,7 @@ public final class ScriptedHarness
 	/**
 	 * Serves one session through the real bridge.
 	 *
-	 * @param resultsFolder the directory that holds the run directories
+	 * @param resultsFolder the directory that holds the session folders
 	 * @param harness the harness name
 	 * @param script what the harness does for each turn, in turn order
 	 * @param input the bridge requests
@@ -83,7 +83,7 @@ public final class ScriptedHarness
 	/**
 	 * Serves one session and records the requests CAT sends to the harness, in turn order.
 	 *
-	 * @param resultsFolder the directory that holds the run directories
+	 * @param resultsFolder the directory that holds the session folders
 	 * @param harness the harness name
 	 * @param script what the harness does for each turn, in turn order
 	 * @param input the bridge requests
@@ -102,7 +102,7 @@ public final class ScriptedHarness
 	 * Serves one session whose harness ends an interrupted turn a given way, and records the requests CAT sends to the
 	 * harness, in turn order.
 	 *
-	 * @param resultsFolder   the directory that holds the run directories
+	 * @param resultsFolder   the directory that holds the session folders
 	 * @param harness         the harness name
 	 * @param script          what the harness does for each turn, in turn order
 	 * @param input           the bridge requests
@@ -129,8 +129,8 @@ public final class ScriptedHarness
 			NestedSession nestedSession = manager.create(harness);
 			manager.initialize(nestedSession, resultsFolder, resultsFolder, "scripted", List.of("scripted"));
 			ScriptedProcess process = new ScriptedProcess(script, requests, interruptedTurn);
-			// No launcher copies the run, so the harness names its session after the run, whose folder then holds
-			// the session's results where the launcher's copy would
+			// No launcher copies the nested session, so the harness names its session after the nested session, whose folder
+			// then holds the session's results where the launcher's copy would
 			process.reportHarnessSession(nestedSession.id());
 			return new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope());
 		}, manager, input, output);

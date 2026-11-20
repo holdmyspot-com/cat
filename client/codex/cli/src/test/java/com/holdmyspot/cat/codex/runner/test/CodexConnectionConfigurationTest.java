@@ -968,7 +968,7 @@ public final class CodexConnectionConfigurationTest
 
 	/**
 	 * Verifies that a session's read denial inside another of its read denials stays denied when its runner profile
-	 * lets it write a folder between them, as the run's home lies inside the denied results folder.
+	 * lets it write a folder between them, as the nested session's home lies inside the denied results folder.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -1245,7 +1245,7 @@ public final class CodexConnectionConfigurationTest
 	}
 
 	/**
-	 * Verifies the user's approvals of a plugin's hooks reach the isolated configuration under the run-local
+	 * Verifies the user's approvals of a plugin's hooks reach the isolated configuration under the session-local
 	 * marketplace that bears the plugin's name, and that no other plugin's approvals do.
 	 *
 	 * @throws IOException if fixture I/O fails

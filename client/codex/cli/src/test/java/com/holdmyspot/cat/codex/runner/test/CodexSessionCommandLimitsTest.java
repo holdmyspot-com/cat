@@ -107,7 +107,7 @@ public final class CodexSessionCommandLimitsTest extends SessionCommandLimitsCon
 	@Override
 	protected Optional<Path> ownLogin(Fixture fixture)
 	{
-		// The runner copies the user's login into the run's home, which is the session's Codex home
+		// The runner copies the user's login into the nested session's home, which is the session's Codex home
 		return Optional.of(fixture.sessionHome().resolve("auth.json"));
 	}
 }

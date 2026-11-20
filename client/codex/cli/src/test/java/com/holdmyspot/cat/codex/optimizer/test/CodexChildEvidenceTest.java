@@ -28,7 +28,7 @@ import org.testng.annotations.Test;
 public final class CodexChildEvidenceTest
 {
 	/**
-	 * The recorded run artifacts of a trial whose root started two children, waited once and then answered.
+	 * The recorded nested session artifacts of a trial whose root started two children, waited once and then answered.
 	 */
 	private static final Path TRANSCRIPT = Path.of("src/test/resources/optimizer/two-children/transcript.jsonl");
 	/**
@@ -40,8 +40,8 @@ public final class CodexChildEvidenceTest
 	 */
 	private static final String SODIUM = "01a17e47-efbd-7753-91e2-3b5ea7fbb960";
 	/**
-	 * The recorded run artifacts of a trial whose root sent a message to a child that was still working, after a wait
-	 * that ended before the child finished.
+	 * The recorded nested session artifacts of a trial whose root sent a message to a child that was still working, after
+	 * a wait that ended before the child finished.
 	 */
 	private static final Path SENT = Path.of("src/test/resources/optimizer/running-command/transcript.jsonl");
 	/**
@@ -226,7 +226,7 @@ public final class CodexChildEvidenceTest
 	}
 
 	/**
-	 * Returns a port whose run directories are below a directory.
+	 * Returns a port whose session folders are below a directory.
 	 *
 	 * @param jvm  the borrowed process scope
 	 * @param root the directory

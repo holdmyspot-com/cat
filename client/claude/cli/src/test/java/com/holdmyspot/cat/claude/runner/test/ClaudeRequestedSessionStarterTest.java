@@ -84,11 +84,11 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 	/**
 	 * Verifies that a requested session, and a session that a requested session requests in turn, use the login of
 	 * the user whose session runs the request server: the runner of each receives the user's home directory,
-	 * {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, even an empty one, never a run's own, so
-	 * the environment of its Claude process names the login store of the user's own Claude Code in
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}: the store that the user's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names,
-	 * or else the user's Claude configuration directory; for an empty one, the default store, which on macOS an empty
-	 * value selects and elsewhere is {@code .claude} in the user's home directory.
+	 * {@code CLAUDE_CONFIG_DIR} and {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, even an empty one, never a nested session's
+	 * own, so the environment of its Claude process names the login store of the user's own Claude Code in {@code
+	 * CLAUDE_SECURESTORAGE_CONFIG_DIR}: the store that the user's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else
+	 * the user's Claude configuration directory; for an empty one, the default store, which on macOS an empty value
+	 * selects and elsewhere is {@code .claude} in the user's home directory.
 	 *
 	 * @param store the user's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}: {@code "named"} for a directory,
 	 *              {@code "empty"} for an empty value, or {@code "unset"}
@@ -154,7 +154,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 	/**
 	 * Verifies that a requested session, and a session that a requested session requests in turn, receive the class of
 	 * the login of the user whose session runs the request server in {@code CAT_HOST_LOGIN}, as the sessions of a
-	 * run do: the runner of each receives the user's login store, whatever {@code CAT_HOST_LOGIN} says in the
+	 * nested session do: the runner of each receives the user's login store, whatever {@code CAT_HOST_LOGIN} says in the
 	 * environment that it receives.
 	 *
 	 * @throws IOException if the starter or an environment fails

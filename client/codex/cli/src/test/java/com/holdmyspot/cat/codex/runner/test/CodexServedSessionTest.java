@@ -156,11 +156,11 @@ public final class CodexServedSessionTest
 	}
 
 	/**
-	 * Verifies that a request server that a session of a CAT run runs inside its sandbox is told that no request
-	 * server serves a run's session, that Codex keeps a rule-allowed command sandboxed while the session denies reads,
-	 * and that the session requests sessions through the launchers. A run's session keeps no rollout unless its caller
-	 * keeps the session's transcripts, and its permissions are the runner's, so neither the rule that install adds nor
-	 * the profile's entries are the advice.
+	 * Verifies that a request server that a nested session runs inside its sandbox is told that no request
+	 * server serves a nested session's harness session, that Codex keeps a rule-allowed command sandboxed while the
+	 * session denies reads, and that the session requests sessions through the launchers. A nested session's harness
+	 * session keeps no rollout unless its caller keeps the session's transcripts, and its permissions are the runner's,
+	 * so neither the rule that install adds nor the profile's entries are the advice.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -175,7 +175,7 @@ public final class CodexServedSessionTest
 
 			String withoutRollout = CodexServedSession.sandboxed(fixture.server, environment, fixture.home, null);
 
-			requireThat(withoutRollout, "withoutRollout").contains("a session of a CAT run").
+			requireThat(withoutRollout, "withoutRollout").contains("a nested session").
 				contains("openai/codex#38318").contains("--session-requests <count>").
 				doesNotContain("the rule that CAT's install adds").doesNotContain("No rule in");
 

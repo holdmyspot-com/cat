@@ -90,7 +90,7 @@ final class TestSessions extends RunnerSessions
 	}
 
 	/**
-	 * Creates a port for a harness that a run's runner serves, such as {@code claude}.
+	 * Creates a port for a harness that a nested session's runner serves, such as {@code claude}.
 	 *
 	 * @param harness  the harness's identifier
 	 * @param settings how the runner is configured

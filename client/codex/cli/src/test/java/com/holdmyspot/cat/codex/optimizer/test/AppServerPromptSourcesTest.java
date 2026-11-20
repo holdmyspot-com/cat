@@ -51,7 +51,7 @@ public final class AppServerPromptSourcesTest
 	 * Observes lines.
 	 *
 	 * @param lines the harness event lines
-	 * @param sessionFolder the run directory that the lines mention
+	 * @param sessionFolder the session folder that the lines mention
 	 * @return the observed value
 	 */
 	private static String observe(List<String> lines, String sessionFolder)
@@ -120,8 +120,8 @@ public final class AppServerPromptSourcesTest
 	}
 
 	/**
-	 * Verifies that the value does not depend on where the run's files were staged, so that two candidates measured
-	 * in different run directories yield the same value.
+	 * Verifies that the value does not depend on where the nested session's files were staged, so that two candidates
+	 * measured in different session folders yield the same value.
 	 *
 	 * @throws IOException if the recorded lines cannot be read
 	 */

@@ -31,7 +31,7 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
-	 * Verifies harness homes and CAT state are never inherited into an isolated run.
+	 * Verifies harness homes and CAT state are never inherited into an isolated nested session.
 	 */
 	@Test
 	public void removesHarnessAndCatState()
@@ -65,7 +65,7 @@ public final class HarnessEnvironmentTest
 	/**
 	 * Verifies that the child environment keeps the Node version manager's directory, so that a {@code node} launcher
 	 * that loads the manager from {@code NVM_DIR} finds the host's Node installation although the child's home is the
-	 * run's home.
+	 * nested session's home.
 	 */
 	@Test
 	public void keepsNodeVersionManagerDirectory()
@@ -213,7 +213,7 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
-	 * Verifies that the child environment names the run's home rather than the host's home.
+	 * Verifies that the child environment names the nested session's home rather than the host's home.
 	 */
 	@Test
 	public void givesChildItsHomeDirectory()
@@ -251,7 +251,7 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
-	 * Verifies an isolated project cannot discover a repository above its owned run directory.
+	 * Verifies an isolated project cannot discover a repository above its owned session folder.
 	 */
 	@Test
 	public void preventsHostGitDiscovery()
@@ -265,9 +265,9 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
-	 * Verifies that a runner refuses a launch from a session of a CAT run whose runner lets it request no sessions,
-	 * naming the caller's options that let it, and lets a launch from a run that lets its session request sessions, or
-	 * from no run, go on.
+	 * Verifies that a runner refuses a launch from a nested session whose runner lets it request no sessions,
+	 * naming the caller's options that let it, and lets a launch from a nested session that lets its session request
+	 * sessions, or from no nested session, go on.
 	 */
 	@Test
 	public void refusesNestedLaunchWithoutRequests()
@@ -288,7 +288,7 @@ public final class HarnessEnvironmentTest
 	}
 
 	/**
-	 * Verifies that a request server that a session of a CAT run starts is refused, so that it does not keep running as
+	 * Verifies that a request server that a nested session starts is refused, so that it does not keep running as
 	 * a background command that keeps the session's turn open, and that a command outside a nested session is not
 	 * refused.
 	 */

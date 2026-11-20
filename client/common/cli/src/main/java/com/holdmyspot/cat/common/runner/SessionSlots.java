@@ -20,34 +20,34 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /**
- * A fixed set of run directories, one for each requested session that may run at once, which a requested session
- * takes for the whole of its run. Every session builds its run in a slot at the same path as the session before it,
- * so the paths of its home, harness configuration directory and project repeat from one session to the next, while
- * no file of the earlier session remains.
+ * A fixed set of session folders, one for each requested session that may run at once, which a requested session
+ * takes for the whole of its nested session. Every session builds its nested session in a slot at the same path as the
+ * session before it, so the paths of its home, harness configuration directory and project repeat from one session to
+ * the next, while no file of the earlier session remains.
  * <p>
  * A slot belongs to either the development part or the held-out part. The two parts have slots of their own, in
  * separate directories, so that a session of one part never runs where a session of the other did.
  * <p>
  * The paths are short: {@code d1}, {@code d2}, and so on, for the development part's slots and {@code h1},
- * {@code h2}, and so on, for the held-out part's, each run below its harness's name under the identifier
- * {@code s-<number>}. Every path of a session's home and project starts with its run's path, and a harness repeats
- * those paths many times in what it sends the model, in its sandbox description among others, and again for each
- * level of requested sessions. The names stay distinct across parts and numbers, and none is a name that Windows
+ * {@code h2}, and so on, for the held-out part's, each nested session below its harness's name under the identifier
+ * {@code s-<number>}. Every path of a session's home and project starts with its nested session's path, and a harness
+ * repeats those paths many times in what it sends the model, in its sandbox description among others, and again for
+ * each level of requested sessions. The names stay distinct across parts and numbers, and none is a name that Windows
  * reserves.
  * <p>
  * A slot is emptied before a session takes it, and again once the session has ended, but a slot is never emptied or
- * handed on while a process that its previous session recorded in its run's manifest remains alive: CAT stops each such
- * process, and if one stays alive, the slot waits. The manifest records only the runner's process and the harness
- * process, not the processes below them. A session folder without a manifest records no process, so emptying the slot
- * removes it without stopping anything; a manifest that cannot be read or is malformed keeps the slot from being
- * emptied.
+ * handed on while a process that its previous session recorded in its nested session's manifest remains alive: CAT
+ * stops each such process, and if one stays alive, the slot waits. The manifest records only the runner's process and
+ * the harness process, not the processes below them. A session folder without a manifest records no process, so
+ * emptying the slot removes it without stopping anything; a manifest that cannot be read or is malformed keeps the slot
+ * from being emptied.
  * <p>
- * A slot whose run records the session that its harness reported, and no end, is <b>retained</b>: its session was
- * interrupted and may continue, so no other session takes the slot, and a session that needs a slot of the part takes
- * the next slot instead, numbered past the slots' count if need be. No more sessions of a part run at once than the
- * count allows. A retained slot is given only to the launch that resumes its run's session, and is emptied only when
- * that launch ends its run or the run is discarded. A resume or a discard of a run whose session is still being
- * stopped waits for that session to give the slot back.
+ * A slot whose nested session records the session that its harness reported, and no end, is <b>retained</b>: its
+ * session was interrupted and may continue, so no other session takes the slot, and a session that needs a slot of the
+ * part takes the next slot instead, numbered past the slots' count if need be. No more sessions of a part run at once
+ * than the count allows. A retained slot is given only to the launch that resumes its nested session's harness session,
+ * and is emptied only when that launch ends its nested session or the nested session is discarded. A resume or a
+ * discard of a nested session whose session is still being stopped waits for that session to give the slot back.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -63,7 +63,7 @@ public final class SessionSlots
 	 */
 	static final String HELD_OUT = "h";
 	/**
-	 * The start of the identifier of each slot's run, which the slot's number follows.
+	 * The start of the identifier of each slot's nested session, which the slot's number follows.
 	 */
 	private static final String SLOT_ID = "s-";
 	/**
@@ -76,8 +76,8 @@ public final class SessionSlots
 	 */
 	private static final long PROCESS_WAIT_MILLIS = 100;
 	/**
-	 * How long a resume or a discard waits for the processes that a retained run recorded to end once they are asked
-	 * to, in milliseconds.
+	 * How long a resume or a discard waits for the processes that a retained nested session recorded to end once they are
+	 * asked to, in milliseconds.
 	 */
 	private static final long STOP_WAIT_MILLIS = 1_000;
 	/**
@@ -98,9 +98,9 @@ public final class SessionSlots
 	/**
 	 * A slot that a session holds.
 	 *
-	 * @param root    the directory that the session uses as its results folder, which holds its run below the harness's
-	 *                name
-	 * @param slotId  the identifier of the session's run, which is the same for every session of the slot
+	 * @param root    the directory that the session uses as its results folder, which holds its nested session below the
+	 *                harness's name
+	 * @param slotId  the identifier of the session's nested session, which is the same for every session of the slot
 	 * @param heldOut {@code true} if the slot belongs to the held-out part
 	 * @param number  the slot's number within its part, starting at {@code 1}
 	 */
@@ -110,7 +110,7 @@ public final class SessionSlots
 		 * Creates a slot.
 		 *
 		 * @param root    the directory that the session uses as its results folder
-		 * @param slotId  the identifier of the session's run
+		 * @param slotId  the identifier of the session's nested session
 		 * @param heldOut {@code true} if the slot belongs to the held-out part
 		 * @param number  the slot's number within its part
 		 * @throws NullPointerException     if {@code root} or {@code slotId} are null
@@ -125,11 +125,11 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Creates the slots of a server or a run, which exist as directories only while sessions hold them.
+	 * Creates the slots of a server or a nested session, which exist as directories only while sessions hold them.
 	 *
 	 * @param base     the absolute directory below which the slots live
 	 * @param count    how many sessions of each part may run at once
-	 * @param liveness checks and stops the processes that a session's run records
+	 * @param liveness checks and stops the processes that a session's nested session records
 	 * @throws NullPointerException     if {@code base} or {@code liveness} are null
 	 * @throws IllegalArgumentException if {@code base} is relative or {@code count} is not positive
 	 */
@@ -229,8 +229,9 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Gives a slot back without emptying it, once its session was interrupted. The slot stays retained while its run
-	 * records its harness session and no end; a slot whose run does not is emptied by the next session to take it.
+	 * Gives a slot back without emptying it, once its session was interrupted. The slot stays retained while its nested
+	 * session records its harness session and no end; a slot whose nested session does not is emptied by the next session
+	 * to take it.
 	 *
 	 * @param slot the slot that {@link #acquire(boolean)} or {@link #acquireRetained(String, String)} returned
 	 * @throws NullPointerException if {@code slot} is null
@@ -243,8 +244,8 @@ public final class SessionSlots
 
 	/**
 	 * Records that the session that holds a slot is being stopped, so that a launch that resumes or discards the slot's
-	 * run waits for the session to give the slot back instead of being refused. The record ends when the slot is
-	 * {@link #release(Slot) released} or {@link #retain(Slot) retained}.
+	 * nested session waits for the session to give the slot back instead of being refused. The record ends when the slot
+	 * is {@link #release(Slot) released} or {@link #retain(Slot) retained}.
 	 *
 	 * @param slot the slot that {@link #acquire(boolean)} or {@link #acquireRetained(String, String)} returned
 	 * @throws NullPointerException if {@code slot} is null
@@ -260,22 +261,22 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Takes the retained slot whose run records a harness session, so that a launch continues the session there. Waits
-	 * until a session that holds the slot and is being stopped gives it back and until fewer sessions of the slot's
-	 * part run than the slots' count allows, and stops each process that the run recorded, under the checks of its
-	 * identity. The slot keeps its files, and stays the caller's until it is {@link #release(Slot) released} or
-	 * {@link #retain(Slot) retained}.
+	 * Takes the retained slot whose nested session records a harness session, so that a launch continues the session
+	 * there. Waits until a session that holds the slot and is being stopped gives it back and until fewer sessions of the
+	 * slot's part run than the slots' count allows, and stops each process that the nested session recorded, under the
+	 * checks of its identity. The slot keeps its files, and stays the caller's until it is {@link #release(Slot)
+	 * released} or {@link #retain(Slot) retained}.
 	 *
 	 * @param sessionId the session that the harness reported
 	 * @param harness   the harness of the launch that resumes the session
 	 * @return the slot, or none if no retained slot records the session, including when the session that held the slot
-	 *   ended the run
+	 *   ended the nested session
 	 * @throws NullPointerException    if any of the arguments are null
-	 * @throws SessionRefusedException if the slot's run is of another harness, a launch that is not being stopped holds
-	 *                                 the slot, or a process that the run recorded stays alive once it is asked to
-	 *                                 end
-	 * @throws IOException             if no readable run records the session and a run's manifest cannot be read, or
-	 *                                 the slot's run cannot be checked
+	 * @throws SessionRefusedException if the slot's nested session is of another harness, a launch that is not being
+	 *                                 stopped holds the slot, or a process that the nested session recorded stays alive
+	 *                                 once it is asked to end
+	 * @throws IOException             if no readable nested session records the session and a nested session's manifest
+	 *                                 cannot be read, or the slot's nested session cannot be checked
 	 * @throws InterruptedException    if the thread is interrupted while it waits
 	 */
 	public Optional<Slot> acquireRetained(String sessionId, String harness) throws IOException, InterruptedException
@@ -289,7 +290,7 @@ public final class SessionSlots
 		String recorded = found.get().harness();
 		if (!recorded.equals(harness))
 		{
-			throw new SessionRefusedException("The session " + sessionId + " is of a " + recorded + " run, so only " +
+			throw new SessionRefusedException("The session " + sessionId + " is a " + recorded + " nested session, so only " +
 				"the " + recorded + " runner launcher can resume it");
 		}
 		BitSet taken = taken(slot.heldOut());
@@ -308,7 +309,7 @@ public final class SessionSlots
 				{
 					if (waitedForHolder)
 					{
-						// The session that held the slot may have ended its run, which emptied the slot
+						// The session that held the slot may have ended its nested session, which emptied the slot
 						if (!isRetained(slot))
 							return Optional.empty();
 						waitedForHolder = false;
@@ -325,7 +326,7 @@ public final class SessionSlots
 		{
 			if (!stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS))
 			{
-				throw new SessionRefusedException("A process that the run of session " + sessionId + " recorded is " +
+				throw new SessionRefusedException("A process that the nested session " + sessionId + " recorded is " +
 					"still alive");
 			}
 			ready = true;
@@ -339,18 +340,18 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Discards the retained run that records a harness session: waits until a session that holds its slot and is being
-	 * stopped gives the slot back, stops each process that the run recorded, under the checks of its identity, and
-	 * empties its slot.
+	 * Discards the retained nested session that records a harness session: waits until a session that holds its slot and
+	 * is being stopped gives the slot back, stops each process that the nested session recorded, under the checks of its
+	 * identity, and empties its slot.
 	 *
 	 * @param sessionId the session that the harness reported
-	 * @return {@code true} if a retained run recorded the session and was discarded, or {@code false} if none did,
-	 *   including when the session that held the run's slot ended the run
+	 * @return {@code true} if a retained nested session recorded the session and was discarded, or {@code false} if none
+	 *   did, including when the session that held the nested session's slot ended the nested session
 	 * @throws NullPointerException    if {@code sessionId} is null
-	 * @throws SessionRefusedException if a launch that is not being stopped holds the run's slot, or a process that the
-	 *                                 run recorded stays alive once it is asked to end
-	 * @throws IOException             if no readable run records the session and a run's manifest cannot be read, or
-	 *                                 the slot cannot be emptied
+	 * @throws SessionRefusedException if a launch that is not being stopped holds the nested session's slot, or a process
+	 *                                 that the nested session recorded stays alive once it is asked to end
+	 * @throws IOException             if no readable nested session records the session and a nested session's manifest
+	 *                                 cannot be read, or the slot cannot be emptied
 	 * @throws InterruptedException    if the thread is interrupted while it waits
 	 */
 	public boolean discard(String sessionId) throws IOException, InterruptedException
@@ -371,7 +372,7 @@ public final class SessionSlots
 				waitedForHolder = true;
 				wait(RELEASE_WAIT_MILLIS);
 			}
-			// The session that held the slot may have ended its run, which emptied the slot
+			// The session that held the slot may have ended its nested session, which emptied the slot
 			if (waitedForHolder && !isRetained(slot))
 				return false;
 			taken.set(slot.number() - 1);
@@ -380,7 +381,7 @@ public final class SessionSlots
 		{
 			if (!stopRecordedProcesses(manifests(slot.root()), STOP_WAIT_MILLIS) || !empty(slot))
 			{
-				throw new SessionRefusedException("A process that the run of session " + sessionId + " recorded is " +
+				throw new SessionRefusedException("A process that the nested session " + sessionId + " recorded is " +
 					"still alive");
 			}
 			return true;
@@ -392,10 +393,10 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Indicates whether a retained slot's run records a harness session.
+	 * Indicates whether a retained slot's nested session records a harness session.
 	 *
 	 * @param sessionId the session that the harness reported
-	 * @return {@code true} if a readable retained run records the session
+	 * @return {@code true} if a readable retained nested session records the session
 	 * @throws NullPointerException if {@code sessionId} is null
 	 */
 	public boolean retains(String sessionId)
@@ -412,11 +413,12 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Finds the retained slot whose run records a harness session.
+	 * Finds the retained slot whose nested session records a harness session.
 	 *
 	 * @param sessionId the session
-	 * @return the slot and its run's harness, or none if no retained slot records the session
-	 * @throws IOException if no readable run records the session and a run's manifest cannot be read
+	 * @return the slot and its nested session's harness, or none if no retained slot records the session
+	 * @throws IOException if no readable nested session records the session and a nested session's manifest cannot be
+	 *                     read
 	 */
 	private Optional<Retained> findRetained(String sessionId) throws IOException
 	{
@@ -457,12 +459,12 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Indicates whether a slot is retained: a run below it records its harness session and no end, so that the run's
-	 * session can continue.
+	 * Indicates whether a slot is retained: a nested session below it records its harness session and no end, so that the
+	 * nested session's harness session can continue.
 	 *
 	 * @param slot the slot
-	 * @return {@code true} if the slot is retained, or {@code false} if it is not, or its runs cannot be read, which
-	 *   emptying the slot reports
+	 * @return {@code true} if the slot is retained, or {@code false} if it is not, or its nested sessions cannot be read,
+	 *   which emptying the slot reports
 	 * @throws NullPointerException if {@code slot} is null
 	 */
 	public static boolean isRetained(Slot slot)
@@ -484,10 +486,10 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Indicates whether a run can continue: it records its harness session and no end.
+	 * Indicates whether a nested session can continue: it records its harness session and no end.
 	 *
-	 * @param manifest the run's manifest
-	 * @return {@code true} if the run can continue
+	 * @param manifest the nested session's manifest
+	 * @return {@code true} if the nested session can continue
 	 */
 	private static boolean isRetained(NestedSessionManager.Manifest manifest)
 	{
@@ -495,12 +497,12 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Asks every process that the manifests of a slot's runs record to end, and waits a while for them to.
+	 * Asks every process that the manifests of a slot's nested sessions record to end, and waits a while for them to.
 	 *
-	 * @param records the runs of the slot
+	 * @param records the nested sessions of the slot
 	 * @param millis  how long to wait, in milliseconds
 	 * @return {@code true} if no recorded process remains alive
-	 * @throws IOException          if a run's manifest cannot be read or does not match its run
+	 * @throws IOException          if a nested session's manifest cannot be read or does not match its nested session
 	 * @throws InterruptedException if the thread is interrupted while it waits
 	 */
 	private boolean stopRecordedProcesses(List<RecordedNestedSession> records, long millis)
@@ -564,8 +566,8 @@ public final class SessionSlots
 
 	/**
 	 * Stops the processes that the slot's previous session recorded, and if none remains alive, removes the slot's
-	 * directory. Each run's manifest is removed after everything else in the run, so that a removal that stops partway
-	 * leaves the record of the run's processes for the next attempt.
+	 * directory. Each nested session's manifest is removed after everything else in the nested session, so that a removal
+	 * that stops partway leaves the record of the nested session's processes for the next attempt.
 	 *
 	 * @param slot the slot
 	 * @return {@code true} if the slot has no directory, or {@code false} if a recorded process remains alive
@@ -583,11 +585,11 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Asks every process that the manifests of the slot's runs record to end, and checks whether any remains.
+	 * Asks every process that the manifests of the slot's nested sessions record to end, and checks whether any remains.
 	 *
-	 * @param records the runs of the slot
+	 * @param records the nested sessions of the slot
 	 * @return {@code true} if no recorded process remains alive
-	 * @throws IOException if a run's manifest cannot be read or does not match its run
+	 * @throws IOException if a nested session's manifest cannot be read or does not match its nested session
 	 */
 	private boolean stopRecordedProcesses(List<RecordedNestedSession> records) throws IOException
 	{
@@ -596,7 +598,7 @@ public final class SessionSlots
 		{
 			NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
 			if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.slotId()))
-				throw new IOException("Run manifest does not match its slot path: " + record.manifest());
+				throw new IOException("Session manifest does not match its slot path: " + record.manifest());
 			if (manifest.harnessProcessState() == NestedSessionManager.HarnessProcessState.STARTING)
 				throw new IOException("Harness launch state is unknown; refusing to empty slot: " + record.manifest());
 			boolean currentOwner = manifest.ownerPid() == ProcessHandle.current().pid();
@@ -630,12 +632,12 @@ public final class SessionSlots
 	}
 
 	/**
-	 * Returns the manifests of the runs below a slot, which are at {@code <harness>/<run>/session.json}. A session folder
-	 * without a manifest records no process and is left out.
+	 * Returns the manifests of the nested sessions below a slot, which are at {@code <harness>/<id>/session.json}. A
+	 * session folder without a manifest records no process and is left out.
 	 *
 	 * @param root the slot's directory
 	 * @return the manifests
-	 * @throws IOException if the slot's directories cannot be read, or a run's manifest is not a regular file
+	 * @throws IOException if the slot's directories cannot be read, or a nested session's manifest is not a regular file
 	 */
 	private static List<RecordedNestedSession> manifests(Path root) throws IOException
 	{
@@ -660,7 +662,7 @@ public final class SessionSlots
 						if (!Files.exists(manifest, LinkOption.NOFOLLOW_LINKS))
 							continue;
 						if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
-							throw new IOException("Slot run manifest is not a regular file: " + manifest);
+							throw new IOException("Slot session manifest is not a regular file: " + manifest);
 						manifests.add(new RecordedNestedSession(harness.getFileName().toString(),
 							sessionFolder.getFileName().toString(), manifest));
 					}
@@ -671,20 +673,20 @@ public final class SessionSlots
 	}
 
 	/**
-	 * A retained slot and the harness of its run.
+	 * A retained slot and the harness of its nested session.
 	 *
 	 * @param slot    the slot
-	 * @param harness the run's harness
+	 * @param harness the nested session's harness
 	 */
 	private record Retained(Slot slot, String harness)
 	{
 	}
 
 	/**
-	 * A path-derived run whose manifest is checked before slot reuse.
+	 * A path-derived nested session whose manifest is checked before slot reuse.
 	 *
 	 * @param harness the harness directory name
-	 * @param slotId the generated run identifier
+	 * @param slotId the generated slot ID
 	 * @param manifest the expected manifest path
 	 */
 	private record RecordedNestedSession(String harness, String slotId, Path manifest)
@@ -692,7 +694,7 @@ public final class SessionSlots
 	}
 
 	/**
-	 * A parsed run whose identities have all been checked before cleanup starts.
+	 * A parsed nested session whose identities have all been checked before cleanup starts.
 	 *
 	 * @param manifest the parsed manifest
 	 * @param currentOwner whether the owner is this JVM

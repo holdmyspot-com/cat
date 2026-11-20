@@ -254,8 +254,8 @@ public final class RequestServerTest
 
 	/**
 	 * Verifies that the server serves a launch that a client packs into the session's requests: the requested session
-	 * starts in a run of its own, bounded by the intersection of the session's policy and what the new session needs,
-	 * and the server removes that run once it has answered, leaving the client the response.
+	 * starts in a nested session of its own, bounded by the intersection of the session's policy and what the new session
+	 * needs, and the server removes that run once it has answered, leaving the client the response.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -464,9 +464,9 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that a conversation of a launch that keeps its run ends only once the run is copied into the launch's
-	 * results folder: the asking session that reads the {@code ended} line finds the kept run, including its last file,
-	 * already in place.
+	 * Verifies that a conversation of a launch that keeps its nested session ends only once the nested session is copied
+	 * into the launch's results folder: the asking session that reads the {@code ended} line finds the results copy,
+	 * including its last file, already in place.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -517,7 +517,7 @@ public final class RequestServerTest
 					{
 						if (System.nanoTime() > deadline)
 							throw new IOException("The conversation did not end");
-						// Once the session runs, its run holds many files, so that copying it takes a while
+						// Once the session runs, its nested session holds many files, so that copying it takes a while
 						if (!served.isEmpty() && !endSent.get())
 						{
 							Path many = Files.createDirectories(served.getFirst().nestedSession().directory().
@@ -539,9 +539,9 @@ public final class RequestServerTest
 
 	/**
 	 * Verifies that a CAT command that starts sessions, such as the prompt optimizer, has its session served by the
-	 * server outside a nested session: the command receives the session's records, finds the session's kept run in its
-	 * own results folder, and removes the response once it has copied the run, while the server keeps neither the
-	 * request nor a run of its own, so the request is served once.
+	 * server outside a nested session: the command receives the session's records, finds the session's results copy in
+	 * its own results folder, and removes the response once it has copied the nested session, while the server keeps
+	 * neither the request nor a nested session of its own, so the request is served once.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -574,8 +574,8 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that sessions that reuse a server slot build their runs at the same paths, so that the paths that
-	 * the harness puts into its instructions repeat when that slot is reused.
+	 * Verifies that sessions that reuse a server slot build their nested sessions at the same paths, so that the paths
+	 * that the harness puts into its instructions repeat when that slot is reused.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -684,9 +684,9 @@ public final class RequestServerTest
 
 	/**
 	 * Verifies that a request whose slot the server refuses to empty fails with the reason, and that the server goes
-	 * on serving: an earlier session's run, whose runner recorded that it was about to start a harness and recorded
-	 * nothing more, holds the only development slot that the request can take, so the request is answered
-	 * {@code failed}; once that run records that no harness started, the next request runs in the slot.
+	 * on serving: an earlier session's nested session, whose runner recorded that it was about to start a harness and
+	 * recorded nothing more, holds the only development slot that the request can take, so the request is answered {@code
+	 * failed}; once that run records that no harness started, the next request runs in the slot.
 	 *
 	 * @throws IOException if the fixture cannot be created or a request cannot be served
 	 */
@@ -718,8 +718,9 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Verifies that the kept run that the command receives survives the next session's use of the slot: each session's
-	 * kept run is in the command's results folder under an identifier of its own, with the files of its own session.
+	 * Verifies that the results copy that the command receives survives the next session's use of the slot: each
+	 * session's results copy is in the command's results folder under an identifier of its own, with the files of its own
+	 * session.
 	 *
 	 * @throws IOException          if the fixture cannot be created or a request cannot be served
 	 * @throws InterruptedException if the test is interrupted
@@ -756,7 +757,7 @@ public final class RequestServerTest
 	 * @param server        the running server
 	 * @param resultsFolder the command's results folder
 	 * @param served        initially empty list that the child populates with the served sessions
-	 * @return the earlier session and both retained run identifiers for the reused slot
+	 * @return the earlier session and both retained slot IDs for the reused slot
 	 * @throws IOException if a session does not complete
 	 */
 	private static SlotReuse serveUntilSlotReuse(Fixture fixture, Fixture.Running server, Path resultsFolder,
@@ -829,7 +830,7 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * Returns a double of a requested runner that builds its run in the results folder and under the run identifier
+	 * Returns a double of a requested runner that builds its nested session in the results folder and under the slot ID
 	 * that the server names, as the real runner does, and completes the session when its records end.
 	 *
 	 * @param fixture the session that runs the server
@@ -885,10 +886,10 @@ public final class RequestServerTest
 	}
 
 	/**
-	 * What a served session finds in its slot, and the run that it builds there.
+	 * What a served session finds in its slot, and the nested session that it builds there.
 	 *
 	 * @param resultsFolder  the results folder that the session received
-	 * @param nestedSession  the run that it built
+	 * @param nestedSession  the nested session that it built
 	 * @param entriesAtStart the names of the entries of the results folder when the session started
 	 */
 	private record ServedNestedSession(Path resultsFolder, NestedSession nestedSession, List<String> entriesAtStart)

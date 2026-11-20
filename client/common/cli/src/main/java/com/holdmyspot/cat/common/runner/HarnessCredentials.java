@@ -21,9 +21,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessCredentials
 {
 	/**
-	 * The login files that a run's home may hold, relative to the run's directory: Codex's {@code auth.json}, which
-	 * the Codex runner copies into the run's home, and Claude Code's {@code .credentials.json} in the home's
-	 * {@code .claude} directory, which the Claude runner never copies and removes if one is there.
+	 * The login files that a nested session's home may hold, relative to the nested session's directory: Codex's {@code
+	 * auth.json}, which the Codex runner copies into the nested session's home, and Claude Code's {@code
+	 * .credentials.json} in the home's {@code .claude} directory, which the Claude runner never copies and removes if one
+	 * is there.
 	 */
 	private static final List<Path> LOGIN_COPIES = List.of(Path.of("home", "auth.json"),
 		Path.of("home", ".claude", ".credentials.json"));
@@ -61,12 +62,12 @@ public final class HarnessCredentials
 	}
 
 	/**
-	 * Removes the login files that a runner copied into a run whose harness has stopped, so that a run kept for
-	 * investigation or after a failure holds no login. A path that passes through a symbolic link is skipped: the
-	 * harness may have replaced a directory with a link, the file behind it is outside the run, and deleting through
-	 * the link would remove it.
+	 * Removes the login files that a runner copied into a nested session whose harness has stopped, so that a nested
+	 * session kept for investigation or after a failure holds no login. A path that passes through a symbolic link is
+	 * skipped: the harness may have replaced a directory with a link, the file behind it is outside the nested session,
+	 * and deleting through the link would remove it.
 	 *
-	 * @param sessionFolder the run's directory
+	 * @param sessionFolder the nested session's directory
 	 *
 	 * @throws NullPointerException if {@code sessionFolder} is null
 	 *

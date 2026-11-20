@@ -42,7 +42,7 @@ public final class EventSinkTest
 	 * Verifies that a {@code waiting} record, which the bridge writes while a turn is quiet, neither reports progress
 	 * nor reaches the harness event transcript.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 */
 	// Requirement: R-E14
 	@Test
@@ -79,7 +79,7 @@ public final class EventSinkTest
 	/**
 	 * Verifies the bridge's ordered messages reach the session driver even when the final-response field differs.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 */
 	// Requirement: R-C12
 	@Test
@@ -112,7 +112,7 @@ public final class EventSinkTest
 	/**
 	 * Verifies that the bridge's report of a failed turn reaches the session driver with the bridge's reason.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 */
 	@Test
 	public void forwardsTurnFailure() throws IOException
@@ -179,7 +179,7 @@ public final class EventSinkTest
 	 * Verifies that a {@code harness_event} record, which the bridge writes for each raw event line that the
 	 * harness prints, reaches the retained event transcript.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 */
 	// Requirement: R-E14
 	@Test
@@ -213,7 +213,7 @@ public final class EventSinkTest
 	 * Verifies that the harness events that arrive before the runner reports the session's ID, such as the event that
 	 * reports it, reach the transcript in the directory that the ID names.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 */
 	@Test
 	public void keepsEventsBeforeSessionId() throws IOException

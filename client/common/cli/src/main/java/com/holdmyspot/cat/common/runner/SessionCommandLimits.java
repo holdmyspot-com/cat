@@ -11,16 +11,17 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * The limits of the commands that a session runs, the same in every harness. A session's commands run with the run's
- * isolated home as their home directory, and cannot read any harness's login or configuration files, in the run's home
- * or the user's, except the session's own, nor any run under the results folder except their own. The session's own
- * files are, for a Codex session, its login in the run's home, the copy of the user's login that its runner puts there,
- * which a harness that the session starts from a command reads, and its {@code config.toml}, which holds no login and
- * from which CAT's {@code read-part} command reads the session's tool output limit. A Claude session has no login file
- * of its own: its Claude Code uses the user's own Claude login, which its commands cannot read. The user's own logins
- * and the other harness's files in the run's home stay unreadable. The commands of a Codex session receive none of the
- * {@link #CREDENTIAL_VARIABLES}. The commands of a Claude session receive Claude's connection credentials, which the
- * session's parent has too, and a harness that the session starts from a command authenticates only through them.
+ * The limits of the commands that a session runs, the same in every harness. A session's commands run with the nested
+ * session's isolated home as their home directory, and cannot read any harness's login or configuration files, in the
+ * nested session's home or the user's, except the session's own, nor any nested session under the results folder except
+ * their own. The session's own files are, for a Codex session, its login in the nested session's home, the copy of the
+ * user's login that its runner puts there, which a harness that the session starts from a command reads, and its {@code
+ * config.toml}, which holds no login and from which CAT's {@code read-part} command reads the session's tool output
+ * limit. A Claude session has no login file of its own: its Claude Code uses the user's own Claude login, which its
+ * commands cannot read. The user's own logins and the other harness's files in the nested session's home stay
+ * unreadable. The commands of a Codex session receive none of the {@link #CREDENTIAL_VARIABLES}. The commands of a
+ * Claude session receive Claude's connection credentials, which the session's parent has too, and a harness that the
+ * session starts from a command authenticates only through them.
  * <p>
  * The user's harness directories stay readable apart from those files, because the plugins installed in a session
  * link to files there. Each runner applies these limits through its harness's own sandbox settings and environment.
@@ -53,10 +54,10 @@ public final class SessionCommandLimits
 	private static final List<String> CODEX_FILES = List.of("auth.json", "config.toml");
 
 	/**
-	 * Returns the variables that make a run's isolated home the home directory of a session's commands: {@code HOME}
-	 * and, on Windows, also {@code USERPROFILE} and {@code LOCALAPPDATA}.
+	 * Returns the variables that make a nested session's isolated home the home directory of a session's commands: {@code
+	 * HOME} and, on Windows, also {@code USERPROFILE} and {@code LOCALAPPDATA}.
 	 *
-	 * @param sessionHome the run's isolated home
+	 * @param sessionHome the nested session's isolated home
 	 * @param platform    the platform that the session runs on
 	 * @return each variable's name mapped to its value
 	 * @throws NullPointerException if any of the arguments are null

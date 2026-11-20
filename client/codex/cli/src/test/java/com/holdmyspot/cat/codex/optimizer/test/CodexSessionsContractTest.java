@@ -314,7 +314,8 @@ public final class CodexSessionsContractTest
 				List<JsonNode> interrupts = server.interrupts();
 				requireThat(interrupts.size(), "interrupts.size").isEqualTo(1);
 				JsonNode params = interrupts.getFirst().path("params");
-				// The replay names the thread after its run, so the terminal event is read as the adapter received it
+				// The replay names the thread after its nested session, so the terminal event is read as the adapter received
+				// it
 				JsonNode terminal = JsonMapper.builder().build().readTree(server.turnOutput().getLast()).path("params");
 				requireThat(params.path("threadId"), "threadId").isEqualTo(terminal.path("threadId"));
 				requireThat(params.path("turnId"), "turnId").isEqualTo(terminal.path("turn").path("id"));

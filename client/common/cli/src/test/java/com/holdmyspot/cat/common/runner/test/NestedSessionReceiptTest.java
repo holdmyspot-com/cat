@@ -34,7 +34,8 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
-	 * Verifies the receipt stores paths relative to the retained project and keeps an external response in the run.
+	 * Verifies the receipt stores paths relative to the retained project and keeps an external response in the nested
+	 * session.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -76,7 +77,7 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
-	 * Verifies receipt paths remain valid when an external output and its complete run are relocated.
+	 * Verifies receipt paths remain valid when an external output and its complete nested session are relocated.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -118,7 +119,7 @@ public final class NestedSessionReceiptTest
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
@@ -148,7 +149,7 @@ public final class NestedSessionReceiptTest
 		// Requirement: R-I7
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			NestedSession nestedSession = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(nestedSession.directory().resolve("artifacts/response.txt"),
@@ -207,8 +208,8 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
-	 * Verifies a run whose responses folder also holds the limits file still gets a receipt that lists only its
-	 * requested sessions.
+	 * Verifies a nested session whose responses folder also holds the limits file still gets a receipt that lists only
+	 * its requested sessions.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -239,10 +240,10 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
-	 * Verifies a run whose session asked for a worktree still gets a receipt that lists only its requested sessions.
-	 * The response to a worktree request names no harness and no child run, because no session served it, so the
-	 * receipt must not take it for a requested session. A run that failed this way ended its runner with status 1 after
-	 * its last turn had completed.
+	 * Verifies a nested session whose session asked for a worktree still gets a receipt that lists only its requested
+	 * sessions. The response to a worktree request names no harness and no child session, because no session served it,
+	 * so the receipt must not take it for a requested session. A nested session that failed this way ended its runner
+	 * with status 1 after its last turn had completed.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -286,7 +287,7 @@ public final class NestedSessionReceiptTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path response = Files.writeString(root.resolve("response.txt"), "completed response");
 			ObjectNode receipt = scope.json().createObjectNode();
@@ -303,7 +304,7 @@ public final class NestedSessionReceiptTest
 	}
 
 	/**
-	 * Verifies that a receipt that lists the paths which the copy of a kept run skipped is still read, and that the
+	 * Verifies that a receipt that lists the paths which the copy of a results copy skipped is still read, and that the
 	 * list does not change the evidence that an evaluator receives.
 	 *
 	 * @throws IOException if fixture I/O fails
@@ -313,7 +314,7 @@ public final class NestedSessionReceiptTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path response = Files.writeString(root.resolve("response.txt"), "completed response");
 			ObjectNode fields = scope.json().createObjectNode();
@@ -341,7 +342,7 @@ public final class NestedSessionReceiptTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Files.writeString(root.resolve("response.txt"), "completed response");
 			for (String rawResult : List.of("/tmp/response.txt", "C:/runs/response.txt", "../response.txt",
@@ -397,7 +398,7 @@ public final class NestedSessionReceiptTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
+			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Path response = Files.writeString(root.resolve("response.txt"), "completed response");
 			ObjectNode fields = scope.json().createObjectNode();

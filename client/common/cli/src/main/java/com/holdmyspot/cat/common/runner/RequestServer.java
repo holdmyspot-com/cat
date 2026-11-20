@@ -50,9 +50,9 @@ import tools.jackson.databind.json.JsonMapper;
  * The {@code request-server} program of each plugin, which a harness session's agent starts in the background and which
  * runs outside the session's sandbox through the sandbox exception that CAT's install adds for it. It serves the
  * session requests that the session's commands write into {@value #REQUESTS} in the session's CAT session directory, as
- * the nested session's runner serves those of a run's commands, and starts each requested session inside its harness's
- * own sandbox, bounded by the intersection of the session's sandbox policy and what the new session needs. It ends once
- * the session's harness process ends, stopping every session that it started with its process tree.
+ * the nested session's runner serves those of a nested session's commands, and starts each requested session inside its
+ * harness's own sandbox, bounded by the intersection of the session's sandbox policy and what the new session needs. It
+ * ends once the session's harness process ends, stopping every session that it started with its process tree.
  */
 public final class RequestServer
 {
@@ -75,8 +75,8 @@ public final class RequestServer
 	/**
 	 * The directory, in the session's CAT session directory, that holds the slots in which the sessions that the
 	 * server starts run, each from its start until the server has answered its request. The name is short because
-	 * the paths of a session's run, which every path of its home and project starts with, recur many times in what
-	 * its harness sends the model.
+	 * the paths of a session's nested session, which every path of its home and project starts with, recur many times in
+	 * what its harness sends the model.
 	 */
 	private static final String RUNS = "slots";
 	/**
@@ -161,8 +161,8 @@ public final class RequestServer
 	 * @param harness           the identifier of the plugin's harness
 	 * @param running           the identifiers of the harnesses whose markers the server's environment holds
 	 * @param refusal           why this server must not run in its process, such as that the platform cannot run
-	 *                          sandboxed sessions or that the process belongs to a CAT run's session, or empty if it
-	 *                          can
+	 *                          sandboxed sessions or that the process belongs to a nested session's harness session, or
+	 *                          empty if it can
 	 * @param plugin            the absolute folder of the plugin, which the session's commands must not be able to
 	 *                          write
 	 * @param sandboxed         returns why the server runs inside the session's sandbox, which a refusal states
@@ -244,7 +244,7 @@ public final class RequestServer
 
 	/**
 	 * Returns what a requested session needs, as its harness's runner reports it when it runs with
-	 * {@value ChildNeedsReport#OPTION}. The runner reports into a folder of its own inside the new session's run
+	 * {@value ChildNeedsReport#OPTION}. The runner reports into a folder of its own inside the new session's session
 	 * folder.
 	 *
 	 * @param starter starts the runner of the new session's harness
@@ -303,7 +303,7 @@ public final class RequestServer
 
 	/**
 	 * Returns the request server's own entries in a CAT session directory, which a request leaves out of the trees
-	 * that it carries: they change while the server serves the session, and a run among them holds a login.
+	 * that it carries: they change while the server serves the session, and a nested session among them holds a login.
 	 *
 	 * @param session the real path of the CAT session directory that holds the requests directory
 	 * @return the entries' paths
@@ -787,7 +787,7 @@ public final class RequestServer
 		@Override
 		public String unknownSession(String sessionId) throws IOException
 		{
-			// Only the session that started a run can resume it, so name the session whose server retains it
+			// Only the session that started a nested session can resume it, so name the session whose server retains it
 			Path own = session.directory();
 			Path sessions = own.getParent();
 			if (sessions != null && Files.isDirectory(sessions, LinkOption.NOFOLLOW_LINKS))
@@ -805,12 +805,12 @@ public final class RequestServer
 						new ProcessHandleLiveness());
 					if (other.retains(sessionId))
 					{
-						return "The session " + sessionId + " was interrupted in a run that the session " +
+						return "The session " + sessionId + " was interrupted in a nested session that the session " +
 							sibling.getFileName() + " started, and only that session can resume it";
 					}
 				}
 			}
-			return "No interrupted run that this session started records the session " + sessionId + ", so it " +
+			return "No interrupted nested session that this session started records the session " + sessionId + ", so it " +
 				"cannot be resumed";
 		}
 

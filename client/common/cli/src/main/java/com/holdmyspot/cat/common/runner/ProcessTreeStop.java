@@ -17,8 +17,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * outlives it.
  * <p>
  * The stop asks the launcher's children to stop before the rest of its descendants, and waits a while for them, so
- * that a runner among them sees its own stop before its harness ends and leaves its run unended, as a run whose runner
- * stopped stays, so that its harness session can continue.
+ * that a runner among them sees its own stop before its harness ends and leaves its nested session unended, as a nested
+ * session whose runner stopped stays, so that its harness session can continue.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -56,7 +56,7 @@ public final class ProcessTreeStop
 
 	/**
 	 * Indicates whether this process has begun to stop the processes that it started because its Java runtime is
-	 * shutting down, as {@link #onExit()} arranges. A runner that is stopping records no end for its run.
+	 * shutting down, as {@link #onExit()} arranges. A runner that is stopping records no end for its nested session.
 	 *
 	 * @return {@code true} if this process is stopping
 	 */

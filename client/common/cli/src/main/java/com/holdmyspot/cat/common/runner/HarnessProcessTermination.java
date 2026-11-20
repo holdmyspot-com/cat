@@ -52,9 +52,9 @@ public final class HarnessProcessTermination
 
 	/**
 	 * Stops a runner and every process that it started. The runner is asked to stop before its descendants, so that it
-	 * sees its own stop before its harness ends and records no end for its run: a run whose runner its server stopped
-	 * stays unended, so that its harness session can continue. The descendants that remain once the runner has ended
-	 * are stopped too, forcibly if they outlast {@link #GRACEFUL_TERMINATION_TIMEOUT}.
+	 * sees its own stop before its harness ends and records no end for its nested session: a nested session whose runner
+	 * its server stopped stays unended, so that its harness session can continue. The descendants that remain once the
+	 * runner has ended are stopped too, forcibly if they outlast {@link #GRACEFUL_TERMINATION_TIMEOUT}.
 	 *
 	 * @param runner the runner
 	 * @throws NullPointerException if {@code runner} is null

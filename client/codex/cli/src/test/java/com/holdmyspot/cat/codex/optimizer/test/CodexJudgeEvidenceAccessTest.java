@@ -49,7 +49,7 @@ import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Tests that a Codex judge may read its trial's evidence, but not change it, while the rest of the host project stays
- * denied, however many runs the trial's results folder holds.
+ * denied, however many nested sessions the trial's results folder holds.
  * <p>
  * The bridge stands in for the Codex runner up to the Codex process: it parses the runner options that
  * {@link CodexSessions} sends, as the runner does, and builds the sandbox that the runner gives the session: the
@@ -83,8 +83,8 @@ public final class CodexJudgeEvidenceAccessTest
 
 	/**
 	 * Verifies that the sandbox of a Codex judge, started for a development trial inside the host project, lets the
-	 * judge read the trial's project and artifacts but write neither, denies it a sibling trial's run and the host
-	 * project's other files, and leaves its own project and home writable to the app-server.
+	 * judge read the trial's project and artifacts but write neither, denies it a sibling trial's session folder and the
+	 * host project's other files, and leaves its own project and home writable to the app-server.
 	 *
 	 * @param platform the platform that the judge runs on
 	 * @throws IOException          if a fixture cannot be created or read
@@ -118,8 +118,8 @@ public final class CodexJudgeEvidenceAccessTest
 	 * Verifies that the sandbox of a Codex judge whose trial ran beside hundreds of other trials stays small enough
 	 * for Codex to pass it to its sandbox helper, which receives the whole permission profile as one argument and
 	 * fails to start the judge's thread once that argument reaches Linux's limit of 128 KiB. The permission profile
-	 * and the app-server command each stay under 16 KiB, which no number of runs changes, and the judge still reads
-	 * the trial's evidence but no sibling trial's run.
+	 * and the app-server command each stay under 16 KiB, which no number of nested sessions changes, and the judge still
+	 * reads the trial's evidence but no sibling trial's session folder.
 	 *
 	 * @param platform the platform that the judge runs on
 	 * @throws IOException          if a fixture cannot be created or read
@@ -186,7 +186,7 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @param jvm        the JVM scope
 	 * @param cleanup    deletes the fixture's directories
 	 * @param platform   the platform that the judge runs on
-	 * @param runs       how many other runs the trial's results folder holds besides the trial and one sibling
+	 * @param runs       how many other nested sessions the trial's results folder holds besides the trial and one sibling
 	 * @param bubblewrap whether the caller's {@code PATH} has bubblewrap
 	 * @return how the session ended, with the judge's sandbox if the session completed
 	 * @throws IOException          if a fixture cannot be created or read
@@ -293,9 +293,9 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @param profileBytes the size of the configuration's permission profiles in UTF-8 bytes
 	 * @param command      the command that starts the session's app-server
 	 * @param evidence     the trial's evidence
-	 * @param sibling      a sibling trial's run directory
-	 * @param instructions a file of the host project outside every run
-	 * @param judgeFolder  the judge's own run directory
+	 * @param sibling      a sibling trial's session folder
+	 * @param instructions a file of the host project outside every nested session
+	 * @param judgeFolder  the judge's own session folder
 	 */
 	private record JudgeSandbox(JsonNode permissions, String profile, int profileBytes, List<String> command,
 		List<Path> evidence, Path sibling, Path instructions, Path judgeFolder)

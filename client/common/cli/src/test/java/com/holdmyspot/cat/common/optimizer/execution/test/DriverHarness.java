@@ -163,7 +163,7 @@ public final class DriverHarness
 	private final ValuesPrompt values;
 	private final Map<Path, Verdict> judgments = new HashMap<>();
 	/**
-	 * The driver's own process, which no recorded run names and which the driver never terminates.
+	 * The driver's own process, which no recorded nested session names and which the driver never terminates.
 	 */
 	private final FakeProcessHandle driver = new FakeProcessHandle(1, "1", true);
 	private final FileInventory fork;

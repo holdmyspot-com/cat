@@ -21,19 +21,19 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Runs the other harness's runner from a plugin, so that both plugins hold a {@code claude-runner} and a
  * {@code codex-runner} launcher with the same options.
  * <p>
- * The launcher sends each launch along its {@link LaunchRoute}, as the harness's own runner launcher does. Inside a run
- * whose runner lets its session request sessions, it requests a session of its harness from the nested session's
- * runner. From a command that a session of the plugin's own harness runs outside a nested session, it requests the
- * session from that session's {@link RequestServer}, except on native Windows, where the selected runner refuses it. A
- * launch that CAT's own starter bounds runs the runner of the other harness's CAT artifact that the plugin selects,
- * with the caller's options. The launcher refuses a launch from a run that lets its session request no sessions, a
- * launch from a command that only the other harness runs or that no harness session runs, and any launch from a Codex
- * sandbox that has network off.
+ * The launcher sends each launch along its {@link LaunchRoute}, as the harness's own runner launcher does. Inside a
+ * nested session whose runner lets its session request sessions, it requests a session of its harness from the nested
+ * session's runner. From a command that a session of the plugin's own harness runs outside a nested session, it
+ * requests the session from that session's {@link RequestServer}, except on native Windows, where the selected runner
+ * refuses it. A launch that CAT's own starter bounds runs the runner of the other harness's CAT artifact that the
+ * plugin selects, with the caller's options. The launcher refuses a launch from a nested session that lets its session
+ * request no sessions, a launch from a command that only the other harness runs or that no harness session runs, and
+ * any launch from a Codex sandbox that has network off.
  */
 public final class RunnerRelay
 {
 	/**
-	 * The variable that names the run's requests directory inside a nested session that may request sessions.
+	 * The variable that names the nested session's requests directory inside a nested session that may request sessions.
 	 */
 	public static final String REQUESTS_VARIABLE = SessionRequestAccess.REQUESTS_VARIABLE;
 	/**

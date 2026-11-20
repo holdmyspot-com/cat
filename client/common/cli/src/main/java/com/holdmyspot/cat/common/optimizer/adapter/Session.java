@@ -165,7 +165,7 @@ final class Session implements SessionHandle
 	 * Waits for a capacity permit, then drives the session while holding it.
 	 *
 	 * @return how the session ended
-	 * @throws IOException if the permit, the run directory or the run's manifest cannot be used
+	 * @throws IOException if the permit, the session folder or the nested session's manifest cannot be used
 	 */
 	private SessionResult execute() throws IOException
 	{
@@ -187,7 +187,7 @@ final class Session implements SessionHandle
 	 * Runs the session's turns and shuts the runner down.
 	 *
 	 * @return how the session ended
-	 * @throws IOException if the run directory cannot be read or cleaned, or the harness's hold cannot be updated
+	 * @throws IOException if the session folder cannot be read or cleaned, or the harness's hold cannot be updated
 	 */
 	private SessionResult drive() throws IOException
 	{
@@ -286,7 +286,7 @@ final class Session implements SessionHandle
 		IOException problem = null;
 		Path workspace = null;
 		Path permissions = null;
-		// Closing the sink releases the run's transcript
+		// Closing the sink releases the nested session's transcript
 		try (sink)
 		{
 			workspace = writeWorkspace();
@@ -490,7 +490,7 @@ final class Session implements SessionHandle
 	{
 		interruptSent = true;
 		graceDeadline = now.plus(GRACE);
-		// A request served through a run's runner refuses an interrupt record that holds anything but its type
+		// A request served through a nested session's runner refuses an interrupt record that holds anything but its type
 		if (turn > 0)
 			feed.send("{\"type\":\"interrupt\"}");
 	}
@@ -535,7 +535,7 @@ final class Session implements SessionHandle
 	 * shared hold. A session that was refused before it started ends as {@link SessionResult.LaunchRefused}.
 	 *
 	 * @return the result
-	 * @throws IOException if the run directory cannot be cleaned, its evidence cannot be recorded, or the hold cannot
+	 * @throws IOException if the session folder cannot be cleaned, its evidence cannot be recorded, or the hold cannot
 	 *   be updated
 	 */
 	private SessionResult result() throws IOException
@@ -616,8 +616,8 @@ final class Session implements SessionHandle
 	 * Builds the runner's command-line options. A trial asks for session transcripts and installs exactly the request's
 	 * plugins: the first one whose manifest states CAT's repository is installed as CAT, and each other one as a plugin.
 	 * Other sessions install no plugin. A trial on the control source adds the harness's control-source options.
-	 * Every session is denied reading the host session's project, except its own run and the evidence that it reads,
-	 * and a session of the development part is also denied reading the held-out locations. A session whose request
+	 * Every session is denied reading the host session's project, except its own nested session and the evidence that it
+	 * reads, and a session of the development part is also denied reading the held-out locations. A session whose request
 	 * asks for extra permissions names the file that lists them.
 	 *
 	 * @param workspace the directory that holds the trial's workspace files, or {@code null} if there are none
@@ -671,7 +671,7 @@ final class Session implements SessionHandle
 		if (hostProject != null)
 		{
 			// The results folder lies inside the host project, so the runner denies every file of the project except the
-			// session's own run and evidence
+			// session's own nested session and evidence
 			arguments.addAll(List.of("--deny-read", hostProject.toString()));
 		}
 		return arguments;
@@ -689,7 +689,7 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns the directory that holds this session's run directory: the held-out results folder for a session of the
+	 * Returns the directory that holds this session's session folder: the held-out results folder for a session of the
 	 * held-out part, and the results folder otherwise.
 	 *
 	 * @return the directory
@@ -702,7 +702,7 @@ final class Session implements SessionHandle
 	}
 
 	/**
-	 * Returns the directory that holds this harness's run directories.
+	 * Returns the directory that holds this harness's session folders.
 	 *
 	 * @return the directory
 	 */

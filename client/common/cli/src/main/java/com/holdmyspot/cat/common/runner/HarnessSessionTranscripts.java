@@ -22,7 +22,7 @@ import java.util.stream.Stream;
 
 /**
  * Locates the native session transcripts that a harness writes inside a nested session's isolated home, and copies them
- * into the run's {@code artifacts} directory so that they outlive the home.
+ * into the nested session's {@code artifacts} directory so that they outlive the home.
  */
 public final class HarnessSessionTranscripts
 {
@@ -37,7 +37,7 @@ public final class HarnessSessionTranscripts
 	private final Predicate<String> fileName;
 
 	/**
-	 * Creates the location of a run's transcripts.
+	 * Creates the location of a nested session's transcripts.
 	 *
 	 * @param source the directory in which the harness writes transcripts, at any depth
 	 * @param destination the directory that receives the copies

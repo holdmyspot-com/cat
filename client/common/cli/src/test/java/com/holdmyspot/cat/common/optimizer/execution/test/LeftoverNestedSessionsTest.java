@@ -116,9 +116,9 @@ public final class LeftoverNestedSessionsTest
 	}
 
 	/**
-	 * Verifies that a manifest identifies a harness process only while its run is marked running, its owner process
-	 * is identified by an identifier and a start and no longer exists, and the harness process is identified the same
-	 * way. A start of another form, such as an instant, identifies no process.
+	 * Verifies that a manifest identifies a harness process only while its nested session is marked running, its owner
+	 * process is identified by an identifier and a start and no longer exists, and the harness process is identified the
+	 * same way. A start of another form, such as an instant, identifies no process.
 	 *
 	 * @param manifest the manifest's content
 	 * @param expected the processes that the manifest identifies
@@ -157,9 +157,10 @@ public final class LeftoverNestedSessionsTest
 	}
 
 	/**
-	 * Verifies that a run whose owner process is alive, which belongs to a running driver, is left alone in every run
-	 * root, while a run of a dead owner beside it is found. An owner is alive only if the process with its recorded
-	 * identifier also has its recorded start: a live process that reuses the identifier is not the owner.
+	 * Verifies that a nested session whose owner process is alive, which belongs to a running driver, is left alone in
+	 * every results folder, while a nested session of a dead owner beside it is found. An owner is alive only if the
+	 * process with its recorded identifier also has its recorded start: a live process that reuses the identifier is not
+	 * the owner.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -184,7 +185,8 @@ public final class LeftoverNestedSessionsTest
 
 	/**
 	 * Verifies, against the operating system's real process table, that a finder created for production leaves the
-	 * run of a live owner, the test's own process, and finds the run of an owner that does not exist.
+	 * nested session of a live owner, the test's own process, and finds the nested session of an owner that does not
+	 * exist.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -209,9 +211,9 @@ public final class LeftoverNestedSessionsTest
 	}
 
 	/**
-	 * Verifies that the run of a live owner is left alone after the wall clock was set, which moves the boot time that
-	 * Linux derives from it, between the owner's start and the finder's check. The real process checker reads the
-	 * starts of the test's own process, which stands for the owner, from a process folder in place of {@code /proc}.
+	 * Verifies that the nested session of a live owner is left alone after the wall clock was set, which moves the boot
+	 * time that Linux derives from it, between the owner's start and the finder's check. The real process checker reads
+	 * the starts of the test's own process, which stands for the owner, from a process folder in place of {@code /proc}.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -238,7 +240,7 @@ public final class LeftoverNestedSessionsTest
 
 	/**
 	 * Verifies that a session port without results folders, or whose results folders do not exist yet, has no leftover
-	 * runs.
+	 * nested sessions.
 	 *
 	 * @throws IOException if the test directory cannot be used
 	 */
@@ -287,7 +289,7 @@ public final class LeftoverNestedSessionsTest
 	}
 
 	/**
-	 * Returns the manifest of a running run whose owner process started at {@link #OWNER_START}.
+	 * Returns the manifest of a running nested session whose owner process started at {@link #OWNER_START}.
 	 *
 	 * @param ownerPid the owner's identifier
 	 * @param harnessPid the harness process's identifier
@@ -301,9 +303,9 @@ public final class LeftoverNestedSessionsTest
 	}
 
 	/**
-	 * Writes a run manifest.
+	 * Writes a session manifest.
 	 *
-	 * @param sessionFolder the run's directory
+	 * @param sessionFolder the nested session's directory
 	 * @param manifest the manifest's content
 	 * @throws IOException if the file cannot be written
 	 */

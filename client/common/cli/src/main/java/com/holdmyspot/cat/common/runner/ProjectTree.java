@@ -25,7 +25,7 @@ import java.util.function.Predicate;
 
 /**
  * Decides how each file, directory and symbolic link of a project reaches a copy of the project, which the runner makes
- * in a run's directory and a request archive carries to its receiver.
+ * in a nested session's directory and a request archive carries to its receiver.
  * <p>
  * A link whose target, resolved one name at a time, never leaves the project reaches the copy as a link with the same
  * target, so that it resolves inside the copy to the copy of its target. Any other link reaches the copy as a copy of

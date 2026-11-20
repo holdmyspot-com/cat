@@ -184,19 +184,19 @@ public final class ClaudeRunnerCli
 	 * <ul>
 	 * <li>Inside a nested session whose runner lets its session request sessions, the launch becomes a session request:
 	 * the
-	 *   run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 *   receipt.</li>
+	 *   nested session's own runner starts the session outside the nested session's sandbox, and this command returns its
+	 *   transcript and receipt.</li>
 	 *   <li>Inside a nested session whose runner lets its session request none, the launch is refused.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass is
 	 *   refused.</li>
 	 *   <li>When Claude Code runs the command outside a nested session, the launch becomes a request to the session's
 	 *   {@link RequestServer}, which starts the session outside the session's sandbox, and this command writes its
-	 *   transcript, receipt and kept run. Without a request server that serves the session, the launch is refused.
+	 *   transcript, receipt and results copy. Without a request server that serves the session, the launch is refused.
 	 *   </li>
 	 *   <li>When only Codex runs the command, the launch is refused: this plugin's request server serves no Codex
 	 *   session, and the message names the Codex plugin's runner instead.</li>
-	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a run's runner, name
-	 *   it, serves its session in this process within that bound.</li>
+	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a nested session's
+	 *   runner, name it, serves its session in this process within that bound.</li>
 	 *   <li>Otherwise no harness session runs the command, as in a terminal or a script, and the launch is refused
 	 *   with a message that says to run it from a Claude Code or Codex session.</li>
 	 * </ul>
@@ -382,10 +382,10 @@ public final class ClaudeRunnerCli
 	 * Serves one Claude bridge using caller-provided streams and environment.
 	 * <p>
 	 * {@code --policy-bound} names the file of the policy that bounds the session's sandbox policy, which CAT's own
-	 * starter writes: a run's runner, a request server, or the launcher started outside every harness session. Every
-	 * session starts through one of them, so a launch without it is refused before
-	 * it takes a capacity slot or creates a run. A session that the bounded session requests is bounded in turn by the
-	 * bounded session's policy.
+	 * starter writes: a nested session's runner, a request server, or the launcher started outside every harness session.
+	 * Every session starts through one of them, so a launch without it is refused before it takes a capacity slot or
+	 * creates a nested session. A session that the bounded session requests is bounded in turn by the bounded session's
+	 * policy.
 	 *
 	 * @param process            the process scope, whose lock coordinator and waiting the bridge uses
 	 * @param workingDirectory   the directory from which the command was invoked
@@ -397,8 +397,8 @@ public final class ClaudeRunnerCli
 	 *                           command selected
 	 * @throws NullPointerException    if any argument is null
 	 * @throws SessionRefusedException if the launch names no {@code --policy-bound}, the environment holds no Claude
-	 *                                 login that a run can use, as {@link ClaudeRunner#requireLogin} decides, or the
-	 *                                 session's sandbox would not confine it as its policy requires
+	 *                                 login that a nested session can use, as {@link ClaudeRunner#requireLogin} decides,
+	 *                                 or the session's sandbox would not confine it as its policy requires
 	 * @throws InvalidArgumentsException if the file of extra permissions that the launch names is missing or invalid
 	 * @throws IOException             if the policy bound cannot be read, or runner startup, the harness, or bridge
 	 *                                 I/O fails
@@ -415,7 +415,8 @@ public final class ClaudeRunnerCli
 		try (ToolScope scope = ToolScope.forSession(workingDirectory, environment, SessionHarness.installed(),
 			process.waiting()))
 		{
-			// A runner that continues a run's session takes the options that the run's start fixed from the run
+			// A runner that continues a nested session's harness session takes the options that the nested session's start
+			// fixed from the nested session
 			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
@@ -429,7 +430,7 @@ public final class ClaudeRunnerCli
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(), options.resultsFolder(),
 				Clock.systemUTC(), replacer);
-			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
+			// A nested session in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
 			NestedSessionManager manager = inSlot(opened, options.slotId(), args);
 			HarnessCapacity capacity = null;
 			if (!options.capacityHeld())
@@ -440,13 +441,15 @@ public final class ClaudeRunnerCli
 	}
 
 	/**
-	 * Gives a run manager the identifier of the slot that the run is in, if it is in one, and has a run in a slot
-	 * record the launch options that its start fixed, so that a later runner can continue its harness session.
+	 * Gives a nested-session manager the identifier of the slot that the nested session is in, if it is in one, and has a
+	 * nested session in a slot record the launch options that its start fixed, so that a later runner can continue its
+	 * harness session.
 	 *
 	 * @param manager the manager of the results folder
-	 * @param slotId  the slot's run identifier, or {@code null} if the run is not in a slot
+	 * @param slotId  the slot's ID, or {@code null} if the nested session is not in a slot
 	 * @param args    the launch's options
-	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
+	 * @return a manager whose nested sessions all have the slot's identifier, or {@code manager} if the nested session is
+	 *         not in a slot
 	 */
 	private static NestedSessionManager inSlot(NestedSessionManager manager, String slotId, String[] args)
 	{
@@ -467,7 +470,7 @@ public final class ClaudeRunnerCli
 	 * @param role the session's role, or empty for Claude Code's defaults
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
-	 * @param manager owned-run lifecycle manager
+	 * @param manager nested-session lifecycle manager
 	 * @param input bridge input
 	 * @param output bridge output when no durable destination was requested
 	 * @param environment host environment
@@ -569,7 +572,7 @@ public final class ClaudeRunnerCli
 	 * model and effort that the definition names.
 	 *
 	 * @param args          the bridge command's options
-	 * @param temporaryRoot where the runs are kept when the command names no {@code --results}
+	 * @param temporaryRoot where the nested sessions are kept when the command names no {@code --results}
 	 * @return the parsed options
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, if the command
@@ -585,7 +588,8 @@ public final class ClaudeRunnerCli
 		requireThat(temporaryRoot, "temporaryRoot").isNotNull();
 		String[] runnerArgs = withoutClaudeOptions(args);
 		String agentName = agentName(args);
-		// A runner that continues a run's session runs it under the model and effort of the launch that resumes it
+		// A runner that continues a nested session's harness session runs it under the model and effort of the launch that
+		// resumes it
 		if (!agentName.isBlank() && !List.of(args).contains(RunnerArguments.RESUME_SLOT_OPTION))
 		{
 			HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);

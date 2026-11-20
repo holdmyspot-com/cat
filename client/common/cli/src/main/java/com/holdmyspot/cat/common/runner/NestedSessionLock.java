@@ -18,8 +18,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * Keeps an execution's isolated directory locked while its owning runner process is active.
  * <p>
- * While this JVM holds a run's lock, another attempt in this JVM does not open the lock file, because closing that file
- * would release the lock for other processes (see {@link ExclusiveFileLock}).
+ * While this JVM holds a nested session's lock, another attempt in this JVM does not open the lock file, because
+ * closing that file would release the lock for other processes (see {@link ExclusiveFileLock}).
  */
 public final class NestedSessionLock implements AutoCloseable
 {
@@ -38,7 +38,7 @@ public final class NestedSessionLock implements AutoCloseable
 	private static final NestedSessionLock UNLOCKED = new NestedSessionLock(null);
 
 	/**
-	 * Returns a no-op lease for callers that do not own a manager-backed run.
+	 * Returns a no-op lease for callers that do not own a manager-backed nested session.
 	 *
 	 * @return the no-op lease
 	 */
@@ -48,10 +48,10 @@ public final class NestedSessionLock implements AutoCloseable
 	}
 
 	/**
-	 * Acquires an exclusive lock on an existing run lock file.
+	 * Acquires an exclusive lock on an existing nested-session lock file.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param file the regular run lock file
+	 * @param file the regular nested-session lock file
 	 *
 	 * @return the acquired lock
 	 *
@@ -64,11 +64,11 @@ public final class NestedSessionLock implements AutoCloseable
 	}
 
 	/**
-	 * Acquires an exclusive lock on an existing run lock file, opening it through a given opener.
+	 * Acquires an exclusive lock on an existing nested-session lock file, opening it through a given opener.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
-	 * @param file the regular run lock file
-	 * @param opener opens the run lock file
+	 * @param file the regular nested-session lock file
+	 * @param opener opens the nested-session lock file
 	 *
 	 * @return the acquired lock
 	 *
@@ -82,7 +82,7 @@ public final class NestedSessionLock implements AutoCloseable
 		requireThat(opener, "opener").isNotNull();
 		Optional<ExclusiveFileLock> lock = fileLocks.tryLock(file, opener);
 		if (lock.isEmpty())
-			throw new IOException("Run is already active: " + file.getParent());
+			throw new IOException("Nested session is already active: " + file.getParent());
 		return new NestedSessionLock(lock.get());
 	}
 
@@ -91,7 +91,7 @@ public final class NestedSessionLock implements AutoCloseable
 	/**
 	 * Creates a lock lease.
 	 *
-	 * @param lock the lock on the run lock file, or {@code null} for the no-op lease
+	 * @param lock the lock on the nested-session lock file, or {@code null} for the no-op lease
 	 */
 	private NestedSessionLock(ExclusiveFileLock lock)
 	{

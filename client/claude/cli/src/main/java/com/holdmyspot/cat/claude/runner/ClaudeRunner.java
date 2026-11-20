@@ -110,9 +110,9 @@ public final class ClaudeRunner
 	private final Waiting waiting;
 
 	/**
-	 * Resolves the launch configuration Bubblewrap inspects beside one run's Claude temporary directory.
+	 * Resolves the launch configuration Bubblewrap inspects beside one nested session's Claude temporary directory.
 	 *
-	 * @param claudeTemporaryDirectory the run-owned Claude temporary directory
+	 * @param claudeTemporaryDirectory the session-owned Claude temporary directory
 	 * @return the required launch configuration path
 	 */
 	public static Path launchConfigurationPath(Path claudeTemporaryDirectory)
@@ -125,9 +125,9 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Creates a Claude artifact runner. Each run obtains executable-file services from its owned scope.
+	 * Creates a Claude artifact runner. Each nested session obtains executable-file services from its owned scope.
 	 *
-	 * @param waiting how each run waits between the attempts of a retried operation
+	 * @param waiting how each nested session waits between the attempts of a retried operation
 	 * @throws NullPointerException if {@code waiting} is null
 	 */
 	public ClaudeRunner(Waiting waiting)
@@ -145,7 +145,7 @@ public final class ClaudeRunner
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param trialPlugins the trial plugins, each installed into the isolated home from the marketplace that bears its
 	 *   manifest's name, beside CAT when {@code installCat} is set
-	 * @param manager the run manager
+	 * @param manager the nested-session manager
 	 * @param executable the Claude executable
 	 * @param environment the isolated environment
 	 * @param model the requested model
@@ -156,10 +156,10 @@ public final class ClaudeRunner
 	 * @param deniedReads the files and directories that the session must not read
 	 * @param instructionFilesMode the choice of which instruction files load, such as {@code claude-md}, or an empty
 	 *   string to keep the parent's choice
-	 * @param sessionTranscripts whether the run copies the session's transcripts, its subagents' included, into the
-	 *   run's session transcripts directory when the session closes
-	 * @param sessionRequests how many sessions the session may request; with any, the run gets its requests and
-	 *   responses directories
+	 * @param sessionTranscripts whether the nested session copies the session's transcripts, its subagents' included,
+	 *   into the nested session's harness session transcripts directory when the session closes
+	 * @param sessionRequests how many sessions the session may request; with any, the nested session gets its requests
+	 *   and responses directories
 	 * @param bound the policy that bounds the session's sandbox policy, or {@code null} if nothing bounds it
 	 * @param policyListener receives the session's sandbox policy before its Claude Code process starts
 	 * @param gitName the Git user name of the copied project, or {@code null} to read {@code project}'s
@@ -167,11 +167,12 @@ public final class ClaudeRunner
 	 * @param extraPermissions the writes and hosts that the session's commands need beyond what Claude Code needs
 	 * @param role the session's role, which decides its tools, its prompt cache's lifetime and whether it runs inside a
 	 *   sandbox, or {@code null} to keep Claude Code's defaults
-	 * @param resumedSession the session that the run of {@code manager}'s slot records and that the runner continues,
-	 *   or {@code null} to start a session in a new run. A resumed run keeps its project, its installed plugins and
-	 *   its session store; the runner writes its settings again under the current bound, runs the session under
-	 *   {@code model} and {@code effort} whatever {@code agent} names, and records no end if the session cannot start.
-	 * @return the live run session
+	 * @param resumedSession the session that the nested session of {@code manager}'s slot records and that the runner
+	 *   continues, or {@code null} to start a session in a new nested session. A resumed nested session keeps its
+	 *   project, its installed plugins and its session store; the runner writes its settings again under the current
+	 *   bound, runs the session under {@code model} and {@code effort} whatever {@code agent} names, and records no end
+	 *   if the session cannot start.
+	 * @return the live nested session
 	 * @throws SessionRefusedException if the session's sandbox would not confine it as its policy requires: its
 	 *   bound does not let it write what Claude Code writes outside the session's session folder, which the bound always
 	 *   lets it write, or a settings file that Claude Code also loads would widen it; or if the session runs without a
@@ -214,7 +215,7 @@ public final class ClaudeRunner
 			// The empty files keep Claude Code's sandbox from mounting a file that the session's tools could not find
 			if (sandboxed(role))
 				ClaudeMarketplace.writeEmptyMcpConfiguration(nestedSession.directory().getParent().getParent());
-			// A resumed run keeps the project that its start copied, as its session left it
+			// A resumed nested session keeps the project that its start copied, as its session left it
 			if (!resumes)
 			{
 				manager.copyProject(project, nestedSession);
@@ -228,14 +229,15 @@ public final class ClaudeRunner
 			Path claudeTemporaryDirectory = nestedSession.directory().resolve("claude");
 			if (sandboxed(role))
 				ClaudeMarketplace.writeEmptyLaunchConfiguration(launchConfigurationPath(claudeTemporaryDirectory));
-			// The run manager places every project, home, and Claude temporary directory beneath CAT's isolated work root.
-			// This keeps concurrent runs separate without diverting CAT-owned state to the shared system temporary directory.
+			// The nested-session manager places every project, home, and Claude temporary directory beneath CAT's isolated
+			// work root. This keeps concurrent nested sessions separate without diverting CAT-owned state to the shared
+			// system temporary directory.
 			Path isolatedProcessHome = nestedSession.directory().resolve("home");
 			Path isolatedConfiguration = isolatedProcessHome.resolve(".claude");
 			if (installCat && !resumes)
 				UserRuleTree.copy(userRulesRoot(environment), ProjectRuleLoader.rulesDirectory(isolatedProcessHome));
-			// Each run gets an isolated HOME, but packages belong in the parent's explicitly writable shared caches so
-			// independent trials do not redownload the same immutable registry artifacts.
+			// Each nested session gets an isolated HOME, but packages belong in the parent's explicitly writable shared
+			// caches so independent trials do not redownload the same immutable registry artifacts.
 			HarnessDependencyCaches caches = HarnessDependencyCache.verify(environment);
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(nestedSession, artifactRoot, sessionRequests,
 				Platform.current(), SessionRequestAccess.Shell.POSIX).orElse(null);
@@ -266,8 +268,8 @@ public final class ClaudeRunner
 					(command, step) -> HarnessCommand.execute(command, worktree, isolatedEnvironment, executables, manager,
 						nestedSession, step));
 			}
-			// The first plugin is CAT's when the run installs it, and its launchers are the ones that the session's
-			// requested sessions may read
+			// The first plugin is CAT's when the nested session installs it, and its launchers are the ones that the
+			// session's requested sessions may read
 			Path catPlugin = null;
 			if (installCat)
 				catPlugin = plugins.getFirst();
@@ -343,7 +345,7 @@ public final class ClaudeRunner
 					e.addSuppressed(failure);
 			}
 			scope.close();
-			// A resumed run whose session could not start stays retained for a later launch
+			// A resumed nested session whose session could not start stays retained for a later launch
 			if (!resumes)
 				manager.fail(nestedSession, e.getMessage());
 			throw e;
@@ -351,13 +353,14 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the directory of each plugin that a resumed run's start installed, and merges CAT's installer entries into
-	 * the isolated configuration's {@code settings.json} again, which the resumed run's settings replaced.
+	 * Returns the directory of each plugin that a resumed nested session's start installed, and merges CAT's installer
+	 * entries into the isolated configuration's {@code settings.json} again, which the resumed nested session's settings
+	 * replaced.
 	 *
-	 * @param installCat {@code true} if the run's start installed CAT
-	 * @param trialPlugins the trial plugins that the run's start installed
+	 * @param installCat {@code true} if the nested session's start installed CAT
+	 * @param trialPlugins the trial plugins that the nested session's start installed
 	 * @param isolatedConfiguration the isolated Claude configuration directory
-	 * @param environment the environment of the run's Claude process
+	 * @param environment the environment of the nested session's Claude process
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @return the directory of each installed plugin, CAT first
@@ -388,8 +391,8 @@ public final class ClaudeRunner
 	 *
 	 * @param child the raw process returned by the operating system, if spawned
 	 * @param wrapper the process wrapper, if constructed
-	 * @param manager the run manager
-	 * @param nestedSession the run being launched
+	 * @param manager the nested-session manager
+	 * @param nestedSession the nested session being launched
 	 * @param identityRecorded whether the manifest already contains the child identity
 	 * @param primary the launch failure
 	 */
@@ -436,7 +439,7 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Owns a raw child until its durable identity and wrapper have been accepted by the run session.
+	 * Owns a raw child until its durable identity and wrapper have been accepted by the nested session.
 	 */
 	private static final class ProcessOwnership
 	{
@@ -490,7 +493,7 @@ public final class ClaudeRunner
 	 * Refuses a session if a settings file that Claude Code loads beside the session's own would widen the session's
 	 * sandbox beyond its policy: a managed settings file, or the project's shared or local settings.
 	 *
-	 * @param scope    services owned for the run
+	 * @param scope    services owned for the nested session
 	 * @param platform the platform that the session runs on
 	 * @param project  the session's project
 	 * @param policy   the session's sandbox policy
@@ -510,18 +513,18 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the environment of a run's Claude process. It holds the caller's generic operating-system variables, its
-	 * Claude connection variables and its settings for starting subagents, each from its environment or else its Claude
-	 * settings, so that the session starts subagents the way the caller does, and the shared dependency caches;
-	 * the run's home as the home directory and its {@code .claude} as Claude's configuration directory; in
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, the login store of the user's own Claude Code, so that the session's
-	 * Claude Code uses and refreshes the user's own Claude login there while its settings stay the run's: the
-	 * directory that the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable
-	 * is unset, the one that its non-blank {@code CLAUDE_CONFIG_DIR} names, each as it is written if it is absolute
-	 * or else made absolute; otherwise, on macOS, an empty value, which selects the Keychain item of Claude Code's
-	 * default store; otherwise {@code .claude} in the caller's home directory; and the request for
-	 * Claude's session state events, which the turn boundary depends on. CAT's hooks then find Claude's
-	 * configuration directory through the home directory, as {@code .claude} in it.
+	 * Returns the environment of a nested session's Claude process. It holds the caller's generic operating-system
+	 * variables, its Claude connection variables and its settings for starting subagents, each from its environment or
+	 * else its Claude settings, so that the session starts subagents the way the caller does, and the shared dependency
+	 * caches; the nested session's home as the home directory and its {@code .claude} as Claude's configuration
+	 * directory; in {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, the login store of the user's own Claude Code, so that the
+	 * session's Claude Code uses and refreshes the user's own Claude login there while its settings stay the nested
+	 * session's: the directory that the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when
+	 * that variable is unset, the one that its non-blank {@code CLAUDE_CONFIG_DIR} names, each as it is written if it is
+	 * absolute or else made absolute; otherwise, on macOS, an empty value, which selects the Keychain item of Claude
+	 * Code's default store; otherwise {@code .claude} in the caller's home directory; and the request for Claude's
+	 * session state events, which the turn boundary depends on. CAT's hooks then find Claude's configuration directory
+	 * through the home directory, as {@code .claude} in it.
 	 * <p>
 	 * {@code CAT_HOST_LOGIN} states the class of the user's login, {@code subscription}, {@code api_key} or
 	 * {@code unknown}, as {@link Credentials#classify} classifies the environment's authentication variables and
@@ -539,7 +542,7 @@ public final class ClaudeRunner
 	 * @param environment  the caller's environment
 	 * @param caches       the shared dependency caches
 	 * @param hostSettings the caller's Claude settings file
-	 * @param processHome   the run's isolated home
+	 * @param processHome   the nested session's isolated home
 	 * @param requestAccess the session's access to requested sessions, whose variables the environment adds, or
 	 *                      {@code null} if the session may request none
 	 * @return the environment, which the caller may change
@@ -562,9 +565,9 @@ public final class ClaudeRunner
 		ClaudeConnectionSettings.copy(scope.json(), hostSettings, isolatedEnvironment);
 		HarnessEnvironment.setHomeDirectory(isolatedEnvironment, processHome);
 		isolatedEnvironment.put("CLAUDE_CONFIG_DIR", processHome.resolve(".claude").toString());
-		// A copy of the user's login in the run would stop working, even in the middle of a turn, once the user's
-		// session or another run refreshed the login, because a refresh replaces the refresh token. The session's
-		// Claude Code therefore reads and refreshes the user's own login in the user's login store.
+		// A copy of the user's login in the nested session would stop working, even in the middle of a turn, once the
+		// user's session or another nested session refreshed the login, because a refresh replaces the refresh token. The
+		// session's Claude Code therefore reads and refreshes the user's own login in the user's login store.
 		String store = loginStore(environment, Platform.current());
 		isolatedEnvironment.put(LOGIN_STORE_VARIABLE, store);
 		// The session's commands cannot read the login file, so the runner, which can, tells them its class. Only the
@@ -575,7 +578,8 @@ public final class ClaudeRunner
 		// The turn boundary in ClaudeProcess depends on Claude's session_state_changed lines. Set it after
 		// copying the caller's settings so that no inherited value turns it off.
 		ClaudeProcessEnvironment.requestSessionStateEvents(isolatedEnvironment);
-		// Set after the caller's settings too, so that the session's commands send their sessions to this run's runner
+		// Set after the caller's settings too, so that the session's commands send their sessions to this nested session's
+		// runner
 		isolatedEnvironment.put(HarnessEnvironment.NESTED_SESSION_VARIABLE, HarnessEnvironment.NESTED_SESSION_VALUE);
 		// Claude Code passes these to the commands that it starts
 		if (requestAccess != null)
@@ -622,28 +626,29 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read: those that the caller denies, every file
-	 * and directory under the results folder except the session's project, link-targets directory, home, Claude
-	 * temporary directory and evidence, and every harness's login and configuration files in the session's home and in
-	 * the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no login
-	 * file in the session's home: the session's Claude Code uses the user's own Claude login, whose login file the
+	 * Returns the files and directories that a session of a nested session must not read: those that the caller denies,
+	 * every file and directory under the results folder except the session's project, link-targets directory, home,
+	 * Claude temporary directory and evidence, and every harness's login and configuration files in the session's home
+	 * and in the user's home, as {@link SessionCommandLimits#harnessFiles(Map, Platform)} names them. The runner puts no
+	 * login file in the session's home: the session's Claude Code uses the user's own Claude login, whose login file the
 	 * session's commands cannot read; on macOS the login is a Keychain item instead, which Claude Code's sandbox lets
-	 * commands reach through the `security` program, as in the user's own session, and a session that a command
-	 * requests through CAT's runner uses it too. A Claude process that a command starts directly has a login only
-	 * through a variable that the commands receive. The session therefore cannot read the runner's records of its own
-	 * run or of any other run, the workspace files of any run, any login file, such as the user's own Claude and Codex
-	 * logins, or a configuration that would let a harness started from a command reach the model provider. A denied
-	 * directory that holds the session's project, home, Claude temporary directory, link-targets directory or evidence,
-	 * such as the project that holds the results folder, is replaced by every file and directory under it except those
-	 * and the directories that lead to them. The link-targets directory holds the read-only copies that the project's
-	 * links to targets outside it lead to, so the session reads it; the session's settings do not let it write it.
+	 * commands reach through the `security` program, as in the user's own session, and a session that a command requests
+	 * through CAT's runner uses it too. A Claude process that a command starts directly has a login only through a
+	 * variable that the commands receive. The session therefore cannot read the runner's records of its own nested
+	 * session or of any other nested session, the workspace files of any nested session, any login file, such as the
+	 * user's own Claude and Codex logins, or a configuration that would let a harness started from a command reach the
+	 * model provider. A denied directory that holds the session's project, home, Claude temporary directory, link-targets
+	 * directory or evidence, such as the project that holds the results folder, is replaced by every file and directory
+	 * under it except those and the directories that lead to them. The link-targets directory holds the read-only copies
+	 * that the project's links to targets outside it lead to, so the session reads it; the session's settings do not let
+	 * it write it.
 	 * <p>
 	 * A login or configuration file that does not exist when the session starts is left out, because Claude's sandbox
 	 * creates an empty file at a missing denied path, which would change the user's harness configuration; the
 	 * session's own settings file, which the runner writes before the session starts, is always included.
 	 *
-	 * @param manager          the run manager
-	 * @param nestedSession    the session's run
+	 * @param manager          the nested-session manager
+	 * @param nestedSession    the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param environment      the caller's environment, which names the user's home and harness directories
@@ -658,12 +663,12 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Returns the files and directories that a session of a run must not read, as
-	 * {@link #sessionDeniedReads(NestedSessionManager, NestedSession, List, List, Map)} does, except that the run's
-	 * requests and responses directories stay readable when the session may request sessions.
+	 * Returns the files and directories that a session of a nested session must not read, as
+	 * {@link #sessionDeniedReads(NestedSessionManager, NestedSession, List, List, Map)} does, except that the nested
+	 * session's requests and responses directories stay readable when the session may request sessions.
 	 *
-	 * @param manager          the run manager
-	 * @param nestedSession    the session's run
+	 * @param manager          the nested-session manager
+	 * @param nestedSession    the session's nested session
 	 * @param readOnlyEvidence the completed evidence directories and files that the session reads
 	 * @param deniedReads      the files and directories that the caller denies the session reading
 	 * @param environment      the caller's environment, which names the user's home and harness directories
@@ -719,7 +724,7 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Creates the run-owned directory Claude may read for spilled hook context.
+	 * Creates the session-owned directory Claude may read for spilled hook context.
 	 *
 	 * @param isolatedHome the isolated Claude configuration directory
 	 * @param nestedSession the owned Claude run
@@ -741,8 +746,8 @@ public final class ClaudeRunner
 		if (Files.exists(reportedProjectDirectory, NOFOLLOW_LINKS))
 			throw new IOException("Claude spill-context alias already exists: " + reportedProjectDirectory);
 		// Claude writes the canonicalized path but reports the runner's <harness> directory uncanonicalized
-		// to a worktree subagent. This symlink exposes only that run's already-authorized hook-results directory at the
-		// reported location; it neither grants access to the isolated home nor changes a model-supplied path.
+		// to a worktree subagent. This symlink exposes only that nested session's already-authorized hook-results directory
+		// at the reported location; it neither grants access to the isolated home nor changes a model-supplied path.
 		Files.createSymbolicLink(reportedProjectDirectory, reportedParent.relativize(canonicalProjectDirectory));
 		return hookResults;
 	}
@@ -939,19 +944,19 @@ public final class ClaudeRunner
 	}
 
 	/**
-	 * Refuses a run that no Claude login could authenticate. A session of a run authenticates through
-	 * {@code CLAUDE_CODE_OAUTH_TOKEN}, {@code ANTHROPIC_API_KEY} or {@code ANTHROPIC_AUTH_TOKEN} when the caller's
-	 * environment or else the caller's Claude settings file sets one of them, as {@link #processEnvironment} passes
-	 * them to the session, and otherwise through the user's own Claude login, in the user's login store, which
-	 * {@link #processEnvironment} names to the session's Claude Code. The store's directory is the one that the
-	 * caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable is unset, the one
-	 * that its non-blank {@code CLAUDE_CONFIG_DIR} names, or else {@code .claude} in the caller's home directory.
+	 * Refuses a nested session that no Claude login could authenticate. A session of a nested session authenticates
+	 * through {@code CLAUDE_CODE_OAUTH_TOKEN}, {@code ANTHROPIC_API_KEY} or {@code ANTHROPIC_AUTH_TOKEN} when the
+	 * caller's environment or else the caller's Claude settings file sets one of them, as {@link #processEnvironment}
+	 * passes them to the session, and otherwise through the user's own Claude login, in the user's login store, which
+	 * {@link #processEnvironment} names to the session's Claude Code. The store's directory is the one that the caller's
+	 * non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable is unset, the one that its
+	 * non-blank {@code CLAUDE_CONFIG_DIR} names, or else {@code .claude} in the caller's home directory.
 	 * <p>
-	 * The run is refused only when none of those variables is set and the store certainly holds no login: on Linux
-	 * the directory holds no {@code .credentials.json}, and on macOS it holds none and the Keychain holds no item of
-	 * Claude Code's login for the store. On Windows no run is refused for lack of a login, because Claude Code may
-	 * keep the login in the Windows Credential Manager, which the check cannot ask. The check only asks whether a
-	 * login exists; it reads no login.
+	 * The nested session is refused only when none of those variables is set and the store certainly holds no login: on
+	 * Linux the directory holds no {@code .credentials.json}, and on macOS it holds none and the Keychain holds no item
+	 * of Claude Code's login for the store. On Windows no nested session is refused for lack of a login, because Claude
+	 * Code may keep the login in the Windows Credential Manager, which the check cannot ask. The check only asks whether
+	 * a login exists; it reads no login.
 	 * <p>
 	 * On macOS the check asks the {@code security} program for the item, without {@code -w}, so that the Keychain
 	 * reveals no secret. The item's account is the user's name, or {@code claude-code-user} when the name holds a
@@ -967,8 +972,8 @@ public final class ClaudeRunner
 	 * @param environment the caller's environment
 	 * @param platform    the platform whose login store holds the user's login
 	 * @throws NullPointerException    if any of the arguments are null
-	 * @throws SessionRefusedException if no login could authenticate the run; the message tells the user to log in
-	 *                                 to Claude Code with {@code /login} and names the directory of the user's
+	 * @throws SessionRefusedException if no login could authenticate the nested session; the message tells the user to
+	 *                                 log in to Claude Code with {@code /login} and names the directory of the user's
 	 *                                 login store
 	 * @throws IOException             if the caller's Claude settings file cannot be read, or the {@code security}
 	 *                                 program cannot be started or does not end in time
@@ -1142,18 +1147,18 @@ public final class ClaudeRunner
 	 * <p>
 	 * Installing CAT also merges into the isolated configuration's {@code settings.json} the entries that CAT's
 	 * installer writes for an installed plugin: the sandbox exclusions and permissions for its installer and request
-	 * server. They name the copy of CAT in the run's marketplace, and each copy that Claude Code's install records name
-	 * for CAT. The installer's other entries, which cover the user's shell startup files, the capacity locks and the
-	 * other harness's installation, are left out: the run's own sandbox policy covers its files, and the run shares
-	 * neither locks nor an installation with the user's.
+	 * server. They name the copy of CAT in the nested session's marketplace, and each copy that Claude Code's install
+	 * records name for CAT. The installer's other entries, which cover the user's shell startup files, the capacity locks
+	 * and the other harness's installation, are left out: the nested session's own sandbox policy covers its files, and
+	 * the nested session shares neither locks nor an installation with the user's.
 	 *
 	 * @param executable the Claude executable
 	 * @param artifact the complete Claude artifact, which is installed as CAT
 	 * @param installCat {@code true} to install CAT
 	 * @param trialPlugins the trial plugins, each installed under its manifest's name
 	 * @param isolatedConfiguration the isolated Claude configuration directory
-	 * @param environment the environment of the run's Claude process, which CAT's installer records as the harness
-	 *   environment
+	 * @param environment the environment of the nested session's Claude process, which CAT's installer records as the
+	 *   harness environment
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @param commands runs the commands that add each marketplace and install each plugin
@@ -1191,7 +1196,7 @@ public final class ClaudeRunner
 			String name = PluginManifest.name(trialPlugin, MANIFEST);
 			Path marketplace = ClaudeMarketplace.create(trialPlugin, name, name, isolatedConfiguration);
 			List<List<String>> pluginCommands = pluginSetupCommands(executable, marketplace, name);
-			// Each plugin's steps are named after it, so that the run's log tells the plugins apart
+			// Each plugin's steps are named after it, so that the nested session's log tells the plugins apart
 			commands.execute(pluginCommands.get(0), "trial-plugin-" + name + "-marketplace-add");
 			commands.execute(pluginCommands.get(1), "trial-plugin-" + name + "-install");
 			plugins.add(marketplace.resolve("plugins/" + name));
@@ -1201,12 +1206,12 @@ public final class ClaudeRunner
 
 	/**
 	 * Writes the entries that CAT's installer writes into {@code settings.json} for each installed copy of CAT: the copy
-	 * in the run's marketplace and each copy that Claude Code's install records name for CAT.
+	 * in the nested session's marketplace and each copy that Claude Code's install records name for CAT.
 	 *
 	 * @param isolatedConfiguration the isolated Claude configuration directory
-	 * @param environment the environment of the run's Claude process, which CAT's installer records as the harness
-	 *   environment
-	 * @param marketplacePlugin the copy of CAT in the run's marketplace
+	 * @param environment the environment of the nested session's Claude process, which CAT's installer records as the
+	 *   harness environment
+	 * @param marketplacePlugin the copy of CAT in the nested session's marketplace
 	 * @param replacer replaces {@code settings.json}
 	 * @param json parses Claude Code's install records
 	 * @throws IOException if the install records cannot be read or {@code settings.json} cannot be changed
@@ -1224,15 +1229,15 @@ public final class ClaudeRunner
 			integration.installPermissions(environment, configuration, copy.resolve(PluginDirectory.INSTALLER), replacer,
 				entries ->
 				{
-					// The run owns and removes this entire isolated configuration.
+					// The nested session owns and removes this entire isolated configuration.
 				});
 		}
 	}
 
 	/**
 	 * Builds a Claude command with an explicit profile, optional direct agent, installed plugins and immutable evidence
-	 * directories. The session keeps its Claude Code session in the run's home, as every run's does, so that the session
-	 * can continue after its runner ends.
+	 * directories. The session keeps its Claude Code session in the nested session's home, as every nested session's
+	 * does, so that the session can continue after its runner ends.
 	 *
 	 * @param executable       the Claude executable
 	 * @param model            the requested model
@@ -1284,8 +1289,9 @@ public final class ClaudeRunner
 		List<String> command = new ArrayList<>(List.of(executable, "--print", "--input-format", "stream-json",
 			"--output-format", "stream-json", "--permission-mode", "acceptEdits",
 			"--verbose", "--include-partial-messages"));
-		// Every run keeps its session in the run's home, so that the session can continue after its runner ends. A runner
-		// launcher that the session's commands run also finds the session's sandbox policy from its transcript.
+		// Every nested session keeps its session in the nested session's home, so that the session can continue after its
+		// runner ends. A runner launcher that the session's commands run also finds the session's sandbox policy from its
+		// transcript.
 		for (Path plugin : plugins)
 		{
 			command.add("--add-dir");
@@ -1293,7 +1299,7 @@ public final class ClaudeRunner
 		}
 		if (!plugins.isEmpty())
 		{
-			// Claude writes spilled hook context under this run-owned directory. Allowing it lets the required
+			// Claude writes spilled hook context under this session-owned directory. Allowing it lets the required
 			// SessionStart instruction read it without granting the isolated home or disabling sandboxing.
 			command.add("--add-dir");
 			command.add(hookResults.toString());

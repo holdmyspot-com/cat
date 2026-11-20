@@ -21,15 +21,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class HarnessEnvironment
 {
 	/**
-	 * The variable that marks a harness process as a session of a CAT run. A runner sets it to {@value
+	 * The variable that marks a harness process as a nested session. A runner sets it to {@value
 	 * #NESTED_SESSION_VALUE} in the environment of every harness process that it starts, and the session's commands
 	 * inherit it. A runner launcher that one of the session's commands runs then sends its session to no request server:
-	 * inside a nested session, a session starts only as a request to the run's own runner, which counts and limits the
-	 * sessions that the run requests.
+	 * inside a nested session, a session starts only as a request to the nested session's own runner, which counts and
+	 * limits the sessions that the nested session requests.
 	 */
 	public static final String NESTED_SESSION_VARIABLE = "CAT_RUN";
 	/**
-	 * The value of {@link #NESTED_SESSION_VARIABLE} in a session of a CAT run.
+	 * The value of {@link #NESTED_SESSION_VARIABLE} in a nested session.
 	 */
 	public static final String NESTED_SESSION_VALUE = "1";
 	/**
@@ -56,13 +56,13 @@ public final class HarnessEnvironment
 	private static final List<String> EXCLUSION_VARIABLES = List.of("NO_PROXY", "no_proxy");
 
 	/**
-	 * Returns why a request server that a command runs is refused when the command belongs to a CAT run's session. No
-	 * request server serves such a session: its launchers send each request to the run's own runner. A server that the
-	 * session kept running as a background command would also keep the session's turn open for as long as the server
-	 * runs, so the refusal ends it at once.
+	 * Returns why a request server that a command runs is refused when the command belongs to a nested session's harness
+	 * session. No request server serves such a session: its launchers send each request to the nested session's own
+	 * runner. A server that the session kept running as a background command would also keep the session's turn open for
+	 * as long as the server runs, so the refusal ends it at once.
 	 *
 	 * @param environment the command's environment
-	 * @return the reason, or empty if the command is not part of a CAT run
+	 * @return the reason, or empty if the command is not part of a nested session
 	 * @throws NullPointerException if {@code environment} is null
 	 */
 	public static Optional<String> requestServerRefusal(Map<String, String> environment)
@@ -70,22 +70,23 @@ public final class HarnessEnvironment
 		requireThat(environment, "environment").isNotNull();
 		if (!NESTED_SESSION_VALUE.equals(environment.get(NESTED_SESSION_VARIABLE)))
 			return Optional.empty();
-		return Optional.of("CAT cannot start the request server: this command runs in a session of a CAT run, and no " +
+		return Optional.of("CAT cannot start the request server: this command runs in a nested session, and no " +
 			"request server serves such a session. This is not a failure of the session's task: it needs no request " +
 			"server. It requests sessions by running a runner launcher, request-session or the prompt optimizer, which " +
-			"send each request to the run's own runner when the run's caller allows requested sessions with " +
-			"--session-requests <count>. Continue without the request server.");
+			"send each request to the nested session's own runner when the nested session's caller allows requested " +
+			"sessions with --session-requests <count>. Continue without the request server.");
 	}
 
 	/**
-	 * Returns why a runner launcher refuses to start a session from the command that runs it. A command of a CAT run's
-	 * session may start sessions only as requests to the run's own runner, which it reaches through
-	 * {@link SessionRequestAccess#REQUESTS_VARIABLE} when the run lets its session request sessions; without that
-	 * variable, the run lets the session start none.
+	 * Returns why a runner launcher refuses to start a session from the command that runs it. A command of a nested
+	 * session's harness session may start sessions only as requests to the nested session's own runner, which it reaches
+	 * through {@link SessionRequestAccess#REQUESTS_VARIABLE} when the nested session lets its session request sessions;
+	 * without that variable, the nested session lets the session start none.
 	 *
 	 * @param harness     the harness whose runner the launcher stands for
 	 * @param environment the launcher's environment
-	 * @return the reason, or empty if the command is not part of a CAT run or the run lets its session request sessions
+	 * @return the reason, or empty if the command is not part of a nested session or the nested session lets its session
+	 *         request sessions
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
 	 */
@@ -97,12 +98,13 @@ public final class HarnessEnvironment
 
 	/**
 	 * Returns why a CAT command that starts sessions refuses to start any from the command that runs it, because the
-	 * command runs in a session of a CAT run that lets its session request none. The reason names the options of the
-	 * run's caller that would let it.
+	 * command runs in a nested session that lets its session request none. The reason names the options of the
+	 * nested session's caller that would let it.
 	 *
 	 * @param command     the command's name, as its user knows it
 	 * @param environment the command's environment
-	 * @return the reason, or empty if the command is not part of a CAT run or the run lets its session request sessions
+	 * @return the reason, or empty if the command is not part of a nested session or the nested session lets its session
+	 *         request sessions
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code command} is blank
 	 */
@@ -115,8 +117,8 @@ public final class HarnessEnvironment
 		String requests = environment.get(SessionRequestAccess.REQUESTS_VARIABLE);
 		if (requests != null && !requests.isBlank())
 			return Optional.empty();
-		return Optional.of(command + " refuses to start a session: this command runs in a session of a CAT run " +
-			"whose caller lets it request no sessions. The run's caller allows them with --session-requests " +
+		return Optional.of(command + " refuses to start a session: this command runs in a nested session " +
+			"whose caller lets it request no sessions. The nested session's caller allows them with --session-requests " +
 			"<count>, and lets a requested session's commands start sessions too with --request-depth <levels>.");
 	}
 
@@ -125,7 +127,7 @@ public final class HarnessEnvironment
 	 * <p>
 	 * The copy also holds {@code NVM_DIR}, the Node version manager's directory. A {@code node} launcher that loads the
 	 * manager finds it through {@code NVM_DIR}, which defaults to {@code .nvm} in the home directory, and a child's
-	 * home is the run's own, so without the variable the Node programs that the harness runs would not start.
+	 * home is the nested session's own, so without the variable the Node programs that the harness runs would not start.
 	 * <p>
 	 * The copy also holds the proxy variables, in upper and lower case: {@code HTTP_PROXY}, {@code HTTPS_PROXY},
 	 * {@code ALL_PROXY} and {@code NO_PROXY}. A host that reaches the network only through a proxy names it there,
@@ -231,7 +233,7 @@ public final class HarnessEnvironment
 	 * {@code LOCALAPPDATA}.
 	 *
 	 * @param home     the child's home directory
-	 * @param platform the platform that the child runs on
+	 * @param platform the platform that the child sessions on
 	 * @return each variable's name mapped to its value
 	 * @throws NullPointerException if any of the arguments are null
 	 */

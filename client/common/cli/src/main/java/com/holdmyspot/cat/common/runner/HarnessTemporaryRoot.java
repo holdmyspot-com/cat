@@ -10,10 +10,10 @@ import java.nio.file.Path;
 import java.util.Optional;
 
 /**
- * Where a runner command keeps its runs when the command line names no {@code --results}: the {@code temp} directory
- * of the CAT session directory of the harness session that runs the command. Outside a harness session there is no such
- * directory, and the command line must name {@code --results}. A command that names {@code --results} leaves the
- * session's CAT session directory alone.
+ * Where a runner command keeps its nested sessions when the command line names no {@code --results}: the {@code temp}
+ * directory of the CAT session directory of the harness session that runs the command. Outside a harness session there
+ * is no such directory, and the command line must name {@code --results}. A command that names {@code --results} leaves
+ * the session's CAT session directory alone.
  */
 public final class HarnessTemporaryRoot
 {

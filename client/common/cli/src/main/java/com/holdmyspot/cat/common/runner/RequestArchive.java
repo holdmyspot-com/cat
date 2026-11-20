@@ -43,9 +43,9 @@ import tools.jackson.databind.node.ObjectNode;
 /**
  * The archive in which a sandboxed session sends a session request: its manifest format, which the nested session's
  * runner and the session's request server share, and the operations that pack a request inside the sender's sandbox and
- * copy, extract and read it on the receiver's side. A request that a run's runner serves may choose fewer fields than
- * one that a request server serves, and the nested session's runner refuses by name each field that only the server
- * reads.
+ * copy, extract and read it on the receiver's side. A request that a nested session's runner serves may choose fewer
+ * fields than one that a request server serves, and the nested session's runner refuses by name each field that only
+ * the server reads.
  * <p>
  * A sender packs only what its sandbox lets it read, leaving out the null-device placeholders of files that it may not
  * read. It follows no link, except that a symbolic link in the project whose target stays inside the project travels
@@ -102,8 +102,8 @@ public final class RequestArchive
 	 */
 	static final String EXTRA_PERMISSIONS = "extra_permissions";
 	/**
-	 * The manifest field that names the harness session that a request resumes, in a retained run of the requester's
-	 * server. A request that names it carries no project.
+	 * The manifest field that names the harness session that a request resumes, in a retained nested session of the
+	 * requester's server. A request that names it carries no project.
 	 */
 	static final String RESUME = "resume";
 	private static final Set<String> LAUNCH_FIELDS = Set.of("format_version", "harness", "project", "prompts",
@@ -111,7 +111,8 @@ public final class RequestArchive
 		StreamedRequest.INPUT_FIELD, "workspace", "read_only_evidence", "deny_read", "instruction_files",
 		"session_role", "tool_output_token_limit", "turn_copy", "held_out", RESUME);
 	/**
-	 * The manifest fields that a run fixed at its start, which a request that resumes the run's session may not name.
+	 * The manifest fields that a nested session fixed at its start, which a request that resumes the nested session's
+	 * harness session may not name.
 	 */
 	private static final Set<String> FIXED_FIELDS = Set.of("project", "plugins", "install_cat", "workspace",
 		"read_only_evidence", "deny_read", "instruction_files", "session_role", "tool_output_token_limit", "agent");
@@ -175,7 +176,7 @@ public final class RequestArchive
 			getParent());
 		publish(json, destination, limits, (archive, budget) ->
 		{
-			// A resumed run keeps the project that its start copied
+			// A resumed nested session keeps the project that its start copied
 			if (!request.has(RESUME))
 			{
 				Path project = Path.of(request.path("project").asString());
@@ -1098,7 +1099,7 @@ public final class RequestArchive
 				if (!fixed.isMissingNode() && !(fixed.isArray() && fixed.isEmpty()))
 				{
 					throw new IOException("A request that resumes a session may not choose " + field + ", which the " +
-						"session's run fixed at its start");
+						"nested session fixed at its start");
 				}
 			}
 		}
@@ -1477,8 +1478,8 @@ public final class RequestArchive
 	 * @param maximumConcurrency the most sessions that run at once, or empty for the requester's choice
 	 * @param heldOut            indicates whether the session belongs to the held-out part, which runs in slots of
 	 *                           its own; a request that does not say so is not held out
-	 * @param resume             the harness session that the request resumes in a retained run, or empty for a request
-	 *                           that starts a session; a request that resumes one has no {@code project}
+	 * @param resume             the harness session that the request resumes in a retained nested session, or empty for a
+	 *                           request that starts a session; a request that resumes one has no {@code project}
 	 */
 	record LaunchRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,

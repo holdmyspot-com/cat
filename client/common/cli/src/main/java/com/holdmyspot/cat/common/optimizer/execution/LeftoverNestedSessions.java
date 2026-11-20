@@ -24,16 +24,17 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Finds the harness processes of runner runs that an earlier {@link Driver} left running.
  * <p>
- * The runner records each run in {@code <resultsFolder>/<harness>/<id>/session.json}, including the run's owner process
- * ({@code owner_pid}, {@code owner_started_at}) and its harness process ({@code harness_pid}, {@code
- * harness_started_at}). The session port declares the results folders, which hold the runs of every campaign of the
- * project. A run is left over only when it is still marked {@code running} and its owner process no longer exists: a
- * run whose owner is alive belongs to a running driver, of this or another campaign.
+ * The runner records each nested session in {@code <resultsFolder>/<harness>/<id>/session.json}, including the nested
+ * session's owner process ({@code owner_pid}, {@code owner_started_at}) and its harness process ({@code harness_pid},
+ * {@code harness_started_at}). The session port declares the results folders, which hold the nested sessions of every
+ * campaign of the project. A nested session is left over only when it is still marked {@code running} and its owner
+ * process no longer exists: a nested session whose owner is alive belongs to a running driver, of this or another
+ * campaign.
  * <p>
  * A manifest that cannot be parsed, or that lacks a process's {@link ProcessDescription#start() start} or holds
  * another form of it, identifies no process: without the start, a reused process identifier cannot be told apart
- * from the recorded process. A run whose owner process is not identified is therefore not left over, and a leftover
- * run whose harness process is not identified yields nothing.
+ * from the recorded process. A nested session whose owner process is not identified is therefore not left over, and a
+ * leftover nested session whose harness process is not identified yields nothing.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
@@ -79,12 +80,12 @@ public final class LeftoverNestedSessions
 	}
 
 	/**
-	 * Finds the harness processes of the runs, under every results folder that the session port declares, that are
-	 * still marked {@code running} although their owner process no longer exists.
+	 * Finds the harness processes of the nested sessions, under every results folder that the session port declares, that
+	 * are still marked {@code running} although their owner process no longer exists.
 	 *
 	 * @return the harness processes whose identifiers and starts can be parsed, in results folder and directory
 	 *   order; empty if no results folder exists
-	 * @throws IOException if the run directories cannot be listed or process identity is uncertain
+	 * @throws IOException if the session folders cannot be listed or process identity is uncertain
 	 */
 	public List<RecordedProcess> find() throws IOException
 	{
@@ -129,11 +130,11 @@ public final class LeftoverNestedSessions
 	}
 
 	/**
-	 * Returns the harness process of a run that is marked running although its owner no longer exists.
+	 * Returns the harness process of a nested session that is marked running although its owner no longer exists.
 	 *
 	 * @param manifest the manifest's content
-	 * @return the harness process; empty if the run is not running, the manifest cannot be parsed, the owner process
-	 *   is absent or alive, or the harness process is not identified
+	 * @return the harness process; empty if the nested session is not running, the manifest cannot be parsed, the owner
+	 *   process is absent or alive, or the harness process is not identified
 	 * @throws IOException if owner process identity cannot be established
 	 */
 	private Optional<RecordedProcess> parse(byte[] manifest) throws IOException
@@ -197,7 +198,7 @@ public final class LeftoverNestedSessions
 	}
 
 	/**
-	 * A process that a run manifest recorded.
+	 * A process that a session manifest recorded.
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *

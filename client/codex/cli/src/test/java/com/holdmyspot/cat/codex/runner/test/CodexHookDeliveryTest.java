@@ -14,7 +14,7 @@ import org.testng.annotations.Test;
 public final class CodexHookDeliveryTest
 {
 	/**
-	 * Verifies CAT refuses a run before a configured context hook can silently remain untrusted.
+	 * Verifies CAT refuses a nested session before a configured context hook can silently remain untrusted.
 	 */
 	@Test(expectedExceptions = IOException.class,
 		expectedExceptionsMessageRegExp = ".*subagent start hook is untrusted.*")
@@ -32,7 +32,7 @@ public final class CodexHookDeliveryTest
 	}
 
 	/**
-	 * Verifies CAT refuses a run while its PostToolUse hook, which repairs cut command output, is untrusted.
+	 * Verifies CAT refuses a nested session while its PostToolUse hook, which repairs cut command output, is untrusted.
 	 *
 	 * @throws IOException if the hook is untrusted
 	 */

@@ -47,13 +47,13 @@ public final class CodexJudgeVersionTest
 	 */
 	private static final Path EVENTS = Path.of("src/test/resources/optimizer/codex-tool-calls.jsonl");
 	/**
-	 * The recorded run artifacts of a trial whose root started two children and received their findings, whose
+	 * The recorded nested session artifacts of a trial whose root started two children and received their findings, whose
 	 * rendered activity the hash also covers.
 	 */
 	private static final Path CHILDREN = Path.of("src/test/resources/optimizer/two-children/transcript.jsonl");
 	/**
-	 * The recorded run artifacts of a trial whose child received a result from a command that was still running,
-	 * whose rendered activity the hash also covers.
+	 * The recorded nested session artifacts of a trial whose child received a result from a command that was still
+	 * running, whose rendered activity the hash also covers.
 	 */
 	private static final Path RUNNING = Path.of("src/test/resources/optimizer/running-command/transcript.jsonl");
 
@@ -95,8 +95,8 @@ public final class CodexJudgeVersionTest
 				Path transcript = RecordedTrial.write(root, EVENTS, List.of(RecordedTrial.commandResult(1,
 					"error building bubblewrap command: app-server socket directory must be a user-owned directory with " +
 						"mode 0700\n")));
-				// Run directories differ per run, so the hash covers the section with their root replaced. The paths that
-				// the section names are written with "/" so that every platform hashes the same content.
+				// Session folders differ per nested session, so the hash covers the section with their root replaced. The paths
+				// that the section names are written with "/" so that every platform hashes the same content.
 				String section = EvidenceSection.render(sessions.readEvidence(transcript), transcript, effects, source).
 					replace(transcript.toString(), "<root>/" + PortablePaths.text(root.relativize(transcript))).
 					replace(effects.toString(), "<root>/effects").

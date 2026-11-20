@@ -28,7 +28,7 @@ public final class HarnessDependencyCacheTest
 	}
 
 	/**
-	 * Verifies isolated homes reuse the parent's npm and Maven caches rather than creating per-run caches, under the
+	 * Verifies isolated homes reuse the parent's npm and Maven caches rather than creating per-session caches, under the
 	 * home directory that the parent's platform names, and keep the parent's Maven options, which can name the Maven
 	 * repository.
 	 *

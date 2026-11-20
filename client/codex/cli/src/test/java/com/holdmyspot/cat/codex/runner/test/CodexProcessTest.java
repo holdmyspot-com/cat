@@ -208,9 +208,9 @@ public final class CodexProcessTest
 	}
 
 	/**
-	 * Verifies that every process starts a persistent thread, so that the run's session can continue after its runner
-	 * ends, and reports the thread as its harness session, while only one that keeps session transcripts copies the
-	 * rollout and names it.
+	 * Verifies that every process starts a persistent thread, so that the nested session's harness session can continue
+	 * after its runner ends, and reports the thread as its harness session, while only one that keeps session transcripts
+	 * copies the rollout and names it.
 	 *
 	 * @throws IOException if the process cannot be started or closed
 	 */

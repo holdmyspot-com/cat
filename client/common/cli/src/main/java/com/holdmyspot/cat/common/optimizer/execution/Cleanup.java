@@ -33,14 +33,14 @@ import tools.jackson.databind.json.JsonMapper;
  * Removes the files of a campaign that ended by a certified delivery or by retaining the incumbent.
  * <p>
  * Removal runs three steps, in order: it removes the campaign's optimization worktree, then the campaign's runs below
- * every results folder, then the campaign directory. A run belongs to the campaign when its manifest's {@code
- * project_path} lies below the campaign directory; a run without a readable manifest identifies no campaign and is
- * kept. Every other ending keeps the campaign's files.
+ * every results folder, then the campaign directory. A nested session belongs to the campaign when its manifest's
+ * {@code project_path} lies below the campaign directory; a nested session without a readable manifest identifies no
+ * campaign and is kept. Every other ending keeps the campaign's files.
  * <p>
  * Before the first step, the campaign directory records that removal started. A removal that a crash interrupts or
  * a step fails is completed by {@link #resume()}, which every command runs first. Each step does nothing for files
- * that are already gone, so a step may run again. A run's manifest is deleted after the rest of the run, so an
- * interrupted deletion leaves a run that is still attributed to the campaign.
+ * that are already gone, so a step may run again. A nested session's manifest is deleted after the rest of the nested
+ * session, so an interrupted deletion leaves a nested session that is still attributed to the campaign.
  * <p>
  * A removal that fails does not fail the command that runs it: the command reports a warning that names the path and
  * the cause, and continues.
@@ -67,7 +67,7 @@ public final class Cleanup
 	 * @param base the base worktree
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
-	 * @param resultsFolders the directories that hold the runs of those campaigns
+	 * @param resultsFolders the directories that hold the nested sessions of those campaigns
 	 * @param json the JSON mapper that parses run manifests
 	 * @param replacer writes the record that a campaign's removal started
 	 * @throws NullPointerException if any of the arguments are null
@@ -87,7 +87,7 @@ public final class Cleanup
 	 * @param base the base worktree
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
-	 * @param resultsFolders the directories that hold the runs of those campaigns
+	 * @param resultsFolders the directories that hold the nested sessions of those campaigns
 	 * @param json the JSON mapper that parses run manifests
 	 * @param replacer writes the record that a campaign's removal started
 	 * @param beforeStep receives each step before it runs; an exception that it throws stops the removal at that
@@ -299,11 +299,11 @@ public final class Cleanup
 	}
 
 	/**
-	 * Deletes the runs of a campaign below one results folder.
+	 * Deletes the nested sessions of a campaign below one results folder.
 	 *
-	 * @param resultsFolder the results folder, which holds {@code <harness>/<run>/session.json}
-	 * @param owners the campaign directory's paths that a run's project path may start with
-	 * @throws IOException if a directory cannot be listed or a run cannot be deleted
+	 * @param resultsFolder the results folder, which holds {@code <harness>/<id>/session.json}
+	 * @param owners the campaign directory's paths that a nested session's project path may start with
+	 * @throws IOException if a directory cannot be listed or a nested session cannot be deleted
 	 */
 	private void removeResultsCopies(Path resultsFolder, List<Path> owners) throws IOException
 	{
@@ -321,9 +321,9 @@ public final class Cleanup
 	}
 
 	/**
-	 * Returns the project path that a run manifest records.
+	 * Returns the project path that a session manifest records.
 	 *
-	 * @param manifest the run's manifest
+	 * @param manifest the nested session's manifest
 	 * @return the absolute, normalized path; empty if the manifest does not exist, cannot be parsed, or records no
 	 *   absolute path
 	 * @throws IOException if the manifest cannot be read

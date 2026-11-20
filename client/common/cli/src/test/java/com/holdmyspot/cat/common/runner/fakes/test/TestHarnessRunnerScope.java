@@ -17,7 +17,7 @@ public final class TestHarnessRunnerScope extends AbstractHarnessRunnerScope
 	private final ManualTicker ticker = new ManualTicker();
 
 	/**
-	 * Creates an open harness-run scope.
+	 * Creates an open nested-session scope.
 	 */
 	public TestHarnessRunnerScope()
 	{

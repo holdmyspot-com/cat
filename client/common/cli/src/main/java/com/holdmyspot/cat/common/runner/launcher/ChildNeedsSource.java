@@ -20,7 +20,7 @@ public interface ChildNeedsSource
 	 * Returns a child's needs.
 	 *
 	 * @param harness       the child's harness identifier
-	 * @param sessionFolder the folder that holds the child's run
+	 * @param sessionFolder the folder that holds the child's nested session
 	 * @param deniedReads   the absolute paths that the request denies the child
 	 * @param bound         the requesting session's policy, which bounds the child
 	 * @return the child's needs

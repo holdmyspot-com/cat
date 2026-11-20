@@ -123,8 +123,8 @@ public final class CredentialsTest
 
 	/**
 	 * Verifies that a login in the login store that {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names marks a
-	 * subscription, although the configuration directory holds no login: a run's session has its own configuration
-	 * directory and the user's login in the store.
+	 * subscription, although the configuration directory holds no login: a nested session's harness session has its own
+	 * configuration directory and the user's login in the store.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */

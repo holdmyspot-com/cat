@@ -59,7 +59,7 @@ public final class HarnessProjectRepository
 	 *
 	 * @param sourceProject     the source project whose Git identity is inherited
 	 * @param project           the copied project directory
-	 * @param sessionFolder     the owned run directory that may hold setup-only state
+	 * @param sessionFolder     the owned session folder that may hold setup-only state
 	 * @param parentEnvironment the environment resolved by the production entry point
 	 * @param executables       runs Git
 	 * @param gitName           the Git user name that the launch names, or {@code null} to read the source
@@ -192,7 +192,7 @@ public final class HarnessProjectRepository
 	{
 		return List.of(
 			List.of("git", "init", "--quiet"),
-			// Detached maintenance outlives the command that starts it and races the deletion of the run directory
+			// Detached maintenance outlives the command that starts it and races the deletion of the session folder
 			List.of("git", "config", "maintenance.auto", "false"),
 			List.of("git", "config", "gc.auto", "0"),
 			List.of("git", "config", "user.name", name),
@@ -209,7 +209,7 @@ public final class HarnessProjectRepository
 	 * next.
 	 *
 	 * @param parentEnvironment the environment resolved by the production entry point
-	 * @param gitHome the run-owned directory that Git uses as its home
+	 * @param gitHome the session-owned directory that Git uses as its home
 	 * @return the Git environment
 	 */
 	static Map<String, String> environment(Map<String, String> parentEnvironment, Path gitHome)

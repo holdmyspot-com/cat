@@ -45,11 +45,11 @@ public final class SessionSlotsTest
 	 */
 	private static final Duration WAIT = Duration.ofSeconds(10);
 	/**
-	 * The harness session that a retained run records.
+	 * The harness session that a retained nested session records.
 	 */
 	private static final String SESSION_ID = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 	/**
-	 * The harness session that a second retained run records.
+	 * The harness session that a second retained nested session records.
 	 */
 	private static final String OTHER_SESSION_ID = "019a2b3c-4d5e-6f70-8192-a3b4c5d6e7f8";
 
@@ -61,7 +61,7 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that the sessions of one slot get the same results folder and run identifier, and that the second finds
+	 * Verifies that the sessions of one slot get the same results folder and slot ID, and that the second finds
 	 * the slot empty although the first left files in it.
 	 *
 	 * @throws IOException          if the filesystem operation fails
@@ -114,9 +114,9 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that the run of each slot that may be held at once, in both parts, has a path of its own, and that the
-	 * part of that path below the slots' base is short: at most 16 characters for a run of a harness named
-	 * {@code claude}, against the 41 of {@code development/1/claude/slot-1}.
+	 * Verifies that the nested session of each slot that may be held at once, in both parts, has a path of its own, and
+	 * that the part of that path below the slots' base is short: at most 16 characters for a nested session of a harness
+	 * named {@code claude}, against the 41 of {@code development/1/claude/slot-1}.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -215,8 +215,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that the run that the current process records, which a program that runs a session in itself creates,
-	 * does not keep the slot: the process cannot wait for its own end.
+	 * Verifies that the nested session that the current process records, which a program that runs a session in itself
+	 * creates, does not keep the slot: the process cannot wait for its own end.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -241,7 +241,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a run whose manifest cannot be read keeps its bytes and prevents the slot from being reused.
+	 * Verifies that a nested session whose manifest cannot be read keeps its bytes and prevents the slot from being
+	 * reused.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -339,9 +340,9 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that emptying a slot removes each run's manifest after everything else in the run: a deletion that stops
-	 * partway, at an entry of the run that cannot be removed, leaves the run's manifest, which names the processes
-	 * that a later attempt must check.
+	 * Verifies that emptying a slot removes each nested session's manifest after everything else in the nested session: a
+	 * deletion that stops partway, at an entry of the nested session that cannot be removed, leaves the nested session's
+	 * manifest, which names the processes that a later attempt must check.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -373,9 +374,9 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a slot whose run records a harness session and no end is retained: no session takes it, the next
-	 * session takes a slot numbered past the slots' count instead, and no more sessions of the part run at once than
-	 * the count allows.
+	 * Verifies that a slot whose nested session records a harness session and no end is retained: no session takes it,
+	 * the next session takes a slot numbered past the slots' count instead, and no more sessions of the part run at once
+	 * than the count allows.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -407,8 +408,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a slot whose run recorded no harness session, or recorded the run's end, is emptied for the next
-	 * session, as a run that has nothing to resume is.
+	 * Verifies that a slot whose nested session recorded no harness session, or recorded the nested session's end, is
+	 * emptied for the next session, as a nested session that has nothing to resume is.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -440,8 +441,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a retained slot of either part is found by the harness session that its run records, that the
-	 * process that the run recorded is stopped first, and that the slot keeps its files.
+	 * Verifies that a retained slot of either part is found by the harness session that its nested session records, that
+	 * the process that the nested session recorded is stopped first, and that the slot keeps its files.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -483,9 +484,9 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a retained slot is refused while a launch holds it, while a process that its run recorded stays
-	 * alive, when its run is of another harness, and when its manifest is malformed, and that a refusal keeps the
-	 * slot's files.
+	 * Verifies that a retained slot is refused while a launch holds it, while a process that its nested session recorded
+	 * stays alive, when its nested session is of another harness, and when its manifest is malformed, and that a refusal
+	 * keeps the slot's files.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -527,8 +528,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that discarding a retained run stops the processes that it recorded and empties its slot, which the
-	 * next session then takes, and that a discard is refused while a launch resumes the run.
+	 * Verifies that discarding a retained nested session stops the processes that it recorded and empties its slot, which
+	 * the next session then takes, and that a discard is refused while a launch resumes the nested session.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -559,8 +560,9 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a launch that resumes a run whose session is being stopped waits for that session to give the slot
-	 * back, instead of being refused as if another launch resumed the run, and then takes the retained slot.
+	 * Verifies that a launch that resumes a nested session whose session is being stopped waits for that session to give
+	 * the slot back, instead of being refused as if another launch resumed the nested session, and then takes the
+	 * retained slot.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -589,8 +591,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that a launch that resumes a run whose session is being stopped finds no retained run once that session
-	 * has ended its run normally.
+	 * Verifies that a launch that resumes a nested session whose session is being stopped finds no retained nested
+	 * session once that session has ended its nested session normally.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -620,8 +622,8 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Verifies that discarding a run whose session is being stopped waits for that session to give the slot back,
-	 * instead of being refused as if a launch resumed the run, and then empties the slot.
+	 * Verifies that discarding a nested session whose session is being stopped waits for that session to give the slot
+	 * back, instead of being refused as if a launch resumed the nested session, and then empties the slot.
 	 *
 	 * @throws IOException          if the filesystem operation fails
 	 * @throws InterruptedException if the test is interrupted
@@ -651,14 +653,14 @@ public final class SessionSlotsTest
 	}
 
 	/**
-	 * Creates a run in a slot whose harness reported its session and that recorded no end, as a run that its server
-	 * stopped leaves behind.
+	 * Creates a nested session in a slot whose harness reported its session and that recorded no end, as a nested session
+	 * that its server stopped leaves behind.
 	 *
 	 * @param jvm       the test's process scope
 	 * @param slot      the slot
-	 * @param sessionId the harness session that the run records
-	 * @return the run
-	 * @throws IOException if the run cannot be created
+	 * @param sessionId the harness session that the nested session records
+	 * @return the nested session
+	 * @throws IOException if the nested session cannot be created
 	 */
 	private static NestedSession interruptedSession(TestJvmScope jvm, SessionSlots.Slot slot, String sessionId)
 		throws IOException

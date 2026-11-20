@@ -103,7 +103,8 @@ public final class CodexHookDelivery
 			if (trust.equals("trusted") || trust.equals("managed"))
 				return;
 			throw new IOException("CAT " + hookName(key) +
-				" hook is " + trust + "; approve its current hash in the host Codex home before starting an isolated run");
+				" hook is " + trust +
+				"; approve its current hash in the host Codex home before starting an isolated nested session");
 		}
 		if (required)
 			throw new IOException("Codex did not configure CAT hook " + key);

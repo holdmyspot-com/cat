@@ -21,41 +21,43 @@ import java.util.function.Predicate;
 import java.util.stream.Collectors;
 
 /**
- * Copies a kept run to where its requester reads it, leaving out links, the child's isolated home, which holds its
- * logins, and the project files that the child's sandbox kept it from changing.
+ * Copies a session folder to where its requester reads it, leaving out links, the child's isolated home, which holds
+ * its logins, and the project files that the child's sandbox kept it from changing.
  */
 public final class ResultsCopy
 {
 	/**
-	 * The directory of a kept run that holds the child's isolated home, which is never copied.
+	 * The directory of a session folder that holds the child's isolated home, which is never copied.
 	 */
 	private static final String SESSION_HOME = "home";
 	/**
-	 * The directory of a kept run that holds the copy of the project that the child worked in.
+	 * The directory of a session folder that holds the copy of the project that the child worked in.
 	 */
 	private static final String SESSION_PROJECT = "project";
 	/**
-	 * The directory of a kept run that holds the copy of the project as it was before the child's first turn.
+	 * The directory of a session folder that holds the copy of the project as it was before the child's first turn.
 	 */
 	private static final String SESSION_INITIAL_PROJECT = "initial-project";
 	/**
-	 * The manifest of a run, which {@link #copy(Path, Path, String, Path)} writes after the rest of the run.
+	 * The manifest of a nested session, which {@link #copy(Path, Path, String, Path)} writes after the rest of the nested
+	 * session.
 	 */
 	private static final Path MANIFEST = Path.of("session.json");
 	private static final String SESSION_ARTIFACTS = "artifacts";
 	private static final String SESSION_TRANSCRIPTS = "session-transcripts";
 	/**
-	 * The directories of a run that {@link #copyTurn(Path, Path)} replaces.
+	 * The directories of a nested session that {@link #copyTurn(Path, Path)} replaces.
 	 */
 	private static final Set<String> TURN_COPIES = Set.of(SESSION_PROJECT, SESSION_INITIAL_PROJECT);
 
 	/**
-	 * How the copy of a kept run ended.
+	 * How the copy of a session folder ended.
 	 *
 	 * @param incomplete the message that names each file that could not be copied with the failure that stopped it and
-	 *                   says that the kept run is incomplete, or empty if the run was copied in full, apart from what
-	 *                   the copier's sandbox protects
-	 * @param skipped    the paths, relative to the run, that the copier's sandbox refused to let the copy write
+	 *                   says that the results copy is incomplete, or empty if the nested session was copied in full,
+	 *                   apart from what the copier's sandbox protects
+	 * @param skipped    the paths, relative to the nested session, that the copier's sandbox refused to let the copy
+	 *                   write
 	 */
 	public record Result(Optional<String> incomplete, List<String> skipped)
 	{
@@ -63,7 +65,7 @@ public final class ResultsCopy
 		 * Creates a result.
 		 *
 		 * @param incomplete the message that names each file that could not be copied, or empty
-		 * @param skipped    the paths, relative to the run, that the copy skipped
+		 * @param skipped    the paths, relative to the nested session, that the copy skipped
 		 * @throws NullPointerException if {@code incomplete} or {@code skipped} are null
 		 */
 		public Result
@@ -74,15 +76,15 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Copies a kept run into {@code target}, leaving out links, the child's isolated home and the project files that
-	 * the child's sandbox kept it from changing. A file or folder that the copier's sandbox refuses to write is skipped
-	 * without a message and listed in the result. Any other file or folder that cannot be copied is left out and
-	 * reported with the failure that stopped it, and the copy goes on with the rest of the run, so that one such file
-	 * costs the requester neither the run's project nor its other evidence. The failure is reported, not thrown, so
-	 * that it does not hide the session's outcome. Only a kept run whose own folder cannot be read, or a copy whose own
-	 * folder cannot be created, ends the copy at once.
+	 * Copies a session folder into {@code target}, leaving out links, the child's isolated home and the project files
+	 * that the child's sandbox kept it from changing. A file or folder that the copier's sandbox refuses to write is
+	 * skipped without a message and listed in the result. Any other file or folder that cannot be copied is left out and
+	 * reported with the failure that stopped it, and the copy goes on with the rest of the nested session, so that one
+	 * such file costs the requester neither the nested session's project nor its other evidence. The failure is reported,
+	 * not thrown, so that it does not hide the session's outcome. Only a session folder whose own folder cannot be read,
+	 * or a copy whose own folder cannot be created, ends the copy at once.
 	 *
-	 * @param source the kept run
+	 * @param source the session folder
 	 * @param target the copy, which need not exist
 	 * @return how the copy ended
 	 * @throws NullPointerException if {@code source} or {@code target} are null
@@ -95,21 +97,22 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Copies a kept run as {@link #copy(Path, Path)} does and gives the copy the identifier under which it is kept and
-	 * the project that its requester named. The nested session's runner ran the session in the copy of that project
-	 * that the request carried, so the copy's manifest names the requester's project instead, as the manifest of a run
-	 * that the requester started itself would, and a removal of the requester's runs by their project finds it. The
-	 * copy's manifest appears last and whole, already naming {@code id}, so that a process that lists the folder of the
-	 * kept runs while the copy is under way never reads a manifest that is partial or names the run's slot.
+	 * Copies a session folder as {@link #copy(Path, Path)} does and gives the copy the identifier under which it is kept
+	 * and the project that its requester named. The nested session's runner ran the session in the copy of that project
+	 * that the request carried, so the copy's manifest names the requester's project instead, as the manifest of a nested
+	 * session that the requester started itself would, and a removal of the requester's nested sessions by their project
+	 * finds it. The copy's manifest appears last and whole, already naming {@code id}, so that a process that lists the
+	 * results folder while the copy is under way never reads a manifest that is partial or names the nested session's
+	 * slot.
 	 *
-	 * @param source  the kept run
+	 * @param source  the session folder
 	 * @param target  the copy, which need not exist
 	 * @param id      the identifier under which the copy is kept
 	 * @param project the project that the requester named
 	 * @return how the copy ended
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code id} is not a run identifier
-	 * @throws IOException              if the run's manifest is malformed or cannot be written
+	 * @throws IllegalArgumentException if {@code id} is not a slot ID
+	 * @throws IOException              if the nested session's manifest is malformed or cannot be written
 	 */
 	public static Result copy(Path source, Path target, String id, Path project) throws IOException
 	{
@@ -123,11 +126,12 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Replaces a run's project, initial project and native session transcripts with those of another run, which the
-	 * requester reads while the other run's session is still working. Other artifacts remain untouched.
+	 * Replaces a nested session's project, initial project and native session transcripts with those of another nested
+	 * session, which the requester reads while the other nested session's harness session is still working. Other
+	 * artifacts remain untouched.
 	 *
-	 * @param source the run whose turn evidence is copied
-	 * @param target the run that receives it, which need not exist
+	 * @param source the nested session whose turn evidence is copied
+	 * @param target the nested session that receives it, which need not exist
 	 * @throws NullPointerException if {@code source} or {@code target} are null
 	 * @throws IOException          if the target's earlier copy cannot be removed, or a file cannot be copied
 	 */
@@ -142,10 +146,10 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Removes the project, initial project and session transcript copies from a run's copy, so that a copy of the whole
-	 * run can follow.
+	 * Removes the project, initial project and session transcript copies from a nested session's copy, so that a copy of
+	 * the whole nested session can follow.
 	 *
-	 * @param sessionFolder the run's copy
+	 * @param sessionFolder the nested session's copy
 	 * @throws NullPointerException if {@code sessionFolder} is null
 	 * @throws IOException          if a file cannot be removed
 	 */
@@ -160,7 +164,7 @@ public final class ResultsCopy
 	/**
 	 * Indicates whether a path belongs to the evidence that changes during a turn.
 	 *
-	 * @param relative the path relative to the run
+	 * @param relative the path relative to the nested session
 	 * @return whether the path is a project, initial project, artifacts directory or session transcript
 	 */
 	private static boolean includesTurnPath(Path relative)
@@ -175,7 +179,7 @@ public final class ResultsCopy
 	/**
 	 * Indicates whether a copy failure must abort turn evidence publication.
 	 *
-	 * @param relative the path relative to the run
+	 * @param relative the path relative to the nested session
 	 * @return whether the path is a native session transcript path
 	 */
 	private static boolean isRequiredTranscript(Path relative)
@@ -186,11 +190,11 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Copies the directories of a kept run that a filter accepts.
+	 * Copies the directories of a session folder that a filter accepts.
 	 *
-	 * @param source   the kept run
+	 * @param source   the session folder
 	 * @param target   the copy, which need not exist
-	 * @param included accepts the name of each directory directly below the run that the copy includes
+	 * @param included accepts the name of each directory directly below the nested session that the copy includes
 	 * @return how the copy ended
 	 */
 	private static Result copy(Path source, Path target, Predicate<Path> included)
@@ -225,8 +229,8 @@ public final class ResultsCopy
 	 * Describes a file that could not be copied.
 	 *
 	 * @param file    the file or folder of the copy that could not be written
-	 * @param failure the failure that stopped it, which names the file that it concerns, the copy's or the kept
-	 *                run's, and the system's reason
+	 * @param failure the failure that stopped it, which names the file that it concerns, the copy's or the session
+	 *                folder's, and the system's reason
 	 * @return the description
 	 */
 	private static String failure(Path file, IOException failure)
@@ -235,19 +239,19 @@ public final class ResultsCopy
 	}
 
 	/**
-	 * Returns the message that says a kept run is incomplete.
+	 * Returns the message that says a results copy is incomplete.
 	 *
 	 * @param failures the description of each file that could not be copied
-	 * @param target   the copy of the kept run
+	 * @param target   the results copy
 	 * @return the message
 	 */
 	private static String incompleteCopy(List<String> failures, Path target)
 	{
-		return String.join("\n", failures) + "\nThe kept run at " + target + " is incomplete.";
+		return String.join("\n", failures) + "\nThe results copy at " + target + " is incomplete.";
 	}
 
 	/**
-	 * Copies a kept run's directories and regular files, skips what the copier's sandbox refuses to write, and
+	 * Copies a session folder's directories and regular files, skips what the copier's sandbox refuses to write, and
 	 * remembers which copy it attempted last. A copier that goes on past failures leaves out each other file or folder
 	 * that cannot be copied and remembers why; any other copier stops at the first.
 	 * <p>
@@ -256,25 +260,25 @@ public final class ResultsCopy
 	private static final class ResultsCopier extends SimpleFileVisitor<Path>
 	{
 		/**
-		 * The files and folders of the run, relative to it, that the child's sandbox kept it from changing, so that
-		 * they equal the initial project's and nothing reads them from a kept run. The copy leaves them out because
-		 * the requester's own sandbox can refuse to write them, as Claude Code's does for its settings and a
-		 * project's Git configuration and hooks, and a child is never allowed more than its parent: it would
-		 * otherwise change a file that the parent cannot. A copier outside that sandbox must not write them where the
-		 * requester reads the run either, which would let the child write where the requester's sandbox forbids it.
+		 * The files and folders of the nested session, relative to it, that the child's sandbox kept it from changing, so
+		 * that they equal the initial project's and nothing reads them from a session folder. The copy leaves them out
+		 * because the requester's own sandbox can refuse to write them, as Claude Code's does for its settings and a
+		 * project's Git configuration and hooks, and a child is never allowed more than its parent: it would otherwise
+		 * change a file that the parent cannot. A copier outside that sandbox must not write them where the requester reads
+		 * the nested session either, which would let the child write where the requester's sandbox forbids it.
 		 */
 		private static final Set<Path> UNCHANGED = ProtectedProjectFiles.paths().stream().
 			map(path -> Path.of(SESSION_PROJECT).resolve(path)).collect(Collectors.toUnmodifiableSet());
 		/**
-		 * The kept run that is copied.
+		 * The session folder that is copied.
 		 */
 		private final Path source;
 		/**
-		 * The copy of the kept run.
+		 * The results copy.
 		 */
 		private final Path target;
 		/**
-		 * Accepts the name of each directory directly below the run that the copy includes.
+		 * Accepts the name of each directory directly below the nested session that the copy includes.
 		 */
 		private final Predicate<Path> included;
 		private final Predicate<Path> required;
@@ -284,7 +288,7 @@ public final class ResultsCopy
 		 */
 		private final boolean goesOnPastFailures;
 		/**
-		 * The paths, relative to the run, that the copier's sandbox refused to let the copy write.
+		 * The paths, relative to the nested session, that the copier's sandbox refused to let the copy write.
 		 */
 		private final List<String> skipped = new ArrayList<>();
 		/**
@@ -299,9 +303,9 @@ public final class ResultsCopy
 		/**
 		 * Creates a copier.
 		 *
-		 * @param source the kept run that is copied
-		 * @param target the copy of the kept run
-		 * @param included accepts the paths relative to the run that the copy includes
+		 * @param source the session folder that is copied
+		 * @param target the results copy
+		 * @param included accepts the paths relative to the nested session that the copy includes
 		 * @param required accepts the paths whose copy failures must be thrown
 		 * @param goesOnPastFailures indicates whether a file or folder that cannot be copied is left out, rather than
 		 *                           ending the copy, unless {@code required} accepts it
@@ -318,10 +322,10 @@ public final class ResultsCopy
 		}
 
 		/**
-		 * Indicates whether the copy includes a path of the kept run.
+		 * Indicates whether the copy includes a path of the session folder.
 		 *
-		 * @param relative the path, relative to the run
-		 * @return {@code true} for the run itself and for every path whose first name the filter accepts
+		 * @param relative the path, relative to the nested session
+		 * @return {@code true} for the nested session itself and for every path whose first name the filter accepts
 		 */
 		private boolean includes(Path relative)
 		{
@@ -329,7 +333,7 @@ public final class ResultsCopy
 		}
 
 		/**
-		 * Returns where a file of the kept run goes in the copy.
+		 * Returns where a file of the session folder goes in the copy.
 		 *
 		 * @param file the file that is copied
 		 * @return its place in the copy
@@ -341,7 +345,7 @@ public final class ResultsCopy
 
 		/**
 		 * Indicates whether a failure to write a file or folder of the copy is the copier's sandbox refusing
-		 * it, and if so, remembers that the copy skips it. A refusal to read the kept run's file is not one.
+		 * it, and if so, remembers that the copy skips it. A refusal to read the session folder's file is not one.
 		 *
 		 * @param file    the file or folder that is copied
 		 * @param failure the failure
@@ -358,7 +362,7 @@ public final class ResultsCopy
 		/**
 		 * Leaves out a file or folder that could not be copied, if this copier goes on past failures.
 		 *
-		 * @param file    the file or folder of the kept run
+		 * @param file    the file or folder of the session folder
 		 * @param failure the failure that stopped its copy
 		 * @throws IOException {@code failure} if this copier stops at failures or the file's copy is required
 		 */

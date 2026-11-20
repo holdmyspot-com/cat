@@ -99,8 +99,8 @@ public final class ClaudeRequestServerCli
 	}
 
 	/**
-	 * Returns why the server must not run in a process: the process belongs to a CAT run's session, which no request
-	 * server serves, or the platform runs no sandboxed Claude Code session.
+	 * Returns why the server must not run in a process: the process belongs to a nested session's harness session, which
+	 * no request server serves, or the platform runs no sandboxed Claude Code session.
 	 *
 	 * @param platform    the platform that runs the server
 	 * @param environment the server's environment

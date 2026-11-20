@@ -33,9 +33,9 @@ import org.testng.annotations.Test;
 
 /**
  * The limits that every runner must give the commands of a session, as {@link SessionCommandLimits} defines them. A
- * test class of each runner extends this class and starts a session of a test-owned run the way its runner does,
- * without starting a harness, and returns the environment that the session's commands receive and the paths that they
- * may not read. Each test fails if the runner drops a limit.
+ * test class of each runner extends this class and starts a session of a test-owned nested session the way its runner
+ * does, without starting a harness, and returns the environment that the session's commands receive and the paths that
+ * they may not read. Each test fails if the runner drops a limit.
  */
 public abstract class SessionCommandLimitsContract
 {
@@ -57,14 +57,14 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * The user and run that a session starts from: a user's home holding every harness's login, configuration and an
-	 * installed plugin, and a results folder holding the session's run and another run.
+	 * installed plugin, and a results folder holding the session's nested session and another nested session.
 	 *
 	 * @param userEnvironment the environment of the process that starts the runner, which names the user's home, a
 	 *                        separate Codex home, and every credential variable
 	 * @param userHome        the user's home directory
-	 * @param manager         the run manager of the results folder
-	 * @param nestedSession   the session's run, whose project is snapshotted
-	 * @param otherSession    another run under the same results folder
+	 * @param manager         the nested-session manager of the results folder
+	 * @param nestedSession   the session's nested session, whose project is snapshotted
+	 * @param otherSession    another nested session under the same results folder
 	 * @param artifact        the harness artifact that the session's runner uses
 	 * @param deniedReads     additional directories that the caller denies reading
 	 */
@@ -72,7 +72,7 @@ public abstract class SessionCommandLimitsContract
 		NestedSession nestedSession, NestedSession otherSession, Path artifact, List<Path> deniedReads)
 	{
 		/**
-		 * Returns the run's isolated home.
+		 * Returns the nested session's isolated home.
 		 *
 		 * @return the home
 		 */
@@ -115,8 +115,8 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Prepares a session of the fixture's run as the runner under test does, without starting a harness, and returns
-	 * what its commands receive.
+	 * Prepares a session of the fixture's nested session as the runner under test does, without starting a harness, and
+	 * returns what its commands receive.
 	 *
 	 * @param fixture         the user and run
 	 * @param sessionRequests how many sessions the session may request, as {@code --session-requests} sets it
@@ -126,7 +126,7 @@ public abstract class SessionCommandLimitsContract
 	protected abstract Limits limits(Fixture fixture, int sessionRequests) throws IOException;
 
 	/**
-	 * Returns the harness files in the run's home that the runner under test leaves readable to the session's
+	 * Returns the harness files in the nested session's home that the runner under test leaves readable to the session's
 	 * commands, because a tool that the session runs reads them. None of them may hold a login.
 	 *
 	 * @param fixture the user and run
@@ -138,9 +138,9 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Returns the session's own login in the run's home: the copy of the user's login that the runner under test puts
-	 * there for its harness, and leaves readable to the session's commands, because a harness that the session starts
-	 * from a command, such as the prompt optimizer's sessions, reads it.
+	 * Returns the session's own login in the nested session's home: the copy of the user's login that the runner under
+	 * test puts there for its harness, and leaves readable to the session's commands, because a harness that the session
+	 * starts from a command, such as the prompt optimizer's sessions, reads it.
 	 *
 	 * @param fixture the user and run
 	 * @return the login file, or empty if the runner under test copies no login, so that the session's commands may
@@ -160,8 +160,8 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that the session's commands run with the run's isolated home as their home directory, in every variable
-	 * that names it on the platform.
+	 * Verifies that the session's commands run with the nested session's isolated home as their home directory, in every
+	 * variable that names it on the platform.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -204,8 +204,9 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Verifies that the session's commands may not read any harness's login or configuration files, in the user's
-	 * home, in the Codex home that the user names, or in the run's home, except the session's own login in the run's
-	 * home, while the rest of the user's harness directories, where installed plugins live, stay readable.
+	 * home, in the Codex home that the user names, or in the nested session's home, except the session's own login in the
+	 * nested session's home, while the rest of the user's harness directories, where installed plugins live, stay
+	 * readable.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -254,10 +255,11 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that the session's commands may read the session's own login in the run's home, if the runner copies one
-	 * for a harness that they start, while every other login that a harness started from a command could find stays
-	 * unreadable: the user's logins of both harnesses, in the user's home and in the Codex home that the user names,
-	 * and the other harness's login in the run's home. A runner that copies no login leaves every login unreadable.
+	 * Verifies that the session's commands may read the session's own login in the nested session's home, if the runner
+	 * copies one for a harness that they start, while every other login that a harness started from a command could find
+	 * stays unreadable: the user's logins of both harnesses, in the user's home and in the Codex home that the user
+	 * names, and the other harness's login in the nested session's home. A runner that copies no login leaves every login
+	 * unreadable.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -282,7 +284,7 @@ public abstract class SessionCommandLimitsContract
 				}
 			}
 			ownLogin.ifPresent(otherLogins::remove);
-			// The fixture gives the user both harnesses' logins and the run's home both harnesses' logins
+			// The fixture gives the user both harnesses' logins and the nested session's home both harnesses' logins
 			Path codexHome = Path.of(fixture.userEnvironment().get("CODEX_HOME")).toAbsolutePath().normalize();
 			Path userHome = fixture.userHome().toAbsolutePath().normalize();
 			Path sessionHome = fixture.sessionHome().toAbsolutePath().normalize();
@@ -301,7 +303,7 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that the session's commands may not read another run under the results folder.
+	 * Verifies that the session's commands may not read another nested session under the results folder.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -320,8 +322,8 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that the session's commands may read the run's {@code link-targets} directory and the copy that the
-	 * session's project links to there, and may not write them: no path that the sandbox lets the commands write lies
+	 * Verifies that the session's commands may read the nested session's {@code link-targets} directory and the copy that
+	 * the session's project links to there, and may not write them: no path that the sandbox lets the commands write lies
 	 * in the directory or holds it.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -350,9 +352,9 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that a session that may request sessions can write the run's requests directory, and read but not write
-	 * its responses directory, that its commands are told where requests go and which launcher makes one, and that they
-	 * cannot read the directory that holds the runs of the sessions it requests.
+	 * Verifies that a session that may request sessions can write the nested session's requests directory, and read but
+	 * not write its responses directory, that its commands are told where requests go and which launcher makes one, and
+	 * that they cannot read the directory that holds the session folders of the sessions it requests.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -385,7 +387,7 @@ public abstract class SessionCommandLimitsContract
 			}
 			requireThat(readable(limits, requests), "requestsReadable").isTrue();
 			requireThat(readable(limits, responses), "responsesReadable").isTrue();
-			// The runs of requested sessions hold their logins while they run
+			// The session folders of requested sessions hold their logins while they run
 			Path requestedSlots = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession());
 			requireThat(requestedSlots, "requestedSlots").isDirectory();
 			requireThat(readable(limits, requestedSlots), "requestedRunsReadable").isFalse();
@@ -398,7 +400,7 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Verifies that a requested session can read its own project while the parent's results folder denies parent and
-	 * sibling runs, including credentials created after the sibling results folders were allocated.
+	 * sibling nested sessions, including credentials created after the sibling results folders were allocated.
 	 *
 	 * @throws IOException if fixture or configuration I/O fails
 	 */
@@ -431,12 +433,12 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that a session requested in a slot of its requester's run is denied the directories that stand for the
-	 * requester's requested sessions with one covering denial, however many groups there are, while its own project
-	 * and home remain readable through the sandbox's grants.
+	 * Verifies that a session requested in a slot of its requester's nested session is denied the directories that stand
+	 * for the requester's requested sessions with one covering denial, however many groups there are, while its own
+	 * project and home remain readable through the sandbox's grants.
 	 * <p>
 	 * Creates the requested roots through the first group boundary so that the single denial must cover two groups.
-	 * The child occupies a separate broker slot: constructing both runs and their command limits lets the same
+	 * The child occupies a separate broker slot: constructing both nested sessions and their command limits lets the same
 	 * check require every requested root to be unreadable while the child's own project and home remain readable.
 	 *
 	 * @throws IOException          if fixture or configuration I/O fails
@@ -492,9 +494,10 @@ public abstract class SessionCommandLimitsContract
 	}
 
 	/**
-	 * Verifies that a session that may request no session still has the run's requests and responses directories and
-	 * the variables that name them, so that a runner launch that its commands make goes to its runner, which refuses it,
-	 * instead of starting a harness inside the session's sandbox; and that no directory for a requested session exists.
+	 * Verifies that a session that may request no session still has the nested session's requests and responses
+	 * directories and the variables that name them, so that a runner launch that its commands make goes to its runner,
+	 * which refuses it, instead of starting a harness inside the session's sandbox; and that no directory for a requested
+	 * session exists.
 	 *
 	 * @throws IOException if the fixture cannot be created
 	 */
@@ -555,7 +558,7 @@ public abstract class SessionCommandLimitsContract
 
 	/**
 	 * Creates a user with every harness's login and configuration and an installed plugin, and a results folder with
-	 * the session's run and another run.
+	 * the session's nested session and another nested session.
 	 *
 	 * @param cleanup removes the fixture's directories
 	 * @return the fixture
@@ -591,14 +594,14 @@ public abstract class SessionCommandLimitsContract
 				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
-			// The session's project links to a file outside it, so the run holds a read-only copy of that file
+			// The session's project links to a file outside it, so the nested session holds a read-only copy of that file
 			Path source = Files.createDirectories(root.resolve("source"));
 			Files.writeString(root.resolve("notes.md"), "notes");
 			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../notes.md"));
 			manager.copyProject(source, nestedSession);
 			manager.snapshotProject(nestedSession);
 			Path sessionHome = nestedSession.directory().resolve("home");
-			// The logins and configuration that a runner may have put in the run's home for its harness
+			// The logins and configuration that a runner may have put in the nested session's home for its harness
 			for (String file : List.of(".claude/.credentials.json", ".claude/settings.json", ".claude.json",
 				".codex/auth.json", "auth.json", "config.toml"))
 			{

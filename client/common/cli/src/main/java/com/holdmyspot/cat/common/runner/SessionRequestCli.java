@@ -169,8 +169,8 @@ public final class SessionRequestCli
 	/**
 	 * Writes a request of a harness session's command outside a nested session for the session's request server, as
 	 * {@link #execute(String[], Path, Path, RequestLimits, SessionRequestAccess.Shell, Clock, Pause, PrintWriter)}
-	 * does for a run's runner. A request that no request server serves is refused before it changes anything, naming
-	 * the command that starts the server.
+	 * does for a nested session's runner. A request that no request server serves is refused before it changes anything,
+	 * naming the command that starts the server.
 	 *
 	 * @param args   submission options or await options
 	 * @param plugin the folder of the plugin that holds the command
@@ -216,7 +216,7 @@ public final class SessionRequestCli
 	 * printed even for unsuccessful requested sessions.
 	 *
 	 * @param args     submission options or await options
-	 * @param requests the owning run's requests directory
+	 * @param requests the owning nested session's requests directory
 	 * @param clock    measures the wait bound
 	 * @param pause    paces response checks
 	 * @param output   receives response paths or timeout instructions
@@ -238,7 +238,7 @@ public final class SessionRequestCli
 	 * Response paths are printed even for unsuccessful requested sessions.
 	 *
 	 * @param args       submission options or await options
-	 * @param requests   the owning run's requests directory
+	 * @param requests   the owning nested session's requests directory
 	 * @param shell      the shell that runs the request launcher
 	 * @param clock      measures the wait bound
 	 * @param pause      paces response checks
@@ -262,7 +262,7 @@ public final class SessionRequestCli
 	 * printed even for unsuccessful requested sessions.
 	 *
 	 * @param args       submission options or await options
-	 * @param requests   the owning run's requests directory
+	 * @param requests   the owning nested session's requests directory
 	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                   request leaves those files out of the trees that it carries
 	 * @param limits     the bounds that the request's archive must stay within
@@ -288,7 +288,7 @@ public final class SessionRequestCli
 	 * Response paths are printed even for unsuccessful requested sessions.
 	 *
 	 * @param args       submission options or await options
-	 * @param requests   the owning run's requests directory
+	 * @param requests   the owning nested session's requests directory
 	 * @param nullDevice the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                   request leaves those files out of the trees that it carries
 	 * @param limits     the bounds that the request's archive must stay within
@@ -470,8 +470,8 @@ public final class SessionRequestCli
 	 * Returns the exit status of a request that its response ended.
 	 *
 	 * @param response the request's response
-	 * @return 0 if the requested session completed, {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the run's
-	 *   runner refused the request, or 1 otherwise
+	 * @return 0 if the requested session completed, {@value HarnessRunnerOptions#REFUSED_LAUNCH_STATUS} if the nested
+	 *   session's runner refused the request, or 1 otherwise
 	 */
 	private static int exitStatus(JsonNode response)
 	{
@@ -486,7 +486,7 @@ public final class SessionRequestCli
 	/**
 	 * Returns the file in which the nested session's runner answers a request.
 	 *
-	 * @param requests the run's requests directory
+	 * @param requests the nested session's requests directory
 	 * @param id       the request identifier
 	 * @return the file
 	 */

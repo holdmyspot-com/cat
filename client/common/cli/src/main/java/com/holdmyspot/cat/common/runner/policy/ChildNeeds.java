@@ -12,7 +12,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * The accesses that a child session's commands need, and the paths they must not read, before the parent's policy
  * bounds them.
  *
- * @param sessionFolder the absolute folder that holds the child's run, which the launcher creates empty and owns
+ * @param sessionFolder the absolute folder that holds the child's nested session, which the launcher creates empty and
+ *                      owns
  * @param extraWrites   the absolute paths outside the session folder that the commands need to write, such as
  *                      dependency caches
  * @param readDenials   the absolute paths that the commands must not read, such as harness login files and the paths
@@ -25,7 +26,8 @@ public record ChildNeeds(Path sessionFolder, List<Path> extraWrites, List<Path> 
 	/**
 	 * Creates the needs of a child.
 	 *
-	 * @param sessionFolder the absolute folder that holds the child's run, which the launcher creates empty and owns
+	 * @param sessionFolder the absolute folder that holds the child's nested session, which the launcher creates empty
+	 *                      and owns
 	 * @param extraWrites   the absolute paths outside the session folder that the commands need to write, such as
 	 *                      dependency caches
 	 * @param readDenials   the absolute paths that the commands must not read, such as harness login files and the

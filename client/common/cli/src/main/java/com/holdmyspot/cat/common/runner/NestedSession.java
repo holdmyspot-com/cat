@@ -10,28 +10,28 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *
  * @param harness the harness name
  *
- * @param id the generated run identifier
+ * @param id the generated slot ID
  *
- * @param directory the owned run directory
+ * @param directory the owned session folder
  */
 public record NestedSession(String harness, String id, Path directory)
 {
 	/**
-	 * The name of the directory, in a run's {@code artifacts} directory, that holds the copies of the harness's native
-	 * session transcripts. A run has it only if its caller asked for session transcripts.
+	 * The name of the directory, in a nested session's {@code artifacts} directory, that holds the copies of the
+	 * harness's native session transcripts. A nested session has it only if its caller asked for session transcripts.
 	 */
 	public static final String SESSION_TRANSCRIPTS = "session-transcripts";
 
 
 	/**
-	 * Validates the owned run identity.
+	 * Validates the owned nested session identity.
 	 *
 	 * @param harness the harness name
 	 *
-	 * @param id the run's identifier: a generated or slot identifier, or for a run's copy the identifier that the
-	 *           harness gave its session
+	 * @param id the nested session's identifier: a generated or slot identifier, or for a results copy the identifier
+	 *           that the harness gave its session
 	 *
-	 * @param directory the owned run directory
+	 * @param directory the owned session folder
 	 *
 	 * @throws NullPointerException if {@code harness}, {@code id}, or {@code directory} are null
 	 *
@@ -47,8 +47,8 @@ public record NestedSession(String harness, String id, Path directory)
 	}
 
 	/**
-	 * Returns the directory that holds the copies of the harness's native session transcripts, whether or not the run
-	 * has it.
+	 * Returns the directory that holds the copies of the harness's native session transcripts, whether or not the nested
+	 * session has it.
 	 *
 	 * @return the directory
 	 */

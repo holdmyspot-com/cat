@@ -196,8 +196,8 @@ public final class WorktreeRequestClient implements WorktreeRegistrar
 
 		/**
 		 * Indicates whether the command removes a request's response directory once it has read the answer. A request
-		 * server keeps a response directory until its requester removes it; a run's runner removes the run's
-		 * responses with the run.
+		 * server keeps a response directory until its requester removes it; a nested session's runner removes the nested
+		 * session's responses with the nested session.
 		 *
 		 * @return {@code true} if the command removes it
 		 */

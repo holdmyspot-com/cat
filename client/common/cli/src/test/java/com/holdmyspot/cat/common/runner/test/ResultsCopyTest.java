@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.testng.annotations.Test;
 
 /**
- * Tests the turn-evidence and final-run copy boundaries.
+ * Tests the turn-evidence and final results copy boundaries.
  */
 public final class ResultsCopyTest
 {
@@ -104,7 +104,7 @@ public final class ResultsCopyTest
 	}
 
 	/**
-	 * Verifies that cleanup removes only turn copies and permits the subsequent full kept-run copy.
+	 * Verifies that cleanup removes only turn copies and permits the subsequent full results copy.
 	 *
 	 * @throws IOException if fixture files cannot be created or copied
 	 */
@@ -154,8 +154,9 @@ public final class ResultsCopyTest
 	}
 
 	/**
-	 * Verifies that a file of a kept run that cannot be read does not end the copy: the rest of the run, its project
-	 * included, is copied, and the result names every file that could not be copied with the failure that stopped it.
+	 * Verifies that a file of a session folder that cannot be read does not end the copy: the rest of the nested session,
+	 * its project included, is copied, and the result names every file that could not be copied with the failure that
+	 * stopped it.
 	 *
 	 * @throws IOException if fixture files cannot be created, protected or copied
 	 */
@@ -186,16 +187,16 @@ public final class ResultsCopyTest
 					toString()).
 				contains(target.resolve("artifacts/receipt.json").toString()).
 				contains("AccessDeniedException").
-				contains("The kept run at " + target + " is incomplete.");
+				contains("The results copy at " + target + " is incomplete.");
 		}
 	}
 
 	/**
-	 * Verifies that a session's pass over the runs of its results folder never meets another session's kept run while
-	 * that run is being copied, when a manifest that does not yet identify its directory, or is partly copied, would
-	 * make the pass fail the session.
+	 * Verifies that a session's pass over the nested sessions of its results folder never meets another session's results
+	 * copy while that run is being copied, when a manifest that does not yet identify its directory, or is partly copied,
+	 * would make the pass fail the session.
 	 * <p>
-	 * The case writes 800 real files into a run directory and copies it six times while a pruning thread runs against
+	 * The case writes 800 real files into a session folder and copies it six times while a pruning thread runs against
 	 * the kept results folder, which takes over a second. The test keeps that boundary because it asserts the real copy
 	 * races.
 	 *

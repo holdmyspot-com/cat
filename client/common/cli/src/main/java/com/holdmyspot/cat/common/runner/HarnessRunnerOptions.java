@@ -28,8 +28,8 @@ import tools.jackson.databind.json.JsonMapper;
  * @param effort the selected reasoning effort, or {@value #NO_REASONING} for none
  * @param output the optional durable bridge-transcript destination
  * @param receipt the optional retained-evidence receipt destination
- * @param sessionTranscripts indicates whether the harness writes its native session transcripts, which the run copies
- *   into its artifacts. A run leaves no harness transcript on disk otherwise.
+ * @param sessionTranscripts indicates whether the harness writes its native session transcripts, which the nested
+ *   session copies into its artifacts. A nested session leaves no harness transcript on disk otherwise.
  * @param installCat indicates whether CAT is installed in the isolated harness home
  * @param maximumConcurrency the shared CAT harness capacity ceiling
  * @param deniedReads the files and directories that the harness sandbox denies the session reading
@@ -39,13 +39,14 @@ import tools.jackson.databind.json.JsonMapper;
  *   any path that the project holds already
  * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under their
  *   manifests' names, beside CAT when {@code installCat} is also set
- * @param sessionRequests how many sessions the session may request over the run; {@code 0} allows none
+ * @param sessionRequests how many sessions the session may request over the nested session; {@code 0} allows none
  * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
  * @param requestDepth how many levels of requested sessions below the session may request sessions in turn, each
  *   with the session's own {@code sessionRequests}; {@code 0} lets the session's requested sessions request none
- * @param input the file that holds the run's JSON Lines records, or {@code null} to read them from standard input
- * @param conversation the folder of a {@link Conversation} whose messages are the run's records, and to which the
- *   bridge's records go too, or {@code null} if the run holds none
+ * @param input the file that holds the nested session's JSON Lines records, or {@code null} to read them from standard
+ *              input
+ * @param conversation the folder of a {@link Conversation} whose messages are the nested session's records, and to
+ *   which the bridge's records go too, or {@code null} if the nested session holds none
  * @param policyBound the file of the policy that bounds the session's sandbox policy, which the request server
  *   writes, or {@code null} if the launch names none
  * @param capacityHeld indicates whether the requester holds the session's capacity slot itself, so that the runner
@@ -54,15 +55,16 @@ import tools.jackson.databind.json.JsonMapper;
  * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
  * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, in the
  *   format of {@link ExtraPermissions}, or {@code null} if the launch asks for none
- * @param turnCopy the directory that receives a copy of the run's project and initial project at the end of each turn
- *   that completes, before the turn's {@code turn_completed} record, or {@code null} if the launch asks for none
+ * @param turnCopy the directory that receives a copy of the nested session's project and initial project at the end of
+ *   each turn that completes, before the turn's {@code turn_completed} record, or {@code null} if the launch asks for
+ *   none
  * @param continueAfterFailedTurn indicates whether the bridge keeps serving after a turn fails while the harness keeps
  *   running, because the records are a conversation's; a conversation named by {@code conversation} always does
- * @param slotId the identifier that the run takes, which is also its directory's name, or {@code null} for a newly
- *   generated identifier. A run with an identifier of its own starts in an empty directory and fails if the directory
- *   exists.
- * @param resumeSlot the harness session that the runner continues in the slot's run, which records it, or {@code null}
- *   for a runner that starts a session
+ * @param slotId the identifier that the nested session takes, which is also its directory's name, or {@code null} for a
+ *   newly generated identifier. A nested session with an identifier of its own starts in an empty directory and fails
+ *   if the directory exists.
+ * @param resumeSlot the harness session that the runner continues in the slot's nested session, which records it, or
+ *   {@code null} for a runner that starts a session
  */
 public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFolder, String model, String effort,
 	Path output, Path receipt, boolean sessionTranscripts, boolean installCat, int maximumConcurrency,
@@ -103,7 +105,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 *
 	 * @param args the legacy command and its options
 	 * @param harness the harness that the bridge runs, such as {@code claude} or {@code codex}
-	 * @param temporaryRoot where the runs are kept when the command line names no {@code --results}
+	 * @param temporaryRoot where the nested sessions are kept when the command line names no {@code --results}
 	 * @return parsed runner options
 	 * @throws IllegalArgumentException if the command is not {@code serve}, if its options are invalid, or if it names
 	 *   no {@code --results} outside a harness session
@@ -123,7 +125,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 *
 	 * @param args command-line arguments
 	 * @param harness the harness that the bridge runs, such as {@code claude} or {@code codex}
-	 * @param temporaryRoot where the runs are kept when the command line names no {@code --results}
+	 * @param temporaryRoot where the nested sessions are kept when the command line names no {@code --results}
 	 * @return parsed runner options
 	 * @throws IllegalArgumentException if arguments are unsupported, incomplete or invalid, if they name no
 	 *   {@code --model} or no {@code --effort}, or if they name no {@code --results} outside a harness session
@@ -156,7 +158,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			}
 			if (option.equals(RunnerArguments.HELD_OUT_OPTION))
 			{
-				// Only a request server or a run's broker uses the part, to pick the slot that the session runs in
+				// Only a request server or a nested session's broker uses the part, to pick the slot that the session runs in
 				index += 1;
 				continue;
 			}
@@ -603,8 +605,8 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 			case "codex" -> " `codex debug models` lists the models and the reasoning efforts that each accepts.";
 			default -> "";
 		};
-		throw new InvalidArgumentsException("Missing " + missing + ". A run requires both --model and --effort." +
-			values);
+		throw new InvalidArgumentsException("Missing " + missing +
+			". A nested session requires both --model and --effort." + values);
 	}
 
 	/**
@@ -634,7 +636,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param effort the selected reasoning effort
 	 * @param output the optional durable bridge-transcript destination
 	 * @param receipt the optional retained-evidence receipt destination
-	 * @param sessionTranscripts whether the harness writes its native session transcripts for the run to copy
+	 * @param sessionTranscripts whether the harness writes its native session transcripts for the nested session to copy
 	 * @param installCat whether CAT is installed in the isolated harness home
 	 * @param maximumConcurrency the shared CAT harness capacity ceiling
 	 * @param deniedReads the files and directories that the harness sandbox denies the session reading
@@ -642,12 +644,12 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param workspace the optional directory whose files are copied into the project on top of {@code project}
 	 * @param plugins the trial plugins, plugin directories that are installed into the isolated harness home under
 	 *   their manifests' names
-	 * @param sessionRequests how many sessions the session may request over the run
+	 * @param sessionRequests how many sessions the session may request over the nested session
 	 * @param capacityWait the longest wait for a capacity slot, or {@code null} to wait until one is free
 	 * @param requestDepth how many levels of requested sessions below the session may request sessions in turn
-	 * @param input the file that holds the run's JSON Lines records, or {@code null} to read standard input
-	 * @param conversation the folder of a conversation whose messages are the run's records, or {@code null} if the
-	 *   run holds none
+	 * @param input the file that holds the nested session's JSON Lines records, or {@code null} to read standard input
+	 * @param conversation the folder of a conversation whose messages are the nested session's records, or {@code null}
+	 *   if the nested session holds none
 	 * @param policyBound the file of the policy that bounds the session's sandbox policy, or {@code null} if the
 	 *   launch names none
 	 * @param capacityHeld whether the requester holds the session's capacity slot itself
@@ -655,13 +657,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @param gitEmail the Git user email of the copied project, or {@code null} to read the source project's
 	 * @param extraPermissions the file that lists the writes and hosts that the session needs beyond its harness's, or
 	 *   {@code null} if the launch asks for none
-	 * @param turnCopy the directory that receives a copy of the run's project and initial project at the end of each
-	 *   turn that completes, or {@code null} if the launch asks for none
+	 * @param turnCopy the directory that receives a copy of the nested session's project and initial project at the end
+	 *   of each turn that completes, or {@code null} if the launch asks for none
 	 * @param continueAfterFailedTurn whether the bridge keeps serving after a turn fails while the harness keeps
 	 *   running, because the records are a conversation's
-	 * @param slotId the identifier that the run takes, or {@code null} for a newly generated identifier
-	 * @param resumeSlot the harness session that the runner continues in the slot's run, or {@code null} for a runner
-	 *   that starts a session
+	 * @param slotId the identifier that the nested session takes, or {@code null} for a newly generated identifier
+	 * @param resumeSlot the harness session that the runner continues in the slot's nested session, or {@code null} for a
+	 *   runner that starts a session
 	 * @throws NullPointerException if any of the arguments are null, other than {@code output}, {@code receipt},
 	 *   {@code workspace}, {@code capacityWait}, {@code input}, {@code conversation}, {@code policyBound},
 	 *   {@code gitName}, {@code gitEmail}, {@code extraPermissions}, {@code turnCopy}, {@code slotId} and
@@ -669,7 +671,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 	 * @throws IllegalArgumentException if {@code model} or {@code effort} are blank, {@code resultsFolder} or an element
 	 *   of {@code deniedReads} or {@code readOnlyEvidence} is not absolute, {@code sessionRequests} or {@code
 	 *   requestDepth} is negative, {@code requestDepth} is positive while {@code sessionRequests} is zero, or {@code
-	 *   capacityWait} is not positive, {@code slotId} is not a run identifier, or {@code resumeSlot} is not a harness
+	 *   capacityWait} is not positive, {@code slotId} is not a slot ID, or {@code resumeSlot} is not a harness
 	 *   session identifier or is named without {@code slotId}
 	 */
 	public HarnessRunnerOptions
@@ -703,7 +705,7 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path resultsFold
 		if (requestDepth > 0 && sessionRequests == 0)
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
 		if (slotId != null && !NestedSessionManager.isSlotId(slotId))
-			throw new IllegalArgumentException("slotId is not a run identifier: " + slotId);
+			throw new IllegalArgumentException("slotId is not a slot ID: " + slotId);
 		if (resumeSlot != null)
 		{
 			if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(resumeSlot).matches())

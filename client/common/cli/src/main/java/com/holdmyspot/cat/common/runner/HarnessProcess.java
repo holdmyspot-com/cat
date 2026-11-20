@@ -108,7 +108,7 @@ public interface HarnessProcess extends AutoCloseable
 	 * is known. A harness that writes no transcript, or one whose session is not yet known, returns no path.
 	 * <p>
 	 * A process that was asked to keep session transcripts copies every transcript of its session, subagents' included,
-	 * into the run's {@link NestedSession#sessionTranscripts() session transcripts directory} when it closes.
+	 * into the nested session's {@link NestedSession#sessionTranscripts() session transcripts directory} when it closes.
 	 *
 	 * @return the path of the session's native transcript
 	 */

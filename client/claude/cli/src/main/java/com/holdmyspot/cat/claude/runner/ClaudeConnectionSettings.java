@@ -133,10 +133,10 @@ public final class ClaudeConnectionSettings
 	private static final String RULE_PATH_SYNTAX = "\\[]*?!";
 	/**
 	 * The variables that a nested Claude process takes from its parent: the connection variables, and the variables
-	 * that decide whether and how a session starts subagents, such as how many run at once, how deeply they nest,
-	 * which model and effort they use, and whether the built-in, fork, plan, workflow and team agents are offered. A
-	 * nested session therefore starts subagents the way its parent does. Claude Code has no other setting for this:
-	 * it reads these from its environment, where a user sets them directly or through a settings file's {@code env}.
+	 * that decide whether and how a session starts subagents, such as how many nested session at once, how deeply they
+	 * nest, which model and effort they use, and whether the built-in, fork, plan, workflow and team agents are offered.
+	 * A nested session therefore starts subagents the way its parent does. Claude Code has no other setting for this: it
+	 * reads these from its environment, where a user sets them directly or through a settings file's {@code env}.
 	 */
 	private static final Set<String> INHERITED_VARIABLES = Set.of("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN",
 		"ANTHROPIC_BASE_URL", "CLAUDE_CODE_OAUTH_TOKEN",
@@ -202,7 +202,7 @@ public final class ClaudeConnectionSettings
 	 * each of {@code deniedReads}: the sandbox denies its commands through {@code sandbox.filesystem.denyRead}, and a
 	 * {@code Read} rule in {@code permissions.deny} denies its file tools, which the sandbox does not confine.
 	 * <p>
-	 * Claude Code loads the instruction files of every directory above its working directory. A run directory can lie
+	 * Claude Code loads the instruction files of every directory above its working directory. A session folder can lie
 	 * inside another project, such as the project whose prompts CAT measures, so the settings exclude every
 	 * instruction file above {@code isolationRoot} through {@code claudeMdExcludes}. The settings keep the parent's
 	 * choice of which instruction files load, such as {@code AGENTS.md} beside or in place of {@code CLAUDE.md}, so
@@ -258,11 +258,11 @@ public final class ClaudeConnectionSettings
 	/**
 	 * Writes settings for an isolated Claude instance, as
 	 * {@link #writeIsolatedSettings(HarnessRunnerScope, Path, Path, Path, Path, List, Path, List, String)}
-	 * does, except that the sandbox also lets the instance's commands write the run's requests directory when the
-	 * session may request sessions. It also permits the literal launcher command with any arguments and reads of
-	 * the run's responses directory and its descendants. The sandbox lets the instance's commands write no path
-	 * under the project's {@code .git}: Claude Code keeps the directory in which Git registers linked worktrees
-	 * read-only over any grant, so the commands register no worktree themselves.
+	 * does, except that the sandbox also lets the instance's commands write the nested session's requests directory when
+	 * the session may request sessions. It also permits the literal launcher command with any arguments and reads of the
+	 * nested session's responses directory and its descendants. The sandbox lets the instance's commands write no path
+	 * under the project's {@code .git}: Claude Code keeps the directory in which Git registers linked worktrees read-only
+	 * over any grant, so the commands register no worktree themselves.
 	 *
 	 * @param scope                    services shared for the runner process lifetime
 	 * @param source                   the host Claude settings file
@@ -327,7 +327,7 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's project, which Claude Code lets its commands write, or
 	 *                                 {@code null} if the instance has none
-	 * @param sessionFolder            the instance's run directory, which {@code bound} always lets it write
+	 * @param sessionFolder            the instance's session folder, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs, which join its needs
@@ -372,7 +372,7 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's project, which Claude Code lets its commands write, or
 	 *                                 {@code null} if the instance has none
-	 * @param sessionFolder            the instance's run directory, which {@code bound} always lets it write
+	 * @param sessionFolder            the instance's session folder, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs
@@ -429,7 +429,7 @@ public final class ClaudeConnectionSettings
 	 *                                 none
 	 * @param project                  the instance's project, which Claude Code lets its commands write, or
 	 *                                 {@code null} if the instance has none
-	 * @param sessionFolder            the instance's run directory, which {@code bound} always lets it write
+	 * @param sessionFolder            the instance's session folder, which {@code bound} always lets it write
 	 * @param bound                    the policy that bounds the instance's, or {@code null} if nothing bounds it
 	 * @param extraPermissions         the writes and hosts that the instance's commands need beyond what Claude Code
 	 *                                 needs
@@ -506,8 +506,8 @@ public final class ClaudeConnectionSettings
 			for (String grant : PERMISSION_GRANTS)
 				grants.add(grant);
 		}
-		// The project's links to targets outside it lead to the copies in the run's link-targets directory, which the
-		// file tools read through the links; no rule or sandbox path lets the session write there
+		// The project's links to targets outside it lead to the copies in the nested session's link-targets directory,
+		// which the file tools read through the links; no rule or sandbox path lets the session write there
 		grants.add("Read(" + rulePattern(NestedSessionManager.linkTargets(sessionFolder)) + "/**)");
 		// A session without a sandbox has no command to run and requests no session
 		if (sandboxed && requestAccess != null)
@@ -565,7 +565,7 @@ public final class ClaudeConnectionSettings
 	 * Returns an isolated instance's sandbox policy: its needs, bounded by the policy that bounds it.
 	 *
 	 * @param bound          the policy that bounds the instance's, or {@code null} if nothing bounds it
-	 * @param sessionFolder  the instance's run directory, which {@code bound} always lets it write: only the writes
+	 * @param sessionFolder  the instance's session folder, which {@code bound} always lets it write: only the writes
 	 *                       outside it need {@code bound}'s permission, and the instance's commands write only the
 	 *                       paths of its policy inside it
 	 * @param claudeHome     the instance's home directory, which it always writes

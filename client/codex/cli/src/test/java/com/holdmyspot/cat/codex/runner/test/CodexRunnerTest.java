@@ -66,7 +66,7 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies CAT is installed from this run's marketplace into the fresh isolated home.
+	 * Verifies CAT is installed from this nested session's marketplace into the fresh isolated home.
 	 */
 	@Test
 	public void reinstallsCatFromTheSessionMarketplace()
@@ -77,7 +77,7 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies a trial plugin is installed from its own run-local marketplace, which bears its name.
+	 * Verifies a trial plugin is installed from its own session-local marketplace, which bears its name.
 	 */
 	@Test
 	public void installsTrialPluginByName()
@@ -230,7 +230,7 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that the user's approvals of each installed plugin's hooks are copied into the isolated configuration,
-	 * under the run-local marketplace of each trial plugin, and that no approval of an unlisted plugin is.
+	 * under the session-local marketplace of each trial plugin, and that no approval of an unlisted plugin is.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -528,8 +528,8 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that the app-server's environment marks the session as a CAT run, so that the session's commands send
-	 * their sessions to the nested session's runner.
+	 * Verifies that the app-server's environment marks the session as a nested session, so that the session's commands
+	 * send their sessions to the nested session's runner.
 	 */
 	@Test
 	public void marksNestedSession()
@@ -745,9 +745,9 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on Linux a session whose project links to a file outside it reads the run's link-targets directory,
-	 * which holds the read-only copy that the link leads to, without writing it: the permission profile grants it as
-	 * read-only and never as writable, and the bubblewrap around the app-server mounts it back read-only, never
+	 * Verifies that on Linux a session whose project links to a file outside it reads the nested session's link-targets
+	 * directory, which holds the read-only copy that the link leads to, without writing it: the permission profile grants
+	 * it as read-only and never as writable, and the bubblewrap around the app-server mounts it back read-only, never
 	 * writable, inside the results folder that it hides.
 	 *
 	 * @throws IOException if the fixture cannot be created
@@ -900,10 +900,11 @@ public final class CodexRunnerTest
 	 * Verifies that on Linux a session that reads no evidence under the results folder is denied the whole results
 	 * folder as one path, besides the Codex session logs in its home and the paths that the caller denies, but not its
 	 * own login in its home, which a Codex process that a command starts reads. The sandbox keeps the session's project
-	 * and home writable inside the denied root, so the session reads them while every other run, including one that
-	 * starts later, and the workspaces stay hidden. The session log directory exists so that the sandbox can deny it.
+	 * and home writable inside the denied root, so the session reads them while every other nested session, including one
+	 * that starts later, and the workspaces stay hidden. The session log directory exists so that the sandbox can deny
+	 * it.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesResultsFolderOnLinux() throws IOException
@@ -938,7 +939,7 @@ public final class CodexRunnerTest
 	 * reads the session's rollout there to learn that the user interrupted the session's turn, finds the rollout
 	 * instead of failing with an access denial. The session is denied only the results folder and the caller's paths.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void readableRolloutWhenRequestsAllowed() throws IOException
@@ -964,10 +965,10 @@ public final class CodexRunnerTest
 
 	/**
 	 * Verifies that a session that may request no session stays denied the directory where Codex logs its events,
-	 * because the session under test must not read the record of its own run, and no command of it starts a session
-	 * that would need to read the log.
+	 * because the session under test must not read the record of its own nested session, and no command of it starts a
+	 * session that would need to read the log.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniedRolloutWhenNoRequestsAllowed() throws IOException
@@ -997,7 +998,7 @@ public final class CodexRunnerTest
 	 * installed in the requesting session's home, such as a launcher that the request's prompt names, while its
 	 * permission profile still denies it the rest of the requesting nested session, such as that session's login.
 	 *
-	 * @throws IOException if the runs cannot be created
+	 * @throws IOException if the nested sessions cannot be created
 	 */
 	@Test
 	public void readsPluginOfRequestingSession() throws IOException
@@ -1116,7 +1117,7 @@ public final class CodexRunnerTest
 	 * process that a command starts reads. Their sandboxes keep the session's project and home readable and writable
 	 * inside the denied root.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesResultsFolderOutsideLinux() throws IOException
@@ -1152,7 +1153,7 @@ public final class CodexRunnerTest
 	 * whole results folder as one path, because their sandboxes keep a read-only allowance readable inside a denied
 	 * root.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesResultsBesideEvidenceOutsideLinux() throws IOException
@@ -1183,12 +1184,12 @@ public final class CodexRunnerTest
 	}
 
 	/**
-	 * Verifies that on Linux a session that validates evidence under the results folder is denied each other run by its
-	 * own path rather than the whole root, because the sandbox would hide read-only evidence inside a denied root. The
-	 * session can still read its project, the rest of its home, including its own login, and the evidence that it
-	 * validates.
+	 * Verifies that on Linux a session that validates evidence under the results folder is denied each other nested
+	 * session by its own path rather than the whole root, because the sandbox would hide read-only evidence inside a
+	 * denied root. The session can still read its project, the rest of its home, including its own login, and the
+	 * evidence that it validates.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesEachSessionBesideEvidenceInRoot() throws IOException
@@ -1228,7 +1229,7 @@ public final class CodexRunnerTest
 	 * holds the results folder, because their sandboxes keep the session's project, home and evidence readable inside
 	 * it.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesProjectBesideEvidence() throws IOException
@@ -1278,7 +1279,7 @@ public final class CodexRunnerTest
 	 * inside the project, because the Linux sandbox fails to start when it must hide a directory inside one that it
 	 * already hides, while a denied path inside the session's home stays denied.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void skipsDeniedReadsInsideDeniedDirectory() throws IOException

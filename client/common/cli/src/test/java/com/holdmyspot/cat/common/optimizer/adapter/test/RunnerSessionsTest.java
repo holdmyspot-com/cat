@@ -313,7 +313,7 @@ public final class RunnerSessionsTest
 	 * Creates a port whose runner plays a script.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param resultsFolder the directory for run directories
+	 * @param resultsFolder the directory for session folders
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
@@ -331,7 +331,7 @@ public final class RunnerSessionsTest
 	 *
 	 * @param jvm the borrowed process scope
 	 * @param artifact the installed artifact that supplies the roles' rules
-	 * @param resultsFolder the directory for run directories
+	 * @param resultsFolder the directory for session folders
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param arguments receives the runner's options for each session
@@ -962,7 +962,7 @@ public final class RunnerSessionsTest
 	/**
 	 * Verifies every turn retains its ordered messages, independently of the bridge's final-response field.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException if the session cannot determine a result
 	 * @throws TimeoutException if the session does not finish
@@ -1010,7 +1010,7 @@ public final class RunnerSessionsTest
 	 * Verifies that a session sends the turn that its follow-up chooses from the replies to the listed turns, and that
 	 * the result includes the reply to that turn.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws ExecutionException if the session cannot determine a result
 	 * @throws TimeoutException if the session does not finish
@@ -1061,8 +1061,8 @@ public final class RunnerSessionsTest
 
 	/**
 	 * Verifies that CAT sends the interrupt request as a record that holds only its type, which is all that a request
-	 * served through a run's runner may send, and classifies the supplied terminal completion as Interrupted. This
-	 * observes CAT's outgoing request, not native harness timing.
+	 * served through a nested session's runner may send, and classifies the supplied terminal completion as Interrupted.
+	 * This observes CAT's outgoing request, not native harness timing.
 	 *
 	 * @throws IOException if a fixture cannot be created or read
 	 * @throws InterruptedException if the wait is interrupted
@@ -1709,7 +1709,7 @@ public final class RunnerSessionsTest
 	 * Creates a port whose runner plays a script and records the turn requests that reach the harness.
 	 *
 	 * @param jvm the borrowed process scope
-	 * @param resultsFolder the directory for run directories
+	 * @param resultsFolder the directory for session folders
 	 * @param capacity the shared capacity
 	 * @param clock the clock for time limits
 	 * @param script what the harness does, turn by turn

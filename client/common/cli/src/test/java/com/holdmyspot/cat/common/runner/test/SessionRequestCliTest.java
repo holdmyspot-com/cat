@@ -313,8 +313,8 @@ public final class SessionRequestCliTest
 	 * same target, which the receiver extracts as a link that resolves inside the extracted project, and a link whose
 	 * target lies outside the project as a read-only copy of the target's file or directory tree, even when a link's
 	 * target is longer than a tar header holds. The receiver extracts each copy beside the project and links to it, so
-	 * that the run's copy of the extracted project holds read-only copies of them, which the run checks for changes;
-	 * the targets stay unchanged, and the run and the extracted request still delete.
+	 * that the nested session's copy of the extracted project holds read-only copies of them, which the nested session
+	 * checks for changes; the targets stay unchanged, and the nested session and the extracted request still delete.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -372,7 +372,7 @@ public final class SessionRequestCliTest
 			requireThat(Files.readString(copy.resolve("tree/a.md")), "a").isEqualTo("a");
 			requireReadOnlyCopies(copy);
 
-			// The runner copies the extracted project into the run, whose project links to read-only copies of the
+			// The runner copies the extracted project into the nested session, whose project links to read-only copies of the
 			// targets beside it, which the runner checks for changes
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());

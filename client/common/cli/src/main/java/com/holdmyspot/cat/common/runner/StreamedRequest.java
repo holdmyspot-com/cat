@@ -24,10 +24,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * The files through which a request made inside a nested session streams its records to the nested session's runner
  * after the request's archive, so that a conversation's later turns and interrupts reach the requested session.
  * <p>
- * The sender holds a lock on {@code <id>.lock} in the run's requests directory from before it publishes the archive
- * until it ends, so the runner learns that the sender ended, however it ended, when the lock is free. It publishes
- * each record as {@code <id>.turn-<n>.json}, numbered from 1, by renaming a finished file into place. The runner takes
- * each file in turn without following a link, refusing a file with another name, and deletes it.
+ * The sender holds a lock on {@code <id>.lock} in the nested session's requests directory from before it publishes the
+ * archive until it ends, so the runner learns that the sender ended, however it ended, when the lock is free. It
+ * publishes each record as {@code <id>.turn-<n>.json}, numbered from 1, by renaming a finished file into place. The
+ * runner takes each file in turn without following a link, refusing a file with another name, and deletes it.
  */
 final class StreamedRequest
 {
@@ -74,7 +74,7 @@ final class StreamedRequest
 	/**
 	 * Indicates whether a request's sender still runs.
 	 *
-	 * @param requests the run's requests directory
+	 * @param requests the nested session's requests directory
 	 * @param id       the request identifier
 	 * @return {@code false} if the sender's lock is missing, is not a regular file, or is free
 	 * @throws IOException if the lock cannot be checked
@@ -117,7 +117,7 @@ final class StreamedRequest
 	 * Takes the next record of a request, if its sender has published it.
 	 *
 	 * @param json      the record mapper
-	 * @param requests  the run's requests directory
+	 * @param requests  the nested session's requests directory
 	 * @param id        the request identifier
 	 * @param turn      the record's number, from 1
 	 * @param directory a private directory of the runner that receives a copy of the record
@@ -216,7 +216,7 @@ final class StreamedRequest
 		/**
 		 * Creates the request's lock and takes it.
 		 *
-		 * @param requests the run's requests directory
+		 * @param requests the nested session's requests directory
 		 * @param id       the request identifier
 		 * @throws NullPointerException if any of the arguments are null
 		 * @throws IOException          if the lock cannot be created or taken

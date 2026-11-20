@@ -156,19 +156,19 @@ public final class CodexRunnerCli
 	 * <ul>
 	 * <li>Inside a nested session whose runner lets its session request sessions, the launch becomes a session request:
 	 * the
-	 *   run's own runner starts the session outside the run's sandbox, and this command returns its transcript and
-	 *   receipt.</li>
+	 *   nested session's own runner starts the session outside the nested session's sandbox, and this command returns its
+	 *   transcript and receipt.</li>
 	 *   <li>Inside a nested session whose runner lets its session request none, the launch is refused.</li>
 	 *   <li>When a harness runs the command, a launch that names an option that only CAT's own starters pass is
 	 *   refused.</li>
 	 *   <li>When Codex runs the command outside a nested session, the launch becomes a request to the session's
 	 *   {@link RequestServer}, which starts the session outside the session's sandbox, and this command writes its
-	 *   transcript, receipt and kept run. Without a request server that serves the session, the launch is refused.
+	 *   transcript, receipt and results copy. Without a request server that serves the session, the launch is refused.
 	 *   </li>
 	 *   <li>When only Claude Code runs the command, the launch is refused: this plugin's request server serves no
 	 *   Claude Code session, and the message names the Claude Code plugin's runner instead.</li>
-	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a run's runner, name
-	 *   it, serves its session in this process within that bound.</li>
+	 *   <li>A launch that names {@value PolicyBoundFile#OPTION}, as CAT's own starters, such as a nested session's
+	 *   runner, name it, serves its session in this process within that bound.</li>
 	 *   <li>Otherwise no harness session runs the command, as in a terminal or a script, and the launch is refused
 	 *   with a message that says to run it from a Claude Code or Codex session.</li>
 	 * </ul>
@@ -351,9 +351,9 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Opens the tool scope of a runner command. Its CAT session directory, whose temporary directory holds the runs
-	 * of a command line that names no {@code --results}, belongs to the session whose tool shell runs the command, in
-	 * the nearest CAT project.
+	 * Opens the tool scope of a runner command. Its CAT session directory, whose temporary directory holds the nested
+	 * sessions of a command line that names no {@code --results}, belongs to the session whose tool shell runs the
+	 * command, in the nearest CAT project.
 	 *
 	 * @param workingDirectory the directory from which the command was invoked
 	 * @param environment the command's environment, whose session variable names the session
@@ -413,7 +413,8 @@ public final class CodexRunnerCli
 		requireThat(capacityForMaximum, "capacityForMaximum").isNotNull();
 		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
-			// A runner that continues a run's session takes the options that the run's start fixed
+			// A runner that continues a nested session's harness session takes the options that the nested session's start
+			// fixed
 			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
@@ -426,7 +427,7 @@ public final class CodexRunnerCli
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
 			NestedSessionManager opened = NestedSessionManager.openResultsFolder(process.fileLocks(), options.resultsFolder(),
 				Clock.systemUTC(), replacer);
-			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
+			// A nested session in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
 			NestedSessionManager manager = inSlot(opened, options.slotId(), args);
 			HarnessCapacity.Permit permit = null;
 			if (!options.capacityHeld())
@@ -455,13 +456,15 @@ public final class CodexRunnerCli
 	}
 
 	/**
-	 * Gives a run manager the identifier of the slot that the run is in, if it is in one, and has a run in a slot
-	 * record the launch options that its start fixed, so that a later runner can continue its harness session.
+	 * Gives a nested-session manager the identifier of the slot that the nested session is in, if it is in one, and has a
+	 * nested session in a slot record the launch options that its start fixed, so that a later runner can continue its
+	 * harness session.
 	 *
 	 * @param manager the manager of the results folder
-	 * @param slotId  the slot's run identifier, or {@code null} if the run is not in a slot
+	 * @param slotId  the slot's ID, or {@code null} if the nested session is not in a slot
 	 * @param args    the launch's options
-	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
+	 * @return a manager whose nested sessions all have the slot's identifier, or {@code manager} if the nested session is
+	 *         not in a slot
 	 */
 	private static NestedSessionManager inSlot(NestedSessionManager manager, String slotId, String[] args)
 	{
@@ -532,7 +535,7 @@ public final class CodexRunnerCli
 	 * names.
 	 *
 	 * @param args          the bridge command and its options, optionally starting with {@code serve}
-	 * @param temporaryRoot where the runs are kept when the command names no {@code --results}
+	 * @param temporaryRoot where the nested sessions are kept when the command names no {@code --results}
 	 * @return the parsed options
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if an option is unknown, has no value or has an invalid value, such as a
@@ -633,7 +636,8 @@ public final class CodexRunnerCli
 	{
 		assert runnerArgs != null;
 		assert agentName != null;
-		// A runner that continues a run's session runs it under the model and effort of the launch that resumes it
+		// A runner that continues a nested session's harness session runs it under the model and effort of the launch that
+		// resumes it
 		if (agentName.isBlank() || List.of(runnerArgs).contains(RunnerArguments.RESUME_SLOT_OPTION))
 			return runnerArgs;
 		HarnessRunnerOptions.requireNoProfileBesideAgent(runnerArgs);

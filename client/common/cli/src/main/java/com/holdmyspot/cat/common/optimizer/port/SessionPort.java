@@ -11,7 +11,7 @@ import java.util.Optional;
 /**
  * Starts nested sessions through the current harness's runner.
  * <p>
- * Each session runs in a fresh, isolated run directory. Implementations hold one shared-capacity permit for the
+ * Each session runs in a fresh, isolated session folder. Implementations hold one shared-capacity permit for the
  * session's lifetime.
  */
 public interface SessionPort
@@ -191,9 +191,9 @@ public interface SessionPort
 	List<String> installedPluginNames() throws IOException;
 
 	/**
-	 * Lists the directories that hold the runs of every session that this port starts, for the run of every campaign of
-	 * the project. The results folder holds the sessions of the development part and the held-out results folder holds
-	 * the sessions of the held-out part. Each run is recorded as {@code <directory>/<harness>/<run>/session.json}.
+	 * Lists the directories that hold the nested sessions that this port starts, for the run of every campaign of the
+	 * project. The results folder holds the sessions of the development part and the held-out results folder holds the
+	 * sessions of the held-out part. Each nested session is recorded as {@code <directory>/<harness>/<id>/session.json}.
 	 *
 	 * @return the absolute directories, which may not exist yet
 	 */

@@ -20,7 +20,7 @@ public final class HarnessRunnerScopeTest
 	}
 
 	/**
-	 * Verifies the mapper of a live run scope writes indented JSON.
+	 * Verifies the mapper of a live nested session scope writes indented JSON.
 	 */
 	@Test
 	public void writesIndentedJson()

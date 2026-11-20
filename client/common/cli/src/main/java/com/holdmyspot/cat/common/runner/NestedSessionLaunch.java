@@ -19,10 +19,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 /**
- * The launch options that a run's start fixed, which a run keeps in {@value #FILE_NAME} beside its manifest, so that a
- * later runner can continue the run's harness session as the run started it. The options are those that decide what
- * the session's project, plugins, sandbox and tools are; the model, the effort and the options that only describe one
- * launch, such as its output, may differ from one launch of the run to the next.
+ * The launch options that a nested session's start fixed, which a nested session keeps in {@value #FILE_NAME} beside
+ * its manifest, so that a later runner can continue the nested session's harness session as the nested session started
+ * it. The options are those that decide what the session's project, plugins, sandbox and tools are; the model, the
+ * effort and the options that only describe one launch, such as its output, may differ from one launch of the nested
+ * session to the next.
  * <p>
  * The file holds a JSON object of exactly two fields: {@code schema_version}, which is {@code 1}, and
  * {@code arguments}, the fixed options and their values in the order the launch named them.
@@ -30,17 +31,17 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 public final class NestedSessionLaunch
 {
 	/**
-	 * The name of the file, in the run's directory, that records the launch.
+	 * The name of the file, in the nested session's directory, that records the launch.
 	 */
 	public static final String FILE_NAME = "launch.json";
 	/**
-	 * The options that the run's start fixed and that take a value.
+	 * The options that the nested session's start fixed and that take a value.
 	 */
 	public static final Set<String> FIXED_VALUE_OPTIONS = Set.of("--project", "--plugin", "--workspace",
 		"--read-only-evidence", "--deny-read", "--instruction-files", "--session-role", "--tool-output-token-limit",
 		"--agent");
 	/**
-	 * The options that the run's start fixed and that take no value.
+	 * The options that the nested session's start fixed and that take no value.
 	 */
 	public static final Set<String> FIXED_FLAG_OPTIONS = Set.of("--install-cat");
 	private static final int SCHEMA_VERSION = 1;
@@ -79,19 +80,19 @@ public final class NestedSessionLaunch
 	}
 
 	/**
-	 * Returns the options of a runner that continues a run's harness session: the options that the run's start fixed,
-	 * which its {@value #FILE_NAME} records, followed by the runner's own. A runner that names no
+	 * Returns the options of a runner that continues a nested session's harness session: the options that the nested
+	 * session's start fixed, which its {@value #FILE_NAME} records, followed by the runner's own. A runner that names no
 	 * {@value RunnerArguments#RESUME_SLOT_OPTION} gets its own options back.
 	 *
 	 * @param json    the mapper
-	 * @param harness the run's harness
+	 * @param harness the nested session's harness
 	 * @param args    the runner's options
 	 * @return the options that the runner runs with
 	 * @throws NullPointerException      if any of the arguments are null
-	 * @throws InvalidArgumentsException if the runner resumes a run but names no {@code --results} or
-	 *                                   {@value RunnerArguments#SLOT_ID_OPTION}, or names an option that the run fixed
-	 *                                   at its start
-	 * @throws IOException               if the run records no launch, or its record is malformed
+	 * @throws InvalidArgumentsException if the runner resumes a nested session but names no {@code --results} or
+	 *                                   {@value RunnerArguments#SLOT_ID_OPTION}, or names an option that the nested
+	 *                                   session fixed at its start
+	 * @throws IOException               if the nested session records no launch, or its record is malformed
 	 */
 	public static String[] resumedArguments(JsonMapper json, String harness, String[] args) throws IOException
 	{
@@ -104,8 +105,8 @@ public final class NestedSessionLaunch
 		List<String> fixed = fixedArguments(args);
 		if (!fixed.isEmpty())
 		{
-			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " continues a run that fixed " +
-				fixed.getFirst() + " at its start, so the runner cannot name it");
+			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION +
+				" continues a nested session that fixed " + fixed.getFirst() + " at its start, so the runner cannot name it");
 		}
 		String resultsFolder = value(options, "--results");
 		String slotId = value(options, RunnerArguments.SLOT_ID_OPTION);
@@ -135,10 +136,10 @@ public final class NestedSessionLaunch
 	}
 
 	/**
-	 * Records a run's fixed launch options in its directory.
+	 * Records a nested session's fixed launch options in its directory.
 	 *
 	 * @param json      the mapper
-	 * @param directory the run's directory
+	 * @param directory the nested session's directory
 	 * @param arguments the fixed options and their values
 	 * @param replacer  replaces the file in one step
 	 * @throws IOException if the file cannot be written
@@ -168,12 +169,12 @@ public final class NestedSessionLaunch
 	}
 
 	/**
-	 * Reads a run's fixed launch options.
+	 * Reads a nested session's fixed launch options.
 	 *
 	 * @param json      the mapper
-	 * @param directory the run's directory
+	 * @param directory the nested session's directory
 	 * @return the fixed options and their values
-	 * @throws IOException if the run records no launch, or its record is malformed
+	 * @throws IOException if the nested session records no launch, or its record is malformed
 	 */
 	static List<String> read(JsonMapper json, Path directory) throws IOException
 	{
@@ -181,7 +182,7 @@ public final class NestedSessionLaunch
 		assert directory != null;
 		Path file = directory.resolve(FILE_NAME);
 		if (Files.notExists(file))
-			throw new IOException("The run records no launch: " + file + " does not exist");
+			throw new IOException("The nested session records no launch: " + file + " does not exist");
 		JsonNode launch;
 		try
 		{

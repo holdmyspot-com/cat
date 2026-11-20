@@ -58,7 +58,7 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param output the JSONL client output
 	 *
-	 * @return the run that completed the protocol
+	 * @return the nested session that completed the protocol
 	 *
 	 * @throws IOException if the bridge protocol, harness, or stream fails
 	 */
@@ -76,7 +76,7 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param output the durable JSONL client-output destination
 	 *
-	 * @return the run that completed the protocol
+	 * @return the nested session that completed the protocol
 	 *
 	 * @throws IOException if the bridge protocol, harness, or transcript I/O fails
 	 */
@@ -86,7 +86,7 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Starts one session and serves JSONL messages while applying owned-run lifecycle transitions.
+	 * Starts one session and serves JSONL messages while applying nested-session lifecycle transitions.
 	 * <p>
 	 * While a turn writes no response for 30 seconds, the bridge writes a {@code waiting} response with the turn's
 	 * {@code quiet_seconds}, and repeats it every 30 seconds while the turn stays quiet.
@@ -95,13 +95,13 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
-	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
+	 * @param manager the nested-session manager, or {@code null} when the caller owns lifecycle transitions
 	 *
 	 * @param input the JSONL client input
 	 *
 	 * @param output the JSONL client output
 	 *
-	 * @return the run that completed the protocol
+	 * @return the nested session that completed the protocol
 	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
@@ -121,7 +121,7 @@ public final class HarnessRunnerBridge
 	 * @param output the bridge output
 	 * @param options the runner options, null when the caller does not serve the session as a runner
 	 * @param requestedStarter starts child runners, null only when no request broker starts
-	 * @return the completed parent run
+	 * @return the completed parent nested session
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
@@ -163,7 +163,7 @@ public final class HarnessRunnerBridge
 	 * @param options the runner options, null when the caller does not serve the session as a runner
 	 * @param requestedStarter starts child runners, null only when no request broker starts
 	 * @param conversation the conversation whose messages are the bridge's records, or null to read {@code input}
-	 * @return the completed parent run
+	 * @return the completed parent nested session
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
@@ -175,18 +175,19 @@ public final class HarnessRunnerBridge
 		boolean completed = false;
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
-		// The thread of the last turn that started, which may still write the run after the turn is stopped
+		// The thread of the last turn that started, which may still write the nested session after the turn is stopped
 		Thread activeTurnThread = null;
 		CountDownLatch activeTurnStarted = null;
 		// Set once the client interrupts the active turn
 		AtomicBoolean activeTurnInterrupted = new AtomicBoolean();
 		AtomicBoolean transcriptRecorded = new AtomicBoolean();
 		AtomicBoolean harnessSessionRecorded = new AtomicBoolean();
-		// A run in a slot is fed by its server, which sends the complete record unless it ends first. A run whose server
-		// ended before the run did records no end, so that its harness session can continue.
+		// A nested session in a slot is fed by its server, which sends the complete record unless it ends first. A nested
+		// session whose server ended before the nested session did records no end, so that its harness session can
+		// continue.
 		boolean recordsEnd = true;
-		// A runner that resumes a run records no end until its harness reports the run's session, so that a session that
-		// the harness cannot continue stays retained
+		// A runner that resumes a nested session records no end until its harness reports the nested session's harness
+		// session, so that a session that the harness cannot continue stays retained
 		boolean resumes = options != null && options.resumeSlot() != null && manager != null;
 		// A conversation stays open after a turn fails while the harness keeps running, so that the asking session can
 		// send the next turn once the cause is gone, such as a usage limit that resets
@@ -376,8 +377,8 @@ public final class HarnessRunnerBridge
 			}
 			if (manager != null)
 			{
-				// The session has ended, so the copies are as it left them; it may not end the run with a result that
-				// rests on changed copies
+				// The session has ended, so the copies are as it left them; it may not end the nested session with a result
+				// that rests on changed copies
 				copiesChecked = true;
 				Optional<String> changes = manager.changedLinkCopies(nestedSession);
 				if (changes.isPresent())
@@ -388,7 +389,7 @@ public final class HarnessRunnerBridge
 		}
 		catch (IOException e)
 		{
-			// The run's end must follow the turn's last write to it
+			// The nested session's end must follow the turn's last write to it
 			endTurn(activeTurn, activeTurnThread);
 			if (manager != null && nestedSession != null && recordsEnd && (!resumes || harnessSessionRecorded.get()))
 			{
@@ -405,19 +406,19 @@ public final class HarnessRunnerBridge
 		}
 		finally
 		{
-			// The caller may remove the run once the bridge returns, so the turn must have stopped writing to it
+			// The caller may remove the nested session once the bridge returns, so the turn must have stopped writing to it
 			endTurn(activeTurn, activeTurnThread);
 		}
 	}
 
 	/**
-	 * Adds to the failure of a run whose session has ended any change that the session made to the read-only copies of
-	 * the targets of the project's links outside it, so that the run's diagnostic names each changed path whatever else
-	 * failed.
+	 * Adds to the failure of a nested session whose session has ended any change that the session made to the read-only
+	 * copies of the targets of the project's links outside it, so that the nested session's diagnostic names each changed
+	 * path whatever else failed.
 	 *
 	 * @param manager       the lifecycle manager
-	 * @param nestedSession the failed run
-	 * @param failure       why the run failed
+	 * @param nestedSession the failed nested session
+	 * @param failure       why the nested session failed
 	 * @return {@code failure}, or a failure that names the changed copies and is caused by {@code failure}
 	 */
 	private static IOException withChangedLinkCopies(NestedSessionManager manager, NestedSession nestedSession,
@@ -438,7 +439,7 @@ public final class HarnessRunnerBridge
 		String reason = failure.getMessage();
 		if (reason == null)
 			reason = failure.getClass().getSimpleName();
-		return new IOException(changes.get() + " The run also failed: " + reason, failure);
+		return new IOException(changes.get() + " The nested session also failed: " + reason, failure);
 	}
 
 	/**
@@ -469,7 +470,7 @@ public final class HarnessRunnerBridge
 
 	/**
 	 * Interrupts a turn that is still running and waits for its thread to end, so that the turn no longer writes the
-	 * run. Call it only once the session is closed, which ends a turn that waits for the harness.
+	 * nested session. Call it only once the session is closed, which ends a turn that waits for the harness.
 	 *
 	 * @param turn   the last turn that started, or {@code null} if none started
 	 * @param thread the thread of {@code turn}, or {@code null} if none started
@@ -591,13 +592,13 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
-	 * @param manager the run manager, or {@code null} when the caller owns lifecycle transitions
+	 * @param manager the nested-session manager, or {@code null} when the caller owns lifecycle transitions
 	 *
 	 * @param input the JSONL client input
 	 *
 	 * @param output the durable JSONL client-output destination
 	 *
-	 * @return the run that completed the protocol
+	 * @return the nested session that completed the protocol
 	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or transcript I/O fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
@@ -621,12 +622,12 @@ public final class HarnessRunnerBridge
 	 * options request.
 	 * <p>
 	 * When the options name an output file, the transcript goes there instead of to {@code output}. When they also name
-	 * a receipt, the bridge writes a receipt that names the run's retained project and that transcript, then prunes the
-	 * run's runtime files.
+	 * a receipt, the bridge writes a receipt that names the nested session's retained project and that transcript, then
+	 * prunes the nested session's runtime files.
 	 *
 	 * @param starter starts the isolated persistent session
 	 *
-	 * @param manager the run manager
+	 * @param manager the nested-session manager
 	 *
 	 * @param options the runner's parsed options
 	 *
@@ -638,7 +639,7 @@ public final class HarnessRunnerBridge
 	 *
 	 * @param output the JSONL client output when the options name no output file
 	 *
-	 * @return the run that completed the protocol
+	 * @return the nested session that completed the protocol
 	 *
 	 * @throws IOException if the bridge protocol, harness, lifecycle, transcript or receipt I/O fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
@@ -665,7 +666,7 @@ public final class HarnessRunnerBridge
 	 * @param input the bridge input when the options name no input file
 	 * @param output the bridge output when no output path is requested
 	 * @param requestedStarter starts requested child runners
-	 * @return the completed run
+	 * @return the completed nested session
 	 * @throws IOException if bridge execution or evidence publication fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
@@ -699,7 +700,7 @@ public final class HarnessRunnerBridge
 	 * @param input            the bridge's records
 	 * @param output           the bridge output when no output path is requested
 	 * @param requestedStarter starts requested child runners
-	 * @return the completed run
+	 * @return the completed nested session
 	 * @throws IOException if bridge execution or evidence publication fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
@@ -733,12 +734,13 @@ public final class HarnessRunnerBridge
 	 * launch that the session's commands make is answered, with a refusal when the options allow no session request.
 	 *
 	 * @param session the parent session
-	 * @param manager the run's lifecycle manager, which is not null when {@code options} is not null
+	 * @param manager the nested session's lifecycle manager, which is not null when {@code options} is not null
 	 * @param options runner options, null when the caller does not serve the session as a runner
 	 * @param starter starts child runners
-	 * @return the started broker, or null if {@code options} is null or the session's run has no requests directory
+	 * @return the started broker, or null if {@code options} is null or the session's nested session has no requests
+	 *         directory
 	 * @throws NullPointerException if the broker starts and {@code starter} is null
-	 * @throws IOException          if the broker cannot state the run's limits
+	 * @throws IOException          if the broker cannot state the nested session's limits
 	 */
 	private static SessionRequestBroker requestBroker(LiveNestedSession session, NestedSessionManager manager,
 		HarnessRunnerOptions options, RequestedSessionStarter starter) throws IOException
@@ -913,14 +915,15 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Records the identifier that the harness gave its session in the run's manifest, once the harness has reported
-	 * it, and tells the client the identifier in a {@code session_id} record, once per session.
+	 * Records the identifier that the harness gave its session in the nested session's manifest, once the harness has
+	 * reported it, and tells the client the identifier in a {@code session_id} record, once per session.
 	 *
 	 * @param session  the session
-	 * @param manager  the run's lifecycle manager, or {@code null} if the caller does not own the run
+	 * @param manager  the nested session's lifecycle manager, or {@code null} if the caller does not own the nested
+	 *                 session
 	 * @param client   the client
 	 * @param recorded indicates whether the identifier was recorded already
-	 * @throws IOException if the run recorded another identifier, or the record cannot be written
+	 * @throws IOException if the nested session recorded another identifier, or the record cannot be written
 	 */
 	private static void recordHarnessSession(LiveNestedSession session, NestedSessionManager manager, ClientOutput client,
 		AtomicBoolean recorded) throws IOException
@@ -933,7 +936,7 @@ public final class HarnessRunnerBridge
 		Optional<String> id = session.harnessSessionId();
 		if (id.isEmpty())
 			return;
-		// A run that records another session refuses this one before the session counts as recorded
+		// A nested session that records another session refuses this one before the session counts as recorded
 		if (manager != null)
 			manager.recordHarnessSession(session.nestedSession(), id.get());
 		if (!recorded.compareAndSet(false, true))
@@ -944,11 +947,11 @@ public final class HarnessRunnerBridge
 	}
 
 	/**
-	 * Lists the copies of the session transcripts that a run kept, in name order.
+	 * Lists the copies of the session transcripts that a nested session kept, in name order.
 	 *
-	 * @param nestedSession the completed run
+	 * @param nestedSession the completed nested session
 	 *
-	 * @return the copies, none if the run kept no directory of them
+	 * @return the copies, none if the nested session kept no directory of them
 	 *
 	 * @throws IOException if the directory cannot be listed
 	 */

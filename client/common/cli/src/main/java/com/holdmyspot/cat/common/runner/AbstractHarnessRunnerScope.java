@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.JvmScope;
 public abstract class AbstractHarnessRunnerScope extends AbstractJvmScope implements HarnessRunnerScope
 {
 	/**
-	 * Creates an open harness-run scope.
+	 * Creates an open nested-session scope.
 	 *
 	 * @param parent the owned process scope
 	 * @throws NullPointerException if {@code parent} is null

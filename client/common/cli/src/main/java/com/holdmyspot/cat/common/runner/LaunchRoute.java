@@ -56,17 +56,17 @@ public sealed interface LaunchRoute
 	}
 
 	/**
-	 * The launch becomes a request to the runner of the CAT run whose session runs the command, which starts the
-	 * session outside the run's sandbox.
+	 * The launch becomes a request to the runner of the nested session whose session runs the command, which starts the
+	 * session outside the nested session's sandbox.
 	 *
-	 * @param requests the run's requests directory
+	 * @param requests the nested session's requests directory
 	 */
 	record Forward(Path requests) implements LaunchRoute
 	{
 		/**
 		 * Creates the route.
 		 *
-		 * @param requests the run's requests directory
+		 * @param requests the nested session's requests directory
 		 * @throws NullPointerException if {@code requests} is null
 		 */
 		public Forward
@@ -106,8 +106,8 @@ public sealed interface LaunchRoute
 
 	/**
 	 * The launch names the policy that bounds its session with {@value PolicyBoundFile#OPTION}, as CAT's own starters,
-	 * a request server and a run's runner, name it for the runner that they start, and the runner serves the session
-	 * in its own process within that bound.
+	 * a request server and a nested session's runner, name it for the runner that they start, and the runner serves the
+	 * session in its own process within that bound.
 	 */
 	record Bounded() implements LaunchRoute
 	{
@@ -129,7 +129,8 @@ public sealed interface LaunchRoute
 	 *   holds the request server of its sessions, and the message names the plugin to use instead:
 	 *   {@link Refused}.</li>
 	 *   <li>When no harness runs the command, a launch that names {@value RunnerArguments#RESUME_OPTION} is refused,
-	 *   since nothing outside a harness session or a run keeps the run of an interrupted session: {@link Refused}.</li>
+	 *   since nothing outside a harness session or a nested session keeps an interrupted session for a resume: {@link
+	 *   Refused}.</li>
 	 *   <li>A launch that names {@value PolicyBoundFile#OPTION} serves its session within that bound:
 	 *   {@link Bounded}.</li>
 	 *   <li>Otherwise no harness session runs the command, as in a terminal or a script, and the launch is refused,
@@ -179,8 +180,8 @@ public sealed interface LaunchRoute
 		if (Arrays.asList(args).contains(RunnerArguments.RESUME_OPTION))
 		{
 			return new Refused("CAT cannot resume the session: " + RunnerArguments.RESUME_OPTION + " continues an " +
-				"interrupted session in the run that keeps it, and only the request server of the harness session that " +
-				"started it, or the runner of the run whose session started it, keeps such a run. Run the launcher " +
+				"interrupted session in the slot that keeps it, and only the request server of the harness session that " +
+				"started it, or the runner of the nested session that started it, keeps such a slot. Run the launcher " +
 				"from that session.");
 		}
 		if (Arrays.asList(args).contains(PolicyBoundFile.OPTION))

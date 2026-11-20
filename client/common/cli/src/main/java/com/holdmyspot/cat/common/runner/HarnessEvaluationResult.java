@@ -20,8 +20,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *
  * @param rawResult the final harness response for the completed task
  *
- * @param sessionTranscripts the copies of the harness's native session transcripts, which are empty unless the run
- *   was asked to keep them
+ * @param sessionTranscripts the copies of the harness's native session transcripts, which are empty unless the nested
+ *   session was asked to keep them
  */
 public record HarnessEvaluationResult(Path retainedProject, Path rawResult, List<Path> sessionTranscripts)
 {

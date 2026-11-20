@@ -50,9 +50,9 @@ public final class CodexProcess implements HarnessProcess
 	private final HarnessStandardError standardError;
 	private final boolean verifyCatHookDelivery;
 	/**
-	 * Copies the rollouts of the app-server's threads once it exits, or {@code null} if the run keeps no session
-	 * transcripts. Codex keeps every thread's rollout in the run's home either way, so that the run's session can
-	 * continue after its runner ends.
+	 * Copies the rollouts of the app-server's threads once it exits, or {@code null} if the nested session keeps no
+	 * session transcripts. Codex keeps every thread's rollout in the nested session's home either way, so that the nested
+	 * session's harness session can continue after its runner ends.
 	 */
 	private final HarnessSessionTranscripts transcripts;
 	private final StringBuilder startupEvents = new StringBuilder();
@@ -95,8 +95,8 @@ public final class CodexProcess implements HarnessProcess
 	 * @param process the started Codex app-server process
 	 * @param scope services owned for this app-server lifetime
 	 * @param verifyCatHookDelivery whether CAT hook configuration and delegated-hook delivery must be verified
-	 * @param transcripts copies the rollouts of the app-server's threads once it exits, or {@code null} if the run keeps
-	 *   no session transcripts
+	 * @param transcripts copies the rollouts of the app-server's threads once it exits, or {@code null} if the nested
+	 *   session keeps no session transcripts
 	 * @throws NullPointerException if {@code process} or {@code scope} are null
 	 */
 	public CodexProcess(Process process, HarnessRunnerScope scope, boolean verifyCatHookDelivery,
@@ -198,8 +198,8 @@ public final class CodexProcess implements HarnessProcess
 	}
 
 	/**
-	 * Initializes the app-server and continues a thread that an earlier app-server of the run started, instead of
-	 * starting one.
+	 * Initializes the app-server and continues a thread that an earlier app-server of the nested session started, instead
+	 * of starting one.
 	 *
 	 * @param workingDirectory the copied-project directory
 	 * @param threadId         the recorded thread
@@ -618,7 +618,7 @@ public final class CodexProcess implements HarnessProcess
 	/**
 	 * Returns the root thread's rollout once Codex has answered the {@code thread/start} request.
 	 *
-	 * @return the rollout, or none if the run keeps no session transcripts or Codex reported no path
+	 * @return the rollout, or none if the nested session keeps no session transcripts or Codex reported no path
 	 */
 	@Override
 	public Optional<Path> sessionTranscript()
@@ -642,8 +642,8 @@ public final class CodexProcess implements HarnessProcess
 
 	/**
 	 * Closes app-server input, waits for the app-server to exit, and then copies the rollouts of its threads into the
-	 * run's session transcripts directory if the run keeps them, so that what each thread's model received outlives the
-	 * Codex home.
+	 * nested session's harness session transcripts directory if the nested session keeps them, so that what each thread's
+	 * model received outlives the Codex home.
 	 *
 	 * @throws IOException if closing input fails or the rollouts cannot be copied
 	 */

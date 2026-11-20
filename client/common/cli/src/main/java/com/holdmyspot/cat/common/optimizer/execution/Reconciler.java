@@ -51,7 +51,7 @@ public final class Reconciler
 	 * @param campaign the persisted snapshot
 	 * @param now the current time
 	 * @return the reconciled campaign, which is persisted
-	 * @throws IOException if the store, the worktree or the run records cannot be read or written
+	 * @throws IOException if the store, the worktree or the nested session records cannot be read or written
 	 */
 	static Campaign reconcile(DriverContext context, Campaign campaign, Instant now) throws IOException
 	{

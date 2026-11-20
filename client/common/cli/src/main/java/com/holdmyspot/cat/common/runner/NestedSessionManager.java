@@ -76,12 +76,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Default retention period for terminal diagnostic runs.
+	 * Default retention period for terminal diagnostic nested sessions.
 	 */
 	public static final Duration DEFAULT_RETENTION = Duration.ofDays(7);
 	static final int MAXIMUM_MANIFEST_BYTES = 1_048_576;
 	/**
-	 * The name of a run directory, which is a generated run identifier.
+	 * The name of a session folder, which is a generated slot ID.
 	 */
 	private static final Pattern SLOT_ID = Pattern.compile("[a-z0-9]+-[a-z0-9]+");
 	/**
@@ -117,18 +117,19 @@ public final class NestedSessionManager
 		}\\n\\z""");
 
 	/**
-	 * Opens the results folder of a runner command that is starting. It first deletes the root's stale runs, as
-	 * {@link #deleteStaleSessions(Duration) deleteStaleSessions(DEFAULT_RETENTION)} does, so that a run whose owner ended
-	 * without recording a terminal result is marked failed. A run whose owner is alive stays running.
+	 * Opens the results folder of a runner command that is starting. It first deletes the root's stale nested sessions,
+	 * as {@link #deleteStaleSessions(Duration) deleteStaleSessions(DEFAULT_RETENTION)} does, so that a nested session
+	 * whose owner ended without recording a terminal result is marked failed. A nested session whose owner is alive stays
+	 * running.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param root      the absolute owned-results folder
 	 * @param clock     the clock used for generated identifiers
-	 * @param replacer  replaces the runs' manifests and output files
-	 * @return a manager of the runs in {@code root}
+	 * @param replacer  replaces the nested sessions' manifests and output files
+	 * @return a manager of the nested sessions in {@code root}
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
-	 * @throws IOException              if run directories cannot be inspected or deleted
+	 * @throws IOException              if session folders cannot be inspected or deleted
 	 */
 	public static NestedSessionManager openResultsFolder(FileLocks fileLocks, Path root, Clock clock,
 		FileReplacer replacer) throws IOException
@@ -144,11 +145,13 @@ public final class NestedSessionManager
 	private final FileReplacer replacer;
 	private final HarnessProcessLiveness processLiveness;
 	/**
-	 * The identifier of every run that {@link #create(String)} makes, or {@code null} to generate one for each run.
+	 * The identifier of every nested session that {@link #create(String)} makes, or {@code null} to generate one for each
+	 * nested session.
 	 */
 	private final String fixedSlotId;
 	/**
-	 * The launch options that each created run records as fixed at its start, or {@code null} if the runs record none.
+	 * The launch options that each created nested session records as fixed at its start, or {@code null} if the nested
+	 * sessions record none.
 	 */
 	private final List<String> launchArguments;
 
@@ -158,7 +161,7 @@ public final class NestedSessionManager
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
-	 * @param replacer replaces the runs' manifests and output files
+	 * @param replacer replaces the nested sessions' manifests and output files
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
@@ -173,8 +176,8 @@ public final class NestedSessionManager
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
-	 * @param replacer replaces the runs' manifests and output files
-	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
+	 * @param replacer replaces the nested sessions' manifests and output files
+	 * @param processLiveness the exact-process liveness service for the nested sessions' owner and harness processes
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
@@ -185,19 +188,20 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Creates a manager whose runs may all have one identifier.
+	 * Creates a manager whose nested sessions may all have one identifier.
 	 *
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
-	 * @param replacer replaces the runs' manifests and output files
-	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
-	 * @param fixedSlotId the identifier of every run that the manager creates, or {@code null} to generate one for each
-	 * @param launchArguments the launch options that each created run records as fixed at its start, or {@code null}
-	 *   if the runs record none
+	 * @param replacer replaces the nested sessions' manifests and output files
+	 * @param processLiveness the exact-process liveness service for the nested sessions' owner and harness processes
+	 * @param fixedSlotId the identifier of every nested session that the manager creates, or {@code null} to generate one
+	 *                    for each
+	 * @param launchArguments the launch options that each created nested session records as fixed at its start, or {@code
+	 *   null} if the nested sessions record none
 	 * @throws NullPointerException if any of the arguments other than {@code fixedSlotId} and {@code launchArguments} are
 	 *   null
-	 * @throws IllegalArgumentException if {@code root} is relative, or {@code fixedSlotId} is not a run identifier
+	 * @throws IllegalArgumentException if {@code root} is relative, or {@code fixedSlotId} is not a slot ID
 	 */
 	private NestedSessionManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness, String fixedSlotId, List<String> launchArguments)
@@ -210,7 +214,7 @@ public final class NestedSessionManager
 		if (!root.isAbsolute())
 			throw new IllegalArgumentException("root must be absolute");
 		if (fixedSlotId != null && !SLOT_ID.matcher(fixedSlotId).matches())
-			throw new IllegalArgumentException("fixedSlotId must be a run identifier: " + fixedSlotId);
+			throw new IllegalArgumentException("fixedSlotId must be a slot ID: " + fixedSlotId);
 		this.fileLocks = fileLocks;
 		this.root = root.normalize();
 		this.clock = clock;
@@ -224,7 +228,7 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns the directory that holds every run and the workspace files of every run.
+	 * Returns the directory that holds every nested session and the workspace files of every nested session.
 	 *
 	 * @return the absolute, normalized results folder
 	 */
@@ -235,13 +239,13 @@ public final class NestedSessionManager
 
 	/**
 	 * Returns a manager over the same root whose {@link #create(String) created} runs all have one identifier, so that
-	 * each run lives at the same path as the one before it. The caller must empty the run's directory before every
-	 * run, and must keep it from running two runs at once.
+	 * each nested session lives at the same path as the one before it. The caller must empty the nested session's
+	 * directory before every nested session, and must keep it from running two nested sessions at once.
 	 *
-	 * @param slotId the identifier of every run that the returned manager creates
+	 * @param slotId the identifier of every nested session that the returned manager creates
 	 * @return the manager
 	 * @throws NullPointerException     if {@code slotId} is null
-	 * @throws IllegalArgumentException if {@code slotId} is not a run identifier, which is two groups of lowercase
+	 * @throws IllegalArgumentException if {@code slotId} is not a slot ID, which is two groups of lowercase
 	 *                                  letters and digits joined by a hyphen
 	 */
 	public NestedSessionManager withFixedSlotId(String slotId)
@@ -253,7 +257,7 @@ public final class NestedSessionManager
 	/**
 	 * Returns a manager over the same root whose {@link #create(String) created} runs each record, in
 	 * {@value NestedSessionLaunch#FILE_NAME} beside their manifest, the launch options that their start fixed, so that a
-	 * later runner can continue a run's harness session as the run started it.
+	 * later runner can continue a nested session's harness session as the nested session started it.
 	 *
 	 * @param arguments the fixed options and their values, as {@link NestedSessionLaunch#fixedArguments(String[])}
 	 *                  returns them
@@ -267,12 +271,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns the launch options that a run's start fixed.
+	 * Returns the launch options that a nested session's start fixed.
 	 *
-	 * @param nestedSession the run
+	 * @param nestedSession the nested session
 	 * @return the fixed options and their values, in the order its launch named them
 	 * @throws NullPointerException if {@code nestedSession} is null
-	 * @throws IOException          if the run records no launch, or its record is malformed
+	 * @throws IOException          if the nested session records no launch, or its record is malformed
 	 */
 	public List<String> launchArguments(NestedSession nestedSession) throws IOException
 	{
@@ -281,7 +285,7 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Indicates whether text is the identifier of a run, which is also the name of its directory.
+	 * Indicates whether text is the identifier of a nested session, which is also the name of its directory.
 	 *
 	 * @param text the text
 	 * @return {@code true} if the text is two groups of lowercase letters and digits joined by a hyphen
@@ -294,17 +298,19 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Writes the manifest of a run into the directory of its copy under the identifier by which the copy is kept,
-	 * naming {@code project} as the run's project. The copy's manifest is replaced in one step, so a reader sees either
-	 * no manifest, the manifest that was there, or the new one. A run that has no manifest leaves the copy without one.
+	 * Writes the manifest of a nested session into the directory of its copy under the identifier by which the copy is
+	 * kept, naming {@code project} as the nested session's project. The copy's manifest is replaced in one step, so a
+	 * reader sees either no manifest, the manifest that was there, or the new one. A nested session that has no manifest
+	 * leaves the copy without one.
 	 *
-	 * @param source    the directory of the run
+	 * @param source    the directory of the nested session
 	 * @param directory the directory of the copy, which exists
-	 * @param id        the identifier under which the copy is kept, which the harness gave the run's session
+	 * @param id        the identifier under which the copy is kept, which the harness gave the nested session's harness
+	 *                  session
 	 * @param project   the project that the copy's manifest names
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code id} is not a harness session identifier
-	 * @throws IOException              if the run's manifest is malformed or the copy's cannot be written
+	 * @throws IOException              if the nested session's manifest is malformed or the copy's cannot be written
 	 */
 	public static void copyManifest(Path source, Path directory, String id, Path project) throws IOException
 	{
@@ -317,14 +323,14 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Writes the manifest of a run into the directory of its copy with another identifier and project.
+	 * Writes the manifest of a nested session into the directory of its copy with another identifier and project.
 	 *
-	 * @param source    the directory of the run
+	 * @param source    the directory of the nested session
 	 * @param directory the directory of the copy, which exists
 	 * @param id        the identifier under which the copy is kept
 	 * @param project   returns the project path that the copy's manifest names, as JSON string content, from the one
-	 *                  that the run's manifest names
-	 * @throws IOException if the run's manifest is malformed or the copy's cannot be written
+	 *                  that the nested session's manifest names
+	 * @throws IOException if the nested session's manifest is malformed or the copy's cannot be written
 	 */
 	private static void writeCopyManifest(Path source, Path directory, String id, UnaryOperator<String> project)
 		throws IOException
@@ -335,7 +341,7 @@ public final class NestedSessionManager
 		String content = Files.readString(manifest);
 		Matcher matcher = MANIFEST.matcher(content);
 		if (!matcher.matches())
-			throw new IOException("Run manifest is malformed or unsupported: " + manifest);
+			throw new IOException("Session manifest is malformed or unsupported: " + manifest);
 		Files.createDirectories(directory);
 		Path replacement = Files.createTempFile(directory, "run-", ".json");
 		Files.writeString(replacement, content.substring(0, matcher.start("id")) + id +
@@ -345,12 +351,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Deletes a run's directory, including its read-only files and directories, and deletes the run's manifest after
-	 * everything else in it. A deletion that stops partway, such as one whose process is killed, then leaves the
-	 * manifest, which names the run's processes for the cleanup that comes after it. Entries that a concurrent cleanup
-	 * removes first are skipped.
+	 * Deletes a nested session's directory, including its read-only files and directories, and deletes the nested
+	 * session's manifest after everything else in it. A deletion that stops partway, such as one whose process is killed,
+	 * then leaves the manifest, which names the nested session's processes for the cleanup that comes after it. Entries
+	 * that a concurrent cleanup removes first are skipped.
 	 *
-	 * @param directory the run's directory
+	 * @param directory the nested session's directory
 	 * @throws NullPointerException if {@code directory} is null
 	 * @throws IOException          if the directory cannot be deleted
 	 */
@@ -371,7 +377,7 @@ public final class NestedSessionManager
 		}
 		catch (NoSuchFileException _)
 		{
-			// A concurrent cleanup already removed the run
+			// A concurrent cleanup already removed the nested session
 			return;
 		}
 		for (Path entry : entries)
@@ -381,12 +387,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns the directory of a run that holds the read-only copies of the targets of the project's symbolic links
-	 * outside the project, each copy in a folder of its own beside the project. The directory exists only in a run whose
-	 * copied project has such a link.
+	 * Returns the directory of a nested session that holds the read-only copies of the targets of the project's symbolic
+	 * links outside the project, each copy in a folder of its own beside the project. The directory exists only in a
+	 * nested session whose copied project has such a link.
 	 *
-	 * @param sessionFolder the run's directory
-	 * @return the run's {@code link-targets} directory
+	 * @param sessionFolder the nested session's directory
+	 * @return the nested session's {@code link-targets} directory
 	 * @throws NullPointerException if {@code sessionFolder} is null
 	 */
 	public static Path linkTargets(Path sessionFolder)
@@ -396,11 +402,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Creates one owned run directory, named by the manager's fixed run identifier if it has one.
+	 * Creates one owned session folder, named by the manager's fixed slot ID if it has one.
 	 *
 	 * @param harness the harness name
-	 * @return the created run
-	 * @throws IOException if the directory cannot be created, or a run with the fixed identifier exists already
+	 * @return the created nested session
+	 * @throws IOException if the directory cannot be created, or a nested session with the fixed identifier exists
+	 *                     already
 	 */
 	public NestedSession create(String harness) throws IOException
 	{
@@ -410,10 +417,11 @@ public final class NestedSessionManager
 			id = newSlotId(clock);
 		Path directory = root.resolve(harness).resolve(id).normalize();
 		if (!directory.startsWith(root))
-			throw new IOException("Run directory escapes the configured root");
+			throw new IOException("Session folder escapes the configured root");
 		if (fixedSlotId != null)
 		{
-			// A run that reuses a path must start from nothing, so that it sees no file of the run before it
+			// A nested session that reuses a path must start from nothing, so that it sees no file of the nested session
+			// before it
 			Files.createDirectories(directory.getParent());
 			try
 			{
@@ -421,7 +429,7 @@ public final class NestedSessionManager
 			}
 			catch (FileAlreadyExistsException e)
 			{
-				throw new IOException("The run directory is not empty, so a run cannot reuse it: " + directory, e);
+				throw new IOException("The session folder is not empty, so a nested session cannot reuse it: " + directory, e);
 			}
 		}
 		else
@@ -444,36 +452,38 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns the start of the process that owns a run.
+	 * Returns the start of the process that owns a nested session.
 	 *
 	 * @param owner     the process
-	 * @param directory the run's directory
+	 * @param directory the nested session's directory
 	 * @return the process's {@link ProcessDescription#start() start}
 	 * @throws IOException if the system reports no start for the process
 	 */
 	private static String ownerStart(ProcessHandle owner, Path directory) throws IOException
 	{
-		// An owner without a start cannot be told apart from a later process, so its run is never taken for abandoned
+		// An owner without a start cannot be told apart from a later process, so its nested session is never taken for
+		// abandoned
 		String ownerStart = HarnessProcesses.system().find(owner.pid()).flatMap(ProcessDescription::start).orElse(null);
 		if (ownerStart == null || !ownerStart.matches(ProcessDescription.START_PATTERN))
-			throw new IOException("Cannot record the owner process identity for run directory: " + directory);
+			throw new IOException("Cannot record the owner process identity for session folder: " + directory);
 		return ownerStart;
 	}
 
 	/**
-	 * Reopens a run whose runner ended before the run did, so that a new runner continues the run's harness session in
-	 * the run's directory. The run must still be running, its harness must have reported its session, and neither its
-	 * runner nor its harness process may live. The current process becomes the run's owner, and the run keeps its
-	 * project, its home, its turns, its harness session and its count of accepted session requests. Reopening deletes
-	 * no stale run, whatever the run's age.
+	 * Reopens a nested session whose runner ended before the nested session did, so that a new runner continues the
+	 * nested session's harness session in the nested session's directory. The nested session must still be running, its
+	 * harness must have reported its session, and neither its runner nor its harness process may live. The current
+	 * process becomes the nested session's owner, and the nested session keeps its project, its home, its turns, its
+	 * harness session and its count of accepted session requests. Reopening deletes no stale nested session, whatever the
+	 * nested session's age.
 	 *
-	 * @param harness the run's harness
-	 * @param slotId  the run's identifier
-	 * @return the reopened run
+	 * @param harness the nested session's harness
+	 * @param slotId  the nested session's identifier
+	 * @return the reopened nested session
 	 * @throws NullPointerException     if any of the arguments are null
-	 * @throws IllegalArgumentException if {@code harness} is blank, or {@code slotId} is not a run identifier
-	 * @throws IOException              if the run is missing, another process holds its lock, it has ended, its
-	 *                                  harness reported no session, its harness launch state is unknown, or its
+	 * @throws IllegalArgumentException if {@code harness} is blank, or {@code slotId} is not a slot ID
+	 * @throws IOException              if the nested session is missing, another process holds its lock, it has ended,
+	 *                                  its harness reported no session, its harness launch state is unknown, or its
 	 *                                  runner or harness process is still alive
 	 */
 	public NestedSession reopen(String harness, String slotId) throws IOException
@@ -487,18 +497,21 @@ public final class NestedSessionManager
 			try (NestedSessionLock lock = acquireLock(nestedSession))
 			{
 				if (!lock.isHeld())
-					throw new IOException("Another process holds the run: " + slotId);
+					throw new IOException("Another process holds the nested session: " + slotId);
 				Manifest manifest = readManifest(nestedSession);
 				if (!manifest.state().equals("running"))
-					throw new IOException("The run has ended, so its harness session cannot continue: " + slotId);
+					throw new IOException("The nested session has ended, so its harness session cannot continue: " + slotId);
 				if (manifest.harnessSessionId() == null)
-					throw new IOException("The run's harness reported no session, so the run has none to continue: " + slotId);
+				{
+					throw new IOException("The nested session's harness reported no session, so the nested session has none " +
+						"to continue: " + slotId);
+				}
 				if (manifest.harnessProcessState() == HarnessProcessState.STARTING)
-					throw new IOException("The run's harness launch state is unknown: " + slotId);
+					throw new IOException("The nested session's harness launch state is unknown: " + slotId);
 				if (isOwnerAlive(manifest))
-					throw new IOException("The run is still owned by a live process: " + slotId);
+					throw new IOException("The nested session is still owned by a live process: " + slotId);
 				if (isHarnessProcessAlive(manifest))
-					throw new IOException("The run's harness process is still alive: " + slotId);
+					throw new IOException("The nested session's harness process is still alive: " + slotId);
 				ProcessHandle owner = ProcessHandle.current();
 				writeManifest(new Manifest(manifest.harness(), manifest.id(), "running", "initializing",
 					HarnessProcessState.ABSENT, owner.pid(), ownerStart(owner, directory), null, null, manifest.createdAt(),
@@ -511,22 +524,22 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Reopens the run of this manager's slot, as {@link #reopen(String, String)} does, so that a new runner continues
-	 * the harness session that the run records.
+	 * Reopens the nested session of this manager's slot, as {@link #reopen(String, String)} does, so that a new runner
+	 * continues the harness session that the nested session records.
 	 *
-	 * @param harness          the run's harness
-	 * @param harnessSessionId the harness session that the run must record
-	 * @return the reopened run
+	 * @param harness          the nested session's harness
+	 * @param harnessSessionId the harness session that the nested session must record
+	 * @return the reopened nested session
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
-	 * @throws IllegalStateException    if the manager has no fixed run identifier
-	 * @throws IOException              if the run cannot be reopened, or it records another harness session
+	 * @throws IllegalStateException    if the manager has no fixed slot ID
+	 * @throws IOException              if the nested session cannot be reopened, or it records another harness session
 	 */
 	public NestedSession resume(String harness, String harnessSessionId) throws IOException
 	{
 		requireThat(harnessSessionId, "harnessSessionId").isNotNull();
 		if (fixedSlotId == null)
-			throw new IllegalStateException("Only the run of a slot can be resumed");
+			throw new IllegalStateException("Only the nested session of a slot can be resumed");
 		NestedSession nestedSession = new NestedSession(harness, fixedSlotId,
 			root.resolve(harness).resolve(fixedSlotId).normalize());
 		if (Files.isRegularFile(nestedSession.directory().resolve("session.json")))
@@ -534,17 +547,17 @@ public final class NestedSessionManager
 			String recorded = readManifest(nestedSession).harnessSessionId();
 			if (!harnessSessionId.equals(recorded))
 			{
-				throw new IOException("The run " + fixedSlotId + " records the harness session " + recorded + ", not " +
-					harnessSessionId);
+				throw new IOException("The nested session " + fixedSlotId + " records the harness session " + recorded +
+					", not " + harnessSessionId);
 			}
 		}
 		return reopen(harness, fixedSlotId);
 	}
 
 	/**
-	 * Returns the number of the last turn of a run that ended.
+	 * Returns the number of the last turn of a nested session that ended.
 	 *
-	 * @param nestedSession the run
+	 * @param nestedSession the nested session
 	 * @return the turn's number, or {@code 0} if no turn ended
 	 * @throws NullPointerException if {@code nestedSession} is null
 	 * @throws IOException          if the manifest cannot be read
@@ -556,15 +569,15 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Records the identifier that the run's harness gives its session, once the harness reports it. A run records one
-	 * identifier: a later report of the same identifier keeps it.
+	 * Records the identifier that the nested session's harness gives its session, once the harness reports it. A nested
+	 * session records one identifier: a later report of the same identifier keeps it.
 	 *
-	 * @param nestedSession    the owned run
-	 * @param harnessSessionId the harness's identifier of the run's session
+	 * @param nestedSession    the owned nested session
+	 * @param harnessSessionId the harness's identifier of the nested session's harness session
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harnessSessionId} does not match {@link #HARNESS_SESSION_ID}
-	 * @throws IOException              if the run has ended, it recorded another identifier, or the manifest cannot be
-	 *                                  persisted
+	 * @throws IOException              if the nested session has ended, it recorded another identifier, or the manifest
+	 *                                  cannot be persisted
 	 */
 	public void recordHarnessSession(NestedSession nestedSession, String harnessSessionId) throws IOException
 	{
@@ -574,13 +587,13 @@ public final class NestedSessionManager
 			requireThat(harnessSessionId, "harnessSessionId").matches(HARNESS_SESSION_ID);
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running"))
-				throw new IOException("Cannot record the harness session of a terminal run");
+				throw new IOException("Cannot record the harness session of a terminal nested session");
 			if (previous.harnessSessionId() != null)
 			{
 				if (previous.harnessSessionId().equals(harnessSessionId))
 					return;
-				throw new IOException("The harness reported session " + harnessSessionId + ", but the run continues session " +
-					previous.harnessSessionId());
+				throw new IOException("The harness reported session " + harnessSessionId +
+					", but the nested session continues session " + previous.harnessSessionId());
 			}
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 				previous.harnessProcessState(), previous.ownerPid(), previous.ownerStart(), previous.harnessPid(),
@@ -593,12 +606,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns the identifier that the run's harness gave its session.
+	 * Returns the identifier that the nested session's harness gave its session.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @return the identifier, or empty if the harness has not reported it
 	 * @throws NullPointerException if {@code nestedSession} is null
-	 * @throws IOException          if the manifest is malformed or does not identify the run
+	 * @throws IOException          if the manifest is malformed or does not identify the nested session
 	 */
 	public Optional<String> harnessSessionId(NestedSession nestedSession) throws IOException
 	{
@@ -607,11 +620,11 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns the identifier that the harness gave the session of the run in a directory, such as a slot's run that
-	 * its requester's runner reads once the run has ended.
+	 * Returns the identifier that the harness gave the session of the nested session in a directory, such as a slot's
+	 * nested session that its requester's runner reads once the nested session has ended.
 	 *
-	 * @param directory the run's directory
-	 * @return the identifier, or empty if the run has no manifest or the harness has not reported it
+	 * @param directory the nested session's directory
+	 * @return the identifier, or empty if the nested session has no manifest or the harness has not reported it
 	 * @throws NullPointerException if {@code directory} is null
 	 * @throws IOException          if the manifest is malformed or cannot be read
 	 */
@@ -625,15 +638,15 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Records how many of its session's session requests a running run has accepted, over every runner that served
-	 * the run, so that a runner that resumes the run continues the count. The call may overlap this manager's other
-	 * calls that update the run's manifest, and keeps what they record.
+	 * Records how many of its session's session requests a running nested session has accepted, over every runner that
+	 * served the nested session, so that a runner that resumes the nested session continues the count. The call may
+	 * overlap this manager's other calls that update the nested session's manifest, and keeps what they record.
 	 *
-	 * @param nestedSession the owned run
-	 * @param requestsUsed  how many requests the run has accepted
+	 * @param nestedSession the owned nested session
+	 * @param requestsUsed  how many requests the nested session has accepted
 	 * @throws NullPointerException     if {@code nestedSession} is null
 	 * @throws IllegalArgumentException if {@code requestsUsed} is negative
-	 * @throws IOException              if the run has ended, or the manifest cannot be read or persisted
+	 * @throws IOException              if the nested session has ended, or the manifest cannot be read or persisted
 	 */
 	public void recordRequestsUsed(NestedSession nestedSession, int requestsUsed) throws IOException
 	{
@@ -643,7 +656,7 @@ public final class NestedSessionManager
 			requireThat(requestsUsed, "requestsUsed").isNotNegative();
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running"))
-				throw new IOException("Cannot record the session requests of a terminal run");
+				throw new IOException("Cannot record the session requests of a terminal nested session");
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 				previous.harnessProcessState(), previous.ownerPid(), previous.ownerStart(), previous.harnessPid(),
 				previous.harnessStart(), previous.createdAt(), previous.harnessSessionId(), requestsUsed,
@@ -654,12 +667,13 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Returns how many of its session's session requests a run has accepted, over every runner that served the run.
+	 * Returns how many of its session's session requests a nested session has accepted, over every runner that served the
+	 * nested session.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @return the number of accepted requests
 	 * @throws NullPointerException if {@code nestedSession} is null
-	 * @throws IOException          if the manifest is malformed or does not identify the run
+	 * @throws IOException          if the manifest is malformed or does not identify the nested session
 	 */
 	public int requestsUsed(NestedSession nestedSession) throws IOException
 	{
@@ -668,7 +682,8 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Generates the identifier of a new run, which is unique across runs started at different times.
+	 * Generates the identifier of a new nested session, which is unique across nested sessions started at different
+	 * times.
 	 *
 	 * @param clock the clock that gives the time
 	 * @return the identifier
@@ -683,7 +698,7 @@ public final class NestedSessionManager
 	/**
 	 * Records non-secret metadata required to investigate an owned harness process.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param artifact the complete harness artifact
 	 * @param project the source project
 	 * @param transport the persistent harness transport identifier
@@ -702,7 +717,7 @@ public final class NestedSessionManager
 			requireThat(command, "command").isNotEmpty();
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running"))
-				throw new IOException("Cannot initialize a terminal run");
+				throw new IOException("Cannot initialize a terminal nested session");
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
 				previous.harnessProcessState(),
 				previous.ownerPid(),
@@ -715,9 +730,9 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Replaces the output file with persisted content and marks the owned run completed, which keeps it.
+	 * Replaces the output file with persisted content and marks the owned nested session completed, which keeps it.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param output the durable output path
 	 * @param content the output content
 	 * @throws IOException if output cannot be persisted
@@ -736,11 +751,11 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Records that a harness run completed successfully before cleanup begins.
+	 * Records that a nested session completed successfully before cleanup begins.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if the manifest cannot be persisted, or this process is
-	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running run unended
+	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running nested session unended
 	 */
 	public void markCompleted(NestedSession nestedSession) throws IOException
 	{
@@ -751,7 +766,7 @@ public final class NestedSessionManager
 	/**
 	 * Records that a started harness is waiting for its next request.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if the manifest cannot be persisted
 	 */
 	public void markIdle(NestedSession nestedSession) throws IOException
@@ -762,7 +777,7 @@ public final class NestedSessionManager
 	/**
 	 * Records that the harness is processing a submitted request.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if the manifest cannot be persisted
 	 */
 	public void markWorking(NestedSession nestedSession) throws IOException
@@ -771,9 +786,9 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Records the identity of the harness process owned by a live run.
+	 * Records the identity of the harness process owned by a live nested session.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param harnessPid the positive harness process identifier
 	 * @param harnessStart the harness process's {@link ProcessDescription#start() start}
 	 * @throws NullPointerException if {@code nestedSession} or {@code harnessStart} are null
@@ -790,7 +805,7 @@ public final class NestedSessionManager
 			requireThat(harnessPid, "harnessPid").isPositive();
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running"))
-				throw new IOException("Cannot record a harness process for a terminal run");
+				throw new IOException("Cannot record a harness process for a terminal nested session");
 			if (previous.harnessProcessState() != HarnessProcessState.STARTING)
 				throw new IOException("Cannot record a harness process unless launch is marked starting");
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), previous.phase(),
@@ -808,8 +823,8 @@ public final class NestedSessionManager
 	/**
 	 * Persists that a harness spawn is about to begin.
 	 *
-	 * @param nestedSession the owned run
-	 * @throws IOException if the run is terminal, already started, or the marker cannot be persisted
+	 * @param nestedSession the owned nested session
+	 * @throws IOException if the nested session is terminal, already started, or the marker cannot be persisted
 	 */
 	public void markHarnessStarting(NestedSession nestedSession) throws IOException
 	{
@@ -818,7 +833,8 @@ public final class NestedSessionManager
 			requireThat(nestedSession, "nestedSession").isNotNull();
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running") || previous.harnessProcessState() != HarnessProcessState.ABSENT)
-				throw new IOException("Cannot begin harness launch from the current run state: " + nestedSession.directory());
+				throw new IOException("Cannot begin harness launch from the current nested-session state: " +
+					nestedSession.directory());
 			writeManifest(withHarnessProcess(previous, HarnessProcessState.STARTING, null, null), nestedSession.directory());
 		}
 	}
@@ -826,7 +842,7 @@ public final class NestedSessionManager
 	/**
 	 * Persists that no harness process remains after a launch attempt.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if the launch state is not starting or the marker cannot be persisted
 	 */
 	public void recordNoHarnessProcess(NestedSession nestedSession) throws IOException
@@ -836,8 +852,8 @@ public final class NestedSessionManager
 			requireThat(nestedSession, "nestedSession").isNotNull();
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running") || previous.harnessProcessState() != HarnessProcessState.STARTING)
-				throw new IOException("Cannot clear harness launch state from the current run state: " +
-				nestedSession.directory());
+				throw new IOException("Cannot clear harness launch state from the current nested-session state: " +
+					nestedSession.directory());
 			writeManifest(withHarnessProcess(previous, HarnessProcessState.ABSENT, null, null), nestedSession.directory());
 		}
 	}
@@ -863,9 +879,9 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Replaces the captured standard streams of a harness command for failed-run investigation.
+	 * Replaces the captured standard streams of a harness command for failed-session investigation.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param commandName the generated command name
 	 * @param standardOutput the captured standard output
 	 * @param standardError the captured standard error
@@ -882,7 +898,7 @@ public final class NestedSessionManager
 			throw new IllegalArgumentException("commandName must be a generated artifact name");
 		Path artifacts = nestedSession.directory().resolve("artifacts");
 		if (Files.isSymbolicLink(artifacts) || !Files.isDirectory(artifacts, NOFOLLOW_LINKS))
-			throw new IOException("Run artifacts directory is not owned by this manager");
+			throw new IOException("Session artifacts directory is not owned by this manager");
 		writeAtomically(artifacts.resolve(commandName + ".stdout"), standardOutput);
 		writeAtomically(artifacts.resolve(commandName + ".stderr"), standardError);
 	}
@@ -890,7 +906,7 @@ public final class NestedSessionManager
 	/**
 	 * Records one harness turn's raw events and error stream for later investigation.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param turnNumber the positive one-based turn number
 	 * @param result the captured harness turn result
 	 * @throws IOException if the owned turn artifacts cannot be persisted
@@ -905,7 +921,7 @@ public final class NestedSessionManager
 			requireThat(turnNumber, "turnNumber").isPositive();
 			Path artifacts = nestedSession.directory().resolve("artifacts");
 			if (Files.isSymbolicLink(artifacts) || !Files.isDirectory(artifacts, NOFOLLOW_LINKS))
-				throw new IOException("Run artifacts directory is not owned by this manager");
+				throw new IOException("Session artifacts directory is not owned by this manager");
 			String prefix = "turn-" + turnNumber;
 			writeAtomically(artifacts.resolve(prefix + ".events"), result.standardOutput());
 			writeAtomically(artifacts.resolve(prefix + ".stderr"), result.standardError());
@@ -925,7 +941,7 @@ public final class NestedSessionManager
 	 * Appends one harness event while its turn remains active, making current progress inspectable before terminal output
 	 * is available.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param turnNumber the positive one-based turn number
 	 * @param event one non-blank harness event line
 	 * @throws IOException if the event cannot be persisted
@@ -937,22 +953,22 @@ public final class NestedSessionManager
 		requireThat(event, "event").isNotBlank();
 		Path artifacts = nestedSession.directory().resolve("artifacts");
 		if (Files.isSymbolicLink(artifacts) || !Files.isDirectory(artifacts, NOFOLLOW_LINKS))
-			throw new IOException("Run artifacts directory is not owned by this manager");
+			throw new IOException("Session artifacts directory is not owned by this manager");
 		if (!readManifest(nestedSession).state().equals("running"))
-			throw new IOException("Cannot append an event to a terminal run");
+			throw new IOException("Cannot append an event to a terminal nested session");
 		Files.writeString(artifacts.resolve("turn-" + turnNumber + ".events"), event + "\n", CREATE, APPEND);
 	}
 
 	/**
-	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
-	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
-	 * same target; any other link stays a link too, retargeted to a read-only copy of the file or directory tree that it
-	 * leads to, which lies in a folder of its own in the run's {@link #linkTargets(Path) link-targets} directory beside
-	 * the project and which the run records so that {@link #changedLinkCopies(NestedSession)} can tell whether its
-	 * session changed the copy.
+	 * Copies project files into an owned nested session without source Git metadata or the placeholders that the sandbox
+	 * lays over files that the session may not read. A symbolic link whose target stays inside the project stays a link
+	 * with the same target; any other link stays a link too, retargeted to a read-only copy of the file or directory tree
+	 * that it leads to, which lies in a folder of its own in the nested session's {@link #linkTargets(Path) link-targets}
+	 * directory beside the project and which the nested session records so that {@link #changedLinkCopies(NestedSession)}
+	 * can tell whether its session changed the copy.
 	 *
 	 * @param source the source project directory
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if the source is not a real directory, a symbolic link in it leads to a missing, unreadable or
 	 *                     hidden target, or copying fails
 	 */
@@ -962,18 +978,18 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Copies project files into an owned run without source Git metadata or the placeholders that the sandbox lays over
-	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
-	 * same target. Any other link stays a link too, with a relative target that leads to a copy of the file or directory
-	 * tree that the original leads to. The copy lies in its own folder of the run's {@link #linkTargets(Path)
-	 * link-targets} directory, named by how many copies precede it, and is read-only as
-	 * {@link PortableFiles#setReadOnly(Path)} makes it, so that the run can neither change the target nor change its
-	 * copy. The project's link therefore still leaves the project, as the original does. The run records each copy's
-	 * paths, types, modes and file digests in its own directory, where its session may not write, so that
-	 * {@link #changedLinkCopies(NestedSession)} can tell whether the session changed a copy anyway.
+	 * Copies project files into an owned nested session without source Git metadata or the placeholders that the sandbox
+	 * lays over files that the session may not read. A symbolic link whose target stays inside the project stays a link
+	 * with the same target. Any other link stays a link too, with a relative target that leads to a copy of the file or
+	 * directory tree that the original leads to. The copy lies in its own folder of the nested session's {@link
+	 * #linkTargets(Path) link-targets} directory, named by how many copies precede it, and is read-only as {@link
+	 * PortableFiles#setReadOnly(Path)} makes it, so that the nested session can neither change the target nor change its
+	 * copy. The project's link therefore still leaves the project, as the original does. The nested session records each
+	 * copy's paths, types, modes and file digests in its own directory, where its session may not write, so that {@link
+	 * #changedLinkCopies(NestedSession)} can tell whether the session changed a copy anyway.
 	 *
 	 * @param source        the source project directory
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param nullDevice    the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                      copy leaves out each project file that is that device. Where it does not exist, as on Windows,
 	 *                      the copy leaves out no file.
@@ -1033,7 +1049,7 @@ public final class NestedSessionManager
 				 * folder of its own in {@code link-targets}, and the project's link to it leads there.
 				 *
 				 * @param relative its path relative to the project
-				 * @return the path in the run that holds its copy
+				 * @return the path in the nested session that holds its copy
 				 * @throws IOException if the {@code link-targets} directory cannot be created
 				 */
 				private Path copyOf(Path relative) throws IOException
@@ -1070,11 +1086,11 @@ public final class NestedSessionManager
 
 	/**
 	 * Compares the read-only copies that {@link #copyProject(Path, NestedSession, Path)} made of the targets of the
-	 * project's links outside it with the record that it kept of them. Once the run's session has ended, a change means
-	 * that the session changed a copy, and the run's result rests on files that differ from the targets. A run whose
-	 * project was never copied has no copies.
+	 * project's links outside it with the record that it kept of them. Once the nested session's harness session has
+	 * ended, a change means that the session changed a copy, and the nested session's result rests on files that differ
+	 * from the targets. A nested session whose project was never copied has no copies.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @return a diagnostic that names each changed path, or empty if no copy changed
 	 * @throws NullPointerException if {@code nestedSession} is null
 	 * @throws IOException          if the record is malformed or a copy cannot be read
@@ -1089,15 +1105,15 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
-	 * NestedSession)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused,
-	 * and so is one whose path is or lies below a link to a read-only copy of the target of a link outside the project. A
-	 * symbolic link is copied as a link with the same relative target and is never followed, so that a link of a draft
-	 * directory reaches the project file that it names. A workspace file that the sandbox has replaced with a placeholder
-	 * is left out.
+	 * Copies workspace files into the project of an owned nested session, on top of the files that {@link
+	 * #copyProject(Path, NestedSession)} copied. Nothing is replaced: a workspace file whose path exists in the project
+	 * already is refused, and so is one whose path is or lies below a link to a read-only copy of the target of a link
+	 * outside the project. A symbolic link is copied as a link with the same relative target and is never followed, so
+	 * that a link of a draft directory reaches the project file that it names. A workspace file that the sandbox has
+	 * replaced with a placeholder is left out.
 	 *
 	 * @param source the directory that holds the workspace files at their paths relative to the project root
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if the source is not a real directory, contains a symbolic-link directory, contains a link
 	 *   whose target is absolute or lies outside the project, a workspace file's path exists in the project already or
 	 *   is or lies below a link to a read-only copy of a link's target, or copying fails
@@ -1108,11 +1124,11 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
-	 * NestedSession, Path)} copied, as {@link #copyWorkspace(Path, NestedSession)} does.
+	 * Copies workspace files into the project of an owned nested session, on top of the files that {@link
+	 * #copyProject(Path, NestedSession, Path)} copied, as {@link #copyWorkspace(Path, NestedSession)} does.
 	 *
 	 * @param source        the directory that holds the workspace files at their paths relative to the project root
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param nullDevice    the null device, which a sandbox mounts over each file that the session may not read; the
 	 *                      copy leaves out each workspace file that is that device. Where it does not exist, as on
 	 *                      Windows, the copy leaves out no file.
@@ -1172,7 +1188,7 @@ public final class NestedSessionManager
 
 			/**
 			 * Refuses a workspace file or directory whose path in the project is or lies below a link to a read-only
-			 * copy of a link's target, which the run checks after its session for changes.
+			 * copy of a link's target, which the nested session checks after its session for changes.
 			 *
 			 * @param path the workspace file or directory
 			 * @throws IOException if such a link holds its path in the project
@@ -1199,9 +1215,9 @@ public final class NestedSessionManager
 	/**
 	 * Returns the existing files and directories under the results folder that a harness session must not read: all of
 	 * them except the files and directories that the session uses, their contents, and the directories that contain
-	 * them. The session therefore cannot read another run, the workspace files of any run, or the runner's records of
-	 * its own run. A file or directory that is created after this method returns, such as the directory of a run that
-	 * starts later, is not included.
+	 * them. The session therefore cannot read another nested session, the workspace files of any nested session, or the
+	 * runner's records of its own nested session. A file or directory that is created after this method returns, such as
+	 * the directory of a nested session that starts later, is not included.
 	 *
 	 * @param accessible the files and directories that the session reads or writes; those outside the results folder
 	 *   are ignored
@@ -1298,10 +1314,10 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Copies the project of an owned run to its {@code initial-project} directory, so that the project's files can be
-	 * compared with the files as they were before the harness changed them.
+	 * Copies the project of an owned nested session to its {@code initial-project} directory, so that the project's files
+	 * can be compared with the files as they were before the harness changed them.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @throws IOException if copying fails
 	 */
 	public void snapshotProject(NestedSession nestedSession) throws IOException
@@ -1330,12 +1346,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Records a failed run without deleting its diagnostics.
+	 * Records a failed nested session without deleting its diagnostics.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param diagnostic the non-secret failure diagnostic
 	 * @throws IOException if the manifest cannot be persisted, or this process is
-	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running run unended
+	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running nested session unended
 	 */
 	public void fail(NestedSession nestedSession, String diagnostic) throws IOException
 	{
@@ -1345,10 +1361,10 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Deletes an explicitly selected owned run.
+	 * Deletes an explicitly selected owned nested session.
 	 *
-	 * @param nestedSession the owned run
-	 * @throws IOException if the run is outside this manager's root or cannot be deleted
+	 * @param nestedSession the owned nested session
+	 * @throws IOException if the nested session is outside this manager's root or cannot be deleted
 	 */
 	public void deleteSession(NestedSession nestedSession) throws IOException
 	{
@@ -1359,23 +1375,25 @@ public final class NestedSessionManager
 			Files.isSymbolicLink(harnessDirectory) || Files.isSymbolicLink(directory) ||
 			!Files.isRegularFile(directory.resolve("session.json"), NOFOLLOW_LINKS))
 		{
-			throw new IOException("Run is not owned by this manager");
+			throw new IOException("Nested session is not owned by this manager");
 		}
 		readManifest(nestedSession);
 		try (NestedSessionLock lock = acquireLock(nestedSession))
 		{
 			if (!lock.isHeld())
-				throw new IOException("Unable to acquire run lock");
+				throw new IOException("Unable to acquire nested-session lock");
 			Manifest manifest = readManifest(nestedSession);
 			if (manifest.state().equals("running") && isOwnerAlive(manifest))
-				throw new IOException("Run is still owned by a live process: " + nestedSession.id());
+				throw new IOException("Nested session is still owned by a live process: " + nestedSession.id());
 			if (manifest.harnessProcessState() == HarnessProcessState.STARTING)
-				throw new IOException("Cannot delete a run while its harness launch state is unknown: " + nestedSession.id());
+				throw new IOException("Cannot delete a nested session while its harness launch state is unknown: " +
+					nestedSession.id());
 			if (isHarnessProcessAlive(manifest))
 			{
 				terminateHarnessProcess(manifest);
 				if (isHarnessProcessAlive(manifest))
-					throw new IOException("Harness process remains alive; refusing to delete run: " + nestedSession.id());
+					throw new IOException("Harness process remains alive; refusing to delete nested session: " +
+						nestedSession.id());
 			}
 			deleteSessionFolder(directory);
 		}
@@ -1386,15 +1404,15 @@ public final class NestedSessionManager
 	/**
 	 * Removes disposable isolated runtime state after a receipt retained the project, harness events, and raw response.
 	 *
-	 * @param nestedSession the completed retained run
-	 * @throws IOException if the run is not terminal or its disposable state cannot be removed
+	 * @param nestedSession the completed retained nested session
+	 * @throws IOException if the nested session is not terminal or its disposable state cannot be removed
 	 */
 	public void pruneRuntime(NestedSession nestedSession) throws IOException
 	{
 		requireThat(nestedSession, "nestedSession").isNotNull();
 		Manifest manifest = readManifest(nestedSession);
 		if (manifest.state().equals("running"))
-			throw new IOException("Cannot prune a running harness run");
+			throw new IOException("Cannot prune a running nested session");
 		if (manifest.harnessProcessState() == HarnessProcessState.STARTING || isHarnessProcessAlive(manifest))
 			throw new IOException("Cannot prune runtime while the harness process may remain: " + nestedSession.id());
 		for (String directory : List.of("home", "claude"))
@@ -1406,11 +1424,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Removes disposable runtime state from every terminal run owned by one harness root. Entries whose names are
-	 * neither run nor session identifiers are not runs and stay as they are, such as the {@code .claude} directories
-	 * that a harness sandbox creates in the directories above its working directory. A session folder that has no
-	 * manifest stays as it is too: a requester's copy of a requested session's run has none until the session ends, or
-	 * ever if the session was stopped, and a run that was being created or deleted at that moment has none either.
+	 * Removes disposable runtime state from every terminal nested session owned by one harness root. Entries whose names
+	 * are neither slot IDs nor session identifiers are not nested sessions and stay as they are, such as the {@code
+	 * .claude} directories that a harness sandbox creates in the directories above its working directory. A session
+	 * folder that has no manifest stays as it is too: a requester's copy of a requested session's nested session has none
+	 * until the session ends, or ever if the session was stopped, and a nested session that was being created or deleted
+	 * at that moment has none either.
 	 *
 	 * @param harness the owning harness name
 	 * @throws IOException if a manifest is malformed or disposable state cannot be removed
@@ -1430,7 +1449,7 @@ public final class NestedSessionManager
 				if (!HARNESS_SESSION_ID.matcher(entry.getFileName().toString()).matches())
 					continue;
 				if (Files.isSymbolicLink(entry) || !Files.isDirectory(entry, NOFOLLOW_LINKS))
-					throw new IOException("Harness run is not an owned directory: " + entry);
+					throw new IOException("Nested session is not an owned directory: " + entry);
 				NestedSession nestedSession = new NestedSession(harness, entry.getFileName().toString(), entry);
 				try
 				{
@@ -1439,18 +1458,19 @@ public final class NestedSessionManager
 				}
 				catch (NoSuchFileException _)
 				{
-					// The run has no manifest, or lost it while this loop ran: it belongs to no terminal run to prune
+					// The nested session has no manifest, or lost it while this loop ran: it belongs to no terminal nested
+					// session to prune
 				}
 			}
 		}
 	}
 
 	/**
-	 * Acquires the exclusive lock for one validated owned run.
+	 * Acquires the exclusive lock for one validated owned nested session.
 	 *
-	 * @param nestedSession the owned run
-	 * @return the acquired run lock
-	 * @throws IOException if the run is outside this manager's root, unknown, or active
+	 * @param nestedSession the owned nested session
+	 * @return the acquired nested-session lock
+	 * @throws IOException if the nested session is outside this manager's root, unknown, or active
 	 */
 	public NestedSessionLock acquireLock(NestedSession nestedSession) throws IOException
 	{
@@ -1460,19 +1480,19 @@ public final class NestedSessionManager
 		if (!directory.getParent().equals(harnessDirectory) || !directory.startsWith(root) ||
 			Files.isSymbolicLink(harnessDirectory) || Files.isSymbolicLink(directory))
 		{
-			throw new IOException("Run is not owned by this manager");
+			throw new IOException("Nested session is not owned by this manager");
 		}
 		Path lock = directory.resolve(".lock");
 		if (!Files.isRegularFile(lock, NOFOLLOW_LINKS))
-			throw new IOException("Run is missing its lock file");
+			throw new IOException("Nested session is missing its lock file");
 		return NestedSessionLock.acquire(fileLocks, lock);
 	}
 
 	/**
-	 * Deletes stale CAT-owned runs older than the retention period when no owner holds their lock.
+	 * Deletes stale CAT-owned nested sessions older than the retention period when no owner holds their lock.
 	 *
 	 * @param retention the positive retention period
-	 * @throws IOException if run directories cannot be inspected or deleted
+	 * @throws IOException if session folders cannot be inspected or deleted
 	 */
 	public void deleteStaleSessions(Duration retention) throws IOException
 	{
@@ -1494,7 +1514,7 @@ public final class NestedSessionManager
 							continue;
 						Manifest parsed = readManifest(manifest);
 						if (!parsed.harness().equals(harnessName) || !parsed.id().equals(sessionFolder.getFileName().toString()))
-							throw new IOException("Run manifest does not match its directory: " + manifest);
+							throw new IOException("Session manifest does not match its directory: " + manifest);
 						NestedSession ownedSession = new NestedSession(harnessName, sessionFolder.getFileName().toString(),
 							sessionFolder);
 						if (parsed.state().equals("running"))
@@ -1507,7 +1527,8 @@ public final class NestedSessionManager
 							continue;
 						}
 						if (parsed.harnessProcessState() == HarnessProcessState.STARTING)
-							throw new IOException("Cannot delete a terminal run with an uncertain harness launch: " + manifest);
+							throw new IOException("Cannot delete a terminal nested session with an uncertain harness " +
+								"launch: " + manifest);
 						if (isHarnessProcessAlive(parsed))
 						{
 							terminateHarnessProcess(parsed);
@@ -1534,10 +1555,10 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Marks an unlocked run failed when its owner ended without recording a terminal result.
+	 * Marks an unlocked nested session failed when its owner ended without recording a terminal result.
 	 *
-	 * @param nestedSession the owned run whose recorded owner is no longer alive
-	 * @return {@code true} if the run was made terminal, or {@code false} if it is still active or unavailable
+	 * @param nestedSession the owned nested session whose recorded owner is no longer alive
+	 * @return {@code true} if the nested session was made terminal, or {@code false} if it is still active or unavailable
 	 * @throws IOException if the manifest cannot be read, the harness process cannot be stopped, or terminal state cannot
 	 *     be persisted
 	 */
@@ -1562,7 +1583,7 @@ public final class NestedSessionManager
 						return false;
 				}
 				if (manifest.harnessProcessState() == HarnessProcessState.STARTING)
-					throw new IOException("Cannot abandon run while harness launch state is unknown: " +
+					throw new IOException("Cannot abandon nested session while harness launch state is unknown: " +
 					nestedSession.directory());
 				writeManifest(new Manifest(manifest.harness(), manifest.id(), "failed", "failed",
 					manifest.harnessProcessState(), manifest.ownerPid(),
@@ -1583,9 +1604,9 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Restricts a run directory to its owner on POSIX filesystems.
+	 * Restricts a session folder to its owner on POSIX filesystems.
 	 *
-	 * @param directory the owned run directory
+	 * @param directory the owned session folder
 	 * @throws IOException if permissions cannot be set on a POSIX filesystem
 	 */
 	private static void setOwnerOnlyDirectoryPermissions(Path directory) throws IOException
@@ -1598,13 +1619,13 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Replaces a non-secret run manifest.
+	 * Replaces a non-secret session manifest.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param state the terminal or active state
 	 * @param diagnostic the optional non-secret diagnostic
-	 * @throws IOException if the manifest cannot be persisted, or {@code state} ends a running run while this process
-	 *   is {@link ProcessTreeStop#stopping() stopping}
+	 * @throws IOException if the manifest cannot be persisted, or {@code state} ends a running nested session while this
+	 *   process is {@link ProcessTreeStop#stopping() stopping}
 	 */
 	private void writeManifest(NestedSession nestedSession, String state, String diagnostic) throws IOException
 	{
@@ -1617,7 +1638,8 @@ public final class NestedSessionManager
 			Instant finishedAt = null;
 			if (!state.equals("running"))
 			{
-				// A runner that is being stopped did not see its run end, so the run's harness session can continue
+				// A runner that is being stopped did not see its nested session end, so the nested session's harness session
+				// can continue
 				if (ProcessTreeStop.stopping() && previous.state().equals("running"))
 					throw new IOException("The runner is stopping, so run " + nestedSession.id() + " records no end");
 				finishedAt = clock.instant();
@@ -1633,9 +1655,9 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Replaces the active phase of a non-terminal run.
+	 * Replaces the active phase of a non-terminal nested session.
 	 *
-	 * @param nestedSession the owned run
+	 * @param nestedSession the owned nested session
 	 * @param phase the active phase
 	 * @throws IOException if the manifest cannot be persisted
 	 */
@@ -1647,7 +1669,7 @@ public final class NestedSessionManager
 			assert phase != null;
 			Manifest previous = readManifest(nestedSession);
 			if (!previous.state().equals("running"))
-				throw new IOException("Cannot update the phase of a terminal run");
+				throw new IOException("Cannot update the phase of a terminal nested session");
 			writeManifest(new Manifest(previous.harness(), previous.id(), previous.state(), phase,
 				previous.harnessProcessState(), previous.ownerPid(),
 				previous.ownerStart(), previous.harnessPid(), previous.harnessStart(), previous.createdAt(),
@@ -1659,11 +1681,12 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Replaces one structured non-secret manifest. A terminal manifest also removes the run's login copies: a run
-	 * becomes terminal only after its harness has stopped, and a run kept after that holds no login.
+	 * Replaces one structured non-secret manifest. A terminal manifest also removes the nested session's login copies: a
+	 * nested session becomes terminal only after its harness has stopped, and a nested session kept after that holds no
+	 * login.
 	 *
 	 * @param manifest the manifest to write
-	 * @param directory the owned run directory
+	 * @param directory the owned session folder
 	 * @throws IOException if the manifest cannot be persisted or a login copy cannot be removed
 	 */
 	private void writeManifest(Manifest manifest, Path directory) throws IOException
@@ -1696,16 +1719,16 @@ public final class NestedSessionManager
 	/**
 	 * Reads and validates one owned manifest.
 	 *
-	 * @param nestedSession the expected owned run
+	 * @param nestedSession the expected owned nested session
 	 * @return the validated manifest
-	 * @throws IOException if the manifest is malformed or does not identify the run
+	 * @throws IOException if the manifest is malformed or does not identify the nested session
 	 */
 	private static Manifest readManifest(NestedSession nestedSession) throws IOException
 	{
 		assert nestedSession != null;
 		Manifest manifest = readManifest(nestedSession.directory().resolve("session.json"));
 		if (!manifest.harness().equals(nestedSession.harness()) || !manifest.id().equals(nestedSession.id()))
-			throw new IOException("Run manifest does not identify the owned run");
+			throw new IOException("Session manifest does not identify the owned nested session");
 		return manifest;
 	}
 
@@ -1721,13 +1744,13 @@ public final class NestedSessionManager
 		assert file != null;
 		if (Files.size(file) > MAXIMUM_MANIFEST_BYTES)
 		{
-			throw new IOException("Run manifest exceeds the maximum supported size of " + MAXIMUM_MANIFEST_BYTES +
+			throw new IOException("Session manifest exceeds the maximum supported size of " + MAXIMUM_MANIFEST_BYTES +
 				" bytes: " + file);
 		}
 		String content = Files.readString(file);
 		Matcher matcher = MANIFEST.matcher(content);
 		if (!matcher.matches() || !matcher.group("catVersion").equals(PluginInfo.CAT_VERSION))
-			throw new IOException("Run manifest is malformed or unsupported: " + file);
+			throw new IOException("Session manifest is malformed or unsupported: " + file);
 		try
 		{
 			int schemaVersion = Integer.parseInt(matcher.group("schemaVersion"));
@@ -1742,11 +1765,11 @@ public final class NestedSessionManager
 			if (!matcher.group("harnessStart").equals("null"))
 				harnessStart = matcher.group("harnessStartValue");
 			if ((harnessPid == null) != (harnessStart == null))
-				throw new IOException("Run manifest has an incomplete harness process identity: " + file);
+				throw new IOException("Session manifest has an incomplete harness process identity: " + file);
 			if (ownerPid <= 0 || ownerStart == null || !ownerStart.matches(ProcessDescription.START_PATTERN))
-				throw new IOException("Run manifest has an incomplete owner process identity: " + file);
+				throw new IOException("Session manifest has an incomplete owner process identity: " + file);
 			if (harnessStart != null && !harnessStart.matches(ProcessDescription.START_PATTERN))
-				throw new IOException("Run manifest has an invalid harness process identity: " + file);
+				throw new IOException("Session manifest has an invalid harness process identity: " + file);
 			HarnessProcessState processState;
 			if (schemaVersion == 3)
 			{
@@ -1762,7 +1785,7 @@ public final class NestedSessionManager
 					throw new IOException("Schema " + schemaVersion + " manifest has no harness process state: " + file);
 				processState = HarnessProcessState.from(state);
 				if ((processState == HarnessProcessState.RECORDED) != (harnessPid != null))
-					throw new IOException("Run manifest has inconsistent harness process state: " + file);
+					throw new IOException("Session manifest has inconsistent harness process state: " + file);
 			}
 			Instant createdAt = Instant.parse(matcher.group("createdAt"));
 			// Manifests before schema 5 predate the harness session's identifier, so their harness reported none
@@ -1778,7 +1801,8 @@ public final class NestedSessionManager
 			}
 			else if (session != null)
 				throw new IOException("Schema " + schemaVersion + " manifest records a harness session: " + file);
-			// Manifests before schema 6 predate the count of the run's session requests, so their runs made none
+			// Manifests before schema 6 predate the count of the nested session's session requests, so their nested sessions
+			// made none
 			int requestsUsed = 0;
 			String requests = matcher.group("requestsUsed");
 			if (schemaVersion == 6)
@@ -1799,13 +1823,13 @@ public final class NestedSessionManager
 			if (!matcher.group("finishedAt").equals("null"))
 				finishedAt = Instant.parse(matcher.group("finishedAtValue"));
 			if (matcher.group("state").equals("running") == (finishedAt != null))
-				throw new IOException("Run manifest has an invalid terminal timestamp: " + file);
+				throw new IOException("Session manifest has an invalid terminal timestamp: " + file);
 			String state = matcher.group("state");
 			String phase = matcher.group("phase");
 			if (state.equals("running") == (phase.equals("completed") || phase.equals("failed")))
-				throw new IOException("Run manifest has an invalid lifecycle phase: " + file);
+				throw new IOException("Session manifest has an invalid lifecycle phase: " + file);
 			if (!state.equals("running") && !phase.equals(state))
-				throw new IOException("Run manifest has an invalid terminal phase: " + file);
+				throw new IOException("Session manifest has an invalid terminal phase: " + file);
 			return new Manifest(matcher.group("harness"), matcher.group("id"), state, phase, processState, ownerPid,
 				ownerStart, harnessPid, harnessStart, createdAt, harnessSessionId, requestsUsed,
 				unescape(matcher.group("artifactPath")),
@@ -1815,22 +1839,22 @@ public final class NestedSessionManager
 		}
 		catch (JacksonException e)
 		{
-			throw new IOException("Run manifest contains an invalid JSON string: " + file, e);
+			throw new IOException("Session manifest contains an invalid JSON string: " + file, e);
 		}
 		catch (DateTimeParseException e)
 		{
-			throw new IOException("Run manifest contains an invalid timestamp: " + file, e);
+			throw new IOException("Session manifest contains an invalid timestamp: " + file, e);
 		}
 		catch (IllegalArgumentException e)
 		{
-			throw new IOException("Run manifest contains an invalid value: " + file, e);
+			throw new IOException("Session manifest contains an invalid value: " + file, e);
 		}
 	}
 
 	/**
 	 * Indicates whether the recorded owner process might still be alive.
 	 *
-	 * @param manifest the validated run manifest
+	 * @param manifest the validated session manifest
 	 * @return {@code true} if the original owner remains alive, or if the manifest records no
 	 *   {@link ProcessDescription#start() start} for it, because the owner cannot then be told apart from a later
 	 *   process
@@ -1844,14 +1868,14 @@ public final class NestedSessionManager
 	/**
 	 * Indicates whether the recorded harness process remains alive.
 	 *
-	 * @param manifest the validated run manifest
+	 * @param manifest the validated session manifest
 	 * @return {@code true} if the harness process is recorded and remains alive
 	 */
 	private boolean isHarnessProcessAlive(Manifest manifest) throws IOException
 	{
 		assert manifest != null;
 		if (manifest.harnessProcessState() == HarnessProcessState.STARTING)
-			throw new IOException("Harness launch state is unknown for run " + manifest.id());
+			throw new IOException("Harness launch state is unknown for nested session " + manifest.id());
 		return manifest.harnessProcessState() == HarnessProcessState.RECORDED &&
 			processLiveness.isAlive(manifest.harnessPid(), manifest.harnessStart());
 	}
@@ -1859,7 +1883,7 @@ public final class NestedSessionManager
 	/**
 	 * Requests termination of the recorded harness process.
 	 *
-	 * @param manifest the validated run manifest
+	 * @param manifest the validated session manifest
 	 */
 	private void terminateHarnessProcess(Manifest manifest) throws IOException
 	{
@@ -1895,10 +1919,10 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Non-secret structured state for an owned run.
+	 * Non-secret structured state for an owned nested session.
 	 *
 	 * @param harness the harness identifier
-	 * @param id the run identifier
+	 * @param id the slot ID
 	 * @param state the lifecycle state
 	 * @param phase the current activity or terminal phase
 	 * @param harnessProcessState the durable harness launch state
@@ -1908,15 +1932,15 @@ public final class NestedSessionManager
 	 * @param harnessPid the harness process identifier, if started
 	 * @param harnessStart the harness process's start as the manifest records it, if started
 	 * @param createdAt the immutable creation timestamp
-	 * @param harnessSessionId the harness's own identifier of the run's session, or null if the harness has not
-	 *   reported it
-	 * @param requestsUsed how many of the session requests of the run's session its runner has accepted, over every
-	 *   runner that served the run
+	 * @param harnessSessionId the harness's own identifier of the nested session's harness session, or null if the
+	 *   harness has not reported it
+	 * @param requestsUsed how many of the session requests of the nested session's harness session its runner has
+	 *   accepted, over every runner that served the nested session
 	 * @param artifactPath the complete artifact path
 	 * @param projectPath the source project path
 	 * @param transport the harness persistent transport
 	 * @param harnessCommand the redacted harness command
-	 * @param startedAt the harness-run start timestamp, if initialized
+	 * @param startedAt the nested-session start timestamp, if initialized
 	 * @param turnNumber the latest completed turn number
 	 * @param exitCode the latest observed harness-turn or externally reported runner exit status, if available
 	 * @param finishedAt the terminal timestamp, if terminal
@@ -2132,7 +2156,8 @@ public final class NestedSessionManager
 	}
 
 	/**
-	 * Removes one empty runner grouping directory without disturbing another process that created a sibling run.
+	 * Removes one empty runner grouping directory without disturbing another process that created a sibling nested
+	 * session.
 	 *
 	 * @param directory the candidate empty directory
 	 * @throws IOException if deletion fails for a reason other than a concurrent child creation
@@ -2145,20 +2170,20 @@ public final class NestedSessionManager
 		}
 		catch (DirectoryNotEmptyException _)
 		{
-			// Another run still owns a child directory.
+			// Another nested session still owns a child directory.
 		}
 	}
 
 	/**
-	 * Indicates whether lock acquisition failed because the run remains active.
+	 * Indicates whether lock acquisition failed because the nested session remains active.
 	 *
 	 * @param failure the lock-acquisition failure
-	 * @return true if the run remains active
+	 * @return true if the nested session remains active
 	 */
 	private static boolean isActiveSession(IOException failure)
 	{
 		assert failure != null;
 		String message = failure.getMessage();
-		return message != null && message.startsWith("Run is already active:");
+		return message != null && message.startsWith("Nested session is already active:");
 	}
 }

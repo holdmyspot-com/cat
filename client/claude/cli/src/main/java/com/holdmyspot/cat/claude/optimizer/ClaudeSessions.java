@@ -731,11 +731,11 @@ public final class ClaudeSessions extends RunnerSessions
 	 * <li>When Claude Code runs the optimizer outside a nested session, the session is a request to the request server
 	 * of the
 	 *   host session, which starts the runner of the settings' CAT artifact outside the optimizer's sandbox; the
-	 *   session's kept run is copied into the optimizer's results folder. Without a request server that serves the host
-	 *   session, the session is refused, naming the command that starts the server.</li>
-	 *   <li>Inside a nested session whose runner lets its session request sessions, the session is a request to the run's
-	 *   runner, which starts it outside the optimizer's sandbox and counts it against the run's limit; the session's
-	 *   kept run is copied into the optimizer's results folder.</li>
+	 *   session's results copy is copied into the optimizer's results folder. Without a request server that serves the
+	 *   host session, the session is refused, naming the command that starts the server.</li>
+	 *   <li>Inside a nested session whose runner lets its session request sessions, the session is a request to the
+	 *   nested session's runner, which starts it outside the optimizer's sandbox and counts it against the nested
+	 *   session's limit; the session's results copy is copied into the optimizer's results folder.</li>
 	 * <li>Inside a nested session whose runner lets its session request none, or when only Codex runs the optimizer,
 	 * the
 	 *   session is refused with the reason that the runner's launch gives.</li>

@@ -18,16 +18,17 @@ public final class RunnerArguments
 	 */
 	public static final String CONTINUE_AFTER_FAILED_TURN_OPTION = "--continue-after-failed-turn";
 	/**
-	 * The runner option that gives the run the identifier, and so the directory, of a reusable slot.
+	 * The runner option that gives the nested session the identifier, and so the directory, of a reusable slot.
 	 */
 	public static final String SLOT_ID_OPTION = "--slot-id";
 	/**
 	 * The runner option with which a server starts the runner of a launch that resumes a harness session, in the
-	 * retained run that records the session, which the runner continues rather than start a new one.
+	 * retained nested session that records the session, which the runner continues rather than start a new one.
 	 */
 	public static final String RESUME_SLOT_OPTION = "--resume-slot";
 	/**
-	 * The launch option that resumes a harness session that an interrupted run of the launch's server recorded.
+	 * The launch option that resumes a harness session that an interrupted nested session of the launch's server
+	 * recorded.
 	 */
 	public static final String RESUME_OPTION = "--resume";
 	/**

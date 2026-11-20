@@ -29,7 +29,7 @@ public final class MainHarnessRunnerScope extends AbstractHarnessRunnerScope
 	}
 
 	/**
-	 * Creates an open harness-run scope.
+	 * Creates an open nested-session scope.
 	 *
 	 * @param environment the process environment
 	 * @param waiting how the process waits between the attempts of a retried operation

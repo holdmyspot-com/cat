@@ -66,8 +66,8 @@ public final class ClaudeRunnerTest
 		"CLAUDE_CODE_WORKFLOW_MAX_CONCURRENT_AGENTS", "CLAUDE_CODE_WORKFLOW_SUBAGENT_MODEL");
 
 	/**
-	 * Verifies the Claude launcher creates its Bubblewrap launch configuration beside the run-owned Claude temporary
-	 * directory so run cleanup removes the workaround with the completed run.
+	 * Verifies the Claude launcher creates its Bubblewrap launch configuration beside the session-owned Claude
+	 * temporary directory so nested-session cleanup removes the workaround with the completed nested session.
 	 */
 	@Test
 	public void resolvesSessionLaunchConfiguration()
@@ -106,9 +106,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that the Claude process environment marks the session as a CAT run, even when the caller's settings file
-	 * sets the marker's variable otherwise, so that the session's commands send their sessions to the nested session's
-	 * runner.
+	 * Verifies that the Claude process environment marks the session as a nested session, even when the caller's settings
+	 * file sets the marker's variable otherwise, so that the session's commands send their sessions to the nested
+	 * session's runner.
 	 *
 	 * @throws IOException if the environment cannot be built
 	 */
@@ -273,8 +273,8 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that each Claude authentication variable alone lets a run start, even though neither the user's Claude
-	 * configuration directory nor the macOS Keychain holds a login, and that the runner then asks the Keychain
+	 * Verifies that each Claude authentication variable alone lets a nested session start, even though neither the user's
+	 * Claude configuration directory nor the macOS Keychain holds a login, and that the runner then asks the Keychain
 	 * nothing, because the session authenticates through the variable.
 	 *
 	 * @param variable the authentication variable
@@ -299,8 +299,8 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a variable that the caller's Claude settings file sets in its {@code env} lets a run start, as
-	 * the session receives it from there.
+	 * Verifies that a variable that the caller's Claude settings file sets in its {@code env} lets a nested session
+	 * start, as the session receives it from there.
 	 *
 	 * @throws IOException if the fixture cannot be built
 	 */
@@ -326,12 +326,11 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run on Linux or macOS is refused, with a reason that tells the user to log in to Claude Code
-	 * with {@code /login} and names the user's Claude configuration directory, when no authentication variable holds
-	 * a value and the user's login store holds no login: the configuration directory holds no
-	 * {@code .credentials.json} and, on macOS, the Keychain holds no login item. The directory is the one that
-	 * {@code CLAUDE_CONFIG_DIR} names when it is set, even though {@code .claude} in the home directory then holds a
-	 * login file.
+	 * Verifies that a nested session on Linux or macOS is refused, with a reason that tells the user to log in to Claude
+	 * Code with {@code /login} and names the user's Claude configuration directory, when no authentication variable holds
+	 * a value and the user's login store holds no login: the configuration directory holds no {@code .credentials.json}
+	 * and, on macOS, the Keychain holds no login item. The directory is the one that {@code CLAUDE_CONFIG_DIR} names when
+	 * it is set, even though {@code .claude} in the home directory then holds a login file.
 	 *
 	 * @param platform    the platform whose login store the runner checks
 	 * @param configured  whether the caller's environment names the configuration directory in
@@ -370,11 +369,11 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run on Linux or macOS is refused, naming the directory of the user's login store, when the
-	 * caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} selects a login store that holds no login, although
-	 * {@code CLAUDE_CONFIG_DIR} names a directory that holds a login file: the store is the directory that the
-	 * variable names, or, when its value is empty, {@code .claude} in the home directory, whose Keychain item on
-	 * macOS has no hash in its name. The user's own Claude Code uses that store, and so does the session's.
+	 * Verifies that a nested session on Linux or macOS is refused, naming the directory of the user's login store, when
+	 * the caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} selects a login store that holds no login, although {@code
+	 * CLAUDE_CONFIG_DIR} names a directory that holds a login file: the store is the directory that the variable names,
+	 * or, when its value is empty, {@code .claude} in the home directory, whose Keychain item on macOS has no hash in its
+	 * name. The user's own Claude Code uses that store, and so does the session's.
 	 *
 	 * @param platform the platform whose login store the runner checks
 	 * @param named    whether the caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory, rather than
@@ -422,7 +421,7 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run starts without an authentication variable when the directory that the caller's
+	 * Verifies that a nested session starts without an authentication variable when the directory that the caller's
 	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names holds Claude Code's login file, although neither the directory
 	 * that {@code CLAUDE_CONFIG_DIR} names nor {@code .claude} in the home directory holds one, because the user's
 	 * Claude Code and the session's use the login there.
@@ -454,7 +453,7 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run on Windows starts without an authentication variable although the user's Claude
+	 * Verifies that a nested session on Windows starts without an authentication variable although the user's Claude
 	 * configuration directory holds no login file, because Claude Code may keep the login in the Windows Credential
 	 * Manager, so the runner cannot tell that no login exists.
 	 *
@@ -486,9 +485,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run starts without an authentication variable when the user's Claude configuration directory
-	 * holds Claude Code's login file, {@code .credentials.json}, whether the directory is {@code .claude} in the
-	 * home directory or the one that {@code CLAUDE_CONFIG_DIR} names, because the session's Claude Code uses the
+	 * Verifies that a nested session starts without an authentication variable when the user's Claude configuration
+	 * directory holds Claude Code's login file, {@code .credentials.json}, whether the directory is {@code .claude} in
+	 * the home directory or the one that {@code CLAUDE_CONFIG_DIR} names, because the session's Claude Code uses the
 	 * user's login there.
 	 *
 	 * @param platform   the platform whose login store the runner checks
@@ -522,13 +521,13 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that on macOS a run starts without an authentication variable or login file when the Keychain holds
-	 * the user's Claude Code login item, and that the runner only asks whether the item exists, without {@code -w},
-	 * so that the Keychain reveals no secret: the item's account is the user's name, and its service is
-	 * {@code Claude Code-credentials}, followed, when a variable names the directory of the login store, by
-	 * {@code -} and the first eight hexadecimal digits of the SHA-256 hash of that directory in Unicode normalization
-	 * form C. The caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names the store, or, when it is unset,
-	 * {@code CLAUDE_CONFIG_DIR} does; an empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names none.
+	 * Verifies that on macOS a nested session starts without an authentication variable or login file when the Keychain
+	 * holds the user's Claude Code login item, and that the runner only asks whether the item exists, without {@code -w},
+	 * so that the Keychain reveals no secret: the item's account is the user's name, and its service is {@code Claude
+	 * Code-credentials}, followed, when a variable names the directory of the login store, by {@code -} and the first
+	 * eight hexadecimal digits of the SHA-256 hash of that directory in Unicode normalization form C. The caller's {@code
+	 * CLAUDE_SECURESTORAGE_CONFIG_DIR} names the store, or, when it is unset, {@code CLAUDE_CONFIG_DIR} does; an empty
+	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names none.
 	 *
 	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR}, or an empty string if it sets none
 	 * @param store      the caller's value of {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, or {@code null} if it sets
@@ -589,9 +588,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that on macOS a run starts when the Keychain answers neither that it holds the login item nor that it
-	 * holds none, as when the Keychain is locked: the runner refuses a run only when it knows that there is no login,
-	 * and the session's Claude Code then reports what keeps it from the login.
+	 * Verifies that on macOS a nested session starts when the Keychain answers neither that it holds the login item nor
+	 * that it holds none, as when the Keychain is locked: the runner refuses a nested session only when it knows that
+	 * there is no login, and the session's Claude Code then reports what keeps it from the login.
 	 *
 	 * @throws IOException if the fixture cannot be built
 	 */
@@ -692,8 +691,8 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Returns the platforms whose runner refuses a run that it knows to have no login, and whether the caller's
-	 * {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory.
+	 * Returns the platforms whose runner refuses a nested session that it knows to have no login, and whether the
+	 * caller's {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names a directory.
 	 *
 	 * @return the platforms and choices
 	 */
@@ -743,11 +742,12 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that the Claude process environment points the session's Claude Code at the login store of the user's
 	 * own Claude Code, through {@code CLAUDE_SECURESTORAGE_CONFIG_DIR}, while its configuration directory stays the
-	 * run's own: the store is the directory that the caller's non-empty {@code CLAUDE_SECURESTORAGE_CONFIG_DIR} names,
-	 * or else, when that variable is unset, the one that its {@code CLAUDE_CONFIG_DIR} names, each as written there;
-	 * otherwise it is the default store, which on macOS an empty value selects, because only that value selects the
-	 * Keychain item of the user's default store, and elsewhere {@code .claude} in the caller's home directory. The
-	 * session therefore uses and refreshes the user's own Claude login, and its settings stay its own.
+	 * nested session's own: the store is the directory that the caller's non-empty {@code
+	 * CLAUDE_SECURESTORAGE_CONFIG_DIR} names, or else, when that variable is unset, the one that its {@code
+	 * CLAUDE_CONFIG_DIR} names, each as written there; otherwise it is the default store, which on macOS an empty value
+	 * selects, because only that value selects the Keychain item of the user's default store, and elsewhere {@code
+	 * .claude} in the caller's home directory. The session therefore uses and refreshes the user's own Claude login, and
+	 * its settings stay its own.
 	 *
 	 * @param configured the caller's value of {@code CLAUDE_CONFIG_DIR} below the fixture's folder, or an empty
 	 *                   string if it sets none
@@ -909,7 +909,7 @@ public final class ClaudeRunnerTest
 	 * session's sandbox policy denies reading each file and lets the commands neither write nor read again any
 	 * directory that holds them.
 	 *
-	 * @throws IOException if the run or its settings cannot be created
+	 * @throws IOException if the nested session or its settings cannot be created
 	 */
 	@Test
 	public void deniesUserLoginToSessionCommands() throws IOException
@@ -979,9 +979,9 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that every run keeps its Claude Code session, whether or not it copies the session's transcripts or may
-	 * request sessions, so that the run's session can continue after its runner ends, and that the command sets no
-	 * generated sandbox policy of its own.
+	 * Verifies that every nested session keeps its Claude Code session, whether or not it copies the session's
+	 * transcripts or may request sessions, so that the nested session's harness session can continue after its runner
+	 * ends, and that the command sets no generated sandbox policy of its own.
 	 */
 	@Test
 	public void persistsEverySession()
@@ -996,8 +996,8 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a runner that continues a run's session asks Claude Code to resume that session, which Claude Code
-	 * keeps under the same identifier.
+	 * Verifies that a runner that continues a nested session's harness session asks Claude Code to resume that session,
+	 * which Claude Code keeps under the same identifier.
 	 */
 	@Test
 	public void resumesRecordedSession()
@@ -1067,7 +1067,7 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies a CAT run grants Claude access to spilled hook context without exposing the isolated home.
+	 * Verifies a nested session grants Claude access to spilled hook context without exposing the isolated home.
 	 */
 	@Test
 	public void permitsOnlyHookResultsForSpilledContext()
@@ -1095,7 +1095,7 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies a run with a trial plugin grants Claude access to that plugin and to spilled hook context.
+	 * Verifies a nested session with a trial plugin grants Claude access to that plugin and to spilled hook context.
 	 */
 	// Requirement: R-W12
 	@Test
@@ -1242,7 +1242,7 @@ public final class ClaudeRunnerTest
 
 	/**
 	 * Verifies that installing CAT adds the installer's entries for each copy of CAT that Claude Code's install
-	 * records name, beside the copy in the run's marketplace.
+	 * records name, beside the copy in the nested session's marketplace.
 	 *
 	 * @throws IOException if the fixture cannot be written
 	 */
@@ -1369,10 +1369,10 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a run whose project path maps to a name of more than 255 characters, which a file system cannot
-	 * hold as one folder name, still gets its hook-results folder.
+	 * Verifies that a nested session whose project path maps to a name of more than 255 characters, which a file system
+	 * cannot hold as one folder name, still gets its hook-results folder.
 	 *
-	 * @throws IOException if the run directory cannot be created
+	 * @throws IOException if the session folder cannot be created
 	 */
 	@Test
 	public void createsHookResultsForLongPath() throws IOException
@@ -1418,12 +1418,13 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a session is denied reading the runner's records of its own run, namely the run's artifacts,
-	 * manifest, lock and initial project, its own settings, and the other runs and workspaces under the results folder,
-	 * besides the paths that the caller denies, and any login file in its home. The session can still read its project,
-	 * the rest of its home, its Claude temporary directory and the evidence that it validates.
+	 * Verifies that a session is denied reading the runner's records of its own nested session, namely the nested
+	 * session's artifacts, manifest, lock and initial project, its own settings, and the other nested sessions and
+	 * workspaces under the results folder, besides the paths that the caller denies, and any login file in its home. The
+	 * session can still read its project, the rest of its home, its Claude temporary directory and the evidence that it
+	 * validates.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesReadingRecordsAndOtherSessions() throws IOException
@@ -1461,11 +1462,11 @@ public final class ClaudeRunnerTest
 
 	/**
 	 * Verifies that a session whose results folder lies inside a project that the caller denies is denied every file
-	 * and directory of that project except the directories that lead to its run and evidence, each path once. The
-	 * session can still read its project, its home, its Claude temporary directory and the evidence that it validates,
-	 * but not the files of the project around them.
+	 * and directory of that project except the directories that lead to its nested session and evidence, each path once.
+	 * The session can still read its project, its home, its Claude temporary directory and the evidence that it
+	 * validates, but not the files of the project around them.
 	 *
-	 * @throws IOException if the run cannot be created
+	 * @throws IOException if the nested session cannot be created
 	 */
 	@Test
 	public void deniesProjectAroundResultsFolder() throws IOException
@@ -1506,14 +1507,14 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a session that its requester's sandbox policy bounds starts although its run lies in the
-	 * requester's requested-runs directory, which that policy does not let the requester write: the first requested
+	 * Verifies that a session that its requester's sandbox policy bounds starts although its nested session lies in the
+	 * requester's slots directory, which that policy does not let the requester write: the first requested
 	 * session's policy, which holds only its home, requests directory, worktree registrations and dependency cache,
 	 * bounds the session that it requests, and the settings of that session let its commands write its own home, the
 	 * cache, its requests directory and its worktree registrations, but neither its whole session folder nor its
 	 * responses directory.
 	 *
-	 * @throws IOException if the runs cannot be created
+	 * @throws IOException if the nested sessions cannot be created
 	 */
 	@Test
 	public void startsNestedRequestedSession() throws IOException
@@ -1562,9 +1563,9 @@ public final class ClaudeRunnerTest
 	/**
 	 * Verifies that a session that a Claude Code session requests may read, but not write, the CAT plugin that the
 	 * requesting session's commands run, such as a launcher that the request's prompt names, while its settings still
-	 * deny it the rest of the requesting run, such as that session's login.
+	 * deny it the rest of the requesting nested session, such as that session's login.
 	 *
-	 * @throws IOException if the runs cannot be created
+	 * @throws IOException if the nested sessions cannot be created
 	 */
 	@Test
 	public void readsPluginOfRequestingSession() throws IOException
@@ -1659,12 +1660,12 @@ public final class ClaudeRunnerTest
 	}
 
 	/**
-	 * Verifies that a requested session of a run that may request hundreds of sessions is denied the runs of all the
-	 * others and the requester's own files with a number of denied paths that is a small fraction of the number of
-	 * sessions, so that its settings stay within what Claude Code can sandbox its commands with, and that the
-	 * session's own project stays readable.
+	 * Verifies that a requested session of a nested session that may request hundreds of sessions is denied the nested
+	 * sessions of all the others and the requester's own files with a number of denied paths that is a small fraction of
+	 * the number of sessions, so that its settings stay within what Claude Code can sandbox its commands with, and that
+	 * the session's own project stays readable.
 	 *
-	 * @throws IOException if the runs cannot be created
+	 * @throws IOException if the nested sessions cannot be created
 	 */
 	@Test
 	public void deniesSiblingsWithFewPaths() throws IOException

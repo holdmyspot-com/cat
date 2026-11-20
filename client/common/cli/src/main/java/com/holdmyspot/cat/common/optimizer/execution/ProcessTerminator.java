@@ -3,7 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 
 /**
- * Terminates a process that a run manifest recorded, for the {@link Driver}'s reconciliation.
+ * Terminates a process that a session manifest recorded, for the {@link Driver}'s reconciliation.
  */
 @FunctionalInterface
 public interface ProcessTerminator

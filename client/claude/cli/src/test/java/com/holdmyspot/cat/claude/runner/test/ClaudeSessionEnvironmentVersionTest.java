@@ -131,13 +131,13 @@ public final class ClaudeSessionEnvironmentVersionTest
 	}
 
 	/**
-	 * Returns the content of a settings file with its root and its run's identifier replaced, because run directories
-	 * differ per run.
+	 * Returns the content of a settings file with its root and its nested session's identifier replaced, because session
+	 * folders differ per nested session.
 	 *
 	 * @param json          the JSON mapper that wrote the settings
 	 * @param file          the settings file
 	 * @param root          the root
-	 * @param nestedSession the run
+	 * @param nestedSession the nested session
 	 * @return the normalized settings
 	 * @throws IOException if the file cannot be read
 	 */
@@ -151,7 +151,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 	/**
 	 * Keeps only the instruction files that the settings exclude at or below a root, each with the root replaced by
 	 * {@code <root>} and its names separated by {@code /}. The settings exclude the files of every directory above the
-	 * run directory, and the directories above the root differ between machines.
+	 * session folder, and the directories above the root differ between machines.
 	 *
 	 * @param json     the JSON mapper that wrote the settings
 	 * @param settings the settings

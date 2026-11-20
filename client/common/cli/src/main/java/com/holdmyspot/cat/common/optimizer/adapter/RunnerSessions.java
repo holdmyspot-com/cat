@@ -70,18 +70,18 @@ import tools.jackson.dataformat.yaml.YAMLMapper;
 /**
  * Runs nested sessions through a harness runner.
  * <p>
- * Each session runs in a fresh, isolated run directory and holds one {@link HarnessCapacity} permit for its lifetime. A
- * session of the held-out part runs under the held-out results folder and is denied nothing; a session of the
+ * Each session runs in a fresh, isolated session folder and holds one {@link HarnessCapacity} permit for its lifetime.
+ * A session of the held-out part runs under the held-out results folder and is denied nothing; a session of the
  * development part runs under the results folder and its harness sandbox denies it reading every held-out location. A
  * session sends the request's turns one at a time through the runner's JSONL bridge. It parses the harness's events for
  * the observed model, the token usage and the rate-limit windows, and keeps the events as the transcript. The runner
  * selects the request's profile: {@code --model} and {@code --effort} for each bound dimension, and nothing for an
  * unbound one, so the harness applies its default.
  * <p>
- * The completed result's transcript is {@code <run>/artifacts/transcript.jsonl}, its effects directory is the run's
- * {@code project} copy of the request's source, and its prompt sources are the ones that the session was observed
- * loading. When a session ends, the run's isolated home, which holds a copy of the login, is
- * deleted.
+ * The completed result's transcript is {@code <session folder>/artifacts/transcript.jsonl}, its effects directory is
+ * the nested session's {@code project} copy of the request's source, and its prompt sources are the ones that the
+ * session was observed loading. When a session ends, the nested session's isolated home, which holds a copy of the
+ * login, is deleted.
  * <p>
  * A subclass supplies its harness's event parsers, its read-only evidence options and its login classification. A
  * harness that can shorten a tool's output before its model receives it also supplies the results that its agents
@@ -133,7 +133,8 @@ public abstract class RunnerSessions implements SessionPort
 	 */
 	private static final Duration HOOK_TIMEOUT = Duration.ofSeconds(60);
 	/**
-	 * The session identifier in a hook's input, the same in every run so that only the session's directory differs.
+	 * The session identifier in a hook's input, the same in every nested session so that only the session's directory
+	 * differs.
 	 */
 	private static final String HOOK_SESSION_ID = "00000000-0000-0000-0000-000000000000";
 	private final String harness;
@@ -812,7 +813,7 @@ public abstract class RunnerSessions implements SessionPort
 	protected abstract HarnessEvents newEvents(JsonMapper json);
 
 	/**
-	 * Creates the prompt-source observation of one run.
+	 * Creates the prompt-source observation of one nested session.
 	 *
 	 * @param json the JSON mapper
 	 * @param directories maps each placeholder to a directory whose staged location must not appear in the value
@@ -1399,7 +1400,7 @@ public abstract class RunnerSessions implements SessionPort
 	 *
 	 * @param scope the process scope borrowed for this adapter
 	 * @param artifact the complete harness artifact that the runner validates and installs
-	 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
+	 * @param resultsFolder the absolute directory that holds the session folders of sessions of the development part
 	 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 	 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that the
 	 *   files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1411,7 +1412,7 @@ public abstract class RunnerSessions implements SessionPort
 	 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they load
 	 *   none
 	 * @param hostProject the project of the host session that starts the sessions, whose files no session may read
-	 *   except those of its own run and the evidence that it reads, or {@code null} to deny no project's files
+	 *   except those of its own nested session and the evidence that it reads, or {@code null} to deny no project's files
 	 */
 	public record Settings(JvmScope scope, Path artifact, Path resultsFolder, HeldOutPaths heldOut, boolean installCat,
 		Map<String, String> environment, Path configurationDirectory, HarnessCapacity capacity, Clock clock,
@@ -1422,7 +1423,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
-		 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
+		 * @param resultsFolder the absolute directory that holds the session folders of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 			 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
 		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1434,8 +1435,8 @@ public abstract class RunnerSessions implements SessionPort
 		 * @param userRules the directory of the user's CAT rules, which trials that install CAT load, or empty if they
 		 *   load none
 		 * @param hostProject the project of the host session that starts the sessions, whose files no session may
-		 *   read except those of its own run and the evidence that it reads, or {@code null} to deny no project's
-		 *   files
+		 *   read except those of its own nested session and the evidence that it reads, or {@code null} to deny no
+		 *   project's files
 		 * @throws NullPointerException if any argument other than {@code hostProject} is null
 		 * @throws IllegalArgumentException if {@code resultsFolder} or {@code hostProject} are not absolute, or
 		 *   {@code resultsFolder} is a file system root
@@ -1468,7 +1469,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
-		 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
+		 * @param resultsFolder the absolute directory that holds the session folders of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 			 * @param installCat whether the user's sessions of the harness load CAT from the artifact, so that the files
 		 *   that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1495,7 +1496,7 @@ public abstract class RunnerSessions implements SessionPort
 		 *
 		 * @param scope the process scope borrowed for this adapter
 		 * @param artifact the complete harness artifact that the runner validates and installs
-		 * @param resultsFolder the absolute directory that holds the run directories of sessions of the development part
+		 * @param resultsFolder the absolute directory that holds the session folders of sessions of the development part
 		 * @param heldOut lists, when each session starts, the campaigns' held-out directories
 			 * @param installCat indicates whether the user's sessions of the harness load CAT from the artifact, so that
 		 *   the files that load in production include CAT's rules; trials install CAT only when a trial plugin is CAT
@@ -1516,7 +1517,7 @@ public abstract class RunnerSessions implements SessionPort
 		}
 
 		/**
-		 * Returns the held-out results folder: the directory beside the results folder that holds the run directories
+		 * Returns the held-out results folder: the directory beside the results folder that holds the session folders
 		 * of sessions of the held-out part. Its name is the results folder's name followed by {@code -held_out}.
 		 *
 		 * @return the absolute directory

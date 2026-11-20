@@ -86,11 +86,11 @@ import static org.testng.Assert.expectThrows;
 public final class SessionRequestBrokerTest
 {
 	/**
-	 * The harness session that an interrupted requested run records.
+	 * The harness session that an interrupted requested nested session records.
 	 */
 	private static final String RESUMED_SESSION = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 	/**
-	 * The harness session that a requested run records.
+	 * The harness session that a requested nested session records.
 	 */
 	private static final String CHILD_SESSION = "0a4e7c3b-9d2f-4b1a-8e6c-5f3d2a1b0c9e";
 	/**
@@ -186,10 +186,10 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Supplies the request depths of a requesting run and the depth that each requested session must receive, or
-	 * {@code -1} when the requested session must not request sessions.
+	 * Supplies the request depths of a requesting nested session and the depth that each requested session must receive,
+	 * or {@code -1} when the requested session must not request sessions.
 	 *
-	 * @return the run's depth and the requested session's depth
+	 * @return the nested session's depth and the requested session's depth
 	 */
 	@DataProvider
 	public Object[][] requestDepths()
@@ -198,10 +198,10 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a requested session may request sessions in turn, as many as the requesting run, only while the
-	 * run's request depth leaves a level below it, and that each level lowers the depth by one.
+	 * Verifies that a requested session may request sessions in turn, as many as the requesting nested session, only
+	 * while the nested session's request depth leaves a level below it, and that each level lowers the depth by one.
 	 *
-	 * @param depth    the requesting run's request depth
+	 * @param depth    the requesting nested session's request depth
 	 * @param expected the requested session's request depth, or {@code -1} if it must request none
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -239,9 +239,10 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that the runner states the run's limits in the responses directory when its broker starts and again
-	 * whenever it accepts a request, so that a command can tell before it changes anything whether the run allows a
-	 * further session, and that a reader of the file gets the reason with which the runner would refuse one.
+	 * Verifies that the runner states the nested session's limits in the responses directory when its broker starts and
+	 * again whenever it accepts a request, so that a command can tell before it changes anything whether the nested
+	 * session allows a further session, and that a reader of the file gets the reason with which the runner would refuse
+	 * one.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -279,8 +280,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a run whose options allow no session request states so in its limits, and that a reader of the
-	 * file gets the reason that names the caller's options that would allow the sessions.
+	 * Verifies that a nested session whose options allow no session request states so in its limits, and that a reader of
+	 * the file gets the reason that names the caller's options that would allow the sessions.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -291,7 +292,7 @@ public final class SessionRequestBrokerTest
 			SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager, fixture.options,
 				(_, _, _) ->
 			{
-				throw new AssertionError("A run that allows no request starts no session");
+				throw new AssertionError("A nested session that allows no request starts no session");
 			}))
 		{
 			broker.start(_ -> () ->
@@ -436,9 +437,9 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that, on Windows, where a request archive is opened exclusively so that no writer can change it while
 	 * it is read, a request whose archive another handle still holds open, as a program that scans a file that was just
-	 * written does, gets no response and no response directory on that scan, does not use up the run's allowance of
-	 * sessions, and is served by a scan after the handle is closed. On other platforms an open handle does not prevent
-	 * the copy, so the request is served by the first scan.
+	 * written does, gets no response and no response directory on that scan, does not use up the nested session's
+	 * allowance of sessions, and is served by a scan after the handle is closed. On other platforms an open handle does
+	 * not prevent the copy, so the request is served by the first scan.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -608,8 +609,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that the runner refuses a request made inside its run that sets a field that only a session-level
-	 * request may set, naming the field, and starts no session for it.
+	 * Verifies that the runner refuses a request made inside its nested session that sets a field that only a
+	 * session-level request may set, naming the field, and starts no session for it.
 	 *
 	 * @param field the session-only field
 	 * @param value its JSON value
@@ -858,9 +859,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a runner launch made inside a session whose run may request no session reaches the session's
-	 * runner, which refuses it without starting a requested session, so that the launch exits with status 2 and a
-	 * reason that names the caller's options that would allow the session, instead of starting a harness inside the
+	 * Verifies that a runner launch made inside a session whose nested session may request no session reaches the
+	 * session's runner, which refuses it without starting a requested session, so that the launch exits with status 2 and
+	 * a reason that names the caller's options that would allow the session, instead of starting a harness inside the
 	 * session.
 	 *
 	 * @throws IOException if fixture or bridge I/O fails
@@ -907,7 +908,7 @@ public final class SessionRequestBrokerTest
 					});
 			}
 			requireThat(status.get(), "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
-			requireThat(errors.toString(), "errors").contains("refused: this run allows no further sessions").
+			requireThat(errors.toString(), "errors").contains("refused: this nested session allows no further sessions").
 				contains("--session-requests").contains("--request-depth").doesNotContain("--no-daemon");
 			requireThat(started, "started").isEmpty();
 		}
@@ -915,8 +916,9 @@ public final class SessionRequestBrokerTest
 
 	/**
 	 * Verifies that a session inside a nested session holds a conversation with the session that it requests through
-	 * the run's runner: each turn is sent once the previous turn has ended, an interrupt stops the turn in progress, a
-	 * line that is no message is refused without reaching the requested session, and {@code end} completes the session.
+	 * the nested session's runner: each turn is sent once the previous turn has ended, an interrupt stops the turn in
+	 * progress, a line that is no message is refused without reaching the requested session, and {@code end} completes
+	 * the session.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1146,8 +1148,8 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Verifies that a requested session whose launcher ended after its harness reported its session keeps its slot,
 	 * which no other session takes, and that a launch that resumes the harness session continues it in that slot,
-	 * without a project of its own and without using any of the requesting run's allowance, and empties the slot once
-	 * the resumed run ends.
+	 * without a project of its own and without using any of the requesting nested session's allowance, and empties the
+	 * slot once the resumed nested session ends.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1190,7 +1192,7 @@ public final class SessionRequestBrokerTest
 				Path slot = Path.of(option(starts.getFirst(), "--results"));
 				Path manifest = slot.resolve("claude").resolve(option(starts.getFirst(), "--slot-id")).
 					resolve("session.json");
-				// The slot's run is removed only after the stopped runner has ended
+				// The slot's nested session is removed only after the stopped runner has ended
 				for (int check = 0; check < 1_000_000 && child.get().isAlive(); ++check)
 					Thread.yield();
 				requireThat(Files.readString(manifest), "retained").contains("\"state\": \"running\"").
@@ -1290,7 +1292,7 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Returns the requests that a broker has taken, other than one.
 	 *
-	 * @param fixture   the requesting run
+	 * @param fixture   the requesting nested session
 	 * @param directory the response directory of the request to leave out
 	 * @return the names of the response directories of the other requests
 	 * @throws UncheckedIOException if the responses cannot be listed
@@ -1380,9 +1382,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a discard request empties the retained slot whose run records the named harness session, without a
-	 * slot or permit of its own, and that a discard request that names a session that no retained run records changes
-	 * nothing.
+	 * Verifies that a discard request empties the retained slot whose nested session records the named harness session,
+	 * without a slot or permit of its own, and that a discard request that names a session that no retained nested
+	 * session records changes nothing.
 	 *
 	 * @throws IOException if fixture, broker or request I/O fails
 	 */
@@ -1413,8 +1415,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a broker of a run that resumes its harness session answers {@code ended} each request that the run
-	 * made before its interruption and that has no response, and leaves each answered request as it was.
+	 * Verifies that a broker of a nested session that resumes its harness session answers {@code ended} each request that
+	 * the nested session made before its interruption and that has no response, and leaves each answered request as it
+	 * was.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -1446,9 +1449,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a run that resumes its harness session continues the count of the requests that the run accepted
-	 * before its interruption, so that a resumed run that has already made all the requests that its options allow is
-	 * refused the next one.
+	 * Verifies that a nested session that resumes its harness session continues the count of the requests that the nested
+	 * session accepted before its interruption, so that a resumed nested session that has already made all the requests
+	 * that its options allow is refused the next one.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -1473,13 +1476,13 @@ public final class SessionRequestBrokerTest
 				broker.scan();
 				fixture.await("first");
 			}
-			// The runner that resumes the run is a process of its own, with a manager of its own
+			// The runner that resumes the nested session is a process of its own, with a manager of its own
 			NestedSessionManager resuming = new NestedSessionManager(new FileLocks(), fixture.manager.root(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, resuming, fixture.options,
 				(_, _, _) ->
 				{
-					throw new AssertionError("A resumed run that spent its allowance started a session");
+					throw new AssertionError("A resumed nested session that spent its allowance started a session");
 				}))
 			{
 				broker.endUnanswered();
@@ -1499,9 +1502,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a launch that resumes a harness session that no retained run records is refused with status 2
-	 * and a reason that names the session, and that one that names an option that the run fixed at its start is
-	 * refused before it makes a request.
+	 * Verifies that a launch that resumes a harness session that no retained nested session records is refused with
+	 * status 2 and a reason that names the session, and that one that names an option that the nested session fixed at
+	 * its start is refused before it makes a request.
 	 *
 	 * @throws IOException if fixture, broker or launch I/O fails
 	 */
@@ -1545,8 +1548,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that {@code request-session --conversation} exits with status 2 when the run allows no requested
-	 * session, and that the conversation's last line says that the request was refused.
+	 * Verifies that {@code request-session --conversation} exits with status 2 when the nested session allows no
+	 * requested session, and that the conversation's last line says that the request was refused.
 	 *
 	 * @throws IOException if fixture, broker or request I/O fails
 	 */
@@ -1581,10 +1584,10 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a session whose run's caller granted no session requests, which finds how to request one in CAT's
-	 * rules, sees in its run's limits that the run allows none, and that a request that it makes with
-	 * {@code request-session} anyway exits with status 2, starts no session, and is answered with a reason that names
-	 * the options with which the run's caller allows sessions.
+	 * Verifies that a session whose nested session's caller granted no session requests, which finds how to request one
+	 * in CAT's rules, sees in its nested session's limits that the nested session allows none, and that a request that it
+	 * makes with {@code request-session} anyway exits with status 2, starts no session, and is answered with a reason
+	 * that names the options with which the nested session's caller allows sessions.
 	 *
 	 * @throws IOException if fixture, broker or request I/O fails
 	 */
@@ -1629,9 +1632,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that two sessions that run one after the other in the one slot of a run build their run at the same
-	 * paths, which are in the slot of the requesting run's directory, so that the paths that the harness puts into its
-	 * instructions repeat from one session to the next.
+	 * Verifies that two sessions that run one after the other in the one slot of a nested session build their nested
+	 * session at the same paths, which are in the slot of the requesting nested session's directory, so that the paths
+	 * that the harness puts into its instructions repeat from one session to the next.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -1668,8 +1671,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a session that takes a slot finds nothing of the previous session's files, neither in its run's
-	 * home and project nor beside them.
+	 * Verifies that a session that takes a slot finds nothing of the previous session's files, neither in its nested
+	 * session's home and project nor beside them.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -1770,9 +1773,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a slot is not reused while a process that its previous session's run recorded remains alive: the
-	 * run's runner asks the process to end, waits while it lives, and starts the next session once it has ended, in a
-	 * slot that holds nothing of the previous session.
+	 * Verifies that a slot is not reused while a process that its previous session's nested session recorded remains
+	 * alive: the nested session's runner asks the process to end, waits while it lives, and starts the next session once
+	 * it has ended, in a slot that holds nothing of the previous session.
 	 *
 	 * @throws IOException          if fixture or broker I/O fails
 	 * @throws InterruptedException if the test is interrupted
@@ -1854,7 +1857,7 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that the copy of a session's kept run, which the requester reads, survives the next session's use of
+	 * Verifies that the copy of a session's results copy, which the requester reads, survives the next session's use of
 	 * the slot: each response keeps the files of its own session.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
@@ -1886,8 +1889,8 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a run never has more sessions of one part running at once than its concurrency limit, and that
-	 * it does run as many as the limit when requests wait.
+	 * Verifies that a nested session never has more sessions of one part running at once than its concurrency limit, and
+	 * that it does run as many as the limit when requests wait.
 	 *
 	 * @throws IOException          if fixture or broker I/O fails
 	 * @throws InterruptedException if the test is interrupted
@@ -2019,7 +2022,8 @@ public final class SessionRequestBrokerTest
 	 * Verifies that the broker goes on serving after it cannot empty a slot that a session gives back: the first
 	 * session's runner recorded that it was about to start a harness and recorded nothing more, so the slot cannot be
 	 * emptied once that session ends. The next request, which waits for that slot, fails with the reason, the scans that
-	 * follow report no failure, and once the run records that no harness started, a third request runs in the slot.
+	 * follow report no failure, and once the nested session records that no harness started, a third request runs in the
+	 * slot.
 	 *
 	 * @throws IOException if the fixture cannot be created or a request cannot be served
 	 */
@@ -2128,16 +2132,16 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Starts a double of a requested runner that builds its run in its slot and completes, as {@code inSlot} does, and
-	 * leaves the run recording that the runner was about to start a harness, as a runner killed at that moment leaves
-	 * it.
+	 * Starts a double of a requested runner that builds its nested session in its slot and completes, as {@code inSlot}
+	 * does, and leaves the nested session recording that the runner was about to start a harness, as a runner killed at
+	 * that moment leaves it.
 	 *
-	 * @param fixture   the requesting run
-	 * @param fileLocks the file locks of the requested run
+	 * @param fixture   the requesting nested session
+	 * @param fileLocks the file locks of the requested nested session
 	 * @param options   the requested runner's options
 	 * @param runs      receives what the runner finds in its slot and builds there
 	 * @return the runner
-	 * @throws IOException if the run cannot be created or its launch state cannot be recorded
+	 * @throws IOException if the nested session cannot be created or its launch state cannot be recorded
 	 */
 	private static FakeHarnessCli inSlotWithUnknownLaunch(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotNestedSession> runs) throws IOException
@@ -2146,16 +2150,17 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Starts a double of a requested runner that builds its run in the results folder and under the run identifier that
-	 * the broker names, as the real runner does, and completes.
+	 * Starts a double of a requested runner that builds its nested session in the results folder and under the slot ID
+	 * that the broker names, as the real runner does, and completes.
 	 *
-	 * @param fixture    the requesting run
-	 * @param fileLocks  the file locks of the requested run
+	 * @param fixture    the requesting nested session
+	 * @param fileLocks  the file locks of the requested nested session
 	 * @param options    the requested runner's options
 	 * @param runs       receives what the runner finds in its slot and builds there
-	 * @param harnessPid the identifier of the harness process that the run records, or {@code 0} to record none
+	 * @param harnessPid the identifier of the harness process that the nested session records, or {@code 0} to record
+	 *                   none
 	 * @return the runner
-	 * @throws IOException if the run cannot be created or the runner refuses to reuse the slot
+	 * @throws IOException if the nested session cannot be created or the runner refuses to reuse the slot
 	 */
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotNestedSession> runs, long harnessPid) throws IOException
@@ -2169,7 +2174,7 @@ public final class SessionRequestBrokerTest
 			}
 			else
 			{
-				// The session ends normally, so its harness reported its identifier and its run is complete
+				// The session ends normally, so its harness reported its identifier and its nested session is complete
 				manager.recordHarnessSession(nestedSession, UUID.randomUUID().toString());
 				manager.markCompleted(nestedSession);
 			}
@@ -2177,16 +2182,16 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Starts a double of a requested runner that builds its run in the results folder and under the run identifier that
-	 * the broker names, records what {@code state} records in the run, and completes.
+	 * Starts a double of a requested runner that builds its nested session in the results folder and under the slot ID
+	 * that the broker names, records what {@code state} records in the nested session, and completes.
 	 *
-	 * @param fixture   the requesting run
-	 * @param fileLocks the file locks of the requested run
+	 * @param fixture   the requesting nested session
+	 * @param fileLocks the file locks of the requested nested session
 	 * @param options   the requested runner's options
 	 * @param runs      receives what the runner finds in its slot and builds there
-	 * @param state     records the run's state
+	 * @param state     records the nested session's state
 	 * @return the runner
-	 * @throws IOException if the run cannot be created or the runner refuses to reuse the slot
+	 * @throws IOException if the nested session cannot be created or the runner refuses to reuse the slot
 	 */
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotNestedSession> runs, NestedSessionState state) throws IOException
@@ -2214,31 +2219,31 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Records the state of a requested runner's run.
+	 * Records the state of a requested runner's nested session.
 	 */
 	@FunctionalInterface
 	private interface NestedSessionState
 	{
 		/**
-		 * Records the run's state.
+		 * Records the nested session's state.
 		 *
-		 * @param manager       the run's manager
-		 * @param nestedSession the run
+		 * @param manager       the nested session's manager
+		 * @param nestedSession the nested session
 		 * @throws IOException if the state cannot be recorded
 		 */
 		void record(NestedSessionManager manager, NestedSession nestedSession) throws IOException;
 	}
 
 	/**
-	 * Adds distinct requested-run evidence to the current slot and writes its receipt for the slot-reuse test.
+	 * Adds distinct requested-session evidence to the current slot and writes its receipt for the slot-reuse test.
 	 *
-	 * @param fixture the requesting run
-	 * @param fileLocks the requesting run's file locks
+	 * @param fixture the requesting nested session
+	 * @param fileLocks the requesting nested session's file locks
 	 * @param options the requested runner's options
-	 * @param runs receives the run built in its slot
+	 * @param runs receives the nested session built in its slot
 	 * @param marker the request identity and retained project content
 	 * @return the fake runner
-	 * @throws IOException if the run's evidence cannot be written
+	 * @throws IOException if the nested session's evidence cannot be written
 	 */
 	private static FakeHarnessCli inSlotWithReceipt(Fixture fixture, FileLocks fileLocks, List<String> options,
 		List<SlotNestedSession> runs, String marker) throws IOException
@@ -2277,10 +2282,10 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * What a session finds in its slot, and the run that it builds there.
+	 * What a session finds in its slot, and the nested session that it builds there.
 	 *
 	 * @param resultsFolder       the results folder that the session received
-	 * @param nestedSession           the run that it built
+	 * @param nestedSession           the nested session that it built
 	 * @param entriesAtStart the names of the entries of the results folder when the session started
 	 */
 	private record SlotNestedSession(Path resultsFolder, NestedSession nestedSession, List<String> entriesAtStart)
@@ -2288,7 +2293,7 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Tells which processes live, as the requesting run's runner would see them.
+	 * Tells which processes live, as the requesting nested session's runner would see them.
 	 */
 	private static final class ScriptedLiveness implements HarnessProcessLiveness
 	{
@@ -2349,16 +2354,17 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Returns a requested runner whose harness reports its session as soon as the run starts. A runner that starts a
-	 * run works on its turns until it is stopped, and records no end. A runner that resumes the run continues it in its
-	 * slot, and on {@code complete} records the run's end, writes its receipt and exits.
+	 * Returns a requested runner whose harness reports its session as soon as the nested session starts. A runner that
+	 * starts a nested session works on its turns until it is stopped, and records no end. A runner that resumes the
+	 * nested session continues it in its slot, and on {@code complete} records the nested session's end, writes its
+	 * receipt and exits.
 	 *
-	 * @param fixture   the requesting run
-	 * @param fileLocks the file locks of the requested run
+	 * @param fixture   the requesting nested session
+	 * @param fileLocks the file locks of the requested nested session
 	 * @param options   the requested runner's options
 	 * @param child     receives the runner, so that it can exit
 	 * @return the runner
-	 * @throws IOException if the requested run cannot be created
+	 * @throws IOException if the requested nested session cannot be created
 	 */
 	private static FakeHarnessCli resumableRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
 		AtomicReference<FakeHarnessCli> child) throws IOException
@@ -2367,18 +2373,19 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Returns a requested runner whose harness reports its session as soon as the run starts. A runner that starts a
-	 * run works on its turns until it is stopped, and records no end. A runner that resumes the run either continues
-	 * it, and on {@code complete} records the run's end, writes its receipt and exits, or, when the harness cannot
-	 * continue the session, exits with status 1 and leaves the run as it was.
+	 * Returns a requested runner whose harness reports its session as soon as the nested session starts. A runner that
+	 * starts a nested session works on its turns until it is stopped, and records no end. A runner that resumes the
+	 * nested session either continues it, and on {@code complete} records the nested session's end, writes its receipt
+	 * and exits, or, when the harness cannot continue the session, exits with status 1 and leaves the nested session as
+	 * it was.
 	 *
-	 * @param fixture   the requesting run
-	 * @param fileLocks the file locks of the requested run
+	 * @param fixture   the requesting nested session
+	 * @param fileLocks the file locks of the requested nested session
 	 * @param options   the requested runner's options
 	 * @param child     receives the runner, so that it can exit
-	 * @param continues indicates whether the harness continues the session that a resumed run records
+	 * @param continues indicates whether the harness continues the session that a resumed nested session records
 	 * @return the runner
-	 * @throws IOException if the requested run cannot be created
+	 * @throws IOException if the requested nested session cannot be created
 	 */
 	private static FakeHarnessCli resumableRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
 		AtomicReference<FakeHarnessCli> child, boolean continues) throws IOException
@@ -2431,12 +2438,12 @@ public final class SessionRequestBrokerTest
 	 * {@code hold} and {@code second}, which run until they are interrupted, reports an interrupt and then the
 	 * interrupted turn's completion, and on {@code complete} writes its receipt and exits.
 	 *
-	 * @param fixture   the requesting run
-	 * @param fileLocks the file locks of the requested run
+	 * @param fixture   the requesting nested session
+	 * @param fileLocks the file locks of the requested nested session
 	 * @param options   the requested runner's options
 	 * @param child     receives the runner, so that it can exit
 	 * @return the runner
-	 * @throws IOException if the requested run cannot be created
+	 * @throws IOException if the requested nested session cannot be created
 	 */
 	private static FakeHarnessCli conversingRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
 		AtomicReference<FakeHarnessCli> child) throws IOException
@@ -2485,7 +2492,7 @@ public final class SessionRequestBrokerTest
 	/**
 	 * Returns the record with which a requested runner ends a turn.
 	 *
-	 * @param fixture the requesting run
+	 * @param fixture the requesting nested session
 	 * @param turn    the turn's number
 	 * @return the record
 	 */
@@ -2594,10 +2601,10 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a run's runner carries out each worktree operation that a session inside the run requests for a
-	 * campaign of the run's project, outside the session's sandbox: add, recreate, repair after the registration came
-	 * to name another location of the project, and remove. The requests do not count against the run's allowance of
-	 * sessions.
+	 * Verifies that a nested session's runner carries out each worktree operation that a session inside the nested
+	 * session requests for a campaign of the nested session's project, outside the session's sandbox: add, recreate,
+	 * repair after the registration came to name another location of the project, and remove. The requests do not count
+	 * against the nested session's allowance of sessions.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -2640,9 +2647,9 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Verifies that a run's runner refuses, having changed nothing, a worktree request whose campaign lies in more
-	 * than one CAT session directory of the run's project, and any worktree request of a run that allows no session
-	 * request.
+	 * Verifies that a nested session's runner refuses, having changed nothing, a worktree request whose campaign lies in
+	 * more than one CAT session directory of the nested session's project, and any worktree request of a nested session
+	 * that allows no session request.
 	 *
 	 * @throws IOException if fixture or broker I/O fails
 	 */
@@ -2691,7 +2698,7 @@ public final class SessionRequestBrokerTest
 	/**
 	 * The channel of a session inside a nested session to the nested session's runner.
 	 *
-	 * @param requests the run's requests directory
+	 * @param requests the nested session's requests directory
 	 */
 	private record NestedSessionChannel(Path requests) implements WorktreeRequestClient.Channel
 	{
@@ -2744,7 +2751,7 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Owns one isolated requesting run and removes it after its broker and assertions finish.
+	 * Owns one isolated requesting nested session and removes it after its broker and assertions finish.
 	 */
 	private static final class Fixture implements AutoCloseable
 	{
@@ -2760,7 +2767,7 @@ public final class SessionRequestBrokerTest
 		private final HarnessRunnerOptions options;
 
 		/**
-		 * Creates a requesting run with capacity for one requested session.
+		 * Creates a requesting nested session with capacity for one requested session.
 		 *
 		 * @throws IOException if setup fails
 		 */
@@ -2770,7 +2777,7 @@ public final class SessionRequestBrokerTest
 		}
 
 		/**
-		 * Creates a requesting run whose runner options include the given options that govern session requests.
+		 * Creates a requesting nested session whose runner options include the given options that govern session requests.
 		 *
 		 * @param requestOptions the runner's options that govern session requests, such as
 		 *                       {@code --session-requests}
@@ -3122,10 +3129,10 @@ public final class SessionRequestBrokerTest
 		}
 
 		/**
-		 * Returns a client that sends its worktree requests to the nested session's runner, scanning the run's requests
-		 * while it waits for each answer.
+		 * Returns a client that sends its worktree requests to the nested session's runner, scanning the nested session's
+		 * requests while it waits for each answer.
 		 *
-		 * @param broker the run's broker
+		 * @param broker the nested session's broker
 		 * @return the client
 		 */
 		private WorktreeRegistrar worktreeClient(SessionRequestBroker broker)

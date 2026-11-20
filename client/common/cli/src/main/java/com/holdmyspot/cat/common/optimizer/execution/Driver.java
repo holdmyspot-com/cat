@@ -242,8 +242,8 @@ public final class Driver implements AutoCloseable
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code campaignId} is blank or the store holds no campaign with that
 	 *   identifier
-	 * @throws IOException if the store, the lock file, the worktree or the run records cannot be read or written, or
-	 *   the harness's credential file exists but cannot be read
+	 * @throws IOException if the store, the lock file, the worktree or the nested session records cannot be read or
+	 *   written, or the harness's credential file exists but cannot be read
 	 */
 	public static Optional<Driver> open(DriverContext context, String campaignId) throws IOException
 	{
@@ -265,8 +265,8 @@ public final class Driver implements AutoCloseable
 	 * @param lock the campaign's write lock
 	 * @return the driver
 	 * @throws IllegalArgumentException if the store holds no campaign with that identifier
-	 * @throws IOException if the store, the worktree or the run records cannot be read or written, or the harness's
-	 *   credential file exists but cannot be read
+	 * @throws IOException if the store, the worktree or the nested session records cannot be read or written, or the
+	 *   harness's credential file exists but cannot be read
 	 */
 	public static Driver open(DriverContext context, String campaignId, CampaignLock lock) throws IOException
 	{
@@ -285,8 +285,8 @@ public final class Driver implements AutoCloseable
 	 * @param sliceStart when the slice began, or {@code null} if it begins now
 	 * @return the driver
 	 * @throws IllegalArgumentException if the store holds no campaign with that identifier
-	 * @throws IOException if the store, the worktree or the run records cannot be read or written, or the harness's
-	 *   credential file exists but cannot be read
+	 * @throws IOException if the store, the worktree or the nested session records cannot be read or written, or the
+	 *   harness's credential file exists but cannot be read
 	 */
 	public static Driver open(DriverContext context, String campaignId, CampaignLock lock, Instant sliceStart)
 		throws IOException

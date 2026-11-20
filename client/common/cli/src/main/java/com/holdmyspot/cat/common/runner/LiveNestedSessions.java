@@ -29,7 +29,7 @@ public final class LiveNestedSessions implements AutoCloseable
 	 *
 	 * @throws NullPointerException if {@code session} is null
 	 *
-	 * @throws IllegalArgumentException if its run ID is already registered
+	 * @throws IllegalArgumentException if its slot ID is already registered
 	 */
 	public void add(LiveNestedSession session)
 	{
@@ -38,20 +38,20 @@ public final class LiveNestedSessions implements AutoCloseable
 		{
 			String id = session.nestedSession().id();
 			if (sessions.putIfAbsent(id, session) != null)
-				throw new IllegalArgumentException("Run is already registered: " + id);
+				throw new IllegalArgumentException("Nested session is already registered: " + id);
 		}
 	}
 
 	/**
 	 * Sends a turn to a registered live session.
 	 *
-	 * @param slotId the non-blank run ID
+	 * @param slotId the non-blank slot ID
 	 *
 	 * @param request the non-blank framed request
 	 *
 	 * @return the terminal turn result
 	 *
-	 * @throws IOException if the run is unknown or cannot accept the turn
+	 * @throws IOException if the nested session is unknown or cannot accept the turn
 	 */
 	public HarnessProcessResult sendTurn(String slotId, String request) throws IOException
 	{
@@ -63,9 +63,9 @@ public final class LiveNestedSessions implements AutoCloseable
 	/**
 	 * Completes and unregisters a live session.
 	 *
-	 * @param slotId the non-blank run ID
+	 * @param slotId the non-blank slot ID
 	 *
-	 * @throws IOException if the run is unknown or shutdown fails
+	 * @throws IOException if the nested session is unknown or shutdown fails
 	 */
 	public void complete(String slotId) throws IOException
 	{
@@ -73,7 +73,7 @@ public final class LiveNestedSessions implements AutoCloseable
 		try (LiveNestedSession session = remove(slotId))
 		{
 			if (session == null)
-				throw new IOException("Unknown live run: " + slotId);
+				throw new IOException("Unknown live nested session: " + slotId);
 		}
 	}
 
@@ -112,11 +112,11 @@ public final class LiveNestedSessions implements AutoCloseable
 	/**
 	 * Returns one registered session without transferring its ownership.
 	 *
-	 * @param slotId the non-blank run ID
+	 * @param slotId the non-blank slot ID
 	 *
 	 * @return the live registered session
 	 *
-	 * @throws IOException if the run is unknown
+	 * @throws IOException if the nested session is unknown
 	 */
 	private LiveNestedSession session(String slotId) throws IOException
 	{
@@ -125,7 +125,7 @@ public final class LiveNestedSessions implements AutoCloseable
 		{
 			LiveNestedSession result = sessions.get(slotId);
 			if (result == null)
-				throw new IOException("Unknown live run: " + slotId);
+				throw new IOException("Unknown live nested session: " + slotId);
 			return result;
 		}
 	}
@@ -133,7 +133,7 @@ public final class LiveNestedSessions implements AutoCloseable
 	/**
 	 * Removes one registered session and transfers ownership to the caller.
 	 *
-	 * @param slotId the non-blank run ID
+	 * @param slotId the non-blank slot ID
 	 *
 	 * @return the removed session, or {@code null} if it was unknown
 	 */

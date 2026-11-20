@@ -55,7 +55,7 @@ public final class EventSink extends Writer
 	}
 
 	/**
-	 * The name of the retained harness event archive, inside the run's {@code artifacts} directory.
+	 * The name of the retained harness event archive, inside the nested session's {@code artifacts} directory.
 	 */
 	static final String TRANSCRIPT = "transcript.jsonl";
 	private final JsonMapper json;
@@ -83,11 +83,11 @@ public final class EventSink extends Writer
 	 *
 	 * @param json the JSON mapper
 	 * @param events the parser that absorbs every harness event
-	 * @param newPromptSources creates the prompt-source observation of a run from the directories whose staged
+	 * @param newPromptSources creates the prompt-source observation of a nested session from the directories whose staged
 	 *   locations must not appear in its value
-	 * @param harnessDirectory the directory that holds the runner's run directories for this harness
+	 * @param harnessDirectory the directory that holds the runner's session folders for this harness
 	 * @param placeholders maps each placeholder to a directory whose staged location must not appear in the prompt
-	 *   sources. The sink adds the run directory.
+	 *   sources. The sink adds the session folder.
 	 * @param messages where the sink reports the runner's progress
 	 * @throws NullPointerException if any argument is null
 	 */
@@ -111,7 +111,7 @@ public final class EventSink extends Writer
 	/**
 	 * Returns the prompt sources observed so far.
 	 *
-	 * @return the value, or {@code none} if no run has started
+	 * @return the value, or {@code none} if no nested session has started
 	 */
 	String promptSources()
 	{

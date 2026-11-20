@@ -114,7 +114,7 @@ public final class ChildBound
 	 * Returns the policy that bounds a child.
 	 *
 	 * @param harness       the child's harness identifier
-	 * @param resultsFolder the folder that holds the child's run
+	 * @param resultsFolder the folder that holds the child's nested session
 	 * @param deniedReads   the absolute paths that the launch denies the child
 	 * @param extra         the writes and hosts that the child's commands need beyond what its harness needs
 	 * @param askingThread  the identifier that the parent's harness gives the thread that asks for the child, or

@@ -67,8 +67,8 @@ public final class CodexRunnerCliTest
 	private static final CodexRunnerCliAccess ACCESS = CodexRunnerCliSecrets.getCodexRunnerCliAccess();
 
 	/**
-	 * Verifies that in a Codex thread a runner command keeps its runs in the temporary directory of the thread's CAT
-	 * session directory in the nearest CAT project.
+	 * Verifies that in a Codex thread a runner command keeps its nested sessions in the temporary directory of the
+	 * thread's CAT session directory in the nearest CAT project.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -271,8 +271,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that starting {@code codex-runner} marks a Codex run as failed when the runner that owned it has
-	 * ended, so that the run does not stay running after its runner died.
+	 * Verifies that starting {@code codex-runner} marks a Codex nested session as failed when the runner that owned it
+	 * has ended, so that the nested session does not stay running after its runner died.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -285,7 +285,7 @@ public final class CodexRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path manifest = createSession(jvm, root.resolve("runs"));
 			// A start that differs from the one of the process holding the recorded identifier means that the
-			// identifier now belongs to another process, so the runner that created the run has ended
+			// identifier now belongs to another process, so the runner that created the nested session has ended
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
 				"\"owner_started_at\": \"0\""));
 
@@ -297,7 +297,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that starting {@code codex-runner} leaves a Codex run running when the runner that owns it is alive.
+	 * Verifies that starting {@code codex-runner} leaves a Codex nested session running when the runner that owns it is
+	 * alive.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -308,7 +309,7 @@ public final class CodexRunnerCliTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			// The process that runs the test owns the run and is alive
+			// The process that runs the test owns the nested session and is alive
 			Path manifest = createSession(jvm, root.resolve("runs"));
 
 			startUntilCapacityIsRequested(jvm, root);
@@ -318,12 +319,12 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Creates a running run that the process executing the test owns.
+	 * Creates a running nested session that the process executing the test owns.
 	 *
 	 * @param jvm           the test's process scope
-	 * @param resultsFolder the directory that holds the runs
-	 * @return the run's manifest
-	 * @throws IOException if the run cannot be created
+	 * @param resultsFolder the directory that holds the nested sessions
+	 * @return the nested session's manifest
+	 * @throws IOException if the nested session cannot be created
 	 */
 	private static Path createSession(TestJvmScope jvm, Path resultsFolder) throws IOException
 	{
@@ -334,10 +335,10 @@ public final class CodexRunnerCliTest
 
 	/**
 	 * Starts {@code codex-runner}, which stops when it asks for capacity: it asks only after the steps that it takes
-	 * when it starts to prepare its runs.
+	 * when it starts to prepare its nested sessions.
 	 *
 	 * @param jvm  the test's process scope
-	 * @param root the test's directory, whose {@code runs} subdirectory holds the runs
+	 * @param root the test's directory, whose {@code runs} subdirectory holds the nested sessions
 	 * @throws IOException if the launch fails before it asks for capacity
 	 */
 	private static void startUntilCapacityIsRequested(TestJvmScope jvm, Path root) throws IOException
@@ -526,8 +527,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a runner that continues an agent's run runs the session under the model and effort of the launch
-	 * that resumes it, rather than refusing them beside the agent.
+	 * Verifies that a runner that continues an agent's nested session runs the session under the model and effort of the
+	 * launch that resumes it, rather than refusing them beside the agent.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -856,7 +857,7 @@ public final class CodexRunnerCliTest
 
 	/**
 	 * Verifies that a launch without {@code --policy-bound} is refused before it takes a capacity slot or creates a
-	 * run, since only a request server starts a session and it always bounds the session's policy.
+	 * nested session, since only a request server starts a session and it always bounds the session's policy.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -1155,8 +1156,8 @@ public final class CodexRunnerCliTest
 	}
 
 	/**
-	 * Verifies that a launch from a command that only Claude Code runs, or from a run whose runner lets its session
-	 * request no sessions, is refused with the refusal status and the reason, and starts nothing.
+	 * Verifies that a launch from a command that only Claude Code runs, or from a nested session whose runner lets its
+	 * session request no sessions, is refused with the refusal status and the reason, and starts nothing.
 	 *
 	 * @param environment the command's environment
 	 * @param reason      a part of the reason

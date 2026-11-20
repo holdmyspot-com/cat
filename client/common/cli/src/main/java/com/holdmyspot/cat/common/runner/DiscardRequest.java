@@ -15,15 +15,16 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 /**
- * A request to discard the interrupted run whose retained slot records a harness session, which a request server or a
- * run's runner carries out among the slots of the sessions that it started. Its document names the harness session and
- * nothing else, so it can only discard a run that the requester's own server retains.
+ * A request to discard the interrupted nested session whose retained slot records a harness session, which a request
+ * server or a nested session's runner carries out among the slots of the sessions that it started. Its document names
+ * the harness session and nothing else, so it can only discard a nested session that the requester's own server
+ * retains.
  * <p>
  * The request travels as a request archive whose name starts with {@link #PREFIX}, in the same {@code requests}
  * directory as a launch, and is answered by a {@link WorktreeResponse} in the same {@code responses} directory, whose
  * result is {@link #DISCARDED} or {@link #ABSENT}.
  *
- * @param sessionId the harness session that the interrupted run records
+ * @param sessionId the harness session that the interrupted nested session records
  */
 public record DiscardRequest(String sessionId)
 {
@@ -32,11 +33,11 @@ public record DiscardRequest(String sessionId)
 	 */
 	public static final String PREFIX = "discard-";
 	/**
-	 * The result of a request whose run was discarded.
+	 * The result of a request whose nested session was discarded.
 	 */
 	public static final String DISCARDED = "discarded";
 	/**
-	 * The result of a request that named a session that no retained run records.
+	 * The result of a request that named a session that no retained nested session records.
 	 */
 	public static final String ABSENT = "absent";
 	private static final int FORMAT_VERSION = 1;
@@ -47,7 +48,7 @@ public record DiscardRequest(String sessionId)
 	/**
 	 * Creates a request.
 	 *
-	 * @param sessionId the harness session that the interrupted run records
+	 * @param sessionId the harness session that the interrupted nested session records
 	 * @throws NullPointerException     if {@code sessionId} is null
 	 * @throws IllegalArgumentException if {@code sessionId} is not shaped like a harness session identifier
 	 */

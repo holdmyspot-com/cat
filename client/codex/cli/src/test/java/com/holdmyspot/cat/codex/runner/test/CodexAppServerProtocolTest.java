@@ -51,8 +51,8 @@ public final class CodexAppServerProtocolTest
 	}
 
 	/**
-	 * Verifies that no thread is ephemeral, so that Codex keeps every run's thread and the run's session can continue
-	 * after its runner ends.
+	 * Verifies that no thread is ephemeral, so that Codex keeps every nested session's thread and the nested session's
+	 * harness session can continue after its runner ends.
 	 */
 	@Test
 	public void framesPersistentThread()

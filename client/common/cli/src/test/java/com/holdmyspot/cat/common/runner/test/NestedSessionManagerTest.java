@@ -55,10 +55,10 @@ import tools.jackson.databind.json.JsonMapper;
 /**
  * Tests {@link NestedSessionManager}.
  * <p>
- * Tests that depend on whether a run's owner process is alive run the real {@link ProcessHandleLiveness} over a table
- * of {@link FakeProcessHandle}s in place of the operating system's process table; only
- * {@link #readsOwnerLivenessFromProcessTable()} reads the real table, and the tests of a wall clock that was set read
- * real processes whose starts come from a process folder in place of {@code /proc}.
+ * Tests that depend on whether a nested session's owner process is alive run the real {@link ProcessHandleLiveness}
+ * over a table of {@link FakeProcessHandle}s in place of the operating system's process table; only {@link
+ * #readsOwnerLivenessFromProcessTable()} reads the real table, and the tests of a wall clock that was set read real
+ * processes whose starts come from a process folder in place of {@code /proc}.
  */
 public final class NestedSessionManagerTest
 {
@@ -82,8 +82,8 @@ public final class NestedSessionManagerTest
 	{
 	}
 	/**
-	 * Verifies that a successful run is kept once its output is persisted, since every nested session's results are
-	 * copied to its results folder.
+	 * Verifies that a successful nested session is kept once its output is persisted, since every nested session's
+	 * results are copied to its results folder.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -109,7 +109,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies owned run directories do not inherit permissive process-umask permissions.
+	 * Verifies owned session folders do not inherit permissive process-umask permissions.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -133,8 +133,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a manager with a fixed run identifier creates each run at the same path, once the directory of the
-	 * run before it is gone, so that the paths of the run's home and project repeat.
+	 * Verifies that a manager with a fixed slot ID creates each nested session at the same path, once the directory of
+	 * the nested session before it is gone, so that the paths of the nested session's home and project repeat.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -159,8 +159,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a manager with a fixed run identifier refuses to create a run where a run's files remain, so that
-	 * no run sees the files of the one before it.
+	 * Verifies that a manager with a fixed slot ID refuses to create a nested session where a nested session's files
+	 * remain, so that no nested session sees the files of the one before it.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -181,8 +181,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that the copy of a run that ran in a slot, under the slot's identifier, is kept under the identifier that
-	 * the harness gave its session, and that its manifest identifies the directory that holds it.
+	 * Verifies that the copy of a nested session that ran in a slot, under the slot's identifier, is kept under the
+	 * identifier that the harness gave its session, and that its manifest identifies the directory that holds it.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -242,7 +242,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies bulk pruning preserves running recovery state while removing only terminal runs' disposable runtime.
+	 * Verifies bulk pruning preserves running recovery state while removing only terminal nested sessions' disposable
+	 * runtime.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -305,8 +306,9 @@ public final class NestedSessionManagerTest
 
 	/**
 	 * Verifies bulk pruning skips a session folder that has no manifest yet, as a requester's copy of a requested
-	 * session's run does until the session ends, or never has if the session was stopped, and still prunes the terminal
-	 * runs beside it. The requester's own session ends and prunes while another requested session is still running.
+	 * session's nested session does until the session ends, or never has if the session was stopped, and still prunes the
+	 * terminal nested sessions beside it. The requester's own session ends and prunes while another requested session is
+	 * still running.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
@@ -335,7 +337,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies failed runs retain non-secret diagnostics for later investigation.
+	 * Verifies failed nested sessions retain non-secret diagnostics for later investigation.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -360,7 +362,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a failed run, which stays for investigation, holds no copy of either harness's login.
+	 * Verifies that a failed nested session, which stays for investigation, holds no copy of either harness's login.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -388,7 +390,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a completed run kept for investigation holds no login but keeps its other evidence.
+	 * Verifies that a completed nested session kept for investigation holds no login but keeps its other evidence.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -415,8 +417,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that removing a run's logins does not follow a link that the harness left in the run, so that a file
-	 * outside the run survives.
+	 * Verifies that removing a nested session's logins does not follow a link that the harness left in the nested
+	 * session, so that a file outside the nested session survives.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -443,7 +445,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies explicit cleanup removes only an owned run.
+	 * Verifies explicit cleanup removes only an owned nested session.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -468,9 +470,9 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that deleting a run removes its manifest after everything else in it: a deletion that stops partway, at
-	 * an entry of the run that cannot be removed, leaves the run's manifest, which names the processes that a later
-	 * cleanup must check.
+	 * Verifies that deleting a nested session removes its manifest after everything else in it: a deletion that stops
+	 * partway, at an entry of the nested session that cannot be removed, leaves the nested session's manifest, which
+	 * names the processes that a later cleanup must check.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -502,7 +504,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies explicit cleanup rejects a malformed run manifest even beneath the configured root.
+	 * Verifies explicit cleanup rejects a malformed session manifest even beneath the configured root.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -530,7 +532,7 @@ public final class NestedSessionManagerTest
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "Run manifest exceeds the maximum supported size of .* bytes: .*")
+		expectedExceptionsMessageRegExp = "Session manifest exceeds the maximum supported size of .* bytes: .*")
 	public void refusesOversizedSessionManifest() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -553,7 +555,7 @@ public final class NestedSessionManagerTest
 			catch (IOException failure)
 			{
 				requireThat(failure.getMessage(), "failureMessage").isEqualTo(
-					"Run manifest exceeds the maximum supported size of " + maximumManifestBytes + " bytes: " + manifest);
+					"Session manifest exceeds the maximum supported size of " + maximumManifestBytes + " bytes: " + manifest);
 				requireThat(manifest, "manifest").isRegularFile();
 				requireThat(Files.size(manifest), "manifestSize").isEqualTo(tooLarge);
 				throw failure;
@@ -562,12 +564,13 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies an active run cannot be deleted while its owner holds the exclusive lock, even when the process table
-	 * no longer reports the recorded owner alive.
+	 * Verifies an active nested session cannot be deleted while its owner holds the exclusive lock, even when the process
+	 * table no longer reports the recorded owner alive.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
-	@Test(expectedExceptions = IOException.class, expectedExceptionsMessageRegExp = "Run is already active: .*")
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = "Nested session is already active: .*")
 	public void refusesToDeleteLockedSession() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -588,12 +591,12 @@ public final class NestedSessionManagerTest
 
 	/**
 	 * Verifies, against the operating system's real process table, that a manager created for production finds the
-	 * owner of a run it just created, the test's own process, alive and refuses to delete the run.
+	 * owner of a nested session it just created, the test's own process, alive and refuses to delete the nested session.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "Run is still owned by a live process: .*")
+		expectedExceptionsMessageRegExp = "Nested session is still owned by a live process: .*")
 	public void readsOwnerLivenessFromProcessTable() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -611,12 +614,12 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies explicit cleanup refuses an unlocked run whose recorded owner is still alive.
+	 * Verifies explicit cleanup refuses an unlocked nested session whose recorded owner is still alive.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
 	@Test(expectedExceptions = IOException.class,
-		expectedExceptionsMessageRegExp = "Run is still owned by a live process: .*")
+		expectedExceptionsMessageRegExp = "Nested session is still owned by a live process: .*")
 	public void refusesDeletionOfSessionWithLiveOwner() throws IOException
 	{
 		try (TestJvmScope jvm = new TestJvmScope();
@@ -635,7 +638,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies a successful run is marked completed before cleanup starts.
+	 * Verifies a successful nested session is marked completed before cleanup starts.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -660,7 +663,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies a live run records the harness process identity used by stale-run safety checks.
+	 * Verifies a live nested session records the harness process identity used by stale-session safety checks.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -780,7 +783,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies a retained run records whether its harness is starting, waiting, or processing a turn.
+	 * Verifies a retained nested session records whether its harness is starting, waiting, or processing a turn.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -814,7 +817,7 @@ public final class NestedSessionManagerTest
 	/**
 	 * Verifies a harness process cannot be recorded until the manager has persisted the prelaunch state.
 	 *
-	 * @throws IOException if the run manifest cannot be created
+	 * @throws IOException if the session manifest cannot be created
 	 */
 	@Test(expectedExceptions = IOException.class)
 	public void refusesHarnessRecordBeforeStarting() throws IOException
@@ -992,8 +995,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that the snapshot of a run's project holds the copied files and workspace files, and keeps them as they
-	 * were when the project changes afterward.
+	 * Verifies that the snapshot of a nested session's project holds the copied files and workspace files, and keeps them
+	 * as they were when the project changes afterward.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1202,9 +1205,9 @@ public final class NestedSessionManagerTest
 	/**
 	 * Verifies that a symbolic link whose target lies outside the project stays a link in the project copy, with a
 	 * relative target that leads to a read-only copy of the target's file or directory tree, links inside that tree
-	 * included, in a folder of its own in the run's link-targets directory beside the project: a write to a copied file
-	 * fails, adding a file to a copied directory fails where the file system records POSIX permissions, the target stays
-	 * unchanged, a change to a copy is found, and the run still deletes.
+	 * included, in a folder of its own in the nested session's link-targets directory beside the project: a write to a
+	 * copied file fails, adding a file to a copied directory fails where the file system records POSIX permissions, the
+	 * target stays unchanged, a change to a copy is found, and the nested session still deletes.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1308,11 +1311,11 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Returns the name that the run's record gives the copy that a link of its project leads to.
+	 * Returns the name that the nested session's record gives the copy that a link of its project leads to.
 	 *
-	 * @param nestedSession the run
+	 * @param nestedSession the nested session
 	 * @param link          the project's link
-	 * @return the copy's path relative to the run's directory, with {@code /} between names
+	 * @return the copy's path relative to the nested session's directory, with {@code /} between names
 	 * @throws IOException if the link cannot be resolved
 	 */
 	private static String copyName(NestedSession nestedSession, Path link) throws IOException
@@ -1323,7 +1326,8 @@ public final class NestedSessionManagerTest
 
 	/**
 	 * Verifies that the diagnostic of changed copies of link targets outside the project names the first changed paths
-	 * and counts the rest, so that a session that changes many files cannot make the run's diagnostic unbounded.
+	 * and counts the rest, so that a session that changes many files cannot make the nested session's diagnostic
+	 * unbounded.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1354,14 +1358,15 @@ public final class NestedSessionManagerTest
 				++changes;
 			String copyName = copyName(nestedSession, nestedSession.directory().resolve("project/tree"));
 			requireThat(diagnostic, "diagnostic").contains(copyName + "/added-10.md (added)").
-				doesNotContain(copyName + "/added-34.md").endsWith(", and " + (changes - 20) + " more. The run fails, " +
-					"because its result would rest on files that differ from the targets.");
+				doesNotContain(copyName + "/added-34.md").endsWith(", and " + (changes - 20) + " more. The nested " +
+					"session fails, because its result would rest on files that differ from the targets.");
 		}
 	}
 
 	/**
 	 * Verifies that a workspace file whose path lies in a read-only copy of a link's target outside the project is
-	 * refused, so that the run's check of the copies cannot take the workspace's file for a change by the session.
+	 * refused, so that the nested session's check of the copies cannot take the workspace's file for a change by the
+	 * session.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1498,9 +1503,9 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a session is denied reading every other entry under the results folder, including other runs,
-	 * workspaces and the records of its own run, but not the paths that it uses, the paths inside them, or the
-	 * directories that contain them.
+	 * Verifies that a session is denied reading every other entry under the results folder, including other nested
+	 * sessions, workspaces and the records of its own nested session, but not the paths that it uses, the paths inside
+	 * them, or the directories that contain them.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1530,7 +1535,7 @@ public final class NestedSessionManagerTest
 
 			List<Path> deniedReads = manager.deniedReads(List.of(project.getParent(), home, evidenceArtifacts, outside));
 
-			// Creating a run writes its home directory, its manifest and its lock
+			// Creating a nested session writes its home directory, its manifest and its lock
 			requireThat(Set.copyOf(deniedReads), "deniedReads").isEqualTo(Set.of(artifacts,
 				nestedSession.directory().resolve("session.json"), nestedSession.directory().resolve(".lock"),
 				other.directory(), evidenceProject,
@@ -1540,7 +1545,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies stale terminal runs are reclaimed after the retention period.
+	 * Verifies stale terminal nested sessions are reclaimed after the retention period.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1569,9 +1574,9 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that deleting a stale run removes its manifest after everything else in it: a deletion that stops
-	 * partway, at an entry of the run that cannot be removed, leaves the run's manifest, which names the processes that
-	 * a later cleanup must check.
+	 * Verifies that deleting a stale nested session removes its manifest after everything else in it: a deletion that
+	 * stops partway, at an entry of the nested session that cannot be removed, leaves the nested session's manifest,
+	 * which names the processes that a later cleanup must check.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1635,7 +1640,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies an unlocked active run left by a terminated orchestrator becomes a retained terminal failure immediately.
+	 * Verifies an unlocked active nested session left by a terminated orchestrator becomes a retained terminal failure
+	 * immediately.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1648,7 +1654,7 @@ public final class NestedSessionManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			// No process is alive, so the orchestrator that owns the run has ended
+			// No process is alive, so the orchestrator that owns the nested session has ended
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			NestedSession nestedSession = manager(jvm, root, oldClock).create("harness");
 			Path manifest = nestedSession.directory().resolve("session.json");
@@ -1664,7 +1670,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies abandoned-run recovery terminates a recorded harness child before retaining its failed diagnostic.
+	 * Verifies abandoned-session recovery terminates a recorded harness child before retaining its failed diagnostic.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1679,7 +1685,7 @@ public final class NestedSessionManagerTest
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			String harnessStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125";
-			// Only the harness process is alive: the orchestrator that owns the run has ended
+			// Only the harness process is alive: the orchestrator that owns the nested session has ended
 			FakeProcessHandle harness = new FakeProcessHandle(12_345, harnessStart, true);
 			NestedSessionManager oldManager = manager(jvm, root, oldClock, harness);
 			NestedSession nestedSession = oldManager.create("harness");
@@ -1697,7 +1703,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies stale cleanup retains an unlocked running run whose recorded owner remains alive, and leaves it running.
+	 * Verifies stale cleanup retains an unlocked running nested session whose recorded owner remains alive, and leaves it
+	 * running.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1726,9 +1733,9 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies stale cleanup leaves running the run of a live owner after the wall clock was set, which moves the boot
-	 * time that Linux derives from it, between the owner's start and the cleanup. The test's own process stands for the
-	 * owner.
+	 * Verifies stale cleanup leaves running the nested session of a live owner after the wall clock was set, which moves
+	 * the boot time that Linux derives from it, between the owner's start and the cleanup. The test's own process stands
+	 * for the owner.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1758,10 +1765,10 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies stale cleanup stops the recorded harness process of an abandoned run after the wall clock was set, which
-	 * moves the boot time that Linux derives from it, between the recording of the harness process and the cleanup.
-	 * The start of the test's parent process, which stands for the harness process, comes from a process folder, and a
-	 * fake process with the parent's identifier records the request to stop, so that no real process stops.
+	 * Verifies stale cleanup stops the recorded harness process of an abandoned nested session after the wall clock was
+	 * set, which moves the boot time that Linux derives from it, between the recording of the harness process and the
+	 * cleanup. The start of the test's parent process, which stands for the harness process, comes from a process folder,
+	 * and a fake process with the parent's identifier records the request to stop, so that no real process stops.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1800,7 +1807,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that stale cleanup refuses to delete a run whose process identities are malformed.
+	 * Verifies that stale cleanup refuses to delete a nested session whose process identities are malformed.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1839,7 +1846,7 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies the stale collector skips a terminal run while its owner lock remains held.
+	 * Verifies the stale collector skips a terminal nested session while its owner lock remains held.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1872,8 +1879,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a run records the harness's own identifier of its session once, that a later report of the same
-	 * identifier keeps it, and that a report of another identifier is refused.
+	 * Verifies that a nested session records the harness's own identifier of its session once, that a later report of the
+	 * same identifier keeps it, and that a report of another identifier is refused.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1908,8 +1915,9 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that the manifest of a run written before runs recorded their harness session and their session requests
-	 * reads as a run whose harness reported no session and that accepted no session request.
+	 * Verifies that the manifest of a nested session written before nested sessions recorded their harness session and
+	 * their session requests reads as a nested session whose harness reported no session and that accepted no session
+	 * request.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1938,8 +1946,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a runner that resumes a run takes the options that the run's start fixed, followed by its own, and
-	 * that one that names an option that the start fixed is refused.
+	 * Verifies that a runner that resumes a nested session takes the options that the nested session's start fixed,
+	 * followed by its own, and that one that names an option that the start fixed is refused.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -1974,8 +1982,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a run in a slot records, at its creation, the launch options that its start fixed, so that a later
-	 * runner can continue its session as it started, and that a run that names none records none.
+	 * Verifies that a nested session in a slot records, at its creation, the launch options that its start fixed, so that
+	 * a later runner can continue its session as it started, and that a nested session that names none records none.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -2036,9 +2044,9 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a run whose runner ended after its harness reported its session reopens for a new runner whatever
-	 * its age, which records the new runner as its owner and keeps its turns, its session and its count of accepted
-	 * session requests.
+	 * Verifies that a nested session whose runner ended after its harness reported its session reopens for a new runner
+	 * whatever its age, which records the new runner as its owner and keeps its turns, its session and its count of
+	 * accepted session requests.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -2049,7 +2057,7 @@ public final class NestedSessionManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			// No process is alive, so the runner that owned the run has ended, along with its harness
+			// No process is alive, so the runner that owned the nested session has ended, along with its harness
 			NestedSessionManager first = manager(jvm, root, Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC));
 			NestedSession nestedSession = first.create("harness");
 			first.markHarnessStarting(nestedSession);
@@ -2076,8 +2084,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a manager of a slot resumes the slot's run only for the harness session that the run records, and
-	 * that the resumed run's turns continue after the last turn that ended.
+	 * Verifies that a manager of a slot resumes the slot's nested session only for the harness session that the nested
+	 * session records, and that the resumed nested session's turns continue after the last turn that ended.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -2105,8 +2113,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a run does not reopen while its runner lives, while its harness launch state is unknown, before
-	 * its harness reported its session, or once it has ended.
+	 * Verifies that a nested session does not reopen while its runner lives, while its harness launch state is unknown,
+	 * before its harness reported its session, or once it has ended.
 	 *
 	 * @throws IOException if the filesystem operation fails
 	 */
@@ -2158,8 +2166,8 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Verifies that a runner that is stopped while its run runs stops its harness, but records no end for the run
-	 * and keeps its home, so that the run's harness session can continue.
+	 * Verifies that a runner that is stopped while its nested session runs stops its harness, but records no end for the
+	 * nested session and keeps its home, so that the nested session's harness session can continue.
 	 *
 	 * @param stop how the runner is stopped
 	 * @throws IOException          if the filesystem operation fails or the runner cannot start
@@ -2241,10 +2249,10 @@ public final class NestedSessionManagerTest
 	}
 
 	/**
-	 * Replaces the owner process that a run's manifest records, standing in for a run that another orchestrator
-	 * process created.
+	 * Replaces the owner process that a nested session's manifest records, standing in for a nested session that another
+	 * orchestrator process created.
 	 *
-	 * @param nestedSession       the run
+	 * @param nestedSession       the nested session
 	 * @param pid   the owner's process identifier
 	 * @param start the owner's start
 	 * @throws IOException if the manifest cannot be read or written
