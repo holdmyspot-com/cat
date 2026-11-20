@@ -57,7 +57,7 @@ import java.util.function.BooleanSupplier;
 public final class Install
 {
 	/**
-	 * The longest time that each Java run of the startup cache training may take.
+	 * The longest time that each Java launch of the startup cache training may take.
 	 */
 	private static final Duration TRAINING_LIMIT = Duration.ofMinutes(1);
 	/**

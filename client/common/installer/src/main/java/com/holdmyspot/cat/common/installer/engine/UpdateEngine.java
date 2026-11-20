@@ -112,7 +112,7 @@ public final class UpdateEngine
 
 	/**
 	 * Creates an engine with an explicit lock wait, check of administrative rights, which decides whether startup
-	 * cache training runs, and runner of data migration scripts.
+	 * cache training launches, and runner of data migration scripts.
 	 *
 	 * @param dataDirectory the harness's protected CAT data directory
 	 * @param policy        protected policy

@@ -14,7 +14,7 @@ import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.installer.engine.LinkSafeDeletion;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer;
 import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.Training;
-import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.TrainingRun;
+import com.holdmyspot.cat.common.installer.engine.StartupCacheTrainer.TrainingLaunch;
 import com.holdmyspot.cat.common.installer.fakes.test.StartupTrainingApplication;
 import com.holdmyspot.cat.common.installer.secrets.StartupCacheTrainerSecrets;
 import com.holdmyspot.cat.common.runner.StartupCache;
@@ -39,7 +39,7 @@ import org.testng.annotations.Test;
 /**
  * Tests writing a plugin directory's startup cache after the plugin directory is activated.
  * <p>
- * What a training runs and what it does with a run's outcome are decisions, so the tests call the methods that make
+ * What a training runs and what it does with a launch's outcome are decisions, so the tests call the methods that make
  * them. The only claim about real Java, that it accepts a cache which a training wrote through a plugin's wrapper, is
  * checked by the distribution module's {@code jlink-launchers.bats} and {@code codex-plugin-launchers-windows.bats},
  * which run the wrapper of the plugins that the build generates.
@@ -65,10 +65,10 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * A run starts the plugin's {@code java} wrapper with the run's options and then the training's arguments, in a
+	 * A launch starts the plugin's {@code java} wrapper with the launch's options and then the training's arguments, in a
 	 * working directory below the scratch folder, with an environment that holds the caller's program search path
 	 * and nothing else of the caller's: a scratch home and temporary folder, a Git ceiling at the scratch folder, and the
-	 * plugin directory in the plugin's variable. The run reads its standard input from a file in the scratch folder.
+	 * plugin directory in the plugin's variable. The launch reads its standard input from a file in the scratch folder.
 	 *
 	 * @throws IOException if the test directory cannot be created
 	 */
@@ -84,28 +84,28 @@ public final class StartupCacheTrainerTest
 			Map<String, String> caller = Map.of("PATH", "/usr/bin", "HOME", "/home/caller", "SECRET", "token",
 				"TMPDIR", "/tmp/caller", ROOT_VARIABLE, "/other/plugin", "GIT_CEILING_DIRECTORIES", "/caller");
 
-			TrainingRun run = StartupCacheTrainer.plan(plugin, training, work, List.of("-XX:AOTMode=record"), caller,
+			TrainingLaunch launch = StartupCacheTrainer.plan(plugin, training, work, List.of("-XX:AOTMode=record"), caller,
 				Platform.LINUX_X64);
 
-			requireThat(run.command(), "command").isEqualTo(List.of(plugin.resolve("bin/java").toString(),
+			requireThat(launch.command(), "command").isEqualTo(List.of(plugin.resolve("bin/java").toString(),
 				"-XX:AOTMode=record", "-m", "app/example.Main", "--flag"));
-			requireThat(run.environment(), "environment").isEqualTo(Map.of("PATH", "/usr/bin",
+			requireThat(launch.environment(), "environment").isEqualTo(Map.of("PATH", "/usr/bin",
 				"HOME", work.resolve("home").toString(),
 				"TMPDIR", work.resolve("tmp").toString(),
 				"TMP", work.resolve("tmp").toString(),
 				"TEMP", work.resolve("tmp").toString(),
 				"GIT_CEILING_DIRECTORIES", work.toString(),
 				ROOT_VARIABLE, plugin.toString()));
-			requireThat(run.directory(), "directory").isEqualTo(work.resolve("project"));
-			requireThat(run.input(), "input").isEqualTo(work.resolve("input"));
-			requireThat(run.directories(), "directories").
+			requireThat(launch.directory(), "directory").isEqualTo(work.resolve("project"));
+			requireThat(launch.input(), "input").isEqualTo(work.resolve("input"));
+			requireThat(launch.directories(), "directories").
 				isEqualTo(List.of(work.resolve("home"), work.resolve("tmp"), work.resolve("project")));
 		}
 	}
 
 	/**
-	 * On Windows, a run starts the plugin's {@code java.cmd} wrapper, and its environment also holds the variables that
-	 * a Windows program needs to start, under the names that the caller gave them, and a scratch profile.
+	 * On Windows, a launch starts the plugin's {@code java.cmd} wrapper, and its environment also holds the variables
+	 * that a Windows program needs to start, under the names that the caller gave them, and a scratch profile.
 	 *
 	 * @throws IOException if the test directory cannot be created
 	 */
@@ -121,11 +121,11 @@ public final class StartupCacheTrainerTest
 			Map<String, String> caller = Map.of("Path", "C:\\Windows", "SYSTEMROOT", "C:\\Windows", "ComSpec", "cmd.exe",
 				"USERPROFILE", "C:\\Users\\caller", "SECRET", "token");
 
-			TrainingRun run = StartupCacheTrainer.plan(plugin, training, work, List.of(), caller, Platform.WINDOWS_X64);
+			TrainingLaunch launch = StartupCacheTrainer.plan(plugin, training, work, List.of(), caller, Platform.WINDOWS_X64);
 
-			requireThat(run.command(), "command").
+			requireThat(launch.command(), "command").
 				isEqualTo(List.of(plugin.resolve("bin/java.cmd").toString(), "--flag"));
-			requireThat(run.environment(), "environment").isEqualTo(Map.ofEntries(
+			requireThat(launch.environment(), "environment").isEqualTo(Map.ofEntries(
 				Map.entry("Path", "C:\\Windows"),
 				Map.entry("SYSTEMROOT", "C:\\Windows"),
 				Map.entry("ComSpec", "cmd.exe"),
@@ -141,7 +141,7 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * A run counts only if it ended within the time limit with status 0 and wrote the file that it is to write.
+	 * A launch counts only if it ended within the time limit with status 0 and wrote the file that it is to write.
 	 */
 	@Test
 	public void runNeedsTimelyStatusZeroAndOutput()
@@ -153,7 +153,7 @@ public final class StartupCacheTrainerTest
 	}
 
 	/**
-	 * A training that did not write the cache, such as one whose cache-writing run failed after writing part of the
+	 * A training that did not write the cache, such as one whose cache-writing launch failed after writing part of the
 	 * cache, leaves the plugin without a startup cache folder or partial file, removing the cache of an earlier
 	 * activation, and removes its scratch folder.
 	 *
@@ -490,7 +490,7 @@ public final class StartupCacheTrainerTest
 	 * The JVM opens files without close-on-exec, so a process that the installer starts while it extracts the wrapper
 	 * inherits the open file until it closes the descriptors that it inherited. A write channel that the test keeps
 	 * open stands in for that process, and the pause between start attempts closes it, as the inherited descriptor
-	 * would close during the retries. The wrapper stands in for Java: it writes the file that each run's options name.
+	 * would close during the retries. The wrapper stands in for Java: it writes the file that each launch's options name.
 	 *
 	 * @throws IOException if the fixture cannot be created or inspected
 	 */

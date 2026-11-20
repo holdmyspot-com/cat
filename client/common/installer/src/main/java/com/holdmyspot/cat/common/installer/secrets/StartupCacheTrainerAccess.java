@@ -17,7 +17,7 @@ public interface StartupCacheTrainerAccess
 	 * Creates a trainer that uses the supplied tree-removal operation.
 	 *
 	 * @param scratch    the directory below which training creates its scratch folders
-	 * @param timeout    the longest time allowed for each Java run
+	 * @param timeout    the longest time allowed for each Java launch
 	 * @param elevated   tells whether this process runs with administrative rights
 	 * @param deleteTree removes a cache or scratch tree
 	 * @param waiting    creates pauses between required final cleanup attempts

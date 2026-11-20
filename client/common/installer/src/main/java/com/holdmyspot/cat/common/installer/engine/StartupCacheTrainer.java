@@ -34,9 +34,9 @@ import tools.jackson.databind.JsonNode;
  * plugin's programs start faster.
  * <p>
  * Java accepts a cache only for the module path that it was trained with, so each plugin directory is trained where
- * it was placed: one run of its session-start program through the plugin's {@code bin/java} wrapper, which
+ * it was placed: one launch of its session-start program through the plugin's {@code bin/java} wrapper, which
  * passes the same Java options and module path as the plugin's launchers, records what the program loads, and a
- * second run writes the cache from that record. Java also accepts a cache only for the runtime image that trained
+ * second launch writes the cache from that record. Java also accepts a cache only for the runtime image that trained
  * it, and the wrapper runs the runtime that the directory's runtime binding names, so the caller binds the directory to
  * the runtime that is to run it before training. The program runs against a scratch home, temporary folder and project
  * that are removed afterwards, with an environment that holds nothing of the caller's except its program search path,
@@ -89,9 +89,9 @@ public final class StartupCacheTrainer
 	/**
 	 * Creates a trainer.
 	 *
-	 * @param scratch  the directory below which each training run gets its scratch folders, which is created when
+	 * @param scratch  the directory below which each training launch gets its scratch folders, which is created when
 	 *                 absent
-	 * @param timeout  the longest time that each of a training's two Java runs may take before it is stopped
+	 * @param timeout  the longest time that each of a training's two Java launches may take before it is stopped
 	 * @param elevated tells whether this process runs with administrative rights, such as
 	 *                 {@link ProcessElevation#isElevated()}
 	 * @param waiting  creates pauses between required final cleanup attempts and between the attempts to start the
@@ -107,9 +107,9 @@ public final class StartupCacheTrainer
 	/**
 	 * Creates a trainer with the file-removal operation that it uses to retire its cache and scratch trees.
 	 *
-	 * @param scratch    the directory below which each training run gets its scratch folders, which is created when
+	 * @param scratch    the directory below which each training launch gets its scratch folders, which is created when
 	 *                   absent
-	 * @param timeout    the longest time that each of a training's two Java runs may take before it is stopped
+	 * @param timeout    the longest time that each of a training's two Java launches may take before it is stopped
 	 * @param elevated   tells whether this process runs with administrative rights
 	 * @param deleteTree removes a cache or scratch tree
 	 * @param waiting    creates pauses between required final cleanup attempts and between the attempts to start the
@@ -134,7 +134,7 @@ public final class StartupCacheTrainer
 
 	/**
 	 * Replaces a plugin directory's startup cache with one trained at the directory's location. When this process runs
-	 * with administrative rights, the plugin has no training description, or either Java run fails or takes too long,
+	 * with administrative rights, the plugin has no training description, or either Java launch fails or takes too long,
 	 * the directory is left without a cache. An invalid description or a failed cache or scratch removal is reported.
 	 *
 	 * @param plugin the plugin directory
@@ -168,21 +168,21 @@ public final class StartupCacheTrainer
 						{
 							work = StateFiles.createTemporaryDirectory(scratch, "training-");
 							Path configuration = work.resolve("tmp").resolve("session-start.aotconf");
-							TrainingRun recording = plan(plugin, training, work,
+							TrainingLaunch recording = plan(plugin, training, work,
 								List.of("-XX:AOTMode=record", "-XX:AOTConfiguration=" + configuration), System.getenv(),
 								Platform.current());
 							for (Path directory : recording.directories())
 								Files.createDirectory(directory);
 							Files.writeString(recording.input(), training.input(), UTF_8);
-							OptionalInt recorded = run(recording);
+							OptionalInt recorded = launch(recording);
 							if (succeeded(recorded, Files.isRegularFile(configuration, NOFOLLOW_LINKS)))
 							{
 								Files.createDirectories(cacheDirectory);
 								Path partial = cacheDirectory.resolve(StartupCache.FILE.getFileName() + ".partial");
-								TrainingRun writing = plan(plugin, training, work, List.of("-XX:AOTMode=create",
+								TrainingLaunch writing = plan(plugin, training, work, List.of("-XX:AOTMode=create",
 									"-XX:AOTConfiguration=" + configuration, "-XX:AOTCache=" + partial), System.getenv(),
 									Platform.current());
-								OptionalInt created = run(writing);
+								OptionalInt created = launch(writing);
 								if (succeeded(created, Files.isRegularFile(partial, NOFOLLOW_LINKS)))
 								{
 									Files.move(partial, plugin.resolve(StartupCache.FILE), StandardCopyOption.ATOMIC_MOVE);
@@ -192,7 +192,7 @@ public final class StartupCacheTrainer
 						}
 						catch (IOException _)
 						{
-							// Training is optional when its inputs or Java runs are unavailable.
+							// Training is optional when its inputs or Java launches are unavailable.
 						}
 						catch (InterruptedException _)
 						{
@@ -237,24 +237,24 @@ public final class StartupCacheTrainer
 		return written;
 	}
 	/**
-	 * Plans one Java run of a training: the plugin's {@code java} wrapper with the run's options and the training's
+	 * Plans one Java launch of a training: the plugin's {@code java} wrapper with the launch's options and the training's
 	 * arguments, in an environment that holds the caller's program search path, the variables that Windows programs need
 	 * to start, a scratch home and temporary folder, a Git ceiling at the scratch folder, and the plugin directory in the
 	 * plugin's variable.
 	 * <p>
-	 * The scratch folders lie below {@code work}: {@code home}, {@code tmp} and {@code project}, which is the run's
-	 * working directory, and the file {@code input}, which the run reads its standard input from.
+	 * The scratch folders lie below {@code work}: {@code home}, {@code tmp} and {@code project}, which is the launch's
+	 * working directory, and the file {@code input}, which the launch reads its standard input from.
 	 *
 	 * @param plugin   the plugin directory
 	 * @param training the plugin's training description
 	 * @param work     the training's scratch folder
-	 * @param options  the Java options of this run
+	 * @param options  the Java options of this launch
 	 * @param caller   the caller's environment
-	 * @param platform the platform that the run is on
-	 * @return the run
+	 * @param platform the platform that the launch is on
+	 * @return the launch
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static TrainingRun plan(Path plugin, Training training, Path work, List<String> options,
+	public static TrainingLaunch plan(Path plugin, Training training, Path work, List<String> options,
 		Map<String, String> caller, Platform platform)
 	{
 		requireThat(plugin, "plugin").isNotNull();
@@ -292,16 +292,16 @@ public final class StartupCacheTrainer
 		command.add(plugin.resolve(PluginDirectory.BIN).resolve(wrapper).toString());
 		command.addAll(options);
 		command.addAll(training.arguments());
-		return new TrainingRun(List.copyOf(command), Map.copyOf(environment), project, work.resolve("input"),
+		return new TrainingLaunch(List.copyOf(command), Map.copyOf(environment), project, work.resolve("input"),
 			List.of(home, temporary, project));
 	}
 
 	/**
-	 * Decides whether a Java run of a training did what the training needs.
+	 * Decides whether a Java launch of a training did what the training needs.
 	 *
-	 * @param status        the status that the run ended with, or empty if it did not end within the time limit
-	 * @param outputWritten {@code true} if the run wrote the file that it is to write
-	 * @return {@code true} if the run ended in time with status 0 and wrote its file
+	 * @param status        the status that the launch ended with, or empty if it did not end within the time limit
+	 * @param outputWritten {@code true} if the launch wrote the file that it is to write
+	 * @return {@code true} if the launch ended in time with status 0 and wrote its file
 	 * @throws NullPointerException if {@code status} is null
 	 */
 	public static boolean succeeded(OptionalInt status, boolean outputWritten)
@@ -311,23 +311,23 @@ public final class StartupCacheTrainer
 	}
 
 	/**
-	 * Runs a planned run once, discarding its output and stopping it, with every process that it started, when it takes
-	 * too long. It waits for those processes to terminate before the training's scratch files can be removed.
+	 * Starts a planned launch once, discarding its output and stopping it, with every process that it started, when it
+	 * takes too long. It waits for those processes to terminate before the training's scratch files can be removed.
 	 *
-	 * @param run the run
+	 * @param launch the launch
 	 * @return the status that the program ended with, or empty if it did not end within the time limit
 	 * @throws IOException          if the program cannot be started
 	 * @throws InterruptedException if the thread is interrupted while waiting
 	 */
-	private OptionalInt run(TrainingRun run) throws IOException, InterruptedException
+	private OptionalInt launch(TrainingLaunch launch) throws IOException, InterruptedException
 	{
-		ProcessBuilder builder = new ProcessBuilder(run.command()).
-			directory(run.directory().toFile()).
-			redirectInput(run.input().toFile()).
+		ProcessBuilder builder = new ProcessBuilder(launch.command()).
+			directory(launch.directory().toFile()).
+			redirectInput(launch.input().toFile()).
 			redirectOutput(ProcessBuilder.Redirect.DISCARD).
 			redirectError(ProcessBuilder.Redirect.DISCARD);
 		builder.environment().clear();
-		builder.environment().putAll(run.environment());
+		builder.environment().putAll(launch.environment());
 		try (Process process = ExecutableFiles.retrying(waiting).run(builder))
 		{
 			try
@@ -506,15 +506,15 @@ public final class StartupCacheTrainer
 	}
 
 	/**
-	 * One Java run of a training, as it is started.
+	 * One Java launch of a training, as it is started.
 	 *
 	 * @param command     the program and its arguments
-	 * @param environment the whole environment of the run
-	 * @param directory   the run's working directory
-	 * @param input       the file that the run reads its standard input from
-	 * @param directories the scratch folders that the run needs, which are created before it starts
+	 * @param environment the whole environment of the launch
+	 * @param directory   the launch's working directory
+	 * @param input       the file that the launch reads its standard input from
+	 * @param directories the scratch folders that the launch needs, which are created before it starts
 	 */
-	public record TrainingRun(List<String> command, Map<String, String> environment, Path directory, Path input,
+	public record TrainingLaunch(List<String> command, Map<String, String> environment, Path directory, Path input,
 		List<Path> directories)
 	{
 	}
