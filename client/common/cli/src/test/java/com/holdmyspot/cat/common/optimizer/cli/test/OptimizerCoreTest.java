@@ -4810,6 +4810,17 @@ public final class OptimizerCoreTest
 			requireThat(again.get("proposal_file").isNull(), "againProposal").isTrue();
 			requireThat(choiceIds(again), "againChoices").isEqualTo(List.of("retry", "stop"));
 			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "againTrialSessions").isEqualTo(8);
+
+			// Recreate an ended host whose pilot pause reached disk before the campaign snapshot recorded it.
+			Campaign beforePause = Transitions.apply(paused, new CampaignEvent.Choose(Choice.RETRY, 0, 0));
+			OptimizerCommandScopeSecrets.getOptimizerCommandScopeAccess().store(repository.scope()).
+				replaceSnapshot(beforePause);
+
+			ObjectNode recovered = output(repository, List.of("start", "CLAUDE.md"));
+
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "recoveredTrialSessions").isEqualTo(8);
+			requireThat(choiceIds(recovered), "recoveredChoices").isEqualTo(List.of("retry", "stop"));
+			requireThat(recovered.get("proposal_file").isNull(), "recoveredProposal").isTrue();
 		}
 	}
 
@@ -6011,6 +6022,45 @@ public final class OptimizerCoreTest
 			Campaign campaign = repository.load(id);
 			requireThat(campaign.lineages().size(), "lineages").isEqualTo(2);
 			requireThat(campaign.testRevisions().revisions().getFirst().after(), "after").contains("Summarize");
+		}
+	}
+
+	/**
+	 * Verifies that a revised test's paused pilot keeps its proposal and requires the user's retry before another run.
+	 */
+	@Test
+	public void pausedRevisionKeepsItsProposalUntilRetry() throws Exception
+	{
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = changingAuthorRepository(scope);
+			String id = repository.core().start(Path.of("CLAUDE.md"), 1).status().campaignId();
+			repository.core().confirm(id, CertificationScope.LATEST_VERSIONS);
+			requestTestRevision(repository, id, false);
+			Path revision = repository.directory(id).resolve("held_out/revision.json");
+			int trials = repository.sessions().requests(SessionRole.TRIAL).size();
+			repository.trialEnd().set(failingTrials(trials + 1, trials + 3));
+
+			ObjectNode paused = output(repository, List.of("run", id));
+
+			requireThat(choiceIds(paused), "choiceIds").isEqualTo(List.of("retry", "stop"));
+			requireThat(Files.isRegularFile(revision), "savedRevision").isTrue();
+			int authors = repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size();
+			repository.trialEnd().set(_ -> null);
+
+			output(repository, List.of("run", id));
+
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "pausedTrials").isEqualTo(trials + 3);
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "pausedAuthors").
+				isEqualTo(authors);
+			output(repository, List.of("choose", id, "retry"));
+			for (int slices = 0; repository.load(id).awaitsTestRevision(); ++slices)
+			{
+				requireThat(slices, "slices").isLessThan(30);
+				output(repository, List.of("run", id));
+			}
+			requireThat(repository.sessions().requests(SessionRole.CONTRACT_AUTHOR).size(), "resumedAuthors").
+				isEqualTo(authors);
 		}
 	}
 

@@ -2436,8 +2436,10 @@ case, and rate-limit rejections and provider refusals do not count. A session th
 infrastructure attempt, as for a formal trial: the pilot starts no further session and stays unfinished, and no
 interruption counts toward the 3 infrastructure failures. After 3 infrastructure failures of the same logical pilot
 trial, `start`, or a `revise` that reruns the pilot, pauses with the retry and stop choice of a paused campaign, names
-the logical trial and why each run ended, and does not offer the proposal for confirmation. A pilot that is unfinished
-for any reason, paused, interrupted or stopped by a refusal, cannot be confirmed: the proposal shows how far the pilot
+the logical trial and why each run ended, and does not offer the proposal for confirmation. Restarting after a crash
+preserves that pause. Choosing retry renews each exhausted draw's budget and continues the saved proposal and test cases.
+A pilot that is unfinished for any reason, paused, interrupted or stopped by a refusal, cannot be confirmed:
+the proposal shows how far the pilot
 got, and `confirm` is refused until a pilot runs to its end. The next `start`, `revise` or `retry` runs only the trials
 that the pilot has not decided, with the test cases it already drew; `stop` cancels the campaign. The pilot runs in slices,
 as the driver does (user ruling, 2026-11-12): `start`, `revise` and the `retry` choice run it within the slice budget

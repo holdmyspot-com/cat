@@ -1742,6 +1742,8 @@ public final class OptimizerCore implements Core
 			Campaign loaded = require(scope.store(), id, true);
 			if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
 			{
+				if (loaded.pending() instanceof PendingDecision.PilotFailure)
+					return report(root, loaded, null, pilotPausedNotice(loaded));
 				Optional<String> unfinished = reviseTests(root, loaded, lock, started);
 				loaded = require(scope.store(), id, true);
 				if (unfinished.isPresent())
@@ -1818,13 +1820,17 @@ public final class OptimizerCore implements Core
 			// A blocked revision is examined again with the next run, which also continues the pilot
 			if (revised.unfinished() != null)
 				return Optional.of(revised.unfinished());
+			if (revised.events().getFirst() instanceof CampaignEvent.PilotFailed failure)
+			{
+				apply(root, campaign, List.of(failure), lock);
+				return Optional.of(pilotPausedNotice(campaign));
+			}
 			events.addAll(revised.events());
 		}
 		// Confirming the revised contract clears pending decisions, so a blocked revision pauses the campaign after it
 		events.addAll(blocked);
 		if (!events.isEmpty())
 			apply(root, campaign, events, lock);
-		// A pilot that failed leaves the campaign awaiting its test revision, which runs again
 		discardRevision(id);
 		return Optional.empty();
 	}
@@ -2008,8 +2014,7 @@ public final class OptimizerCore implements Core
 		if (background && stopRequested())
 			return new RevisedContract(List.of(new CampaignEvent.Cancel()), null);
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
-		// The revised contract is not confirmed on a pilot that did not finish. The user chooses to retry or to stop,
-		// and the test revisions run again with the next run.
+		// If the pilot paused, the user chooses whether to retry the saved revision's pilot.
 		if (pause.isPresent())
 			return new RevisedContract(List.of(new CampaignEvent.PilotFailed(pause.get())), null);
 		// The slice ended with trials to run, so the host agent repeats `run`, which continues the pilot before any
@@ -2624,9 +2629,15 @@ public final class OptimizerCore implements Core
 					// The contract author derives the revised contract from the change, which the user then confirms
 					return reviseBody(campaign, blocked.proposedChange(), lock, sliceStart);
 				}
-				boolean retriesPilot = choice == Choice.RETRY && loaded.pending() instanceof PendingDecision.PilotFailure;
+				boolean retriesPilot = choice == Choice.RETRY && loaded.pending() instanceof PendingDecision.PilotFailure &&
+					loaded.choices().contains(choice);
 				if (retriesPilot)
+				{
 					refuseUnlaunchable();
+					PilotFile file = pilotFile(loaded);
+					// Keep the pending choice until the renewed budget is durable. Repeating the reset is harmless.
+					file.write(GuardPilot.retryPaused(file.read()));
+				}
 				result = apply(root, loaded, List.of(new CampaignEvent.Choose(choice, attempt, reviewPoint)), lock);
 				Campaign chosen = require(scope.store(), campaign, true);
 				// The retry runs the pilot's remaining trials and presents the proposal. A confirmed campaign's test

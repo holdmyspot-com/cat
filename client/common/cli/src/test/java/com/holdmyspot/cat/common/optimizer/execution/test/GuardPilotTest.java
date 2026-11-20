@@ -903,8 +903,8 @@ public final class GuardPilotTest
 
 	/**
 	 * A pilot that paused keeps the trials that it decided and, with the same conditions, draws the same test cases:
-	 * a later run runs only the trials that are undecided, so that its trials equal those of a pilot that no session
-	 * ever failed.
+	 * after an explicit retry it runs only the trials that are undecided, so its trials equal those of a pilot
+	 * that never lost a session.
 	 * <p>
 	 * Runtime includes three pilot runs of two tests with 20 trials each, scripted and with staged trial files; no
 	 * harness or model runs.
@@ -945,7 +945,7 @@ public final class GuardPilotTest
 
 			SessionScript resumed = new SessionScript(directory.resolve("resumed"), _ -> "pass");
 			Map<String, PilotResult> second = pilot(resumed, workspace(directory), 1).run(contract, List.of(),
-				control(), Set.of(), SELECTION, first, new SplittableRandom(99));
+				control(), Set.of(), SELECTION, GuardPilot.retryPaused(first), new SplittableRandom(99));
 
 			List<SessionRequest> trials = resumed.requests(SessionRole.TRIAL);
 			requireThat(trials.size(), "trials").isEqualTo(GuardPilot.TRIALS * second.size() - 5);

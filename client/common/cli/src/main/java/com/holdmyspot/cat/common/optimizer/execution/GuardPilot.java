@@ -369,8 +369,8 @@ public final class GuardPilot
 			{
 				matching.add(test.id());
 				pilot = new Pilot(test, cell.get(), definition, earlier.seed(), earlier.trials(), earlier.pendingTrials());
-				if (earlier.paused())
-					pilot.resetExhaustedAttempts();
+				pilot.stopReason = retainedPause(earlier);
+				pilot.paused = pilot.stopReason != null;
 			}
 			else
 				pilot = new Pilot(test, cell.get(), definition, random.nextLong(), List.of(), Map.of());
@@ -379,6 +379,16 @@ public final class GuardPilot
 			pilots.put(test.id(), null);
 		}
 		discardObsolete(stored, matching);
+		if (pending.stream().anyMatch(pilot -> pilot.paused))
+		{
+			for (Pilot pilot : pending)
+			{
+				if (!pilot.paused)
+					pilot.stopReason = UNFINISHED;
+				pilots.put(pilot.test.id(), pilot.result(files));
+			}
+			return pilots;
+		}
 		Set<Path> selectedRoots = new HashSet<>(selection.roots());
 		selectedRoots.add(target);
 		SourceSelection controlSelection = new SourceSelection(selectedRoots, selection.names(), selection.patterns());
@@ -394,6 +404,76 @@ public final class GuardPilot
 		for (Pilot pilot : pending)
 			pilots.put(pilot.test.id(), pilot.result(files));
 		return pilots;
+	}
+
+	/**
+	 * Grants another budget to exhausted draws after the user chooses retry. The caller persists this reset before
+	 * recording the campaign's choice, so either write can be interrupted without losing the choice or its effect.
+	 *
+	 * @param pilots the persisted pilot results
+	 * @return the results with exhausted draw budgets cleared and all decided trials kept
+	 */
+	public static Map<String, PilotResult> retryPaused(Map<String, PilotResult> pilots)
+	{
+		Map<String, PilotResult> reset = new LinkedHashMap<>(pilots);
+		reset.replaceAll((_, pilot) ->
+		{
+			Map<Integer, PilotTrialRecovery> recovery = new LinkedHashMap<>(pilot.pendingTrials());
+			boolean resetPositions = recovery.values().removeIf(GuardPilot::exhausted);
+			if (!pilot.paused() && !resetPositions)
+				return pilot;
+			return new PilotResult(pilot.testId(), pilot.definition(), pilot.cellId(), pilot.control(), pilot.seed(),
+				pilot.trials(), pilot.failedRuns(), UNFINISHED, false, recovery);
+		});
+		return reset;
+	}
+
+	/**
+	 * Recognizes an exhausted draw before admitting any work, including a checkpoint that precedes the pause report.
+	 *
+	 * @param pilot the previous result for the same pilot
+	 * @return the pause reason, or {@code null} if its trials can continue
+	 */
+	private static String retainedPause(PilotResult pilot)
+	{
+		if (pilot.paused())
+			return pilot.stopReason();
+		return pilot.pendingTrials().entrySet().stream().filter(entry -> exhausted(entry.getValue())).
+			min(Map.Entry.comparingByKey()).map(entry -> exhaustionReason(pilot.testId(), entry.getKey(),
+				entry.getValue().infrastructureAttempts())).orElse(null);
+	}
+
+	/**
+	 * Tests whether a draw has no unsettled launch and has spent its current budget.
+	 *
+	 * @param trial the draw's saved recovery state
+	 * @return whether the draw requires an explicit retry
+	 */
+	private static boolean exhausted(PilotTrialRecovery trial)
+	{
+		return trial.requestId().isEmpty() &&
+			trial.infrastructureAttempts().size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT;
+	}
+
+	/**
+	 * Describes the exhausted draw and every prior failure in its current budget.
+	 *
+	 * @param test the test's identifier
+	 * @param position the zero-based draw position
+	 * @param runs why the attempts ended
+	 * @return the reason the pilot paused
+	 */
+	private static String exhaustionReason(String test, int position, List<String> runs)
+	{
+		StringBuilder reason = new StringBuilder(128).append("Pilot trial ").append(position + 1).
+			append(" of `").append(test).append("` ended without an outcome ").append(runs.size()).append(" times:");
+		for (int i = 0; i < runs.size(); ++i)
+		{
+			if (i > 0)
+				reason.append(';');
+			reason.append(" (").append(i + 1).append(") ").append(runs.get(i));
+		}
+		return reason.toString();
 	}
 
 	/**
@@ -674,18 +754,6 @@ public final class GuardPilot
 					recovery.remove(position);
 				else
 					recovery.put(position, new PilotTrialRecovery(Optional.empty(), NO_PROGRESS, attempts, Optional.empty()));
-			}
-		}
-
-		/**
-		 * Grants another budget after the caller chose to retry a paused pilot.
-		 */
-		void resetExhaustedAttempts()
-		{
-			synchronized (stateLock)
-			{
-				recovery.values().removeIf(trial -> trial.requestId().isEmpty() &&
-					trial.infrastructureAttempts().size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
 			}
 		}
 
@@ -1613,20 +1681,9 @@ public final class GuardPilot
 		 */
 		private void pauseIfExhausted(Pilot pilot, int position, List<String> runs)
 		{
-			if (runs.size() < Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
-				return;
-			StringBuilder pause = new StringBuilder(128).append("Pilot trial ").append(position + 1).
-				append(" of `").append(pilot.test.id()).append("` ended without an outcome ").append(runs.size()).
-				append(" times:");
-			for (int i = 0; i < runs.size(); ++i)
+			if (stopReason == null && runs.size() >= Campaign.INFRASTRUCTURE_FAILURE_LIMIT)
 			{
-				if (i > 0)
-					pause.append(';');
-				pause.append(" (").append(i + 1).append(") ").append(runs.get(i));
-			}
-			if (stopReason == null)
-			{
-				stopReason = pause.toString();
+				stopReason = exhaustionReason(pilot.test.id(), position, runs);
 				paused = true;
 			}
 		}

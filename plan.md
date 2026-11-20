@@ -10,6 +10,7 @@ The user asked for a wind-down and a transfer to another agent. The goal **imple
 incomplete. This section supersedes every older current-status, next-action and publication statement below it, including
 the `01a1e6ba` handoff, whose steps are done. Resume in `/home/gili/cat/worktrees/v1.0`, on branch `v1.0`. Preserve the
 untracked files: they are sandbox placeholders and session data. Do not list, commit, reset, clean or stash them.
+See [§2](#2-status) for commits and verification after this transfer.
 
 **State at hand-off**
 
@@ -4068,8 +4069,9 @@ requirement names.
   `temp/wi147-clean-build-VbPK96/`.
 - The current Release workflow adds the Windows bootstrap check and its Linux setup installs `jq` since the last
   successful release. The no-publication Release run must exercise these steps before the tag update. The isolated
-  workflow under this session's `temp/release-validation-5v2aAt/source/` passes actionlint and ShellCheck. Hosted
-  execution, the three affected workers' authenticated readiness, and the 15-asset assembly are pending.
+  workflow under this session's `temp/release-rehearsal-current-04e5/` is based on `04e5f1850` and passes
+  actionlint, ShellCheck and a comparison with the production step bodies. It retains the affected workers' live
+  retry path and the 15-asset assembly check. Hosted execution and assembly remain pending.
 - WI-147's reference audit found capture commands still using retired runner options and the old standard-input
   protocol. The capture README and specification now describe the installed runner, its explicit profile, and the
   results copy. The integrated source and review capture changes passed 20 Bats and seven Node tests, plus ShellCheck.
@@ -4100,6 +4102,23 @@ requirement names.
   the runner's general stale-session cleanup marked the reserved session failed before reopening it. The broker now
   owns cleanup for managed slots, and the test confirms replay of the saved reply with only the remaining prompt sent.
   Logs are under this session's `temp/wi146-trial-adapter-bRVU99/`. Installed Codex acceptance remains open.
+- The uncached `clean verify` with an absent home on `04e5f1850` stopped after 3,928 tests. The two OSHI
+  integration cases still require `/sys`; the campaign fixture passed. A second build excluding just those methods
+  reached the distribution module, where its runner guide contract caught the missing startup-permit option.
+  After updating the bundled guide, the focused `RunnerLaunchersTest` verification passed. Logs are under
+  this session's `temp/wi146-clean-verify-MVtNIo/`.
+- A guard-pilot checkpoint can record the exhausted draw before the campaign records its pause. A regression
+  reproduced that a plain `start` then admitted more trials without retry, and a second regression showed a paused
+  automatic test revision losing its saved proposal. Recovery now restores the pause before admission, makes the
+  renewed budget durable on an explicit retry, and keeps the revised proposal through the pause. Focused
+  `OptimizerCoreTest` and `GuardPilotTest` verification passed, including both regressions.
+- The final uncached local reactor check used the usual test-class selector and excluded only
+  `BuildAdmissionCliTest.modularMainRunsControllerOperation` and `BuildWorkerTest.realTreeIsSampledAndReaped`.
+  It reached the end of `verify` with 456 Surefire reports, 6,250 tests, one skip, and zero failures or errors.
+  Both `HOME` and the test JVM's `user.home` pointed to the same absent directory, which remained absent.
+  The frozen reports and `selected-final-summary.json`, including the 15 cases of at least one second, are under
+  this session's `temp/wi146-clean-verify-MVtNIo/`. The full-build and installed acceptance gates still need
+  the hosted run and live receipts.
 
 ### Continuation verification (2026-11-16, session `01a1e6ba`)
 
