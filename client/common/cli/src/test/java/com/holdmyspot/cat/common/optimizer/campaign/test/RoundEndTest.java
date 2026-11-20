@@ -12,7 +12,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.DiagnosticRerun;
 import com.holdmyspot.cat.common.optimizer.campaign.EditOrContinue;
 import com.holdmyspot.cat.common.optimizer.campaign.Failure;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
@@ -104,7 +104,7 @@ public final class RoundEndTest
 	}
 
 	/**
-	 * Rejects the last attempt of a sequential round by failing its first promotion run.
+	 * Rejects the last attempt of a sequential round by failing its first promotion replay.
 	 *
 	 * @param campaign the campaign before the last attempt
 	 * @return the campaign after the rejection
@@ -350,7 +350,7 @@ public final class RoundEndTest
 		while (campaign.development().promptAuthor().runs().stream().anyMatch(run -> run.verdict() == null))
 		{
 			PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-			PromotionRun run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
+			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
 				findFirst().orElseThrow();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, promptAuthor.number(), ATTEMPT,
 				run.testCase(), failOnlyContent(run.testCase(), logs));
@@ -419,7 +419,7 @@ public final class RoundEndTest
 		while (campaign.development().promptAuthor().runs().stream().anyMatch(run -> run.verdict() == null))
 		{
 			PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-			PromotionRun run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
+			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
 				findFirst().orElseThrow();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, promptAuthor.number(), ATTEMPT,
 				run.testCase(), Verdict.PASS);

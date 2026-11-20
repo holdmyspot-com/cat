@@ -104,7 +104,7 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Indicates whether a trial is a queued promotion run of a rejected attempt. The decision cannot change, so the
+	 * Indicates whether a trial is a queued promotion replay of a rejected attempt. The decision cannot change, so the
 	 * run is cancelled before it starts; a run that already started finishes, and its outcome is recorded once it is
 	 * judged.
 	 *
@@ -180,9 +180,9 @@ public final class TrialAdoption
 			{
 				if (other.number() == attempt.number())
 					continue;
-				for (PromotionRun run : other.runs())
+				for (PromotionReplay run : other.runs())
 				{
-					if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+					if (run.role() == PromotionReplay.Role.WORKING_REFERENCE)
 						references.add(run.testCase());
 				}
 			}
@@ -889,7 +889,7 @@ public final class TrialAdoption
 		TrialKey key = trial.key();
 		if (key.purpose() != Purpose.PROMOTION)
 			return false;
-		List<PromotionRun> runs;
+		List<PromotionReplay> runs;
 		PromptAuthorAttempt owner = draft.findPromptAuthor(key.series());
 		if (owner != null)
 			runs = owner.runs();
@@ -900,11 +900,11 @@ public final class TrialAdoption
 				return false;
 			runs = draft.optimization.attempts().get(retained).runs();
 		}
-		return runs.stream().anyMatch(run -> run.role() == PromotionRun.Role.WORKING_RERUN && key.equals(run.trial()));
+		return runs.stream().anyMatch(run -> run.role() == PromotionReplay.Role.WORKING_RERUN && key.equals(run.trial()));
 	}
 
 	/**
-	 * Adopts a promotion run outcome and applies the promotion decision.
+	 * Adopts a promotion replay outcome and applies the promotion decision.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -921,14 +921,14 @@ public final class TrialAdoption
 				decidePromotion(draft);
 			return;
 		}
-		List<PromotionRun> runs = new ArrayList<>(promptAuthor.runs());
-		PromotionRun.Role role = null;
+		List<PromotionReplay> runs = new ArrayList<>(promptAuthor.runs());
+		PromotionReplay.Role role = null;
 		for (int i = 0; i < runs.size(); ++i)
 		{
-			PromotionRun run = runs.get(i);
+			PromotionReplay run = runs.get(i);
 			if (trial.key().equals(run.trial()))
 			{
-				runs.set(i, new PromotionRun(run.role(), run.testCase(), run.trial(), trial.verdict()));
+				runs.set(i, new PromotionReplay(run.role(), run.testCase(), run.trial(), trial.verdict()));
 				role = run.role();
 				break;
 			}
@@ -965,12 +965,12 @@ public final class TrialAdoption
 	{
 		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
 		AttemptResult result = results.get(index);
-		List<PromotionRun> runs = new ArrayList<>(result.runs());
+		List<PromotionReplay> runs = new ArrayList<>(result.runs());
 		for (int i = 0; i < runs.size(); ++i)
 		{
-			PromotionRun run = runs.get(i);
+			PromotionReplay run = runs.get(i);
 			if (trial.key().equals(run.trial()))
-				runs.set(i, new PromotionRun(run.role(), run.testCase(), run.trial(), trial.verdict()));
+				runs.set(i, new PromotionReplay(run.role(), run.testCase(), run.trial(), trial.verdict()));
 		}
 		results.set(index, new AttemptResult(result.round(), result.working(), result.number(), result.cell(),
 			result.snapshot(), runs, result.changedLines(), result.accepted(), result.winner()));
@@ -1225,7 +1225,7 @@ public final class TrialAdoption
 			}
 		}
 		draft.predecessor = predecessor;
-		for (PromotionRun run : promptAuthor.runs())
+		for (PromotionReplay run : promptAuthor.runs())
 		{
 			if (!run.role().measuresWorking() && run.verdict() != null)
 				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
@@ -1245,7 +1245,7 @@ public final class TrialAdoption
 	private static Verdict promotedVerdict(PromptAuthorAttempt promptAuthor, DrawnTestCase testCase)
 	{
 		Verdict verdict = null;
-		for (PromotionRun run : promptAuthor.runs())
+		for (PromotionReplay run : promptAuthor.runs())
 		{
 			if (!run.role().measuresWorking() && run.verdict() != null &&
 				Promotion.isSameTestCase(run.testCase(), testCase))

@@ -122,7 +122,7 @@ import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
-import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
+import com.holdmyspot.cat.common.optimizer.execution.BackgroundDriver;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import java.io.IOException;
@@ -220,7 +220,7 @@ public final class OptimizerCore implements Core
 
 	private boolean background;
 	private Instant backgroundStart;
-	private final Map<String, BackgroundRun> backgroundRuns = new HashMap<>();
+	private final Map<String, BackgroundDriver> backgroundDrivers = new HashMap<>();
 	private final Map<String, CampaignLock> backgroundLocks = new HashMap<>();
 	private final Map<String, DeliveryResult> backgroundDeliveries = new HashMap<>();
 
@@ -240,16 +240,16 @@ public final class OptimizerCore implements Core
 				result = new CommandResult(SliceReports.awaiting(
 					result.status(), new ReportStatus.Active(
 						Status.AWAITING_USER),
-					"The background run paused. Use `status` for its reason or `cancel` to stop it."),
+					"The background driver paused. Use `status` for its reason or `cancel` to stop it."),
 					result.certification(), result.harness(), result.proposalFile(), result.delivery(), result.message(),
 					result.notices());
-			for (String id : backgroundRuns.keySet())
+			for (String id : backgroundDrivers.keySet())
 			{
 				String text = new Commands(this, scope.json(), ZoneOffset.UTC, scope.trialSandbox(),
 					Platform.current()).render(result);
-				BackgroundRun.write(lockFile(id).resolveSibling("background-result.json"), text, scope.fileReplacer());
+				BackgroundDriver.write(lockFile(id).resolveSibling("background-result.json"), text, scope.fileReplacer());
 				if (Cleanup.isRemovable(require(scope.store(), id, true), backgroundDeliveries.get(id)))
-					BackgroundRun.write(backgroundArchive(id), text, scope.fileReplacer());
+					BackgroundDriver.write(backgroundArchive(id), text, scope.fileReplacer());
 			}
 			closeBackgroundOwners();
 			releaseBackgroundLocks();
@@ -270,9 +270,9 @@ public final class OptimizerCore implements Core
 			}
 			backgroundDeliveries.clear();
 			background = false;
-			for (Map.Entry<String, BackgroundRun> run : backgroundRuns.entrySet())
+			for (Map.Entry<String, BackgroundDriver> driver : backgroundDrivers.entrySet())
 			{
-				String id = run.getKey();
+				String id = driver.getKey();
 				// State, the final response and delivery are stored, and all campaign locks are released before here.
 				try
 				{
@@ -288,7 +288,7 @@ public final class OptimizerCore implements Core
 					noticeFailed(id, e);
 				}
 			}
-			backgroundRuns.clear();
+			backgroundDrivers.clear();
 		}
 	}
 
@@ -300,8 +300,8 @@ public final class OptimizerCore implements Core
 	@SuppressWarnings("PMD.CloseResource")
 	private void closeBackgroundOwners() throws IOException
 	{
-		for (BackgroundRun run : backgroundRuns.values())
-			run.close();
+		for (BackgroundDriver driver : backgroundDrivers.values())
+			driver.close();
 	}
 
 	/**
@@ -367,7 +367,7 @@ public final class OptimizerCore implements Core
 	{
 		try
 		{
-			BackgroundRun.write(noticeFailureFile(id), "The background exit notice could not be queued: " +
+			BackgroundDriver.write(noticeFailureFile(id), "The background exit notice could not be queued: " +
 				failure.getMessage(), scope.fileReplacer());
 		}
 		catch (IOException storageFailure)
@@ -387,9 +387,10 @@ public final class OptimizerCore implements Core
 	{
 		Files.deleteIfExists(lockFile(id).resolveSibling("background-result.json"));
 		if (!background)
-			BackgroundRun.discardStale(lockFile(id));
-		else if (!backgroundRuns.containsKey(id))
-			backgroundRuns.put(id, new BackgroundRun(lockFile(id), backgroundStart, scope.json(), scope.fileReplacer()));
+			BackgroundDriver.discardStale(lockFile(id));
+		else if (!backgroundDrivers.containsKey(id))
+			backgroundDrivers.put(id, new BackgroundDriver(lockFile(id), backgroundStart, scope.json(),
+				scope.fileReplacer()));
 	}
 
 	/**
@@ -424,8 +425,8 @@ public final class OptimizerCore implements Core
 	 */
 	private boolean stopRequested() throws IOException
 	{
-		for (String id : backgroundRuns.keySet())
-			if (BackgroundRun.stopRequested(lockFile(id), scope.json()))
+		for (String id : backgroundDrivers.keySet())
+			if (BackgroundDriver.stopRequested(lockFile(id), scope.json()))
 				return true;
 		return false;
 	}
@@ -1143,7 +1144,7 @@ public final class OptimizerCore implements Core
 		Optional<CampaignLock> lock = CampaignLock.tryAcquire(scope.fileLocks(), lockFile(id));
 		if (lock.isEmpty())
 		{
-			if (BackgroundRun.owner(lockFile(id), scope.fileLocks(), scope.json()).isPresent())
+			if (BackgroundDriver.owner(lockFile(id), scope.fileLocks(), scope.json()).isPresent())
 				throw new CommandRefusedException("A background driver holds campaign " + id +
 					". Use `status` to see progress or `cancel` to stop it.");
 			throw new CommandRefusedException("Campaign " + id + " is running in another process. Wait for its " +
@@ -2716,11 +2717,11 @@ public final class OptimizerCore implements Core
 		{
 			Path root = scope.projectRoot();
 			require(scope.store(), campaign, true);
-			Optional<BackgroundRun.Owner> owner =
-				BackgroundRun.owner(lockFile(campaign), scope.fileLocks(), scope.json());
+			Optional<BackgroundDriver.Owner> owner =
+				BackgroundDriver.owner(lockFile(campaign), scope.fileLocks(), scope.json());
 			if (owner.isPresent())
 			{
-				BackgroundRun.requestStop(lockFile(campaign), owner.get(), scope.fileReplacer());
+				BackgroundDriver.requestStop(lockFile(campaign), owner.get(), scope.fileReplacer());
 				Instant end = scope.clock().instant().plus(scope.sliceSettings().grace()).plusSeconds(30);
 				while (true)
 				{
@@ -3024,7 +3025,8 @@ public final class OptimizerCore implements Core
 		{
 			campaign = Transitions.apply(campaign, new CampaignEvent.Cancel());
 			store.replaceSnapshot(campaign);
-			return report(root, campaign, null, "The background run was cancelled; its completed pilot trials are retained.");
+			return report(root, campaign, null,
+				"The background driver was cancelled; its completed pilot trials are retained.");
 		}
 		Optional<String> pause = GuardPilot.pauseReason(pilots);
 		campaign = settlePilotPause(store, campaign, pause);
@@ -3485,8 +3487,8 @@ public final class OptimizerCore implements Core
 		CommandResult result = new CommandResult(StatusReport.of(campaign, evidence), campaign.header().harness(),
 			proposalFile, null, message);
 		List<String> notices = new ArrayList<>();
-		Optional<BackgroundRun.Owner> owner =
-			BackgroundRun.owner(lockFile(campaign.header().id()), scope.fileLocks(), scope.json());
+		Optional<BackgroundDriver.Owner> owner =
+			BackgroundDriver.owner(lockFile(campaign.header().id()), scope.fileLocks(), scope.json());
 		if (!background)
 			owner.ifPresent(driver -> notices.add("Background driver holds the campaign; started " +
 			driver.started() + ". Use `status` for progress or `cancel` to stop it."));

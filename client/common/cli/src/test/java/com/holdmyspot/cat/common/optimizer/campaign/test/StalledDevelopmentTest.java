@@ -13,7 +13,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
@@ -73,7 +73,7 @@ public final class StalledDevelopmentTest
 
 	/**
 	 * Runs one development round on {@code safety} that ends without a promotion: a blocking failure starts it and
-	 * the prompt author's two attempts both fail their promotion run.
+	 * the prompt author's two attempts both fail their promotion replay.
 	 *
 	 * @param campaign the campaign, which has no round in progress
 	 * @return the campaign after the round
@@ -89,7 +89,7 @@ public final class StalledDevelopmentTest
 	}
 
 	/**
-	 * Submits one prompt author attempt on {@code safety} and fails its promotion run.
+	 * Submits one prompt author attempt on {@code safety} and fails its promotion replay.
 	 *
 	 * @param campaign the campaign
 	 * @return the campaign after the attempt's rejection
@@ -102,7 +102,7 @@ public final class StalledDevelopmentTest
 		while (result.development().promptAuthor() != null)
 		{
 			PromptAuthorAttempt promptAuthor = result.development().promptAuthor();
-			PromotionRun run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).findFirst().
+			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).findFirst().
 				orElseThrow();
 			result = TransitionSteps.adopt(result, Purpose.PROMOTION, promptAuthor.number(), snapshot,
 				run.testCase(), Verdict.FAIL);

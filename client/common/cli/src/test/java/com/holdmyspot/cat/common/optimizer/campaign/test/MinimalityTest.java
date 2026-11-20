@@ -9,7 +9,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
@@ -109,7 +109,7 @@ public final class MinimalityTest
 		Sha256 snapshot = Builder.snapshot("attempt");
 		DrawnTestCase logs = Builder.targeted("safety", "logs");
 		DrawnTestCase cache = Builder.targeted("safety", "cache");
-		List<PromotionRun> accepted = List.of(run(logs, Verdict.PASS), run(logs, Verdict.PASS),
+		List<PromotionReplay> accepted = List.of(run(logs, Verdict.PASS), run(logs, Verdict.PASS),
 			run(cache, Verdict.PASS), run(cache, Verdict.PASS));
 		Minimality search = new Minimality(List.of(), List.of("CLAUDE.md#1", "CLAUDE.md#2"), 2, 0,
 			List.of("CLAUDE.md#2"), snapshot, accepted);
@@ -131,9 +131,9 @@ public final class MinimalityTest
 	 * @param verdict its outcome
 	 * @return the run
 	 */
-	private static PromotionRun run(DrawnTestCase testCase, Verdict verdict)
+	private static PromotionReplay run(DrawnTestCase testCase, Verdict verdict)
 	{
-		return new PromotionRun(PromotionRun.Role.TRIGGERING, testCase,
+		return new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
 			new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("attempt"), testCase.cellId(), 1), verdict);
 	}
 
@@ -152,7 +152,7 @@ public final class MinimalityTest
 			new RegularFile(file.before().hash(), file.permissions()))));
 		DrawnTestCase first = Builder.targeted("safety", "logs");
 		DrawnTestCase second = Builder.targeted("safety", "cache");
-		List<PromotionRun> accepted = List.of(run(first, Verdict.PASS), run(first, Verdict.PASS),
+		List<PromotionReplay> accepted = List.of(run(first, Verdict.PASS), run(first, Verdict.PASS),
 			run(second, Verdict.PASS), run(second, Verdict.PASS));
 		Minimality search = Minimality.start(List.of(file), Builder.snapshot("full")).
 			advance(Builder.snapshot("full"), accepted, Promotion.Decision.PROMOTE);
@@ -169,7 +169,7 @@ public final class MinimalityTest
 			Verdict secondVerdict = Verdict.FAIL;
 			if (lines.contains("needed-c"))
 				secondVerdict = Verdict.PASS;
-			List<PromotionRun> runs = List.of(run(first, firstVerdict), run(first, firstVerdict),
+			List<PromotionReplay> runs = List.of(run(first, firstVerdict), run(first, firstVerdict),
 				run(second, secondVerdict), run(second, secondVerdict));
 			PromptAuthorAttempt attempt = new PromptAuthorAttempt(1, "safety", reduced.identity(), runs, search);
 			search = search.advance(reduced.identity(), runs, Promotion.decide(attempt, working.identity(), List.of(),
@@ -202,9 +202,9 @@ public final class MinimalityTest
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, logs, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, formal, Verdict.PASS);
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(reduced));
-		requireThat(campaign.development().promptAuthor().runs().stream().map(PromotionRun::role).toList(),
-			"reductionRuns").isEqualTo(List.of(PromotionRun.Role.TRIGGERING, PromotionRun.Role.TRIGGERING,
-				PromotionRun.Role.REGRESSION));
+		requireThat(campaign.development().promptAuthor().runs().stream().map(PromotionReplay::role).toList(),
+			"reductionRuns").isEqualTo(List.of(PromotionReplay.Role.TRIGGERING, PromotionReplay.Role.TRIGGERING,
+				PromotionReplay.Role.REGRESSION));
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, formal, Verdict.FAIL);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, logs, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, logs, Verdict.PASS);

@@ -75,7 +75,7 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * An extended streak schedules one targeted promotion run, and an assigned extension resumes under its key.
+	 * An extended streak schedules one targeted promotion replay, and an assigned extension resumes under its key.
 	 */
 	// Requirement: R-D3
 	@Test
@@ -413,13 +413,13 @@ public final class SchedulerTest
 	}
 
 	/**
-	 * Verifies that the promotion runs of a prompt author attempt are admitted, each with its snapshot, and that its
+	 * Verifies that the promotion replays of a prompt author attempt are admitted, each with its snapshot, and that its
 	 * regression runs follow once a triggering test case has passed twice. With one triggering test case, its first
 	 * failing run rejects the attempt, so the runs start one at a time, and the window doubles after a full window of
 	 * passes.
 	 */
 	@Test
-	public void promotionRunsAreAdmitted()
+	public void promotionReplaysAreAdmitted()
 	{
 		// Requirement: R-E3
 		DrawnTestCase logs = Builder.targeted("safety", "logs");

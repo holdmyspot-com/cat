@@ -133,7 +133,7 @@ The table of earlier prompt author attempts under the confirmed contract, oldest
 number, cell, result, whether CAT rejected its manifest, and each kind's name, classification and number of failures.
 The result is `rejected` when CAT rejected the manifest, `no_candidate` when the attempt changed no prompt file or
 classified no kind `routing` or `guidance`, `not_measured` when no promotion result exists yet, `not_promoted` when its
-promotion runs did not make it the working candidate, and `promoted` when it became the working candidate.
+promotion replays did not make it the working candidate, and `promoted` when it became the working candidate.
 The campaign edits above hold what CAT kept of each promoted attempt's hunks.
 An empty table means no earlier attempt exists:
 

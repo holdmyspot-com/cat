@@ -68,7 +68,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.RegressionTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
@@ -604,7 +604,7 @@ final class CampaignJson
 			attempt.put("number", result.number());
 			attempt.put("cell", result.cell());
 			attempt.put("snapshot", result.snapshot().hex());
-			attempt.set("runs", writePromotionRuns(result.runs()));
+			attempt.set("runs", writePromotionReplays(result.runs()));
 			attempt.put("changed_lines", result.changedLines());
 			attempt.put("accepted", result.accepted());
 			attempt.put("winner", result.winner());
@@ -782,7 +782,7 @@ final class CampaignJson
 		{
 			results.add(new AttemptResult(integer(attempt, "round"), sha256(attempt, "working"),
 				integer(attempt, "number"), text(attempt, "cell"), sha256(attempt, "snapshot"),
-				readPromotionRuns(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
+				readPromotionReplays(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
 				bool(attempt, "winner")));
 		}
 		Map<Integer, ApproachAssignment> approaches = new TreeMap<>();
@@ -1909,20 +1909,20 @@ final class CampaignJson
 		node.put("cell", attempt.cell());
 		node.put("snapshot", attempt.snapshot().hex());
 		node.set("minimality", writeMinimality(attempt.minimality()));
-		node.set("runs", writePromotionRuns(attempt.runs()));
+		node.set("runs", writePromotionReplays(attempt.runs()));
 		return node;
 	}
 
 	/**
 	 * Writes the targeted evidence used by promotion, minimality and retained reports.
 	 *
-	 * @param runs the promotion runs
+	 * @param runs the promotion replays
 	 * @return their documents
 	 */
-	private ArrayNode writePromotionRuns(List<PromotionRun> runs)
+	private ArrayNode writePromotionReplays(List<PromotionReplay> runs)
 	{
 		ArrayNode array = json.createArrayNode();
-		for (PromotionRun run : runs)
+		for (PromotionReplay run : runs)
 		{
 			ObjectNode node = array.addObject();
 			node.put("role", EnumNames.lowerCase(run.role()));
@@ -1942,7 +1942,7 @@ final class CampaignJson
 	private static PromptAuthorAttempt readPromptAuthorAttempt(JsonNode node)
 	{
 		return new PromptAuthorAttempt(integer(node, "number"), text(node, "cell"), sha256(node, "snapshot"),
-			readPromotionRuns(node, "runs"), readMinimality(field(node, "minimality")));
+			readPromotionReplays(node, "runs"), readMinimality(field(node, "minimality")));
 	}
 
 	/**
@@ -1952,12 +1952,12 @@ final class CampaignJson
 	 * @param name the array field
 	 * @return the runs in plan order
 	 */
-	private static List<PromotionRun> readPromotionRuns(JsonNode node, String name)
+	private static List<PromotionReplay> readPromotionReplays(JsonNode node, String name)
 	{
-		List<PromotionRun> runs = new ArrayList<>();
+		List<PromotionReplay> runs = new ArrayList<>();
 		for (JsonNode run : elements(node, name))
 		{
-			runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
+			runs.add(new PromotionReplay(constant(run, "role", PromotionReplay.Role.class),
 				readTestCase(field(run, "test_case")), nullableKey(run, "trial"),
 				nullableConstant(run, "verdict", Verdict.class)));
 		}
@@ -1997,7 +1997,7 @@ final class CampaignJson
 			putContent(element, "after", file.after());
 		}
 		ArrayNode runs = node.putArray("accepted_runs");
-		for (PromotionRun run : state.acceptedRuns())
+		for (PromotionReplay run : state.acceptedRuns())
 		{
 			ObjectNode element = runs.addObject();
 			element.put("role", EnumNames.lowerCase(run.role()));
@@ -2043,10 +2043,10 @@ final class CampaignJson
 			files.add(new FileDelta(Path.of(text(element, "path")), before, after,
 				PosixFilePermissions.fromString(text(element, "permissions"))));
 		}
-		List<PromotionRun> runs = new ArrayList<>();
+		List<PromotionReplay> runs = new ArrayList<>();
 		for (JsonNode run : elements(node, "accepted_runs"))
 		{
-			runs.add(new PromotionRun(constant(run, "role", PromotionRun.Role.class),
+			runs.add(new PromotionReplay(constant(run, "role", PromotionReplay.Role.class),
 				readTestCase(field(run, "test_case")), nullableKey(run, "trial"),
 				nullableConstant(run, "verdict", Verdict.class)));
 		}

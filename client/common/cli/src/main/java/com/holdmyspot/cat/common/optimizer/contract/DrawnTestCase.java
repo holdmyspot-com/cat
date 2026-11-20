@@ -15,7 +15,7 @@ import java.util.List;
  * @param generator the identity of the generator that drew the test case
  * @param streamKind the stream that supplied the draw
  * @param streamPosition the stream position at which the draw began
- * @param targeted {@code true} if the trial is a rerun, promotion run or regression run, which never counts as
+ * @param targeted {@code true} if the trial is a rerun, promotion replay or regression run, which never counts as
  *   representative or formal evidence
  */
 public record DrawnTestCase(String cellId, String testId, TestCase testCase,
@@ -33,7 +33,7 @@ public record DrawnTestCase(String cellId, String testId, TestCase testCase,
 	 * @param generator the identity of the generator that drew the test case
 	 * @param streamKind the stream that supplied the draw
 	 * @param streamPosition the stream position at which the draw began
-	 * @param targeted {@code true} for a rerun, promotion run or regression run that cannot count as representative
+	 * @param targeted {@code true} for a rerun, promotion replay or regression run that cannot count as representative
 	 *   or formal evidence
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if a text is blank, {@code turns} is empty, or {@code streamPosition} is
@@ -53,7 +53,7 @@ public record DrawnTestCase(String cellId, String testId, TestCase testCase,
 	}
 
 	/**
-	 * Indicates whether the trial is not a rerun, promotion run or regression run.
+	 * Indicates whether the trial is not a rerun, promotion replay or regression run.
 	 *
 	 * @return {@code true} if the test case is not targeted
 	 */

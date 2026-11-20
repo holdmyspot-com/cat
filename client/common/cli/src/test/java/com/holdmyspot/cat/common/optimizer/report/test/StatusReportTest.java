@@ -34,7 +34,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.SoundTest;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevision;
 import com.holdmyspot.cat.common.optimizer.campaign.TestRevisions;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
@@ -595,22 +595,22 @@ public final class StatusReportTest
 	}
 
 	/**
-	 * Every retained round attempt reports its passing and total promotion runs, acceptance, and winner.
+	 * Every retained round attempt reports its passing and total promotion replays, acceptance, and winner.
 	 */
 	@Test
 	public void reportsEachAttemptAndWinner()
 	{
 		// Requirement: R-D12
 		DrawnTestCase trigger = Builder.targeted("safety", "cache");
-		List<PromotionRun> passed = List.of(
-			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
+		List<PromotionReplay> passed = List.of(
+			new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
 				Builder.snapshot("prompt-author-1"), "safety", 1), Verdict.PASS),
-			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
+			new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 1,
 				Builder.snapshot("prompt-author-1"), "safety", 2), Verdict.PASS));
-		List<PromotionRun> failed = List.of(
-			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
+		List<PromotionReplay> failed = List.of(
+			new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
 				Builder.snapshot("prompt-author-2"), "safety", 1), Verdict.PASS),
-			new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
+			new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, new TrialKey(Purpose.PROMOTION, 2,
 				Builder.snapshot("prompt-author-2"), "safety", 2), Verdict.FAIL));
 		Sha256 working = Builder.snapshot("candidate-1");
 		List<AttemptResult> results = List.of(

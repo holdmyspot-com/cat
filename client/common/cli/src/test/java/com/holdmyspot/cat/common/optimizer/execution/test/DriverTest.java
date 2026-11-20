@@ -1,6 +1,6 @@
 package com.holdmyspot.cat.common.optimizer.execution.test;
 
-import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
+import com.holdmyspot.cat.common.optimizer.execution.BackgroundDriver;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static java.nio.charset.StandardCharsets.UTF_8;
@@ -47,7 +47,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
@@ -1132,23 +1132,23 @@ public final class DriverTest
 				Campaign planned = harness.runUntil(driver, state ->
 					state.development().round().validationAttempts().size() == 3 &&
 						state.development().round().validationAttempts().stream().allMatch(attempt ->
-							attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.REGRESSION)));
+							attempt.runs().stream().anyMatch(run -> run.role() == PromotionReplay.Role.REGRESSION)));
 				requireThat(planned.development().round().validationAttempts().stream().
 					flatMap(attempt -> attempt.runs().stream()).
-					filter(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE).count(), "referencePlans").
+					filter(run -> run.role() == PromotionReplay.Role.WORKING_REFERENCE).count(), "referencePlans").
 					isEqualTo(1);
 				TrialKey reference = planned.development().round().validationAttempts().stream().
 					flatMap(attempt -> attempt.runs().stream()).
-					filter(run -> run.role() == PromotionRun.Role.WORKING_REFERENCE).
-					map(PromotionRun::trial).findFirst().orElseThrow();
+					filter(run -> run.role() == PromotionReplay.Role.WORKING_REFERENCE).
+					map(PromotionReplay::trial).findFirst().orElseThrow();
 
 				Campaign decided = harness.runUntil(driver, state ->
 				{
 					if (state.development().promptAuthor() != null)
 					{
-						for (PromotionRun run : state.development().promptAuthor().runs())
+						for (PromotionReplay run : state.development().promptAuthor().runs())
 						{
-							if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+							if (run.role() == PromotionReplay.Role.WORKING_REFERENCE)
 								requireThat(run.trial(), "reductionReferenceIdentity").isEqualTo(reference);
 						}
 					}
@@ -1162,7 +1162,7 @@ public final class DriverTest
 					requireThat(attempt.passingRuns(), "ownPassingRuns").isEqualTo(2);
 					requireThat(attempt.totalRuns(), "ownRuns").isEqualTo(3L + reruns);
 					workingReruns += attempt.runs().stream().filter(run ->
-						run.role() == PromotionRun.Role.WORKING_RERUN && run.verdict() != null).count();
+						run.role() == PromotionReplay.Role.WORKING_RERUN && run.verdict() != null).count();
 				}
 				requireThat(workingReruns, "workingReruns").isEqualTo(3L * reruns);
 				requireThat(decided.attempts(), "certificationAllowance").isEmpty();
@@ -1522,12 +1522,12 @@ public final class DriverTest
 			DrawnTestCase formal = Builder.targeted("formatting", "formal");
 			Sha256 working = Builder.snapshot("candidate-1");
 			Sha256 earlier = Builder.snapshot("earlier");
-			List<PromotionRun> earlierRuns = List.of(
-				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 1, earlier,
+			List<PromotionReplay> earlierRuns = List.of(
+				new PromotionReplay(PromotionReplay.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 1, earlier,
 					"safety", 1), Verdict.PASS),
-				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 1, earlier,
+				new PromotionReplay(PromotionReplay.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 1, earlier,
 					"safety", 2), Verdict.PASS),
-				new PromotionRun(PromotionRun.Role.REGRESSION, formal, new TrialKey(Purpose.PROMOTION, 1, earlier,
+				new PromotionReplay(PromotionReplay.Role.REGRESSION, formal, new TrialKey(Purpose.PROMOTION, 1, earlier,
 					"formatting", 1), Verdict.FAIL));
 			AttemptResult rejected = new AttemptResult(1, working, 1, "safety", earlier, earlierRuns, 0, false, false);
 			DriverHarness harness = new DriverHarness(directory.resolve("driver"), new Builder().confirmed().working(1).
@@ -1535,17 +1535,17 @@ public final class DriverTest
 			Overlay edited = harness.candidate("edited");
 			harness.overlays().save(edited);
 			Sha256 snapshot = edited.identity();
-			List<PromotionRun> runs = List.of(
-				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 2, snapshot,
+			List<PromotionReplay> runs = List.of(
+				new PromotionReplay(PromotionReplay.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 2, snapshot,
 					"safety", 1), Verdict.PASS),
-				new PromotionRun(PromotionRun.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 2, snapshot,
+				new PromotionReplay(PromotionReplay.Role.TRIGGERING, logs, new TrialKey(Purpose.PROMOTION, 2, snapshot,
 					"safety", 2), Verdict.PASS),
-				new PromotionRun(PromotionRun.Role.REGRESSION, formal, new TrialKey(Purpose.PROMOTION, 2, snapshot,
+				new PromotionReplay(PromotionReplay.Role.REGRESSION, formal, new TrialKey(Purpose.PROMOTION, 2, snapshot,
 					"formatting", 1), Verdict.FAIL));
 			List<DiagnosticRerun> failed = List.of(new DiagnosticRerun(Verdict.FAIL, "fail"),
 				new DiagnosticRerun(Verdict.FAIL, "fail"), new DiagnosticRerun(Verdict.FAIL, "fail"));
 			Builder builder = new Builder();
-			for (PromotionRun run : runs)
+			for (PromotionReplay run : runs)
 				builder.adopted(run.trial());
 			Campaign original = builder.confirmed().working(1).readyBaseline().
 				failure(new Failure(logs, "failure", List.of(), null, failed, List.of(), Builder.FILES)).
@@ -1575,9 +1575,9 @@ public final class DriverTest
 				AttemptResult continued = promoted.optimization().attempts().getLast();
 				requireThat(continued.accepted(), "accepted").isTrue();
 				requireThat(continued.runs().stream().filter(run ->
-					run.role() == PromotionRun.Role.REGRESSION_RERUN).count(), "attemptReruns").isEqualTo(15L);
+					run.role() == PromotionReplay.Role.REGRESSION_RERUN).count(), "attemptReruns").isEqualTo(15L);
 				requireThat(continued.runs().stream().filter(run ->
-					run.role() == PromotionRun.Role.WORKING_RERUN).count(), "workingReruns").isEqualTo(15L);
+					run.role() == PromotionReplay.Role.WORKING_RERUN).count(), "workingReruns").isEqualTo(15L);
 			}
 		}
 	}
@@ -1641,7 +1641,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * A driver restart retains two passing outcomes and reruns the assigned third promotion run under the same key.
+	 * A driver restart retains two passing outcomes and reruns the assigned third promotion replay under the same key.
 	 *
 	 * @throws IOException if the fixture cannot be used
 	 */
@@ -1677,7 +1677,7 @@ public final class DriverTest
 				requireThat(resumed.development().count("safety"), "unchangedCounts").isEqualTo(Builder.counts(60, 1));
 				Campaign accepted = harness.runUntil(driver, state -> state.development().promptAuthor() != null &&
 					!state.development().promptAuthor().minimality().acceptedRuns().isEmpty());
-				List<PromotionRun> runs = accepted.development().promptAuthor().minimality().acceptedRuns();
+				List<PromotionReplay> runs = accepted.development().promptAuthor().minimality().acceptedRuns();
 				requireThat(runs.size(), "acceptedStreak").isEqualTo(3);
 				requireThat(runs.getLast().trial(), "completedExtension").isEqualTo(extension);
 				requireThat(runs.getLast().verdict(), "extensionVerdict").isEqualTo(Verdict.PASS);
@@ -1874,19 +1874,19 @@ public final class DriverTest
 			Overlay accepted = harness.candidate("needed");
 			harness.overlays().save(accepted);
 			DrawnTestCase testCase = Builder.targeted("safety", "cache");
-			List<PromotionRun> acceptedRuns = new ArrayList<>();
+			List<PromotionReplay> acceptedRuns = new ArrayList<>();
 			for (int sequence = 1; sequence <= 4; ++sequence)
 			{
-				acceptedRuns.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase,
+				acceptedRuns.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
 					new TrialKey(Purpose.PROMOTION, 1, accepted.identity(), "safety", sequence), Verdict.PASS));
 			}
-			List<PromotionRun> stuckRuns = new ArrayList<>();
+			List<PromotionReplay> stuckRuns = new ArrayList<>();
 			for (int sequence = 1; sequence <= 315; ++sequence)
 			{
-				stuckRuns.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase,
+				stuckRuns.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
 					new TrialKey(Purpose.PROMOTION, 1, working, "safety", sequence), Verdict.PASS));
 			}
-			stuckRuns.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
+			stuckRuns.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 			List<DiagnosticRerun> workingPasses = new ArrayList<>();
 			for (int sequence = 1; sequence <= 332; ++sequence)
 				workingPasses.add(new DiagnosticRerun(Verdict.PASS, "working pass"));
@@ -2962,7 +2962,7 @@ public final class DriverTest
 	}
 
 	/**
-	 * A development failure, a rerun that reproduces it, a prompt author's edit, promotion runs, and a new working
+	 * A development failure, a rerun that reproduces it, a prompt author's edit, promotion replays, and a new working
 	 * candidate whose counts start at zero with the concurrency window back to 1. The prompt author receives the
 	 * judge's rationales for the failure and for its rerun. The optimization worktree holds the new working candidate.
 	 *
@@ -7768,7 +7768,7 @@ public final class DriverTest
 		}
 	}
 	/**
-	 * A background run admits long trials, ignores unrelated host interrupts, and stops only on its addressed
+	 * A background driver admits long trials, ignores unrelated host interrupts, and stops only on its addressed
 	 * cancellation request, retaining the same logical trials for resumption.
 	 *
 	 * @throws IOException if the fixture cannot be used
@@ -7789,8 +7789,8 @@ public final class DriverTest
 				new Builder().confirmed(contract, 1).working(1).readyBaseline().window(2).build());
 			harness.settings(SliceSettings.DEFAULT.withoutDeadline());
 			try (Driver driver = harness.open();
-				BackgroundRun _ =
-					new BackgroundRun(harness.context().lockFile(),
+				BackgroundDriver _ =
+					new BackgroundDriver(harness.context().lockFile(),
 						harness.clock().instant(), harness.context().json(),
 						Yielding.fileReplacer()))
 			{
@@ -7802,9 +7802,9 @@ public final class DriverTest
 				requireThat(driver.step(), "unrelatedinterrupt").isInstanceOf(Step.Continue.class);
 				for (FakeSession session : started)
 					requireThat(session.isInterruptRequested(), "stillrunning").isFalse();
-				BackgroundRun.Owner identity = BackgroundRun.recorded(
+				BackgroundDriver.Owner identity = BackgroundDriver.recorded(
 					harness.context().lockFile(), harness.context().json()).orElseThrow();
-				BackgroundRun.requestStop(harness.context().lockFile(),
+				BackgroundDriver.requestStop(harness.context().lockFile(),
 					identity, Yielding.fileReplacer());
 				requireThat(driver.step(), "cancellationgrace").isInstanceOf(Step.Continue.class);
 				harness.clock().advance(SliceSettings.DEFAULT.grace());

@@ -420,11 +420,11 @@ public final class Driver implements AutoCloseable
 		}
 		if (context.settings().background())
 		{
-			if (cancellationEnd == null && BackgroundRun.stopRequested(context.lockFile(), context.json()))
+			if (cancellationEnd == null && BackgroundDriver.stopRequested(context.lockFile(), context.json()))
 				cancellationEnd = now.plus(context.settings().grace());
 			if (cancellationEnd != null && (isDrained() || !now.isBefore(cancellationEnd)))
 			{
-				cancel("The user cancelled the background run", now);
+				cancel("The user cancelled the background driver", now);
 				if (campaign.lifecycle() == Lifecycle.ACTIVE)
 					apply(new CampaignEvent.Cancel());
 				return stop();
@@ -2927,7 +2927,7 @@ public final class Driver implements AutoCloseable
 		else if (context.settings().background() && report.status().label().equals("running"))
 		{
 			report = SliceReports.awaiting(report, new ReportStatus.Active(Status.AWAITING_USER),
-				"The background run paused because no work could be admitted. Use `status` or `cancel`.");
+				"The background driver paused because no work could be admitted. Use `status` or `cancel`.");
 		}
 		if (!context.settings().background() && report.status().label().equals("running"))
 		{
@@ -2935,7 +2935,7 @@ public final class Driver implements AutoCloseable
 				filter(test -> test.timeLimit().compareTo(context.settings().budget()) > 0).map(PromptTest::id).toList();
 			if (!longTests.isEmpty())
 				report = SliceReports.awaiting(report, report.status(),
-					"These tests need a background run because their time limits exceed the foreground slice: " + longTests);
+					"These tests need the background driver because their time limits exceed the foreground slice: " + longTests);
 		}
 		return new SliceResult(report, delivery);
 	}

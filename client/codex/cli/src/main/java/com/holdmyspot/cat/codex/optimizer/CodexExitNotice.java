@@ -59,7 +59,7 @@ public final class CodexExitNotice
 			!thread.matches("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}") ||
 			!campaign.matches("[A-Za-z0-9][A-Za-z0-9_-]{0,63}"))
 			throw new IOException("The exit notice has an invalid executable, thread or campaign identifier.");
-		String note = "Campaign " + campaign + " background run ended. Call prompt-optimizer status " + campaign +
+		String note = "Campaign " + campaign + " background driver ended. Call prompt-optimizer status " + campaign +
 			" for the result.";
 		int exit = launcher.run(List.of(executable, "queue", "--thread", thread, "--message", note), environment);
 		if (exit != 0)

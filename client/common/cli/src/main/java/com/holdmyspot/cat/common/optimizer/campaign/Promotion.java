@@ -50,7 +50,7 @@ public final class Promotion
 	}
 
 	/**
-	 * The initial number of promotion runs planned for each distinct triggering test case.
+	 * The initial number of promotion replays planned for each distinct triggering test case.
 	 */
 	public static final int STARTING_TRIGGERING_RUNS = 2;
 	/**
@@ -110,12 +110,12 @@ public final class Promotion
 	 * @throws NullPointerException if any argument is null or {@code failures} contains null
 	 * @throws IllegalArgumentException if {@code cells} is empty
 	 */
-	public static List<PromotionRun> plan(List<String> cells, List<DrawnTestCase> failures, Generator generator)
+	public static List<PromotionReplay> plan(List<String> cells, List<DrawnTestCase> failures, Generator generator)
 	{
 		requireThat(cells, "cells").isNotEmpty();
 		requireThat(failures, "failures").isNotNull();
 		requireThat(generator, "generator").isNotNull();
-		List<PromotionRun> triggering = new ArrayList<>();
+		List<PromotionReplay> triggering = new ArrayList<>();
 		List<DrawnTestCase> triggeringTestCases = new ArrayList<>();
 		for (DrawnTestCase failure : failures)
 		{
@@ -126,7 +126,7 @@ public final class Promotion
 			DrawnTestCase testCase = generator.markTargeted(failure);
 			triggeringTestCases.add(testCase);
 			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
-				triggering.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
+				triggering.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 		}
 		return triggering;
 	}
@@ -154,22 +154,22 @@ public final class Promotion
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 		requireThat(sharedReferences, "sharedReferences").isNotNull();
 
-		List<PromotionRun> runs = new ArrayList<>(attempt.runs());
+		List<PromotionReplay> runs = new ArrayList<>(attempt.runs());
 		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
 		{
-			List<PromotionRun> streak = attempt.runs().stream().filter(run ->
-				run.role() == PromotionRun.Role.TRIGGERING && isSameTestCase(testCase, run.testCase())).toList();
+			List<PromotionReplay> streak = attempt.runs().stream().filter(run ->
+				run.role() == PromotionReplay.Role.TRIGGERING && isSameTestCase(testCase, run.testCase())).toList();
 			if (streak.size() >= STARTING_TRIGGERING_RUNS && streak.stream().allMatch(run -> run.verdict() == Verdict.PASS) &&
 				!isUnlikely(testCase, streak.size(), workingOutcomes))
 			{
-				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
+				runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 			}
 		}
 		if (isRegressionUnplanned(attempt))
 		{
-			for (PromotionRun run : regressionRuns(attempt, regressionSet))
+			for (PromotionReplay run : regressionRuns(attempt, regressionSet))
 			{
-				if (run.role() == PromotionRun.Role.REGRESSION || !containsTestCase(sharedReferences, run.testCase()))
+				if (run.role() == PromotionReplay.Role.REGRESSION || !containsTestCase(sharedReferences, run.testCase()))
 					runs.add(run);
 			}
 		}
@@ -178,13 +178,13 @@ public final class Promotion
 			if (checkGroup(testId, attempt, regressionSet) != GroupCheck.NEEDS_RERUNS)
 				continue;
 			List<DrawnTestCase> order = rerunOrder(testId, attempt.runs());
-			long planned = attempt.runs().stream().filter(run -> run.role() == PromotionRun.Role.REGRESSION_RERUN &&
+			long planned = attempt.runs().stream().filter(run -> run.role() == PromotionReplay.Role.REGRESSION_RERUN &&
 				run.testCase().testId().equals(testId)).count();
 			for (long rerun = planned; rerun < planned + RERUN_STEP; ++rerun)
 			{
 				DrawnTestCase testCase = order.get((int) (rerun % order.size()));
-				runs.add(new PromotionRun(PromotionRun.Role.REGRESSION_RERUN, testCase, null, null));
-				runs.add(new PromotionRun(PromotionRun.Role.WORKING_RERUN, testCase, null, null));
+				runs.add(new PromotionReplay(PromotionReplay.Role.REGRESSION_RERUN, testCase, null, null));
+				runs.add(new PromotionReplay(PromotionReplay.Role.WORKING_RERUN, testCase, null, null));
 			}
 		}
 		if (runs.size() == attempt.runs().size())
@@ -203,7 +203,7 @@ public final class Promotion
 	 */
 	private static boolean isRegressionUnplanned(PromptAuthorAttempt attempt)
 	{
-		if (attempt.runs().stream().anyMatch(run -> run.role() == PromotionRun.Role.REGRESSION))
+		if (attempt.runs().stream().anyMatch(run -> run.role() == PromotionReplay.Role.REGRESSION))
 			return false;
 		if (attempt.minimality().testing() != null)
 			return true;
@@ -211,9 +211,9 @@ public final class Promotion
 		{
 			int passes = 0;
 			boolean failed = false;
-			for (PromotionRun run : attempt.runs())
+			for (PromotionReplay run : attempt.runs())
 			{
-				if (run.role() != PromotionRun.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
+				if (run.role() != PromotionReplay.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
 					continue;
 				if (run.verdict() == Verdict.FAIL)
 					failed = true;
@@ -234,20 +234,20 @@ public final class Promotion
 	 * @param regressionSet the lineage's regression set
 	 * @return the unassigned runs
 	 */
-	private static List<PromotionRun> regressionRuns(PromptAuthorAttempt attempt,
+	private static List<PromotionReplay> regressionRuns(PromptAuthorAttempt attempt,
 		List<RegressionTestCase> regressionSet)
 	{
 		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
-		List<PromotionRun> regressions = new ArrayList<>();
-		List<PromotionRun> references = new ArrayList<>();
+		List<PromotionReplay> regressions = new ArrayList<>();
+		List<PromotionReplay> references = new ArrayList<>();
 		for (RegressionTestCase regression : regressionSet)
 		{
 			if (containsTestCase(triggering, regression.testCase()))
 				continue;
-			regressions.add(new PromotionRun(PromotionRun.Role.REGRESSION, regression.testCase(), null, null));
+			regressions.add(new PromotionReplay(PromotionReplay.Role.REGRESSION, regression.testCase(), null, null));
 			if (regression.working() == null)
 			{
-				references.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, regression.testCase(), null,
+				references.add(new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, regression.testCase(), null,
 					null));
 			}
 		}
@@ -263,21 +263,21 @@ public final class Promotion
 	 * @return the unassigned triggering and regression runs, followed by retained working reference runs
 	 * @throws NullPointerException if {@code acceptedRuns} or an element is null
 	 */
-	public static List<PromotionRun> resetRuns(List<PromotionRun> acceptedRuns)
+	public static List<PromotionReplay> resetRuns(List<PromotionReplay> acceptedRuns)
 	{
 		requireThat(acceptedRuns, "acceptedRuns").isNotNull();
 
-		List<PromotionRun> runs = new ArrayList<>();
+		List<PromotionReplay> runs = new ArrayList<>();
 		for (DrawnTestCase testCase : triggeringTestCases(acceptedRuns))
 		{
 			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
-				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase, null, null));
+				runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 		}
-		for (PromotionRun run : acceptedRuns)
+		for (PromotionReplay run : acceptedRuns)
 		{
 			switch (run.role())
 			{
-				case REGRESSION -> runs.add(new PromotionRun(run.role(), run.testCase(), null, null));
+				case REGRESSION -> runs.add(new PromotionReplay(run.role(), run.testCase(), null, null));
 				case WORKING_REFERENCE -> runs.add(run);
 				case TRIGGERING, REGRESSION_RERUN, WORKING_RERUN ->
 				{
@@ -362,7 +362,7 @@ public final class Promotion
 		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
 		if (attempt.minimality().testing() != null)
 		{
-			List<PromotionRun> accepted = attempt.minimality().acceptedRuns();
+			List<PromotionReplay> accepted = attempt.minimality().acceptedRuns();
 			for (DrawnTestCase testCase : triggeringTestCases(accepted))
 			{
 				if (triggeringVerdict(testCase, accepted, workingOutcomes) == Verdict.PASS &&
@@ -388,9 +388,9 @@ public final class Promotion
 			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) == null)
 				pending = true;
 		}
-		for (PromotionRun run : attempt.runs())
+		for (PromotionReplay run : attempt.runs())
 		{
-			if (run.role() == PromotionRun.Role.TRIGGERING && run.verdict() == null)
+			if (run.role() == PromotionReplay.Role.TRIGGERING && run.verdict() == null)
 				pending = true;
 		}
 		if (isRegressionUnplanned(attempt) && !regressionRuns(attempt, regressionSet).isEmpty())
@@ -470,7 +470,7 @@ public final class Promotion
 		List<DrawnTestCase> testCases = new ArrayList<>();
 		int workingPasses = 0;
 		int workingOutcomes = 0;
-		for (PromotionRun run : attempt.runs())
+		for (PromotionReplay run : attempt.runs())
 		{
 			if (!run.testCase().testId().equals(testId))
 				continue;
@@ -483,7 +483,7 @@ public final class Promotion
 						++pending;
 					else if (run.verdict() == Verdict.FAIL)
 						++failures;
-					if (run.role() == PromotionRun.Role.REGRESSION && !containsTestCase(testCases, run.testCase()))
+					if (run.role() == PromotionReplay.Role.REGRESSION && !containsTestCase(testCases, run.testCase()))
 						testCases.add(run.testCase());
 				}
 				case WORKING_RERUN ->
@@ -540,12 +540,12 @@ public final class Promotion
 	 * @param runs the attempt's runs
 	 * @return the distinct test identifiers
 	 */
-	private static List<String> regressionGroups(List<PromotionRun> runs)
+	private static List<String> regressionGroups(List<PromotionReplay> runs)
 	{
 		List<String> testIds = new ArrayList<>();
-		for (PromotionRun run : runs)
+		for (PromotionReplay run : runs)
 		{
-			if (run.role() == PromotionRun.Role.REGRESSION && !testIds.contains(run.testCase().testId()))
+			if (run.role() == PromotionReplay.Role.REGRESSION && !testIds.contains(run.testCase().testId()))
 				testIds.add(run.testCase().testId());
 		}
 		return testIds;
@@ -564,12 +564,12 @@ public final class Promotion
 	private static GroupCheck checkGroup(String testId, PromptAuthorAttempt attempt,
 		List<RegressionTestCase> regressionSet)
 	{
-		List<PromotionRun> attemptReruns = new ArrayList<>();
-		List<PromotionRun> workingReruns = new ArrayList<>();
+		List<PromotionReplay> attemptReruns = new ArrayList<>();
+		List<PromotionReplay> workingReruns = new ArrayList<>();
 		List<DrawnTestCase> testCases = new ArrayList<>();
 		int runs = 0;
 		int failures = 0;
-		for (PromotionRun run : attempt.runs())
+		for (PromotionReplay run : attempt.runs())
 		{
 			if (!run.testCase().testId().equals(testId))
 				continue;
@@ -640,13 +640,13 @@ public final class Promotion
 	 * @param runs the attempt's runs
 	 * @return the distinct test cases
 	 */
-	private static List<DrawnTestCase> rerunOrder(String testId, List<PromotionRun> runs)
+	private static List<DrawnTestCase> rerunOrder(String testId, List<PromotionReplay> runs)
 	{
 		List<DrawnTestCase> failed = new ArrayList<>();
 		List<DrawnTestCase> passed = new ArrayList<>();
-		for (PromotionRun run : runs)
+		for (PromotionReplay run : runs)
 		{
-			if (run.role() != PromotionRun.Role.REGRESSION || !run.testCase().testId().equals(testId))
+			if (run.role() != PromotionReplay.Role.REGRESSION || !run.testCase().testId().equals(testId))
 				continue;
 			if (run.verdict() == Verdict.FAIL)
 			{
@@ -704,12 +704,12 @@ public final class Promotion
 	 * @param runs the promotion evidence
 	 * @return the distinct triggering test cases
 	 */
-	private static List<DrawnTestCase> triggeringTestCases(List<PromotionRun> runs)
+	private static List<DrawnTestCase> triggeringTestCases(List<PromotionReplay> runs)
 	{
 		List<DrawnTestCase> testCases = new ArrayList<>();
-		for (PromotionRun run : runs)
+		for (PromotionReplay run : runs)
 		{
-			if (run.role() == PromotionRun.Role.TRIGGERING && !containsTestCase(testCases, run.testCase()))
+			if (run.role() == PromotionReplay.Role.TRIGGERING && !containsTestCase(testCases, run.testCase()))
 				testCases.add(run.testCase());
 		}
 		return testCases;
@@ -724,14 +724,14 @@ public final class Promotion
 	 * @return {@code PASS} for an unlikely passing streak, {@code FAIL} for a failed run or fewer than two planned runs,
 	 *   or {@code null} while a run or extension is needed
 	 */
-	private static Verdict triggeringVerdict(DrawnTestCase testCase, List<PromotionRun> runs,
+	private static Verdict triggeringVerdict(DrawnTestCase testCase, List<PromotionReplay> runs,
 		List<TestCaseOutcomes> workingOutcomes)
 	{
 		int passes = 0;
 		boolean pending = false;
-		for (PromotionRun run : runs)
+		for (PromotionReplay run : runs)
 		{
-			if (run.role() != PromotionRun.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
+			if (run.role() != PromotionReplay.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
 				continue;
 			if (run.verdict() == Verdict.FAIL)
 				return Verdict.FAIL;
@@ -789,9 +789,9 @@ public final class Promotion
 			if (regression.working() != null && isSameTestCase(regression.testCase(), testCase))
 				return regression.working();
 		}
-		for (PromotionRun run : attempt.runs())
+		for (PromotionReplay run : attempt.runs())
 		{
-			if (run.role() == PromotionRun.Role.WORKING_REFERENCE && run.verdict() != null &&
+			if (run.role() == PromotionReplay.Role.WORKING_REFERENCE && run.verdict() != null &&
 				isSameTestCase(run.testCase(), testCase))
 			{
 				return run.verdict();
@@ -818,7 +818,7 @@ public final class Promotion
 	}
 
 	/**
-	 * Returns the snapshot that a promotion run tests.
+	 * Returns the snapshot that a promotion replay tests.
 	 *
 	 * @param attempt the prompt author attempt
 	 * @param run one of its runs
@@ -826,7 +826,7 @@ public final class Promotion
 	 * @return {@code working} for a run that measures the working candidate, otherwise the prompt author attempt's
 	 *   snapshot
 	 */
-	static Sha256 snapshot(PromptAuthorAttempt attempt, PromotionRun run, Sha256 working)
+	static Sha256 snapshot(PromptAuthorAttempt attempt, PromotionReplay run, Sha256 working)
 	{
 		if (run.role().measuresWorking())
 			return working;

@@ -16,10 +16,10 @@ import java.util.Optional;
  * Limits how many trials run at once.
  * <p>
  * Trials belong to units of work: a working candidate's development series, one cell's part of a certification
- * attempt, one round of a formal failure group's reproduction, or one prompt author attempt's promotion runs. A unit's
- * spare failures are the further failures that consume one, which it can absorb before the next one decides it and
- * wastes the trials still running. A unit starts at its spare failures plus one, at most the campaign's ceiling, and
- * its window grows and drops as {@link Window} describes. A run without an outcome halves every window, as
+ * attempt, one round of a formal failure group's reproduction, or one prompt author attempt's promotion replays. A
+ * unit's spare failures are the further failures that consume one, which it can absorb before the next one decides it
+ * and wastes the trials still running. A unit starts at its spare failures plus one, at most the campaign's ceiling,
+ * and its window grows and drops as {@link Window} describes. A run without an outcome halves every window, as
  * {@link ConcurrencyWindows} describes.
  * <p>
  * The campaign's window is the sum of the limits of the units that admit trials now, at most the ceiling and the

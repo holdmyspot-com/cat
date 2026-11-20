@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Development;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.RaceDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.RaceState;
@@ -187,11 +187,11 @@ public final class RaceDriverTest
 			harness.overlays().save(contender);
 			FileDelta change = new FileDelta(DriverHarness.PROMPT, new FileContent(before.getBytes(UTF_8)),
 				new FileContent(after.getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"));
-			List<PromotionRun> runs = new ArrayList<>();
+			List<PromotionReplay> runs = new ArrayList<>();
 			for (int sequence = 1; sequence <= 3; ++sequence)
 			{
 				TrialKey key = new TrialKey(Purpose.PROMOTION, number, contender.identity(), CELL, sequence);
-				runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, trigger, key, Verdict.PASS));
+				runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, key, Verdict.PASS));
 				builder.adopted(key);
 				builder.adopted(new TrialKey(Purpose.RACE, number, contender.identity(), CELL, sequence));
 			}

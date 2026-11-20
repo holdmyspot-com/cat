@@ -16,14 +16,14 @@ import java.util.List;
  * @param number the prompt author's launch-order attempt number
  * @param cell the representative failing cell
  * @param snapshot the prompt author's original snapshot, equal to working when no edit was made
- * @param runs the original promotion runs, including the working candidate's reference runs and paired reruns; a
+ * @param runs the original promotion replays, including the working candidate's reference runs and paired reruns; a
  *   rejected attempt's runs that never started have no verdict
  * @param changedLines the number of added and removed lines
  * @param accepted indicates whether the promotion rule accepted this edited attempt
  * @param winner indicates whether this attempt was selected for minimality and promotion
  */
 public record AttemptResult(int round, Sha256 working, int number, String cell, Sha256 snapshot,
-	List<PromotionRun> runs, int changedLines, boolean accepted, boolean winner)
+	List<PromotionReplay> runs, int changedLines, boolean accepted, boolean winner)
 {
 	/**
 	 * Creates retained evidence.
@@ -54,7 +54,7 @@ public record AttemptResult(int round, Sha256 working, int number, String cell, 
 	}
 
 	/**
-	 * Returns the passing promotion runs.
+	 * Returns the passing promotion replays.
 	 *
 	 * @return the attempt's own passes, including its paired reruns and excluding the working candidate's runs
 	 */
@@ -64,7 +64,7 @@ public record AttemptResult(int round, Sha256 working, int number, String cell, 
 	}
 
 	/**
-	 * Returns the promotion run count.
+	 * Returns the promotion replay count.
 	 *
 	 * @return the attempt's own runs that have an outcome, excluding the working candidate's runs
 	 */

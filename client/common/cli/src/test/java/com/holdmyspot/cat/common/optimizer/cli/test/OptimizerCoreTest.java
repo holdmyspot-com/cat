@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.optimizer.cli.test;
 
 import java.util.function.Consumer;
 import java.util.EnumMap;
-import com.holdmyspot.cat.common.optimizer.execution.BackgroundRun;
+import com.holdmyspot.cat.common.optimizer.execution.BackgroundDriver;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
@@ -7373,7 +7373,7 @@ public final class OptimizerCoreTest
 				try
 				{
 					Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
-					requireThat(BackgroundRun.owner(lockFile, repository.scope().fileLocks(), JSON),
+					requireThat(BackgroundDriver.owner(lockFile, repository.scope().fileLocks(), JSON),
 						"driverreleased").isEmpty();
 					try (CampaignLock _ = holdLock(repository, id))
 					{
@@ -7422,8 +7422,8 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
 			try (CampaignLock held = holdLock(repository, id);
-				BackgroundRun _ =
-					new BackgroundRun(lockFile,
+				BackgroundDriver _ =
+					new BackgroundDriver(lockFile,
 						repository.scope().clock().instant(), JSON, Yielding.fileReplacer()))
 			{
 				Map<String, String> before = contentsWhileHeld(repository, id);
@@ -7438,7 +7438,7 @@ public final class OptimizerCoreTest
 				requireThat(contentsWhileHeld(repository, id), "read-onlystatusandrefusals").isEqualTo(before);
 				repository.scope().controlledWaiting = interval -> () ->
 				{
-					requireThat(BackgroundRun.stopRequested(lockFile, JSON),
+					requireThat(BackgroundDriver.stopRequested(lockFile, JSON),
 						"requestbeforewaiting").isTrue();
 					held.close();
 				};
@@ -7479,7 +7479,7 @@ public final class OptimizerCoreTest
 					doesNotContain("no longer alive");
 				repository.scope().controlledWaiting = interval -> () ->
 				{
-					requireThat(BackgroundRun.stopRequested(lockFile, JSON), "requestbeforewaiting").isTrue();
+					requireThat(BackgroundDriver.stopRequested(lockFile, JSON), "requestbeforewaiting").isTrue();
 					held.close();
 				};
 				requireThat(repository.core().cancel(id).status().lifecycle(), "cancelled").
@@ -7537,8 +7537,8 @@ public final class OptimizerCoreTest
 			String id = repository.core().start(Path.of("CLAUDE.md")).status().campaignId();
 			Path lockFile = FileCampaignStore.lockFile(repository.campaigns(), id);
 			try (CampaignLock _ = holdLock(repository, id);
-				BackgroundRun _ =
-					new BackgroundRun(lockFile,
+				BackgroundDriver _ =
+					new BackgroundDriver(lockFile,
 						repository.scope().clock().instant(), JSON, Yielding.fileReplacer()))
 			{
 				repository.scope().controlledWaiting = interval -> () -> repository.scope().clock().advance(interval);
@@ -7547,7 +7547,7 @@ public final class OptimizerCoreTest
 				requireThat(pending.message(), "pending").contains("request stands").contains("not yet ended");
 				requireThat(Duration.between(began, repository.scope().clock().instant()), "boundedwait").
 					isEqualTo(Duration.ofSeconds(90));
-				requireThat(BackgroundRun.stopRequested(lockFile, JSON),
+				requireThat(BackgroundDriver.stopRequested(lockFile, JSON),
 					"standingrequest").isTrue();
 			}
 		}
@@ -7582,7 +7582,7 @@ public final class OptimizerCoreTest
 	}
 
 	/**
-	 * Background run and resume advance through long scripted sessions until the campaign needs a decision.
+	 * A background driver and resume advance through long scripted sessions until the campaign needs a decision.
 	 *
 	 * @return whether the command resumes a cancelled campaign
 	 */
@@ -7599,7 +7599,7 @@ public final class OptimizerCoreTest
 	 * @throws Exception if the fixture cannot be used
 	 */
 	@Test(dataProvider = "backgroundAdvancingCommands")
-	public void backgroundRunsUntilDecision(boolean resume) throws Exception
+	public void backgroundDriverRunsUntilDecision(boolean resume) throws Exception
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{

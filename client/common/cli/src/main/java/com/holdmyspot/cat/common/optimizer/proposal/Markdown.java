@@ -1067,7 +1067,7 @@ public final class Markdown
 		int trials = remaining.total();
 		text.append("At least ").append(2 * trials).append(" nested sessions remain if every trial passes: ").
 			append(trials).append(" trials, each with one trial session and one judge session. Failures add " +
-				"reruns, prompt author sessions and promotion runs.\n\n").
+				"reruns, prompt author sessions and promotion replays.\n\n").
 			append("Minimum trials by cell:\n\n");
 		Map<String, List<Cell>> byTrials = new LinkedHashMap<>();
 		for (Cell cell : CellTier.scopeCells(scoped))

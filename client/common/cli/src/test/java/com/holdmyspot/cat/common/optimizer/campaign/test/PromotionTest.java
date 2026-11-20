@@ -17,8 +17,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun.Role;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay.Role;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.Scheduler;
@@ -175,9 +175,9 @@ public final class PromotionTest
 	 * @param testCase the test case
 	 * @return the run
 	 */
-	private static PromotionRun run(Role role, DrawnTestCase testCase)
+	private static PromotionReplay run(Role role, DrawnTestCase testCase)
 	{
-		return new PromotionRun(role, testCase, null, null);
+		return new PromotionReplay(role, testCase, null, null);
 	}
 
 	/**
@@ -188,10 +188,10 @@ public final class PromotionTest
 	 * @param verdict the run's outcome
 	 * @return the run
 	 */
-	private static PromotionRun run(Role role, DrawnTestCase testCase, Verdict verdict)
+	private static PromotionReplay run(Role role, DrawnTestCase testCase, Verdict verdict)
 	{
 		TrialKey key = new TrialKey(Purpose.PROMOTION, 1, ATTEMPT, testCase.testId(), 1);
-		return new PromotionRun(role, testCase, key, verdict);
+		return new PromotionReplay(role, testCase, key, verdict);
 	}
 
 	/**
@@ -200,7 +200,7 @@ public final class PromotionTest
 	 * @param runs the attempt's runs
 	 * @return the attempt
 	 */
-	private static PromptAuthorAttempt attempt(PromotionRun... runs)
+	private static PromptAuthorAttempt attempt(PromotionReplay... runs)
 	{
 		return new PromptAuthorAttempt(1, "safety", ATTEMPT, List.of(runs), Minimality.start(List.of(), ATTEMPT));
 	}
@@ -215,7 +215,7 @@ public final class PromotionTest
 	private static Promotion.Decision decide(PromptAuthorAttempt attempt, List<RegressionTestCase> regressions)
 	{
 		List<TestCaseOutcomes> records = new ArrayList<>();
-		for (PromotionRun run : attempt.runs())
+		for (PromotionReplay run : attempt.runs())
 		{
 			if (run.role() == Role.TRIGGERING && records.stream().noneMatch(record ->
 				PromotionSecrets.getPromotionAccess().isSameTestCase(record.testCase(), run.testCase())))
@@ -241,7 +241,7 @@ public final class PromotionTest
 		DrawnTestCase formal = targeted("formatting", "formal");
 		List<RegressionTestCase> regressionSet = List.of(new RegressionTestCase(logs, Verdict.FAIL, false),
 			new RegressionTestCase(cache, Verdict.PASS, false), new RegressionTestCase(formal, null, false));
-		List<PromotionRun> plan = Promotion.plan(List.of("safety"), List.of(logs, formal),
+		List<PromotionReplay> plan = Promotion.plan(List.of("safety"), List.of(logs, formal),
 			new Generator(ContractFixtures.contract()));
 		requireThat(plan, "plan").isEqualTo(List.of(run(Role.TRIGGERING, logs), run(Role.TRIGGERING, logs)));
 
@@ -425,7 +425,7 @@ public final class PromotionTest
 		campaign = TransitionSteps.complete(campaign, reference, Verdict.PASS);
 		requireThat(campaign.lineage().regressionSet().getFirst().working(), "sharedVerdict").isEqualTo(Verdict.PASS);
 		requireThat(campaign.optimization().attempts().getFirst().runs().stream().filter(run ->
-			run.role() == Role.WORKING_REFERENCE).map(PromotionRun::verdict).toList(), "recordedReference").
+			run.role() == Role.WORKING_REFERENCE).map(PromotionReplay::verdict).toList(), "recordedReference").
 			isEqualTo(List.of(Verdict.PASS));
 		requireThat(campaign.development().promptAuthor(), "nextAttempt").isNotNull();
 	}
@@ -500,8 +500,8 @@ public final class PromotionTest
 		DrawnTestCase logs = targeted("safety", "logs");
 		DrawnTestCase cache = targeted("safety", "cache");
 		DrawnTestCase formal = targeted("formatting", "formal");
-		PromotionRun first = run(Role.TRIGGERING, logs, Verdict.PASS);
-		PromotionRun second = run(Role.TRIGGERING, logs, Verdict.PASS);
+		PromotionReplay first = run(Role.TRIGGERING, logs, Verdict.PASS);
+		PromotionReplay second = run(Role.TRIGGERING, logs, Verdict.PASS);
 		requireThat(decide(attempt(first, second, run(Role.TRIGGERING, cache, Verdict.FAIL),
 			run(Role.TRIGGERING, cache)), List.of()), "triggeringPending").isEqualTo(Promotion.Decision.PENDING);
 		requireThat(decide(attempt(first, second, run(Role.TRIGGERING, cache, Verdict.FAIL),
@@ -554,12 +554,12 @@ public final class PromotionTest
 	}
 
 	/**
-	 * Verifies that promotion runs never count as representative evidence, and that a promoted attempt becomes the
+	 * Verifies that promotion replays never count as representative evidence, and that a promoted attempt becomes the
 	 * working candidate with new counts.
 	 */
 	// Requirement: R-D3
 	@Test
-	public void promotionRunsNeverCount()
+	public void promotionReplaysNeverCount()
 	{
 		// Requirement: R-D3
 		Campaign campaign = inRound();
@@ -604,12 +604,12 @@ public final class PromotionTest
 		for (int completed = 0; completed < Promotion.STARTING_TRIGGERING_RUNS; ++completed)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, ATTEMPT, logs, Verdict.PASS);
 		PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-		requireThat(promptAuthor.runs().stream().map(PromotionRun::role).toList(), "roles").
+		requireThat(promptAuthor.runs().stream().map(PromotionReplay::role).toList(), "roles").
 			isEqualTo(List.of(Role.TRIGGERING, Role.TRIGGERING, Role.REGRESSION, Role.WORKING_REFERENCE));
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, 1, ATTEMPT, formal);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, working, formal, Verdict.FAIL);
 
-		List<PromotionRun> runs = campaign.development().promptAuthor().runs();
+		List<PromotionReplay> runs = campaign.development().promptAuthor().runs();
 		requireThat(runs.get(2).trial().sequence(), "sameSequence").isEqualTo(runs.get(3).trial().sequence());
 		requireThat(runs.get(2).verdict(), "regression").isNull();
 		requireThat(runs.get(3).verdict(), "reference").isEqualTo(Verdict.FAIL);
@@ -704,7 +704,7 @@ public final class PromotionTest
 	 */
 	private static List<DrawnTestCase> testCases(PromptAuthorAttempt attempt, Role role)
 	{
-		return attempt.runs().stream().filter(run -> run.role() == role).map(PromotionRun::testCase).toList();
+		return attempt.runs().stream().filter(run -> run.role() == role).map(PromotionReplay::testCase).toList();
 	}
 
 	/**
@@ -866,12 +866,12 @@ public final class PromotionTest
 	 * @param working the verdicts of the working candidate's paired reruns
 	 * @return the attempt
 	 */
-	private static PromptAuthorAttempt rerunAttempt(List<PromotionRun> others, List<Verdict> attempt,
+	private static PromptAuthorAttempt rerunAttempt(List<PromotionReplay> others, List<Verdict> attempt,
 		List<Verdict> working)
 	{
 		DrawnTestCase logs = targeted("safety", "logs");
 		DrawnTestCase formal = targeted("formatting", "formal");
-		List<PromotionRun> runs = new ArrayList<>(List.of(run(Role.TRIGGERING, logs, Verdict.PASS),
+		List<PromotionReplay> runs = new ArrayList<>(List.of(run(Role.TRIGGERING, logs, Verdict.PASS),
 			run(Role.TRIGGERING, logs, Verdict.PASS), run(Role.REGRESSION, formal, Verdict.FAIL)));
 		runs.addAll(others);
 		for (int rerun = 0; rerun < attempt.size(); ++rerun)
@@ -879,7 +879,7 @@ public final class PromotionTest
 			runs.add(run(Role.REGRESSION_RERUN, formal, attempt.get(rerun)));
 			runs.add(run(Role.WORKING_RERUN, formal, working.get(rerun)));
 		}
-		return attempt(runs.toArray(PromotionRun[]::new));
+		return attempt(runs.toArray(PromotionReplay[]::new));
 	}
 
 	/**
@@ -940,7 +940,7 @@ public final class PromotionTest
 		requireThat(testCases(campaign.development().promptAuthor(), Role.REGRESSION), "onePass").isEmpty();
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, ATTEMPT, logs, Verdict.FAIL);
 		requireThat(campaign.development().promptAuthor(), "rejected").isNull();
-		requireThat(campaign.optimization().attempts().getFirst().runs().stream().map(PromotionRun::role).toList(),
+		requireThat(campaign.optimization().attempts().getFirst().runs().stream().map(PromotionReplay::role).toList(),
 			"rejectedRuns").isEqualTo(List.of(Role.TRIGGERING, Role.TRIGGERING));
 
 		campaign = TransitionSteps.submit(campaign, "safety", Builder.snapshot("next"), List.of());

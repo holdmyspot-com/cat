@@ -41,7 +41,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.ReproductionRound;
 import com.holdmyspot.cat.common.optimizer.campaign.Predecessor;
@@ -1317,10 +1317,10 @@ public abstract class CampaignStoreContract
 			diagnosis(new Diagnosis(List.of(testCase("safety", 4, false)), 2, diagnostic, true)).
 			round(new Round(roundAttempts)).
 			promptAuthor(new PromptAuthorAttempt(2, "safety", Builder.snapshot("prompt-author-2"), List.of(
-				new PromotionRun(PromotionRun.Role.TRIGGERING, testCase("safety", 5, true), promotion,
+				new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase("safety", 5, true), promotion,
 					Verdict.PASS),
-				new PromotionRun(PromotionRun.Role.REGRESSION, testCase("formatting", 6, true), null, null),
-				new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, testCase("safety", 7, true),
+				new PromotionReplay(PromotionReplay.Role.REGRESSION, testCase("formatting", 6, true), null, null),
+				new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, testCase("safety", 7, true),
 					null, null)), Minimality.start(List.of(), Builder.snapshot("prompt-author-2")))).
 			promptAuthorAttempts(3).
 			reviewPoint("safety", 250).

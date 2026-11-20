@@ -262,7 +262,7 @@ public final class ConcurrencyPolicyTest
 
 	/**
 	 * Returns a campaign whose prompt author attempt addresses failing test cases in {@code safety}, before any of its
-	 * promotion runs.
+	 * promotion replays.
 	 *
 	 * @param testCases the attempt's triggering test cases
 	 * @return the campaign
@@ -277,10 +277,10 @@ public final class ConcurrencyPolicyTest
 	}
 
 	/**
-	 * Returns the promotion runs in the campaign's next plan.
+	 * Returns the promotion replays in the campaign's next plan.
 	 *
 	 * @param campaign the campaign
-	 * @return the number of new promotion runs planned
+	 * @return the number of new promotion replays planned
 	 */
 	private static long promotionAdmissions(Campaign campaign)
 	{
@@ -289,7 +289,7 @@ public final class ConcurrencyPolicyTest
 	}
 
 	/**
-	 * Verifies that a prompt author attempt runs as many promotion runs at once as it has triggering test cases that
+	 * Verifies that a prompt author attempt runs as many promotion replays at once as it has triggering test cases that
 	 * it can still fix, and that a failing triggering run lowers the window to the test cases still open.
 	 */
 	@Test

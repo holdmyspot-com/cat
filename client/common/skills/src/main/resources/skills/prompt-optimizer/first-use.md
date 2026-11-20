@@ -52,16 +52,16 @@ from a launcher field.
 Choose the execution mode for every `start`, `revise`, `choose` and `run` command. If the shell tool can keep a
 command running after your turn ends, append `--background` and use that tool's own background mode. Never use shell
 `&` or `nohup`. Tell the user that the campaign is running in the background, offer `status` and `cancel`, and continue
-other work. A background run has no slice or time cap; `start` and `revise` run the whole guard pilot and must not be
+other work. A background driver has no slice or time cap; `start` and `revise` run the whole guard pilot and must not be
 repeated while their driver holds the campaign. On the command's exit notice, call `status <campaign>` (or
 `status <target>` if `start` has not yet returned its campaign identifier) and follow the result below just as for a
 foreground return. Test nothing at turn starts. When the user asks for progress or a session resumes, call `status`;
-a driver that died abnormally may have sent no notice. Stop a background run with `cancel`, which allows in-flight
+a driver that died abnormally may have sent no notice. Stop a background driver with `cancel`, which allows in-flight
 sessions their grace period and waits up to that grace plus 30 seconds. An unrelated host interrupt does not stop it.
 
 If the tool cannot keep a command running, or the launcher refuses `--background`, show its reason and use foreground
 slices without the flag. Give a foreground command a tool timeout of at least 10 minutes and repeat it only as the
-workflow below requires. A foreground result that says a test needs a background run cannot advance that test; show
+workflow below requires. A foreground result that says a test needs the background driver cannot advance that test; show
 that reason to the user. While a background driver holds the lock, `status` reads its snapshot and names the driver
 and start time, a second `run` is `busy`, and a refusal of `revise`, `choose` or `confirm` names `status` and `cancel`.
 A failed exit notice does not change the outcome; the next `status` reports the failure.

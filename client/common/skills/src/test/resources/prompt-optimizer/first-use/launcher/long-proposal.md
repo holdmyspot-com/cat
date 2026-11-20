@@ -286,7 +286,7 @@ At most 8 nested sessions run at once, including judges and prompt authors, with
 
 ## Minimum session count
 
-At least 2430 nested sessions remain if every trial passes: 1215 trials, each with one trial session and one judge session. Failures add reruns, prompt author sessions and promotion runs.
+At least 2430 nested sessions remain if every trial passes: 1215 trials, each with one trial session and one judge session. Failures add reruns, prompt author sessions and promotion replays.
 
 Minimum trials by cell:
 

@@ -96,75 +96,75 @@ public final class AttemptSelection
 	 * Counts the passing runs that rank a weak round's winner: the attempt's triggering runs and first-pass regression
 	 * runs.
 	 *
-	 * @param runs the attempt's promotion runs
+	 * @param runs the attempt's promotion replays
 	 * @return the ranked passing run count
 	 */
-	private static long rankedPassingRuns(List<PromotionRun> runs)
+	private static long rankedPassingRuns(List<PromotionReplay> runs)
 	{
 		return runs.stream().filter(run -> isRanked(run) && run.verdict() == Verdict.PASS).count();
 	}
 
 	/**
-	 * Indicates whether a promotion run counts toward a weak round's winner ranking.
+	 * Indicates whether a promotion replay counts toward a weak round's winner ranking.
 	 *
 	 * @param run the run
 	 * @return {@code true} for a triggering run or a first-pass regression run
 	 */
-	private static boolean isRanked(PromotionRun run)
+	private static boolean isRanked(PromotionReplay run)
 	{
-		return run.role() == PromotionRun.Role.TRIGGERING || run.role() == PromotionRun.Role.REGRESSION;
+		return run.role() == PromotionReplay.Role.TRIGGERING || run.role() == PromotionReplay.Role.REGRESSION;
 	}
 
 	/**
-	 * Counts an attempt's own passing promotion runs, including its paired reruns, as the status shows them. The working
-	 * candidate's reference runs and paired reruns measure the working candidate, not the attempt, so they are
+	 * Counts an attempt's own passing promotion replays, including its paired reruns, as the status shows them. The
+	 * working candidate's reference runs and paired reruns measure the working candidate, not the attempt, so they are
 	 * excluded.
 	 *
-	 * @param runs the attempt's promotion runs
+	 * @param runs the attempt's promotion replays
 	 * @return the passing run count
 	 * @throws NullPointerException if {@code runs} is null
 	 */
-	public static long passingRuns(List<PromotionRun> runs)
+	public static long passingRuns(List<PromotionReplay> runs)
 	{
 		requireThat(runs, "runs").isNotNull();
 		return runs.stream().filter(run -> isOwn(run) && run.verdict() == Verdict.PASS).count();
 	}
 
 	/**
-	 * Counts an attempt's own planned promotion runs, excluding the working candidate's reference runs and paired
+	 * Counts an attempt's own planned promotion replays, excluding the working candidate's reference runs and paired
 	 * reruns.
 	 *
-	 * @param runs the attempt's promotion runs
+	 * @param runs the attempt's promotion replays
 	 * @return the planned run count
 	 * @throws NullPointerException if {@code runs} is null
 	 */
-	public static long plannedRuns(List<PromotionRun> runs)
+	public static long plannedRuns(List<PromotionReplay> runs)
 	{
 		requireThat(runs, "runs").isNotNull();
 		return runs.stream().filter(AttemptSelection::isOwn).count();
 	}
 
 	/**
-	 * Counts an attempt's own promotion runs that have an outcome, excluding the working candidate's reference runs
+	 * Counts an attempt's own promotion replays that have an outcome, excluding the working candidate's reference runs
 	 * and paired reruns.
 	 *
-	 * @param runs the attempt's promotion runs
+	 * @param runs the attempt's promotion replays
 	 * @return the judged run count
 	 * @throws NullPointerException if {@code runs} is null
 	 */
-	public static long judgedRuns(List<PromotionRun> runs)
+	public static long judgedRuns(List<PromotionReplay> runs)
 	{
 		requireThat(runs, "runs").isNotNull();
 		return runs.stream().filter(run -> isOwn(run) && run.verdict() != null).count();
 	}
 
 	/**
-	 * Indicates whether a promotion run measures the attempt rather than the working candidate.
+	 * Indicates whether a promotion replay measures the attempt rather than the working candidate.
 	 *
 	 * @param run the run
 	 * @return {@code false} for a working reference run or paired rerun
 	 */
-	private static boolean isOwn(PromotionRun run)
+	private static boolean isOwn(PromotionReplay run)
 	{
 		return !run.role().measuresWorking();
 	}

@@ -16,7 +16,7 @@ import java.util.Map;
  * @param failures the failures that a prompt author attempt receives, in failure order
  * @param diagnosis the reruns in progress, or {@code null} if none are
  * @param round the development round in progress, or {@code null} if none is
- * @param promptAuthor the prompt author attempt whose promotion runs are in progress, or {@code null} if none is
+ * @param promptAuthor the prompt author attempt whose promotion replays are in progress, or {@code null} if none is
  * @param reviewPoints the outcome count that triggers another review for each cell the user extended
  * @param testCaseOutcomes the working candidate's adopted outcomes grouped by test case
  * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available
@@ -47,7 +47,7 @@ public record Development(Candidate working, int series, Map<String, CellCounts>
 	 * @param failures the failures that a prompt author attempt receives, in failure order
 	 * @param diagnosis the reruns in progress, or {@code null} if none are
 	 * @param round the development round in progress, or {@code null} if none is
-	 * @param promptAuthor the prompt author attempt whose promotion runs are in progress, or {@code null} if none is
+	 * @param promptAuthor the prompt author attempt whose promotion replays are in progress, or {@code null} if none is
 	 * @param reviewPoints the outcome count that triggers another review for each cell the user extended
 	 * @param testCaseOutcomes the working candidate's adopted outcomes grouped by test case
 	 * @param predecessor the retained state before the latest promotion, or {@code null} if no revert is available

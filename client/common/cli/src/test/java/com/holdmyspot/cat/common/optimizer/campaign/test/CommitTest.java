@@ -12,7 +12,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
@@ -248,10 +248,10 @@ public final class CommitTest
 		while (campaign.development().promptAuthor().runs().stream().anyMatch(run -> run.verdict() == null))
 		{
 			PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-			PromotionRun run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
+			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
 				findFirst().orElseThrow();
 			Sha256 snapshot = edit;
-			if (run.role() == PromotionRun.Role.WORKING_REFERENCE)
+			if (run.role() == PromotionReplay.Role.WORKING_REFERENCE)
 				snapshot = frozen.snapshot();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, promptAuthor.number(), snapshot,
 				run.testCase(), Verdict.PASS);

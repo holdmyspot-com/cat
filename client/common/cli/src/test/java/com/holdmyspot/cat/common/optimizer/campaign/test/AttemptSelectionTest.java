@@ -18,7 +18,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.TestCaseOutcomes;
 import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.RaceDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
@@ -203,7 +203,7 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * A partial fix wins when it passes more of its own promotion runs, excluding reference runs.
+	 * A partial fix wins when it passes more of its own promotion replays, excluding reference runs.
 	 */
 	// Requirement: R-D3
 	@Test
@@ -216,19 +216,19 @@ public final class AttemptSelectionTest
 		for (int number = 1; number <= 2; ++number)
 		{
 			Sha256 snapshot = Builder.snapshot("attempt" + number);
-			List<PromotionRun> runs = new ArrayList<>();
+			List<PromotionReplay> runs = new ArrayList<>();
 			for (DrawnTestCase testCase : List.of(logs, cache, tmp))
 			{
 				Verdict verdict = Verdict.FAIL;
 				if (testCase.equals(logs) || number == 2 && testCase.equals(cache))
 					verdict = Verdict.PASS;
 				for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
-					runs.add(new PromotionRun(PromotionRun.Role.TRIGGERING, testCase,
+					runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
 						new TrialKey(Purpose.PROMOTION, number, snapshot, "safety", runs.size() + 1), verdict));
 			}
-			runs.add(new PromotionRun(PromotionRun.Role.REGRESSION, Builder.targeted("formatting", "formal"),
+			runs.add(new PromotionReplay(PromotionReplay.Role.REGRESSION, Builder.targeted("formatting", "formal"),
 				new TrialKey(Purpose.PROMOTION, number, snapshot, "formatting", 1), Verdict.PASS));
-			runs.add(new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, Builder.targeted("formatting", "formal"),
+			runs.add(new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, Builder.targeted("formatting", "formal"),
 				new TrialKey(Purpose.PROMOTION, number, Builder.snapshot("working"), "formatting", 2), Verdict.PASS));
 			attempts.add(new PromptAuthorAttempt(number, "safety", snapshot, runs, Minimality.start(List.of(),
 				snapshot)));
@@ -353,9 +353,9 @@ public final class AttemptSelectionTest
 		// Requirement: R-D12
 		Sha256 snapshot = Builder.snapshot("attempt1");
 		PromptAuthorAttempt attempt = new PromptAuthorAttempt(1, "safety", snapshot, List.of(
-			new PromotionRun(PromotionRun.Role.TRIGGERING, Builder.targeted("safety", "cache"),
+			new PromotionReplay(PromotionReplay.Role.TRIGGERING, Builder.targeted("safety", "cache"),
 				new TrialKey(Purpose.PROMOTION, 1, snapshot, "safety", 1), Verdict.PASS),
-			new PromotionRun(PromotionRun.Role.WORKING_REFERENCE, Builder.targeted("safety", "logs"),
+			new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, Builder.targeted("safety", "logs"),
 				new TrialKey(Purpose.PROMOTION, 1, snapshot, "safety", 2), Verdict.PASS)),
 			Minimality.start(List.of(), snapshot));
 		requireThat(AttemptSelection.passingRuns(attempt.runs()), "passingRuns").isEqualTo(1L);

@@ -27,7 +27,7 @@ import java.util.List;
  *   the original attempt passes
  */
 public record Minimality(List<FileDelta> files, List<String> retained, int groups, int group,
-	List<String> testing, Sha256 accepted, List<PromotionRun> acceptedRuns)
+	List<String> testing, Sha256 accepted, List<PromotionReplay> acceptedRuns)
 {
 	/**
 	 * Creates a search state.
@@ -38,7 +38,7 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 	 * @param group the group index
 	 * @param testing the hunks being tested, or {@code null}
 	 * @param accepted the last passing snapshot
-	 * @param acceptedRuns its promotion runs
+	 * @param acceptedRuns its promotion replays
 	 * @throws NullPointerException if a required argument or list element is null
 	 * @throws IllegalArgumentException if a partition size or index is invalid
 	 */
@@ -73,19 +73,19 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 	 * current reduction. This method schedules no trials and consumes no allowance.
 	 *
 	 * @param snapshot the tested snapshot
-	 * @param runs the completed promotion runs
+	 * @param runs the completed promotion replays
 	 * @param decision their decision
 	 * @return the next reduction or a finished state with {@code testing == null}
 	 * @throws IllegalArgumentException if the decision is pending or the original attempt failed
 	 */
-	public Minimality advance(Sha256 snapshot, List<PromotionRun> runs, Promotion.Decision decision)
+	public Minimality advance(Sha256 snapshot, List<PromotionReplay> runs, Promotion.Decision decision)
 	{
 		requireThat(decision, "decision").isNotEqualTo(Promotion.Decision.PENDING);
 		if (testing == null && acceptedRuns.isEmpty() && decision != Promotion.Decision.PROMOTE)
 			throw new IllegalArgumentException("The original attempt must pass before reduction");
 		List<String> kept = retained;
 		Sha256 passing = accepted;
-		List<PromotionRun> evidence = acceptedRuns;
+		List<PromotionReplay> evidence = acceptedRuns;
 		int partitions = groups;
 		int index = group;
 		if (decision == Promotion.Decision.PROMOTE)

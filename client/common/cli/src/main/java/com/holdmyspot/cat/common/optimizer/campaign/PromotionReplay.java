@@ -9,26 +9,26 @@ import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param role why the run exists
+ * @param role why the replay exists
  * @param testCase the targeted test case
- * @param trial the key of the run's logical trial, or {@code null} if it is not assigned
- * @param verdict the run's outcome, or {@code null} if it is not adopted
+ * @param trial the key of the replay's logical trial, or {@code null} if it is not assigned
+ * @param verdict the replay's outcome, or {@code null} if it is not adopted
  */
-public record PromotionRun(Role role, DrawnTestCase testCase, TrialKey trial, Verdict verdict)
+public record PromotionReplay(Role role, DrawnTestCase testCase, TrialKey trial, Verdict verdict)
 {
 	/**
-	 * Why a promotion run exists.
+	 * Why a promotion replay exists.
 	 */
 	public enum Role
 	{
 		/**
-		 * The attempt runs a test case that triggered the round. Every run must pass and its streak must be unlikely
+		 * The attempt runs a test case that triggered the round. Every replay must pass and its streak must be unlikely
 		 * for the working candidate. An original attempt must fix at least one test case; a reduction retains every fix
-		 * from its last accepted runs.
+		 * from its last accepted replays.
 		 */
 		TRIGGERING,
 		/**
-		 * The attempt replays a previously failing test case once. The runs of one prompt test form a group whose
+		 * The attempt replays a previously failing test case once. The replays of one prompt test form a group whose
 		 * failures must not be unlikely for the working candidate.
 		 */
 		REGRESSION,
@@ -48,7 +48,7 @@ public record PromotionRun(Role role, DrawnTestCase testCase, TrialKey trial, Ve
 		WORKING_RERUN;
 
 		/**
-		 * Indicates whether a run of this role tests the working candidate rather than the attempt.
+		 * Indicates whether a replay of this role tests the working candidate rather than the attempt.
 		 *
 		 * @return {@code true} for {@link #WORKING_REFERENCE} and {@link #WORKING_RERUN}
 		 */
@@ -59,17 +59,17 @@ public record PromotionRun(Role role, DrawnTestCase testCase, TrialKey trial, Ve
 	}
 
 	/**
-	 * Creates a run.
+	 * Creates a replay.
 	 *
-	 * @param role why the run exists
+	 * @param role why the replay exists
 	 * @param testCase the targeted test case
-	 * @param trial the key of the run's logical trial, or {@code null} if it is not assigned
-	 * @param verdict the run's outcome, or {@code null} if it is not adopted
+	 * @param trial the key of the replay's logical trial, or {@code null} if it is not assigned
+	 * @param verdict the replay's outcome, or {@code null} if it is not adopted
 	 * @throws NullPointerException if {@code role} or {@code testCase} are null
 	 * @throws IllegalArgumentException if {@code testCase} is not targeted, {@code trial} is not a promotion trial,
-	 *   or a verdict exists for an unassigned run
+	 *   or a verdict exists for an unassigned replay
 	 */
-	public PromotionRun
+	public PromotionReplay
 	{
 		requireThat(role, "role").isNotNull();
 		requireThat(testCase, "testCase").isNotNull();
@@ -77,6 +77,6 @@ public record PromotionRun(Role role, DrawnTestCase testCase, TrialKey trial, Ve
 		if (trial != null)
 			requireThat(trial.purpose(), "trial.purpose()").isEqualTo(Purpose.PROMOTION);
 		else if (verdict != null)
-			throw new IllegalArgumentException("A run that is not assigned cannot have a verdict: " + verdict);
+			throw new IllegalArgumentException("A replay that is not assigned cannot have a verdict: " + verdict);
 	}
 }

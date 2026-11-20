@@ -25,8 +25,8 @@ import java.util.TreeMap;
  * @param working the starting working snapshot
  * @param cell the representative addressed cell
  * @param snapshot the original prompt author snapshot, or {@code null} before the prompt author submits
- * @param passingRuns the attempt's own passing promotion runs, excluding the working candidate's runs
- * @param totalRuns the attempt's own planned promotion runs while it is pending, or its own runs that ran once it
+ * @param passingRuns the attempt's own passing promotion replays, excluding the working candidate's runs
+ * @param totalRuns the attempt's own planned promotion replays while it is pending, or its own runs that ran once it
  *   is decided, excluding the working candidate's runs
  * @param accepted indicates whether promotion accepted the attempt, or {@code null} while pending
  * @param rejectedEarly indicates whether the attempt was rejected before all of its planned runs ran
@@ -45,8 +45,8 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	 * @param working the starting snapshot
 	 * @param cell the addressed cell
 	 * @param snapshot the original snapshot, or {@code null} before submission
-	 * @param passingRuns passing promotion runs
-	 * @param totalRuns planned or run promotion runs
+	 * @param passingRuns passing promotion replays
+	 * @param totalRuns planned or run promotion replays
 	 * @param accepted the promotion decision, or {@code null} while pending
 	 * @param rejectedEarly whether the attempt was rejected before all of its planned runs ran
 	 * @param winner whether this attempt won

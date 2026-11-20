@@ -19,7 +19,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Minimality;
 import com.holdmyspot.cat.common.optimizer.campaign.OptimizationEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.PendingDecision;
 import com.holdmyspot.cat.common.optimizer.campaign.Promotion;
-import com.holdmyspot.cat.common.optimizer.campaign.PromotionRun;
+import com.holdmyspot.cat.common.optimizer.campaign.PromotionReplay;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptSize;
 import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
@@ -909,7 +909,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				getBytes(UTF_8)), new FileContent("needed\nseparator\nunneeded\n".getBytes(UTF_8)),
 				PosixFilePermissions.fromString("rw-r--r--"));
 			TrialKey key = new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("prompt_author"), "safety", 1);
-			PromotionRun passed = new PromotionRun(PromotionRun.Role.TRIGGERING,
+			PromotionReplay passed = new PromotionReplay(PromotionReplay.Role.TRIGGERING,
 				Builder.targeted("safety", "cache"), key, Verdict.PASS);
 			Minimality search = Minimality.start(List.of(file), key.snapshot()).advance(key.snapshot(), List.of(passed),
 				Promotion.Decision.PROMOTE);

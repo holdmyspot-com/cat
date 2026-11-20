@@ -40,7 +40,7 @@ public final class CodexExitNoticeTest
 			CodexExitNotice.send(executable, thread, "campaign-1", Map.of(), (arguments, environment) ->
 			{
 				requireThat(arguments, "arguments").isEqualTo(List.of(executable, "queue", "--thread", thread,
-					"--message", "Campaign campaign-1 background run ended. " +
+					"--message", "Campaign campaign-1 background driver ended. " +
 						"Call prompt-optimizer status campaign-1 for the result."));
 				calls.incrementAndGet();
 				return 0;

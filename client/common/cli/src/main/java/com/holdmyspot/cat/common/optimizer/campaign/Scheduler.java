@@ -42,7 +42,7 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans admissions without changing the campaign: reruns of assigned trials, then diagnostic and promotion runs,
+	 * Plans admissions without changing the campaign: reruns of assigned trials, then diagnostic and promotion replays,
 	 * then the active candidate's formal, reproduction or development trials within its concurrency window. While an
 	 * ended attempt's formal failure groups are reproducing, their reproduction trials run instead of development
 	 * trials. Outside certification, the incumbent's baseline trials use any remaining capacity.
@@ -171,8 +171,8 @@ public final class Scheduler
 	}
 
 	/**
-	 * Plans the diagnostic rerun that is due and the unassigned promotion runs. A diagnostic rerun runs alone: the next
-	 * one is due only after the last one's outcome. Each prompt author attempt under validation runs at most its
+	 * Plans the diagnostic rerun that is due and the unassigned promotion replays. A diagnostic rerun runs alone: the
+	 * next one is due only after the last one's outcome. Each prompt author attempt under validation runs at most its
 	 * concurrency window of runs at once; a decided attempt still runs the working candidate's reference runs that an
 	 * undecided contender shares.
 	 *
@@ -219,15 +219,15 @@ public final class Scheduler
 	 * @return {@code true} if the run measures the working candidate on a test case of another contender's regression
 	 *   run
 	 */
-	private static boolean isSharedReference(PromotionRun run, List<PromptAuthorAttempt> pending)
+	private static boolean isSharedReference(PromotionReplay run, List<PromptAuthorAttempt> pending)
 	{
-		if (run.role() != PromotionRun.Role.WORKING_REFERENCE)
+		if (run.role() != PromotionReplay.Role.WORKING_REFERENCE)
 			return false;
 		for (PromptAuthorAttempt attempt : pending)
 		{
-			for (PromotionRun other : attempt.runs())
+			for (PromotionReplay other : attempt.runs())
 			{
-				if (other.role() == PromotionRun.Role.REGRESSION &&
+				if (other.role() == PromotionReplay.Role.REGRESSION &&
 					Promotion.isSameTestCase(other.testCase(), run.testCase()))
 				{
 					return true;
@@ -248,7 +248,7 @@ public final class Scheduler
 	private static int promotionSlots(Campaign campaign, PromptAuthorAttempt attempt)
 	{
 		int inFlight = 0;
-		for (PromotionRun run : attempt.runs())
+		for (PromotionReplay run : attempt.runs())
 		{
 			if (run.trial() != null && run.verdict() == null)
 				++inFlight;
@@ -268,10 +268,10 @@ public final class Scheduler
 	 * @param due selects the runs to plan
 	 */
 	private static void planPromotion(PromptAuthorAttempt promptAuthor, Sha256 working, List<Admission> plan,
-		Allocations allocations, int slots, Predicate<PromotionRun> due)
+		Allocations allocations, int slots, Predicate<PromotionReplay> due)
 	{
 		int planned = 0;
-		for (PromotionRun run : promptAuthor.runs())
+		for (PromotionReplay run : promptAuthor.runs())
 		{
 			if (planned >= slots)
 				return;

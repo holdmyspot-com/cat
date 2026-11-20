@@ -5,7 +5,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * A unit of work whose trials share one concurrency window: a working candidate's development series, one cell's
  * part of a certification attempt, one round of a formal failure group's reproduction, or one prompt author
- * attempt's promotion runs.
+ * attempt's promotion replays.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
@@ -86,7 +86,7 @@ public record WorkUnit(Purpose purpose, int series, int stage, String part)
 	}
 
 	/**
-	 * Returns the promotion runs of a prompt author attempt.
+	 * Returns the promotion replays of a prompt author attempt.
 	 *
 	 * @param attempt the prompt author attempt
 	 * @return the unit

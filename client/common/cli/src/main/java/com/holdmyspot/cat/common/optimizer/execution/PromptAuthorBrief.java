@@ -303,12 +303,12 @@ public record PromptAuthorBrief(String cell, PromptAuthorApproach approach, Cont
 		 */
 		NO_CANDIDATE,
 		/**
-		 * CAT holds no promotion result for the attempt: its promotion runs have not decided it, or it reported a
+		 * CAT holds no promotion result for the attempt: its promotion replays have not decided it, or it reported a
 		 * conflict.
 		 */
 		NOT_MEASURED,
 		/**
-		 * The attempt's promotion runs did not make it the working candidate.
+		 * The attempt's promotion replays did not make it the working candidate.
 		 */
 		NOT_PROMOTED,
 		/**

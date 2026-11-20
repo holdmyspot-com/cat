@@ -621,7 +621,7 @@ public final class Transitions
 	}
 
 	/**
-	 * Assigns an unassigned promotion run of the prompt author attempt under validation.
+	 * Assigns an unassigned promotion replay of the prompt author attempt under validation.
 	 *
 	 * @param draft the state
 	 * @param admission the admission
@@ -635,21 +635,21 @@ public final class Transitions
 		if (promptAuthor == null)
 			throw new IllegalArgumentException("No prompt author attempt " + admission.series() +
 			" is under validation");
-		List<PromotionRun> runs = new ArrayList<>(promptAuthor.runs());
+		List<PromotionReplay> runs = new ArrayList<>(promptAuthor.runs());
 		for (int i = 0; i < runs.size(); ++i)
 		{
-			PromotionRun run = runs.get(i);
+			PromotionReplay run = runs.get(i);
 			Sha256 snapshot = Promotion.snapshot(promptAuthor, run, draft.working.snapshot());
 			if (run.trial() == null && snapshot.equals(admission.snapshot()) &&
 				Promotion.isSameTestCase(run.testCase(), admission.testCase()))
 			{
-				runs.set(i, new PromotionRun(run.role(), run.testCase(), key, null));
+				runs.set(i, new PromotionReplay(run.role(), run.testCase(), key, null));
 				draft.updatePromptAuthor(new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
 					promptAuthor.snapshot(), runs, promptAuthor.minimality()));
 				return run.testCase();
 			}
 		}
-		throw new IllegalArgumentException("No unassigned promotion run matches " + admission);
+		throw new IllegalArgumentException("No unassigned promotion replay matches " + admission);
 	}
 
 	/**
@@ -851,7 +851,7 @@ public final class Transitions
 			throw new IllegalStateException("No pending prompt author attempt " + number + " addresses " + cell);
 		}
 		++draft.promptAuthorAttempts;
-		List<PromotionRun> runs = List.of();
+		List<PromotionReplay> runs = List.of();
 		if (!submit.snapshot().equals(draft.working.snapshot()))
 		{
 			List<DrawnTestCase> failures = draft.developmentFailures.stream().map(Failure::testCase).toList();
@@ -909,7 +909,7 @@ public final class Transitions
 				next.accepted(), next.acceptedRuns(), next));
 			return;
 		}
-		List<PromotionRun> runs = Promotion.resetRuns(promptAuthor.runs());
+		List<PromotionReplay> runs = Promotion.resetRuns(promptAuthor.runs());
 		draft.promptAuthor = new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(), snapshot, runs, next);
 	}
 

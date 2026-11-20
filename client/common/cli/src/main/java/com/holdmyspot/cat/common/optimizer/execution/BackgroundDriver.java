@@ -13,9 +13,9 @@ import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Durable background driver identity and cancellation mailbox. Only the driver writes its identity, while a
- * cancelling command writes a request addressed to that identity. A later run cannot consume an older request.
+ * cancelling command writes a request addressed to that identity. A later driver cannot consume an older request.
  */
-public final class BackgroundRun implements AutoCloseable
+public final class BackgroundDriver implements AutoCloseable
 {
 	private final Path lockFile;
 	private final String token;
@@ -41,7 +41,7 @@ public final class BackgroundRun implements AutoCloseable
 	 * @param replacer atomically replaces state files
 	 * @throws IOException if state cannot be stored
 	 */
-	public BackgroundRun(Path lockFile, Instant started, JsonMapper json, FileReplacer replacer) throws IOException
+	public BackgroundDriver(Path lockFile, Instant started, JsonMapper json, FileReplacer replacer) throws IOException
 	{
 		this.lockFile = lockFile;
 		this.token = UUID.randomUUID().toString();

@@ -829,7 +829,7 @@ public final class GuardPilot
 				{
 					String reason = SLICE_ENDED;
 					if (slice.settings().background())
-						reason = "The user cancelled the background run";
+						reason = "The user cancelled the background driver";
 					cancel(reason);
 					return null;
 				}
