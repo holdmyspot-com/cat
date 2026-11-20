@@ -173,7 +173,7 @@ public final class CodexSessionStartHookTest
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			writeReadingGuidance(plugin);
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-run-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-session-"));
 			Files.writeString(Files.createDirectories(plugin.resolve("rules/common")).resolve("rule.md"), "rule");
 			Map<String, String> environment = new HashMap<>();
 			CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin"), HarnessDependencyCaches.NONE, sessionFolder,

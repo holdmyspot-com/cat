@@ -221,11 +221,11 @@ public final class ClaudeSessionStartHookTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-run-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-session-"));
 			write(plugin, "rules/common/rule.md", "rule");
 			SessionRequestAccess access = new SessionRequestAccess(sessionFolder.resolve("requests"),
 				sessionFolder.resolve("responses"),
-				sessionFolder.resolve("requested-runs"), sessionFolder.resolve("request-session"),
+				sessionFolder.resolve("requested-results"), sessionFolder.resolve("request-session"),
 				SessionRequestAccess.Shell.POSIX);
 			Map<String, String> environment = new HashMap<>(access.environment());
 			environment.put("CLAUDE_PLUGIN_ROOT", plugin.toString());
@@ -250,11 +250,11 @@ public final class ClaudeSessionStartHookTest
 		{
 			Path plugin = cleanup.add(Files.createTempDirectory("cat-plugin-rules-"));
 			Path project = cleanup.add(Files.createTempDirectory("cat-project-rules-"));
-			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-run-"));
+			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-session-"));
 			write(plugin, "rules/common/rule.md", "rule");
 			SessionRequestAccess access = new SessionRequestAccess(sessionFolder.resolve("requests"),
 				sessionFolder.resolve("responses"),
-				sessionFolder.resolve("requested-runs"), sessionFolder.resolve("request-session"),
+				sessionFolder.resolve("requested-results"), sessionFolder.resolve("request-session"),
 				SessionRequestAccess.Shell.POSIX);
 			Map<String, String> sessionEnvironment = ClaudeRunner.processEnvironment(runner, Map.of("PATH", ""),
 				HarnessDependencyCaches.NONE, sessionFolder.resolve("missing-settings.json"), sessionFolder, access);

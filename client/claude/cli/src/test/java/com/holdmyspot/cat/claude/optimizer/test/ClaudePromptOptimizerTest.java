@@ -349,7 +349,7 @@ public final class ClaudePromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			Map<String, String> environment = new HashMap<>(Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE",
-				"1", "CAT_RUN", "1"));
+				"1", "CAT_NESTED_SESSION", "1"));
 			environment.put(Platform.current().homeVariable(), setup.home().toString());
 			List<String> before = tree(setup.root());
 			StringBuilder output = new StringBuilder();
@@ -401,16 +401,16 @@ public final class ClaudePromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Setup setup = setup(scope);
-			Path runs = scope.add(Files.createTempDirectory("claude-optimizer-run")).toRealPath();
-			try (RequestingNestedSession parent = new RequestingNestedSession(runs.resolve("parent"), new FileLocks(),
+			Path results = scope.add(Files.createTempDirectory("claude-optimizer-results")).toRealPath();
+			try (RequestingNestedSession parent = new RequestingNestedSession(results.resolve("parent"), new FileLocks(),
 				sessionRequests))
 			{
 				if (serveFirst)
 				{
 					AtomicInteger checks = new AtomicInteger();
-					Path project = Files.createDirectories(runs.resolve("project"));
-					SessionRequestForwarder.serve(RunnerSessions.COMMAND, "claude", runs, List.of("--project",
-						project.toString(), "--results", runs.resolve("runs").toString(), "--model",
+					Path project = Files.createDirectories(results.resolve("project"));
+					SessionRequestForwarder.serve(RunnerSessions.COMMAND, "claude", results, List.of("--project",
+						project.toString(), "--results", results.resolve("results").toString(), "--model",
 						"model-a", "--effort", "effort-a"), new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 						"{\"type\":\"complete\"}\n"), new StringWriter(), parent.requests(), () ->
 					{
@@ -420,7 +420,7 @@ public final class ClaudePromptOptimizerTest
 					});
 				}
 				Map<String, String> environment = new HashMap<>(Map.of("CLAUDE_CODE_SESSION_ID", SESSION_ID, "CLAUDECODE",
-				"1", "CAT_RUN", "1"));
+				"1", "CAT_NESTED_SESSION", "1"));
 				environment.put(SessionRequestAccess.REQUESTS_VARIABLE, parent.requests().toString());
 				environment.put(Platform.current().homeVariable(), setup.home().toString());
 				List<String> before = tree(setup.root());

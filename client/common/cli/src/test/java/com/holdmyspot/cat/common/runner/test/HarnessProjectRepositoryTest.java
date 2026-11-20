@@ -124,7 +124,7 @@ public final class HarnessProjectRepositoryTest
 	@Test
 	public void isolatesGitFromUserConfiguration()
 	{
-		Path gitHome = Path.of("run", "git-home");
+		Path gitHome = Path.of("session", "git-home");
 		Map<String, String> parent = Map.of("PATH", "/bin", "HOME", "/home/user", "GIT_DIR", "/elsewhere",
 			"GIT_CONFIG_GLOBAL", "/home/user/.gitconfig");
 

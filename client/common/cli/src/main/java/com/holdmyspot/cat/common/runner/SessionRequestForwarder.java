@@ -283,7 +283,7 @@ public final class SessionRequestForwarder
 	private static Optional<String> copyResults(JsonNode response, Path harnessResults, Path project)
 		throws IOException
 	{
-		String resultsCopy = response.path(SessionRequestBroker.RESULTS_COPY).asString("");
+		String resultsCopy = response.path(SessionRequestBroker.RESULTS_COPY_FIELD).asString("");
 		String sessionId = response.path(SessionRequestBroker.SESSION_ID).asString("");
 		if (resultsCopy.isEmpty() || !RecordCopy.isSessionId(sessionId))
 			return Optional.empty();
@@ -402,7 +402,7 @@ public final class SessionRequestForwarder
 		}
 		String status = response.path("status").asString("");
 		String reason = response.path("reason").asString("");
-		boolean kept = !response.path(SessionRequestBroker.RESULTS_COPY).asString("").isEmpty() &&
+		boolean kept = !response.path(SessionRequestBroker.RESULTS_COPY_FIELD).asString("").isEmpty() &&
 			RecordCopy.isSessionId(response.path(SessionRequestBroker.SESSION_ID).asString(""));
 		Optional<String> incomplete = copyResults(response, launch.resultsFolder().resolve(harness), launch.project());
 		if (route == Route.SERVER)

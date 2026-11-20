@@ -83,7 +83,7 @@ public final class ClaudeSessionsContractTest
 	{
 		// The host's managed settings are not read, so that the host cannot change what the contract finds
 		return ClaudeSessionsSecrets.getClaudeSessionsAccess().
-			newClaudeSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
+			newClaudeSessions(new RunnerSessions.Settings(jvm, root, root.resolve("results"),
 			List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge, List.of());
 	}

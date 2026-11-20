@@ -379,7 +379,8 @@ public final class CodexPromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Setup setup = setup(scope);
-			Map<String, String> environment = new HashMap<>(Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_RUN", "1"));
+			Map<String, String> environment = new HashMap<>(Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_NESTED_SESSION",
+				"1"));
 			environment.put(Platform.current().homeVariable(), setup.home().toString());
 			List<String> before = tree(setup.root());
 			StringBuilder output = new StringBuilder();
@@ -431,16 +432,16 @@ public final class CodexPromptOptimizerTest
 		try (TemporaryDirectories scope = new TemporaryDirectories())
 		{
 			Setup setup = setup(scope);
-			Path runs = scope.add(Files.createTempDirectory("codex-optimizer-run")).toRealPath();
-			try (RequestingNestedSession parent = new RequestingNestedSession(runs.resolve("parent"), new FileLocks(),
+			Path results = scope.add(Files.createTempDirectory("codex-optimizer-results")).toRealPath();
+			try (RequestingNestedSession parent = new RequestingNestedSession(results.resolve("parent"), new FileLocks(),
 				sessionRequests))
 			{
 				if (serveFirst)
 				{
 					AtomicInteger checks = new AtomicInteger();
-					Path project = Files.createDirectories(runs.resolve("project"));
-					SessionRequestForwarder.serve(RunnerSessions.COMMAND, "codex", runs, List.of("--project",
-						project.toString(), "--results", runs.resolve("runs").toString(), "--model",
+					Path project = Files.createDirectories(results.resolve("project"));
+					SessionRequestForwarder.serve(RunnerSessions.COMMAND, "codex", results, List.of("--project",
+						project.toString(), "--results", results.resolve("results").toString(), "--model",
 						"model-a", "--effort", "effort-a"), new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 						"{\"type\":\"complete\"}\n"), new StringWriter(), parent.requests(), () ->
 					{
@@ -449,7 +450,8 @@ public final class CodexPromptOptimizerTest
 						Thread.yield();
 					});
 				}
-				Map<String, String> environment = new HashMap<>(Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_RUN", "1"));
+				Map<String, String> environment = new HashMap<>(Map.of("CODEX_THREAD_ID", SESSION_ID, "CAT_NESTED_SESSION",
+					"1"));
 				environment.put(SessionRequestAccess.REQUESTS_VARIABLE, parent.requests().toString());
 				environment.put(Platform.current().homeVariable(), setup.home().toString());
 				List<String> before = tree(setup.root());

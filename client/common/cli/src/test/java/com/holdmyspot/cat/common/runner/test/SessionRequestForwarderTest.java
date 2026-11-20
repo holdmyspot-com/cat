@@ -140,12 +140,12 @@ public final class SessionRequestForwarderTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("forward-transcript-copy-"));
-			Path requests = Files.createDirectories(root.resolve("run/requests"));
-			Path resultsFolder = root.resolve("kept-runs");
+			Path requests = Files.createDirectories(root.resolve("session/requests"));
+			Path resultsFolder = root.resolve("kept-results");
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path artifact = Files.createDirectories(root.resolve("artifact"));
-			Path childRoot = root.resolve("child-runs");
-			Path responses = root.resolve("run/responses");
+			Path childRoot = root.resolve("child-results");
+			Path responses = root.resolve("session/responses");
 			AtomicInteger pauseCount = new AtomicInteger();
 			List<String> copied = new ArrayList<>();
 			String[] forwardedSlotId = {""};
@@ -237,9 +237,9 @@ public final class SessionRequestForwarderTest
 						List.of(rootCopy, childCopy));
 					manager.initialize(child, artifact, project, "fixture", List.of("fixture"));
 					manager.markCompleted(child);
-					Path kept = response.resolve("run");
+					Path kept = response.resolve("results-copy");
 					ResultsCopy.Result copyResult = ResultsCopy.copy(child.directory(), kept);
-					requireThat(copyResult.incomplete(), "keptRun").isEmpty();
+					requireThat(copyResult.incomplete(), "resultsCopy").isEmpty();
 				}
 				else
 				{
@@ -260,7 +260,7 @@ public final class SessionRequestForwarderTest
 						"{\"type\":\"turn_completed\"}\n" +
 						"{\"type\":\"turn_completed\"}\n" +
 						"{\"type\":\"completed\"}\n");
-					NestedSession copiedChild = new NestedSession("harnessa", childSlotId[0], response.resolve("run"));
+					NestedSession copiedChild = new NestedSession("harnessa", childSlotId[0], response.resolve("results-copy"));
 					requireThat(Files.isDirectory(copiedChild.directory().resolve("project")), "copiedProject").isTrue();
 					requireThat(Files.isRegularFile(response.resolve("transcript.jsonl")), "externalOutput").isTrue();
 					Path copiedRootTranscript = copiedChild.sessionTranscripts().resolve("rollout-root.jsonl");
@@ -274,7 +274,7 @@ public final class SessionRequestForwarderTest
 						put("status", "completed").put("reason", "").put("session_id", SESSION_ID).
 						put("transcript", response.resolve("transcript.jsonl").toString()).
 						put("receipt", copiedChild.directory().resolve("artifacts/receipt.json").toString()).
-						put("run", response.resolve("run").toString());
+						put("results_copy", response.resolve("results-copy").toString());
 					json.writeValue(response.resolve("response.json").toFile(), result);
 				}
 			};
@@ -321,9 +321,9 @@ public final class SessionRequestForwarderTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "forward-kept-project-")).
 				toRealPath();
-			Path requests = Files.createDirectories(root.resolve("run/requests"));
-			Path responses = Files.createDirectories(root.resolve("run/responses"));
-			Path resultsFolder = root.resolve("kept-runs");
+			Path requests = Files.createDirectories(root.resolve("session/requests"));
+			Path responses = Files.createDirectories(root.resolve("session/responses"));
+			Path resultsFolder = root.resolve("kept-results");
 			Path project = Files.createDirectories(root.resolve("campaign/trial/project"));
 			Path artifact = Files.createDirectories(root.resolve("artifact"));
 			// The parent runner unpacks the request's copy of the project below its response and runs the session there
@@ -354,14 +354,14 @@ public final class SessionRequestForwarderTest
 				NestedSession child = slot.create("harnessa");
 				slot.initialize(child, artifact, requestProject, "fixture", List.of("fixture"));
 				slot.markCompleted(child);
-				Path kept = response.resolve("run");
-				requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+				Path kept = response.resolve("results-copy");
+				requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "resultsCopy").isEmpty();
 				Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"completed\"}\n");
 				json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
 					put("format_version", 1).put("id", response.getFileName().toString()).put("harness", "harnessa").
 					put("status", "completed").put("reason", "").put("session_id", SESSION_ID).
 					put("transcript", response.resolve("transcript.jsonl").toString()).
-					put("run", kept.toString()));
+					put("results_copy", kept.toString()));
 			};
 			String[] arguments = {"--results", resultsFolder.toString(), "--project", project.toString(), "--model",
 				"model-a", "--effort", "effort-a"};
@@ -415,14 +415,14 @@ public final class SessionRequestForwarderTest
 				NestedSession child = slot.create("harnessa");
 				slot.initialize(child, artifact, fixture.project, "fixture", List.of("fixture"));
 				slot.markCompleted(child);
-				Path kept = response[0].resolve("run");
-				requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+				Path kept = response[0].resolve("results-copy");
+				requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "resultsCopy").isEmpty();
 				Files.writeString(response[0].resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
 				json.writeValue(response[0].resolve("response.json").toFile(), json.createObjectNode().
 					put("format_version", 1).put("id", response[0].getFileName().toString()).
 					put("harness", "harnessa").put("status", "completed").put("reason", "").
 					put("session_id", SESSION_ID).put("transcript", response[0].resolve("transcript.jsonl").toString()).
-					put("run", kept.toString()));
+					put("results_copy", kept.toString()));
 			}, new ByteArrayOutputStream(), new PrintWriter(fixture.errors, true));
 
 			requireThat(status, "status").withContext(fixture.errors, "errors").isEqualTo(0);
@@ -433,7 +433,7 @@ public final class SessionRequestForwarderTest
 			}
 			requireThat(copies, "copies").isEqualTo(List.of(results.resolve("harnessa").resolve(SESSION_ID)));
 			requireThat(Files.isDirectory(copies.getFirst().resolve("project")), "copiedProject").isTrue();
-			requireThat(Files.isDirectory(response[0].resolve("run")), "responseCopy").isTrue();
+			requireThat(Files.isDirectory(response[0].resolve("results-copy")), "responseCopy").isTrue();
 		}
 	}
 
@@ -762,8 +762,8 @@ public final class SessionRequestForwarderTest
 		Fixture(Path root) throws IOException
 		{
 			this.root = root;
-			this.requests = Files.createDirectories(root.resolve("run/requests"));
-			Files.createDirectories(root.resolve("run/responses"));
+			this.requests = Files.createDirectories(root.resolve("session/requests"));
+			Files.createDirectories(root.resolve("session/responses"));
 			this.project = Files.createDirectory(root.resolve("project"));
 			Files.writeString(project.resolve("marker"), "project bytes");
 		}
@@ -822,7 +822,7 @@ public final class SessionRequestForwarderTest
 				Path file = files.filter(path -> path.getFileName().toString().endsWith(".tar")).findFirst().
 					orElseThrow(() -> new IOException("No request"));
 				String id = file.getFileName().toString().replace(".tar", "");
-				return root.resolve("run/responses").resolve(id);
+				return root.resolve("session/responses").resolve(id);
 			}
 		}
 

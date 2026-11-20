@@ -186,7 +186,7 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @param jvm        the JVM scope
 	 * @param cleanup    deletes the fixture's directories
 	 * @param platform   the platform that the judge runs on
-	 * @param runs       how many other nested sessions the trial's results folder holds besides the trial and one sibling
+	 * @param others     how many other nested sessions the trial's results folder holds besides the trial and one sibling
 	 * @param bubblewrap whether the caller's {@code PATH} has bubblewrap
 	 * @return how the session ended, with the judge's sandbox if the session completed
 	 * @throws IOException          if a fixture cannot be created or read
@@ -195,20 +195,20 @@ public final class CodexJudgeEvidenceAccessTest
 	 * @throws TimeoutException     if the session does not finish
 	 */
 	private static JudgeStart startJudge(TestJvmScope jvm, TemporaryDirectories cleanup, Platform platform,
-		int runs, boolean bubblewrap) throws IOException, InterruptedException, ExecutionException, TimeoutException
+		int others, boolean bubblewrap) throws IOException, InterruptedException, ExecutionException, TimeoutException
 	{
 		Path hostProject = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-host-project-")).
 			toRealPath();
 		Path instructions = Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.");
 		Path artifact = RoleRuleFixtures.write(hostProject.resolve("artifact"));
 		Path judgeSource = Files.createDirectories(hostProject.resolve("judge-source"));
-		Path resultsFolder = hostProject.resolve(".cat/sessions/session-1/optimizer-runs/codex");
+		Path resultsFolder = hostProject.resolve(".cat/sessions/session-1/optimizer-nested-sessions/codex");
 		NestedSessionManager trials = new NestedSessionManager(jvm.fileLocks(), resultsFolder, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		NestedSession trial = trials.create("codex");
 		NestedSession sibling = trials.create("codex");
-		for (int i = 0; i < runs; ++i)
-			Files.createDirectories(resultsFolder.resolve("other-run-" + i));
+		for (int i = 0; i < others; ++i)
+			Files.createDirectories(resultsFolder.resolve("other-session-" + i));
 		Path effects = trial.directory().resolve("project");
 		Path trialArtifacts = trial.directory().resolve("artifacts");
 		Path bin = Files.createDirectories(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),

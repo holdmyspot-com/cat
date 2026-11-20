@@ -492,16 +492,16 @@ public final class ReconciliationTest
 			FakeProcessHandle completed = new FakeProcessHandle(5002, harnessStart, true);
 			FakeProcessHandle owned = new FakeProcessHandle(6002, harnessStart, true);
 			harness.processes(new FakeProcessHandle(6001, ownerStart, true), orphan1, orphan2, completed, owned);
-			writeManifest(resultsFolders.get(0).resolve("claude/run-1"), """
+			writeManifest(resultsFolders.get(0).resolve("claude/session-1"), """
 				{"state": "running", "owner_pid": 4001, "owner_started_at": "%s",
 				"harness_pid": "4002", "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
-			writeManifest(resultsFolders.get(1).resolve("claude/run-2"), """
+			writeManifest(resultsFolders.get(1).resolve("claude/session-2"), """
 				{"state": "running", "owner_pid": 4003, "owner_started_at": "%s",
 				"harness_pid": 4004, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
-			writeManifest(resultsFolders.get(0).resolve("claude/run-3"), """
+			writeManifest(resultsFolders.get(0).resolve("claude/session-3"), """
 				{"state": "completed", "owner_pid": 5001, "owner_started_at": "%s",
 				"harness_pid": 5002, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
-			writeManifest(resultsFolders.get(1).resolve("claude/run-4"), """
+			writeManifest(resultsFolders.get(1).resolve("claude/session-4"), """
 				{"state": "running", "owner_pid": 6001, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(ownerStart, harnessStart));
 			try (Driver _ = harness.open())

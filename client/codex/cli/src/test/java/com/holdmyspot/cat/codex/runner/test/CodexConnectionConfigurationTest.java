@@ -713,7 +713,7 @@ public final class CodexConnectionConfigurationTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-filesystem-policy-")).toRealPath();
 			Path parentWrites = Files.createDirectories(root.resolve("parent-writes"));
 			Path keptCache = Files.createDirectories(parentWrites.resolve("npm-cache"));
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path protectedFolder = Files.createDirectories(sessionFolder.resolve("home/protected"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			HarnessDependencyCaches caches = new HarnessDependencyCaches(List.of(keptCache), Map.of());
@@ -748,7 +748,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-cache-denials-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path emptyCache = Files.createDirectories(root.resolve("npm-cache"));
 			Path gitCache = Files.createDirectories(root.resolve("m2-cache"));
 			Path existingGit = Files.createDirectories(gitCache.resolve(".git"));
@@ -800,7 +800,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-extra-permissions-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder, registry), List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of("api.example", "registry.example")), false, List.of());
@@ -835,7 +835,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-empty-hooks-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path home = sessionFolder.resolve("home");
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of()));
@@ -875,7 +875,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-trusted-files-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path home = sessionFolder.resolve("home");
 			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(sessionFolder, List.of(),
 				List.of(), Set.of()));
@@ -911,7 +911,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-nested-denial-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			Path inner = Files.writeString(secret.resolve("hidden.txt"), "private");
 			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(inner, secret),
@@ -943,7 +943,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-regranted-denial-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path secret = Files.createDirectories(root.resolve("secret"));
 			Path home = Files.createDirectories(secret.resolve("home"));
 			Path login = Files.writeString(Files.createDirectories(home.resolve(".claude")).
@@ -978,19 +978,19 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-regranted-denial-")).toRealPath();
-			Path runs = Files.createDirectories(root.resolve("runs"));
-			Path home = Files.createDirectories(runs.resolve("run/home"));
+			Path results = Files.createDirectories(root.resolve("results"));
+			Path home = Files.createDirectories(results.resolve("session/home"));
 			Path login = Files.writeString(Files.createDirectories(home.resolve(".claude")).
 				resolve(".credentials.json"), "{}");
-			Path trials = Files.createDirectories(runs.resolve("trials"));
+			Path trials = Files.createDirectories(results.resolve("trials"));
 			Path destination = home.resolve("config.toml");
-			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, runs.resolve("run/project"));
+			CodexConnectionConfiguration.copy(root.resolve("missing.toml"), destination, results.resolve("session/project"));
 
-			CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of(runs, trials, login));
+			CodexConnectionConfiguration.addSessionProfile(destination, List.of(), List.of(results, trials, login));
 
 			JsonNode filesystem = TomlMapper.builder().build().readTree(Files.readString(destination)).
 				path("permissions").path("cat-denied-reads").path("filesystem");
-			requireThat(filesystem.path(runs.toString()).asString(), "runs").isEqualTo("deny");
+			requireThat(filesystem.path(results.toString()).asString(), "results").isEqualTo("deny");
 			requireThat(filesystem.path(login.toString()).asString(), "login").isEqualTo("deny");
 			requireThat(filesystem.has(trials.toString()), "trials").isFalse();
 		}
@@ -1046,7 +1046,7 @@ public final class CodexConnectionConfigurationTest
 			if (managed)
 				file = managedLayer;
 			Files.writeString(file, layer);
-			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("run"),
+			ChildPolicy policy = ChildPolicy.intersect(ParentPolicy.UNSANDBOXED, new ChildNeeds(root.resolve("session"),
 				List.of(), List.of(), Set.of()));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
@@ -1068,7 +1068,7 @@ public final class CodexConnectionConfigurationTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-narrowing-layer-"));
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path system = Files.writeString(root.resolve("config.toml"), """
 				model = "gpt-6-sol"
 				sandbox_mode = "workspace-write"

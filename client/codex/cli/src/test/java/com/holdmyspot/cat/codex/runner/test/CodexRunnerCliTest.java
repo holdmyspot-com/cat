@@ -173,10 +173,10 @@ public final class CodexRunnerCliTest
 	@Test
 	public void parsesReadOnlyEvidence() throws IOException
 	{
-		Path effects = Path.of("/runs/trial/project").toAbsolutePath();
-		Path artifacts = Path.of("/runs/trial/artifacts").toAbsolutePath();
+		Path effects = Path.of("/results/trial/project").toAbsolutePath();
+		Path artifacts = Path.of("/results/trial/artifacts").toAbsolutePath();
 		HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-			Path.of("/artifact").toAbsolutePath().toString(), "--results", Path.of("/runs").toAbsolutePath().toString(),
+			Path.of("/artifact").toAbsolutePath().toString(), "--results", Path.of("/results").toAbsolutePath().toString(),
 			"--read-only-evidence", effects.toString(), "--read-only-evidence",
 			artifacts.toString(), "--model", "gpt-6-luna", "--effort", "low"}, HarnessTemporaryRoot.withoutSession(
 			"no session"));
@@ -193,7 +193,7 @@ public final class CodexRunnerCliTest
 	public Object[][] missingEvidence()
 	{
 		String artifact = Path.of("/artifact").toAbsolutePath().toString();
-		String resultsFolder = Path.of("/runs").toAbsolutePath().toString();
+		String resultsFolder = Path.of("/results").toAbsolutePath().toString();
 		return new Object[][]{{new String[]{"serve", "--artifact", artifact, "--results", resultsFolder,
 			"--read-only-evidence"}}, {new String[]{"serve", "--artifact", artifact, "--results", resultsFolder,
 			"--read-only-evidence", "--install-cat"}}};
@@ -224,7 +224,7 @@ public final class CodexRunnerCliTest
 	public void refusesRelativeEvidencePath() throws IOException
 	{
 		CodexRunnerCli.options(new String[]{"serve", "--artifact", Path.of("/artifact").toAbsolutePath().toString(),
-			"--results", Path.of("/runs").toAbsolutePath().toString(), "--read-only-evidence", "trial/project",
+			"--results", Path.of("/results").toAbsolutePath().toString(), "--read-only-evidence", "trial/project",
 			"--model", "gpt-6-luna", "--effort", "low"},
 			HarnessTemporaryRoot.withoutSession("no session"));
 	}
@@ -255,7 +255,7 @@ public final class CodexRunnerCliTest
 				HarnessCapacity capacity = HarnessCapacity.of(jvm.fileLocks(),
 					root.resolve("locks"), 1, second, clock);
 				String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-					root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--capacity-wait",
+					root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--capacity-wait",
 					"5", "--model", "gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString()};
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
@@ -283,7 +283,7 @@ public final class CodexRunnerCliTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
-			Path manifest = createSession(jvm, root.resolve("runs"));
+			Path manifest = createSession(jvm, root.resolve("results"));
 			// A start that differs from the one of the process holding the recorded identifier means that the
 			// identifier now belongs to another process, so the runner that created the nested session has ended
 			Files.writeString(manifest, Files.readString(manifest).replaceFirst("\"owner_started_at\": \"[^\"]+\"",
@@ -310,7 +310,7 @@ public final class CodexRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			// The process that runs the test owns the nested session and is alive
-			Path manifest = createSession(jvm, root.resolve("runs"));
+			Path manifest = createSession(jvm, root.resolve("results"));
 
 			startUntilCapacityIsRequested(jvm, root);
 
@@ -344,7 +344,7 @@ public final class CodexRunnerCliTest
 	private static void startUntilCapacityIsRequested(TestJvmScope jvm, Path root) throws IOException
 	{
 		String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-			root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model", "gpt-6-luna",
+			root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model", "gpt-6-luna",
 			"--effort", "low", "--policy-bound", policyBound(root).toString()};
 		try
 		{
@@ -391,7 +391,7 @@ public final class CodexRunnerCliTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				List<String> args = new ArrayList<>(List.of("serve", "--artifact", root.resolve("artifact").toString(),
-					"--project", root.resolve("project").toString(), "--results", root.resolve("runs").toString()));
+					"--project", root.resolve("project").toString(), "--results", root.resolve("results").toString()));
 				args.addAll(profile);
 				try
 				{
@@ -407,7 +407,7 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(e.getMessage(), "message").startsWith(expected).contains("`codex debug models`");
 				}
-				requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
+				requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 			}
 		}
 	}
@@ -452,7 +452,7 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(e.getMessage(), "message").contains("--agent").contains("--model").contains("--effort");
 				}
-				requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
+				requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 			}
 		}
 	}
@@ -496,7 +496,7 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(e.getMessage(), "message").contains(AGENT).contains("no " + missing + " ");
 				}
-				requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
+				requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 			}
 		}
 	}
@@ -518,7 +518,7 @@ public final class CodexRunnerCliTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 				Path artifact = artifactWithAgent(root, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"none\"\n");
 				HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-					artifact.toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat"},
+					artifact.toString(), "--results", root.resolve("results").toString(), "--agent", AGENT, "--install-cat"},
 					HarnessTemporaryRoot.withoutSession("no session"));
 				requireThat(options.model(), "model").isEqualTo("gpt-6-luna");
 				requireThat(options.effort(), "effort").isEqualTo("none");
@@ -541,7 +541,7 @@ public final class CodexRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = artifactWithAgent(root, "model = \"gpt-6-luna\"\nmodel_reasoning_effort = \"none\"\n");
 			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-				artifact.toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT, "--install-cat",
+				artifact.toString(), "--results", root.resolve("results").toString(), "--agent", AGENT, "--install-cat",
 				"--slot-id", "s-1", "--resume-slot", "019a2b3c-4d5e-7f60-8a9b-0c1d2e3f4a5b", "--model", "gpt-5.5",
 				"--effort", "high"}, HarnessTemporaryRoot.withoutSession("no session"));
 
@@ -561,7 +561,7 @@ public final class CodexRunnerCliTest
 	private static List<String> launch(Path root, Path artifact)
 	{
 		return new ArrayList<>(List.of("serve", "--artifact", artifact.toString(), "--project",
-			root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--agent", AGENT,
+			root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--agent", AGENT,
 			"--install-cat"));
 	}
 
@@ -848,7 +848,7 @@ public final class CodexRunnerCliTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			Path artifact = root.resolve("artifact");
 			HarnessRunnerOptions options = CodexRunnerCli.options(new String[]{"serve", "--artifact",
-				artifact.toString(), "--results", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort",
+				artifact.toString(), "--results", root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort",
 				"low"}, HarnessTemporaryRoot.withoutSession("no session"));
 
 			requireThat(options.artifact(), "artifact").isEqualTo(artifact);
@@ -869,7 +869,7 @@ public final class CodexRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model",
+				root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model",
 				"gpt-6-luna", "--effort", "low"};
 			try
 			{
@@ -883,7 +883,7 @@ public final class CodexRunnerCliTest
 			{
 				requireThat(e.getMessage(), "message").contains("--policy-bound");
 			}
-			requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
+			requireThat(Files.exists(root.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}
 
@@ -904,7 +904,7 @@ public final class CodexRunnerCliTest
 				Set.of("api.openai.com"), false);
 			List<String> requested = PolicyBoundFile.boundArguments(JsonMapper.builder().build(), List.of("serve",
 				"--artifact", root.resolve("artifact").toString(), "--project", root.resolve("project").toString(),
-				"--results", root.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort", "low"),
+				"--results", root.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low"),
 				root.resolve("request"), requesting);
 			try
 			{
@@ -938,7 +938,7 @@ public final class CodexRunnerCliTest
 			Path extra = Files.writeString(root.resolve("extra.json"),
 				"{\"format_version\": 1, \"hosts\": [\"*.example\"]}");
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model",
+				root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model",
 				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--extra-permissions",
 				extra.toString()};
 
@@ -966,7 +966,7 @@ public final class CodexRunnerCliTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "runner-cli-"));
 			String[] args = {"serve", "--artifact", root.resolve("artifact").toString(), "--project",
-				root.resolve("project").toString(), "--results", root.resolve("runs").toString(), "--model",
+				root.resolve("project").toString(), "--results", root.resolve("results").toString(), "--model",
 				"gpt-6-luna", "--effort", "low", "--policy-bound", policyBound(root).toString(), "--capacity-held"};
 			try
 			{
@@ -1039,13 +1039,13 @@ public final class CodexRunnerCliTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--results",
-				home.resolve("runs").toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment,
+				home.resolve("results").toString(), "--model", "gpt-6-luna", "--effort", "low"}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true));
 
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(errors.toString(), "errors").contains("Run this command from a Claude Code or Codex session.");
 			requireThat(output.size(), "outputSize").isZero();
-			requireThat(Files.exists(home.resolve("runs")), "resultsFolderExists").isFalse();
+			requireThat(Files.exists(home.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}
 
@@ -1070,7 +1070,7 @@ public final class CodexRunnerCliTest
 			ByteArrayOutputStream output = new ByteArrayOutputStream();
 
 			int status = CodexRunnerCli.launch(new String[]{"serve", "--project", project.toString(), "--model",
-					"gpt-6-luna", "--effort", "low", "--results", home.resolve("runs").toString()}, environment,
+					"gpt-6-luna", "--effort", "low", "--results", home.resolve("results").toString()}, environment,
 				Yielding.waiting(), new StringReader(""), output, new PrintWriter(errors, true), () -> plugin,
 				() -> ToolScope.forSession(project, environment, SessionHarness.installed(), Yielding.waiting(),
 					GitProjects.IGNORING));
@@ -1081,7 +1081,7 @@ public final class CodexRunnerCliTest
 			requireThat(output.size(), "outputSize").isZero();
 			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(THREAD_ID).resolve("requests")),
 				"requestsExist").isFalse();
-			requireThat(Files.exists(home.resolve("runs")), "resultsFolderExists").isFalse();
+			requireThat(Files.exists(home.resolve("results")), "resultsFolderExists").isFalse();
 		}
 	}
 
@@ -1151,7 +1151,7 @@ public final class CodexRunnerCliTest
 		{
 			{Map.of("CLAUDECODE", "1"), "Claude Code runs this command, and CAT's Codex plugin holds no request " +
 				"server for a Claude Code session. Run the runner of CAT's Claude Code plugin instead."},
-			{Map.of("CAT_RUN", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session"}
+			{Map.of("CAT_NESTED_SESSION", "1", "CODEX_THREAD_ID", "thread"), "codex-runner refuses to start a session"}
 		};
 	}
 

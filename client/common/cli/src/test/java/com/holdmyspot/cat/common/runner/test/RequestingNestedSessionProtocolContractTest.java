@@ -55,7 +55,7 @@ public final class RequestingNestedSessionProtocolContractTest
 		JsonNode response = json.readTree(responseDirectory.resolve("response.json").toFile());
 		requireThat(response.path("status").asString(), "responseStatus").isEqualTo("completed");
 		Path transcript = Path.of(response.path("transcript").asString());
-		Path retainedSession = Path.of(response.path("run").asString());
+		Path retainedSession = Path.of(response.path("results_copy").asString());
 		requireThat(response.path("session_id").asString(), "sessionId").isEqualTo(RequestingNestedSession.SESSION_ID);
 		List<String> prompts = sessionOutput.received().stream().map(record -> readPrompt(json, record)).
 			filter(prompt -> !prompt.isEmpty()).toList();
@@ -72,7 +72,7 @@ public final class RequestingNestedSessionProtocolContractTest
 	 */
 	private static NestedSessionOutput serveRequestingSession(Inputs inputs, JsonMapper json) throws IOException
 	{
-		try (RequestingNestedSession parent = new RequestingNestedSession(inputs.root().resolve("requesting-run"),
+		try (RequestingNestedSession parent = new RequestingNestedSession(inputs.root().resolve("requesting-session"),
 			new FileLocks(), 1, turn -> inputs.replies().get(turn - 1)))
 		{
 			try (PipedReader input = new PipedReader(); PipedWriter turns = new PipedWriter(input);

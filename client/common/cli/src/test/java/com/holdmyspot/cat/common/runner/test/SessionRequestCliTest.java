@@ -374,17 +374,17 @@ public final class SessionRequestCliTest
 
 			// The runner copies the extracted project into the nested session, whose project links to read-only copies of the
 			// targets beside it, which the runner checks for changes
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(copy, nestedSession);
 			Path sessionProject = nestedSession.directory().resolve("project");
 			Path sessionLinkTargets = NestedSessionManager.linkTargets(nestedSession.directory()).toRealPath();
 			for (String name : List.of("notes.md", "tree"))
 			{
-				requireThat(Files.isSymbolicLink(sessionProject.resolve(name)), name + "InRun").isTrue();
+				requireThat(Files.isSymbolicLink(sessionProject.resolve(name)), name + "InSession").isTrue();
 				requireThat(sessionProject.resolve(name).toRealPath().startsWith(sessionLinkTargets),
-					name + "InRunLinkTargets").isTrue();
+					name + "InSessionLinkTargets").isTrue();
 			}
 			requireReadOnlyCopies(sessionProject);
 			requireThat(manager.changedLinkCopies(nestedSession), "unchanged").isEmpty();
@@ -482,8 +482,8 @@ public final class SessionRequestCliTest
 				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_NESTED_SESSION);
 			}
 			Path copy = inputs.resolve("project");
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(copy, nestedSession);
 			Path sessionProject = nestedSession.directory().resolve("project");

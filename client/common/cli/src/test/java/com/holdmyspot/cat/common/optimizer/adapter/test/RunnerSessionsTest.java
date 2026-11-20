@@ -465,10 +465,10 @@ public final class RunnerSessionsTest
 			try (TemporaryDirectories cleanup = new TemporaryDirectories())
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-				Path resultsFolder = root.resolve("runs").normalize();
+				Path resultsFolder = root.resolve("results").normalize();
 				TestSessions sessions = port(jvm, resultsFolder, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					new CopyOnWriteArrayList<>(), List.of());
-				Path heldOutResultsFolder = root.resolve("runs-held_out").normalize();
+				Path heldOutResultsFolder = root.resolve("results-held_out").normalize();
 				requireThat(sessions.resultsFolders(), "resultsFolders").isEqualTo(List.of(resultsFolder,
 					heldOutResultsFolder));
 			}
@@ -496,7 +496,7 @@ public final class RunnerSessionsTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
-				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				TestSessions sessions = port(jvm, root.resolve("results"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 					arguments, List.of(Turn.replies("ok")));
 
 				await(sessions.start(request(new TrialProfile("model-a", "high"), source, List.of(), "reasoning")));
@@ -536,7 +536,7 @@ public final class RunnerSessionsTest
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
-				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				TestSessions sessions = port(jvm, root.resolve("results"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 					arguments, List.of(Turn.replies("ok")));
 
 				for (boolean controlSource : List.of(true, false))
@@ -572,7 +572,7 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				Path resultsFolder = root.resolve("runs");
+				Path resultsFolder = root.resolve("results");
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
 				List<ExtraPermissions> files = new CopyOnWriteArrayList<>();
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, resultsFolder, resultsFolder, List::of,
@@ -628,7 +628,7 @@ public final class RunnerSessionsTest
 					new WorkspaceFile("logs/build.log", "{{before}}\nBuild finished on {{expected_outcome}}.\n")),
 					Map.of("before", lines), "2025-03-04");
 				List<String> received = new CopyOnWriteArrayList<>();
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 					false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 				{
@@ -674,7 +674,7 @@ public final class RunnerSessionsTest
 			Path catCopy = manifest(root.resolve("plugins/workflow"), "workflow", PluginInfo.CAT_REPOSITORY);
 			Path otherCopy = manifest(root.resolve("plugins/cat"), "cat", "https://example.com/cat");
 			List<List<String>> arguments = new CopyOnWriteArrayList<>();
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("results"), List::of,
 				true, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
@@ -735,7 +735,7 @@ public final class RunnerSessionsTest
 			write(home.resolve(".cat/rules/common/personal.md"), "Personal rule");
 			TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
 				Path.of("out")), List.of(new TrialPlugin.Mapping(Path.of("rules/include"), Path.of("rules/include"))), null);
-			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
+			TestSessions sessions = new TestSessions(new RunnerSessions.Settings(jvm, artifact, root.resolve("results"),
 				List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer(), Optional.of(home.resolve(".cat/rules"))), (_, _, _) ->
 			{
@@ -794,7 +794,7 @@ public final class RunnerSessionsTest
 			write(heldOut.resolve("evidence.txt"), "Held-out evidence");
 			TrialPlugin plugin = new TrialPlugin("cat@market", "0".repeat(64), new TrialPlugin.Installed(),
 				List.of(), null);
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"),
 				() -> List.of(heldOut), false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (_, _, _) ->
@@ -827,7 +827,7 @@ public final class RunnerSessionsTest
 				write(base.resolve("rules/common/default.md"), "Guidance");
 				TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
 					Path.of("out")), List.of(), null);
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(process, artifact, root.resolve("runs"),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(process, artifact, root.resolve("results"),
 					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (_, _, _) ->
@@ -870,7 +870,7 @@ public final class RunnerSessionsTest
 				write(base.resolve("rules/common/default.md"), "Guidance");
 				TrialPlugin plugin = new TrialPlugin("cat", "0".repeat(64), new TrialPlugin.Build(List.of("build"),
 					Path.of("out")), List.of(), null);
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(process, artifact, root.resolve("runs"),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(process, artifact, root.resolve("results"),
 					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (_, _, _) ->
@@ -908,7 +908,7 @@ public final class RunnerSessionsTest
 
 			for (boolean installCat : List.of(true, false))
 			{
-				TestSessions sessions = new TestSessions(new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"),
+				TestSessions sessions = new TestSessions(new RunnerSessions.Settings(jvm, artifact, root.resolve("results"),
 					List::of, installCat, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					Yielding.fileReplacer()),
 					(_, _, _) ->
@@ -976,13 +976,13 @@ public final class RunnerSessionsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 				false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-					root.resolve("runs"), Clock.systemUTC(),
+					root.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				NestedSession nestedSession = manager.create(TestSessions.HARNESS);
 				manager.initialize(nestedSession, root, root, "scripted", List.of("scripted"));
@@ -1022,14 +1022,14 @@ public final class RunnerSessionsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 				false,
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			List<String> sent = new CopyOnWriteArrayList<>();
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-					root.resolve("runs"), Clock.systemUTC(),
+					root.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				NestedSession nestedSession = manager.create(TestSessions.HARNESS);
 				manager.initialize(nestedSession, root, root, "scripted", List.of("scripted"));
@@ -1080,15 +1080,15 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				Path runs = root.resolve("runs");
+				Path results = root.resolve("results");
 				List<String> requests = new CopyOnWriteArrayList<>();
 				CountDownLatch turnReceived = new CountDownLatch(1);
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, runs, List::of, false, Map.of(),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, results, List::of, false, Map.of(),
 					root,
 					HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 				{
-					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runs,
+					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), results,
 						Clock.systemUTC(), Yielding.fileReplacer());
 					NestedSession nestedSession = manager.create(TestSessions.HARNESS);
 					manager.initialize(nestedSession, root, root, "scripted", List.of("scripted"));
@@ -1148,7 +1148,7 @@ public final class RunnerSessionsTest
 				{
 				}, Clock.systemUTC());
 				List<List<String>> arguments = new CopyOnWriteArrayList<>();
-				TestSessions sessions = port(jvm, root.resolve("runs"), capacity, Clock.systemUTC(), arguments,
+				TestSessions sessions = port(jvm, root.resolve("results"), capacity, Clock.systemUTC(), arguments,
 					List.of(Turn.replies("never")));
 				try (HarnessCapacity.Permit _ = capacity.acquire())
 				{
@@ -1187,7 +1187,7 @@ public final class RunnerSessionsTest
 				{
 				}, Clock.systemUTC());
 				CountDownLatch entered = new CountDownLatch(1);
-				TestSessions sessions = port(jvm, root.resolve("runs"), capacity, Clock.systemUTC(),
+				TestSessions sessions = port(jvm, root.resolve("results"), capacity, Clock.systemUTC(),
 					new CopyOnWriteArrayList<>(), List.of(Turn.blocksUntilInterrupted().announcing(entered)));
 				SessionHandle handle = sessions.start(request(source, List.of(), "one"));
 				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
@@ -1224,7 +1224,7 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+				TestSessions sessions = port(jvm, root.resolve("results"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 					new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.fails(), Turn.replies("third")));
 
 				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two", "three")));
@@ -1253,7 +1253,7 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), Clock.systemUTC(),
+			TestSessions sessions = port(jvm, root.resolve("results"), HarnessCapacity.unlimited(), Clock.systemUTC(),
 				new CopyOnWriteArrayList<>(), List.of(Turn.replies("first"), Turn.rejected()));
 
 			SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
@@ -1283,7 +1283,7 @@ public final class RunnerSessionsTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 				Path source = Files.createDirectories(root.resolve("source"));
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 					false,
 					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
@@ -1316,7 +1316,7 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			String refusal = "No request server serves this session. Start the request server.";
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
@@ -1345,7 +1345,7 @@ public final class RunnerSessionsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-observer-failure-"));
 			Path source = Files.createDirectories(root.resolve("source"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			List<String> received = new CopyOnWriteArrayList<>();
 			AtomicReference<Thread> bridgeThread = new AtomicReference<>();
@@ -1421,7 +1421,7 @@ public final class RunnerSessionsTest
 				CountDownLatch entered = new CountDownLatch(1);
 				List<Turn> script = List.of(Turn.replies("first"),
 					Turn.blocksUntilInterrupted(TestSessions.OUTPUT_EVENT).announcing(entered));
-				TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+				TestSessions sessions = port(jvm, root.resolve("results"), HarnessCapacity.unlimited(), clock,
 					new CopyOnWriteArrayList<>(), script);
 				SessionHandle handle = startPollingOften(sessions, request(source, List.of(), "one", "two", "three"));
 				requireThat(entered.await(60, TimeUnit.SECONDS), "entered").isTrue();
@@ -1479,7 +1479,7 @@ public final class RunnerSessionsTest
 				CountDownLatch entered = new CountDownLatch(1);
 				List<Turn> script = List.of(Turn.replies("first"), Turn.blocksUntilInterrupted().announcing(entered));
 				Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
-				TestSessions sessions = port(jvm, artifact, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+				TestSessions sessions = port(jvm, artifact, root.resolve("results"), HarnessCapacity.unlimited(), clock,
 					new CopyOnWriteArrayList<>(), script);
 				SessionHandle handle = startPollingOften(sessions, request(role, SESSION_PROFILE, source, List.of(),
 					"one", "two", "three"));
@@ -1523,7 +1523,7 @@ public final class RunnerSessionsTest
 			AtomicReference<NestedSession> ownedSession = new AtomicReference<>();
 			AtomicReference<Path> authorProject = new AtomicReference<>();
 			AtomicReference<Path> workspaceInput = new AtomicReference<>();
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("results"), List::of,
 				false, Map.of(), root, HarnessCapacity.unlimited(), clock, Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
@@ -1598,7 +1598,7 @@ public final class RunnerSessionsTest
 			CountDownLatch entered = new CountDownLatch(1);
 			List<Turn> script = new ArrayList<>(earlier);
 			script.add(Turn.blocksUntilInterrupted(lastEvents).announcing(entered));
-			TestSessions sessions = port(jvm, root.resolve("runs"), HarnessCapacity.unlimited(), clock,
+			TestSessions sessions = port(jvm, root.resolve("results"), HarnessCapacity.unlimited(), clock,
 				new CopyOnWriteArrayList<>(), script);
 			String[] turns = new String[script.size()];
 			Arrays.fill(turns, "turn");
@@ -1767,7 +1767,7 @@ public final class RunnerSessionsTest
 				ManualClock clock = new ManualClock(START);
 				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
 				List<String> requests = new CopyOnWriteArrayList<>();
-				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
+				TestSessions sessions = recordingPort(jvm, root.resolve("results"), capacity, clock,
 					List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT), Turn.replies("never")), requests);
 
 				SessionResult result = await(sessions.start(request(source, List.of(), "one", "two")));
@@ -1805,7 +1805,7 @@ public final class RunnerSessionsTest
 				for (int refused = 0; refused < 6; ++refused)
 					clock.set(capacity.refuse().hold().endsAt());
 				Instant now = clock.instant();
-				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
+				TestSessions sessions = recordingPort(jvm, root.resolve("results"), capacity, clock,
 					List.of(Turn.replies("refused", TestSessions.REFUSED_EVENT)), new CopyOnWriteArrayList<>());
 
 				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
@@ -1838,7 +1838,7 @@ public final class RunnerSessionsTest
 				Path source = Files.createDirectories(root.resolve("source"));
 				ManualClock clock = new ManualClock(START);
 				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
-				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock,
+				TestSessions sessions = recordingPort(jvm, root.resolve("results"), capacity, clock,
 					List.of(Turn.replies("limit", TestSessions.REJECTED_EVENT)), new CopyOnWriteArrayList<>());
 
 				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
@@ -1873,8 +1873,8 @@ public final class RunnerSessionsTest
 				HarnessCapacity capacity = heldBy(jvm, root.resolve("locks"), clock);
 				HarnessCapacity.Hold ended = capacity.reject(null);
 				clock.set(START);
-				TestSessions sessions = recordingPort(jvm, root.resolve("runs"), capacity, clock, List.of(Turn.replies("done")),
-					new CopyOnWriteArrayList<>());
+				TestSessions sessions = recordingPort(jvm, root.resolve("results"), capacity, clock,
+					List.of(Turn.replies("done")), new CopyOnWriteArrayList<>());
 
 				SessionResult result = await(sessions.start(request(source, List.of(), "one")));
 

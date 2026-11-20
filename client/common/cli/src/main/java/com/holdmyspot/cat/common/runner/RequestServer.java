@@ -261,7 +261,7 @@ public final class RequestServer
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(sessionFolder),
 				".child-needs-"));
-			ChildNeeds reported = runner.needs(harness, directory.resolve("run"), deniedReads, bound);
+			ChildNeeds reported = runner.needs(harness, directory.resolve("session"), deniedReads, bound);
 			return new ChildNeeds(sessionFolder, reported.extraWrites(), reported.readDenials(), reported.hosts());
 		};
 	}

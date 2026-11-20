@@ -164,7 +164,7 @@ public final class EventSinkTest
 	{
 		BlockingQueue<Message> messages = new LinkedBlockingQueue<>();
 		try (EventSink sink = EventSinkSecrets.getEventSinkAccess().newEventSink(JSON, new TestSessions.Events(JSON),
-			directories -> new TestSessions.Sources(JSON, directories), Path.of("runs"), Map.of(), messages))
+			directories -> new TestSessions.Sources(JSON, directories), Path.of("results"), Map.of(), messages))
 		{
 			sink.write("{\"type\":\"turn_completed\",\"assistant_messages\":" + value + "}\n");
 		}

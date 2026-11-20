@@ -145,7 +145,7 @@ public final class ProposalTest
 	/**
 	 * Stands for the contract author session's project directory in an output that a test writes.
 	 */
-	private static final String STAGED = "/runs/contract-author/project";
+	private static final String STAGED = "/results/contract-author/project";
 	/**
 	 * The launcher that provides the contract tools.
 	 */
@@ -271,7 +271,7 @@ public final class ProposalTest
 	 */
 	private static SessionResult.Completed session(Path effects, Path initialProject, String response)
 	{
-		return new SessionResult.Completed(Path.of("/runs/contract-author/artifacts/transcript.jsonl").toAbsolutePath(),
+		return new SessionResult.Completed(Path.of("/results/contract-author/artifacts/transcript.jsonl").toAbsolutePath(),
 			List.of(List.of("I will inspect the prompt system.", response)), effects, initialProject, "model", null,
 			null, List.of(), OBSERVED, List.of());
 	}
@@ -296,7 +296,7 @@ public final class ProposalTest
 		// Requirement: R-C12
 		JsonResponse responses = new JsonResponse(json);
 		SessionResult.Completed earlier = session(Path.of(STAGED),
-			Path.of("/runs/contract-author/initial-project").toAbsolutePath(), "{\"answer\":1}");
+			Path.of("/results/contract-author/initial-project").toAbsolutePath(), "{\"answer\":1}");
 		SessionResult.Completed invalidFinal = new SessionResult.Completed(earlier.transcript(),
 			List.of(List.of("{\"answer\":1}"), List.of("{\"answer\":2}", "No structured output.")),
 			earlier.effects(), earlier.initialProject(), earlier.model(), null, null, List.of(), OBSERVED, List.of());
@@ -515,13 +515,13 @@ public final class ProposalTest
 		{
 			ObjectNode conflict = root.putArray("conflicts").addObject();
 			conflict.putArray("requirement_ids").add("r1").add("r2");
-			conflict.put("evidence", "[AGENTS.md:6](/runs/contract-author/project/AGENTS.md:6) contradicts " +
-				"/runs/contract-author/project/rules/safety.md.");
-			conflict.putArray("resolutions").add("Edit /runs/contract-author/project/AGENTS.md.").
-				add("Edit [safety.md](/runs/contract-author/project/rules/safety.md).");
+			conflict.put("evidence", "[AGENTS.md:6](/results/contract-author/project/AGENTS.md:6) contradicts " +
+				"/results/contract-author/project/rules/safety.md.");
+			conflict.putArray("resolutions").add("Edit /results/contract-author/project/AGENTS.md.").
+				add("Edit [safety.md](/results/contract-author/project/rules/safety.md).");
 			conflict.put("recommended", 1);
-			conflict.put("reason", "Keeps [AGENTS.md](/runs/contract-author/project/AGENTS.md) and " +
-				"/runs/contract-author/project/rules/safety.md consistent.");
+			conflict.put("reason", "Keeps [AGENTS.md](/results/contract-author/project/AGENTS.md) and " +
+				"/results/contract-author/project/rules/safety.md consistent.");
 		});
 
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
@@ -531,7 +531,7 @@ public final class ProposalTest
 				incumbent("Edit [safety.md](/staged/incumbent/rules/safety.md).")), 1,
 			incumbent("Keeps [AGENTS.md](/staged/incumbent/AGENTS.md) and /staged/incumbent/rules/safety.md consistent."));
 		requireThat(derived.conflicts(), "conflicts").isEqualTo(List.of(expected));
-		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
+		requireThat(derived.derivation(), "derivation").doesNotContain("/results/contract-author/project");
 		requireThat(contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES, SALT).conflicts(),
 			"storedConflicts"). isEqualTo(List.of(expected));
 	}
@@ -546,14 +546,14 @@ public final class ProposalTest
 	public void rewritesScopeProjectPaths() throws InvalidProposalException
 	{
 		String output = changedDerivation(root -> ((ObjectNode) root.get("scope_conditions").get(0)).
-			put("evidence", "[CLAUDE.md:2](/runs/contract-author/project/CLAUDE.md:2) loads " +
-				"/runs/contract-author/project/rules/images.md."));
+			put("evidence", "[CLAUDE.md:2](/results/contract-author/project/CLAUDE.md:2) loads " +
+				"/results/contract-author/project/rules/images.md."));
 
 		DerivedProposal derived = contractAuthor.proposal(session(output), PROMPT_SYSTEM, PROFILES, SALT);
 		ScopeCondition expected = new ScopeCondition(Outcome.UNSUPPORTED_OUTPUT, List.of("r1"),
 			incumbent("[CLAUDE.md:2](/staged/incumbent/CLAUDE.md:2) loads /staged/incumbent/rules/images.md."));
 		requireThat(derived.scopeConditions(), "scopeConditions").isEqualTo(List.of(expected));
-		requireThat(derived.derivation(), "derivation").doesNotContain("/runs/contract-author/project");
+		requireThat(derived.derivation(), "derivation").doesNotContain("/results/contract-author/project");
 		requireThat(contractAuthor.proposal(derived.derivation(), derived.draft(), OBSERVED, PROFILES,
 			SALT).scopeConditions(),
 			"storedScope"). isEqualTo(List.of(expected));
@@ -568,7 +568,7 @@ public final class ProposalTest
 	@Test
 	public void preservesOtherFindingText() throws InvalidProposalException
 	{
-		String evidence = "[transcript](/runs/contract-author/artifacts/transcript.jsonl) explains the conflict.";
+		String evidence = "[transcript](/results/contract-author/artifacts/transcript.jsonl) explains the conflict.";
 		Conflict expected = new Conflict(List.of("r1", "r2"), evidence,
 			List.of("Exempt explanations.", "Drop brevity."), 1, "Keeps the most intent.");
 		String output = changedDerivation(root ->
@@ -622,7 +622,7 @@ public final class ProposalTest
 		int separator = pointer.lastIndexOf('/');
 		JsonNode parent = output.at(pointer.substring(0, separator));
 		String field = pointer.substring(separator + 1);
-		String stagedText = "/runs/contract-author/project/notes.md";
+		String stagedText = "/results/contract-author/project/notes.md";
 		if (parent instanceof ObjectNode object)
 			object.put(field, stagedText);
 		else

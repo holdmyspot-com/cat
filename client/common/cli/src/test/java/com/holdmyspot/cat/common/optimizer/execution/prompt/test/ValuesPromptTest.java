@@ -35,7 +35,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class ValuesPromptTest
 {
-	private static final Path DIRECTORY = Path.of("/runs/values").toAbsolutePath();
+	private static final Path DIRECTORY = Path.of("/results/values").toAbsolutePath();
 	private static final String TEST = "safety";
 	/**
 	 * A test case that development added to the test before.
@@ -379,7 +379,7 @@ public final class ValuesPromptTest
 	 */
 	private static SessionResult.Completed completed(String response)
 	{
-		return new SessionResult.Completed(Path.of("/runs/values/transcript.jsonl").toAbsolutePath(),
+		return new SessionResult.Completed(Path.of("/results/values/transcript.jsonl").toAbsolutePath(),
 			List.of(List.of(response)), DIRECTORY, DIRECTORY.resolveSibling("initial-project"), "contract-author-model", null,
 			null, List.of(), "none", List.of());
 	}

@@ -82,7 +82,7 @@ public final class InterruptServedSessionTest
 			Path source = Files.createDirectories(root.resolve("source"));
 			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
-				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"),
 					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(harness, settings, (arguments, input, output) ->

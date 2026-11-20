@@ -456,7 +456,7 @@ public final class RunnerRelayTest
 		{
 			// Requirement: R-I9, R-I11
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "relay-")).toRealPath();
-			Path requests = Files.createDirectories(root.resolve("run/requests"));
+			Path requests = Files.createDirectories(root.resolve("session/requests"));
 			Path project = Files.createDirectory(root.resolve("project"));
 
 			int status = RunnerRelay.relay("harness-b", "harness-a", MARKERS, new String[]{"--project",

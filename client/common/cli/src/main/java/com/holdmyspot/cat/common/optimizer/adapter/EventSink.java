@@ -238,7 +238,7 @@ public final class EventSink extends Writer
 	{
 		Path sessionDirectory = harnessDirectory.resolve(sessionId);
 		Map<String, Path> directories = new HashMap<>(placeholders);
-		directories.put("run", sessionDirectory);
+		directories.put("session", sessionDirectory);
 		promptSources = newPromptSources.apply(directories);
 		if (transcript != null)
 			transcript.close();

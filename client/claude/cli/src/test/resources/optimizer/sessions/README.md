@@ -8,7 +8,7 @@ The recordings come from the installed plugin's optimizer campaigns, run with CA
 version is recorded in each stream's `system/init` record. Every session ran with
 `claude --print --input-format stream-json --output-format stream-json --permission-mode acceptEdits --verbose
 --include-partial-messages --no-session-persistence`, followed by the arguments in the table. The judge and triage
-sessions also received `--add-dir` for the evaluated run's `project` and `artifacts` directories.
+sessions also received `--add-dir` for the evaluated trial's `project` and `artifacts` directories.
 
 The source paths in the table are relative to `/home/gili/cat/worktrees`.
 
@@ -36,10 +36,10 @@ Substitutions made:
 - Other `/home/gili/cat` prefixes become `/recorded/host`; remaining `/home/gili` prefixes become `/recorded/user`.
 - Each substitution also applies to the path's dashed form, in which Claude names its project directory by replacing
 	every `/` and `.` with `-`.
-- The run identifiers become `run-trial`, `run-two-turn-trial`, `run-judge`, `run-triage`, `run-prompt-author`,
-	`run-contract-author` and `run-interrupted-judge`. The run judged by the judge becomes `run-judged-trial`, the run
-	judged by the interrupted judge becomes `run-interrupted-judged-trial`, and the run triaged by the triage session
-	becomes `run-triaged-trial`.
+- The nested session IDs become `session-trial`, `session-two-turn-trial`, `session-judge`, `session-triage`,
+	`session-prompt-author`, `session-contract-author` and `session-interrupted-judge`. The trial judged by the judge
+	becomes `session-judged-trial`, the trial judged by the interrupted judge becomes `session-interrupted-judged-trial`,
+	and the trial triaged by the triage session becomes `session-triaged-trial`.
 - Each session's `session_id` becomes `trial-session`, `two-turn-trial-session`, `judge-session`, `triage-session`,
 	`prompt-author-session`, `contract-author-session` or `interrupted-judge-session`. Every other UUID becomes a stable
 	`identifier-N` value, numbered in order of first appearance across the resources in table order.

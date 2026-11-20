@@ -7497,10 +7497,10 @@ public final class DriverTest
 				requireThat(campaign.choices(), "choices").contains(Choice.RETRY);
 				requireThat(result.status().status(), "status").
 					isEqualTo(new ReportStatus.Active(Status.AWAITING_USER));
-				List<FakeSession> runs = harness.sessions().sessions();
-				requireThat(runs.size(), "runs").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
-				for (FakeSession run : runs)
-					assertSameTrialRequest(run.request(), runs.getFirst().request());
+				List<FakeSession> started = harness.sessions().sessions();
+				requireThat(started.size(), "started").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
+				for (FakeSession session : started)
+					assertSameTrialRequest(session.request(), started.getFirst().request());
 				List<LogicalTrial> records = harness.crashingStore().assignments();
 				requireThat(records.size(), "records").isEqualTo(Campaign.INFRASTRUCTURE_FAILURE_LIMIT);
 				for (LogicalTrial trial : records)

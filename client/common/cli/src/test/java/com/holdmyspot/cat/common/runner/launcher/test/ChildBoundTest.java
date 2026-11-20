@@ -189,7 +189,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path cache = root.resolve("cache");
 			ChildNeedsSource needs = (_, folder, deniedReads, _) -> new ChildNeeds(folder, List.of(cache),
 				deniedReads, Set.of(MODEL_HOST, "zeta.example", "other.example"));
@@ -220,7 +220,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path work = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(work.resolve("run"));
+			Path sessionFolder = Files.createDirectory(work.resolve("session"));
 			Path denial = Files.createDirectory(work.resolve("protected"));
 			Path cache = denial.resolve("cache");
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(work), List.of(denial), Set.of())),
@@ -249,7 +249,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path cache = Files.createDirectory(root.resolve("registry cache"));
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder, cache), List.of(),
 				Set.of("registry.example", "unused.example"))), needing(List.of()));
@@ -275,7 +275,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path denied = root.resolve("denied");
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(root), List.of(),
 				Set.of("registry.example"))), needing(List.of()));
@@ -301,7 +301,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path cache = root.resolve("registry cache");
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder), List.of(), Set.of())),
 				needing(List.of()));
@@ -355,7 +355,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path state = Files.createDirectory(root.resolve("state"));
 			Path snapshotCache = Files.createDirectory(root.resolve("snapshot cache"));
 			Path launchCache = Files.createDirectory(root.resolve("launch cache"));
@@ -406,7 +406,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path state = Files.createDirectory(root.resolve("state"));
 			ParentPolicy writesState = sandboxed(List.of(root), List.of(), Set.of());
 			ParentPolicy atSnapshot;

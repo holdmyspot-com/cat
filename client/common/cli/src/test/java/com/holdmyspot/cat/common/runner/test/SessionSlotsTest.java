@@ -130,7 +130,7 @@ public final class SessionSlotsTest
 			Path base = cleanup.add(Files.createTempDirectory("slots-"));
 			int count = 12;
 			SessionSlots slots = new SessionSlots(base, count, new Liveness());
-			Set<Path> runs = new HashSet<>();
+			Set<Path> sessionFolders = new HashSet<>();
 			for (boolean heldOut : List.of(false, true))
 			{
 				for (int i = 0; i < count; ++i)
@@ -139,13 +139,14 @@ public final class SessionSlotsTest
 					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
 						Yielding.fileReplacer()).withFixedSlotId(slot.slotId());
 					Path sessionFolder = manager.create("claude").directory();
-					requireThat(base.relativize(sessionFolder).toString().length(), "length").withContext(sessionFolder, "run").
+					requireThat(base.relativize(sessionFolder).toString().length(), "length").
+						withContext(sessionFolder, "sessionFolder").
 						isLessThanOrEqualTo(16);
-					runs.add(sessionFolder);
+					sessionFolders.add(sessionFolder);
 				}
 			}
 
-			requireThat(runs, "runs").size().isEqualTo(2 * count);
+			requireThat(sessionFolders, "sessionFolders").size().isEqualTo(2 * count);
 		}
 	}
 

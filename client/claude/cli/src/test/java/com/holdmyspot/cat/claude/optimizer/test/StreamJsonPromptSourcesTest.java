@@ -26,7 +26,7 @@ import tools.jackson.databind.node.ObjectNode;
 public final class StreamJsonPromptSourcesTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-	private static final String RUN = "/runs/claude/mup8an8w-14snlqq4k6";
+	private static final String SESSION_FOLDER = "/results/claude/mup8an8w-14snlqq4k6";
 
 	/**
 	 * Creates the test.
@@ -62,7 +62,7 @@ public final class StreamJsonPromptSourcesTest
 	{
 		StreamJsonPromptSources sources = StreamJsonPromptSourcesSecrets.getStreamJsonPromptSourcesAccess().
 			newStreamJsonPromptSources(JSON,
-			Map.of("<run>", Path.of(sessionFolder)));
+			Map.of("<session>", Path.of(sessionFolder)));
 		for (String line : lines)
 			sources.accept(line);
 		return sources.value();
@@ -78,7 +78,7 @@ public final class StreamJsonPromptSourcesTest
 	public void ignoresLaterEventHooks() throws IOException
 	{
 		List<String> lines = recorded();
-		String sessionStart = observe(lines, RUN);
+		String sessionStart = observe(lines, SESSION_FOLDER);
 		for (String event : List.of("PreToolUse", "SubagentStart"))
 		{
 			for (String line : lines)
@@ -89,7 +89,7 @@ public final class StreamJsonPromptSourcesTest
 				String later = line.replace("SessionStart", event);
 				List<String> withLater = new ArrayList<>(lines);
 				withLater.add(later);
-				requireThat(observe(withLater, RUN), "withLater").isEqualTo(sessionStart);
+				requireThat(observe(withLater, SESSION_FOLDER), "withLater").isEqualTo(sessionStart);
 			}
 		}
 	}
@@ -107,10 +107,10 @@ public final class StreamJsonPromptSourcesTest
 		{
 			if (!JSON.readTree(line).path("hook_event").asString("").equals("SessionStart"))
 				continue;
-			String value = observe(List.of(line), RUN);
+			String value = observe(List.of(line), SESSION_FOLDER);
 			requireThat(value, "value").isEqualTo("hook:SessionStart SessionStart:startup");
 			String other = line.replace("SessionStart:startup", "SessionStart:other");
-			requireThat(observe(List.of(other), RUN), "other").isNotEqualTo(value);
+			requireThat(observe(List.of(other), SESSION_FOLDER), "other").isNotEqualTo(value);
 		}
 	}
 
@@ -124,15 +124,15 @@ public final class StreamJsonPromptSourcesTest
 	public void listsLoadedSourcesWithoutSessionPaths() throws IOException
 	{
 		// Requirement: R-M1
-		String value = observe(recorded(), RUN);
+		String value = observe(recorded(), SESSION_FOLDER);
 		List<String> entries = value.lines().toList();
 		requireThat(entries.contains("skill:cat:git-squash"), "skill").isTrue();
 		requireThat(entries.contains("agent:cat:claude:optimize-medium"), "agent").isTrue();
 		requireThat(entries.contains("hook:SessionStart SessionStart:startup"), "hook").isTrue();
 		requireThat(entries.contains(
-			"plugin:cat cat@cat <run>/home/.claude/plugins/cat-marketplace/plugins/cat"), "plugin").isTrue();
-		requireThat(value.contains("/runs/"), "leaksRunPath").isFalse();
-		requireThat(value.contains("mup8an8w"), "leaksRunId").isFalse();
+			"plugin:cat cat@cat <session>/home/.claude/plugins/cat-marketplace/plugins/cat"), "plugin").isTrue();
+		requireThat(value.contains("/results/"), "leaksResultsPath").isFalse();
+		requireThat(value.contains("mup8an8w"), "leaksSessionId").isFalse();
 	}
 
 	/**
@@ -145,7 +145,7 @@ public final class StreamJsonPromptSourcesTest
 	public void omitsBuiltInSources() throws IOException
 	{
 		// Requirement: R-M1
-		List<String> entries = observe(recorded(), RUN).lines().toList();
+		List<String> entries = observe(recorded(), SESSION_FOLDER).lines().toList();
 		requireThat(entries, "entries").doesNotContainAny(List.of("skill:debug", "skill:anthropic-skills:pdf",
 			"agent:Explore", "plugin:cc-plugin-agents-md cc-plugin-agents-md@builtin builtin"));
 		requireThat(entries, "entries").contains("skill:cat:git-squash");
@@ -173,7 +173,7 @@ public final class StreamJsonPromptSourcesTest
 				"---\nname: \"Explore\"\ndescription: Reviews\n---\nBody\n", UTF_8);
 			List<String> lines = recorded().stream().map(line -> withProject(line, project)).toList();
 
-			List<String> entries = observe(lines, RUN).lines().toList();
+			List<String> entries = observe(lines, SESSION_FOLDER).lines().toList();
 			requireThat(entries, "entries").containsAll(List.of("skill:probe-skill", "skill:design", "agent:Explore"));
 			requireThat(entries, "entries").doesNotContainAny(List.of("skill:debug", "agent:Plan"));
 		}
@@ -206,8 +206,8 @@ public final class StreamJsonPromptSourcesTest
 	{
 		// Requirement: R-M1
 		String other = "/elsewhere/stage-7f3a/claude/zz99";
-		List<String> relocated = recorded().stream().map(line -> line.replace(RUN, other)).toList();
-		requireThat(observe(relocated, other), "relocated").isEqualTo(observe(recorded(), RUN));
+		List<String> relocated = recorded().stream().map(line -> line.replace(SESSION_FOLDER, other)).toList();
+		requireThat(observe(relocated, other), "relocated").isEqualTo(observe(recorded(), SESSION_FOLDER));
 	}
 
 	/**
@@ -221,10 +221,10 @@ public final class StreamJsonPromptSourcesTest
 	{
 		// Requirement: R-M1
 		List<String> lines = recorded();
-		String once = observe(lines, RUN);
+		String once = observe(lines, SESSION_FOLDER);
 		List<String> twice = new ArrayList<>(lines);
 		twice.addAll(lines.reversed());
-		requireThat(observe(twice, RUN), "twice").isEqualTo(once);
+		requireThat(observe(twice, SESSION_FOLDER), "twice").isEqualTo(once);
 	}
 
 	/**
@@ -237,7 +237,7 @@ public final class StreamJsonPromptSourcesTest
 	{
 		// Requirement: R-M1
 		List<String> without = recorded().stream().map(line -> line.replace("\"cat:git-squash\",", "")).toList();
-		requireThat(observe(without, RUN), "without").isNotEqualTo(observe(recorded(), RUN));
+		requireThat(observe(without, SESSION_FOLDER), "without").isNotEqualTo(observe(recorded(), SESSION_FOLDER));
 	}
 
 	/**

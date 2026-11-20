@@ -62,10 +62,14 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private static final int MAXIMUM_REFUSAL_BYTES = 65_536;
 	/**
-	 * The name, in a response directory and in its response, of the copy of the requested session's nested session that
-	 * the requester reads.
+	 * The directory of a response directory that holds the results copy of the requested session, which the requester
+	 * reads.
 	 */
-	static final String RESULTS_COPY = "run";
+	static final String RESULTS_COPY = "results-copy";
+	/**
+	 * The response's field that holds the path of the {@link #RESULTS_COPY}, present only when the copy exists.
+	 */
+	static final String RESULTS_COPY_FIELD = "results_copy";
 	/**
 	 * The response's field that holds the identifier that the harness gave the requested session, or an empty string if
 	 * the harness reported none.
@@ -1085,7 +1089,7 @@ public final class SessionRequestBroker implements Closeable
 		if (Files.isDirectory(directory.resolve("session-transcripts")))
 			response.put("session_transcripts", directory.resolve("session-transcripts").toString());
 		if (Files.isDirectory(directory.resolve(RESULTS_COPY), LinkOption.NOFOLLOW_LINKS))
-			response.put(RESULTS_COPY, directory.resolve(RESULTS_COPY).toString());
+			response.put(RESULTS_COPY_FIELD, directory.resolve(RESULTS_COPY).toString());
 		SessionRequestCli.write(json, directory.resolve("response.json"), response);
 	}
 

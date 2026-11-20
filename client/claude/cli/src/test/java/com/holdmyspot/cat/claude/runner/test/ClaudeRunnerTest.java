@@ -72,10 +72,11 @@ public final class ClaudeRunnerTest
 	@Test
 	public void resolvesSessionLaunchConfiguration()
 	{
-		Path temporaryDirectory = Path.of("/system-temporary-directory/.cat/claude/claude/run-id/claude").toAbsolutePath();
+		Path temporaryDirectory = Path.of("/system-temporary-directory/.cat/claude/claude/session-id/claude").
+			toAbsolutePath();
 
 		requireThat(ClaudeRunner.launchConfigurationPath(temporaryDirectory), "launchConfiguration").isEqualTo(
-			Path.of("/system-temporary-directory/.cat/claude/claude/run-id/.claude/launch.json").toAbsolutePath());
+			Path.of("/system-temporary-directory/.cat/claude/claude/session-id/.claude/launch.json").toAbsolutePath());
 	}
 
 	/**
@@ -118,7 +119,7 @@ public final class ClaudeRunnerTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path home = cleanup.add(Files.createTempDirectory("cat-claude-run-marker-"));
+			Path home = cleanup.add(Files.createTempDirectory("cat-claude-session-marker-"));
 			Path settings = Files.writeString(home.resolve("settings.json"), """
 				{"env": {"%s": ""}}
 				""".formatted(HarnessEnvironment.NESTED_SESSION_VARIABLE));
@@ -765,7 +766,7 @@ public final class ClaudeRunnerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
 			Path userHome = Files.createDirectory(root.resolve("user"));
-			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), userHome.toString());
@@ -812,7 +813,7 @@ public final class ClaudeRunnerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-login-class-")).toRealPath();
 			Path store = Files.createDirectory(root.resolve("store"));
-			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
 			Map<String, String> environment = new HashMap<>();
 			environment.put("PATH", "");
 			environment.put(Platform.current().homeVariable(), root.resolve("user").toString());
@@ -866,7 +867,7 @@ public final class ClaudeRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-shared-login-")).toRealPath();
-			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
 			Map<String, String> environment = Map.of("PATH", "", Platform.current().homeVariable(),
 				root.resolve("user").toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", "login-store");
 
@@ -929,7 +930,7 @@ public final class ClaudeRunnerTest
 			Path storeLogin = Files.writeString(store.resolve(".credentials.json"), "{}");
 			Map<String, String> environment = Map.of(Platform.current().homeVariable(), userHome.toString(),
 				"CLAUDE_CONFIG_DIR", configured.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("claude");
 			manager.snapshotProject(nestedSession);
@@ -1381,7 +1382,7 @@ public final class ClaudeRunnerTest
 		{
 			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
 			Path directory = Files.createDirectories(capture.resolve("a".repeat(100)).resolve("b".repeat(100)).
-				resolve("c".repeat(100)).resolve("runs/claude/abc123-def456"));
+				resolve("c".repeat(100)).resolve("results/claude/abc123-def456"));
 			NestedSession nestedSession = new NestedSession("claude", "abc123-def456", directory);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
 			requireThat(worktree.toString().length(), "projectPathLength").isGreaterThan(260);
@@ -1403,12 +1404,12 @@ public final class ClaudeRunnerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
-			Path directory = Files.createDirectories(capture.resolve("runs/claude/abc123-def456"));
+			Path directory = Files.createDirectories(capture.resolve("results/claude/abc123-def456"));
 			NestedSession nestedSession = new NestedSession("claude", "abc123-def456", directory);
 			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), nestedSession);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
 			String canonicalName = ClaudeRunner.claudeProjectDirectory(worktree);
-			String parentName = ClaudeRunner.claudeProjectDirectory(capture.resolve("runs").toAbsolutePath().normalize());
+			String parentName = ClaudeRunner.claudeProjectDirectory(capture.resolve("results").toAbsolutePath().normalize());
 			Path canonical = hookResults.resolve(canonicalName);
 			Path alias = hookResults.resolve(parentName).resolve("claude/abc123-def456-project");
 
@@ -1433,7 +1434,7 @@ public final class ClaudeRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("claude");
@@ -1481,8 +1482,8 @@ public final class ClaudeRunnerTest
 			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
 			Path otherSession = Files.createDirectories(project.resolve(".cat/sessions/session-2"));
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
-			Path root = Files.createDirectories(session.resolve("optimizer-runs/claude"));
-			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/claude-held_out"));
+			Path root = Files.createDirectories(session.resolve("optimizer-nested-sessions/claude"));
+			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-nested-sessions/claude-held_out"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("claude");
@@ -1523,10 +1524,10 @@ public final class ClaudeRunnerTest
 			HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-nested-run-")).toRealPath();
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-nested-session-")).toRealPath();
 			Path artifact = root.resolve("artifact");
 			Path cache = Files.createDirectories(root.resolve("cache"));
-			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession first = firstManager.create("claude");
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
@@ -1578,7 +1579,7 @@ public final class ClaudeRunnerTest
 				toRealPath();
 			Path artifact = root.resolve("artifact");
 			Path cache = Files.createDirectories(root.resolve("cache"));
-			Path results = root.resolve("runs");
+			Path results = root.resolve("results");
 			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), results, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession first = firstManager.create("claude");
@@ -1680,7 +1681,7 @@ public final class ClaudeRunnerTest
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			int sessionRequests = 500;
 			int ordinal = 358;
-			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession first = firstManager.create("claude");
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, sessionRequests,

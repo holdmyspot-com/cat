@@ -41,7 +41,7 @@ public final class NestedSessionLockTest
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-run-lock-"));
+			Path directory = cleanup.add(Files.createTempDirectory("cat-session-lock-"));
 			Path file = Files.createFile(directory.resolve(".lock"));
 			List<Path> opened = new CopyOnWriteArrayList<>();
 			try (NestedSessionLock held = NestedSessionLock.acquire(fileLocks, file))

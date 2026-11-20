@@ -94,7 +94,7 @@ public final class ServedSessionTest
 					isEqualTo("candidate");
 				JsonNode response = onlyResponse(parent);
 				requireThat(response.path("status").asString(), "status").isEqualTo("completed");
-				requireThat(response.path("run").asString(), "run").isNotEmpty();
+				requireThat(response.path("results_copy").asString(), "resultsCopy").isNotEmpty();
 			}
 		}
 	}
@@ -178,7 +178,7 @@ public final class ServedSessionTest
 						new StringReader(RECORDS), new StringWriter(), parent.requests(), bounded());
 				}
 				List<String> requestsBefore = names(parent.requests());
-				List<String> runsBefore = names(inputs.resultsFolder);
+				List<String> resultsBefore = names(inputs.resultsFolder);
 				String reason;
 				if (sessionRequests == 0)
 					reason = SessionRequestAccess.NO_REQUESTS_REASON;
@@ -191,7 +191,7 @@ public final class ServedSessionTest
 					reason));
 				requireThat(refusal.getMessage(), "message").contains("--session-requests").doesNotContain("--no-daemon");
 				requireThat(names(parent.requests()), "requests").isEqualTo(requestsBefore);
-				requireThat(names(inputs.resultsFolder), "runs").isEqualTo(runsBefore);
+				requireThat(names(inputs.resultsFolder), "results").isEqualTo(resultsBefore);
 			}
 		}
 	}
@@ -433,7 +433,7 @@ public final class ServedSessionTest
 		{
 			project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("marker"), "project bytes");
-			resultsFolder = root.resolve("runs");
+			resultsFolder = root.resolve("results");
 			workspace = Files.createDirectories(root.resolve("workspace"));
 			Files.writeString(workspace.resolve("notes.txt"), "notes");
 			evidence = Files.writeString(root.resolve("evidence.txt"), "evidence");

@@ -316,7 +316,7 @@ public abstract class SessionCommandLimitsContract
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
 			Path other = fixture.otherSession().directory().toRealPath();
-			requireThat(realPaths(limits.deniedReads()).stream().anyMatch(other::startsWith), "otherRunDenied").
+			requireThat(realPaths(limits.deniedReads()).stream().anyMatch(other::startsWith), "otherSessionDenied").
 				withContext(limits.deniedReads(), "deniedReads").isTrue();
 		}
 	}
@@ -390,10 +390,10 @@ public abstract class SessionCommandLimitsContract
 			// The session folders of requested sessions hold their logins while they run
 			Path requestedSlots = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession());
 			requireThat(requestedSlots, "requestedSlots").isDirectory();
-			requireThat(readable(limits, requestedSlots), "requestedRunsReadable").isFalse();
+			requireThat(readable(limits, requestedSlots), "requestedSlotsReadable").isFalse();
 			requireThat(SessionRequestAccess.requestedResultsFolder(requestedSlots, 1),
-				"firstRequestedRunRoot").isDirectory();
-			requireThat(SessionRequestAccess.requestedResultsFolder(requestedSlots, 2), "secondRequestedRunRoot").
+				"firstRequestedResultsFolder").isDirectory();
+			requireThat(SessionRequestAccess.requestedResultsFolder(requestedSlots, 2), "secondRequestedResultsFolder").
 				isDirectory();
 		}
 	}
@@ -591,7 +591,7 @@ public abstract class SessionCommandLimitsContract
 				userEnvironment.put(variable, CREDENTIAL);
 
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-				root.resolve("runs"), Clock.systemUTC(),
+				root.resolve("results"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			// The session's project links to a file outside it, so the nested session holds a read-only copy of that file

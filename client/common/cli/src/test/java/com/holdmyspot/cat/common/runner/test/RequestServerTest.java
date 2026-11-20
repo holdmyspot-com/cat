@@ -434,7 +434,7 @@ public final class RequestServerTest
 				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
 					new String[]{"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
 						"--conversation", folder.toString()}, new StringReader(""), server.requests(),
-					fixture.root.resolve("runs"), () ->
+					fixture.root.resolve("results"), () ->
 					{
 						if (System.nanoTime() > deadline)
 							throw new IOException("The conversation did not end");
@@ -484,7 +484,7 @@ public final class RequestServerTest
 			Path folder = fixture.root.resolve("conversation");
 			Path toChild = folder.resolve("to-child.jsonl");
 			Path fromChild = folder.resolve("from-child.jsonl");
-			Path runs = fixture.root.resolve("runs");
+			Path results = fixture.root.resolve("results");
 			String lastFile = "artifacts/many/file-399";
 			AtomicBoolean endSent = new AtomicBoolean();
 			try (Fixture.Running server = fixture.start())
@@ -499,7 +499,7 @@ public final class RequestServerTest
 							throw new IOException("The conversation did not end");
 						Thread.onSpinWait();
 					}
-					Path claude = runs.resolve("claude");
+					Path claude = results.resolve("claude");
 					if (!Files.isDirectory(claude))
 						return false;
 					try (Stream<Path> kept = Files.list(claude))
@@ -511,9 +511,9 @@ public final class RequestServerTest
 				StringWriter errors = new StringWriter();
 				long deadline = System.nanoTime() + WAIT.toNanos();
 				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
-					new String[]{"--project", fixture.project.toString(), "--results", runs.toString(),
+					new String[]{"--project", fixture.project.toString(), "--results", results.toString(),
 						"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
-					new StringReader(""), server.requests(), runs, () ->
+					new StringReader(""), server.requests(), results, () ->
 					{
 						if (System.nanoTime() > deadline)
 							throw new IOException("The conversation did not end");
@@ -532,7 +532,7 @@ public final class RequestServerTest
 					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
 				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
-				requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "keptRunInPlaceWhenEnded").isTrue();
+				requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "sessionKeptInPlaceWhenEnded").isTrue();
 			}
 		}
 	}
@@ -553,7 +553,7 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path resultsFolder = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-nested-sessions");
 			try (Fixture.Running server = fixture.start())
 			{
 				String slotId = serve(fixture, server, resultsFolder);
@@ -568,7 +568,7 @@ public final class RequestServerTest
 					requireThat(requests.filter(path -> path.toString().endsWith(".tar")).toList(),
 						"requests").isEmpty();
 				}
-				requireThat(awaitAbsent(served.getFirst().resultsFolder()), "serverRunRemains").isFalse();
+				requireThat(awaitAbsent(served.getFirst().resultsFolder()), "servedResultsFolderRemains").isFalse();
 			}
 		}
 	}
@@ -587,7 +587,7 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path resultsFolder = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-nested-sessions");
 			ServedNestedSession first;
 			try (Fixture.Running server = fixture.start())
 			{
@@ -618,7 +618,7 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path resultsFolder = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-nested-sessions");
 			try (Fixture.Running server = fixture.start())
 			{
 				serveUntilSlotReuse(fixture, server, resultsFolder, served);
@@ -641,7 +641,7 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path resultsFolder = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-nested-sessions");
 			try (Fixture.Running server = fixture.start())
 			{
 				serve(fixture, server, resultsFolder, "--held-out");
@@ -671,7 +671,7 @@ public final class RequestServerTest
 			fixture.child = slotChild(fixture, served);
 			try (Fixture.Running server = fixture.start())
 			{
-				serve(fixture, server, fixture.root.resolve("optimizer-runs"));
+				serve(fixture, server, fixture.root.resolve("optimizer-nested-sessions"));
 				try (Stream<Path> responses = Files.list(fixture.sessionDirectory().resolve("responses")))
 				{
 					requireThat(responses.toList(), "responses").isEmpty();
@@ -701,7 +701,7 @@ public final class RequestServerTest
 			NestedSession leftover = earlier.create("claude");
 			earlier.markHarnessStarting(leftover);
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
-			Path resultsFolder = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-nested-sessions");
 			try (Fixture.Running server = fixture.start())
 			{
 				JsonNode refused = server.request(fixture.manifest());
@@ -732,14 +732,14 @@ public final class RequestServerTest
 		{
 			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
-			Path resultsFolder = fixture.root.resolve("optimizer-runs");
+			Path resultsFolder = fixture.root.resolve("optimizer-nested-sessions");
 			try (Fixture.Running server = fixture.start())
 			{
 				SlotReuse reuse = serveUntilSlotReuse(fixture, server, resultsFolder, served);
 				ServedNestedSession first = reuse.earlier();
 				String firstId = reuse.earlierId();
 				String secondId = reuse.currentId();
-				requireThat(secondId, "secondRunId").isNotEqualTo(firstId);
+				requireThat(secondId, "secondSessionId").isNotEqualTo(firstId);
 				requireThat(Files.readString(resultsFolder.resolve("claude").resolve(firstId).resolve("result.txt")),
 					"first").isEqualTo(String.valueOf(served.indexOf(first) + 1));
 				requireThat(Files.readString(resultsFolder.resolve("claude").resolve(secondId).resolve("result.txt")),

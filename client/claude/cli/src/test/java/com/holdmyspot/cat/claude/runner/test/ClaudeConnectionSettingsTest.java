@@ -48,7 +48,7 @@ public final class ClaudeConnectionSettingsTest
 			Path destination = root.resolve("isolated/settings.json");
 			Path launcher = root.resolve("artifact with spaces/bin/request-session");
 			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), root.resolve("responses"),
-				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
+				root.resolve("requested-results"), launcher, SessionRequestAccess.Shell.POSIX);
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", access, null);
@@ -86,7 +86,7 @@ public final class ClaudeConnectionSettingsTest
 			Path launcher = root.resolve("artifact with spaces/bin/request-session");
 			Path responses = root.resolve("responses");
 			SessionRequestAccess access = new SessionRequestAccess(root.resolve("requests"), responses,
-				root.resolve("requested-runs"), launcher, SessionRequestAccess.Shell.POSIX);
+				root.resolve("requested-results"), launcher, SessionRequestAccess.Shell.POSIX);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			String defaultSettings = Files.readString(destination);
@@ -466,11 +466,11 @@ public final class ClaudeConnectionSettingsTest
 			Path destination = root.resolve("isolated/.claude/settings.json");
 			Path claudeTemporaryDirectory = root.resolve("cat-temp/claude");
 			Path claudeHome = claudeTemporaryDirectory.resolve("home");
-			Path project = Files.createDirectories(root.resolve("run/project/.git")).getParent();
+			Path project = Files.createDirectories(root.resolve("session/project/.git")).getParent();
 			Path registrations = project.resolve(".git/worktrees");
 
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
-				claudeTemporaryDirectory, claudeHome, List.of(), root.resolve("run"), List.of(), "", null, project);
+				claudeTemporaryDirectory, claudeHome, List.of(), root.resolve("session"), List.of(), "", null, project);
 
 			String settings = Files.readString(destination);
 			List<String> writablePaths = strings(scope.json().readTree(settings).path("sandbox").path("filesystem").
@@ -630,7 +630,7 @@ public final class ClaudeConnectionSettingsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-instruction-excludes-"));
 			Path project = root.resolve("project[1]");
-			Path sessionFolder = project.resolve(".cat/runs/run");
+			Path sessionFolder = project.resolve(".cat/results/session");
 			Path destination = root.resolve("isolated/settings.json");
 			Path claudeTemporaryDirectory = sessionFolder.resolve("claude");
 
@@ -644,7 +644,7 @@ public final class ClaudeConnectionSettingsTest
 			requireThat(excludes, "excludes").containsAll(List.of(projectGlob + "CLAUDE.md",
 				projectGlob + "CLAUDE.local.md", projectGlob + ".claude/CLAUDE.md", projectGlob + ".claude/rules/**",
 				projectGlob + "AGENTS.md", projectGlob + ".claude/AGENTS.md",
-				glob(project.resolve(".cat/runs")) + "CLAUDE.md", fileSystemGlob + "CLAUDE.md",
+				glob(project.resolve(".cat/results")) + "CLAUDE.md", fileSystemGlob + "CLAUDE.md",
 				fileSystemGlob + ".claude/rules/**", fileSystemGlob + "AGENTS.md"));
 			for (String exclude : excludes)
 			{
@@ -845,7 +845,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-policy-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			Path locked = Files.createDirectories(sessionFolder.resolve("home/locked"));
 			Path secrets = Files.createDirectories(root.resolve("secrets"));
@@ -911,10 +911,10 @@ public final class ClaudeConnectionSettingsTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("notes.txt"), "notes");
 			Files.createDirectories(project.resolve("secrets"));
-			Path sessionFolder = Files.createDirectories(project.resolve("runs/r1"));
+			Path sessionFolder = Files.createDirectories(project.resolve("results/r1"));
 			Files.createDirectories(sessionFolder.resolve("home"));
 			Path records = Files.createDirectories(sessionFolder.resolve("records"));
-			Files.createDirectories(project.resolve("runs/r2"));
+			Files.createDirectories(project.resolve("results/r2"));
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(project), List.of(),
 				Set.of("api.example"), false);
@@ -931,7 +931,7 @@ public final class ClaudeConnectionSettingsTest
 					withContext(rules, "rules").isFalse();
 			}
 			for (Path denied : List.of(project.resolve("notes.txt"), project.resolve("secrets/key.txt"),
-				project.resolve("runs/r2/data.json"), records.resolve("evidence.json")))
+				project.resolve("results/r2/data.json"), records.resolve("evidence.json")))
 			{
 				requireThat(denies(rules, denied), "denied").withContext(denied, "path").withContext(rules, "rules").
 					isTrue();
@@ -975,7 +975,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-child-refusal-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path outsideCache = Files.createDirectories(root.resolve("outside-cache"));
 			Path source = Files.writeString(root.resolve("settings.json"), "{}");
 			Path destination = root.resolve("isolated/settings.json");
@@ -1006,7 +1006,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-extra-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder, registry), List.of(), List.of(), List.of(),
@@ -1039,7 +1039,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-extra-refusal-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path registry = Files.createDirectories(root.resolve("registry cache"));
 			Path destination = root.resolve("isolated/settings.json");
 			ChildPolicy bound = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
@@ -1072,7 +1072,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-outside-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path elsewhere = Files.createDirectories(root.resolve("elsewhere"));
 			Path outside = root.resolve("outside").resolve(directory);
 			Path destination = root.resolve("isolated/settings.json");
@@ -1127,9 +1127,9 @@ public final class ClaudeConnectionSettingsTest
 		try (HarnessRunnerScope scope = new TestHarnessRunnerScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-run-")).toRealPath();
-			Path requesterSession = Files.createDirectories(root.resolve("run"));
-			Path sessionFolder = Files.createDirectories(requesterSession.resolve("requested-runs/0/1"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-session-")).toRealPath();
+			Path requesterSession = Files.createDirectories(root.resolve("session"));
+			Path sessionFolder = Files.createDirectories(requesterSession.resolve("requested-results/0/1"));
 			Path requesterHome = Files.createDirectories(requesterSession.resolve("home"));
 			Path requests = Files.createDirectories(requesterSession.resolve("requests"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
@@ -1167,7 +1167,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-many-denials-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path destination = root.resolve("isolated/settings.json");
 			Path denied = root.resolve("x".repeat(180));
 			List<Path> deniedReads = new ArrayList<>();
@@ -1198,8 +1198,8 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-nested-cache-")).toRealPath();
-			Path requesterSession = Files.createDirectories(root.resolve("run"));
-			Path sessionFolder = Files.createDirectories(requesterSession.resolve("requested-runs/0/1"));
+			Path requesterSession = Files.createDirectories(root.resolve("session"));
+			Path sessionFolder = Files.createDirectories(requesterSession.resolve("requested-results/0/1"));
 			Path requesterHome = Files.createDirectories(requesterSession.resolve("home"));
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			Path destination = root.resolve("isolated/settings.json");
@@ -1264,7 +1264,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-widening-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path secrets = Files.createDirectories(root.resolve("secrets"));
 			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(secrets), List.of(),
 				Set.of("api.example"), false);
@@ -1293,7 +1293,7 @@ public final class ClaudeConnectionSettingsTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-claude-within-policy-")).toRealPath();
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder), List.of(), List.of(), List.of(),
 				Set.of("api.example"), false);
 			Path settings = Files.writeString(root.resolve("settings.json"), """

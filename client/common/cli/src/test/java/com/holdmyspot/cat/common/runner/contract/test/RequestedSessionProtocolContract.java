@@ -59,7 +59,7 @@ public final class RequestedSessionProtocolContract
 				observation.retainedSession().resolve("project"));
 			requireThat(receipt.retainedProject(), "retainedProject").
 				isEqualTo(observation.retainedSession().resolve("project"));
-			requireThat(receipt.rawResult().startsWith(observation.retainedSession()), "rawResultWithinRun").isTrue();
+			requireThat(receipt.rawResult().startsWith(observation.retainedSession()), "rawResultWithinSession").isTrue();
 			requireThat(Files.mismatch(receipt.rawResult(), observation.transcript()), "transcriptCopy").isEqualTo(-1L);
 			requireThat(Files.isDirectory(receipt.retainedProject()), "retainedProjectExists").isTrue();
 			requireThat(Files.isRegularFile(receipt.rawResult()), "transcriptExists").isTrue();

@@ -44,16 +44,16 @@ public final class LiveNestedSessionsTest
 			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
 			LiveNestedSessions sessions = new LiveNestedSessions())
 		{
-			NestedSession nestedSession = new NestedSession("harness", "run-1",
-				cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession nestedSession = new NestedSession("harness", "session-1",
+				cleanup.add(Files.createTempDirectory("cat-session-")));
 			sessions.add(new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()));
-			HarnessProcessResult first = sessions.sendTurn("run-1", "first");
-			HarnessProcessResult second = sessions.sendTurn("run-1", "second");
+			HarnessProcessResult first = sessions.sendTurn("session-1", "first");
+			HarnessProcessResult second = sessions.sendTurn("session-1", "second");
 			requireThat(first.completed(), "firstCompleted").isTrue();
 			requireThat(first.assistantResponse(), "firstAssistantResponse").isEqualTo("one");
 			requireThat(second.completed(), "secondCompleted").isTrue();
 			requireThat(second.assistantResponse(), "secondAssistantResponse").isEqualTo("two");
-			sessions.complete("run-1");
+			sessions.complete("session-1");
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
 			requireThat(process.isAlive(), "alive").isFalse();
@@ -71,11 +71,11 @@ public final class LiveNestedSessionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			LiveNestedSessions sessions = new LiveNestedSessions())
 		{
-			sessions.add(new LiveNestedSession(new NestedSession("harness", "run-1",
-				cleanup.add(Files.createTempDirectory("cat-run-"))),
+			sessions.add(new LiveNestedSession(new NestedSession("harness", "session-1",
+				cleanup.add(Files.createTempDirectory("cat-session-"))),
 				failingToClose(cleanup.add(Files.createTempDirectory("cat-session-"))), new TestHarnessRunnerScope()));
-			sessions.add(new LiveNestedSession(new NestedSession("harness", "run-2",
-				cleanup.add(Files.createTempDirectory("cat-run-"))),
+			sessions.add(new LiveNestedSession(new NestedSession("harness", "session-2",
+				cleanup.add(Files.createTempDirectory("cat-session-"))),
 				failingToClose(cleanup.add(Files.createTempDirectory("cat-session-"))), new TestHarnessRunnerScope()));
 		}
 		catch (IOException e)

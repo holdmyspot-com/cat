@@ -340,7 +340,7 @@ public final class SessionPortContract
 			requireThat(resultsFolders, "resultsFolders").isNotEmpty();
 			for (Path resultsFolder : resultsFolders)
 				requireThat(resultsFolder, "resultsFolder").isAbsolute();
-			requireThat(Set.copyOf(resultsFolders).size(), "distinctRunRoots").isEqualTo(resultsFolders.size());
+			requireThat(Set.copyOf(resultsFolders).size(), "distinctResultsFolders").isEqualTo(resultsFolders.size());
 		}
 	}
 

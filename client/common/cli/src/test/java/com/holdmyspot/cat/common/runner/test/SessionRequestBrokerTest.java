@@ -838,7 +838,7 @@ public final class SessionRequestBrokerTest
 				try
 				{
 					HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.nestedSession, parent, scope),
-						new NestedSessionManager(fileLocks, fixture.root.resolve("runs"),
+						new NestedSessionManager(fileLocks, fixture.root.resolve("results"),
 							Clock.systemUTC(), Yielding.fileReplacer()),
 						fixture.options, fixture.json, Yielding.fileReplacer(), input, new StringWriter(), (_, _, _) ->
 						{
@@ -898,7 +898,7 @@ public final class SessionRequestBrokerTest
 				"{\"type\":\"complete\"}\n"))
 			{
 				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.nestedSession, parent, scope),
-					new NestedSessionManager(fileLocks, fixture.root.resolve("runs"), Clock.systemUTC(),
+					new NestedSessionManager(fileLocks, fixture.root.resolve("results"), Clock.systemUTC(),
 						Yielding.fileReplacer()),
 					fixture.options, fixture.json, Yielding.fileReplacer(), input, new StringWriter(),
 					(harness, _, _) ->
@@ -1220,7 +1220,7 @@ public final class SessionRequestBrokerTest
 				// The slot is emptied once the resumed session's response is published
 				for (int check = 0; check < 1_000_000 && Files.exists(manifest); ++check)
 					Thread.yield();
-				requireThat(Files.exists(manifest), "runKept").isFalse();
+				requireThat(Files.exists(manifest), "sessionRetained").isFalse();
 			}
 		}
 	}
@@ -1408,7 +1408,7 @@ public final class SessionRequestBrokerTest
 					() -> Optional.of(new NestedSessionChannel(fixture.requests)), fixture.json, broker::scan);
 
 				requireThat(client.discard(RESUMED_SESSION), "discarded").isTrue();
-				requireThat(Files.exists(retained.directory()), "runKept").isFalse();
+				requireThat(Files.exists(retained.directory()), "sessionRetained").isFalse();
 				requireThat(client.discard(RESUMED_SESSION), "discardedAgain").isFalse();
 			}
 		}
@@ -1644,9 +1644,9 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
-				fixture.options, (_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
+				fixture.options, (_, options, _) -> inSlot(fixture, fileLocks, options, nestedSessions, 0)))
 			{
 				fixture.request("first");
 				broker.scan();
@@ -1655,9 +1655,9 @@ public final class SessionRequestBrokerTest
 				broker.scan();
 				fixture.await("second");
 			}
-			requireThat(runs, "runs").size().isEqualTo(2);
-			SlotNestedSession first = runs.getFirst();
-			SlotNestedSession second = runs.getLast();
+			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
+			SlotNestedSession first = nestedSessions.getFirst();
+			SlotNestedSession second = nestedSessions.getLast();
 			requireThat(second.resultsFolder(), "resultsFolder").isEqualTo(first.resultsFolder());
 			requireThat(second.nestedSession().id(), "slotId").isEqualTo(first.nestedSession().id());
 			requireThat(second.nestedSession().directory(), "directory").isEqualTo(first.nestedSession().directory());
@@ -1682,9 +1682,9 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
-				fixture.options, (_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
+				fixture.options, (_, options, _) -> inSlot(fixture, fileLocks, options, nestedSessions, 0)))
 			{
 				fixture.request("first");
 				broker.scan();
@@ -1693,8 +1693,8 @@ public final class SessionRequestBrokerTest
 				broker.scan();
 				fixture.await("second");
 			}
-			requireThat(runs, "runs").size().isEqualTo(2);
-			requireThat(runs.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
+			requireThat(nestedSessions.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
 		}
 	}
 
@@ -1709,12 +1709,12 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			Iterator<String> markers = List.of("first", "second").iterator();
 			JsonNode firstResponse;
 			JsonNode secondResponse;
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
-				fixture.options, (_, options, _) -> inSlotWithReceipt(fixture, fileLocks, options, runs,
+				fixture.options, (_, options, _) -> inSlotWithReceipt(fixture, fileLocks, options, nestedSessions,
 					markers.next())))
 			{
 				fixture.writeRequest("first", fixture.document());
@@ -1727,8 +1727,8 @@ public final class SessionRequestBrokerTest
 
 			Path firstReceiptPath = Path.of(firstResponse.path("receipt").asString());
 			Path secondReceiptPath = Path.of(secondResponse.path("receipt").asString());
-			Path firstSession = Path.of(firstResponse.path("run").asString());
-			Path secondSession = Path.of(secondResponse.path("run").asString());
+			Path firstSession = Path.of(firstResponse.path("results_copy").asString());
+			Path secondSession = Path.of(secondResponse.path("results_copy").asString());
 			requireThat(Files.isDirectory(firstSession.resolve("project")), "firstCopiedProject").isTrue();
 			requireThat(Files.isRegularFile(firstSession.resolve("artifacts/bridge-transcript.jsonl")),
 				"firstCopiedRawResult").isTrue();
@@ -1786,11 +1786,12 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			ScriptedLiveness liveness = new ScriptedLiveness();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
 				fixture.options,
-				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 4242), RequestLimits.IN_NESTED_SESSION, liveness))
+				(_, options, _) -> inSlot(fixture, fileLocks, options, nestedSessions, 4242), RequestLimits.IN_NESTED_SESSION,
+				liveness))
 			{
 				fixture.request("first");
 				broker.scan();
@@ -1798,13 +1799,13 @@ public final class SessionRequestBrokerTest
 				fixture.request("second");
 				broker.scan();
 				requireThat(liveness.awaitPolls(4), "polled").isTrue();
-				requireThat(runs, "runsWhileAlive").size().isEqualTo(1);
+				requireThat(nestedSessions, "nestedSessionsWhileAlive").size().isEqualTo(1);
 				requireThat(liveness.terminations(), "terminations").isGreaterThan(0);
 				liveness.end();
 				fixture.await("second");
 			}
-			requireThat(runs, "runs").size().isEqualTo(2);
-			requireThat(runs.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
+			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
+			requireThat(nestedSessions.getLast().entriesAtStart(), "entriesAtStart").isEmpty();
 		}
 	}
 
@@ -1821,14 +1822,14 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			CountDownLatch developmentStarted = new CountDownLatch(1);
 			CountDownLatch release = new CountDownLatch(1);
 			AtomicInteger calls = new AtomicInteger();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
 				fixture.options, (_, options, _) ->
 				{
-					FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
+					FakeHarnessCli process = inSlot(fixture, fileLocks, options, nestedSessions, 0);
 					if (calls.getAndIncrement() == 0)
 					{
 						developmentStarted.countDown();
@@ -1850,9 +1851,9 @@ public final class SessionRequestBrokerTest
 					isEqualTo("completed");
 			}
 			Path slots = SessionRequestAccess.requestedSlotsDirectory(fixture.nestedSession);
-			requireThat(runs, "runs").size().isEqualTo(2);
-			requireThat(runs.getFirst().resultsFolder(), "development").isEqualTo(slots.resolve("d1"));
-			requireThat(runs.getLast().resultsFolder(), "heldOut").isEqualTo(slots.resolve("h1"));
+			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
+			requireThat(nestedSessions.getFirst().resultsFolder(), "development").isEqualTo(slots.resolve("d1"));
+			requireThat(nestedSessions.getLast().resultsFolder(), "heldOut").isEqualTo(slots.resolve("h1"));
 		}
 	}
 
@@ -1868,9 +1869,9 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
-				fixture.options, (_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
+				fixture.options, (_, options, _) -> inSlot(fixture, fileLocks, options, nestedSessions, 0)))
 			{
 				for (String id : List.of("first", "second"))
 				{
@@ -1878,11 +1879,11 @@ public final class SessionRequestBrokerTest
 					broker.scan();
 					fixture.await(id);
 				}
-				requireThat(runs, "runs").size().isEqualTo(2);
+				requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
 				// The second session has taken the slot that the first one left, and the first one's copy remains
-				requireThat(Files.readString(fixture.responses.resolve("first/run/result.txt")), "first").
+				requireThat(Files.readString(fixture.responses.resolve("first/results-copy/result.txt")), "first").
 					isEqualTo("1");
-				requireThat(Files.readString(fixture.responses.resolve("second/run/result.txt")), "second").
+				requireThat(Files.readString(fixture.responses.resolve("second/results-copy/result.txt")), "second").
 					isEqualTo("2");
 			}
 		}
@@ -1901,7 +1902,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "4", "--max-concurrency", "2"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			Set<Path> active = ConcurrentHashMap.newKeySet();
 			AtomicInteger running = new AtomicInteger();
 			AtomicInteger peak = new AtomicInteger();
@@ -1924,7 +1925,7 @@ public final class SessionRequestBrokerTest
 						Thread.currentThread().interrupt();
 						throw new IOException("Interrupted while the session held its slot", e);
 					}
-					FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
+					FakeHarnessCli process = inSlot(fixture, fileLocks, options, nestedSessions, 0);
 					// The broker releases the slot after the session's exit, so the session must stop counting as
 					// running before that exit is observed
 					process.whenExited(() ->
@@ -1945,7 +1946,7 @@ public final class SessionRequestBrokerTest
 					requireThat(fixture.await(id).path("status").asString(), id).isEqualTo("completed");
 			}
 			requireThat(peak.get(), "peak").isEqualTo(2);
-			requireThat(runs, "runs").size().isEqualTo(4);
+			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(4);
 		}
 	}
 
@@ -2033,13 +2034,13 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "3", "--max-concurrency", "1"))
 		{
-			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> nestedSessions = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.nestedSession, fixture.manager,
 				fixture.options, (_, options, _) ->
 				{
-					if (runs.isEmpty())
-						return inSlotWithUnknownLaunch(fixture, fileLocks, options, runs);
-					return inSlot(fixture, fileLocks, options, runs, 0);
+					if (nestedSessions.isEmpty())
+						return inSlotWithUnknownLaunch(fixture, fileLocks, options, nestedSessions);
+					return inSlot(fixture, fileLocks, options, nestedSessions, 0);
 				}))
 			{
 				fixture.request("first");
@@ -2051,14 +2052,14 @@ public final class SessionRequestBrokerTest
 				requireThat(refused.path("status").asString(), "second").isEqualTo("failed");
 				requireThat(refused.path("reason").asString(), "reason").contains("Harness launch state is unknown");
 
-				SlotNestedSession leftover = runs.getFirst();
+				SlotNestedSession leftover = nestedSessions.getFirst();
 				new NestedSessionManager(fileLocks, leftover.resultsFolder(), Clock.systemUTC(), Yielding.fileReplacer()).
 					recordNoHarnessProcess(leftover.nestedSession());
 				fixture.request("third");
 				broker.scan();
 				requireThat(fixture.await("third").path("status").asString(), "third").isEqualTo("completed");
 			}
-			requireThat(runs, "runs").size().isEqualTo(2);
+			requireThat(nestedSessions, "nestedSessions").size().isEqualTo(2);
 		}
 	}
 
@@ -2136,36 +2137,36 @@ public final class SessionRequestBrokerTest
 	 * does, and leaves the nested session recording that the runner was about to start a harness, as a runner killed at
 	 * that moment leaves it.
 	 *
-	 * @param fixture   the requesting nested session
-	 * @param fileLocks the file locks of the requested nested session
-	 * @param options   the requested runner's options
-	 * @param runs      receives what the runner finds in its slot and builds there
+	 * @param fixture        the requesting nested session
+	 * @param fileLocks      the file locks of the requested nested session
+	 * @param options        the requested runner's options
+	 * @param nestedSessions receives what the runner finds in its slot and builds there
 	 * @return the runner
 	 * @throws IOException if the nested session cannot be created or its launch state cannot be recorded
 	 */
 	private static FakeHarnessCli inSlotWithUnknownLaunch(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotNestedSession> runs) throws IOException
+		List<SlotNestedSession> nestedSessions) throws IOException
 	{
-		return inSlot(fixture, fileLocks, options, runs, NestedSessionManager::markHarnessStarting);
+		return inSlot(fixture, fileLocks, options, nestedSessions, NestedSessionManager::markHarnessStarting);
 	}
 
 	/**
 	 * Starts a double of a requested runner that builds its nested session in the results folder and under the slot ID
 	 * that the broker names, as the real runner does, and completes.
 	 *
-	 * @param fixture    the requesting nested session
-	 * @param fileLocks  the file locks of the requested nested session
-	 * @param options    the requested runner's options
-	 * @param runs       receives what the runner finds in its slot and builds there
-	 * @param harnessPid the identifier of the harness process that the nested session records, or {@code 0} to record
-	 *                   none
+	 * @param fixture        the requesting nested session
+	 * @param fileLocks      the file locks of the requested nested session
+	 * @param options        the requested runner's options
+	 * @param nestedSessions receives what the runner finds in its slot and builds there
+	 * @param harnessPid     the identifier of the harness process that the nested session records, or {@code 0} to record
+	 *                       none
 	 * @return the runner
 	 * @throws IOException if the nested session cannot be created or the runner refuses to reuse the slot
 	 */
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotNestedSession> runs, long harnessPid) throws IOException
+		List<SlotNestedSession> nestedSessions, long harnessPid) throws IOException
 	{
-		return inSlot(fixture, fileLocks, options, runs, (manager, nestedSession) ->
+		return inSlot(fixture, fileLocks, options, nestedSessions, (manager, nestedSession) ->
 		{
 			if (harnessPid != 0)
 			{
@@ -2185,16 +2186,16 @@ public final class SessionRequestBrokerTest
 	 * Starts a double of a requested runner that builds its nested session in the results folder and under the slot ID
 	 * that the broker names, records what {@code state} records in the nested session, and completes.
 	 *
-	 * @param fixture   the requesting nested session
-	 * @param fileLocks the file locks of the requested nested session
-	 * @param options   the requested runner's options
-	 * @param runs      receives what the runner finds in its slot and builds there
-	 * @param state     records the nested session's state
+	 * @param fixture        the requesting nested session
+	 * @param fileLocks      the file locks of the requested nested session
+	 * @param options        the requested runner's options
+	 * @param nestedSessions receives what the runner finds in its slot and builds there
+	 * @param state          records the nested session's state
 	 * @return the runner
 	 * @throws IOException if the nested session cannot be created or the runner refuses to reuse the slot
 	 */
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotNestedSession> runs, NestedSessionState state) throws IOException
+		List<SlotNestedSession> nestedSessions, NestedSessionState state) throws IOException
 	{
 		Path resultsFolder = Path.of(option(options, "--results"));
 		List<String> entries;
@@ -2206,9 +2207,9 @@ public final class SessionRequestBrokerTest
 			Yielding.fileReplacer()).withFixedSlotId(option(options, "--slot-id"));
 		NestedSession nestedSession = manager.create("claude");
 		state.record(manager, nestedSession);
-		runs.add(new SlotNestedSession(resultsFolder, nestedSession, entries));
+		nestedSessions.add(new SlotNestedSession(resultsFolder, nestedSession, entries));
 		Files.writeString(nestedSession.directory().resolve("left-behind"), "left behind");
-		Files.writeString(nestedSession.directory().resolve("result.txt"), String.valueOf(runs.size()));
+		Files.writeString(nestedSession.directory().resolve("result.txt"), String.valueOf(nestedSessions.size()));
 		Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
 		NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 			nestedSession, transcript, List.of());
@@ -2240,16 +2241,16 @@ public final class SessionRequestBrokerTest
 	 * @param fixture the requesting nested session
 	 * @param fileLocks the requesting nested session's file locks
 	 * @param options the requested runner's options
-	 * @param runs receives the nested session built in its slot
+	 * @param nestedSessions receives the nested session built in its slot
 	 * @param marker the request identity and retained project content
 	 * @return the fake runner
 	 * @throws IOException if the nested session's evidence cannot be written
 	 */
 	private static FakeHarnessCli inSlotWithReceipt(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotNestedSession> runs, String marker) throws IOException
+		List<SlotNestedSession> nestedSessions, String marker) throws IOException
 	{
-		FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
-		NestedSession nestedSession = runs.getLast().nestedSession();
+		FakeHarnessCli process = inSlot(fixture, fileLocks, options, nestedSessions, 0);
+		NestedSession nestedSession = nestedSessions.getLast().nestedSession();
 		Files.writeString(nestedSession.directory().resolve("project/session.txt"), marker);
 		Path nativeTranscript = Files.writeString(Files.createDirectories(
 			nestedSession.sessionTranscripts().resolve("subagents")).resolve("native.jsonl"), marker + " native bytes");
@@ -2788,7 +2789,7 @@ public final class SessionRequestBrokerTest
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
 				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
-				manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				nestedSession = manager.create("claude");
 				project = nestedSession.directory().resolve("project");

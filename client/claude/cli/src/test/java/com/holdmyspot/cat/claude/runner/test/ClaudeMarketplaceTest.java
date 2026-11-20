@@ -112,7 +112,7 @@ public final class ClaudeMarketplaceTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("cat-claude-run-root-"));
+			Path directory = cleanup.add(Files.createTempDirectory("cat-claude-results-"));
 			Path configuration = directory.resolve(".claude/launch.json");
 
 			ClaudeMarketplace.writeEmptyLaunchConfiguration(configuration);

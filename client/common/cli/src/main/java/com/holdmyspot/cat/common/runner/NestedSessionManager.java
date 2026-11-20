@@ -343,7 +343,7 @@ public final class NestedSessionManager
 		if (!matcher.matches())
 			throw new IOException("Session manifest is malformed or unsupported: " + manifest);
 		Files.createDirectories(directory);
-		Path replacement = Files.createTempFile(directory, "run-", ".json");
+		Path replacement = Files.createTempFile(directory, "session-", ".json");
 		Files.writeString(replacement, content.substring(0, matcher.start("id")) + id +
 			content.substring(matcher.end("id"), matcher.start("projectPath")) +
 			project.apply(matcher.group("projectPath")) + content.substring(matcher.end("projectPath")));
@@ -1641,7 +1641,7 @@ public final class NestedSessionManager
 				// A runner that is being stopped did not see its nested session end, so the nested session's harness session
 				// can continue
 				if (ProcessTreeStop.stopping() && previous.state().equals("running"))
-					throw new IOException("The runner is stopping, so run " + nestedSession.id() + " records no end");
+					throw new IOException("The runner is stopping, so nested session " + nestedSession.id() + " records no end");
 				finishedAt = clock.instant();
 			}
 			writeManifest(new Manifest(nestedSession.harness(), nestedSession.id(), state, state,

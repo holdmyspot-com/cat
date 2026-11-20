@@ -60,7 +60,7 @@ import tools.jackson.databind.node.ObjectNode;
  */
 public final class PromptAuthorTest
 {
-	private static final Path COPY = Path.of("/runs/prompt-author-3/project").toAbsolutePath();
+	private static final Path COPY = Path.of("/results/prompt-author-3/project").toAbsolutePath();
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ProposalSchema schema = new ProposalSchema(json);
 
@@ -79,12 +79,12 @@ public final class PromptAuthorTest
 	public void grantsRenderedDevelopmentTranscripts()
 	{
 		PromptAuthorPrompt prompt = new PromptAuthorPrompt(json, schema, Set.of(), Set.of());
-		Path runs = Path.of("/session/optimizer-runs").toAbsolutePath();
+		Path results = Path.of("/session/optimizer-nested-sessions").toAbsolutePath();
 		List<Failure> failures = new ArrayList<>();
-		for (String run : List.of("development_1", "development_2", "development_1", "unavailable"))
+		for (String session : List.of("development_1", "development_2", "development_1", "unavailable"))
 		{
-			TrialFiles files = new TrialFiles(runs.resolve(run + "/artifacts/transcript.jsonl"),
-				runs.resolve(run + "/effects"), runs.resolve(run + "/initial-project"));
+			TrialFiles files = new TrialFiles(results.resolve(session + "/artifacts/transcript.jsonl"),
+				results.resolve(session + "/effects"), results.resolve(session + "/initial-project"));
 			failures.add(new Failure(failure().testCase(), "Failed", List.of(), null, List.of(), List.of(), files));
 		}
 		PromptAuthorBrief identified = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
@@ -93,7 +93,7 @@ public final class PromptAuthorTest
 		Map<String, String> sections = new HashMap<>();
 		for (int index = 0; index < 3; ++index)
 			sections.put(identified.developmentId(index), "Transcript: " + failures.get(index).files().transcript());
-		sections.put("held_out", "Transcript: " + runs.resolve("held_out/artifacts/transcript.jsonl"));
+		sections.put("held_out", "Transcript: " + results.resolve("held_out/artifacts/transcript.jsonl"));
 		EndedAttempt ended = new EndedAttempt(1, Outcome.BELOW_MINIMUM, Map.of(), List.of(failure().summary()),
 			List.of(), List.of());
 		PromptAuthorBrief brief = new PromptAuthorBrief("safety", PromptAuthorApproach.CORRECT_INSTRUCTION,
@@ -102,8 +102,8 @@ public final class PromptAuthorTest
 
 		SessionRequest request = prompt.request(brief, COPY);
 
-		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(runs.resolve("development_1/artifacts"),
-			runs.resolve("development_2/artifacts")));
+		requireThat(request.readOnly(), "readOnly").isEqualTo(List.of(results.resolve("development_1/artifacts"),
+			results.resolve("development_2/artifacts")));
 	}
 
 	/**
@@ -951,8 +951,8 @@ public final class PromptAuthorTest
 				new PromptAuthorKind("missing route", List.of("f4"), FailureKind.ROUTING, List.of("earlier-hunk-id"), "")),
 			List.of(new HunkEvidence("earlier-hunk-id", Path.of("rules/earlier-only.md"), 9876, 9877, 9876, 9878,
 				List.of("f1", "f2", "f4"), analogous, "earlier dissimilar case")), rejections,
-			Path.of("/runs/prompt-author-4/transcript.jsonl").toAbsolutePath(),
-			Path.of("/runs/prompt-author-4/effects").toAbsolutePath());
+			Path.of("/results/prompt-author-4/transcript.jsonl").toAbsolutePath(),
+			Path.of("/results/prompt-author-4/effects").toAbsolutePath());
 	}
 
 	/**
@@ -978,7 +978,7 @@ public final class PromptAuthorTest
 	{
 		String report = response.replace("{\"needed_edits\":",
 			"{\"kinds\": [], \"hunks\": [], \"conflicts\": [], \"needed_edits\":");
-		return new SessionResult.Completed(Path.of("/runs/prompt-author-3/artifacts/transcript.jsonl").toAbsolutePath(),
+		return new SessionResult.Completed(Path.of("/results/prompt-author-3/artifacts/transcript.jsonl").toAbsolutePath(),
 			List.of(List.of("working", report)), COPY, COPY.resolveSibling("initial-project"), "prompt-author-model", null,
 			null, List.of(), "none", List.of());
 	}

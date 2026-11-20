@@ -319,7 +319,7 @@ public final class SessionDirectoryTest
 
 	/**
 	 * Verifies a session's campaigns live in its {@code optimizer} directory and its nested sessions in
-	 * {@code optimizer-runs/<harness>}, and that naming them creates neither.
+	 * {@code optimizer-nested-sessions/<harness>}, and that naming them creates neither.
 	 *
 	 * @throws IOException if the test filesystem cannot be used
 	 */
@@ -336,9 +336,9 @@ public final class SessionDirectoryTest
 			Path directory = project.toAbsolutePath().normalize().resolve(".cat/sessions/" + SESSION_ID);
 			requireThat(session.campaigns(), "campaigns").isEqualTo(directory.resolve("optimizer"));
 			requireThat(session.resultsFolder("claude"),
-				"resultsFolder").isEqualTo(directory.resolve("optimizer-runs/claude"));
+				"resultsFolder").isEqualTo(directory.resolve("optimizer-nested-sessions/claude"));
 			requireThat(Files.exists(session.campaigns()), "campaignsExist").isFalse();
-			requireThat(Files.exists(directory.resolve("optimizer-runs")), "runsExist").isFalse();
+			requireThat(Files.exists(directory.resolve("optimizer-nested-sessions")), "resultsFoldersExist").isFalse();
 		}
 	}
 

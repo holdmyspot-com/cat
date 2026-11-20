@@ -111,7 +111,7 @@ public final class RequestingNestedSession implements AutoCloseable
 		this.fileLocks = fileLocks;
 		this.replyForTurn = replyForTurn;
 		Files.createDirectories(root);
-		Path results = root.resolve("requesting-runs");
+		Path results = root.resolve("requesting-results");
 		NestedSessionManager manager = new NestedSessionManager(fileLocks, results, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		this.nestedSession = manager.create("claude");

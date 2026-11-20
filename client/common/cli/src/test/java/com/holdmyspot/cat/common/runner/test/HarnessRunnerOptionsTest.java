@@ -177,14 +177,14 @@ public final class HarnessRunnerOptionsTest
 	public void parsesBridgeOptions()
 	{
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(new String[] {"--artifact", absolute("artifact"),
-			"--project", absolute("project"), "--results", absolute("caller-temp/runs"), "--model",
+			"--project", absolute("project"), "--results", absolute("caller-temp/results"), "--model",
 			"test-model", "--effort", "high", "--output", absolute("output"), "--receipt", absolute("receipt"),
 			"--install-cat"},
 			"harness", SESSION);
 
 		requireThat(result.artifact(), "artifact").isEqualTo(path("artifact"));
 		requireThat(result.project(), "project").isEqualTo(path("project"));
-		requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("caller-temp/runs"));
+		requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("caller-temp/results"));
 		requireThat(result.model(), "model").isEqualTo("test-model");
 		requireThat(result.effort(), "effort").isEqualTo("high");
 		requireThat(result.output(), "output").isEqualTo(path("output"));
@@ -298,11 +298,11 @@ public final class HarnessRunnerOptionsTest
 	{
 		// Requirement: R-C21
 		HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--workspace",
-			absolute("runs/workspaces/trial")), "harness", SESSION);
+			absolute("results/workspaces/trial")), "harness", SESSION);
 		HarnessRunnerOptions without = HarnessRunnerOptions.parse(launch(),
 			"harness", SESSION);
 
-		requireThat(result.workspace(), "workspace").isEqualTo(path("runs/workspaces/trial"));
+		requireThat(result.workspace(), "workspace").isEqualTo(path("results/workspaces/trial"));
 		requireThat(without.workspace(), "without").isNull();
 	}
 
@@ -384,7 +384,7 @@ public final class HarnessRunnerOptionsTest
 	@Test(expectedExceptions = IllegalArgumentException.class, expectedExceptionsMessageRegExp = "Missing --artifact")
 	public void rejectsMissingArtifact()
 	{
-		HarnessRunnerOptions.parse(new String[] {"--project", absolute("project"), "--results", absolute("runs"),
+		HarnessRunnerOptions.parse(new String[] {"--project", absolute("project"), "--results", absolute("results"),
 			"--model", "model-a", "--effort", "effort-a"}, "harness", SESSION);
 	}
 
@@ -675,10 +675,10 @@ public final class HarnessRunnerOptionsTest
 			try (ToolScope scope = ToolScope.forSession(project, Map.of(HARNESS_B.sessionVariable(), SESSION_ID,
 				"HOME", project.toString()), List.of(HARNESS_A, HARNESS_B), Yielding.waiting(), GitProjects.IGNORING))
 			{
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("runs")),
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("results")),
 					"harness", HarnessTemporaryRoot.from(scope));
 
-				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("runs"));
+				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("results"));
 				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 			}
 		}
@@ -713,10 +713,10 @@ public final class HarnessRunnerOptionsTest
 						contains(HARNESS_B.sessionVariable());
 				}
 
-				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("runs")),
+				HarnessRunnerOptions result = HarnessRunnerOptions.parse(launch("--results", absolute("results")),
 					"harness", temporaryRoot);
 
-				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("runs"));
+				requireThat(result.resultsFolder(), "resultsFolder").isEqualTo(path("results"));
 				requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsRootExists").isFalse();
 			}
 		}

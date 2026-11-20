@@ -1302,9 +1302,9 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path copy = parent.resolve("copy").toAbsolutePath().normalize();
 			Path relativeCampaigns = Path.of(".cat", "sessions", SESSION_ID, "optimizer");
 			Path campaigns = Files.createDirectories(original.resolve(relativeCampaigns));
-			Path runs = Path.of(".cat", "sessions", SESSION_ID, "optimizer-runs", "trial-1");
-			TrialFiles files = new TrialFiles(original.resolve(runs).resolve("transcript.jsonl"),
-				original.resolve(runs).resolve("effects"), original.resolve(runs).resolve("initial-project"));
+			Path sessionFolder = Path.of(".cat", "sessions", SESSION_ID, "optimizer-nested-sessions", "trial-1");
+			TrialFiles files = new TrialFiles(original.resolve(sessionFolder).resolve("transcript.jsonl"),
+				original.resolve(sessionFolder).resolve("effects"), original.resolve(sessionFolder).resolve("initial-project"));
 			Header header = new Header(ID, original, original.resolve("AGENTS.md"), Harness.CODEX, Lifecycle.ACTIVE);
 			LogicalTrial assigned = trial(1, TrialState.ASSIGNED);
 			LogicalTrial judged = judged(trial(1, TrialState.JUDGED), files);
@@ -1326,8 +1326,8 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			copyTree(original, copy);
 			Map<Path, String> before = contents(original);
 			Path copiedCampaigns = copy.resolve(relativeCampaigns);
-			TrialFiles copied = new TrialFiles(copy.resolve(runs).resolve("transcript.jsonl"),
-				copy.resolve(runs).resolve("effects"), copy.resolve(runs).resolve("initial-project"));
+			TrialFiles copied = new TrialFiles(copy.resolve(sessionFolder).resolve("transcript.jsonl"),
+				copy.resolve(sessionFolder).resolve("effects"), copy.resolve(sessionFolder).resolve("initial-project"));
 			requireReadInCopy(new FileCampaignStore(copiedCampaigns, copy, JSON, Yielding.fileReplacer()),
 				assigned.key(), copy, copied);
 

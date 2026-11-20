@@ -130,8 +130,8 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
-			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), manifest);
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("results"));
+			writeManifest(resultsFolder.resolve("claude").resolve("session-1"), manifest);
 			requireThat(finder(List.of(), resultsFolder).find(), "find").isEqualTo(expected);
 		}
 	}
@@ -147,10 +147,10 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("results"));
 			Path heldOutResultsFolder = cleanup.add(Files.createTempDirectory("runs-held_out"));
-			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), running(4001, 4002));
-			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-2"), running(5001, 5002));
+			writeManifest(resultsFolder.resolve("claude").resolve("session-1"), running(4001, 4002));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("session-2"), running(5001, 5002));
 			requireThat(finder(List.of(), resultsFolder, heldOutResultsFolder).find(), "find").isEqualTo(
 				List.of(new RecordedProcess(4002, HARNESS_START), new RecordedProcess(5002, HARNESS_START)));
 		}
@@ -170,14 +170,14 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("results"));
 			Path heldOutResultsFolder = cleanup.add(Files.createTempDirectory("runs-held_out"));
 			List<FakeProcessHandle> processes = List.of(new FakeProcessHandle(6001, OWNER_START, true),
 				new FakeProcessHandle(7001, OWNER_START + "1", true));
-			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), running(6001, 6002));
-			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-2"), running(6001, 6003));
-			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-3"), running(5001, 5002));
-			writeManifest(heldOutResultsFolder.resolve("claude").resolve("run-4"), running(7001, 7002));
+			writeManifest(resultsFolder.resolve("claude").resolve("session-1"), running(6001, 6002));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("session-2"), running(6001, 6003));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("session-3"), running(5001, 5002));
+			writeManifest(heldOutResultsFolder.resolve("claude").resolve("session-4"), running(7001, 7002));
 			requireThat(finder(processes, resultsFolder, heldOutResultsFolder).find(), "find").isEqualTo(
 				List.of(new RecordedProcess(5002, HARNESS_START), new RecordedProcess(7002, HARNESS_START)));
 		}
@@ -196,14 +196,14 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("results"));
 			ProcessHandle current = ProcessHandle.current();
 			String started = HarnessProcesses.system().find(current.pid()).flatMap(ProcessDescription::start).
 				orElseThrow();
-			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), """
+			writeManifest(resultsFolder.resolve("claude").resolve("session-1"), """
 				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(current.pid(), started, HARNESS_START));
-			writeManifest(resultsFolder.resolve("claude").resolve("run-2"), running(5001, 5002));
+			writeManifest(resultsFolder.resolve("claude").resolve("session-2"), running(5001, 5002));
 			LeftoverNestedSessions finder = new LeftoverNestedSessions(new FakeSessionPort(HostLogin.UNKNOWN, null,
 				List.of(resultsFolder)), JsonMapper.builder().build());
 			requireThat(finder.find(), "find").isEqualTo(List.of(new RecordedProcess(5002, HARNESS_START)));
@@ -222,13 +222,13 @@ public final class LeftoverNestedSessionsTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path resultsFolder = cleanup.add(Files.createTempDirectory("runs"));
+			Path resultsFolder = cleanup.add(Files.createTempDirectory("results"));
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory("proc")), BOOT_TIME);
 			long owner = ProcessHandle.current().pid();
 			folder.start(owner, "java", 5000);
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
 			String ownerStart = processes.find(owner).flatMap(ProcessDescription::start).orElseThrow();
-			writeManifest(resultsFolder.resolve("claude").resolve("run-1"), """
+			writeManifest(resultsFolder.resolve("claude").resolve("session-1"), """
 				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(owner, ownerStart, HARNESS_START));
 			// The wall clock is set an hour back
@@ -250,7 +250,7 @@ public final class LeftoverNestedSessionsTest
 		// Requirement: R-E11
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path directory = cleanup.add(Files.createTempDirectory("runs"));
+			Path directory = cleanup.add(Files.createTempDirectory("results"));
 			requireThat(finder(List.of()).find(), "withoutRoots").isEmpty();
 			requireThat(finder(List.of(), directory.resolve("missing"),
 				directory.resolve("missing-held-out")).find(), "withMissingRoots").isEmpty();

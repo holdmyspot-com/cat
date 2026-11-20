@@ -53,7 +53,7 @@ public final class RunnerChildNeedsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path request = cleanup.add(Files.createTempDirectory("cat-request-")).toRealPath();
-			Path sessionFolder = request.resolve("run");
+			Path sessionFolder = request.resolve("session");
 			Path cache = request.resolveSibling("cache");
 			Path denied = request.resolveSibling("denied");
 			List<List<String>> started = new ArrayList<>();
@@ -102,7 +102,7 @@ public final class RunnerChildNeedsTest
 			try
 			{
 				new RunnerChildNeeds(starter).needs("codex",
-					request.resolve("run"), List.of(), bound);
+					request.resolve("session"), List.of(), bound);
 				throw new AssertionError("The child was not refused");
 			}
 			catch (PolicyRefusal e)
@@ -132,7 +132,7 @@ public final class RunnerChildNeedsTest
 			};
 			try
 			{
-				new RunnerChildNeeds(starter).needs("codex", request.resolve("run"),
+				new RunnerChildNeeds(starter).needs("codex", request.resolve("session"),
 					List.of(), ParentPolicy.UNSANDBOXED);
 				throw new AssertionError("The needs were read");
 			}

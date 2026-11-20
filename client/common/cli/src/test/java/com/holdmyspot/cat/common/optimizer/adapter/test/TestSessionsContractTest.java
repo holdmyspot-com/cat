@@ -532,7 +532,7 @@ public final class TestSessionsContractTest
 			TemporaryDirectories cleanup = new TemporaryDirectories();
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-sessions-contract-"));
 			Path workspace = Files.createDirectories(root.resolve("workspace"));
-			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"), List::of,
+			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("results"), List::of,
 				false, Map.of(), Files.createDirectories(root.resolve("configuration")), HarnessCapacity.unlimited(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			return new ScriptedSubject(cleanup, new TestSessions(settings, bridge), workspace, entered);

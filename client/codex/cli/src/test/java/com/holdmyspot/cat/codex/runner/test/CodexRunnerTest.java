@@ -460,7 +460,7 @@ public final class CodexRunnerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-tmpdir-"));
-			Path sessionFolder = Files.createDirectories(root.resolve("run"));
+			Path sessionFolder = Files.createDirectories(root.resolve("session"));
 			Path home = Files.createDirectories(sessionFolder.resolve("home"));
 			Path temporaryDirectory = Files.createDirectories(home.resolve("tmp"));
 			Path configuration = home.resolve("config.toml");
@@ -534,7 +534,7 @@ public final class CodexRunnerTest
 	@Test
 	public void marksNestedSession()
 	{
-		Path home = Path.of("/run/home").toAbsolutePath();
+		Path home = Path.of("/session/home").toAbsolutePath();
 		Map<String, String> appServer = CodexRunner.processEnvironment(Map.of("PATH", "/usr/bin",
 			HarnessEnvironment.NESTED_SESSION_VARIABLE, ""), HarnessDependencyCaches.NONE, home, home.getParent(),
 			home.resolve("tmp"), Platform.LINUX_X64);
@@ -590,10 +590,10 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path hidden = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-hidden-")).toRealPath();
-			Path project = Files.createDirectories(hidden.resolve("runs/run/project"));
-			Path home = Files.createDirectories(hidden.resolve("runs/run/home"));
+			Path project = Files.createDirectories(hidden.resolve("results/session/project"));
+			Path home = Files.createDirectories(hidden.resolve("results/session/home"));
 			Path responses = Files.createDirectories(home.resolve("responses"));
-			Path evidence = Files.createDirectories(hidden.resolve("runs/trial/artifacts"));
+			Path evidence = Files.createDirectories(hidden.resolve("results/trial/artifacts"));
 			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-")).toRealPath();
 			Path bwrap = Path.of("/usr/bin/bwrap").toAbsolutePath();
 			List<String> command = CodexRunner.appServerCommand("codex", false);
@@ -625,7 +625,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -670,7 +670,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -717,7 +717,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -759,7 +759,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			Path base = cleanup.add(Files.createTempDirectory(temporary, "cat-link-source-")).toRealPath();
 			Files.writeString(base.resolve("notes.md"), "notes");
 			Path source = Files.createDirectories(base.resolve("project"));
@@ -835,7 +835,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -868,7 +868,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -913,7 +913,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -948,7 +948,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -977,7 +977,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -1009,7 +1009,7 @@ public final class CodexRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-requester-plugin-")).
 				toRealPath();
 			Path artifact = root.resolve("artifact");
-			Path results = root.resolve("runs");
+			Path results = root.resolve("results");
 			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), results, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession first = firstManager.create("codex");
@@ -1079,9 +1079,9 @@ public final class CodexRunnerTest
 	@Test
 	public void developerNoteExemptsProject()
 	{
-		Path root = Path.of("/runs");
-		Path project = Path.of("/runs/codex/run-1/project");
-		Path home = Path.of("/runs/codex/run-1/home");
+		Path root = Path.of("/results");
+		Path project = Path.of("/results/codex/session-1/project");
+		Path home = Path.of("/results/codex/session-1/home");
 		String note = "The denied reads protect other sessions' projects in " + root + ". They do not apply to your " +
 			"project " + project + ", your working directory, or to anything under it, nor to " + home + ": you have " +
 			"full read and write access to both. Your project's files are not in your context; read one with a shell " +
@@ -1101,9 +1101,9 @@ public final class CodexRunnerTest
 	public void developerNoteAddsNoRequestInstructions()
 	{
 		// Requirement: R-I9
-		Path root = Path.of("/runs");
-		Path project = Path.of("/runs/codex/run-1/project");
-		Path home = Path.of("/runs/codex/run-1/home");
+		Path root = Path.of("/results");
+		Path project = Path.of("/results/codex/session-1/project");
+		Path home = Path.of("/results/codex/session-1/home");
 
 		requireThat(CodexRunner.developerInstructions(root, project, home, "Review the plan."), "instructions").
 			doesNotContain("request-session").doesNotContain("CAT_REQUEST_SESSION").
@@ -1126,7 +1126,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -1162,7 +1162,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -1198,7 +1198,7 @@ public final class CodexRunnerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path temporary = jvm.temporaryDirectory();
-			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -1244,8 +1244,8 @@ public final class CodexRunnerTest
 			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
 			Path otherSession = Files.createDirectories(project.resolve(".cat/sessions/session-2"));
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
-			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
-			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
+			Path root = Files.createDirectories(session.resolve("optimizer-nested-sessions/codex"));
+			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-nested-sessions/codex-held_out"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");
@@ -1290,8 +1290,8 @@ public final class CodexRunnerTest
 			Path temporary = jvm.temporaryDirectory();
 			Path project = cleanup.add(Files.createTempDirectory(temporary, "cat-user-project-"));
 			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
-			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
-			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
+			Path root = Files.createDirectories(session.resolve("optimizer-nested-sessions/codex"));
+			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-nested-sessions/codex-held_out"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("codex");

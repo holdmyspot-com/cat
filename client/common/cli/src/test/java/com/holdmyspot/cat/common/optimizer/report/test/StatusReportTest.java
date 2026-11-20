@@ -246,7 +246,7 @@ public final class StatusReportTest
 	public void reportsPromptAuthorKinds()
 	{
 		// Requirement: R-D10
-		Path transcript = Path.of("/runs/prompt-author-3/transcript.jsonl").toAbsolutePath();
+		Path transcript = Path.of("/results/prompt-author-3/transcript.jsonl").toAbsolutePath();
 		PromptAuthorDiagnosis diagnosis = new PromptAuthorDiagnosis(3, 1, "safety", Builder.snapshot("candidate-1"),
 			List.of(new PromptAuthorKind("skipped confirmation", List.of("f1", "f2"), FailureKind.GUIDANCE,
 			List.of("h1"), ""),
@@ -254,7 +254,7 @@ public final class StatusReportTest
 			List.of(new HunkEvidence("h1", Path.of("rules/safety.md"), 1, 2, 1, 3, List.of("f1", "f2"),
 				"Overwriting a file", "plain_list")),
 			List.of("Uncited changed hunk: CLAUDE.md#2"), transcript,
-			Path.of("/runs/prompt-author-3/effects").toAbsolutePath());
+			Path.of("/results/prompt-author-3/effects").toAbsolutePath());
 		Campaign campaign = Transitions.apply(new Builder().confirmed().working(1).build(),
 			new CampaignEvent.RetainPromptAuthorDiagnosis(diagnosis));
 

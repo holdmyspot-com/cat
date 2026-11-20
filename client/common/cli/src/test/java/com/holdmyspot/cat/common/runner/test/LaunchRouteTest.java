@@ -29,7 +29,7 @@ public final class LaunchRouteTest
 	 * The options of a launch that a nested session's runner started.
 	 */
 	private static final List<String> BOUND_LAUNCH = List.of("--project", "project", "--model", "model-a",
-		"--effort", "effort-a", PolicyBoundFile.OPTION, "/run/policy-bound.json");
+		"--effort", "effort-a", PolicyBoundFile.OPTION, "/session/policy-bound.json");
 
 	/**
 	 * Creates the test.
@@ -47,12 +47,12 @@ public final class LaunchRouteTest
 	{
 		// Requirement: R-I11
 		Map<String, String> environment = Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
-			HarnessEnvironment.NESTED_SESSION_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests");
+			HarnessEnvironment.NESTED_SESSION_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/session/requests");
 
 		LaunchRoute route = LaunchRoute.decide("harness-a", "harness-a", Set.of("harness-a", "harness-b"),
 			LAUNCH.toArray(String[]::new), environment);
 
-		requireThat(route, "route").isEqualTo(new LaunchRoute.Forward(Path.of("/run/requests")));
+		requireThat(route, "route").isEqualTo(new LaunchRoute.Forward(Path.of("/session/requests")));
 	}
 
 	/**

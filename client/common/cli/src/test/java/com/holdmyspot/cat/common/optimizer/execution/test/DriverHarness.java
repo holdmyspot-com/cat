@@ -268,7 +268,7 @@ public final class DriverHarness
 		this.directory = directory;
 		this.temporaryDirectory = directory;
 		this.sessions = new FakeSessionPort(login, null,
-			List.of(directory.resolve("runs"), directory.resolve("runs-held_out")));
+			List.of(directory.resolve("results"), directory.resolve("results-held_out")));
 		this.fork = fork;
 		this.overlays = new AliasedOverlays(new FileCandidateOverlays(FileCampaignStore.directory(
 			directory.resolve("campaigns"), CAMPAIGN), fork, json, Yielding.fileReplacer()));

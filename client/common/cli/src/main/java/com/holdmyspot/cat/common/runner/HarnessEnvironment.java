@@ -27,7 +27,7 @@ public final class HarnessEnvironment
 	 * inside a nested session, a session starts only as a request to the nested session's own runner, which counts and
 	 * limits the sessions that the nested session requests.
 	 */
-	public static final String NESTED_SESSION_VARIABLE = "CAT_RUN";
+	public static final String NESTED_SESSION_VARIABLE = "CAT_NESTED_SESSION";
 	/**
 	 * The value of {@link #NESTED_SESSION_VARIABLE} in a nested session.
 	 */

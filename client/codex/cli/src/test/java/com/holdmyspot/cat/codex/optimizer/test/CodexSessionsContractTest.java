@@ -89,7 +89,7 @@ public final class CodexSessionsContractTest
 	private static CodexSessions port(JvmScope jvm, Path root, Bridge bridge)
 	{
 		return CodexSessionsSecrets.getCodexSessionsAccess().
-			newCodexSessions(new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
+			newCodexSessions(new RunnerSessions.Settings(jvm, root, root.resolve("results"),
 			List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer()),
 			bridge);
 	}

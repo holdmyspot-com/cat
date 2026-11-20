@@ -77,7 +77,7 @@ public final class CodexSessionEnvironmentVersionTest
 				Path hostProject = Files.createDirectories(root.resolve("project"));
 				Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.", UTF_8);
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-					hostProject.resolve("runs"),
+					hostProject.resolve("results"),
 					Clock.systemUTC(),
 					Yielding.fileReplacer());
 				NestedSession nestedSession = manager.create("codex");
@@ -89,7 +89,7 @@ public final class CodexSessionEnvironmentVersionTest
 				manager.copyProject(linkedProject, nestedSession);
 				manager.snapshotProject(nestedSession);
 				Files.writeString(nestedSession.directory().resolve("home/auth.json"), "{}");
-				Files.createDirectories(hostProject.resolve("runs/workspaces"));
+				Files.createDirectories(hostProject.resolve("results/workspaces"));
 				Files.writeString(source, """
 					openai_base_url = "http://localhost:2455/backend-api/codex"
 					forced_login_method = "api"
@@ -142,7 +142,7 @@ public final class CodexSessionEnvironmentVersionTest
 				// Session folders differ per nested session, so the hash covers the configuration and instructions with their
 				// root and the nested session's identifier replaced
 				String configuration = (replaceRoot(Files.readString(destination, UTF_8).replace("\r\n", "\n"), root) +
-					"\ninstructions = " + instructions + "\n").replace(nestedSession.id(), "<run>");
+					"\ninstructions = " + instructions + "\n").replace(nestedSession.id(), "<session>");
 				RunnerSessions.Settings sessionSettings = new RunnerSessions.Settings(jvm, root, root, List::of, false,
 					Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				int version = new CodexSessions(sessionSettings).sessionEnvironmentVersion();

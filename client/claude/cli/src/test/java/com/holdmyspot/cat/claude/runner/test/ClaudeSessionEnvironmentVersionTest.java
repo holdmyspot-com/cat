@@ -73,13 +73,13 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
 			Path hostProject = Files.createDirectories(root.resolve("project"));
 			Files.writeString(hostProject.resolve("CLAUDE.md"), "Follow the handbook.", UTF_8);
-			NestedSessionManager manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("runs"),
+			NestedSessionManager manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("results"),
 				Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("claude");
 			manager.snapshotProject(nestedSession);
 			Files.createDirectories(nestedSession.directory().resolve("home/.claude"));
-			Files.createDirectories(hostProject.resolve("runs/workspaces"));
+			Files.createDirectories(hostProject.resolve("results/workspaces"));
 			Files.writeString(source, """
 				{
 				  "env": {"ANTHROPIC_BASE_URL": "https://host.example"},
@@ -145,7 +145,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 	{
 		// The mapper ends its lines with the platform's line separator
 		return replaceRoot(withoutExcludesAboveRoot(json, Files.readString(file, UTF_8), root), root).
-			replace(nestedSession.id(), "<run>").replace("\r\n", "\n");
+			replace(nestedSession.id(), "<session>").replace("\r\n", "\n");
 	}
 
 	/**

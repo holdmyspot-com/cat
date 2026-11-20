@@ -32,15 +32,15 @@ The interrupt recording comes from the installed plugin's optimizer after ESC in
 
 Substitutions made in the refreshed E1 streams:
 
-- The selected session's root thread and session identifiers become `trial-thread`, `judge-thread` or `author-thread`; its run identifier becomes `run-trial`, `run-judge` or `run-author`.
+- The selected session's root thread and session identifiers become `trial-thread`, `judge-thread` or `author-thread`; its nested session ID becomes `session-trial`, `session-judge` or `session-author`.
 - Other UUID identifiers become stable `identifier-N` values in first-observed order. Agent-message identifiers become `message-ROLE-N`; reasoning identifiers become `recorded-identifier-N`; command and file-change identifiers become `exec-identifier-N`. Repeated identifiers retain the same replacement.
 - E1 command `processId` values become `process-N` in first-observed order, with repeated values retaining the same replacement. Distinct process identities remain distinct.
 - Existing path substitutions apply throughout the streams: `/home/gili/cat-client` prefixes become `/recorded/host`, and remaining `/home/gili` prefixes become `/recorded/user`.
 
 Existing recordings keep their established substitutions:
 
-- The optimizer run's enclosing `.cat/work` path becomes `/recorded/project`; the four run identifiers become `run-trial`, `run-judge`, `run-author` and `run-deriver`.
-- The interrupt recording's enclosing `.cat/work` path becomes `/recorded/project`; its run identifier becomes `run-interrupt`, and its referenced trial run identifier becomes `run-interrupt-trial`.
+- The optimizer's enclosing `.cat/work` path becomes `/recorded/project`; the four nested session IDs become `session-trial`, `session-judge`, `session-author` and `session-deriver`.
+- The interrupt recording's enclosing `.cat/work` path becomes `/recorded/project`; its nested session ID becomes `session-interrupt`, and its referenced trial's nested session ID becomes `session-interrupt-trial`.
 - Root thread and session identifiers become role-specific stable names; turn and other UUID identifiers become `identifier-N` or `recorded-identifier-N`; agent-message item identifiers become `message-ROLE-N`; command item identifiers become `exec-identifier-N`; command process identifiers become `process`.
 - The child capture's `/home/gili/cat-client/worktrees/v1.0-wi17a/.cat/work/temp/tool-events-recording` path becomes `/recorded/child`.
 - Other `/home/gili/cat-client` prefixes become `/recorded/host`; remaining `/home/gili` prefixes become `/recorded/user`.

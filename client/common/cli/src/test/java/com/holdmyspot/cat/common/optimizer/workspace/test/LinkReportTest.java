@@ -131,8 +131,8 @@ public final class LinkReportTest
 			Files.writeString(root.resolve("rules.md"), "rules");
 			Path source = Files.createDirectories(root.resolve("source/docs"));
 			Files.createSymbolicLink(source.resolve("rules.md"), Path.of("../../rules.md"));
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(source.getParent(), nestedSession);
 			Path project = nestedSession.directory().toRealPath().resolve("project");

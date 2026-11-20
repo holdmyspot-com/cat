@@ -35,7 +35,7 @@ public final class ClaudeRequestServerCliTest
 
 		requireThat(ClaudeRequestServerCli.refusal(platform, inNestedSession).orElseThrow(), "refusal").
 			contains("no request server serves such a session");
-		requireThat(ClaudeRequestServerCli.refusal(platform, Map.of("PATH", "/bin")), "outsideRun").
+		requireThat(ClaudeRequestServerCli.refusal(platform, Map.of("PATH", "/bin")), "outsideNestedSession").
 			isEqualTo(ClaudeSessionSandbox.refusal(platform));
 	}
 }

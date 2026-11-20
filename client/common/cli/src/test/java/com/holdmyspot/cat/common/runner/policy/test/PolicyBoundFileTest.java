@@ -22,7 +22,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class PolicyBoundFileTest
 {
 	private static final String VALID = """
-		{"format_version":1,"write_roots":["/run"],"write_denials":[],"read_denials":["/secret"],\
+		{"format_version":1,"write_roots":["/session"],"write_denials":[],"read_denials":["/secret"],\
 		"read_reallowances":[],"hosts":["model.example"],"allow_local_binding":false}""";
 	private final JsonMapper json = JsonMapper.builder().build();
 
@@ -45,8 +45,8 @@ public final class PolicyBoundFileTest
 			TestJvmScope jvm = new TestJvmScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "policy-bound-"));
-			ChildPolicy policy = new ChildPolicy(List.of(root.resolve("run"), root.resolve("cache")),
-				List.of(root.resolve("run/protected")), List.of(root.resolve("secret")),
+			ChildPolicy policy = new ChildPolicy(List.of(root.resolve("session"), root.resolve("cache")),
+				List.of(root.resolve("session/protected")), List.of(root.resolve("secret")),
 				List.of(root.resolve("secret/shared")), Set.of("model.example", "localhost"), true);
 			Path file = root.resolve(PolicyBoundFile.FILE_NAME);
 
@@ -71,9 +71,9 @@ public final class PolicyBoundFileTest
 				{VALID.replace("\"format_version\":1", "\"format_version\":2"), "format_version"},
 				{VALID.replace(",\"allow_local_binding\":false", ""), "allow_local_binding"},
 				{VALID.replace("}", ",\"extra\":1}"), "extra"},
-				{VALID.replace("\"/run\"", "\"run\""), "absolute"},
+				{VALID.replace("\"/session\"", "\"session\""), "absolute"},
 				{VALID.replace("[\"model.example\"]", "[1]"), "hosts"},
-				{VALID.replace("\"write_roots\":[\"/run\"]", "\"write_roots\":[]"), "writeRoots"},
+				{VALID.replace("\"write_roots\":[\"/session\"]", "\"write_roots\":[]"), "writeRoots"},
 				{VALID.replace("false}", "\"no\"}"), "allow_local_binding"}
 			};
 	}
@@ -121,10 +121,10 @@ public final class PolicyBoundFileTest
 			TestJvmScope jvm = new TestJvmScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "policy-bound-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path cache = Files.createDirectory(root.resolve("cache"));
 			Path secret = Files.createDirectory(root.resolve("secret"));
-			Path requestedRoot = Files.createDirectories(root.resolve("requested/run-root"));
+			Path requestedRoot = Files.createDirectories(root.resolve("requested/results"));
 			Path directory = Files.createDirectories(root.resolve("requested/response"));
 			ChildPolicy policy = new ChildPolicy(List.of(sessionFolder, cache), List.of(), List.of(secret), List.of(),
 				Set.of("model.example"), false);

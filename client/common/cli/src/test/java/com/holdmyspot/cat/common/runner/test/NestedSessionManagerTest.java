@@ -95,7 +95,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Path output = root.resolve("result.json");
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
@@ -121,7 +121,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSession nestedSession = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			if (nestedSession.directory().getFileSystem().supportedFileAttributeViews().contains("posix"))
@@ -144,7 +144,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedSlotId("slot-1");
 			NestedSession first = manager.create("harness");
@@ -170,7 +170,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedSlotId("slot-1");
 			NestedSession first = manager.create("harness");
@@ -192,7 +192,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.withFixedSlotId("slot-1").create("harness");
@@ -221,7 +221,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -255,7 +255,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession terminal = manager.create("harness");
@@ -287,7 +287,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession terminal = manager.create("harness");
@@ -320,7 +320,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession terminal = manager.create("harness");
@@ -349,7 +349,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -372,7 +372,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -400,7 +400,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -428,7 +428,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-"));
 			Path hostLogin = Files.writeString(outside.resolve(".credentials.json"), "host login");
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
@@ -457,7 +457,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -482,7 +482,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -516,7 +516,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -540,7 +540,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -578,7 +578,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC());
 			NestedSession nestedSession = manager.create("harness");
 			try (NestedSessionLock lock = manager.acquireLock(nestedSession))
@@ -604,7 +604,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -627,7 +627,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC(),
 				new FakeProcessHandle(OWNER_PID, OWNER_START, true));
 			NestedSession nestedSession = manager.create("harness");
@@ -650,7 +650,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -675,7 +675,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -702,7 +702,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Path artifact = Files.createDirectories(cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-artifact-")).resolve("nested\\new"));
@@ -741,7 +741,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -769,7 +769,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -795,7 +795,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -825,7 +825,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -847,7 +847,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -872,14 +872,14 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Files.createDirectories(project.resolve(".git"));
 			Files.writeString(project.resolve(".git/config"), "source-only metadata");
 			Files.writeString(project.resolve("unrelated.md"), "uncommitted change");
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-				root.resolve("runs"), Clock.systemUTC(),
+				root.resolve("results"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
@@ -909,13 +909,13 @@ public final class NestedSessionManagerTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(
 					jvm.temporaryDirectory(),
-					"cat-run-root-"));
+					"cat-results-"));
 				Path project = Files.createDirectories(root.resolve("project/docs"));
 				Files.writeString(project.resolve("guide.md"), "project guide");
 				Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
 				Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-					root.resolve("runs"), Clock.systemUTC(),
+					root.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				NestedSession nestedSession = manager.create("harness");
 				manager.copyProject(root.resolve("project"), nestedSession);
@@ -958,14 +958,14 @@ public final class NestedSessionManagerTest
 			{
 				Path root = cleanup.add(Files.createTempDirectory(
 					jvm.temporaryDirectory(),
-					"cat-run-root-"));
+					"cat-results-"));
 				Path project = Files.createDirectories(root.resolve("project/docs"));
 				Files.writeString(project.resolve("handbook.md"), "Ship small, ship often.\n");
 				Path linkDirectory = Files.createDirectories(root.resolve("workspaces/draft/workspace/docs"));
 				Path target = Path.of("../../../docs/handbook.md");
 				Files.createSymbolicLink(linkDirectory.resolve("handbook.md"), target);
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-					root.resolve("runs"), Clock.systemUTC(),
+					root.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				NestedSession nestedSession = manager.create("harness");
 				manager.copyProject(root.resolve("project"), nestedSession);
@@ -1008,13 +1008,13 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project/docs"));
 			Files.writeString(project.resolve("guide.md"), "project guide");
 			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
 			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-				root.resolve("runs"), Clock.systemUTC(),
+				root.resolve("results"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(root.resolve("project"), nestedSession);
@@ -1044,7 +1044,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			if (!root.getFileSystem().supportedFileAttributeViews().contains("posix"))
 				return;
 			Path project = cleanup.add(Files.createTempDirectory(
@@ -1103,7 +1103,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path project = root.resolve("project");
 			Files.createDirectories(project.resolve("nested"));
 			Files.writeString(project.resolve("README.md"), "project");
@@ -1112,8 +1112,8 @@ public final class NestedSessionManagerTest
 			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
 			Files.createLink(project.resolve(".credentials.json"), nullDevice);
 			Files.createLink(project.resolve("nested/token"), nullDevice);
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
 			manager.copyProject(project, nestedSession, nullDevice);
@@ -1137,12 +1137,12 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
 			Files.createSymbolicLink(project.resolve("link"), nullDevice);
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
 			try
@@ -1172,7 +1172,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(Files.createDirectories(project.resolve("shared")).resolve("guide.md"), "guide");
 			Files.createSymbolicLink(Files.createDirectories(project.resolve("docs")).resolve("guide.md"),
@@ -1180,8 +1180,8 @@ public final class NestedSessionManagerTest
 			Files.createSymbolicLink(project.resolve("alias"), Path.of("shared"));
 			Files.createSymbolicLink(project.resolve("chain"), Path.of("alias/guide.md"));
 			Files.createSymbolicLink(project.resolve("back"), Path.of("../project/shared/guide.md"));
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
 			manager.copyProject(project, nestedSession);
@@ -1217,7 +1217,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path outside = Files.createDirectories(root.resolve("outside/tree"));
 			Path notes = Files.writeString(root.resolve("outside/notes.md"), "notes");
 			Files.writeString(outside.resolve("a.md"), "a");
@@ -1226,8 +1226,8 @@ public final class NestedSessionManagerTest
 			Files.createSymbolicLink(project.resolve("notes.md"), Path.of("../outside/notes.md"));
 			Files.createSymbolicLink(Files.createDirectories(project.resolve("docs")).resolve("tree"),
 				outside.toAbsolutePath());
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
 			manager.copyProject(project, nestedSession);
@@ -1337,12 +1337,12 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Files.createDirectories(root.resolve("outside/tree"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve("tree"), Path.of("../outside/tree"));
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(project, nestedSession);
 			Path tree = nestedSession.directory().resolve("project/tree").toRealPath();
@@ -1376,13 +1376,13 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Files.writeString(Files.createDirectories(root.resolve("outside/tree")).resolve("a.md"), "a");
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve("tree"), Path.of("../outside/tree"));
 			Files.writeString(Files.createDirectories(root.resolve("workspace/tree")).resolve("added.md"), "added");
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(project, nestedSession);
 			try
@@ -1424,11 +1424,11 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve(name), Path.of(target));
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
 			try
@@ -1455,12 +1455,12 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Files.writeString(project.resolve("empty"), "");
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 
 			manager.copyProject(project, nestedSession, root.resolve("absent-null-device"));
@@ -1482,15 +1482,15 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Path workspace = Files.createDirectories(root.resolve("workspaces"));
 			Files.writeString(workspace.resolve("fixture.md"), "fixture");
 			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
 			Files.createLink(workspace.resolve(".credentials.json"), nullDevice);
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
-				Yielding.fileReplacer());
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("results"),
+				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
 			manager.copyProject(project, nestedSession, nullDevice);
 
@@ -1516,7 +1516,7 @@ public final class NestedSessionManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
-				jvm.temporaryDirectory(), "cat-run-root-"));
+				jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -1557,7 +1557,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			NestedSessionManager oldManager = new NestedSessionManager(jvm.fileLocks(),
 				root, oldClock, Yielding.fileReplacer());
@@ -1586,7 +1586,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			NestedSessionManager oldManager = new NestedSessionManager(jvm.fileLocks(), root, oldClock,
 				Yielding.fileReplacer());
@@ -1624,7 +1624,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root, clock, Yielding.fileReplacer());
@@ -1653,7 +1653,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			// No process is alive, so the orchestrator that owns the nested session has ended
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			NestedSession nestedSession = manager(jvm, root, oldClock).create("harness");
@@ -1682,7 +1682,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			String harnessStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125";
 			// Only the harness process is alive: the orchestrator that owns the nested session has ended
@@ -1716,7 +1716,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			FakeProcessHandle owner = new FakeProcessHandle(OWNER_PID, OWNER_START, true);
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			NestedSession nestedSession = manager(jvm, root, oldClock, owner).create("harness");
@@ -1745,7 +1745,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"proc-")), BOOT_TIME);
 			long owner = ProcessHandle.current().pid();
@@ -1778,7 +1778,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			ProcessFolder folder = new ProcessFolder(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
 				"proc-")), BOOT_TIME);
 			long harnessPid = ProcessHandle.current().parent().orElseThrow().pid();
@@ -1817,7 +1817,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			// No owner process is alive
 			FakeProcessHandle harness = new FakeProcessHandle(12_345, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125", true);
 			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC(), harness);
@@ -1858,7 +1858,7 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
-				"cat-run-root-"));
+				"cat-results-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
 			NestedSessionManager oldManager = new NestedSessionManager(jvm.fileLocks(),
 				root, oldClock, Yielding.fileReplacer());
@@ -1890,7 +1890,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -1927,7 +1927,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			NestedSession nestedSession = manager.create("harness");
@@ -1956,7 +1956,7 @@ public final class NestedSessionManagerTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
 			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret");
 			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedSlotId("s-1").withLaunchArguments(fixed);
@@ -1992,7 +1992,7 @@ public final class NestedSessionManagerTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
 			List<String> fixed = NestedSessionLaunch.fixedArguments(new String[]{"--project", "/source", "--model", "haiku",
 				"--deny-read", "/secret", "--install-cat", "--output", "/out.jsonl", "--session-role", "validator",
 				"--agent", "cat:reviewer", "--effort", "low"});
@@ -2027,7 +2027,7 @@ public final class NestedSessionManagerTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
 			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withLaunchArguments(List.of("--install-cat"));
 			NestedSession nestedSession = manager.create("claude");
@@ -2056,7 +2056,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			// No process is alive, so the runner that owned the nested session has ended, along with its harness
 			NestedSessionManager first = manager(jvm, root, Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC));
 			NestedSession nestedSession = first.create("harness");
@@ -2095,7 +2095,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			NestedSessionManager first = manager(jvm, root, Clock.systemUTC()).withFixedSlotId("s-1");
 			NestedSession nestedSession = first.create("harness");
 			first.recordHarnessSession(nestedSession, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
@@ -2124,7 +2124,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC);
 			NestedSessionManager live = new NestedSessionManager(jvm.fileLocks(), root, clock, Yielding.fileReplacer());
 			NestedSession owned = live.create("harness");
@@ -2179,7 +2179,7 @@ public final class NestedSessionManagerTest
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-results-"));
 			String executable = "java";
 			if (Platform.current().isWindows())
 				executable = "java.exe";

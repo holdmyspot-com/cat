@@ -346,7 +346,7 @@ public final class ClaudeSessionRoleTest
 		{
 			root = cleanup.add(Files.createTempDirectory("cat-judge-no-sandbox-")).toRealPath();
 			Path hostProject = Files.createDirectories(root.resolve("project"));
-			manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("runs"), Clock.systemUTC(),
+			manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("results"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			nestedSession = manager.create("claude");
 			manager.snapshotProject(nestedSession);

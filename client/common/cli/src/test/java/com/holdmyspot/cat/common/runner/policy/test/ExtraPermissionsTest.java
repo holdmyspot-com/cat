@@ -187,7 +187,7 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path sessionFolder = root.resolve("run");
+			Path sessionFolder = root.resolve("session");
 			Path cache = root.resolve("cache");
 			Path registry = root.resolve("registry");
 			Path denied = root.resolve("denied");
@@ -213,7 +213,7 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(registry), List.of(), List.of(), List.of(),
 				HostAccess.listed(Set.of("npm.example")), false, List.of());
@@ -239,7 +239,7 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(), List.of(),
 				HostAccess.NONE, false, List.of());
@@ -267,7 +267,7 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder), List.of(), List.of(), List.of(),
 				HostAccess.NONE, false, List.of());
@@ -295,7 +295,7 @@ public final class ExtraPermissionsTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-extra-")).toRealPath();
-			Path sessionFolder = Files.createDirectory(root.resolve("run"));
+			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path registry = Files.createDirectory(root.resolve("registry"));
 			Path denied = Files.createDirectory(registry.resolve("secret"));
 			ParentPolicy parent = new ParentPolicy(true, List.of(sessionFolder, registry), List.of(denied), List.of(),

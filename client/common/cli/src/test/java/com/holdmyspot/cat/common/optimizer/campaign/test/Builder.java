@@ -103,8 +103,8 @@ public final class Builder
 	 * Where a judged trial's harness events and file changes were retained, for trials whose evidence a test does not
 	 * read.
 	 */
-	public static final TrialFiles FILES = new TrialFiles(Path.of("/runs/trial/transcript.jsonl").toAbsolutePath(),
-		Path.of("/runs/trial/effects").toAbsolutePath(), Path.of("/runs/trial/initial-project").toAbsolutePath());
+	public static final TrialFiles FILES = new TrialFiles(Path.of("/results/trial/transcript.jsonl").toAbsolutePath(),
+		Path.of("/results/trial/effects").toAbsolutePath(), Path.of("/results/trial/initial-project").toAbsolutePath());
 
 	private Header header = new Header("campaign-1", Path.of("/project").toAbsolutePath(),
 		Path.of("/project/CLAUDE.md").toAbsolutePath(), Harness.CLAUDE, Lifecycle.ACTIVE);

@@ -43,7 +43,7 @@ import tools.jackson.databind.json.JsonMapper;
  * keeps.
  * <p>
  * The session's prompt-optimizer campaigns live in {@code optimizer/<campaign-id>/}, and the session folders of
- * the nested sessions that they start live below {@code optimizer-runs/}.
+ * the nested sessions that they start live below {@code optimizer-nested-sessions/}.
  */
 public final class SessionDirectory
 {
@@ -363,7 +363,7 @@ public final class SessionDirectory
 	public Path resultsFolder(String harnessId)
 	{
 		requireThat(harnessId, "harnessId").isNotBlank();
-		return directory.resolve("optimizer-runs").resolve(harnessId);
+		return directory.resolve("optimizer-nested-sessions").resolve(harnessId);
 	}
 
 	/**

@@ -40,8 +40,8 @@ public final class LiveNestedSessionTest
 		{
 			List<String> received = new ArrayList<>();
 			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
-			NestedSession nestedSession = new NestedSession("harness", "run-1",
-				cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession nestedSession = new NestedSession("harness", "session-1",
+				cleanup.add(Files.createTempDirectory("cat-session-")));
 			try (LiveNestedSession session = new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()))
 			{
 				HarnessProcessResult first = session.sendTurn("first");
@@ -71,8 +71,8 @@ public final class LiveNestedSessionTest
 			ScriptedProcess process = new ScriptedProcess(List.of(), new ArrayList<>(),
 				directory.resolve("home/session.jsonl"), new HarnessSessionTranscripts(directory.resolve("home"), copies,
 				name -> name.endsWith(".jsonl")));
-			NestedSession nestedSession = new NestedSession("harness", "run-1",
-				cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession nestedSession = new NestedSession("harness", "session-1",
+				cleanup.add(Files.createTempDirectory("cat-session-")));
 			try (LiveNestedSession session = new LiveNestedSession(nestedSession, process, new TestHarnessRunnerScope()))
 			{
 				closeAndTakeCopiesPlace(session, copies);

@@ -218,9 +218,9 @@ public final class HarnessEnvironmentTest
 	@Test
 	public void givesChildItsHomeDirectory()
 	{
-		Path home = Path.of("/run/home");
+		Path home = Path.of("/session/home");
 		if (Platform.current().isWindows())
-			home = Path.of("C:/run/home");
+			home = Path.of("C:/session/home");
 		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(Map.of("HOME", "host-home",
 			"USERPROFILE", "host-profile", "LOCALAPPDATA", "host-data", "PATH", "programs")));
 
@@ -257,7 +257,7 @@ public final class HarnessEnvironmentTest
 	public void preventsHostGitDiscovery()
 	{
 		Map<String, String> environment = new HashMap<>(HarnessEnvironment.scrub(Map.of("PATH", "/bin")));
-		Path sessionFolder = Path.of("/owned/run").toAbsolutePath();
+		Path sessionFolder = Path.of("/owned/session").toAbsolutePath();
 
 		HarnessEnvironment.preventGitDiscoveryAbove(environment, sessionFolder);
 
@@ -280,11 +280,12 @@ public final class HarnessEnvironmentTest
 			contains("--session-requests <count>").contains("--request-depth <levels>").doesNotContain("--no-daemon");
 		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a",
 			Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE,
-				HarnessEnvironment.NESTED_SESSION_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/run/requests")),
+				HarnessEnvironment.NESTED_SESSION_VALUE, SessionRequestAccess.REQUESTS_VARIABLE, "/session/requests")),
 			"requesting").isEmpty();
 		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a",
 			Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, "0")), "otherValue").isEmpty();
-		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a", Map.of("PATH", "/bin")), "outsideRun").isEmpty();
+		requireThat(HarnessEnvironment.inNestedSessionRefusal("harness-a", Map.of("PATH", "/bin")), "outsideNestedSession").
+			isEmpty();
 	}
 
 	/**
@@ -302,6 +303,6 @@ public final class HarnessEnvironmentTest
 			contains("no request server serves such a session").contains("--session-requests <count>");
 		requireThat(HarnessEnvironment.requestServerRefusal(Map.of(HarnessEnvironment.NESTED_SESSION_VARIABLE, "0")),
 			"otherValue").isEmpty();
-		requireThat(HarnessEnvironment.requestServerRefusal(Map.of("PATH", "/bin")), "outsideRun").isEmpty();
+		requireThat(HarnessEnvironment.requestServerRefusal(Map.of("PATH", "/bin")), "outsideNestedSession").isEmpty();
 	}
 }

@@ -691,7 +691,7 @@ public final class GuardPilotTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory("pilot-crash"));
 			SessionScript sessions = new SessionScript(directory, _ -> "pass");
-			String manifest = directory.resolve("runs/harness-a/mw9qj3hn-1x2ce9sid1/session.json").toString();
+			String manifest = directory.resolve("results/harness-a/mw9qj3hn-1x2ce9sid1/session.json").toString();
 			sessions.crashTrials(new NoSuchFileException(manifest));
 
 			Map<String, PilotResult> pilots = pilot(sessions, workspace(directory), 1).run(contract, List.of(),

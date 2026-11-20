@@ -23,7 +23,7 @@ import tools.jackson.databind.json.JsonMapper;
 public final class AppServerPromptSourcesTest
 {
 	private static final JsonMapper JSON = JsonMapper.builder().build();
-	private static final String RUN = "/runs/codex/mup8h3ri-14who5rhrw";
+	private static final String SESSION_FOLDER = "/results/codex/mup8h3ri-14who5rhrw";
 
 	/**
 	 * Creates the test.
@@ -58,7 +58,7 @@ public final class AppServerPromptSourcesTest
 	{
 		AppServerPromptSources sources = AppServerPromptSourcesSecrets.getAppServerPromptSourcesAccess().
 			newAppServerPromptSources(JSON,
-			Map.of("<run>", Path.of(sessionFolder)));
+			Map.of("<session>", Path.of(sessionFolder)));
 		for (String line : lines)
 			sources.accept(line);
 		return sources.value();
@@ -74,14 +74,14 @@ public final class AppServerPromptSourcesTest
 	public void ignoresLaterEventHooks() throws IOException
 	{
 		List<String> lines = recorded();
-		String sessionStart = observe(lines, RUN);
+		String sessionStart = observe(lines, SESSION_FOLDER);
 		for (String line : lines)
 		{
 			// The subagentStart shape follows the sessionStart notifications in codex-hooks.jsonl.
 			String later = line.replace("sessionStart", "subagentStart").replace("session-start:", "subagent-start:");
 			List<String> withLater = new ArrayList<>(lines);
 			withLater.add(later);
-			requireThat(observe(withLater, RUN), "withLater").isEqualTo(sessionStart);
+			requireThat(observe(withLater, SESSION_FOLDER), "withLater").isEqualTo(sessionStart);
 		}
 	}
 
@@ -96,11 +96,11 @@ public final class AppServerPromptSourcesTest
 	{
 		for (String line : recorded())
 		{
-			String value = observe(List.of(line), RUN);
+			String value = observe(List.of(line), SESSION_FOLDER);
 			requireThat(value, "value").
-				isEqualTo("hook:sessionStart plugin <run>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
+				isEqualTo("hook:sessionStart plugin <session>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
 			String other = line.replace("hooks/hooks.json", "hooks/other.json");
-			requireThat(observe(List.of(other), RUN), "other").isNotEqualTo(value);
+			requireThat(observe(List.of(other), SESSION_FOLDER), "other").isNotEqualTo(value);
 		}
 	}
 
@@ -114,9 +114,9 @@ public final class AppServerPromptSourcesTest
 	public void listsHooksWithoutSessionPaths() throws IOException
 	{
 		// Requirement: R-M1
-		String value = observe(recorded(), RUN);
+		String value = observe(recorded(), SESSION_FOLDER);
 		requireThat(value, "value").
-			isEqualTo("hook:sessionStart plugin <run>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
+			isEqualTo("hook:sessionStart plugin <session>/home/plugins/cache/cat/cat/1.0/hooks/hooks.json");
 	}
 
 	/**
@@ -130,8 +130,8 @@ public final class AppServerPromptSourcesTest
 	{
 		// Requirement: R-M1
 		String other = "/elsewhere/stage-7f3a/codex/zz99";
-		List<String> relocated = recorded().stream().map(line -> line.replace(RUN, other)).toList();
-		requireThat(observe(relocated, other), "relocated").isEqualTo(observe(recorded(), RUN));
+		List<String> relocated = recorded().stream().map(line -> line.replace(SESSION_FOLDER, other)).toList();
+		requireThat(observe(relocated, other), "relocated").isEqualTo(observe(recorded(), SESSION_FOLDER));
 	}
 
 	/**
@@ -145,7 +145,7 @@ public final class AppServerPromptSourcesTest
 		// Requirement: R-M1
 		List<String> reversed = new ArrayList<>(recorded());
 		reversed.addAll(recorded().reversed());
-		requireThat(observe(reversed, RUN), "reversed").isEqualTo(observe(recorded(), RUN));
+		requireThat(observe(reversed, SESSION_FOLDER), "reversed").isEqualTo(observe(recorded(), SESSION_FOLDER));
 	}
 
 	/**
@@ -159,7 +159,7 @@ public final class AppServerPromptSourcesTest
 		// Requirement: R-M1
 		List<String> other = recorded().stream().map(line -> line.replace("hooks/hooks.json", "hooks/other.json")).
 			toList();
-		requireThat(observe(other, RUN), "other").isNotEqualTo(observe(recorded(), RUN));
+		requireThat(observe(other, SESSION_FOLDER), "other").isNotEqualTo(observe(recorded(), SESSION_FOLDER));
 	}
 
 	/**

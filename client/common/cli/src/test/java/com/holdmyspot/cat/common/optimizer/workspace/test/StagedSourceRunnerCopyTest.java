@@ -84,7 +84,7 @@ public final class StagedSourceRunnerCopyTest
 				write(Path.of(".cat/sessions/campaign/optimizer/results.jsonl"), content("other trial result"), READ_WRITE).
 				write(Path.of(".cat/sessions/campaign/optimizer/campaign.json"), content("campaign record"), READ_WRITE);
 			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).stage(candidate, Set.of());
-			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), fixture.resolve("runs"),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), fixture.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			NestedSession first = manager.create(harness);
 			manager.copyProject(staged, first);
@@ -130,7 +130,7 @@ public final class StagedSourceRunnerCopyTest
 				Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
 					stage(Overlay.of(project.tree().inventory()), Set.of());
 				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
-					fixture.resolve("runs"), Clock.systemUTC(),
+					fixture.resolve("results"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 
 				NestedSession accepted = manager.create(harness);

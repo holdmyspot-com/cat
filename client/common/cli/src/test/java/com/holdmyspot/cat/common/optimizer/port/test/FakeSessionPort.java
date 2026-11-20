@@ -64,8 +64,8 @@ public final class FakeSessionPort implements SessionPort
 	 * held-out results folder, as a real port has, which do not exist.
 	 */
 	private static final List<Path> DEFAULT_RESULTS_FOLDERS = List.of(
-		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/development"),
-		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-runs/held-out"));
+		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-results/development"),
+		FileSystems.getDefault().getRootDirectories().iterator().next().resolve("fake-results/held-out"));
 	private final List<FakeSession> sessions = new ArrayList<>();
 	private final HostLogin login;
 	private final String heldOutExposure;

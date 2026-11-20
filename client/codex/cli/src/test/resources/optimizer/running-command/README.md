@@ -1,9 +1,9 @@
 # Codex trial whose child received a command's result while the command was still running
 
-This directory holds a trial's run artifacts laid out as the runner keeps them: [transcript.jsonl](transcript.jsonl)
-holds the app-server notifications, and [session-transcripts](session-transcripts) holds one rollout for each thread.
-They come from the prompt-optimizer trial run `mvto9hom-48cde6agu`, recorded on 2026-10-29 with codex-cli `0.160.0`
-(`thread/started` and every rollout's `session_meta` report it) and model `gpt-6-luna`.
+This directory holds a trial's artifacts laid out as the runner keeps them: [transcript.jsonl](transcript.jsonl) holds
+the app-server notifications, and [session-transcripts](session-transcripts) holds one rollout for each thread. They
+come from the prompt-optimizer trial, nested session `mvto9hom-48cde6agu`, recorded on 2026-10-29 with codex-cli
+`0.160.0` (`thread/started` and every rollout's `session_meta` report it) and model `gpt-6-luna`.
 
 The trial's prompt was:
 
@@ -36,5 +36,6 @@ Selection and substitutions:
   `item_completed` lines and the `response_item` lines whose payload is a `function_call`, `function_call_output`,
   `custom_tool_call`, `custom_tool_call_output` or `agent_message`. The `session_meta` line is re-serialized with its
   `base_instructions` text replaced by `<omitted>`.
-- The session folder is replaced with `/recorded/run` and the project that held the campaign with `/recorded/project`,
-  throughout the text. Thread, turn, call and item identifiers, timestamps and encrypted values are unchanged.
+- The session folder is replaced with `/recorded/session` and the project that held the campaign with
+  `/recorded/project`, throughout the text. Thread, turn, call and item identifiers, timestamps and encrypted values are
+  unchanged.

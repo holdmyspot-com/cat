@@ -105,7 +105,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 				toRealPath();
 			Path userHome = Files.createDirectory(root.resolve("user"));
 			Path userConfiguration = Files.createDirectory(root.resolve("claude-config"));
-			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
 			Path directory = Files.createDirectory(root.resolve("requested"));
 			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
 				userHome.toString(), "CLAUDE_CONFIG_DIR", userConfiguration.toString(), "CLAUDECODE", "1"));
@@ -172,7 +172,7 @@ public final class ClaudeRequestedSessionStarterTest extends RequestedSessionSta
 			Path store = Files.createDirectory(root.resolve("store"));
 			Files.writeString(store.resolve(".credentials.json"),
 				"{\"claudeAiOauth\":{\"accessToken\":\"placeholder\"}}");
-			Path sessionHome = Files.createDirectory(root.resolve("run-home"));
+			Path sessionHome = Files.createDirectory(root.resolve("session-home"));
 			Path directory = Files.createDirectory(root.resolve("requested"));
 			Map<String, String> userEnvironment = new HashMap<>(Map.of("PATH", "", Platform.current().homeVariable(),
 				userHome.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString(), "CLAUDECODE", "1",

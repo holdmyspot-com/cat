@@ -46,7 +46,7 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-relative-"));
-			NestedSession nestedSession = new NestedSessionManager(fileLocks, root.resolve("runs"),
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path externalOutput = Files.writeString(Files.createDirectories(root.resolve("requested")).
 				resolve("output.jsonl"), "response bytes");
@@ -88,14 +88,15 @@ public final class NestedSessionReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-relocation-"));
-			NestedSession nestedSession = new NestedSessionManager(fileLocks, root.resolve("runs"),
+			NestedSession nestedSession = new NestedSessionManager(fileLocks, root.resolve("results"),
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path external = Files.writeString(root.resolve("external-output.jsonl"), "external response bytes");
 			Path receipt = root.resolve("receipt.json");
 
 			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, nestedSession, external, List.of());
-			Path relocated = root.resolve("retained/run-copy");
-			requireThat(ResultsCopy.copy(nestedSession.directory(), relocated).incomplete(), "relocatedRun").isEmpty();
+			Path relocated = root.resolve("retained/results-copy");
+			requireThat(ResultsCopy.copy(nestedSession.directory(), relocated).incomplete(), "relocatedResultsCopy").
+				isEmpty();
 			Files.delete(external);
 
 			HarnessEvaluationResult result = NestedSessionReceipt.read(scope.json(), receipt,
@@ -345,7 +346,7 @@ public final class NestedSessionReceiptTest
 			Path root = cleanup.add(Files.createTempDirectory("nested-session-receipt-"));
 			Path project = Files.createDirectory(root.resolve("project"));
 			Files.writeString(root.resolve("response.txt"), "completed response");
-			for (String rawResult : List.of("/tmp/response.txt", "C:/runs/response.txt", "../response.txt",
+			for (String rawResult : List.of("/tmp/response.txt", "C:/results/response.txt", "../response.txt",
 				"artifacts\\response.txt", "artifacts//response.txt", "artifacts/./response.txt"))
 			{
 				ObjectNode receipt = portableReceipt(scope.json(), rawResult);
@@ -374,7 +375,7 @@ public final class NestedSessionReceiptTest
 				}
 				requireThat(rejected, "rejectedReceiptVersion").isTrue();
 			}
-			ObjectNode wrongBase = portableReceipt(scope.json(), "response.txt").put("path_base", "run");
+			ObjectNode wrongBase = portableReceipt(scope.json(), "response.txt").put("path_base", "nested_session");
 			boolean rejected = false;
 			try
 			{
