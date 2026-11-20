@@ -66,7 +66,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 	TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor, ValuesProtocol values,
 	Deliverer deliverer,
-	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverRuns leftoverRuns, Authority authority,
+	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverNestedSessions leftoverRuns, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
 	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges, DevelopmentJudgeRecords judgeRecords,
 	Path temporaryDirectory)
@@ -175,7 +175,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 		TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor,
 		ValuesProtocol values, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
-		LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
+		LeftoverNestedSessions leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
 		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json, Path temporaryDirectory)
 	{
 		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
@@ -218,7 +218,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		HostInterruptSignal interrupts, Clock clock, CandidateOverlays overlays, JudgeProtocol judge,
 		TriageProtocol triage, ApproachRankingProtocol ranking, PromptAuthorProtocol promptAuthor,
 		ValuesProtocol values, Deliverer deliverer, CapCalibrator calibrator, ProcessTerminator terminator,
-		LeftoverRuns leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
+		LeftoverNestedSessions leftoverRuns, Authority authority, Set<Path> promptSources, MeasurementIdentity environment,
 		Path lockFile, RandomGenerator random, SliceSettings settings, JsonMapper json,
 		List<TrialProfile> candidateJudges, Path temporaryDirectory)
 	{

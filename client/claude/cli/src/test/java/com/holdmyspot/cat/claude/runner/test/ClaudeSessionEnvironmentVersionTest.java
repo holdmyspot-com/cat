@@ -13,9 +13,9 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.VersionRegistry;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -73,10 +73,10 @@ public final class ClaudeSessionEnvironmentVersionTest
 			Path deniedDirectory = Files.createDirectory(root.resolve("trials"));
 			Path hostProject = Files.createDirectories(root.resolve("project"));
 			Files.writeString(hostProject.resolve("CLAUDE.md"), "Follow the handbook.", UTF_8);
-			HarnessRunManager manager = new HarnessRunManager(scope.fileLocks(), hostProject.resolve("runs"),
+			NestedSessionManager manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("runs"),
 				Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			manager.snapshotProject(run);
 			Files.createDirectories(run.directory().resolve("home/.claude"));
 			Files.createDirectories(hostProject.resolve("runs/workspaces"));
@@ -140,7 +140,7 @@ public final class ClaudeSessionEnvironmentVersionTest
 	 * @return the normalized settings
 	 * @throws IOException if the file cannot be read
 	 */
-	private static String normalize(JsonMapper json, Path file, Path root, HarnessRun run) throws IOException
+	private static String normalize(JsonMapper json, Path file, Path root, NestedSession run) throws IOException
 	{
 		// The mapper ends its lines with the platform's line separator
 		return replaceRoot(withoutExcludesAboveRoot(json, Files.readString(file, UTF_8), root), root).

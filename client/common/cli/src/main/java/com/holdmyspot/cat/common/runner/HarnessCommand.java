@@ -64,7 +64,7 @@ public final class HarnessCommand
 	 * @throws IOException if the command fails, is interrupted, or diagnostics cannot be persisted
 	 */
 	public static void execute(List<String> command, Path workingDirectory, Map<String, String> environment,
-		ExecutableFiles executables, HarnessRunManager manager, HarnessRun run, String commandName) throws IOException
+		ExecutableFiles executables, NestedSessionManager manager, NestedSession run, String commandName) throws IOException
 	{
 		requireThat(command, "command").isNotEmpty();
 		requireThat(executables, "executables").isNotNull();

@@ -11,7 +11,7 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.NestedSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -119,8 +119,8 @@ public final class CodexChildEvidenceTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-child-evidence-"));
 			Path artifacts = Files.createDirectories(root.resolve("artifacts"));
 			Path transcript = Files.copy(TRANSCRIPT, artifacts.resolve("transcript.jsonl"));
-			Path rollouts = Files.createDirectories(artifacts.resolve(HarnessRun.SESSION_TRANSCRIPTS));
-			Path recorded = TRANSCRIPT.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS);
+			Path rollouts = Files.createDirectories(artifacts.resolve(NestedSession.SESSION_TRANSCRIPTS));
+			Path recorded = TRANSCRIPT.resolveSibling(NestedSession.SESSION_TRANSCRIPTS);
 			Path rootRollout = recorded.resolve("rollout-2026-10-27T12-53-13-01a17e47-bf52-75f1-b6c5-ca043f8beb4c.jsonl");
 			List<String> lines = Files.readAllLines(rootRollout, UTF_8);
 			StringBuilder text = new StringBuilder(Math.toIntExact(Files.size(rootRollout)) + 256);

@@ -8,8 +8,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -68,8 +68,8 @@ public abstract class SessionCommandLimitsContract
 	 * @param artifact        the harness artifact that the session's runner uses
 	 * @param deniedReads     additional directories that the caller denies reading
 	 */
-	public record Fixture(Map<String, String> userEnvironment, Path userHome, HarnessRunManager manager,
-		HarnessRun run, HarnessRun otherRun, Path artifact, List<Path> deniedReads)
+	public record Fixture(Map<String, String> userEnvironment, Path userHome, NestedSessionManager manager,
+		NestedSession run, NestedSession otherRun, Path artifact, List<Path> deniedReads)
 	{
 		/**
 		 * Returns the run's isolated home.
@@ -333,7 +333,7 @@ public abstract class SessionCommandLimitsContract
 		{
 			Fixture fixture = fixture(cleanup);
 			Limits limits = limits(fixture, 0);
-			Path linkTargets = HarnessRunManager.linkTargets(fixture.run().directory());
+			Path linkTargets = NestedSessionManager.linkTargets(fixture.run().directory());
 			requireThat(linkTargets, "linkTargets").isDirectory();
 			Path link = fixture.run().directory().resolve("project/notes.md");
 			requireThat(Files.isSymbolicLink(link), "linkIsLink").isTrue();
@@ -413,9 +413,9 @@ public abstract class SessionCommandLimitsContract
 			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
 			Path ownRoot = SessionRequestAccess.requestedRunRoot(requested, 1);
 			Path siblingRoot = SessionRequestAccess.requestedRunRoot(requested, 2);
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, ownRoot, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, ownRoot, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun childRun = manager.create("harness");
+			NestedSession childRun = manager.create("harness");
 			manager.snapshotProject(childRun);
 			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
 				parent.run(), parent.artifact(), List.of(parent.manager().root()));
@@ -452,9 +452,9 @@ public abstract class SessionCommandLimitsContract
 			limits(parent, sessionRequests);
 			Path requested = SessionRequestAccess.requestedRunsDirectory(parent.run());
 			SessionSlots.Slot slot = new SessionSlots(requested, 1, new ProcessHandleLiveness()).acquire(false);
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, slot.root(), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, slot.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(slot.runId());
-			HarnessRun childRun = manager.create("harness");
+			NestedSession childRun = manager.create("harness");
 			manager.snapshotProject(childRun);
 			Fixture child = new Fixture(parent.userEnvironment(), parent.userHome(), manager, childRun,
 				parent.run(), parent.artifact(), List.of(parent.manager().root()));
@@ -586,10 +586,10 @@ public abstract class SessionCommandLimitsContract
 			for (String variable : SessionCommandLimits.CREDENTIAL_VARIABLES)
 				userEnvironment.put(variable, CREDENTIAL);
 
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			// The session's project links to a file outside it, so the run holds a read-only copy of that file
 			Path source = Files.createDirectories(root.resolve("source"));
 			Files.writeString(root.resolve("notes.md"), "notes");
@@ -603,7 +603,7 @@ public abstract class SessionCommandLimitsContract
 			{
 				write(runHome.resolve(file));
 			}
-			HarnessRun otherRun = manager.create("harness");
+			NestedSession otherRun = manager.create("harness");
 			write(otherRun.directory().resolve("project/notes.txt"));
 			Path artifact = Files.createDirectories(root.resolve("artifact"));
 			return new Fixture(Map.copyOf(userEnvironment), userHome, manager, run, otherRun, artifact, List.of());

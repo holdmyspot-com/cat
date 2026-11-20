@@ -7,7 +7,7 @@ import java.io.IOException;
  * Starts an isolated harness execution for the line-delimited JSON request bridge.
  */
 @FunctionalInterface
-public interface HarnessRunStarter
+public interface NestedSessionStarter
 {
 	/**
 	 * Starts one live isolated run.
@@ -16,5 +16,5 @@ public interface HarnessRunStarter
 	 *
 	 * @throws IOException if the run cannot be started
 	 */
-	HarnessRunSession start() throws IOException;
+	LiveNestedSession start() throws IOException;
 }

@@ -8,28 +8,28 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.TestToolScope;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
-import com.holdmyspot.cat.common.runner.KeptRunCopy;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import java.time.Clock;
-import tools.jackson.databind.node.ObjectNode;
+import java.util.List;
 import org.testng.annotations.Test;
 import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
- * Tests {@link HarnessRunReceipt}.
+ * Tests {@link NestedSessionReceipt}.
  */
-public final class HarnessRunReceiptTest
+public final class NestedSessionReceiptTest
 {
 	/**
 	 * Creates the test fixture.
 	 */
-	public HarnessRunReceiptTest()
+	public NestedSessionReceiptTest()
 	{
 	}
 
@@ -45,7 +45,7 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-relative-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root.resolve("runs"),
+			NestedSession run = new NestedSessionManager(fileLocks, root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path externalOutput = Files.writeString(Files.createDirectories(root.resolve("requested")).
 				resolve("output.jsonl"), "response bytes");
@@ -58,7 +58,7 @@ public final class HarnessRunReceiptTest
 			scope.json().writeValue(nestedResponse.toFile(), response);
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, externalOutput,
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, externalOutput,
 				List.of(nativeTranscript));
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
@@ -87,17 +87,17 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-relocation-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root.resolve("runs"),
+			NestedSession run = new NestedSessionManager(fileLocks, root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path external = Files.writeString(root.resolve("external-output.jsonl"), "external response bytes");
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, external, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, external, List.of());
 			Path relocated = root.resolve("retained/run-copy");
-			requireThat(KeptRunCopy.copy(run.directory(), relocated).incomplete(), "relocatedRun").isEmpty();
+			requireThat(ResultsCopy.copy(run.directory(), relocated).incomplete(), "relocatedRun").isEmpty();
 			Files.delete(external);
 
-			HarnessEvaluationResult result = HarnessRunReceipt.read(scope.json(), receipt,
+			HarnessEvaluationResult result = NestedSessionReceipt.read(scope.json(), receipt,
 				relocated.resolve("project"));
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(relocated.resolve("project"));
@@ -119,13 +119,13 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root,
+			NestedSession run = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
-			HarnessEvaluationResult result = HarnessRunReceipt.read(scope.json(), receipt,
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			HarnessEvaluationResult result = NestedSessionReceipt.read(scope.json(), receipt,
 				run.directory().resolve("project"));
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(
@@ -148,7 +148,7 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("harness-run-receipt-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root,
+			NestedSession run = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path transcript = Files.createDirectories(run.sessionTranscripts()).resolve("session-1.jsonl");
@@ -156,13 +156,13 @@ public final class HarnessRunReceiptTest
 			Path withCopies = root.resolve("with-copies.json");
 			Path without = root.resolve("without.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), withCopies, run, response, List.of(transcript));
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), without, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), withCopies, run, response, List.of(transcript));
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), without, run, response, List.of());
 
-			requireThat(HarnessRunReceipt.read(scope.json(), withCopies, run.directory().resolve("project")).
+			requireThat(NestedSessionReceipt.read(scope.json(), withCopies, run.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEqualTo(List.of(transcript.toAbsolutePath().normalize()));
-			requireThat(HarnessRunReceipt.read(scope.json(), without, run.directory().resolve("project")).
+			requireThat(NestedSessionReceipt.read(scope.json(), without, run.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEmpty();
 		}
@@ -181,7 +181,7 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root,
+			NestedSession run = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path child = Files.createDirectories(run.directory().resolve("responses/first")).resolve("response.json");
@@ -190,13 +190,13 @@ public final class HarnessRunReceiptTest
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
 			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
 			requireThat(written.path("requested_sessions").get(0).path("response").asString(), "response").
 				isEqualTo("responses/first/response.json");
-			requireThat(HarnessRunReceipt.read(scope.json(), receipt, run.directory().resolve("project")).rawResult(),
+			requireThat(NestedSessionReceipt.read(scope.json(), receipt, run.directory().resolve("project")).rawResult(),
 				"rawResult").isEqualTo(response);
 		}
 	}
@@ -214,7 +214,7 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root,
+			NestedSession run = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path responses = Files.createDirectories(run.directory().resolve("responses"));
@@ -225,7 +225,7 @@ public final class HarnessRunReceiptTest
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
 			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
@@ -247,7 +247,7 @@ public final class HarnessRunReceiptTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories(); ToolScope scope = new TestToolScope())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "receipt-"));
-			HarnessRun run = new HarnessRunManager(fileLocks, root,
+			NestedSession run = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			Path response = Files.writeString(run.directory().resolve("artifacts/response.txt"), "completed response");
 			Path responses = Files.createDirectories(run.directory().resolve("responses"));
@@ -261,7 +261,7 @@ public final class HarnessRunReceiptTest
 			scope.json().writeValue(child.toFile(), result);
 			Path receipt = root.resolve("receipt.json");
 
-			HarnessRunReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
+			NestedSessionReceipt.write(scope.json(), Yielding.fileReplacer(), receipt, run, response, List.of());
 
 			ObjectNode written = (ObjectNode) scope.json().readTree(receipt.toFile());
 			requireThat(written.path("requested_sessions").size(), "requestedSessions").isEqualTo(1);
@@ -288,7 +288,7 @@ public final class HarnessRunReceiptTest
 			receipt.put("retained_project", "project");
 			receipt.put("raw_result", "response.txt");
 
-			HarnessEvaluationResult result = HarnessRunReceipt.fromReceipt(receipt, root.resolve("receipt.json"), project);
+			HarnessEvaluationResult result = NestedSessionReceipt.fromReceipt(receipt, root.resolve("receipt.json"), project);
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(project.toAbsolutePath().normalize());
 			requireThat(result.rawResult(), "rawResult").isEqualTo(response.toAbsolutePath().normalize());
@@ -314,10 +314,10 @@ public final class HarnessRunReceiptTest
 			fields.put("path_base", "retained_project_parent");
 			fields.put("retained_project", "project");
 			fields.put("raw_result", "response.txt");
-			fields.putArray(HarnessRunReceipt.SKIPPED_COPY_PATHS).add("project/locked/a.txt");
+			fields.putArray(NestedSessionReceipt.SKIPPED_COPY_PATHS).add("project/locked/a.txt");
 			Path receipt = Files.writeString(root.resolve("receipt.json"), scope.json().writeValueAsString(fields));
 
-			HarnessEvaluationResult result = HarnessRunReceipt.read(scope.json(), receipt, project);
+			HarnessEvaluationResult result = NestedSessionReceipt.read(scope.json(), receipt, project);
 
 			requireThat(result.retainedProject(), "retainedProject").isEqualTo(project.toAbsolutePath().normalize());
 			requireThat(result.rawResult(), "rawResult").isEqualTo(response.toAbsolutePath().normalize());
@@ -344,7 +344,7 @@ public final class HarnessRunReceiptTest
 				boolean rejected = false;
 				try
 				{
-					HarnessRunReceipt.fromReceipt(receipt, root.resolve("receipt.json"), project);
+					NestedSessionReceipt.fromReceipt(receipt, root.resolve("receipt.json"), project);
 				}
 				catch (IOException _)
 				{
@@ -358,7 +358,7 @@ public final class HarnessRunReceiptTest
 				boolean rejected = false;
 				try
 				{
-					HarnessRunReceipt.fromReceipt(receipt, root.resolve("receipt.json"), project);
+					NestedSessionReceipt.fromReceipt(receipt, root.resolve("receipt.json"), project);
 				}
 				catch (IOException _)
 				{
@@ -370,7 +370,7 @@ public final class HarnessRunReceiptTest
 			boolean rejected = false;
 			try
 			{
-				HarnessRunReceipt.fromReceipt(wrongBase, root.resolve("receipt.json"), project);
+				NestedSessionReceipt.fromReceipt(wrongBase, root.resolve("receipt.json"), project);
 			}
 			catch (IOException _)
 			{
@@ -399,7 +399,7 @@ public final class HarnessRunReceiptTest
 			fields.put("unexpected", true);
 			Path receipt = Files.writeString(root.resolve("receipt.json"), scope.json().writeValueAsString(fields));
 
-			HarnessRunReceipt.read(scope.json(), receipt, project);
+			NestedSessionReceipt.read(scope.json(), receipt, project);
 		}
 	}
 

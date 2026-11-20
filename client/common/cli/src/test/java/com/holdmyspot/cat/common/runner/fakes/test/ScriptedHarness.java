@@ -4,10 +4,10 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
 
 import java.io.IOException;
@@ -122,17 +122,17 @@ public final class ScriptedHarness
 		requireThat(output, "output").isNotNull();
 		requireThat(requests, "requests").isNotNull();
 		requireThat(interruptedTurn, "interruptedTurn").isNotNull();
-		HarnessRunManager manager = new HarnessRunManager(new FileLocks(), runRoot,
+		NestedSessionManager manager = new NestedSessionManager(new FileLocks(), runRoot,
 			Clock.systemUTC(), Yielding.fileReplacer());
 		HarnessRunnerBridge.serve(() ->
 		{
-			HarnessRun run = manager.create(harness);
+			NestedSession run = manager.create(harness);
 			manager.initialize(run, runRoot, runRoot, "scripted", List.of("scripted"));
 			ScriptedProcess process = new ScriptedProcess(script, requests, interruptedTurn);
 			// No launcher copies the run, so the harness names its session after the run, whose folder then holds
 			// the session's results where the launcher's copy would
 			process.reportHarnessSession(run.id());
-			return new HarnessRunSession(run, process, new TestHarnessRunnerScope());
+			return new LiveNestedSession(run, process, new TestHarnessRunnerScope());
 		}, manager, input, output);
 	}
 

@@ -14,7 +14,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  *
  * @param directory the owned run directory
  */
-public record HarnessRun(String harness, String id, Path directory)
+public record NestedSession(String harness, String id, Path directory)
 {
 	/**
 	 * The name of the directory, in a run's {@code artifacts} directory, that holds the copies of the harness's native
@@ -37,12 +37,12 @@ public record HarnessRun(String harness, String id, Path directory)
 	 *
 	 * @throws IllegalArgumentException if {@code harness} or {@code id} are blank
 	 */
-	public HarnessRun
+	public NestedSession
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(id, "id").isNotBlank();
 		requireThat(directory, "directory").isNotNull();
-		if (!harness.matches("[a-z0-9]+") || !HarnessRunManager.HARNESS_SESSION_ID.matcher(id).matches())
+		if (!harness.matches("[a-z0-9]+") || !NestedSessionManager.HARNESS_SESSION_ID.matcher(id).matches())
 			throw new IllegalArgumentException("harness and id must be runner or harness session identifiers");
 	}
 

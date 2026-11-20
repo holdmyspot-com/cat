@@ -12,7 +12,7 @@ import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult.Delivered;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 
 import java.io.IOException;
 import java.nio.file.FileSystemException;
@@ -309,13 +309,13 @@ public final class Cleanup
 	{
 		if (!Files.isDirectory(runRoot, LinkOption.NOFOLLOW_LINKS))
 			return;
-		for (Path harness : LeftoverRuns.list(runRoot))
+		for (Path harness : LeftoverNestedSessions.list(runRoot))
 		{
-			for (Path run : LeftoverRuns.list(harness))
+			for (Path run : LeftoverNestedSessions.list(harness))
 			{
 				Optional<Path> project = projectPath(run.resolve(MANIFEST));
 				if (project.isPresent() && owners.stream().anyMatch(project.get()::startsWith))
-					HarnessRunManager.deleteRunDirectory(run);
+					NestedSessionManager.deleteRunDirectory(run);
 			}
 		}
 	}

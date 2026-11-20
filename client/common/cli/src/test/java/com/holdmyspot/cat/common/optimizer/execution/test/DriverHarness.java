@@ -9,41 +9,43 @@ import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
-import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
+import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
+import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.cli.test.GitlessForks;
-import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
-import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
-import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
+import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveredTest;
 import com.holdmyspot.cat.common.optimizer.delivery.Delivery;
 import com.holdmyspot.cat.common.optimizer.delivery.DeliveryResult;
+import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
 import com.holdmyspot.cat.common.optimizer.execution.DriverContext;
 import com.holdmyspot.cat.common.optimizer.execution.NeededEdit;
+import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
+import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator.ProcessLookup;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorBrief;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
 import com.holdmyspot.cat.common.optimizer.execution.SliceResult;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.execution.Step;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.TriagePrompt;
-import com.holdmyspot.cat.common.optimizer.execution.prompt.ApproachRankingPrompt;
-import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
-import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.execution.prompt.ValuesPrompt;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
-import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.RegularFile;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.inventory.OverlayEntry.Write;
@@ -56,22 +58,20 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
-import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
-import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort.FakeSession;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeWorkspacePort;
+import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
+import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.store.test.AliasedOverlays;
-import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import com.holdmyspot.cat.common.optimizer.store.test.InMemoryCampaignStore;
-import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator;
-import com.holdmyspot.cat.common.optimizer.execution.ProcessHandleTerminator.ProcessLookup;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
-import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
+import com.holdmyspot.cat.common.secrets.LeftoverNestedSessionsSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleTerminatorSecrets;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
@@ -439,7 +439,8 @@ public final class DriverHarness
 		return new DriverContext(fileLocks, crashingStore, sessions, workspace, interrupts, clock, overlays,
 			judge, triage, new ApproachRankingPrompt(json, directory), promptAuthor, values, this::deliver,
 			calibrator, terminator,
-			LeftoverRunsSecrets.getLeftoverRunsAccess().create(sessions, JsonMapper.builder().build(), liveness),
+			LeftoverNestedSessionsSecrets.getLeftoverNestedSessionsAccess().create(sessions, JsonMapper.builder().build(),
+				liveness),
 			new Authority(Set.of(PROMPT), Set.of(), fork), promptSources,
 			new MeasurementIdentity(environment), directory.resolve("campaign.lock"), new Random(7), settings, json,
 			candidateJudges, judgeRecords, temporaryDirectory);

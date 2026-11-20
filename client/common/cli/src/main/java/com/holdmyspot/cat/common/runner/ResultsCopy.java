@@ -24,7 +24,7 @@ import java.util.stream.Collectors;
  * Copies a kept run to where its requester reads it, leaving out links, the child's isolated home, which holds its
  * logins, and the project files that the child's sandbox kept it from changing.
  */
-public final class KeptRunCopy
+public final class ResultsCopy
 {
 	/**
 	 * The directory of a kept run that holds the child's isolated home, which is never copied.
@@ -118,7 +118,7 @@ public final class KeptRunCopy
 		requireThat(id, "id").isNotNull();
 		requireThat(project, "project").isNotNull();
 		Result result = copy(source, target, relative -> !relative.equals(MANIFEST));
-		HarnessRunManager.copyManifest(source, target, id, project);
+		NestedSessionManager.copyManifest(source, target, id, project);
 		return result;
 	}
 
@@ -136,8 +136,8 @@ public final class KeptRunCopy
 		requireThat(source, "source").isNotNull();
 		requireThat(target, "target").isNotNull();
 		deleteTurnCopies(target);
-		RunCopier copier = new RunCopier(source, target, KeptRunCopy::includesTurnPath,
-			KeptRunCopy::isRequiredTranscript, false);
+		ResultsCopier copier = new ResultsCopier(source, target, ResultsCopy::includesTurnPath,
+			ResultsCopy::isRequiredTranscript, false);
 		Files.walkFileTree(source, copier);
 	}
 
@@ -195,7 +195,7 @@ public final class KeptRunCopy
 	 */
 	private static Result copy(Path source, Path target, Predicate<Path> included)
 	{
-		RunCopier copier = new RunCopier(source, target, included, _ -> false, true);
+		ResultsCopier copier = new ResultsCopier(source, target, included, _ -> false, true);
 		try
 		{
 			Files.walkFileTree(source, copier);
@@ -253,7 +253,7 @@ public final class KeptRunCopy
 	 * <p>
 	 * <b>Thread Safety:</b> This class is not thread-safe.
 	 */
-	private static final class RunCopier extends SimpleFileVisitor<Path>
+	private static final class ResultsCopier extends SimpleFileVisitor<Path>
 	{
 		/**
 		 * The files and folders of the run, relative to it, that the child's sandbox kept it from changing, so that
@@ -306,7 +306,7 @@ public final class KeptRunCopy
 		 * @param goesOnPastFailures indicates whether a file or folder that cannot be copied is left out, rather than
 		 *                           ending the copy, unless {@code required} accepts it
 		 */
-		RunCopier(Path source, Path target, Predicate<Path> included, Predicate<Path> required,
+		ResultsCopier(Path source, Path target, Predicate<Path> included, Predicate<Path> required,
 			boolean goesOnPastFailures)
 		{
 			this.source = source;
@@ -438,7 +438,7 @@ public final class KeptRunCopy
 	/**
 	 * Prevents construction.
 	 */
-	private KeptRunCopy()
+	private ResultsCopy()
 	{
 	}
 }

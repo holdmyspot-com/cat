@@ -12,7 +12,7 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.NestedSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -138,8 +138,8 @@ public final class CodexRunningCommandTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-running-command-"));
 			Path artifacts = Files.createDirectories(root.resolve("artifacts"));
 			Path transcript = Files.copy(TRANSCRIPT, artifacts.resolve("transcript.jsonl"));
-			Path rollouts = Files.createDirectories(artifacts.resolve(HarnessRun.SESSION_TRANSCRIPTS));
-			Path recorded = TRANSCRIPT.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS);
+			Path rollouts = Files.createDirectories(artifacts.resolve(NestedSession.SESSION_TRANSCRIPTS));
+			Path recorded = TRANSCRIPT.resolveSibling(NestedSession.SESSION_TRANSCRIPTS);
 			try (Stream<Path> files = Files.list(recorded))
 			{
 				for (Path rollout : files.toList())
@@ -201,8 +201,8 @@ public final class CodexRunningCommandTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-running-command-"));
 			Path artifacts = Files.createDirectories(root.resolve("artifacts"));
 			Path transcript = Files.copy(TRANSCRIPT, artifacts.resolve("transcript.jsonl"));
-			Path rollouts = Files.createDirectories(artifacts.resolve(HarnessRun.SESSION_TRANSCRIPTS));
-			Path recorded = TRANSCRIPT.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS);
+			Path rollouts = Files.createDirectories(artifacts.resolve(NestedSession.SESSION_TRANSCRIPTS));
+			Path recorded = TRANSCRIPT.resolveSibling(NestedSession.SESSION_TRANSCRIPTS);
 			try (Stream<Path> files = Files.list(recorded))
 			{
 				for (Path rollout : files.toList())

@@ -4,7 +4,7 @@ import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -23,6 +23,7 @@ import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintStream;
@@ -38,7 +39,6 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link CodexOptimizerCommandScope}'s resolution of the environment, through the commands that the
@@ -431,7 +431,8 @@ public final class CodexPromptOptimizerTest
 		{
 			Setup setup = setup(scope);
 			Path runs = scope.add(Files.createTempDirectory("codex-optimizer-run")).toRealPath();
-			try (RequestingRun parent = new RequestingRun(runs.resolve("parent"), new FileLocks(), sessionRequests))
+			try (RequestingNestedSession parent = new RequestingNestedSession(runs.resolve("parent"), new FileLocks(),
+				sessionRequests))
 			{
 				if (serveFirst)
 				{

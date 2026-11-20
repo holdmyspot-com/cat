@@ -3,7 +3,7 @@ package com.holdmyspot.cat.common.secrets;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 
 import java.nio.file.Path;
 import java.time.Clock;
@@ -11,7 +11,7 @@ import java.time.Clock;
 /**
  * Exposes the creation of run managers and the manifest limit to the module's tests.
  */
-public interface HarnessRunManagerAccess
+public interface NestedSessionManagerAccess
 {
 	/**
 	 * Returns the largest run manifest, in bytes, that a manager reads.
@@ -32,6 +32,6 @@ public interface HarnessRunManagerAccess
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	HarnessRunManager newHarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
+	NestedSessionManager newNestedSessionManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness);
 }

@@ -26,10 +26,10 @@ import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixt
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
+import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
-import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
@@ -45,9 +45,9 @@ import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
-import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess.InterruptedTurn;
 
 import java.io.ByteArrayOutputStream;
@@ -1890,7 +1890,7 @@ public final class ClaudeSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path runRoot = home.resolve("runs");
-			try (RequestingRun parent = new RequestingRun(home.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				ClaudeSessions sessions = inRun(jvm, home, runRoot, parent);
 
@@ -1947,7 +1947,8 @@ public final class ClaudeSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path runRoot = home.resolve("runs");
-			try (RequestingRun parent = new RequestingRun(home.resolve("parent"), jvm.fileLocks(), sessionRequests))
+			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(),
+				sessionRequests))
 			{
 				ClaudeSessions sessions = inRun(jvm, home, runRoot, parent);
 				SessionRequest request = new SessionRequest(SessionRole.JUDGE, partOf(SessionRole.JUDGE), source,
@@ -1983,7 +1984,7 @@ public final class ClaudeSessionsTest
 	 * @param parent  the run
 	 * @return the port
 	 */
-	private static ClaudeSessions inRun(JvmScope jvm, Path home, Path runRoot, RequestingRun parent)
+	private static ClaudeSessions inRun(JvmScope jvm, Path home, Path runRoot, RequestingNestedSession parent)
 	{
 		Map<String, String> environment = new HashMap<>();
 		environment.put("CAT_RUN", "1");

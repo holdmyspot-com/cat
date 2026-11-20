@@ -10,12 +10,12 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Owns one started harness process and its isolated execution directory for multiple requests.
  */
-public final class HarnessRunSession implements AutoCloseable
+public final class LiveNestedSession implements AutoCloseable
 {
-	private final HarnessRun run;
+	private final NestedSession run;
 	private final HarnessProcess process;
 	private final AbstractHarnessRunnerScope scope;
-	private final HarnessRunLock lock;
+	private final NestedSessionLock lock;
 	/**
 	 * The directory of the CAT plugin installed in the run's home, whose launchers the session's commands run, or
 	 * {@code null} if the run has none.
@@ -31,9 +31,9 @@ public final class HarnessRunSession implements AutoCloseable
 	 * @param scope services owned for the process lifetime
 	 * @throws NullPointerException if {@code run}, {@code process}, or {@code scope} are null
 	 */
-	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope)
+	public LiveNestedSession(NestedSession run, HarnessProcess process, AbstractHarnessRunnerScope scope)
 	{
-		this(run, process, scope, HarnessRunLock.unlocked());
+		this(run, process, scope, NestedSessionLock.unlocked());
 	}
 
 	/**
@@ -45,8 +45,8 @@ public final class HarnessRunSession implements AutoCloseable
 	 * @param lock the exclusive run lock
 	 * @throws NullPointerException if {@code run}, {@code process}, {@code scope}, or {@code lock} are null
 	 */
-	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope,
-		HarnessRunLock lock)
+	public LiveNestedSession(NestedSession run, HarnessProcess process, AbstractHarnessRunnerScope scope,
+		NestedSessionLock lock)
 	{
 		this(run, process, scope, lock, null);
 	}
@@ -63,8 +63,8 @@ public final class HarnessRunSession implements AutoCloseable
 	 *                  commands run, or {@code null} if the run has none
 	 * @throws NullPointerException if {@code run}, {@code process}, {@code scope}, or {@code lock} are null
 	 */
-	public HarnessRunSession(HarnessRun run, HarnessProcess process, AbstractHarnessRunnerScope scope,
-		HarnessRunLock lock, Path catPlugin)
+	public LiveNestedSession(NestedSession run, HarnessProcess process, AbstractHarnessRunnerScope scope,
+		NestedSessionLock lock, Path catPlugin)
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(process, "process").isNotNull();
@@ -169,7 +169,7 @@ public final class HarnessRunSession implements AutoCloseable
 	 *
 	 * @return the owned run
 	 */
-	public HarnessRun run()
+	public NestedSession run()
 	{
 		return run;
 	}

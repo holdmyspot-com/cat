@@ -2,12 +2,12 @@ package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionProtocolContract;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionProtocolContract.Inputs;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionProtocolContract.Observation;
@@ -53,9 +53,9 @@ public final class HarnessRunnerBridgeProtocolContractTest
 	{
 		Path runRoot = Files.createDirectories(inputs.runRoot());
 		FileLocks fileLocks = new FileLocks();
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		HarnessRun run = manager.create("codex");
+		NestedSession run = manager.create("codex");
 		Path project = Files.createDirectories(run.directory().resolve("project"));
 		manager.initialize(run, inputs.artifact(), project, "scripted", List.of("scripted"));
 		Files.writeString(project.resolve("result.txt"), "result");
@@ -69,7 +69,7 @@ public final class HarnessRunnerBridgeProtocolContractTest
 		StringWriter output = new StringWriter();
 		JsonMapper json = JsonMapper.builder().build();
 
-		HarnessRunnerBridge.serve(() -> new HarnessRunSession(run,
+		HarnessRunnerBridge.serve(() -> new LiveNestedSession(run,
 			new ScriptedProcess(script, receivedPrompts), new TestHarnessRunnerScope()), manager, options, json,
 			Yielding.fileReplacer(), new StringReader(inputs.records()), output,
 			(_, _, _) ->

@@ -2,8 +2,8 @@ package com.holdmyspot.cat.common.runner.test;
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 
 import java.io.IOException;
@@ -14,10 +14,10 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Plays, in a separate JVM for {@link HarnessRunManagerTest}, a runner whose harness reported its session: it records
- * its run's end once its harness ends, as a runner does, and it stops its harness when it is stopped, as a runner
- * launcher does, and its process ends only once it has handled its harness's end. Its harness is a second JVM that runs
- * until it is stopped.
+ * Plays, in a separate JVM for {@link NestedSessionManagerTest}, a runner whose harness reported its session: it
+ * records its run's end once its harness ends, as a runner does, and it stops its harness when it is stopped, as a
+ * runner launcher does, and its process ends only once it has handled its harness's end. Its harness is a second JVM
+ * that runs until it is stopped.
  */
 public final class InterruptedRunnerProcess
 {
@@ -65,9 +65,9 @@ public final class InterruptedRunnerProcess
 				Thread.currentThread().interrupt();
 			}
 		}));
-		HarnessRunManager manager = new HarnessRunManager(new FileLocks(), Path.of(args[1]), Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(new FileLocks(), Path.of(args[1]), Clock.systemUTC(),
 			Yielding.fileReplacer());
-		HarnessRun run = manager.create("harness");
+		NestedSession run = manager.create("harness");
 		manager.recordHarnessSession(run, HARNESS_SESSION_ID);
 		try (Process harness = new ProcessBuilder(List.of(ProcessHandle.current().info().command().orElseThrow(), "-cp",
 			System.getProperty("java.class.path"), InterruptedRunnerProcess.class.getName(), "harness")).

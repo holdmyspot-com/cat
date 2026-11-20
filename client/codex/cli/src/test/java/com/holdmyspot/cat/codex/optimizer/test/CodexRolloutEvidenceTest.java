@@ -10,7 +10,7 @@ import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.NestedSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -80,7 +80,7 @@ public final class CodexRolloutEvidenceTest
 			else
 				lines = List.of(HEADER, "", malformed);
 			Path transcript = writeTrial(root, List.of(new Rollout("rollout-a.jsonl", lines)));
-			Path rollout = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS).resolve("rollout-a.jsonl");
+			Path rollout = transcript.resolveSibling(NestedSession.SESSION_TRANSCRIPTS).resolve("rollout-a.jsonl");
 
 			IOException failure = readFailure(jvm, root, transcript);
 
@@ -106,7 +106,7 @@ public final class CodexRolloutEvidenceTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-rollout-second-file-"));
 			Path transcript = writeTrial(root, List.of(new Rollout("rollout-a.jsonl", List.of(HEADER)),
 				new Rollout("rollout-z.jsonl", List.of(HEADER, "", "{"))));
-			Path rollout = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS).resolve("rollout-z.jsonl");
+			Path rollout = transcript.resolveSibling(NestedSession.SESSION_TRANSCRIPTS).resolve("rollout-z.jsonl");
 
 			IOException failure = readFailure(jvm, root, transcript);
 
@@ -149,7 +149,7 @@ public final class CodexRolloutEvidenceTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-rollout-bad-final-"));
 			Path transcript = writeTrial(root, List.of(new Rollout("rollout-a.jsonl", List.of(HEADER, "", "{"))));
-			Path rollout = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS).resolve("rollout-a.jsonl");
+			Path rollout = transcript.resolveSibling(NestedSession.SESSION_TRANSCRIPTS).resolve("rollout-a.jsonl");
 
 			IOException failure = readFailure(jvm, root, transcript);
 
@@ -191,7 +191,7 @@ public final class CodexRolloutEvidenceTest
 		Path artifacts = Files.createDirectories(root.resolve("artifacts"));
 		Path transcript = Files.copy(Path.of("src/test/resources/optimizer/codex-tool-calls.jsonl"),
 			artifacts.resolve("transcript.jsonl"));
-		Path directory = Files.createDirectories(artifacts.resolve(HarnessRun.SESSION_TRANSCRIPTS));
+		Path directory = Files.createDirectories(artifacts.resolve(NestedSession.SESSION_TRANSCRIPTS));
 		for (Rollout rollout : rollouts)
 		{
 			Files.writeString(directory.resolve(rollout.fileName()), String.join("\n", rollout.lines()));

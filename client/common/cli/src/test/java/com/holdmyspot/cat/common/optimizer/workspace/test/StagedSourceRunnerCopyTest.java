@@ -10,14 +10,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Overlay;
 import com.holdmyspot.cat.common.optimizer.workspace.StagedSources;
 import com.holdmyspot.cat.common.optimizer.workspace.test.ProjectFixtures.LinkedProject;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,7 +32,7 @@ import org.testng.annotations.Test;
 /**
  * Verifies that the runner's project copy accepts a staged source that is built from a project with links.
  * <p>
- * Both harness runners copy their project through {@link HarnessRunManager#copyProject(Path, HarnessRun)}, so the
+ * Both harness runners copy their project through {@link NestedSessionManager#copyProject(Path, NestedSession)}, so the
  * test registers a run for each harness and copies into it. It starts no model and no harness process.
  */
 public final class StagedSourceRunnerCopyTest
@@ -84,15 +84,15 @@ public final class StagedSourceRunnerCopyTest
 				write(Path.of(".cat/sessions/campaign/optimizer/results.jsonl"), content("other trial result"), READ_WRITE).
 				write(Path.of(".cat/sessions/campaign/optimizer/campaign.json"), content("campaign record"), READ_WRITE);
 			Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).stage(candidate, Set.of());
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), fixture.resolve("runs"),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), fixture.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun first = manager.create(harness);
+			NestedSession first = manager.create(harness);
 			manager.copyProject(staged, first);
 			Path firstProject = first.directory().resolve("project");
 			Files.writeString(firstProject.resolve("prompt.md"), "first trial edit", UTF_8);
 			Files.writeString(first.directory().resolve("home/memory.txt"), "first trial memory", UTF_8);
 
-			HarnessRun second = manager.create(harness);
+			NestedSession second = manager.create(harness);
 			manager.copyProject(staged, second);
 			Path secondProject = second.directory().resolve("project");
 			requireThat(Files.readString(secondProject.resolve("prompt.md"), UTF_8), "secondPrompt").isEqualTo("prompt");
@@ -129,11 +129,11 @@ public final class StagedSourceRunnerCopyTest
 				LinkedProject project = ProjectFixtures.linkedProject(fixture);
 				Path staged = new StagedSources(project.tree(), fixture.resolve("staged")).
 					stage(Overlay.of(project.tree().inventory()), Set.of());
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					fixture.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 
-				HarnessRun accepted = manager.create(harness);
+				NestedSession accepted = manager.create(harness);
 				manager.copyProject(staged, accepted);
 
 				Path copy = accepted.directory().resolve("project");

@@ -3,12 +3,12 @@ package com.holdmyspot.cat.common.runner.fakes.test;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
-import com.holdmyspot.cat.common.runner.KeptRunCopy;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.secrets.MainHarnessRunnerScopeSecrets;
@@ -45,7 +45,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class RequestingRun implements AutoCloseable
+public final class RequestingNestedSession implements AutoCloseable
 {
 	/**
 	 * The identifier that the requested session's harness reports.
@@ -74,7 +74,7 @@ public final class RequestingRun implements AutoCloseable
 	private static final Duration SCAN_PERIOD = Duration.ofMillis(5);
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final FileLocks fileLocks;
-	private final HarnessRun run;
+	private final NestedSession run;
 	private final SessionRequestBroker broker;
 	private final List<List<String>> launches = new CopyOnWriteArrayList<>();
 	private final List<String> received = new CopyOnWriteArrayList<>();
@@ -89,7 +89,7 @@ public final class RequestingRun implements AutoCloseable
 	 * @param sessionRequests how many sessions the run allows
 	 * @throws IOException if the run cannot be created or its broker cannot start
 	 */
-	public RequestingRun(Path root, FileLocks fileLocks, int sessionRequests) throws IOException
+	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests) throws IOException
 	{
 		this(root, fileLocks, sessionRequests, turn -> "reply " + turn);
 	}
@@ -103,7 +103,7 @@ public final class RequestingRun implements AutoCloseable
 	 * @param replyForTurn returns the reply for a one-based turn number; it must be immutable and thread-safe
 	 * @throws IOException if the run cannot be created or its broker cannot start
 	 */
-	public RequestingRun(Path root, FileLocks fileLocks, int sessionRequests, IntFunction<String> replyForTurn)
+	public RequestingNestedSession(Path root, FileLocks fileLocks, int sessionRequests, IntFunction<String> replyForTurn)
 		throws IOException
 	{
 		requireThat(replyForTurn, "replyForTurn").isNotNull();
@@ -111,7 +111,7 @@ public final class RequestingRun implements AutoCloseable
 		this.replyForTurn = replyForTurn;
 		Files.createDirectories(root);
 		Path results = root.resolve("requesting-runs");
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, results, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, results, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		this.run = manager.create("claude");
 		SessionRequestAccess.allowing(run, root, sessionRequests, Platform.current(), SessionRequestAccess.Shell.POSIX);
@@ -209,9 +209,9 @@ public final class RequestingRun implements AutoCloseable
 	private FakeHarnessCli child(String harness, List<String> arguments) throws IOException
 	{
 		launches.add(arguments);
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(arguments, "--results")),
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, Path.of(option(arguments, "--results")),
 			Clock.systemUTC(), Yielding.fileReplacer());
-		HarnessRun child = manager.create(harness);
+		NestedSession child = manager.create(harness);
 		manager.recordHarnessSession(child, SESSION_ID);
 		Files.writeString(child.directory().resolve("project").resolve("result.txt"), "result");
 		Files.writeString(Files.createDirectories(child.directory().resolve("home")).resolve("login.json"), "login");
@@ -239,7 +239,7 @@ public final class RequestingRun implements AutoCloseable
 						if (record.path("prompt").asString().equals(WRITE_OUTPUT))
 							Files.writeString(child.directory().resolve("project").resolve(OUTPUT_FILE), "{\"written\":true}");
 						if (arguments.contains(TURN_COPY_OPTION))
-							KeptRunCopy.copyTurn(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
+							ResultsCopy.copyTurn(child.directory(), Path.of(option(arguments, TURN_COPY_OPTION)));
 						String reply = replyForTurn.apply(turns.incrementAndGet());
 						ObjectNode completed = json.createObjectNode().put("type", "turn_completed").
 							put("exit_code", 0).put("error", "").put("assistant_response", reply);
@@ -258,7 +258,7 @@ public final class RequestingRun implements AutoCloseable
 					case "complete" ->
 					{
 						append(output, json.createObjectNode().put("type", "completed").toString());
-						HarnessRunReceipt.write(json, Yielding.fileReplacer(), Path.of(option(arguments, "--receipt")),
+						NestedSessionReceipt.write(json, Yielding.fileReplacer(), Path.of(option(arguments, "--receipt")),
 							child, output, List.of());
 						process.get().exit();
 					}

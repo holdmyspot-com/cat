@@ -7,9 +7,9 @@ import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.KeptRunCopy;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -32,12 +32,12 @@ import org.testng.annotations.Test;
 /**
  * Tests the turn-evidence and final-run copy boundaries.
  */
-public final class KeptRunCopyTest
+public final class ResultsCopyTest
 {
 	/**
 	 * Creates the test fixture.
 	 */
-	public KeptRunCopyTest()
+	public ResultsCopyTest()
 	{
 	}
 
@@ -72,7 +72,7 @@ public final class KeptRunCopyTest
 			Files.writeString(Files.createDirectories(target.resolve("home")).resolve("login"), "target-secret");
 			try (var openTranscript = Files.newBufferedWriter(target.resolve("artifacts/transcript.jsonl"), APPEND))
 			{
-				KeptRunCopy.copyTurn(source, target);
+				ResultsCopy.copyTurn(source, target);
 				openTranscript.write("-still-open");
 				openTranscript.flush();
 
@@ -94,7 +94,7 @@ public final class KeptRunCopyTest
 
 				Files.delete(sourceTranscripts.resolve("rollout-child.jsonl"));
 				Files.writeString(sourceTranscripts.getParent().resolve("rollout-root.jsonl"), "root-two\n");
-				KeptRunCopy.copyTurn(source, target);
+				ResultsCopy.copyTurn(source, target);
 				requireThat(Files.readString(target.resolve("artifacts/session-transcripts/rollout-root.jsonl")),
 					"refreshedRoot").isEqualTo("root-two\n");
 				requireThat(Files.exists(target.resolve("artifacts/session-transcripts/subagents/rollout-child.jsonl")),
@@ -129,7 +129,7 @@ public final class KeptRunCopyTest
 			Files.writeString(target.resolve("artifacts/unrelated.json"), "unrelated");
 			try (var openTranscript = Files.newBufferedWriter(target.resolve("artifacts/transcript.jsonl"), APPEND))
 			{
-				KeptRunCopy.deleteTurnCopies(target);
+				ResultsCopy.deleteTurnCopies(target);
 				openTranscript.write("-continued");
 				openTranscript.flush();
 
@@ -143,7 +143,7 @@ public final class KeptRunCopyTest
 				requireThat(Files.readString(target.resolve("artifacts/unrelated.json")), "unrelatedArtifact").
 				isEqualTo("unrelated");
 
-				KeptRunCopy.Result result = KeptRunCopy.copy(source, target);
+				ResultsCopy.Result result = ResultsCopy.copy(source, target);
 				requireThat(result.incomplete(), "fullCopy").isEmpty();
 				requireThat(Files.readString(target.resolve("project/marker")), "finalProject").
 					isEqualTo("final-project");
@@ -175,7 +175,7 @@ public final class KeptRunCopyTest
 			denyReading(firstUnreadable);
 			denyReading(secondUnreadable);
 
-			KeptRunCopy.Result result = KeptRunCopy.copy(source, target);
+			ResultsCopy.Result result = ResultsCopy.copy(source, target);
 
 			requireThat(Files.readString(target.resolve("project/marker")), "project").isEqualTo("kept project");
 			requireThat(Files.readString(target.resolve("artifacts/turn-1.events")), "events").isEqualTo("events");
@@ -209,16 +209,16 @@ public final class KeptRunCopyTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path slots = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "kept-slot-"));
-			HarnessRunManager slot = new HarnessRunManager(jvm.fileLocks(), slots, Clock.systemUTC(),
+			NestedSessionManager slot = new NestedSessionManager(jvm.fileLocks(), slots, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
-			HarnessRun child = slot.create("harness");
+			NestedSession child = slot.create("harness");
 			for (int i = 0; i < 800; ++i)
 				Files.writeString(Files.createDirectories(child.directory().resolve("project/d" + (i % 40))).
 					resolve("f" + i), "content");
 			slot.markCompleted(child);
 			Path kept = Files.createTempDirectory(jvm.temporaryDirectory(), "kept-root-");
 			cleanup.add(kept);
-			HarnessRunManager keptRuns = new HarnessRunManager(jvm.fileLocks(), kept, Clock.systemUTC(),
+			NestedSessionManager keptRuns = new NestedSessionManager(jvm.fileLocks(), kept, Clock.systemUTC(),
 				Yielding.fileReplacer());
 			AtomicBoolean done = new AtomicBoolean();
 			AtomicReference<IOException> seen = new AtomicReference<>();
@@ -243,7 +243,7 @@ public final class KeptRunCopyTest
 				for (int round = 0; round < 6 && seen.get() == null; ++round)
 				{
 					String id = "kept-" + round;
-					KeptRunCopy.copy(child.directory(), kept.resolve("harness").resolve(id), id,
+					ResultsCopy.copy(child.directory(), kept.resolve("harness").resolve(id), id,
 						child.directory().resolve("project"));
 				}
 			}

@@ -9,8 +9,8 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
@@ -541,7 +541,7 @@ final class Session implements SessionHandle
 	{
 		List<RateLimitWindow> windows = events.windows();
 		if (ended != null)
-			new HarnessRunManager(settings.scope().fileLocks(), runRoot(),
+			new NestedSessionManager(settings.scope().fileLocks(), runRoot(),
 				clock, settings.replacer()).pruneTerminalRuntimes(sessions.harness());
 		if (interruptRequested.get())
 			return new SessionResult.Interrupted(windows);

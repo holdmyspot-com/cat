@@ -4,7 +4,6 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.claude.policy.ClaudeCommandSession;
 import com.holdmyspot.cat.claude.runner.ClaudeRunnerCli;
 import com.holdmyspot.cat.common.Pause;
@@ -17,15 +16,16 @@ import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
-import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
-import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.PrintWriter;
@@ -176,7 +176,7 @@ public final class ClaudeRunnerCliTest
 	 */
 	private static Path createRun(TestJvmScope jvm, Path runRoot) throws IOException
 	{
-		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		return manager.create("claude").directory().resolve("session.json");
 	}

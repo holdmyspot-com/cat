@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessCredentials;
@@ -21,15 +22,14 @@ import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunLock;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
-import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionLock;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
@@ -147,8 +147,8 @@ public final class CodexRunner
 	 * @throws IOException             if validation, copying, or process startup fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
-		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
+	LiveNestedSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
+		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		boolean installCat, CodexAgentDefinition agent, List<Path> readOnlyEvidence, List<Path> deniedReads,
 		int toolOutputTokenLimit, boolean sessionTranscripts, int sessionRequests, ParentPolicy bound,
 		Consumer<ChildPolicy> policyListener, String gitName, String gitEmail, ExtraPermissions extraPermissions,
@@ -171,12 +171,12 @@ public final class CodexRunner
 			throw new IOException("A direct CAT agent requires --install-cat");
 		artifact = HarnessArtifact.validate(artifact, Path.of(".codex-plugin/plugin.json"));
 		boolean resumes = resumedSession != null;
-		HarnessRun run;
+		NestedSession run;
 		if (resumes)
 			run = manager.resume(HARNESS_ID, resumedSession);
 		else
 			run = manager.create(HARNESS_ID);
-		HarnessRunLock lock = null;
+		NestedSessionLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
 		try
@@ -283,7 +283,7 @@ public final class CodexRunner
 				{
 					throw refusalOf(e);
 				}
-				HarnessRunSession session = new HarnessRunSession(run, process, scope, lock, catPlugin);
+				LiveNestedSession session = new LiveNestedSession(run, process, scope, lock, catPlugin);
 				child.release();
 				return session;
 			}
@@ -320,8 +320,8 @@ public final class CodexRunner
 	 * @param primary the launch failure
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	private static void cleanupLaunchFailure(ProcessOwnership child, CodexProcess wrapper, HarnessRunManager manager,
-		HarnessRun run, boolean identityRecorded, Throwable primary)
+	private static void cleanupLaunchFailure(ProcessOwnership child, CodexProcess wrapper, NestedSessionManager manager,
+		NestedSession run, boolean identityRecorded, Throwable primary)
 	{
 		Process rawProcess = child.processOrNull();
 		if (rawProcess != null)
@@ -515,12 +515,12 @@ public final class CodexRunner
 
 	/**
 	 * Adds to a session's configuration the permission profile that its thread runs under, as
-	 * {@link #addSessionProfile(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess)}
-	 * does, and returns it with the command that starts the session's app-server.
+	 * {@link #addSessionProfile(Path, NestedSessionManager, NestedSession, List, List, Platform, Map,
+	 * SessionRequestAccess)} does, and returns it with the command that starts the session's app-server.
 	 * <p>
 	 * When the caller's {@code PATH} has bubblewrap, that command runs the app-server under bubblewrap, as
 	 * {@link #withHiddenDirectories(List, Path, List, List, List)} describes, which hides from the app-server each
-	 * directory that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, and reopens
+	 * directory that {@link #hiddenDirectories(NestedSessionManager, List, List, Platform, Map)} returns, and reopens
 	 * inside it the session's project and home and its requests directory, if any, for writing and the session's
 	 * read-only evidence for reading only. The permission profile then names neither those directories nor the paths
 	 * under them, so its size does not grow with the number of runs or files beside the evidence. Otherwise, and when
@@ -546,7 +546,7 @@ public final class CodexRunner
 	 *                              path does not exist, a denied directory cannot be listed, or the configuration
 	 *                              cannot be updated
 	 */
-	public static SessionSandbox sessionSandbox(Path configuration, HarnessRunManager manager, HarnessRun run,
+	public static SessionSandbox sessionSandbox(Path configuration, NestedSessionManager manager, NestedSession run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess, List<String> appServer) throws IOException
 	{
@@ -581,7 +581,7 @@ public final class CodexRunner
 	 * @param environment      the caller's environment, whose {@code PATH} names bubblewrap
 	 * @throws IOException if the session must be refused
 	 */
-	private static void requireBubblewrapForEvidence(HarnessRunManager manager, List<Path> readOnlyEvidence,
+	private static void requireBubblewrapForEvidence(NestedSessionManager manager, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, Platform platform, Map<String, String> environment) throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
@@ -608,8 +608,8 @@ public final class CodexRunner
 
 	/**
 	 * Adds to a session's configuration the permission profile that its thread runs under: the session may read but
-	 * not change {@code readOnlyEvidence}, as {@link #sessionReadOnly(HarnessRun, List, SessionRequestAccess)} extends
-	 * it, and may not read the paths that {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List,
+	 * not change {@code readOnlyEvidence}, as {@link #sessionReadOnly(NestedSession, List, SessionRequestAccess)} extends
+	 * it, and may not read the paths that {@link #sessionDeniedReads(NestedSessionManager, NestedSession, List, List,
 	 * Platform, Map, SessionRequestAccess)} returns.
 	 *
 	 * @param configuration    the session's isolated Codex configuration, which holds the CAT runner profile
@@ -625,7 +625,7 @@ public final class CodexRunner
 	 * @throws IOException          if an evidence path does not exist, a denied directory cannot be listed, or the
 	 *                              configuration cannot be updated
 	 */
-	public static String addSessionProfile(Path configuration, HarnessRunManager manager, HarnessRun run,
+	public static String addSessionProfile(Path configuration, NestedSessionManager manager, NestedSession run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess) throws IOException
 	{
@@ -647,13 +647,13 @@ public final class CodexRunner
 	 * @return the files and directories
 	 * @throws NullPointerException if {@code run} or {@code readOnlyEvidence} are null
 	 */
-	public static List<Path> sessionReadOnly(HarnessRun run, List<Path> readOnlyEvidence,
+	public static List<Path> sessionReadOnly(NestedSession run, List<Path> readOnlyEvidence,
 		SessionRequestAccess requestAccess)
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(readOnlyEvidence, "readOnlyEvidence").isNotNull();
 		List<Path> result = new ArrayList<>(readOnlyEvidence);
-		Path linkTargets = HarnessRunManager.linkTargets(run.directory());
+		Path linkTargets = NestedSessionManager.linkTargets(run.directory());
 		if (Files.isDirectory(linkTargets))
 			result.add(linkTargets);
 		if (requestAccess != null)
@@ -686,11 +686,11 @@ public final class CodexRunner
 	 * except the session log directory and the denied files inside the session's home. Every platform's sandbox still
 	 * lets the session read and write its project and home inside a denied directory, such as the project that holds
 	 * the results folder, but the Linux sandbox would also hide read-only evidence there. The result therefore omits
-	 * each directory that {@link #hiddenDirectories(HarnessRunManager, List, List, Platform, Map)} returns, which the
+	 * each directory that {@link #hiddenDirectories(NestedSessionManager, List, List, Platform, Map)} returns, which the
 	 * app-server's bubblewrap hides instead, and the paths under it. Where the caller's {@code PATH} has no bubblewrap,
 	 * a Linux session is instead denied each other file and directory under a denied directory that holds any of {@code
 	 * readOnlyEvidence} by its own path. The runner starts no such session with the caller's evidence, as {@link
-	 * #sessionSandbox(Path, HarnessRunManager, HarnessRun, List, List, Platform, Map, SessionRequestAccess, List)}
+	 * #sessionSandbox(Path, NestedSessionManager, NestedSession, List, List, Platform, Map, SessionRequestAccess, List)}
 	 * describes, so this listing covers only the run's own link-targets and responses directories, which lie inside the
 	 * results folder.
 	 *
@@ -704,7 +704,7 @@ public final class CodexRunner
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
 	 */
-	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment)
 		throws IOException
 	{
@@ -713,10 +713,10 @@ public final class CodexRunner
 
 	/**
 	 * Returns the files and directories that a session of a run must not read, as
-	 * {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Platform, Map)} does, except that a Linux
-	 * session that is denied each path under a directory by its own path also keeps the run's requests directory when
-	 * it may request sessions. The run's link-targets directory and its responses directory are among
-	 * {@code readOnlyEvidence}, as {@link #sessionReadOnly(HarnessRun, List, SessionRequestAccess)} returns them.
+	 * {@link #sessionDeniedReads(NestedSessionManager, NestedSession, List, List, Platform, Map)} does, except that a
+	 * Linux session that is denied each path under a directory by its own path also keeps the run's requests directory
+	 * when it may request sessions. The run's link-targets directory and its responses directory are among {@code
+	 * readOnlyEvidence}, as {@link #sessionReadOnly(NestedSession, List, SessionRequestAccess)} returns them.
 	 *
 	 * @param manager the run manager
 	 * @param run the session's run
@@ -729,7 +729,7 @@ public final class CodexRunner
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
 	 * @throws IOException if a denied directory cannot be listed or the session log directory cannot be created
 	 */
-	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Platform platform, Map<String, String> environment,
 		SessionRequestAccess requestAccess) throws IOException
 	{
@@ -751,8 +751,8 @@ public final class CodexRunner
 		{
 			if (hidden.stream().anyMatch(directory::startsWith))
 				continue;
-			if (platform.isLinux() && HarnessRunManager.containsAny(directory, readOnlyEvidence))
-				result.addAll(HarnessRunManager.deniedReads(directory, accessible));
+			if (platform.isLinux() && NestedSessionManager.containsAny(directory, readOnlyEvidence))
+				result.addAll(NestedSessionManager.deniedReads(directory, accessible));
 			else
 			{
 				// Codex lists every denied path in the model's instructions and omits the rest of a long list, and the
@@ -807,7 +807,7 @@ public final class CodexRunner
 	 *   {@code PATH} has no bubblewrap
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static List<Path> hiddenDirectories(HarnessRunManager manager, List<Path> readOnlyEvidence,
+	public static List<Path> hiddenDirectories(NestedSessionManager manager, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, Platform platform, Map<String, String> environment)
 	{
 		requireThat(manager, "manager").isNotNull();
@@ -827,21 +827,21 @@ public final class CodexRunner
 
 	/**
 	 * Returns the directories that a session must not read as a whole, as
-	 * {@link #deniedDirectories(HarnessRunManager, List)} lists them, that hold any of its read-only paths.
+	 * {@link #deniedDirectories(NestedSessionManager, List)} lists them, that hold any of its read-only paths.
 	 *
 	 * @param manager     the run manager
 	 * @param readOnly    the files and directories that the session may read but not change
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @return the directories, absolute and normalized, in the order of
-	 *   {@link #deniedDirectories(HarnessRunManager, List)}
+	 *   {@link #deniedDirectories(NestedSessionManager, List)}
 	 */
-	private static List<Path> deniedDirectoriesHolding(HarnessRunManager manager, List<Path> readOnly,
+	private static List<Path> deniedDirectoriesHolding(NestedSessionManager manager, List<Path> readOnly,
 		List<Path> deniedReads)
 	{
 		List<Path> holding = new ArrayList<>();
 		for (Path directory : deniedDirectories(manager, deniedReads))
 		{
-			if (HarnessRunManager.containsAny(directory, readOnly))
+			if (NestedSessionManager.containsAny(directory, readOnly))
 				holding.add(directory);
 		}
 		return holding;
@@ -855,7 +855,7 @@ public final class CodexRunner
 	 * @param deniedReads the files and directories that the caller denies the session reading
 	 * @return the directories, absolute and normalized
 	 */
-	private static List<Path> deniedDirectories(HarnessRunManager manager, List<Path> deniedReads)
+	private static List<Path> deniedDirectories(NestedSessionManager manager, List<Path> deniedReads)
 	{
 		List<Path> directories = new ArrayList<>();
 		for (Path denied : deniedReads)
@@ -1065,7 +1065,7 @@ public final class CodexRunner
 	 * @throws IOException if Codex fails or its output cannot be kept or read
 	 */
 	private static String commandOutput(String executable, List<String> arguments, Path worktree,
-		Map<String, String> environment, ExecutableFiles executables, HarnessRunManager manager, HarnessRun run)
+		Map<String, String> environment, ExecutableFiles executables, NestedSessionManager manager, NestedSession run)
 		throws IOException
 	{
 		List<String> command = new ArrayList<>(List.of(executable));
@@ -1233,7 +1233,7 @@ public final class CodexRunner
 	 * @param lock the acquired lock
 	 * @return an exception representing lock closure failure, or {@code null}
 	 */
-	private static Exception close(HarnessRunLock lock)
+	private static Exception close(NestedSessionLock lock)
 	{
 		assert lock != null;
 		try

@@ -2,7 +2,7 @@ package com.holdmyspot.cat.codex.optimizer.test;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
-import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.NestedSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -44,7 +44,7 @@ final class RecordedTrial
 	{
 		Path artifacts = Files.createDirectories(root.resolve("artifacts"));
 		Path transcript = Files.copy(events, artifacts.resolve("transcript.jsonl"));
-		Path rollouts = Files.createDirectories(artifacts.resolve(HarnessRun.SESSION_TRANSCRIPTS));
+		Path rollouts = Files.createDirectories(artifacts.resolve(NestedSession.SESSION_TRANSCRIPTS));
 		StringBuilder text = new StringBuilder();
 		for (String line : rollout)
 			text.append(line).append('\n');

@@ -14,32 +14,32 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
-import com.holdmyspot.cat.common.runner.HarnessRunStarter;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
+import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSessionLaunch;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionStarter;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
-import com.holdmyspot.cat.common.runner.HarnessMarkers;
-import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
-import com.holdmyspot.cat.common.runner.RunLaunch;
-import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
-import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
-import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
-import com.holdmyspot.cat.common.runner.LaunchRoute;
-import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -416,7 +416,7 @@ public final class ClaudeRunnerCli
 			process.waiting()))
 		{
 			// A runner that continues a run's session takes the options that the run's start fixed from the run
-			args = RunLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
+			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
 			ClaudeAgentDefinition agent = loadAgent(options.catArtifact(ClaudeRunner.MANIFEST), agentName(args));
 			List<Path> readOnlyEvidence = readOnlyEvidence(args);
@@ -427,10 +427,10 @@ public final class ClaudeRunnerCli
 				options.extraPermissions());
 			ClaudeRunner.requireLogin(process, environment, Platform.current());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			HarnessRunManager opened = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
+			NestedSessionManager opened = NestedSessionManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
-			HarnessRunManager manager = inSlot(opened, options.runId(), args);
+			NestedSessionManager manager = inSlot(opened, options.runId(), args);
 			HarnessCapacity capacity = null;
 			if (!options.capacityHeld())
 				capacity = capacityForMaximum.apply(options.maximumConcurrency());
@@ -448,11 +448,11 @@ public final class ClaudeRunnerCli
 	 * @param args    the launch's options
 	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
 	 */
-	private static HarnessRunManager inSlot(HarnessRunManager manager, String runId, String[] args)
+	private static NestedSessionManager inSlot(NestedSessionManager manager, String runId, String[] args)
 	{
 		if (runId == null)
 			return manager;
-		return manager.withFixedRunId(runId).withLaunchArguments(RunLaunch.fixedArguments(args));
+		return manager.withFixedRunId(runId).withLaunchArguments(NestedSessionLaunch.fixedArguments(args));
 	}
 
 	/**
@@ -478,7 +478,7 @@ public final class ClaudeRunnerCli
 	private static void serve(ToolScope scope, HarnessRunnerOptions options, ClaudeAgentDefinition agent,
 		List<Path> readOnlyEvidence,
 		String instructionFilesMode, Optional<ClaudeSessionRole> role, ChildPolicy bound,
-		ExtraPermissions extraPermissions, HarnessRunManager manager,
+		ExtraPermissions extraPermissions, NestedSessionManager manager,
 		Reader input, Writer output,
 		Map<String, String> environment, FileReplacer replacer,
 		HarnessCapacity capacity) throws IOException
@@ -496,7 +496,7 @@ public final class ClaudeRunnerCli
 			AtomicReference<ChildPolicy> policy = new AtomicReference<>();
 			Path cat = options.catArtifact(ClaudeRunner.MANIFEST);
 			List<Path> trialPlugins = options.trialPlugins(ClaudeRunner.MANIFEST);
-			HarnessRunStarter starter = () -> new ClaudeRunner(scope.waiting()).start(cat, options.project(),
+			NestedSessionStarter starter = () -> new ClaudeRunner(scope.waiting()).start(cat, options.project(),
 				options.workspace(), trialPlugins, manager, "claude", environment, options.model(), options.effort(),
 				agent, options.installCat(), readOnlyEvidence, options.deniedReads(), instructionFilesMode,
 				options.sessionTranscripts(), options.sessionRequests(), bound, policy::set, options.gitName(),

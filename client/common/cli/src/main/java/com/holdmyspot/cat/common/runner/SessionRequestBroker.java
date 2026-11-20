@@ -4,7 +4,7 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
-import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
+import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
@@ -109,9 +109,9 @@ public final class SessionRequestBroker implements Closeable
 		if (catPlugin == null)
 			return List.of(directory);
 		List<Path> readable = List.of(catPlugin.toAbsolutePath().normalize());
-		if (!HarnessRunManager.containsAny(directory, readable))
+		if (!NestedSessionManager.containsAny(directory, readable))
 			return List.of(directory);
-		return HarnessRunManager.deniedReads(directory, readable);
+		return NestedSessionManager.deniedReads(directory, readable);
 	}
 
 	private final Site site;
@@ -161,7 +161,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param options the requesting runner's options
 	 * @param starter resolves and starts child runners
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter)
 	{
 		this(run, manager, options, null, starter);
@@ -179,7 +179,7 @@ public final class SessionRequestBroker implements Closeable
 	 *                  session's commands run, or {@code null} if the session has none
 	 * @param starter   resolves and starts child runners
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, RequestedSessionStarter starter)
 	{
 		this(run, manager, options, catPlugin, starter, RequestLimits.IN_RUN, new ProcessHandleLiveness());
@@ -195,7 +195,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param starter resolves and starts child runners
 	 * @param limits  the bounds that each request's archive must stay within
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits)
 	{
 		this(run, manager, options, starter, limits, new ProcessHandleLiveness());
@@ -213,7 +213,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param limits   the bounds that each request's archive must stay within
 	 * @param liveness checks and stops the processes that a slot's previous session left
 	 */
-	public SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+	public SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
 		RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
 		this(run, manager, options, null, starter, limits, liveness);
@@ -233,10 +233,10 @@ public final class SessionRequestBroker implements Closeable
 	 * @param limits    the bounds that each request's archive must stay within
 	 * @param liveness  checks and stops the processes that a slot's previous session left
 	 */
-	private SessionRequestBroker(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options,
+	private SessionRequestBroker(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
 		Path catPlugin, RequestedSessionStarter starter, RequestLimits limits, HarnessProcessLiveness liveness)
 	{
-		this(new RunSite(run, manager, options, catPlugin, limits, new SessionSlots(
+		this(new NestedSessionSite(run, manager, options, catPlugin, limits, new SessionSlots(
 			SessionRequestAccess.requestedRunsDirectory(run), options.maximumConcurrency(), liveness)), starter);
 	}
 
@@ -364,7 +364,7 @@ public final class SessionRequestBroker implements Closeable
 		}
 		try
 		{
-			RunRequest request = read(file, directory);
+			LaunchRequest request = read(file, directory);
 			// A request that resumes a session continues the session that an earlier request started
 			if (request.resume().isEmpty())
 			{
@@ -628,7 +628,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @throws IOException              if the document or any input is invalid
 	 * @throws IllegalArgumentException if the request names no model or no effort
 	 */
-	private RunRequest read(Path file, Path directory) throws IOException
+	private LaunchRequest read(Path file, Path directory) throws IOException
 	{
 		Path inputs = directory.resolve("inputs");
 		unpack(file, directory, inputs);
@@ -673,7 +673,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @return the runner options
 	 * @throws IOException if the request's extra permissions cannot be written for the runner
 	 */
-	private List<String> arguments(RunRequest request, Path directory) throws IOException
+	private List<String> arguments(LaunchRequest request, Path directory) throws IOException
 	{
 		List<String> arguments = new ArrayList<>();
 		if (request.resume().isPresent())
@@ -723,7 +723,7 @@ public final class SessionRequestBroker implements Closeable
 	 * @param arguments the child runner options
 	 * @param directory the private response directory
 	 */
-	private void execute(String id, RunRequest request, List<String> arguments, Path directory)
+	private void execute(String id, LaunchRequest request, List<String> arguments, Path directory)
 	{
 		Process process = null;
 		SessionSlots.Slot slot = null;
@@ -950,13 +950,13 @@ public final class SessionRequestBroker implements Closeable
 			String diagnostic = reason;
 			String sessionId = "";
 			if (!childRunId.isEmpty())
-				sessionId = HarnessRunManager.harnessSessionId(childRoots.get(id).resolve(childRunId)).orElse("");
+				sessionId = NestedSessionManager.harnessSessionId(childRoots.get(id).resolve(childRunId)).orElse("");
 			// A run whose session could not continue stays retained, so it has no copy. Before the harness reports the
 			// session's identifier, nothing names a copy.
 			if (!sessionId.isEmpty() && !status.equals(UNRESUMABLE))
 			{
 				// The requester cannot read the requested runs, whose homes hold their logins, so it reads a copy
-				Optional<String> incomplete = KeptRunCopy.copy(childRoots.get(id).resolve(childRunId),
+				Optional<String> incomplete = ResultsCopy.copy(childRoots.get(id).resolve(childRunId),
 					directory.resolve(RUN_COPY)).incomplete();
 				if (incomplete.isPresent())
 				{
@@ -969,7 +969,7 @@ public final class SessionRequestBroker implements Closeable
 				}
 				else if (outcome.equals("completed"))
 				{
-					HarnessRunReceipt.read(json, directory.resolve("receipt.json"),
+					NestedSessionReceipt.read(json, directory.resolve("receipt.json"),
 						directory.resolve(RUN_COPY).resolve("project"));
 				}
 			}
@@ -1331,7 +1331,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @throws IOException              if the manifest is malformed or chooses a field that the site refuses
 		 * @throws IllegalArgumentException if the request names no model or no effort
 		 */
-		RunRequest read(JsonMapper json, Path inputs) throws IOException;
+		LaunchRequest read(JsonMapper json, Path inputs) throws IOException;
 
 		/**
 		 * Returns why the site refuses the next request that does not resume a session.
@@ -1377,7 +1377,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @throws SessionRefusedException if the site refuses the request; the message says why
 		 * @throws IOException             if the options cannot be determined
 		 */
-		List<String> options(RunRequest request, Path runRoot) throws IOException;
+		List<String> options(LaunchRequest request, Path runRoot) throws IOException;
 
 		/**
 		 * Returns the status of the requests that remain unanswered when the broker closes.
@@ -1433,8 +1433,8 @@ public final class SessionRequestBroker implements Closeable
 	 * @param limits    the bounds that each request's archive must stay within
 	 * @param slots     the slots, each a results folder, that the run's requested sessions take
 	 */
-	private record RunSite(HarnessRun run, HarnessRunManager manager, HarnessRunnerOptions options, Path catPlugin,
-		RequestLimits limits, SessionSlots slots) implements Site
+	private record NestedSessionSite(NestedSession run, NestedSessionManager manager, HarnessRunnerOptions options,
+		Path catPlugin, RequestLimits limits, SessionSlots slots) implements Site
 	{
 		/**
 		 * Carries out the run's worktree requests.
@@ -1453,7 +1453,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @param slots     the slots, each a results folder, that the run's requested sessions take
 		 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
 		 */
-		private RunSite
+		private NestedSessionSite
 		{
 			requireThat(run, "run").isNotNull();
 			requireThat(manager, "manager").isNotNull();
@@ -1475,7 +1475,7 @@ public final class SessionRequestBroker implements Closeable
 		}
 
 		@Override
-		public RunRequest read(JsonMapper json, Path inputs) throws IOException
+		public LaunchRequest read(JsonMapper json, Path inputs) throws IOException
 		{
 			return RequestArchive.readRun(json, inputs);
 		}
@@ -1540,7 +1540,7 @@ public final class SessionRequestBroker implements Closeable
 		 * @throws IOException if a directory of the parent's results folder cannot be listed
 		 */
 		@Override
-		public List<String> options(RunRequest request, Path runRoot) throws IOException
+		public List<String> options(LaunchRequest request, Path runRoot) throws IOException
 		{
 			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
 				String.valueOf(options.maximumConcurrency())));

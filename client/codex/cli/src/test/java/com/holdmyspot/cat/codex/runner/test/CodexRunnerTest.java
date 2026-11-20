@@ -16,9 +16,9 @@ import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.LocalMarketplace;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
@@ -626,9 +626,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			manager.snapshotProject(run);
 			manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
@@ -671,11 +671,11 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			manager.snapshotProject(run);
-			HarnessRun trial = manager.create("codex");
+			NestedSession trial = manager.create("codex");
 			Path evidence = Files.createDirectories(trial.directory().resolve("artifacts"));
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
 			Path configuration = run.directory().resolve("home/config.toml");
@@ -718,9 +718,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			manager.snapshotProject(run);
 			manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
@@ -764,9 +764,9 @@ public final class CodexRunnerTest
 			Files.writeString(base.resolve("notes.md"), "notes");
 			Path source = Files.createDirectories(base.resolve("project"));
 			Files.createSymbolicLink(source.resolve("notes.md"), Path.of("../notes.md"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			manager.copyProject(source, run);
 			manager.snapshotProject(run);
 			manager.create("codex");
@@ -776,7 +776,7 @@ public final class CodexRunnerTest
 			Path configuration = run.directory().resolve("home/config.toml");
 			CodexConnectionConfiguration.copy(run.directory().resolve("missing.toml"), configuration,
 				run.directory().resolve("project"));
-			Path linkTargets = HarnessRunManager.linkTargets(run.directory()).toRealPath();
+			Path linkTargets = NestedSessionManager.linkTargets(run.directory()).toRealPath();
 
 			SessionSandbox sandbox = CodexRunner.sessionSandbox(configuration, manager, run, List.of(), List.of(),
 				Platform.LINUX_X64, Map.of("PATH", bin.toString()), null, CodexRunner.appServerCommand("codex", false));
@@ -836,9 +836,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			manager.snapshotProject(run);
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
 			Path configuration = run.directory().resolve("home/config.toml");
@@ -869,11 +869,11 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			manager.snapshotProject(run);
-			HarnessRun trial = manager.create("codex");
+			NestedSession trial = manager.create("codex");
 			Path evidence = Files.createDirectories(trial.directory().resolve("artifacts"));
 			Path bin = cleanup.add(Files.createTempDirectory(temporary, "cat-bin-"));
 			List<String> appServer = CodexRunner.appServerCommand("codex", false);
@@ -913,9 +913,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Files.writeString(directory.resolve("home/auth.json"), "{}");
@@ -948,9 +948,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 1,
 				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
@@ -977,9 +977,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 			SessionRequestAccess requestAccess = SessionRequestAccess.allowing(run, root.resolve("artifact"), 0,
 				Platform.LINUX_X64, SessionRequestAccess.Shell.POSIX).orElseThrow();
@@ -1009,9 +1009,9 @@ public final class CodexRunnerTest
 				toRealPath();
 			Path artifact = root.resolve("artifact");
 			Path results = root.resolve("runs");
-			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), results, Clock.systemUTC(),
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), results, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun first = firstManager.create("codex");
+			NestedSession first = firstManager.create("codex");
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path firstHome = Files.createDirectories(first.directory().resolve("home"));
@@ -1025,9 +1025,9 @@ public final class CodexRunnerTest
 			Path launcher = Files.writeString(Files.createDirectories(version.resolve("bin")).
 				resolve("prompt-optimizer"), "launcher");
 			Path login = Files.writeString(firstHome.resolve("auth.json"), "{}");
-			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun nested = nestedManager.create("codex");
+			NestedSession nested = nestedManager.create("codex");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path configuration = nested.directory().resolve("home/config.toml");
@@ -1126,9 +1126,9 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Files.writeString(directory.resolve("home/auth.json"), "{}");
@@ -1162,12 +1162,12 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
-			HarnessRun evidence = manager.create("codex");
+			NestedSession evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
 
@@ -1198,14 +1198,14 @@ public final class CodexRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Files.writeString(directory.resolve("home/auth.json"), "{}");
-			HarnessRun other = manager.create("codex");
-			HarnessRun evidence = manager.create("codex");
+			NestedSession other = manager.create("codex");
+			NestedSession evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
@@ -1245,12 +1245,12 @@ public final class CodexRunnerTest
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
-			HarnessRun evidence = manager.create("codex");
+			NestedSession evidence = manager.create("codex");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 
 			List<Path> deniedReads = CodexRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
@@ -1291,9 +1291,9 @@ public final class CodexRunnerTest
 			Path session = Files.createDirectories(project.resolve(".cat/sessions/session-1"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/codex"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/codex-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 
 			for (Platform platform : List.of(Platform.LINUX_X64, Platform.MACOS_ARM64, Platform.WINDOWS_X64))
 			{

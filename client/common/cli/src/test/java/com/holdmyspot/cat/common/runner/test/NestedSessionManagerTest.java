@@ -19,16 +19,16 @@ import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunLock;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionLaunch;
+import com.holdmyspot.cat.common.runner.NestedSessionLock;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
-import com.holdmyspot.cat.common.runner.RunLaunch;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
-import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
+import com.holdmyspot.cat.common.secrets.NestedSessionManagerSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import java.io.BufferedReader;
@@ -53,14 +53,14 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Tests {@link HarnessRunManager}.
+ * Tests {@link NestedSessionManager}.
  * <p>
  * Tests that depend on whether a run's owner process is alive run the real {@link ProcessHandleLiveness} over a table
  * of {@link FakeProcessHandle}s in place of the operating system's process table; only
  * {@link #readsOwnerLivenessFromProcessTable()} reads the real table, and the tests of a wall clock that was set read
  * real processes whose starts come from a process folder in place of {@code /proc}.
  */
-public final class HarnessRunManagerTest
+public final class NestedSessionManagerTest
 {
 	/**
 	 * The identifier of the recorded owner process that a test's process table may report alive.
@@ -78,7 +78,7 @@ public final class HarnessRunManagerTest
 	/**
 	 * Creates the test fixture.
 	 */
-	public HarnessRunManagerTest()
+	public NestedSessionManagerTest()
 	{
 	}
 	/**
@@ -97,9 +97,9 @@ public final class HarnessRunManagerTest
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Path output = root.resolve("result.json");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.complete(run, output, "{\"text\":\"done\"}");
 
@@ -122,7 +122,7 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRun run = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSession run = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer()).create("harness");
 			if (run.directory().getFileSystem().supportedFileAttributeViews().contains("posix"))
 			{
@@ -145,11 +145,11 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("slot-1");
-			HarnessRun first = manager.create("harness");
+			NestedSession first = manager.create("harness");
 			TemporaryDirectories.deleteRecursively(first.directory());
-			HarnessRun second = manager.create("harness");
+			NestedSession second = manager.create("harness");
 			requireThat(second.id(), "id").isEqualTo("slot-1");
 			requireThat(second.directory(), "directory").isEqualTo(first.directory()).
 				isEqualTo(root.resolve("harness").resolve("slot-1"));
@@ -171,9 +171,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("slot-1");
-			HarnessRun first = manager.create("harness");
+			NestedSession first = manager.create("harness");
 			Files.writeString(first.directory().resolve("home/login"), "left behind");
 			expectThrows(IOException.class, () -> manager.create("harness"));
 			requireThat(Files.readString(first.directory().resolve("home/login")), "login").isEqualTo("left behind");
@@ -193,15 +193,15 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.withFixedRunId("slot-1").create("harness");
+			NestedSession run = manager.withFixedRunId("slot-1").create("harness");
 			String sessionId = "5d1c0f3e-2a4b-4c6d-8e9f-0a1b2c3d4e5f";
 			Path kept = Files.createDirectories(root.resolve("kept").resolve(sessionId));
 
-			HarnessRunManager.copyManifest(run.directory(), kept, sessionId, root.resolve("project"));
+			NestedSessionManager.copyManifest(run.directory(), kept, sessionId, root.resolve("project"));
 
-			manager.markCompleted(new HarnessRun("harness", sessionId, kept));
+			manager.markCompleted(new NestedSession("harness", sessionId, kept));
 			requireThat(Files.readString(kept.resolve("session.json")), "manifest").
 				contains("\"id\": \"" + sessionId + "\"");
 		}
@@ -222,9 +222,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.writeString(run.directory().resolve("project/source.txt"), "source");
 			Files.writeString(run.directory().resolve("artifacts/turn-1.events"), "events");
 			Files.writeString(run.directory().resolve("home/cache.txt"), "cache");
@@ -255,13 +255,13 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun terminal = manager.create("harness");
+			NestedSession terminal = manager.create("harness");
 			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
 			Files.writeString(terminal.directory().resolve("project/source.txt"), "source");
 			manager.markCompleted(terminal);
-			HarnessRun running = manager.create("harness");
+			NestedSession running = manager.create("harness");
 			Files.writeString(running.directory().resolve("home/cache.txt"), "cache");
 
 			manager.pruneTerminalRuntimes("harness");
@@ -287,9 +287,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun terminal = manager.create("harness");
+			NestedSession terminal = manager.create("harness");
 			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
 			manager.markCompleted(terminal);
 			Path directory = Files.createDirectory(root.resolve("harness/.claude"));
@@ -319,9 +319,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun terminal = manager.create("harness");
+			NestedSession terminal = manager.create("harness");
 			Files.writeString(terminal.directory().resolve("home/cache.txt"), "cache");
 			manager.markCompleted(terminal);
 			Path requested = Files.createDirectories(root.resolve("harness/mw9qj3hn-1x2ce9sid1/artifacts"));
@@ -348,9 +348,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.fail(run, "harness failed");
 
@@ -371,9 +371,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path codexLogin = Files.writeString(run.directory().resolve("home/auth.json"), "login");
 			Path claudeLogin = Files.writeString(Files.createDirectories(run.directory().resolve("home/.claude")).
 				resolve(".credentials.json"), "login");
@@ -399,9 +399,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path login = Files.writeString(run.directory().resolve("home/auth.json"), "login");
 			Path configuration = Files.writeString(run.directory().resolve("home/config.toml"), "model = \"m\"");
 			Path output = root.resolve("output.txt");
@@ -429,9 +429,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
 			Path outside = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-outside-"));
 			Path hostLogin = Files.writeString(outside.resolve(".credentials.json"), "host login");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createSymbolicLink(run.directory().resolve("home/.claude"), outside);
 
 			manager.fail(run, "harness failed");
@@ -455,9 +455,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.fail(run, "test cleanup");
 
 			manager.deleteRun(run);
@@ -480,9 +480,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.fail(run, "test cleanup");
 			Path manifest = run.directory().resolve("session.json");
 			IOException failure = null;
@@ -514,9 +514,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.writeString(run.directory().resolve("session.json"), "{}");
 
 			manager.deleteRun(run);
@@ -538,10 +538,10 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
-			int maximumManifestBytes = HarnessRunManagerSecrets.getHarnessRunManagerAccess().maximumManifestBytes();
+			NestedSession run = manager.create("harness");
+			int maximumManifestBytes = NestedSessionManagerSecrets.getNestedSessionManagerAccess().maximumManifestBytes();
 			int tooLarge = maximumManifestBytes + 1;
 			Path manifest = Files.write(run.directory().resolve("session.json"), new byte[tooLarge]);
 
@@ -575,9 +575,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC());
-			HarnessRun run = manager.create("harness");
-			try (HarnessRunLock lock = manager.acquireLock(run))
+			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC());
+			NestedSession run = manager.create("harness");
+			try (NestedSessionLock lock = manager.acquireLock(run))
 			{
 				requireThat(lock.isHeld(), "lockHeld").isTrue();
 				manager.deleteRun(run);
@@ -601,9 +601,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.deleteRun(run);
 		}
@@ -624,9 +624,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(),
+			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC(),
 				new FakeProcessHandle(OWNER_PID, OWNER_START, true));
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			recordOwner(run, OWNER_PID, OWNER_START);
 
 			manager.deleteRun(run);
@@ -647,9 +647,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.markCompleted(run);
 
@@ -671,9 +671,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.markHarnessStarting(run);
 			manager.recordHarnessProcess(run, 12_345, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t9000");
@@ -704,9 +704,9 @@ public final class HarnessRunManagerTest
 			Path project = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-project-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.initialize(run, artifact, project, "structured_protocol",
 				List.of("harness", "--label", "line\r\nbreak", "--api-key", "secret"));
@@ -737,9 +737,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.writeCommandOutput(run, "marketplace-add", "setup output", "setup error");
 
@@ -765,9 +765,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.writeTurnOutput(run, 1, new HarnessProcessResult(0, "harness events", "harness error"));
 
@@ -791,9 +791,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			String initialManifest = Files.readString(run.directory().resolve("session.json"));
 			requireThat(initialManifest, "initialManifest").contains("\"schema_version\": 6");
@@ -821,9 +821,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.recordHarnessProcess(run, 12_345, OWNER_START);
 		}
@@ -843,9 +843,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.appendTurnEvent(run, 1, "{\"type\":\"progress\"}");
 
@@ -873,10 +873,10 @@ public final class HarnessRunManagerTest
 			Files.createDirectories(project.resolve(".git"));
 			Files.writeString(project.resolve(".git/config"), "source-only metadata");
 			Files.writeString(project.resolve("unrelated.md"), "uncommitted change");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run);
 
@@ -909,10 +909,10 @@ public final class HarnessRunManagerTest
 				Files.writeString(project.resolve("guide.md"), "project guide");
 				Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
 				Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create("harness");
+				NestedSession run = manager.create("harness");
 				manager.copyProject(root.resolve("project"), run);
 
 				manager.copyWorkspace(root.resolve("workspaces"), run);
@@ -959,10 +959,10 @@ public final class HarnessRunManagerTest
 				Path linkDirectory = Files.createDirectories(root.resolve("workspaces/draft/workspace/docs"));
 				Path target = Path.of("../../../docs/handbook.md");
 				Files.createSymbolicLink(linkDirectory.resolve("handbook.md"), target);
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create("harness");
+				NestedSession run = manager.create("harness");
 				manager.copyProject(root.resolve("project"), run);
 
 				manager.copyWorkspace(root.resolve("workspaces"), run);
@@ -974,7 +974,7 @@ public final class HarnessRunManagerTest
 
 				Path escaping = Files.createDirectories(root.resolve("escaping/docs"));
 				Files.createSymbolicLink(escaping.resolve("secret.md"), Path.of("../../../outside.md"));
-				HarnessRun other = manager.create("harness");
+				NestedSession other = manager.create("harness");
 				manager.copyProject(root.resolve("project"), other);
 				try
 				{
@@ -1008,10 +1008,10 @@ public final class HarnessRunManagerTest
 			Files.writeString(project.resolve("guide.md"), "project guide");
 			Path workspaces = Files.createDirectories(root.resolve("workspaces/docs"));
 			Files.writeString(workspaces.resolve("notes.md"), "fixture notes");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(root.resolve("project"), run);
 			manager.copyWorkspace(root.resolve("workspaces"), run);
 
@@ -1048,9 +1048,9 @@ public final class HarnessRunManagerTest
 			Path script = project.resolve("build.sh");
 			Files.writeString(script, "#!/bin/sh\n");
 			Files.setPosixFilePermissions(script, Set.of(OWNER_READ, OWNER_WRITE, OWNER_EXECUTE));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run);
 
@@ -1074,9 +1074,9 @@ public final class HarnessRunManagerTest
 				"cat-project-"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Path root = project.resolve(".cat/sessions/1b9d6bcd-bbfd-4b2d-9b5d-ab8dfbbd4bed/temp/nested-sessions");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run);
 
@@ -1107,9 +1107,9 @@ public final class HarnessRunManagerTest
 			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
 			Files.createLink(project.resolve(".credentials.json"), nullDevice);
 			Files.createLink(project.resolve("nested/token"), nullDevice);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run, nullDevice);
 
@@ -1136,9 +1136,9 @@ public final class HarnessRunManagerTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
 			Files.createSymbolicLink(project.resolve("link"), nullDevice);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			try
 			{
@@ -1175,9 +1175,9 @@ public final class HarnessRunManagerTest
 			Files.createSymbolicLink(project.resolve("alias"), Path.of("shared"));
 			Files.createSymbolicLink(project.resolve("chain"), Path.of("alias/guide.md"));
 			Files.createSymbolicLink(project.resolve("back"), Path.of("../project/shared/guide.md"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run);
 
@@ -1191,7 +1191,7 @@ public final class HarnessRunManagerTest
 			}
 			requireThat(Files.readString(copy.resolve("chain")), "chain").isEqualTo("guide");
 			requireThat(Files.isSymbolicLink(copy.resolve("back")), "backIsLink").isTrue();
-			requireThat(copy.resolve("back").toRealPath().startsWith(HarnessRunManager.linkTargets(run.directory()).
+			requireThat(copy.resolve("back").toRealPath().startsWith(NestedSessionManager.linkTargets(run.directory()).
 				toRealPath()), "backLeadsToLinkTargets").isTrue();
 			requireThat(Files.readString(copy.resolve("back")), "back").isEqualTo("guide");
 		}
@@ -1221,14 +1221,14 @@ public final class HarnessRunManagerTest
 			Files.createSymbolicLink(project.resolve("notes.md"), Path.of("../outside/notes.md"));
 			Files.createSymbolicLink(Files.createDirectories(project.resolve("docs")).resolve("tree"),
 				outside.toAbsolutePath());
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run);
 
 			Path copy = run.directory().resolve("project");
-			Path linkTargets = HarnessRunManager.linkTargets(run.directory());
+			Path linkTargets = NestedSessionManager.linkTargets(run.directory());
 			Path notesLink = copy.resolve("notes.md");
 			Path treeLink = copy.resolve("docs/tree");
 			for (Path link : List.of(notesLink, treeLink))
@@ -1313,7 +1313,7 @@ public final class HarnessRunManagerTest
 	 * @return the copy's path relative to the run's directory, with {@code /} between names
 	 * @throws IOException if the link cannot be resolved
 	 */
-	private static String copyName(HarnessRun run, Path link) throws IOException
+	private static String copyName(NestedSession run, Path link) throws IOException
 	{
 		Path relative = run.directory().toRealPath().relativize(link.toRealPath());
 		return relative.toString().replace(relative.getFileSystem().getSeparator(), "/");
@@ -1335,9 +1335,9 @@ public final class HarnessRunManagerTest
 			Files.createDirectories(root.resolve("outside/tree"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve("tree"), Path.of("../outside/tree"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(project, run);
 			Path tree = run.directory().resolve("project/tree").toRealPath();
 			PortableFiles.clearReadOnly(tree);
@@ -1374,9 +1374,9 @@ public final class HarnessRunManagerTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve("tree"), Path.of("../outside/tree"));
 			Files.writeString(Files.createDirectories(root.resolve("workspace/tree")).resolve("added.md"), "added");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(project, run);
 			try
 			{
@@ -1420,9 +1420,9 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.createSymbolicLink(project.resolve(name), Path.of(target));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			try
 			{
@@ -1452,9 +1452,9 @@ public final class HarnessRunManagerTest
 			Path project = Files.createDirectories(root.resolve("project"));
 			Files.writeString(project.resolve("README.md"), "project");
 			Files.writeString(project.resolve("empty"), "");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 
 			manager.copyProject(project, run, root.resolve("absent-null-device"));
 
@@ -1482,9 +1482,9 @@ public final class HarnessRunManagerTest
 			Files.writeString(workspace.resolve("fixture.md"), "fixture");
 			Path nullDevice = Files.writeString(root.resolve("null-device"), "");
 			Files.createLink(workspace.resolve(".credentials.json"), nullDevice);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(project, run, nullDevice);
 
 			manager.copyWorkspace(workspace, run, nullDevice);
@@ -1510,11 +1510,11 @@ public final class HarnessRunManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(
 				jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
-			HarnessRun other = manager.create("harness");
-			HarnessRun evidence = manager.create("harness");
+			NestedSession run = manager.create("harness");
+			NestedSession other = manager.create("harness");
+			NestedSession evidence = manager.create("harness");
 			Path project = Files.createDirectories(run.directory().resolve("project/src"));
 			Path artifacts = Files.createDirectories(run.directory().resolve("artifacts"));
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
@@ -1551,12 +1551,12 @@ public final class HarnessRunManagerTest
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRunManager oldManager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager oldManager = new NestedSessionManager(jvm.fileLocks(),
 				root, oldClock, Yielding.fileReplacer());
-			HarnessRun run = oldManager.create("harness");
+			NestedSession run = oldManager.create("harness");
 			oldManager.fail(run, "failed");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root, currentClock, Yielding.fileReplacer());
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
@@ -1580,12 +1580,12 @@ public final class HarnessRunManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRunManager oldManager = new HarnessRunManager(jvm.fileLocks(), root, oldClock,
+			NestedSessionManager oldManager = new NestedSessionManager(jvm.fileLocks(), root, oldClock,
 				Yielding.fileReplacer());
-			HarnessRun run = oldManager.create("harness");
+			NestedSession run = oldManager.create("harness");
 			oldManager.fail(run, "failed");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, currentClock,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, currentClock,
 				Yielding.fileReplacer());
 			Path manifest = run.directory().resolve("session.json");
 			IOException failure = null;
@@ -1618,9 +1618,9 @@ public final class HarnessRunManagerTest
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root, clock, Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.fail(run, "failed");
 			Files.setLastModifiedTime(run.directory(), FileTime.from(
 				Instant.parse("2026-07-20T00:00:00Z")));
@@ -1647,10 +1647,10 @@ public final class HarnessRunManagerTest
 				"cat-run-root-"));
 			// No process is alive, so the orchestrator that owns the run has ended
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRun run = manager(jvm, root, oldClock).create("harness");
+			NestedSession run = manager(jvm, root, oldClock).create("harness");
 			Path manifest = run.directory().resolve("session.json");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-20T00:00:01Z"), UTC);
-			HarnessRunManager manager = manager(jvm, root, currentClock);
+			NestedSessionManager manager = manager(jvm, root, currentClock);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -1678,12 +1678,12 @@ public final class HarnessRunManagerTest
 			String harnessStart = "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125";
 			// Only the harness process is alive: the orchestrator that owns the run has ended
 			FakeProcessHandle harness = new FakeProcessHandle(12_345, harnessStart, true);
-			HarnessRunManager oldManager = manager(jvm, root, oldClock, harness);
-			HarnessRun run = oldManager.create("harness");
+			NestedSessionManager oldManager = manager(jvm, root, oldClock, harness);
+			NestedSession run = oldManager.create("harness");
 			oldManager.markHarnessStarting(run);
 			oldManager.recordHarnessProcess(run, 12_345, harnessStart);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = manager(jvm, root, currentClock, harness);
+			NestedSessionManager manager = manager(jvm, root, currentClock, harness);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -1709,10 +1709,10 @@ public final class HarnessRunManagerTest
 				"cat-run-root-"));
 			FakeProcessHandle owner = new FakeProcessHandle(OWNER_PID, OWNER_START, true);
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRun run = manager(jvm, root, oldClock, owner).create("harness");
+			NestedSession run = manager(jvm, root, oldClock, owner).create("harness");
 			recordOwner(run, OWNER_PID, OWNER_START);
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = manager(jvm, root, currentClock, owner);
+			NestedSessionManager manager = manager(jvm, root, currentClock, owner);
 
 			manager.deleteStaleRuns(Duration.ofDays(7));
 
@@ -1741,8 +1741,8 @@ public final class HarnessRunManagerTest
 			long owner = ProcessHandle.current().pid();
 			folder.start(owner, "java", 5000);
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), processes, ProcessHandle::of);
-			HarnessRun run = manager.create("harness");
+			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC(), processes, ProcessHandle::of);
+			NestedSession run = manager.create("harness");
 			recordOwner(run, owner, processes.find(owner).flatMap(ProcessDescription::start).orElseThrow());
 			// The wall clock is set an hour back
 			folder.setBootTime(BOOT_TIME - 3600);
@@ -1775,9 +1775,9 @@ public final class HarnessRunManagerTest
 			folder.start(harnessPid, "claude", 6000);
 			HarnessProcesses processes = HarnessProcessesSecrets.getHarnessProcessesAccess().system(folder.path());
 			FakeProcessHandle harness = new FakeProcessHandle(harnessPid, "1", true);
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), processes,
+			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC(), processes,
 				FakeProcessHandle.table(harness));
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			// The owner has ended, and the test's own process is a later one with its identifier
 			long owner = ProcessHandle.current().pid();
 			folder.start(owner, "java", 7000);
@@ -1810,8 +1810,8 @@ public final class HarnessRunManagerTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
 			// No owner process is alive
 			FakeProcessHandle harness = new FakeProcessHandle(12_345, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125", true);
-			HarnessRunManager manager = manager(jvm, root, Clock.systemUTC(), harness);
-			HarnessRun run = manager.create("harness");
+			NestedSessionManager manager = manager(jvm, root, Clock.systemUTC(), harness);
+			NestedSession run = manager.create("harness");
 			Path manifest = run.directory().resolve("session.json");
 			Files.writeString(manifest, Files.readString(manifest).
 				replaceFirst("\"owner_started_at\": (null|\"[^\"]+\")",
@@ -1850,15 +1850,15 @@ public final class HarnessRunManagerTest
 				jvm.temporaryDirectory(),
 				"cat-run-root-"));
 			Clock oldClock = Clock.fixed(Instant.parse("2026-07-20T00:00:00Z"), UTC);
-			HarnessRunManager oldManager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager oldManager = new NestedSessionManager(jvm.fileLocks(),
 				root, oldClock, Yielding.fileReplacer());
-			HarnessRun run = oldManager.create("harness");
+			NestedSession run = oldManager.create("harness");
 			oldManager.fail(run, "failed");
 			Clock currentClock = Clock.fixed(Instant.parse("2026-07-29T00:00:00Z"), UTC);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 				root, currentClock, Yielding.fileReplacer());
 
-			try (HarnessRunLock lock = manager.acquireLock(run))
+			try (NestedSessionLock lock = manager.acquireLock(run))
 			{
 				requireThat(lock.isHeld(), "lockHeld").isTrue();
 				manager.deleteStaleRuns(Duration.ofDays(7));
@@ -1881,9 +1881,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			requireThat(manager.harnessSessionId(run), "before").isEmpty();
 			requireThat(Files.readString(run.directory().resolve("session.json")), "unreported").
 				contains("\"harness_session_id\": null");
@@ -1917,9 +1917,9 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path manifest = run.directory().resolve("session.json");
 			Files.writeString(manifest, Files.readString(manifest).
 				replace("\"schema_version\": 6", "\"schema_version\": 4").
@@ -1947,14 +1947,14 @@ public final class HarnessRunManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
 			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret");
-			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1").withLaunchArguments(fixed);
 			manager.create("claude");
 			JsonMapper json = JsonMapper.builder().build();
 			List<String> own = List.of("--results", root.toString(), "--slot-id", "s-1", "--resume-slot",
 				"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", "--model", "opus", "--effort", "high");
 
-			String[] resumed = RunLaunch.resumedArguments(json, "claude", own.toArray(String[]::new));
+			String[] resumed = NestedSessionLaunch.resumedArguments(json, "claude", own.toArray(String[]::new));
 
 			List<String> expected = new ArrayList<>(fixed);
 			expected.addAll(own);
@@ -1962,10 +1962,11 @@ public final class HarnessRunManagerTest
 			List<String> refixed = new ArrayList<>(own);
 			refixed.addAll(List.of("--deny-read", "/other"));
 			InvalidArgumentsException refused = expectThrows(InvalidArgumentsException.class,
-				() -> RunLaunch.resumedArguments(json, "claude", refixed.toArray(String[]::new)));
+				() -> NestedSessionLaunch.resumedArguments(json, "claude", refixed.toArray(String[]::new)));
 			requireThat(refused.getMessage(), "refused").contains("--deny-read");
 			String[] started = {"--project", "/source", "--model", "opus"};
-			requireThat(List.of(RunLaunch.resumedArguments(json, "claude", started)), "started").isEqualTo(List.of(started));
+			requireThat(List.of(NestedSessionLaunch.resumedArguments(json, "claude", started)), "started").
+				isEqualTo(List.of(started));
 		}
 	}
 
@@ -1981,22 +1982,22 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			List<String> fixed = RunLaunch.fixedArguments(new String[]{"--project", "/source", "--model", "haiku",
+			List<String> fixed = NestedSessionLaunch.fixedArguments(new String[]{"--project", "/source", "--model", "haiku",
 				"--deny-read", "/secret", "--install-cat", "--output", "/out.jsonl", "--session-role", "validator",
 				"--agent", "cat:reviewer", "--effort", "low"});
 			requireThat(fixed, "fixed").isEqualTo(List.of("--project", "/source", "--deny-read", "/secret",
 				"--install-cat", "--session-role", "validator", "--agent", "cat:reviewer"));
-			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1").withLaunchArguments(fixed);
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 
 			requireThat(manager.launchArguments(run), "launchArguments").isEqualTo(fixed);
 			JsonNode launch = JsonMapper.builder().build().readTree(run.directory().resolve("launch.json").toFile());
 			requireThat(launch.path("schema_version").asInt(), "schemaVersion").isEqualTo(1);
 
-			HarnessRunManager unrecorded = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager unrecorded = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun other = unrecorded.create("claude");
+			NestedSession other = unrecorded.create("claude");
 			requireThat(Files.exists(other.directory().resolve("launch.json")), "recorded").isFalse();
 			IOException missing = expectThrows(IOException.class, () -> unrecorded.launchArguments(other));
 			requireThat(missing.getMessage(), "missing").contains("records no launch");
@@ -2015,9 +2016,9 @@ public final class HarnessRunManagerTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withLaunchArguments(List.of("--install-cat"));
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			Path launch = run.directory().resolve("launch.json");
 			for (String text : List.of("{\"schema_version\":1,\"arguments\":[\"--install-cat\"],\"extra\":1}",
 				"{\"schema_version\":2,\"arguments\":[]}", "{\"schema_version\":1,\"arguments\":[1]}",
@@ -2045,17 +2046,17 @@ public final class HarnessRunManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
 			// No process is alive, so the runner that owned the run has ended, along with its harness
-			HarnessRunManager first = manager(jvm, root, Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC));
-			HarnessRun run = first.create("harness");
+			NestedSessionManager first = manager(jvm, root, Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC));
+			NestedSession run = first.create("harness");
 			first.markHarnessStarting(run);
 			first.recordHarnessProcess(run, 4321, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			first.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 			first.recordRequestsUsed(run, 2);
 			first.writeTurnOutput(run, 1, new HarnessProcessResult(0, "first", ""));
 			Files.writeString(run.directory().resolve("home/session.jsonl"), "kept");
-			HarnessRunManager later = manager(jvm, root, Clock.fixed(Instant.parse("2026-09-01T00:00:00Z"), UTC));
+			NestedSessionManager later = manager(jvm, root, Clock.fixed(Instant.parse("2026-09-01T00:00:00Z"), UTC));
 
-			HarnessRun reopened = later.reopen("harness", run.id());
+			NestedSession reopened = later.reopen("harness", run.id());
 
 			requireThat(reopened.directory(), "directory").isEqualTo(run.directory());
 			String manifest = Files.readString(run.directory().resolve("session.json"));
@@ -2083,15 +2084,15 @@ public final class HarnessRunManagerTest
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
-			HarnessRunManager first = manager(jvm, root, Clock.systemUTC()).withFixedRunId("s-1");
-			HarnessRun run = first.create("harness");
+			NestedSessionManager first = manager(jvm, root, Clock.systemUTC()).withFixedRunId("s-1");
+			NestedSession run = first.create("harness");
 			first.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 			first.writeTurnOutput(run, 2, new HarnessProcessResult(0, "second", ""));
-			HarnessRunManager later = manager(jvm, root, Clock.systemUTC()).withFixedRunId("s-1");
+			NestedSessionManager later = manager(jvm, root, Clock.systemUTC()).withFixedRunId("s-1");
 
 			IOException other = expectThrows(IOException.class,
 				() -> later.resume("harness", "0b9e8d7c-6a5f-4e3d-8c2b-1a0f9e8d7c6b"));
-			HarnessRun resumed = later.resume("harness", "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
+			NestedSession resumed = later.resume("harness", "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 
 			requireThat(other.getMessage(), "other").contains("0b9e8d7c-6a5f-4e3d-8c2b-1a0f9e8d7c6b");
 			requireThat(resumed.directory(), "directory").isEqualTo(run.directory());
@@ -2113,24 +2114,24 @@ public final class HarnessRunManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-run-root-"));
 			Clock clock = Clock.fixed(Instant.parse("2026-07-01T00:00:00Z"), UTC);
-			HarnessRunManager live = new HarnessRunManager(jvm.fileLocks(), root, clock, Yielding.fileReplacer());
-			HarnessRun owned = live.create("harness");
+			NestedSessionManager live = new NestedSessionManager(jvm.fileLocks(), root, clock, Yielding.fileReplacer());
+			NestedSession owned = live.create("harness");
 			live.recordHarnessSession(owned, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 			IOException ownerAlive = expectThrows(IOException.class, () -> live.reopen("harness", owned.id()));
 			requireThat(ownerAlive.getMessage(), "ownerAlive").contains("live");
 
-			HarnessRunManager ended = manager(jvm, root, clock);
-			HarnessRun starting = ended.create("harness");
+			NestedSessionManager ended = manager(jvm, root, clock);
+			NestedSession starting = ended.create("harness");
 			ended.recordHarnessSession(starting, "019a7c3e-8d21-7f40-b6a2-5c9e1d3f8a07");
 			ended.markHarnessStarting(starting);
 			IOException launchUnknown = expectThrows(IOException.class, () -> ended.reopen("harness", starting.id()));
 			requireThat(launchUnknown.getMessage(), "launchUnknown").contains("launch");
 
-			HarnessRun unreported = ended.create("harness");
+			NestedSession unreported = ended.create("harness");
 			IOException noSession = expectThrows(IOException.class, () -> ended.reopen("harness", unreported.id()));
 			requireThat(noSession.getMessage(), "noSession").contains("session");
 
-			HarnessRun completed = ended.create("harness");
+			NestedSession completed = ended.create("harness");
 			ended.recordHarnessSession(completed, "7d3e9b21-4c5a-4f8e-a1b6-0e2c7f9d5a13");
 			ended.markCompleted(completed);
 			IOException finished = expectThrows(IOException.class, () -> ended.reopen("harness", completed.id()));
@@ -2211,7 +2212,7 @@ public final class HarnessRunManagerTest
 	 * @param processes the processes of the table; every other process identifier names no process
 	 * @return the manager
 	 */
-	private static HarnessRunManager manager(TestJvmScope jvm, Path root, Clock clock, FakeProcessHandle... processes)
+	private static NestedSessionManager manager(TestJvmScope jvm, Path root, Clock clock, FakeProcessHandle... processes)
 	{
 		return manager(jvm, root, clock, FakeProcessHandle.processes(processes), FakeProcessHandle.table(processes));
 	}
@@ -2226,13 +2227,13 @@ public final class HarnessRunManagerTest
 	 * @param handles   finds the process with an identifier
 	 * @return the manager
 	 */
-	private static HarnessRunManager manager(TestJvmScope jvm, Path root, Clock clock, HarnessProcesses processes,
+	private static NestedSessionManager manager(TestJvmScope jvm, Path root, Clock clock, HarnessProcesses processes,
 		LongFunction<Optional<ProcessHandle>> handles)
 	{
 		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(processes,
 			handles);
-		return HarnessRunManagerSecrets.getHarnessRunManagerAccess().newHarnessRunManager(jvm.fileLocks(), root, clock,
-			Yielding.fileReplacer(), liveness);
+		return NestedSessionManagerSecrets.getNestedSessionManagerAccess().newNestedSessionManager(jvm.fileLocks(), root,
+			clock, Yielding.fileReplacer(), liveness);
 	}
 
 	/**
@@ -2244,7 +2245,7 @@ public final class HarnessRunManagerTest
 	 * @param start the owner's start
 	 * @throws IOException if the manifest cannot be read or written
 	 */
-	private static void recordOwner(HarnessRun run, long pid, String start) throws IOException
+	private static void recordOwner(NestedSession run, long pid, String start) throws IOException
 	{
 		Path manifest = run.directory().resolve("session.json");
 		Files.writeString(manifest, Files.readString(manifest).

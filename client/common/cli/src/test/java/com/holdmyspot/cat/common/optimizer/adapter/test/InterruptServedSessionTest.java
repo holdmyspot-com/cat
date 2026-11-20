@@ -12,7 +12,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -80,7 +80,7 @@ public final class InterruptServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-interrupt-")).toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
 					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
@@ -89,7 +89,7 @@ public final class InterruptServedSessionTest
 					SessionRequestForwarder.serve("The prompt optimizer", harness, root, arguments, input, output,
 						parent.requests(), bounded()));
 				SessionRequest request = new SessionRequest(SessionRole.TRIAL, partOf(SessionRole.TRIAL), source,
-					List.of(RequestingRun.HOLD), List.of(), Duration.ofMinutes(5), new TrialProfile("model-a", "low"));
+					List.of(RequestingNestedSession.HOLD), List.of(), Duration.ofMinutes(5), new TrialProfile("model-a", "low"));
 				SessionHandle handle = sessions.start(request);
 				awaitHeldTurn(parent, handle);
 
@@ -118,7 +118,7 @@ public final class InterruptServedSessionTest
 	 * @throws InterruptedException if the wait is interrupted
 	 * @throws AssertionError       if the session ends or the turn does not arrive within the time limit
 	 */
-	private static void awaitHeldTurn(RequestingRun parent, SessionHandle handle) throws InterruptedException
+	private static void awaitHeldTurn(RequestingNestedSession parent, SessionHandle handle) throws InterruptedException
 	{
 		Instant deadline = Instant.now().plus(WAIT);
 		while (!parent.awaitHeldTurn(Duration.ofMillis(50)))

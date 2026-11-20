@@ -21,18 +21,18 @@ import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.NestedSessionLaunch;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
-import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
-import com.holdmyspot.cat.common.runner.RunLaunch;
-import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
-import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
-import com.holdmyspot.cat.common.runner.LaunchRoute;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
@@ -414,7 +414,7 @@ public final class CodexRunnerCli
 		try (ToolScope scope = toolScope(workingDirectory, environment, process.waiting()))
 		{
 			// A runner that continues a run's session takes the options that the run's start fixed
-			args = RunLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
+			args = NestedSessionLaunch.resumedArguments(scope.json(), HARNESS_ID, args);
 			String agentName = agentName(args);
 			int toolOutputTokenLimit = toolOutputTokenLimit(args);
 			HarnessRunnerOptions options = options(args, HarnessTemporaryRoot.from(scope));
@@ -424,10 +424,10 @@ public final class CodexRunnerCli
 			ExtraPermissions extraPermissions = HarnessRunnerOptions.readExtraPermissions(scope.json(),
 				options.extraPermissions());
 			FileReplacer replacer = FileReplacer.retrying(process.waiting());
-			HarnessRunManager opened = HarnessRunManager.openRunRoot(process.fileLocks(), options.runRoot(),
+			NestedSessionManager opened = NestedSessionManager.openRunRoot(process.fileLocks(), options.runRoot(),
 				Clock.systemUTC(), replacer);
 			// A run in a slot keeps the slot's identifier, so that its paths repeat from one session to the next
-			HarnessRunManager manager = inSlot(opened, options.runId(), args);
+			NestedSessionManager manager = inSlot(opened, options.runId(), args);
 			HarnessCapacity.Permit permit = null;
 			if (!options.capacityHeld())
 			{
@@ -463,11 +463,11 @@ public final class CodexRunnerCli
 	 * @param args    the launch's options
 	 * @return a manager whose runs all have the slot's identifier, or {@code manager} if the run is not in a slot
 	 */
-	private static HarnessRunManager inSlot(HarnessRunManager manager, String runId, String[] args)
+	private static NestedSessionManager inSlot(NestedSessionManager manager, String runId, String[] args)
 	{
 		if (runId == null)
 			return manager;
-		return manager.withFixedRunId(runId).withLaunchArguments(RunLaunch.fixedArguments(args));
+		return manager.withFixedRunId(runId).withLaunchArguments(NestedSessionLaunch.fixedArguments(args));
 	}
 
 	/**

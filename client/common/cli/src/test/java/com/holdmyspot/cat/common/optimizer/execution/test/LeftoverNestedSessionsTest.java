@@ -3,16 +3,16 @@ package com.holdmyspot.cat.common.optimizer.execution.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns.RecordedProcess;
-import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns;
+import com.holdmyspot.cat.common.fakes.test.ProcessFolder;
+import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions;
+import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions.RecordedProcess;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
-import com.holdmyspot.cat.common.fakes.test.ProcessFolder;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
 import com.holdmyspot.cat.common.secrets.HarnessProcessesSecrets;
-import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
+import com.holdmyspot.cat.common.secrets.LeftoverNestedSessionsSecrets;
 import com.holdmyspot.cat.common.secrets.ProcessHandleLivenessSecrets;
 import com.holdmyspot.cat.common.test.FakeProcessHandle;
 import org.testng.annotations.DataProvider;
@@ -33,7 +33,7 @@ import java.util.function.LongFunction;
  * real {@link ProcessHandleLiveness} reads which owner processes are alive from a table of {@link FakeProcessHandle}s
  * that stands in for the operating system's process table.
  */
-public final class LeftoverRunsTest
+public final class LeftoverNestedSessionsTest
 {
 	/**
 	 * The recorded start of every harness process.
@@ -51,7 +51,7 @@ public final class LeftoverRunsTest
 	/**
 	 * Creates the test.
 	 */
-	public LeftoverRunsTest()
+	public LeftoverNestedSessionsTest()
 	{
 	}
 
@@ -202,8 +202,8 @@ public final class LeftoverRunsTest
 				{"state": "running", "owner_pid": %d, "owner_started_at": "%s",
 				"harness_pid": 6002, "harness_started_at": "%s"}""".formatted(current.pid(), started, HARNESS_START));
 			writeManifest(runRoot.resolve("claude").resolve("run-2"), running(5001, 5002));
-			LeftoverRuns finder = new LeftoverRuns(new FakeSessionPort(HostLogin.UNKNOWN, null, List.of(runRoot)),
-				JsonMapper.builder().build());
+			LeftoverNestedSessions finder = new LeftoverNestedSessions(new FakeSessionPort(HostLogin.UNKNOWN, null,
+				List.of(runRoot)), JsonMapper.builder().build());
 			requireThat(finder.find(), "find").isEqualTo(List.of(new RecordedProcess(5002, HARNESS_START)));
 		}
 	}
@@ -262,7 +262,7 @@ public final class LeftoverRunsTest
 	 * @param runRoots  the results folders that the port declares
 	 * @return the finder
 	 */
-	private static LeftoverRuns finder(List<FakeProcessHandle> processes, Path... runRoots)
+	private static LeftoverNestedSessions finder(List<FakeProcessHandle> processes, Path... runRoots)
 	{
 		FakeProcessHandle[] table = processes.toArray(FakeProcessHandle[]::new);
 		return finder(FakeProcessHandle.processes(table), FakeProcessHandle.table(table), runRoots);
@@ -277,12 +277,12 @@ public final class LeftoverRunsTest
 	 * @param runRoots  the results folders that the port declares
 	 * @return the finder
 	 */
-	private static LeftoverRuns finder(HarnessProcesses processes, LongFunction<Optional<ProcessHandle>> handles,
-		Path... runRoots)
+	private static LeftoverNestedSessions finder(HarnessProcesses processes,
+		LongFunction<Optional<ProcessHandle>> handles, Path... runRoots)
 	{
 		ProcessHandleLiveness liveness = ProcessHandleLivenessSecrets.getProcessHandleLivenessAccess().create(processes,
 			handles);
-		return LeftoverRunsSecrets.getLeftoverRunsAccess().create(
+		return LeftoverNestedSessionsSecrets.getLeftoverNestedSessionsAccess().create(
 			new FakeSessionPort(HostLogin.UNKNOWN, null, List.of(runRoots)), JsonMapper.builder().build(), liveness);
 	}
 

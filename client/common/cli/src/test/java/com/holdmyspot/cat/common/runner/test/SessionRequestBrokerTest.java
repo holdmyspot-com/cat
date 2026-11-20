@@ -10,49 +10,45 @@ import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
-import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
-import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
+import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
+import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.RequestLimits;
+import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.RetainedRunClient;
+import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.WorktreeResponse;
-import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
-import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
-import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
-import java.io.StringReader;
-import java.io.Reader;
-import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.channels.FileChannel;
-import java.nio.ByteBuffer;
-import java.nio.file.StandardOpenOption;
-import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
-import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
-import org.apache.commons.compress.archivers.tar.TarConstants;
-import org.apache.commons.compress.archivers.tar.TarUtils;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
-import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import java.io.IOException;
+import java.io.OutputStream;
+import java.io.PrintWriter;
+import java.io.Reader;
+import java.io.StringReader;
+import java.io.StringWriter;
+import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -71,6 +67,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Stream;
+import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
+import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
+import org.apache.commons.compress.archivers.tar.TarConstants;
+import org.apache.commons.compress.archivers.tar.TarUtils;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import tools.jackson.databind.JsonNode;
@@ -140,14 +140,14 @@ public final class SessionRequestBrokerTest
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
 					if (exit != 75)
 					{
-						HarnessRunManager manager = new HarnessRunManager(fileLocks, Path.of(option(options, "--results")),
+						NestedSessionManager manager = new NestedSessionManager(fileLocks, Path.of(option(options, "--results")),
 							Clock.systemUTC(), Yielding.fileReplacer());
-						HarnessRun run = manager.create("claude");
+						NestedSession run = manager.create("claude");
 						manager.recordHarnessSession(run, CHILD_SESSION);
 						Files.writeString(Files.createDirectories(run.sessionTranscripts()).resolve("native.jsonl"), "native");
 						Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
 						if (exit == 0)
-							HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
+							NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 							run, transcript, List.of());
 					}
 					FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, child), exit);
@@ -830,8 +830,8 @@ public final class SessionRequestBrokerTest
 				boolean failed = false;
 				try
 				{
-					HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run, parent, scope),
-						new HarnessRunManager(fileLocks, fixture.root.resolve("runs"),
+					HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.run, parent, scope),
+						new NestedSessionManager(fileLocks, fixture.root.resolve("runs"),
 							Clock.systemUTC(), Yielding.fileReplacer()),
 						fixture.options, fixture.json, Yielding.fileReplacer(), input, new StringWriter(), (_, _, _) ->
 						{
@@ -890,8 +890,8 @@ public final class SessionRequestBrokerTest
 			try (parent; Reader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"test\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run, parent, scope),
-					new HarnessRunManager(fileLocks, fixture.root.resolve("runs"), Clock.systemUTC(),
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.run, parent, scope),
+					new NestedSessionManager(fileLocks, fixture.root.resolve("runs"), Clock.systemUTC(),
 						Yielding.fileReplacer()),
 					fixture.options, fixture.json, Yielding.fileReplacer(), input, new StringWriter(),
 					(harness, _, _) ->
@@ -1386,9 +1386,9 @@ public final class SessionRequestBrokerTest
 		try (Fixture fixture = new Fixture("--session-requests", "0"))
 		{
 			Path slot = SessionRequestAccess.requestedRunsDirectory(fixture.run).resolve("d1");
-			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), slot, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), slot, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
-			HarnessRun retained = manager.create("claude");
+			NestedSession retained = manager.create("claude");
 			manager.recordHarnessSession(retained, RESUMED_SESSION);
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, _, _) ->
@@ -1396,8 +1396,8 @@ public final class SessionRequestBrokerTest
 					throw new AssertionError("A discard request started a session");
 				}))
 			{
-				RetainedRunClient client = new RetainedRunClient(() -> Optional.of(new RunChannel(fixture.requests)),
-					fixture.json, broker::scan);
+				RetainedNestedSessionClient client = new RetainedNestedSessionClient(
+					() -> Optional.of(new NestedSessionChannel(fixture.requests)), fixture.json, broker::scan);
 
 				requireThat(client.discard(RESUMED_SESSION), "discarded").isTrue();
 				requireThat(Files.exists(retained.directory()), "runKept").isFalse();
@@ -1468,7 +1468,7 @@ public final class SessionRequestBrokerTest
 				fixture.await("first");
 			}
 			// The runner that resumes the run is a process of its own, with a manager of its own
-			HarnessRunManager resuming = new HarnessRunManager(new FileLocks(), fixture.manager.root(),
+			NestedSessionManager resuming = new NestedSessionManager(new FileLocks(), fixture.manager.root(),
 				Clock.systemUTC(), Yielding.fileReplacer());
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, resuming, fixture.options,
 				(_, _, _) ->
@@ -1635,7 +1635,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
 			{
@@ -1647,8 +1647,8 @@ public final class SessionRequestBrokerTest
 				fixture.await("second");
 			}
 			requireThat(runs, "runs").size().isEqualTo(2);
-			SlotRun first = runs.getFirst();
-			SlotRun second = runs.getLast();
+			SlotNestedSession first = runs.getFirst();
+			SlotNestedSession second = runs.getLast();
 			requireThat(second.runRoot(), "runRoot").isEqualTo(first.runRoot());
 			requireThat(second.run().id(), "runId").isEqualTo(first.run().id());
 			requireThat(second.run().directory(), "directory").isEqualTo(first.run().directory());
@@ -1673,7 +1673,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
 			{
@@ -1700,7 +1700,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			Iterator<String> markers = List.of("first", "second").iterator();
 			JsonNode firstResponse;
 			JsonNode secondResponse;
@@ -1726,9 +1726,9 @@ public final class SessionRequestBrokerTest
 			requireThat(Files.isDirectory(secondRun.resolve("project")), "secondCopiedProject").isTrue();
 			requireThat(Files.isRegularFile(secondRun.resolve("artifacts/bridge-transcript.jsonl")),
 				"secondCopiedRawResult").isTrue();
-			HarnessEvaluationResult firstReceipt = HarnessRunReceipt.read(fixture.json, firstReceiptPath,
+			HarnessEvaluationResult firstReceipt = NestedSessionReceipt.read(fixture.json, firstReceiptPath,
 				firstRun.resolve("project"));
-			HarnessEvaluationResult secondReceipt = HarnessRunReceipt.read(fixture.json, secondReceiptPath,
+			HarnessEvaluationResult secondReceipt = NestedSessionReceipt.read(fixture.json, secondReceiptPath,
 				secondRun.resolve("project"));
 			requireThat(firstReceipt.retainedProject(), "firstRetainedProject").isEqualTo(firstRun.resolve("project"));
 			requireThat(secondReceipt.retainedProject(), "secondRetainedProject").isEqualTo(secondRun.resolve("project"));
@@ -1777,7 +1777,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			ScriptedLiveness liveness = new ScriptedLiveness();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 4242), RequestLimits.IN_RUN, liveness))
@@ -1811,7 +1811,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			CountDownLatch developmentStarted = new CountDownLatch(1);
 			CountDownLatch release = new CountDownLatch(1);
 			AtomicInteger calls = new AtomicInteger();
@@ -1858,7 +1858,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "2", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) -> inSlot(fixture, fileLocks, options, runs, 0)))
 			{
@@ -1891,7 +1891,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "4", "--max-concurrency", "2"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			Set<Path> active = ConcurrentHashMap.newKeySet();
 			AtomicInteger running = new AtomicInteger();
 			AtomicInteger peak = new AtomicInteger();
@@ -2022,7 +2022,7 @@ public final class SessionRequestBrokerTest
 		FileLocks fileLocks = new FileLocks();
 		try (Fixture fixture = new Fixture("--session-requests", "3", "--max-concurrency", "1"))
 		{
-			List<SlotRun> runs = new CopyOnWriteArrayList<>();
+			List<SlotNestedSession> runs = new CopyOnWriteArrayList<>();
 			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
 				(_, options, _) ->
 				{
@@ -2040,8 +2040,8 @@ public final class SessionRequestBrokerTest
 				requireThat(refused.path("status").asString(), "second").isEqualTo("failed");
 				requireThat(refused.path("reason").asString(), "reason").contains("Harness launch state is unknown");
 
-				SlotRun leftover = runs.getFirst();
-				new HarnessRunManager(fileLocks, leftover.runRoot(), Clock.systemUTC(), Yielding.fileReplacer()).
+				SlotNestedSession leftover = runs.getFirst();
+				new NestedSessionManager(fileLocks, leftover.runRoot(), Clock.systemUTC(), Yielding.fileReplacer()).
 					recordNoHarnessProcess(leftover.run());
 				fixture.request("third");
 				broker.scan();
@@ -2133,9 +2133,9 @@ public final class SessionRequestBrokerTest
 	 * @throws IOException if the run cannot be created or its launch state cannot be recorded
 	 */
 	private static FakeHarnessCli inSlotWithUnknownLaunch(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotRun> runs) throws IOException
+		List<SlotNestedSession> runs) throws IOException
 	{
-		return inSlot(fixture, fileLocks, options, runs, HarnessRunManager::markHarnessStarting);
+		return inSlot(fixture, fileLocks, options, runs, NestedSessionManager::markHarnessStarting);
 	}
 
 	/**
@@ -2151,7 +2151,7 @@ public final class SessionRequestBrokerTest
 	 * @throws IOException if the run cannot be created or the runner refuses to reuse the slot
 	 */
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotRun> runs, long harnessPid) throws IOException
+		List<SlotNestedSession> runs, long harnessPid) throws IOException
 	{
 		return inSlot(fixture, fileLocks, options, runs, (manager, run) ->
 		{
@@ -2182,7 +2182,7 @@ public final class SessionRequestBrokerTest
 	 * @throws IOException if the run cannot be created or the runner refuses to reuse the slot
 	 */
 	private static FakeHarnessCli inSlot(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotRun> runs, RunState state) throws IOException
+		List<SlotNestedSession> runs, NestedSessionState state) throws IOException
 	{
 		Path runRoot = Path.of(option(options, "--results"));
 		List<String> entries;
@@ -2190,15 +2190,15 @@ public final class SessionRequestBrokerTest
 		{
 			entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).toList();
 		}
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer()).withFixedRunId(option(options, "--slot-id"));
-		HarnessRun run = manager.create("claude");
+		NestedSession run = manager.create("claude");
 		state.record(manager, run);
-		runs.add(new SlotRun(runRoot, run, entries));
+		runs.add(new SlotNestedSession(runRoot, run, entries));
 		Files.writeString(run.directory().resolve("left-behind"), "left behind");
 		Files.writeString(run.directory().resolve("result.txt"), String.valueOf(runs.size()));
 		Path transcript = Files.writeString(Path.of(option(options, "--output")), "bridge");
-		HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
+		NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
 			transcript, List.of());
 		AtomicReference<FakeHarnessCli> processReference = new AtomicReference<>();
 		FakeHarnessCli process = new FakeHarnessCli(exitOnCompleteRecord(fixture.json, processReference));
@@ -2210,7 +2210,7 @@ public final class SessionRequestBrokerTest
 	 * Records the state of a requested runner's run.
 	 */
 	@FunctionalInterface
-	private interface RunState
+	private interface NestedSessionState
 	{
 		/**
 		 * Records the run's state.
@@ -2219,7 +2219,7 @@ public final class SessionRequestBrokerTest
 		 * @param run     the run
 		 * @throws IOException if the state cannot be recorded
 		 */
-		void record(HarnessRunManager manager, HarnessRun run) throws IOException;
+		void record(NestedSessionManager manager, NestedSession run) throws IOException;
 	}
 
 	/**
@@ -2234,10 +2234,10 @@ public final class SessionRequestBrokerTest
 	 * @throws IOException if the run's evidence cannot be written
 	 */
 	private static FakeHarnessCli inSlotWithReceipt(Fixture fixture, FileLocks fileLocks, List<String> options,
-		List<SlotRun> runs, String marker) throws IOException
+		List<SlotNestedSession> runs, String marker) throws IOException
 	{
 		FakeHarnessCli process = inSlot(fixture, fileLocks, options, runs, 0);
-		HarnessRun run = runs.getLast().run();
+		NestedSession run = runs.getLast().run();
 		Files.writeString(run.directory().resolve("project/session.txt"), marker);
 		Path nativeTranscript = Files.writeString(Files.createDirectories(
 			run.sessionTranscripts().resolve("subagents")).resolve("native.jsonl"), marker + " native bytes");
@@ -2248,7 +2248,7 @@ public final class SessionRequestBrokerTest
 		fixture.json.writeValue(nestedResponse.toFile(), nestedResponseDocument);
 		Path rawResult = Path.of(option(options, "--output"));
 		Files.writeString(rawResult, marker + " response bytes");
-		HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
+		NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")), run,
 			rawResult, List.of(nativeTranscript));
 		return process;
 	}
@@ -2276,7 +2276,7 @@ public final class SessionRequestBrokerTest
 	 * @param run           the run that it built
 	 * @param entriesAtStart the names of the entries of the results folder when the session started
 	 */
-	private record SlotRun(Path runRoot, HarnessRun run, List<String> entriesAtStart)
+	private record SlotNestedSession(Path runRoot, NestedSession run, List<String> entriesAtStart)
 	{
 	}
 
@@ -2378,11 +2378,11 @@ public final class SessionRequestBrokerTest
 	{
 		Path runRoot = Path.of(option(options, "--results"));
 		String runId = option(options, "--slot-id");
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer()).withFixedRunId(runId);
 		if (!options.contains(RunnerArguments.RESUME_SLOT_OPTION))
 		{
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			manager.recordHarnessSession(run, RESUMED_SESSION);
 			return new FakeHarnessCli(_ ->
 			{
@@ -2396,7 +2396,7 @@ public final class SessionRequestBrokerTest
 					child.get().exit();
 			}, 1);
 		}
-		HarnessRun run = new HarnessRun("claude", runId, runRoot.resolve("claude").resolve(runId));
+		NestedSession run = new NestedSession("claude", runId, runRoot.resolve("claude").resolve(runId));
 		Path output = Path.of(option(options, "--output"));
 		Files.writeString(output, "");
 		return new FakeHarnessCli(line ->
@@ -2407,7 +2407,7 @@ public final class SessionRequestBrokerTest
 				{
 					append(output, "{\"type\":\"completed\"}");
 					manager.markCompleted(run);
-					HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
+					NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 						run, output, List.of());
 					child.get().exit();
 				}
@@ -2434,7 +2434,7 @@ public final class SessionRequestBrokerTest
 	private static FakeHarnessCli conversingRunner(Fixture fixture, FileLocks fileLocks, List<String> options,
 		AtomicReference<FakeHarnessCli> child) throws IOException
 	{
-		HarnessRun run = new HarnessRunManager(fileLocks, Path.of(option(options, "--results")), Clock.systemUTC(),
+		NestedSession run = new NestedSessionManager(fileLocks, Path.of(option(options, "--results")), Clock.systemUTC(),
 			Yielding.fileReplacer()).create("claude");
 		Path output = Path.of(option(options, "--output"));
 		Files.writeString(output, "");
@@ -2461,7 +2461,7 @@ public final class SessionRequestBrokerTest
 					case "complete" ->
 					{
 						append(output, "{\"type\":\"completed\"}");
-						HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
+						NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(), Path.of(option(options, "--receipt")),
 							run, output, List.of());
 						child.get().exit();
 					}
@@ -2685,7 +2685,7 @@ public final class SessionRequestBrokerTest
 	 *
 	 * @param requests the run's requests directory
 	 */
-	private record RunChannel(Path requests) implements WorktreeRequestClient.Channel
+	private record NestedSessionChannel(Path requests) implements WorktreeRequestClient.Channel
 	{
 		@Override
 		public boolean isServed()
@@ -2743,8 +2743,8 @@ public final class SessionRequestBrokerTest
 		private final TemporaryDirectories cleanup = new TemporaryDirectories();
 		private final JsonMapper json = JsonMapper.builder().build();
 		private final Path root;
-		private final HarnessRunManager manager;
-		private final HarnessRun run;
+		private final NestedSessionManager manager;
+		private final NestedSession run;
 		private final Path project;
 		private final Path denied;
 		private final Path requests;
@@ -2773,7 +2773,7 @@ public final class SessionRequestBrokerTest
 			try (TestJvmScope jvm = new TestJvmScope())
 			{
 				root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "broker-"));
-				manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+				manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
 				run = manager.create("claude");
 				project = run.directory().resolve("project");
@@ -3122,8 +3122,8 @@ public final class SessionRequestBrokerTest
 		 */
 		private WorktreeRegistrar worktreeClient(SessionRequestBroker broker)
 		{
-			return new WorktreeRequestClient(() -> Optional.of(new RunChannel(requests)), new InPlaceRefused(), json,
-				broker::scan);
+			return new WorktreeRequestClient(() -> Optional.of(new NestedSessionChannel(requests)), new InPlaceRefused(),
+				json, broker::scan);
 		}
 
 		/**

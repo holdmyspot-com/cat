@@ -8,10 +8,10 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.codex.runner.CodexProcess;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -165,11 +165,11 @@ final class RecordedAppServer implements Bridge
 	public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 	{
 		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot,
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot,
 			Clock.systemUTC(), Yielding.fileReplacer());
-		HarnessRun completed = HarnessRunnerBridge.serve(() ->
+		NestedSession completed = HarnessRunnerBridge.serve(() ->
 		{
-			HarnessRun run = manager.create("codex");
+			NestedSession run = manager.create("codex");
 			threadId = run.id();
 			manager.initialize(run, runRoot, Path.of(ScriptedHarness.optionValue(arguments, "--project")),
 				"recorded", List.of("recorded"));
@@ -177,7 +177,7 @@ final class RecordedAppServer implements Bridge
 			CodexProcess adapter = new CodexProcess(process, scope, false,
 				CodexProcess.rollouts(run.directory().resolve("home"), run.sessionTranscripts()));
 			adapter.initialize(run.directory().resolve("project"), "requested-alias");
-			return new HarnessRunSession(run, adapter, scope);
+			return new LiveNestedSession(run, adapter, scope);
 		}, input, output);
 		manager.markCompleted(completed);
 		transcript = completed.directory().resolve("artifacts/transcript.jsonl");

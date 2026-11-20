@@ -16,7 +16,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.OutputFile;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -85,7 +85,7 @@ public final class TurnCopyServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-turn-copy-")).toRealPath();
 			Path source = Files.createDirectories(root.resolve("source"));
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, root, root.resolve("runs"),
 					List::of, false, Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(),
@@ -109,7 +109,7 @@ public final class TurnCopyServedSessionTest
 					}
 				};
 				SessionRequest request = new SessionRequest(SessionRole.TRIAL, partOf(SessionRole.TRIAL), source,
-					List.of(RequestingRun.WRITE_OUTPUT), List.of(), Duration.ofMinutes(5),
+					List.of(RequestingNestedSession.WRITE_OUTPUT), List.of(), Duration.ofMinutes(5),
 					new TrialProfile("model-a", "low"), TestWorkspace.NONE, List.of(), Optional.of(validate));
 				SessionHandle handle = sessions.start(request);
 
@@ -125,7 +125,7 @@ public final class TurnCopyServedSessionTest
 				}
 				requireThat(turns.size(), "turns").isEqualTo(1);
 				SessionResult.Completed completed = (SessionResult.Completed) result;
-				requireThat(Files.isRegularFile(completed.effects().resolve(RequestingRun.OUTPUT_FILE)),
+				requireThat(Files.isRegularFile(completed.effects().resolve(RequestingNestedSession.OUTPUT_FILE)),
 					"outputFileKept").isTrue();
 				requireThat(Files.isRegularFile(completed.effects().resolve("result.txt")), "resultKept").isTrue();
 			}

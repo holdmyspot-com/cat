@@ -9,8 +9,8 @@ import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.UndeletableDirectory;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.SessionSlots;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -136,7 +136,7 @@ public final class SessionSlotsTest
 				for (int i = 0; i < count; ++i)
 				{
 					SessionSlots.Slot slot = slots.acquire(heldOut);
-					HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
+					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
 						Yielding.fileReplacer()).withFixedRunId(slot.runId());
 					Path run = manager.create("claude").directory();
 					requireThat(base.relativize(run).toString().length(), "length").withContext(run, "run").
@@ -190,9 +190,9 @@ public final class SessionSlotsTest
 			Liveness liveness = new Liveness();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot first = slots.acquire(false);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(first.runId());
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			manager.markHarnessStarting(run);
 			manager.recordHarnessProcess(run, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
 			slots.release(first);
@@ -230,7 +230,7 @@ public final class SessionSlotsTest
 			Liveness liveness = new Liveness();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot first = slots.acquire(false);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(first.runId());
 			manager.create("claude");
 			slots.release(first);
@@ -354,7 +354,7 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1,
 				new Liveness());
 			SessionSlots.Slot slot = slots.acquire(false);
-			HarnessRun run = new HarnessRunManager(new FileLocks(), slot.root(), Clock.systemUTC(),
+			NestedSession run = new NestedSessionManager(new FileLocks(), slot.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(slot.runId()).create("claude");
 			Path manifest = run.directory().resolve("session.json");
 			IOException failure = null;
@@ -388,7 +388,7 @@ public final class SessionSlotsTest
 		{
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
-			HarnessRun run = interruptedRun(jvm, first, SESSION_ID);
+			NestedSession run = interruptedRun(jvm, first, SESSION_ID);
 			slots.retain(first);
 
 			requireThat(Files.isDirectory(run.directory().resolve("home")), "kept").isTrue();
@@ -421,13 +421,13 @@ public final class SessionSlotsTest
 		{
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, new Liveness());
 			SessionSlots.Slot first = slots.acquire(false);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), first.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(first.runId());
 			manager.create("claude");
 			slots.retain(first);
 			requireThat(slots.acquire(false), "unreported").isEqualTo(first);
 
-			HarnessRun ended = manager.create("claude");
+			NestedSession ended = manager.create("claude");
 			manager.recordHarnessSession(ended, SESSION_ID);
 			manager.fail(ended, "The harness exited");
 			slots.retain(first);
@@ -455,19 +455,19 @@ public final class SessionSlotsTest
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1,
 				new ProcessHandleLiveness());
 			SessionSlots.Slot development = slots.acquire(false);
-			HarnessRun developmentRun = interruptedRun(jvm, development, SESSION_ID);
+			NestedSession developmentRun = interruptedRun(jvm, development, SESSION_ID);
 			try (Process harness = new ProcessBuilder(ProcessHandle.current().info().command().orElseThrow(), "-cp",
 				System.getProperty("java.class.path"), InterruptedRunnerProcess.class.getName(), "harness").start())
 			{
 				String start = HarnessProcesses.system().find(harness.pid()).flatMap(ProcessDescription::start).
 					orElseThrow();
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), development.root(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), development.root(),
 					Clock.systemUTC(), Yielding.fileReplacer()).withFixedRunId(development.runId());
 				manager.markHarnessStarting(developmentRun);
 				manager.recordHarnessProcess(developmentRun, harness.pid(), start);
 				slots.retain(development);
 				SessionSlots.Slot heldOut = slots.acquire(true);
-				HarnessRun heldOutRun = interruptedRun(jvm, heldOut, OTHER_SESSION_ID);
+				NestedSession heldOutRun = interruptedRun(jvm, heldOut, OTHER_SESSION_ID);
 				slots.retain(heldOut);
 
 				requireThat(slots.acquireRetained(OTHER_SESSION_ID, "claude"), "heldOut").
@@ -499,8 +499,8 @@ public final class SessionSlotsTest
 			Liveness liveness = new Liveness();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 2, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			HarnessRun run = interruptedRun(jvm, slot, SESSION_ID);
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
+			NestedSession run = interruptedRun(jvm, slot, SESSION_ID);
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(slot.runId());
 			manager.markHarnessStarting(run);
 			manager.recordHarnessProcess(run, 4242, "0f1e2d3c4b5a69788796a5b4c3d2e1f0t5125");
@@ -605,12 +605,12 @@ public final class SessionSlotsTest
 			liveness.end();
 			SessionSlots slots = new SessionSlots(cleanup.add(Files.createTempDirectory("slots-")), 1, liveness);
 			SessionSlots.Slot slot = slots.acquire(false);
-			HarnessRun run = interruptedRun(jvm, slot, SESSION_ID);
+			NestedSession run = interruptedRun(jvm, slot, SESSION_ID);
 			slots.markStopping(slot);
 			AtomicReference<Object> resumed = new AtomicReference<>();
 			Thread resume = running(() -> slots.acquireRetained(SESSION_ID, "claude"), resumed);
 			awaitWaiting(resume);
-			new HarnessRunManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(), Yielding.fileReplacer()).
+			new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(), Yielding.fileReplacer()).
 				withFixedRunId(slot.runId()).markCompleted(run);
 			slots.release(slot);
 			resume.join(WAIT);
@@ -660,12 +660,12 @@ public final class SessionSlotsTest
 	 * @return the run
 	 * @throws IOException if the run cannot be created
 	 */
-	private static HarnessRun interruptedRun(TestJvmScope jvm, SessionSlots.Slot slot, String sessionId)
+	private static NestedSession interruptedRun(TestJvmScope jvm, SessionSlots.Slot slot, String sessionId)
 		throws IOException
 	{
-		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), slot.root(), Clock.systemUTC(),
 			Yielding.fileReplacer()).withFixedRunId(slot.runId());
-		HarnessRun run = manager.create("claude");
+		NestedSession run = manager.create("claude");
 		manager.recordHarnessSession(run, sessionId);
 		return run;
 	}

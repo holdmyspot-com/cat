@@ -14,8 +14,8 @@ import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.nio.file.attribute.PosixFilePermission;
@@ -37,8 +37,8 @@ import org.apache.commons.compress.archivers.tar.TarConstants;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * The archive in which a sandboxed session sends a session request: its manifest format, which the nested session's
@@ -1039,7 +1039,7 @@ public final class RequestArchive
 	 *                                  session may not choose, or names an entry that is missing or of the wrong type
 	 * @throws IllegalArgumentException if the request names no model or no effort
 	 */
-	static RunRequest readRun(JsonMapper json, Path inputs) throws IOException
+	static LaunchRequest readRun(JsonMapper json, Path inputs) throws IOException
 	{
 		return readRun(json, inputs, false);
 	}
@@ -1056,7 +1056,7 @@ public final class RequestArchive
 	 *                                  or names an entry that is missing or of the wrong type
 	 * @throws IllegalArgumentException if the request names no agent and no model or no effort
 	 */
-	static RunRequest readServed(JsonMapper json, Path inputs) throws IOException
+	static LaunchRequest readServed(JsonMapper json, Path inputs) throws IOException
 	{
 		return readRun(json, inputs, true);
 	}
@@ -1073,7 +1073,7 @@ public final class RequestArchive
 	 *                                  or names an entry that is missing or of the wrong type
 	 * @throws IllegalArgumentException if the request names no agent and no model or no effort
 	 */
-	private static RunRequest readRun(JsonMapper json, Path inputs, boolean served) throws IOException
+	private static LaunchRequest readRun(JsonMapper json, Path inputs, boolean served) throws IOException
 	{
 		Set<String> allowed = RUN_FIELDS;
 		String level = "A request inside a nested session";
@@ -1090,7 +1090,7 @@ public final class RequestArchive
 		Path project = null;
 		if (resume.isPresent())
 		{
-			if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(resume.get()).matches())
+			if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(resume.get()).matches())
 				throw new IOException(RESUME + " must name a harness session: " + resume.get());
 			for (String field : FIXED_FIELDS)
 			{
@@ -1133,7 +1133,7 @@ public final class RequestArchive
 		Optional<Integer> toolOutputTokenLimit = count(value, "tool_output_token_limit");
 		if (toolOutputTokenLimit.isPresent() && toolOutputTokenLimit.get() <= 0)
 			throw new IOException("tool_output_token_limit must be positive");
-		return new RunRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
+		return new LaunchRequest(harness, project, plugins, prompts, model, effort, flag(value, "session_transcripts"),
 			flag(value, "install_cat"), extraPermissions(value), streamed, conversation, workspace, evidence,
 			absolutePaths(value, "deny_read"), optionalText(value, "instruction_files"), optionalText(value, "session_role"),
 			toolOutputTokenLimit, flag(value, "turn_copy"), agent,
@@ -1480,7 +1480,7 @@ public final class RequestArchive
 	 * @param resume             the harness session that the request resumes in a retained run, or empty for a request
 	 *                           that starts a session; a request that resumes one has no {@code project}
 	 */
-	record RunRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
+	record LaunchRequest(String harness, Path project, List<Path> plugins, List<String> prompts, String model,
 		String effort, boolean sessionTranscripts, boolean installCat, ExtraPermissions extraPermissions,
 		boolean streamed, boolean conversation, Optional<Path> workspace, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, Optional<String> instructionFiles, Optional<String> sessionRole,

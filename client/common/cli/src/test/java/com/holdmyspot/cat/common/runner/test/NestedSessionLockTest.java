@@ -5,8 +5,8 @@ import static java.nio.file.StandardOpenOption.WRITE;
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.HarnessRunLock;
-import com.holdmyspot.cat.common.secrets.HarnessRunLockSecrets;
+import com.holdmyspot.cat.common.runner.NestedSessionLock;
+import com.holdmyspot.cat.common.secrets.NestedSessionLockSecrets;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
@@ -16,14 +16,14 @@ import java.util.concurrent.CopyOnWriteArrayList;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link HarnessRunLock}.
+ * Tests {@link NestedSessionLock}.
  */
-public final class HarnessRunLockTest
+public final class NestedSessionLockTest
 {
 	/**
 	 * Creates the test fixture.
 	 */
-	public HarnessRunLockTest()
+	public NestedSessionLockTest()
 	{
 	}
 
@@ -44,12 +44,12 @@ public final class HarnessRunLockTest
 			Path directory = cleanup.add(Files.createTempDirectory("cat-run-lock-"));
 			Path file = Files.createFile(directory.resolve(".lock"));
 			List<Path> opened = new CopyOnWriteArrayList<>();
-			try (HarnessRunLock held = HarnessRunLock.acquire(fileLocks, file))
+			try (NestedSessionLock held = NestedSessionLock.acquire(fileLocks, file))
 			{
 				requireThat(held.isHeld(), "held.isHeld()").isTrue();
 				try
 				{
-					HarnessRunLockSecrets.getHarnessRunLockAccess().acquire(fileLocks, file, lockFile ->
+					NestedSessionLockSecrets.getNestedSessionLockAccess().acquire(fileLocks, file, lockFile ->
 					{
 						opened.add(lockFile);
 						return FileChannel.open(lockFile, WRITE);
@@ -64,7 +64,7 @@ public final class HarnessRunLockTest
 				requireThat(held.isHeld(), "heldAfterSecondAttempt").isTrue();
 			}
 
-			try (HarnessRunLock reacquired = HarnessRunLock.acquire(fileLocks, file))
+			try (NestedSessionLock reacquired = NestedSessionLock.acquire(fileLocks, file))
 			{
 				requireThat(reacquired.isHeld(), "reacquired.isHeld()").isTrue();
 			}

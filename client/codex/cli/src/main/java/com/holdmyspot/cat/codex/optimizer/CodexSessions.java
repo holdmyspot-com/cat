@@ -6,9 +6,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.codex.CommandShell;
 import com.holdmyspot.cat.codex.layout.CodexInstallation;
-import com.holdmyspot.cat.common.runner.HarnessRun;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
+import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.RuleVariableResolver;
 import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.HarnessEvents;
 import com.holdmyspot.cat.common.optimizer.adapter.PluginFiles;
@@ -18,12 +20,10 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.evidence.SessionEvidence;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
-import com.holdmyspot.cat.common.RuleVariableResolver;
-import com.holdmyspot.cat.common.runner.LaunchRoute;
-import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
-import com.holdmyspot.cat.codex.secrets.CodexSessionsAccess;
-import com.holdmyspot.cat.codex.secrets.CodexSessionsSecrets;
+import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -50,7 +50,7 @@ import tools.jackson.dataformat.toml.TomlMapper;
  * <p>
  * Codex can shorten a tool's output before its model receives it. A trial asks the runner for session transcripts, so
  * that it keeps each thread's rollout, which records what the thread's model received, in the
- * {@value HarnessRun#SESSION_TRANSCRIPTS} directory beside the transcript, and the tool results that the agents
+ * {@value NestedSession#SESSION_TRANSCRIPTS} directory beside the transcript, and the tool results that the agents
  * received are read from there.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
@@ -189,7 +189,7 @@ public final class CodexSessions extends RunnerSessions
 	{
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(json, "json").isNotNull();
-		Path rollouts = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS);
+		Path rollouts = transcript.resolveSibling(NestedSession.SESSION_TRANSCRIPTS);
 		return new AppServerEvents(json, RolloutMessages.read(rollouts, json),
 			RolloutRunningCommands.read(rollouts, json));
 	}
@@ -206,7 +206,7 @@ public final class CodexSessions extends RunnerSessions
 		requireThat(activity, "activity").isNotNull();
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(json, "json").isNotNull();
-		List<String> received = RolloutToolResults.read(transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS),
+		List<String> received = RolloutToolResults.read(transcript.resolveSibling(NestedSession.SESSION_TRANSCRIPTS),
 			json);
 		return new SessionEvidence(activity.entries(), received, activity.commands());
 	}

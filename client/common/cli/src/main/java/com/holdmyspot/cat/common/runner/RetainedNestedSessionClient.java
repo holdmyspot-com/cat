@@ -17,7 +17,7 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class RetainedRunClient
+public final class RetainedNestedSessionClient
 {
 	private final WorktreeRequestClient.Router router;
 	private final JsonMapper json;
@@ -31,7 +31,7 @@ public final class RetainedRunClient
 	 * @param pause  paces the checks for an answer
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public RetainedRunClient(WorktreeRequestClient.Router router, JsonMapper json, Pause pause)
+	public RetainedNestedSessionClient(WorktreeRequestClient.Router router, JsonMapper json, Pause pause)
 	{
 		requireThat(router, "router").isNotNull();
 		requireThat(json, "json").isNotNull();

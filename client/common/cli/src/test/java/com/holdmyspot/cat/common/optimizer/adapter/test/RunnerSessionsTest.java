@@ -15,10 +15,10 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
-import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
-import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
+import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFile;
 import com.holdmyspot.cat.common.optimizer.port.FollowUp;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
@@ -28,18 +28,18 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TurnObserver;
+import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
-import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
-import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
-import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.secrets.RunnerSessionsSecrets;
 
 import java.io.BufferedReader;
@@ -66,12 +66,12 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Stream;
 
+import org.testng.SkipException;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
-import org.testng.SkipException;
-import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Tests {@link RunnerSessions} over the real runner bridge with a scripted harness.
@@ -980,10 +980,10 @@ public final class RunnerSessionsTest
 				Map.of(), root, HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create(TestSessions.HARNESS);
+				NestedSession run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
 					run.id() + "\"}\n");
@@ -1027,10 +1027,10 @@ public final class RunnerSessionsTest
 			List<String> sent = new CopyOnWriteArrayList<>();
 			TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 			{
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					root.resolve("runs"), Clock.systemUTC(),
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create(TestSessions.HARNESS);
+				NestedSession run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, root, root, "scripted", List.of("scripted"));
 				output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
 					run.id() + "\"}\n");
@@ -1087,9 +1087,9 @@ public final class RunnerSessionsTest
 					HarnessCapacity.unlimited(), Clock.systemUTC(), Yielding.fileReplacer());
 				TestSessions sessions = new TestSessions(settings, (options, input, output) ->
 				{
-					HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runs,
+					NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runs,
 						Clock.systemUTC(), Yielding.fileReplacer());
-					HarnessRun run = manager.create(TestSessions.HARNESS);
+					NestedSession run = manager.create(TestSessions.HARNESS);
 					manager.initialize(run, root, root, "scripted", List.of("scripted"));
 					output.write("{\"type\":\"started\"}\n{\"type\":\"session_id\",\"session_id\":\"" +
 						run.id() + "\"}\n");
@@ -1519,7 +1519,7 @@ public final class RunnerSessionsTest
 			Path artifact = RoleRuleFixtures.write(root.resolve("artifact"));
 			ManualClock clock = new ManualClock(START);
 			CountDownLatch partialDraftWritten = new CountDownLatch(1);
-			AtomicReference<HarnessRun> ownedRun = new AtomicReference<>();
+			AtomicReference<NestedSession> ownedRun = new AtomicReference<>();
 			AtomicReference<Path> authorProject = new AtomicReference<>();
 			AtomicReference<Path> workspaceInput = new AtomicReference<>();
 			RunnerSessions.Settings settings = new RunnerSessions.Settings(jvm, artifact, root.resolve("runs"), List::of,
@@ -1529,9 +1529,9 @@ public final class RunnerSessionsTest
 				Path runRoot = Path.of(ScriptedHarness.optionValue(options, "--results"));
 				Path project = Path.of(ScriptedHarness.optionValue(options, "--project"));
 				Path workspace = Path.of(ScriptedHarness.optionValue(options, "--workspace"));
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, clock,
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, clock,
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create(TestSessions.HARNESS);
+				NestedSession run = manager.create(TestSessions.HARNESS);
 				manager.initialize(run, artifact, project, "scripted", options);
 				manager.copyProject(project, run);
 				manager.copyWorkspace(workspace, run);
@@ -1547,7 +1547,7 @@ public final class RunnerSessionsTest
 					Files.writeString(testDirectory.resolve("proposal.md"), "partial author proposal\n");
 					partialDraftWritten.countDown();
 				})), new ArrayList<>());
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 					input, output);
 			});
 			SessionRequest request = new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, source,
@@ -1560,7 +1560,7 @@ public final class RunnerSessionsTest
 			SessionResult result = await(handle);
 			requireThat(result, "result").isEqualTo(new SessionResult.Failed(
 				"The contract author session reached its 5-minute time limit", List.of()));
-			HarnessRun run = ownedRun.get();
+			NestedSession run = ownedRun.get();
 			requireThat(run, "ownedRun").isNotNull();
 			requireThat(Files.isDirectory(run.directory()), "retainedRun").isTrue();
 			Path project = authorProject.get();

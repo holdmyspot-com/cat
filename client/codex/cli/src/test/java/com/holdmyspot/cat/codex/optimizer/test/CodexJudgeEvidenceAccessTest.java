@@ -21,10 +21,10 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 
@@ -203,10 +203,10 @@ public final class CodexJudgeEvidenceAccessTest
 		Path artifact = RoleRuleFixtures.write(hostProject.resolve("artifact"));
 		Path judgeSource = Files.createDirectories(hostProject.resolve("judge-source"));
 		Path runRoot = hostProject.resolve(".cat/sessions/session-1/optimizer-runs/codex");
-		HarnessRunManager trials = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		NestedSessionManager trials = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		HarnessRun trial = trials.create("codex");
-		HarnessRun sibling = trials.create("codex");
+		NestedSession trial = trials.create("codex");
+		NestedSession sibling = trials.create("codex");
 		for (int i = 0; i < runs; ++i)
 			Files.createDirectories(runRoot.resolve("other-run-" + i));
 		Path effects = trial.directory().resolve("project");
@@ -230,9 +230,9 @@ public final class CodexJudgeEvidenceAccessTest
 		{
 			HarnessRunnerOptions options = CodexRunnerCli.options(arguments.toArray(String[]::new),
 				HarnessTemporaryRoot.withoutSession("The judge runs outside a harness session"));
-			HarnessRunManager judges = new HarnessRunManager(jvm.fileLocks(), options.runRoot(), Clock.systemUTC(),
+			NestedSessionManager judges = new NestedSessionManager(jvm.fileLocks(), options.runRoot(), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun judge = judges.create("codex");
+			NestedSession judge = judges.create("codex");
 			Path configuration = judge.directory().resolve("home/config.toml");
 			CodexConnectionConfiguration.copy(judge.directory().resolve("missing.toml"), configuration,
 				judge.directory().resolve("project"));

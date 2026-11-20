@@ -16,8 +16,8 @@ import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.port.contract.test.VersionRegistry;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 
 import java.io.IOException;
@@ -76,11 +76,11 @@ public final class CodexSessionEnvironmentVersionTest
 				Path deniedFile = Files.writeString(root.resolve("campaign.json"), "{}");
 				Path hostProject = Files.createDirectories(root.resolve("project"));
 				Files.writeString(hostProject.resolve("AGENTS.md"), "Follow the handbook.", UTF_8);
-				HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(),
+				NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(),
 					hostProject.resolve("runs"),
 					Clock.systemUTC(),
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create("codex");
+				NestedSession run = manager.create("codex");
 				// The session's project links to a file outside it, so the run holds a read-only copy of that file, which
 				// the session's profile lets it read
 				Files.writeString(root.resolve("outside.md"), "Outside.", UTF_8);

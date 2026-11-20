@@ -12,7 +12,7 @@ import com.holdmyspot.cat.codex.optimizer.CodexSessions;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.runner.NestedSession;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -84,7 +84,7 @@ public final class CodexReceivedResultsTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-received-"));
 			Path transcript = RecordedTrial.write(root, EVENTS, List.of(
 				"{\"type\":\"session_meta\",\"payload\":{\"id\":\"thread\"}}", "", "{"));
-			Path rollout = transcript.resolveSibling(HarnessRun.SESSION_TRANSCRIPTS).
+			Path rollout = transcript.resolveSibling(NestedSession.SESSION_TRANSCRIPTS).
 				resolve("rollout-2026-10-15T12-00-00-root.jsonl");
 			IOException failure = null;
 			try

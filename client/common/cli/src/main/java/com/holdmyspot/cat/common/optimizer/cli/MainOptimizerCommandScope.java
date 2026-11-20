@@ -5,10 +5,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Platform;
-import com.holdmyspot.cat.common.Waiting;
-import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionDirectory;
+import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
+import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
@@ -325,7 +325,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 		String id = harness.commandName();
 		return switch (LaunchRoute.decide(id, id, markers.running(environment), new String[0], environment))
 		{
-			case LaunchRoute.Forward(Path requests) -> Optional.of(new RunChannel(requests));
+			case LaunchRoute.Forward(Path requests) -> Optional.of(new NestedSessionChannel(requests));
 			case LaunchRoute.Refused(String reason) -> throw new WorktreeRefusedException(reason);
 			case LaunchRoute.Served _ ->
 			{
@@ -399,7 +399,7 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 	 *
 	 * @param requests the run's requests directory
 	 */
-	private record RunChannel(Path requests) implements WorktreeRequestClient.Channel
+	private record NestedSessionChannel(Path requests) implements WorktreeRequestClient.Channel
 	{
 		@Override
 		public boolean isServed()

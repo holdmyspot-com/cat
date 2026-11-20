@@ -11,14 +11,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 /**
  * Tracks and closes the persistent harness processes started by one request bridge.
  */
-public final class HarnessRunSessions implements AutoCloseable
+public final class LiveNestedSessions implements AutoCloseable
 {
-	private final Map<String, HarnessRunSession> sessions = new HashMap<>();
+	private final Map<String, LiveNestedSession> sessions = new HashMap<>();
 
 	/**
 	 * Creates an empty live-session registry.
 	 */
-	public HarnessRunSessions()
+	public LiveNestedSessions()
 	{
 	}
 
@@ -31,7 +31,7 @@ public final class HarnessRunSessions implements AutoCloseable
 	 *
 	 * @throws IllegalArgumentException if its run ID is already registered
 	 */
-	public void add(HarnessRunSession session)
+	public void add(LiveNestedSession session)
 	{
 		requireThat(session, "session").isNotNull();
 		synchronized (sessions)
@@ -70,7 +70,7 @@ public final class HarnessRunSessions implements AutoCloseable
 	public void complete(String runId) throws IOException
 	{
 		requireThat(runId, "runId").isNotBlank();
-		try (HarnessRunSession session = remove(runId))
+		try (LiveNestedSession session = remove(runId))
 		{
 			if (session == null)
 				throw new IOException("Unknown live run: " + runId);
@@ -85,14 +85,14 @@ public final class HarnessRunSessions implements AutoCloseable
 	@Override
 	public void close() throws IOException
 	{
-		List<HarnessRunSession> openSessions;
+		List<LiveNestedSession> openSessions;
 		synchronized (sessions)
 		{
 			openSessions = List.copyOf(sessions.values());
 			sessions.clear();
 		}
 		IOException failure = null;
-		for (HarnessRunSession session : openSessions)
+		for (LiveNestedSession session : openSessions)
 		{
 			try (session)
 			{
@@ -118,12 +118,12 @@ public final class HarnessRunSessions implements AutoCloseable
 	 *
 	 * @throws IOException if the run is unknown
 	 */
-	private HarnessRunSession session(String runId) throws IOException
+	private LiveNestedSession session(String runId) throws IOException
 	{
 		assert runId != null;
 		synchronized (sessions)
 		{
-			HarnessRunSession result = sessions.get(runId);
+			LiveNestedSession result = sessions.get(runId);
 			if (result == null)
 				throw new IOException("Unknown live run: " + runId);
 			return result;
@@ -137,7 +137,7 @@ public final class HarnessRunSessions implements AutoCloseable
 	 *
 	 * @return the removed session, or {@code null} if it was unknown
 	 */
-	private HarnessRunSession remove(String runId)
+	private LiveNestedSession remove(String runId)
 	{
 		assert runId != null;
 		synchronized (sessions)

@@ -8,10 +8,10 @@ import java.util.List;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
-import com.holdmyspot.cat.common.runner.HarnessRunSessions;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.LiveNestedSessions;
+import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -21,14 +21,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 
 /**
- * Tests {@link HarnessRunSessions}.
+ * Tests {@link LiveNestedSessions}.
  */
-public final class HarnessRunSessionsTest
+public final class LiveNestedSessionsTest
 {
 	/**
 	 * Creates the test fixture.
 	 */
-	public HarnessRunSessionsTest()
+	public LiveNestedSessionsTest()
 	{
 	}
 	/**
@@ -42,10 +42,10 @@ public final class HarnessRunSessionsTest
 		List<String> received = new ArrayList<>();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
-			HarnessRunSessions sessions = new HarnessRunSessions())
+			LiveNestedSessions sessions = new LiveNestedSessions())
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			sessions.add(new HarnessRunSession(run, process, new TestHarnessRunnerScope()));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			sessions.add(new LiveNestedSession(run, process, new TestHarnessRunnerScope()));
 			HarnessProcessResult first = sessions.sendTurn("run-1", "first");
 			HarnessProcessResult second = sessions.sendTurn("run-1", "second");
 			requireThat(first.completed(), "firstCompleted").isTrue();
@@ -68,12 +68,12 @@ public final class HarnessRunSessionsTest
 	public void retainsAllShutdownFailures() throws IOException
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
-			HarnessRunSessions sessions = new HarnessRunSessions())
+			LiveNestedSessions sessions = new LiveNestedSessions())
 		{
-			sessions.add(new HarnessRunSession(new HarnessRun("harness", "run-1",
+			sessions.add(new LiveNestedSession(new NestedSession("harness", "run-1",
 				cleanup.add(Files.createTempDirectory("cat-run-"))),
 				failingToClose(cleanup.add(Files.createTempDirectory("cat-session-"))), new TestHarnessRunnerScope()));
-			sessions.add(new HarnessRunSession(new HarnessRun("harness", "run-2",
+			sessions.add(new LiveNestedSession(new NestedSession("harness", "run-2",
 				cleanup.add(Files.createTempDirectory("cat-run-"))),
 				failingToClose(cleanup.add(Files.createTempDirectory("cat-session-"))), new TestHarnessRunnerScope()));
 		}

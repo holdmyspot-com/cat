@@ -4,9 +4,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
@@ -18,14 +18,14 @@ import java.util.List;
 import org.testng.annotations.Test;
 
 /**
- * Tests {@link HarnessRunSession}.
+ * Tests {@link LiveNestedSession}.
  */
-public final class HarnessRunSessionTest
+public final class LiveNestedSessionTest
 {
 	/**
 	 * Creates the test fixture.
 	 */
-	public HarnessRunSessionTest()
+	public LiveNestedSessionTest()
 	{
 	}
 	/**
@@ -40,8 +40,8 @@ public final class HarnessRunSessionTest
 		{
 			List<String> received = new ArrayList<>();
 			ScriptedProcess process = new ScriptedProcess(List.of(Turn.replies("one"), Turn.replies("two")), received);
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			try (HarnessRunSession session = new HarnessRunSession(run, process, new TestHarnessRunnerScope()))
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			try (LiveNestedSession session = new LiveNestedSession(run, process, new TestHarnessRunnerScope()))
 			{
 				HarnessProcessResult first = session.sendTurn("first");
 				HarnessProcessResult second = session.sendTurn("second");
@@ -70,8 +70,8 @@ public final class HarnessRunSessionTest
 			ScriptedProcess process = new ScriptedProcess(List.of(), new ArrayList<>(),
 				directory.resolve("home/session.jsonl"), new HarnessSessionTranscripts(directory.resolve("home"), copies,
 				name -> name.endsWith(".jsonl")));
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			try (HarnessRunSession session = new HarnessRunSession(run, process, new TestHarnessRunnerScope()))
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			try (LiveNestedSession session = new LiveNestedSession(run, process, new TestHarnessRunnerScope()))
 			{
 				closeAndTakeCopiesPlace(session, copies);
 			}
@@ -86,7 +86,7 @@ public final class HarnessRunSessionTest
 	 * @param copies  the directory that receives the copies of the process's session transcripts
 	 * @throws IOException if closing the session or replacing the directory fails
 	 */
-	private static void closeAndTakeCopiesPlace(HarnessRunSession session, Path copies) throws IOException
+	private static void closeAndTakeCopiesPlace(LiveNestedSession session, Path copies) throws IOException
 	{
 		session.close();
 		Files.delete(copies);

@@ -13,6 +13,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
@@ -20,7 +21,6 @@ import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.List;
 import java.util.stream.Stream;
 
 import tools.jackson.core.JacksonException;
@@ -62,9 +62,9 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if the bridge protocol, harness, or stream fails
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, Reader input, Writer output) throws IOException
+	public static NestedSession serve(NestedSessionStarter starter, Reader input, Writer output) throws IOException
 	{
-		return serve(starter, (HarnessRunManager) null, input, output);
+		return serve(starter, (NestedSessionManager) null, input, output);
 	}
 
 	/**
@@ -80,9 +80,9 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if the bridge protocol, harness, or transcript I/O fails
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, Reader input, Path output) throws IOException
+	public static NestedSession serve(NestedSessionStarter starter, Reader input, Path output) throws IOException
 	{
-		return serve(starter, (HarnessRunManager) null, input, output);
+		return serve(starter, (NestedSessionManager) null, input, output);
 	}
 
 	/**
@@ -106,7 +106,7 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or stream fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
+	public static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Writer output) throws IOException
 	{
 		return serve(starter, manager, input, output, null, null);
@@ -125,7 +125,7 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
+	private static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter) throws IOException
 	{
 		requireThat(starter, "starter").isNotNull();
@@ -140,7 +140,7 @@ public final class HarnessRunnerBridge
 			String status = "failed";
 			try
 			{
-				HarnessRun run = serve(starter, manager, input, conversation.childWriter(output), options,
+				NestedSession run = serve(starter, manager, input, conversation.childWriter(output), options,
 					requestedStarter, conversation);
 				status = "completed";
 				return run;
@@ -167,11 +167,11 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge or a request broker fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
+	private static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Writer output, HarnessRunnerOptions options, RequestedSessionStarter requestedStarter,
 		Conversation conversation) throws IOException
 	{
-		HarnessRun run = null;
+		NestedSession run = null;
 		boolean completed = false;
 		int turnNumber = 0;
 		FutureTask<Void> activeTurn = null;
@@ -203,7 +203,7 @@ public final class HarnessRunnerBridge
 		boolean copiesChecked = false;
 		try
 		{
-			try (HarnessRunSession session = starter.start();
+			try (LiveNestedSession session = starter.start();
 				ClientOutput client = ClientOutput.open(session, output);
 				SessionRequestBroker broker = requestBroker(session, manager, options, requestedStarter))
 			{
@@ -266,7 +266,7 @@ public final class HarnessRunnerBridge
 												throw harnessTurnFailure(result, session.processIsAlive());
 											// The requester reads the copy once it reads this turn's response
 											if (options != null && options.turnCopy() != null)
-								KeptRunCopy.copyTurn(session.run().directory(), options.turnCopy());
+								ResultsCopy.copyTurn(session.run().directory(), options.turnCopy());
 										}
 										catch (IOException | RuntimeException e)
 										{
@@ -420,7 +420,7 @@ public final class HarnessRunnerBridge
 	 * @param failure why the run failed
 	 * @return {@code failure}, or a failure that names the changed copies and is caused by {@code failure}
 	 */
-	private static IOException withChangedLinkCopies(HarnessRunManager manager, HarnessRun run, IOException failure)
+	private static IOException withChangedLinkCopies(NestedSessionManager manager, NestedSession run, IOException failure)
 	{
 		Optional<String> changes;
 		try
@@ -448,7 +448,7 @@ public final class HarnessRunnerBridge
 	 * @param conversation the conversation whose messages are the bridge's records, or null to read {@code input}
 	 * @return the lines
 	 */
-	private static BufferedReader lines(HarnessRunSession session, Reader input, Conversation conversation)
+	private static BufferedReader lines(LiveNestedSession session, Reader input, Conversation conversation)
 	{
 		if (conversation == null)
 			return new BufferedReader(input);
@@ -498,7 +498,7 @@ public final class HarnessRunnerBridge
 	 * @param client  the bridge's output
 	 * @param failure why the turn failed
 	 */
-	private static void reportTurnFailure(HarnessRunSession session, ClientOutput client, Exception failure)
+	private static void reportTurnFailure(LiveNestedSession session, ClientOutput client, Exception failure)
 	{
 		assert failure != null;
 		String error = failure.getMessage();
@@ -601,7 +601,7 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge protocol, harness, lifecycle, or transcript I/O fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, Reader input,
+	public static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager, Reader input,
 		Path output) throws IOException
 	{
 		requireThat(output, "output").isNotNull();
@@ -642,8 +642,9 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if the bridge protocol, harness, lifecycle, transcript or receipt I/O fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
-		JsonMapper json, FileReplacer replacer, Reader input, Writer output) throws IOException
+	public static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager,
+		HarnessRunnerOptions options, JsonMapper json, FileReplacer replacer, Reader input, Writer output)
+		throws IOException
 	{
 		return serve(starter, manager, options, json, replacer, input, output, null);
 	}
@@ -667,8 +668,9 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if bridge execution or evidence publication fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	public static HarnessRun serve(HarnessRunStarter starter, HarnessRunManager manager, HarnessRunnerOptions options,
-		JsonMapper json, FileReplacer replacer, Reader input, Writer output, RequestedSessionStarter requestedStarter)
+	public static NestedSession serve(NestedSessionStarter starter, NestedSessionManager manager,
+		HarnessRunnerOptions options, JsonMapper json, FileReplacer replacer, Reader input, Writer output,
+		RequestedSessionStarter requestedStarter)
 		throws IOException
 	{
 		requireThat(manager, "manager").isNotNull();
@@ -700,13 +702,13 @@ public final class HarnessRunnerBridge
 	 * @throws IOException if bridge execution or evidence publication fails,
 	 *                     or the session changed a read-only copy of the target of a project link outside it
 	 */
-	private static HarnessRun serveRecords(HarnessRunStarter starter, HarnessRunManager manager,
+	private static NestedSession serveRecords(NestedSessionStarter starter, NestedSessionManager manager,
 		HarnessRunnerOptions options, JsonMapper json, FileReplacer replacer, Reader input, Writer output,
 		RequestedSessionStarter requestedStarter) throws IOException
 	{
 		if (options.output() == null)
 			return serve(starter, manager, input, output, options, requestedStarter);
-		HarnessRun run;
+		NestedSession run;
 		Path parent = options.output().toAbsolutePath().getParent();
 		Files.createDirectories(parent);
 		try (Writer transcript = Files.newBufferedWriter(options.output(), StandardCharsets.UTF_8))
@@ -718,7 +720,7 @@ public final class HarnessRunnerBridge
 			List<Path> sessionTranscripts = List.of();
 			if (options.sessionTranscripts())
 				sessionTranscripts = sessionTranscripts(run);
-			HarnessRunReceipt.write(json, replacer, options.receipt(), run, options.output(), sessionTranscripts);
+			NestedSessionReceipt.write(json, replacer, options.receipt(), run, options.output(), sessionTranscripts);
 			manager.pruneRuntime(run);
 		}
 		return run;
@@ -736,7 +738,7 @@ public final class HarnessRunnerBridge
 	 * @throws NullPointerException if the broker starts and {@code starter} is null
 	 * @throws IOException          if the broker cannot state the run's limits
 	 */
-	private static SessionRequestBroker requestBroker(HarnessRunSession session, HarnessRunManager manager,
+	private static SessionRequestBroker requestBroker(LiveNestedSession session, NestedSessionManager manager,
 		HarnessRunnerOptions options, RequestedSessionStarter starter) throws IOException
 	{
 		if (options == null || !Files.isDirectory(SessionRequestAccess.requestsDirectory(session.run())))
@@ -870,7 +872,7 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if client output fails
 	 */
-	private static void forwardHarnessEvent(HarnessRunSession session, ClientOutput client, String harnessEvent)
+	private static void forwardHarnessEvent(LiveNestedSession session, ClientOutput client, String harnessEvent)
 		throws IOException
 	{
 		assert session != null;
@@ -892,7 +894,7 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if client output fails
 	 */
-	private static void recordSessionTranscript(HarnessRunSession session, ClientOutput client, AtomicBoolean recorded)
+	private static void recordSessionTranscript(LiveNestedSession session, ClientOutput client, AtomicBoolean recorded)
 		throws IOException
 	{
 		assert session != null;
@@ -918,7 +920,7 @@ public final class HarnessRunnerBridge
 	 * @param recorded indicates whether the identifier was recorded already
 	 * @throws IOException if the run recorded another identifier, or the record cannot be written
 	 */
-	private static void recordHarnessSession(HarnessRunSession session, HarnessRunManager manager, ClientOutput client,
+	private static void recordHarnessSession(LiveNestedSession session, NestedSessionManager manager, ClientOutput client,
 		AtomicBoolean recorded) throws IOException
 	{
 		assert session != null;
@@ -948,7 +950,7 @@ public final class HarnessRunnerBridge
 	 *
 	 * @throws IOException if the directory cannot be listed
 	 */
-	private static List<Path> sessionTranscripts(HarnessRun run) throws IOException
+	private static List<Path> sessionTranscripts(NestedSession run) throws IOException
 	{
 		assert run != null;
 		Path directory = run.sessionTranscripts();
@@ -1020,7 +1022,7 @@ public final class HarnessRunnerBridge
 		 * @param output  the JSONL client output
 		 * @return the output
 		 */
-		static ClientOutput open(HarnessRunSession session, Writer output)
+		static ClientOutput open(LiveNestedSession session, Writer output)
 		{
 			assert session != null;
 			assert output != null;

@@ -2,14 +2,14 @@ package com.holdmyspot.cat.common.optimizer.execution;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
-import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
 import com.holdmyspot.cat.common.optimizer.campaign.RunFailure;
+import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
-import com.holdmyspot.cat.common.optimizer.execution.LeftoverRuns.RecordedProcess;
+import com.holdmyspot.cat.common.optimizer.execution.LeftoverNestedSessions.RecordedProcess;
 
 import java.io.IOException;
 import java.time.Instant;

@@ -9,17 +9,18 @@ import com.holdmyspot.cat.codex.secrets.CodexRunnerCliAccess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
-import com.holdmyspot.cat.common.SessionHarness;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
@@ -44,7 +45,6 @@ import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 import static org.testng.Assert.expectThrows;
 import tools.jackson.databind.json.JsonMapper;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 
 /**
  * Tests {@link CodexRunnerCli}.
@@ -327,7 +327,7 @@ public final class CodexRunnerCliTest
 	 */
 	private static Path createRun(TestJvmScope jvm, Path runRoot) throws IOException
 	{
-		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
 		return manager.create("codex").directory().resolve("session.json");
 	}

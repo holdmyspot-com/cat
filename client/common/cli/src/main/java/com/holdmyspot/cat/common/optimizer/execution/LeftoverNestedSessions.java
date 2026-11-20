@@ -6,7 +6,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.runner.HarnessProcessLiveness;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
-import com.holdmyspot.cat.common.secrets.LeftoverRunsSecrets;
+import com.holdmyspot.cat.common.secrets.LeftoverNestedSessionsSecrets;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -37,11 +37,11 @@ import tools.jackson.databind.json.JsonMapper;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  */
-public final class LeftoverRuns
+public final class LeftoverNestedSessions
 {
 	static
 	{
-		LeftoverRunsSecrets.setLeftoverRunsAccess(LeftoverRuns::new);
+		LeftoverNestedSessionsSecrets.setLeftoverNestedSessionsAccess(LeftoverNestedSessions::new);
 	}
 
 	private final SessionPort sessions;
@@ -55,7 +55,7 @@ public final class LeftoverRuns
 	 * @param json     the JSON mapper that parses run manifests
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public LeftoverRuns(SessionPort sessions, JsonMapper json)
+	public LeftoverNestedSessions(SessionPort sessions, JsonMapper json)
 	{
 		this(sessions, json, new ProcessHandleLiveness());
 	}
@@ -68,7 +68,7 @@ public final class LeftoverRuns
 	 * @param liveness answers whether a recorded owner process is alive
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private LeftoverRuns(SessionPort sessions, JsonMapper json, HarnessProcessLiveness liveness)
+	private LeftoverNestedSessions(SessionPort sessions, JsonMapper json, HarnessProcessLiveness liveness)
 	{
 		requireThat(sessions, "sessions").isNotNull();
 		requireThat(json, "json").isNotNull();

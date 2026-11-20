@@ -3,10 +3,10 @@ package com.holdmyspot.cat.common.runner.test;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.runner.LaunchRefusedException;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
-import com.holdmyspot.cat.common.runner.LaunchRefusedException;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -62,7 +62,7 @@ public final class ServedSessionTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
 			Inputs inputs = new Inputs(root);
 			Path denied = root.resolve("held-out");
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				List<String> arguments = new ArrayList<>(inputs.arguments());
 				arguments.addAll(List.of("--workspace", inputs.workspace.toString(), "--read-only-evidence",
@@ -77,7 +77,7 @@ public final class ServedSessionTest
 				List<String> types = output.toString().lines().map(line -> json.readTree(line).path("type").asString()).
 					toList();
 				requireThat(types, "types").isEqualTo(List.of("started", "session_id", "turn_completed", "completed"));
-				Path kept = inputs.runRoot.resolve("claude").resolve(RequestingRun.SESSION_ID);
+				Path kept = inputs.runRoot.resolve("claude").resolve(RequestingNestedSession.SESSION_ID);
 				requireThat(Files.isDirectory(kept.resolve("artifacts")), "artifacts").isTrue();
 				requireThat(Files.readString(kept.resolve("project/result.txt")), "result").isEqualTo("result");
 				requireThat(Files.exists(kept.resolve("home")), "home").isFalse();
@@ -115,7 +115,7 @@ public final class ServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
 			Inputs inputs = new Inputs(root);
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				Path launcher = parent.plugin().resolve("bin/prompt-optimizer");
 				Files.writeString(Files.createDirectories(launcher.getParent()).resolve(launcher.getFileName()),
@@ -169,7 +169,8 @@ public final class ServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
 			Inputs inputs = new Inputs(root);
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), sessionRequests))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(),
+				sessionRequests))
 			{
 				if (serveFirst)
 				{
@@ -209,7 +210,7 @@ public final class ServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
 			Inputs inputs = new Inputs(root);
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				SessionRequestForwarder.serve(COMMAND, "claude", inputs.ownArtifact, inputs.arguments(),
 					new StringReader(RECORDS), new StringWriter(), parent.requests(), bounded());
@@ -238,7 +239,7 @@ public final class ServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
 			Inputs inputs = new Inputs(root);
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				List<String> arguments = new ArrayList<>(inputs.arguments());
 				arguments.addAll(List.of("--workspace", root.resolve("missing").toString()));
@@ -286,7 +287,7 @@ public final class ServedSessionTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-")).toRealPath();
 			Inputs inputs = new Inputs(root);
-			try (RequestingRun parent = new RequestingRun(root.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				List<String> arguments = new ArrayList<>(inputs.arguments());
 				arguments.removeAll(removed);
@@ -314,7 +315,7 @@ public final class ServedSessionTest
 	 * @return the refusal
 	 * @throws IOException if the session fails for another reason
 	 */
-	private static LaunchRefusedException refusal(RequestingRun parent, Inputs inputs) throws IOException
+	private static LaunchRefusedException refusal(RequestingNestedSession parent, Inputs inputs) throws IOException
 	{
 		try
 		{
@@ -335,7 +336,7 @@ public final class ServedSessionTest
 	 * @return the response
 	 * @throws IOException if the run has no single response
 	 */
-	private JsonNode onlyResponse(RequestingRun parent) throws IOException
+	private JsonNode onlyResponse(RequestingNestedSession parent) throws IOException
 	{
 		try (Stream<Path> entries = Files.list(parent.responses()))
 		{

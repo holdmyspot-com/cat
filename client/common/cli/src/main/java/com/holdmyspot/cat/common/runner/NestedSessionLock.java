@@ -1,10 +1,10 @@
 package com.holdmyspot.cat.common.runner;
 
-import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.ExclusiveFileLock;
+import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.LockFileOpener;
-import com.holdmyspot.cat.common.secrets.HarnessRunLockAccess;
-import com.holdmyspot.cat.common.secrets.HarnessRunLockSecrets;
+import com.holdmyspot.cat.common.secrets.NestedSessionLockAccess;
+import com.holdmyspot.cat.common.secrets.NestedSessionLockSecrets;
 import java.io.IOException;
 import java.nio.channels.FileChannel;
 import java.nio.file.Path;
@@ -21,28 +21,28 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * While this JVM holds a run's lock, another attempt in this JVM does not open the lock file, because closing that file
  * would release the lock for other processes (see {@link ExclusiveFileLock}).
  */
-public final class HarnessRunLock implements AutoCloseable
+public final class NestedSessionLock implements AutoCloseable
 {
 	static
 	{
-		HarnessRunLockSecrets.setHarnessRunLockAccess(new HarnessRunLockAccess()
+		NestedSessionLockSecrets.setNestedSessionLockAccess(new NestedSessionLockAccess()
 		{
 			@Override
-			public HarnessRunLock acquire(FileLocks fileLocks, Path file, LockFileOpener opener) throws IOException
+			public NestedSessionLock acquire(FileLocks fileLocks, Path file, LockFileOpener opener) throws IOException
 			{
-				return HarnessRunLock.acquire(fileLocks, file, opener);
+				return NestedSessionLock.acquire(fileLocks, file, opener);
 			}
 		});
 	}
 
-	private static final HarnessRunLock UNLOCKED = new HarnessRunLock(null);
+	private static final NestedSessionLock UNLOCKED = new NestedSessionLock(null);
 
 	/**
 	 * Returns a no-op lease for callers that do not own a manager-backed run.
 	 *
 	 * @return the no-op lease
 	 */
-	public static HarnessRunLock unlocked()
+	public static NestedSessionLock unlocked()
 	{
 		return UNLOCKED;
 	}
@@ -58,7 +58,7 @@ public final class HarnessRunLock implements AutoCloseable
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the file cannot be locked or is already locked
 	 */
-	public static HarnessRunLock acquire(FileLocks fileLocks, Path file) throws IOException
+	public static NestedSessionLock acquire(FileLocks fileLocks, Path file) throws IOException
 	{
 		return acquire(fileLocks, file, lockFile -> FileChannel.open(lockFile, WRITE));
 	}
@@ -75,7 +75,7 @@ public final class HarnessRunLock implements AutoCloseable
 	 * @throws NullPointerException if any argument is null
 	 * @throws IOException if the file cannot be locked or is already locked
 	 */
-	static HarnessRunLock acquire(FileLocks fileLocks, Path file, LockFileOpener opener) throws IOException
+	static NestedSessionLock acquire(FileLocks fileLocks, Path file, LockFileOpener opener) throws IOException
 	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
 		requireThat(file, "file").isNotNull();
@@ -83,7 +83,7 @@ public final class HarnessRunLock implements AutoCloseable
 		Optional<ExclusiveFileLock> lock = fileLocks.tryLock(file, opener);
 		if (lock.isEmpty())
 			throw new IOException("Run is already active: " + file.getParent());
-		return new HarnessRunLock(lock.get());
+		return new NestedSessionLock(lock.get());
 	}
 
 	private final ExclusiveFileLock lock;
@@ -93,7 +93,7 @@ public final class HarnessRunLock implements AutoCloseable
 	 *
 	 * @param lock the lock on the run lock file, or {@code null} for the no-op lease
 	 */
-	private HarnessRunLock(ExclusiveFileLock lock)
+	private NestedSessionLock(ExclusiveFileLock lock)
 	{
 		this.lock = lock;
 	}

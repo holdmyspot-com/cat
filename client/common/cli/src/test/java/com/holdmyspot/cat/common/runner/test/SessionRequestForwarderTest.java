@@ -1,17 +1,17 @@
 package com.holdmyspot.cat.common.runner.test;
 
-import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Pause;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
-import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
-import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
-import com.holdmyspot.cat.common.runner.HarnessRun;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
-import com.holdmyspot.cat.common.runner.KeptRunCopy;
+import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -23,14 +23,14 @@ import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.time.Clock;
-import java.util.stream.Stream;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.testng.annotations.DataProvider;
@@ -219,9 +219,9 @@ public final class SessionRequestForwarderTest
 						"{\"type\":\"session_id\",\"session_id\":\"" + SESSION_ID + "\"}\n" +
 						"{\"type\":\"turn_completed\"}\n");
 
-					HarnessRunManager manager = new HarnessRunManager(new FileLocks(), childRoot, Clock.systemUTC(),
+					NestedSessionManager manager = new NestedSessionManager(new FileLocks(), childRoot, Clock.systemUTC(),
 						Yielding.fileReplacer());
-					HarnessRun child = manager.create("harnessa");
+					NestedSession child = manager.create("harnessa");
 					slotRunId[0] = child.id();
 					Path childProject = child.directory().resolve("project");
 					Files.writeString(childProject.resolve("marker"), "kept project");
@@ -233,12 +233,12 @@ public final class SessionRequestForwarderTest
 					Files.writeString(rootCopy, "root-complete\n");
 					Files.writeString(childCopy, "child-complete\n");
 					Path receipt = child.directory().resolve("artifacts/receipt.json");
-					HarnessRunReceipt.write(json, Yielding.fileReplacer(), receipt, child, raw,
+					NestedSessionReceipt.write(json, Yielding.fileReplacer(), receipt, child, raw,
 						List.of(rootCopy, childCopy));
 					manager.initialize(child, artifact, project, "fixture", List.of("fixture"));
 					manager.markCompleted(child);
 					Path kept = response.resolve("run");
-					KeptRunCopy.Result copyResult = KeptRunCopy.copy(child.directory(), kept);
+					ResultsCopy.Result copyResult = ResultsCopy.copy(child.directory(), kept);
 					requireThat(copyResult.incomplete(), "keptRun").isEmpty();
 				}
 				else
@@ -260,12 +260,12 @@ public final class SessionRequestForwarderTest
 						"{\"type\":\"turn_completed\"}\n" +
 						"{\"type\":\"turn_completed\"}\n" +
 						"{\"type\":\"completed\"}\n");
-					HarnessRun copiedChild = new HarnessRun("harnessa", slotRunId[0], response.resolve("run"));
+					NestedSession copiedChild = new NestedSession("harnessa", slotRunId[0], response.resolve("run"));
 					requireThat(Files.isDirectory(copiedChild.directory().resolve("project")), "copiedProject").isTrue();
 					requireThat(Files.isRegularFile(response.resolve("transcript.jsonl")), "externalOutput").isTrue();
 					Path copiedRootTranscript = copiedChild.sessionTranscripts().resolve("rollout-root.jsonl");
 					Path copiedChildTranscript = copiedChild.sessionTranscripts().resolve("subagents/rollout-child.jsonl");
-					HarnessRunReceipt.write(json, Yielding.fileReplacer(),
+					NestedSessionReceipt.write(json, Yielding.fileReplacer(),
 						copiedChild.directory().resolve("artifacts/receipt.json"),
 						copiedChild, response.resolve("transcript.jsonl"),
 						List.of(copiedRootTranscript, copiedChildTranscript));
@@ -292,7 +292,7 @@ public final class SessionRequestForwarderTest
 			Path receiptPath = retained.resolve("artifacts/receipt.json");
 			String externalTranscript = Files.readString(finalResponse[0].resolve("transcript.jsonl"));
 			Files.delete(finalResponse[0].resolve("transcript.jsonl"));
-			HarnessEvaluationResult receipt = HarnessRunReceipt.read(json, receiptPath, retained.resolve("project"));
+			HarnessEvaluationResult receipt = NestedSessionReceipt.read(json, receiptPath, retained.resolve("project"));
 			requireThat(Files.isRegularFile(receipt.retainedProject().resolve("marker")), "retainedProjectMarker").
 				isTrue();
 			requireThat(Files.readString(receipt.retainedProject().resolve("marker")), "retainedProject").
@@ -349,13 +349,13 @@ public final class SessionRequestForwarderTest
 				}
 				else
 					throw new IOException("The response was published, but the forwarder kept waiting");
-				HarnessRunManager slot = new HarnessRunManager(jvm.fileLocks(), root.resolve("parent/slot"),
+				NestedSessionManager slot = new NestedSessionManager(jvm.fileLocks(), root.resolve("parent/slot"),
 					Clock.systemUTC(), Yielding.fileReplacer());
-				HarnessRun child = slot.create("harnessa");
+				NestedSession child = slot.create("harnessa");
 				slot.initialize(child, artifact, requestProject, "fixture", List.of("fixture"));
 				slot.markCompleted(child);
 				Path kept = response.resolve("run");
-				requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+				requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
 				Files.writeString(response.resolve("transcript.jsonl"), "{\"type\":\"completed\"}\n");
 				json.writeValue(response.resolve("response.json").toFile(), json.createObjectNode().
 					put("format_version", 1).put("id", response.getFileName().toString()).put("harness", "harnessa").
@@ -409,13 +409,13 @@ public final class SessionRequestForwarderTest
 				if (response[0] != null)
 					throw new AssertionError("The response was published, but the forwarder kept waiting");
 				response[0] = Files.createDirectories(fixture.responseDirectory());
-				HarnessRunManager slot = new HarnessRunManager(jvm.fileLocks(), fixture.root.resolve("slot"),
+				NestedSessionManager slot = new NestedSessionManager(jvm.fileLocks(), fixture.root.resolve("slot"),
 					Clock.systemUTC(), Yielding.fileReplacer());
-				HarnessRun child = slot.create("harnessa");
+				NestedSession child = slot.create("harnessa");
 				slot.initialize(child, artifact, fixture.project, "fixture", List.of("fixture"));
 				slot.markCompleted(child);
 				Path kept = response[0].resolve("run");
-				requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+				requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
 				Files.writeString(response[0].resolve("transcript.jsonl"), Fixture.TRANSCRIPT);
 				json.writeValue(response[0].resolve("response.json").toFile(), json.createObjectNode().
 					put("format_version", 1).put("id", response[0].getFileName().toString()).

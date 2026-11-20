@@ -7,16 +7,16 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.optimizer.inventory.Authority;
-import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileEntry;
+import com.holdmyspot.cat.common.optimizer.inventory.FileEntry.SymbolicLink;
 import com.holdmyspot.cat.common.optimizer.inventory.FileInventory;
 import com.holdmyspot.cat.common.optimizer.inventory.InventoryScanner;
 import com.holdmyspot.cat.common.optimizer.inventory.Limit;
+import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport.Entry;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport.Status;
-import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -131,13 +131,13 @@ public final class LinkReportTest
 			Files.writeString(root.resolve("rules.md"), "rules");
 			Path source = Files.createDirectories(root.resolve("source/docs"));
 			Files.createSymbolicLink(source.resolve("rules.md"), Path.of("../../rules.md"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(source.getParent(), run);
 			Path project = run.directory().toRealPath().resolve("project");
 			Path copy = project.resolve("docs/rules.md").toRealPath();
-			requireThat(copy.getParent(), "copyFolder").isEqualTo(HarnessRunManager.linkTargets(run.directory()).
+			requireThat(copy.getParent(), "copyFolder").isEqualTo(NestedSessionManager.linkTargets(run.directory()).
 				toRealPath());
 
 			FileInventory inventory = InventoryScanner.scan(project, Set.of(copy));

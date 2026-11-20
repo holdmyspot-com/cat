@@ -9,17 +9,15 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.test.ExitedProcess;
 import com.holdmyspot.cat.common.git.Git;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRegistrar;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
@@ -27,6 +25,7 @@ import com.holdmyspot.cat.common.runner.WorktreeRequest;
 import com.holdmyspot.cat.common.runner.WorktreeRequestClient;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.launcher.ProcessIdentity;
+import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.test.FakeProcessTable;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
@@ -35,6 +34,7 @@ import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.test.ExitedProcess;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -327,7 +327,7 @@ public final class RequestServerTest
 			String other = "6a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d";
 			String harnessSession = "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90";
 			Path slot = fixture.project.resolve(".cat/sessions").resolve(other).resolve("slots").resolve("d1");
-			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), slot, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), slot, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
 			manager.recordHarnessSession(manager.create("claude"), harnessSession);
 			fixture.child = _ ->
@@ -479,7 +479,7 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path folder = fixture.root.resolve("conversation");
 			Path toChild = folder.resolve("to-child.jsonl");
@@ -551,7 +551,7 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
@@ -585,15 +585,15 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
-			ServedRun first;
+			ServedNestedSession first;
 			try (Fixture.Running server = fixture.start())
 			{
 				first = serveUntilSlotReuse(fixture, server, runRoot, served).earlier();
 			}
-			ServedRun second = served.getLast();
+			ServedNestedSession second = served.getLast();
 			requireThat(second.runRoot(), "runRoot").isEqualTo(first.runRoot());
 			requireThat(second.run().directory(), "directory").isEqualTo(first.run().directory());
 			requireThat(second.run().directory().resolve("home"), "home").
@@ -616,7 +616,7 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
@@ -639,7 +639,7 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
@@ -667,7 +667,7 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			try (Fixture.Running server = fixture.start())
 			{
@@ -696,11 +696,11 @@ public final class RequestServerTest
 		try (Fixture fixture = new Fixture())
 		{
 			Path slot = Files.createDirectories(fixture.sessionDirectory().resolve("slots/d1"));
-			HarnessRunManager earlier = new HarnessRunManager(new FileLocks(), slot, Clock.systemUTC(),
+			NestedSessionManager earlier = new NestedSessionManager(new FileLocks(), slot, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
-			HarnessRun leftover = earlier.create("claude");
+			NestedSession leftover = earlier.create("claude");
 			earlier.markHarnessStarting(leftover);
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
@@ -729,13 +729,13 @@ public final class RequestServerTest
 	{
 		try (Fixture fixture = new Fixture())
 		{
-			List<ServedRun> served = new CopyOnWriteArrayList<>();
+			List<ServedNestedSession> served = new CopyOnWriteArrayList<>();
 			fixture.child = slotChild(fixture, served);
 			Path runRoot = fixture.root.resolve("optimizer-runs");
 			try (Fixture.Running server = fixture.start())
 			{
 				SlotReuse reuse = serveUntilSlotReuse(fixture, server, runRoot, served);
-				ServedRun first = reuse.earlier();
+				ServedNestedSession first = reuse.earlier();
 				String firstId = reuse.earlierId();
 				String secondId = reuse.currentId();
 				requireThat(secondId, "secondRunId").isNotEqualTo(firstId);
@@ -760,7 +760,7 @@ public final class RequestServerTest
 	 * @throws IOException if a session does not complete
 	 */
 	private static SlotReuse serveUntilSlotReuse(Fixture fixture, Fixture.Running server, Path runRoot,
-		List<ServedRun> served) throws IOException
+		List<ServedNestedSession> served) throws IOException
 	{
 		// A response can arrive before cleanup releases its slot. One more session than the fixed pool's size
 		// must reuse a slot, without requiring the immediately preceding session's cleanup to have finished.
@@ -768,10 +768,10 @@ public final class RequestServerTest
 		for (int request = 0; request <= HarnessCapacity.MAXIMUM_CONCURRENCY; ++request)
 		{
 			retainedIds.add(serve(fixture, server, runRoot));
-			ServedRun current = served.getLast();
+			ServedNestedSession current = served.getLast();
 			for (int previous = 0; previous < served.size() - 1; ++previous)
 			{
-				ServedRun earlier = served.get(previous);
+				ServedNestedSession earlier = served.get(previous);
 				if (earlier.runRoot().equals(current.runRoot()))
 					return new SlotReuse(earlier, retainedIds.get(previous), retainedIds.getLast());
 			}
@@ -836,7 +836,7 @@ public final class RequestServerTest
 	 * @param served  receives what each session finds in its slot and builds there
 	 * @return the double
 	 */
-	private static Child slotChild(Fixture fixture, List<ServedRun> served)
+	private static Child slotChild(Fixture fixture, List<ServedNestedSession> served)
 	{
 		FileLocks fileLocks = new FileLocks();
 		return arguments ->
@@ -849,12 +849,12 @@ public final class RequestServerTest
 				entries = paths.map(path -> path.getFileName().toString()).filter(name -> !name.startsWith(".")).
 					toList();
 			}
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, runRoot, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, runRoot, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId(option(arguments, "--slot-id"));
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			String sessionId = UUID.randomUUID().toString();
 			manager.recordHarnessSession(run, sessionId);
-			served.add(new ServedRun(runRoot, run, entries));
+			served.add(new ServedNestedSession(runRoot, run, entries));
 			Files.writeString(run.directory().resolve("result.txt"), String.valueOf(served.size()));
 			Files.writeString(run.directory().resolve("left-behind"), "left behind");
 			Path output = Path.of(option(arguments, "--output"));
@@ -870,7 +870,7 @@ public final class RequestServerTest
 						Files.writeString(output, fixture.json.createObjectNode().put("type", "completed") + "\n",
 							StandardOpenOption.APPEND);
 						manager.markCompleted(run);
-						HarnessRunReceipt.write(fixture.json, Yielding.fileReplacer(),
+						NestedSessionReceipt.write(fixture.json, Yielding.fileReplacer(),
 							Path.of(option(arguments, "--receipt")), run, output, List.of());
 						process.get().exit();
 					}
@@ -891,7 +891,7 @@ public final class RequestServerTest
 	 * @param run            the run that it built
 	 * @param entriesAtStart the names of the entries of the results folder when the session started
 	 */
-	private record ServedRun(Path runRoot, HarnessRun run, List<String> entriesAtStart)
+	private record ServedNestedSession(Path runRoot, NestedSession run, List<String> entriesAtStart)
 	{
 	}
 
@@ -902,7 +902,7 @@ public final class RequestServerTest
 	 * @param earlierId identifier of its retained copy
 	 * @param currentId identifier of the latest retained copy
 	 */
-	private record SlotReuse(ServedRun earlier, String earlierId, String currentId)
+	private record SlotReuse(ServedNestedSession earlier, String earlierId, String currentId)
 	{
 	}
 

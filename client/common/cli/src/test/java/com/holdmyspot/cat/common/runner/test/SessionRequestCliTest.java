@@ -1,49 +1,49 @@
 package com.holdmyspot.cat.common.runner.test;
 
-import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
-import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
+import com.holdmyspot.cat.common.fakes.test.ManualClock;
+import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.RequestArchive;
 import com.holdmyspot.cat.common.runner.RequestLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestCli;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringWriter;
-import java.io.InputStream;
+import java.net.StandardProtocolFamily;
+import java.net.UnixDomainSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
-import java.net.StandardProtocolFamily;
-import java.net.UnixDomainSocketAddress;
-import java.nio.channels.FileChannel;
-import java.nio.channels.ServerSocketChannel;
-import java.nio.ByteBuffer;
-import java.nio.file.StandardOpenOption;
-import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
-import org.testng.annotations.Test;
-import org.testng.annotations.DataProvider;
-import java.nio.charset.StandardCharsets;
-import java.util.stream.Stream;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
+import java.util.stream.Stream;
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry;
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
+import org.testng.annotations.DataProvider;
+import org.testng.annotations.Test;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
@@ -374,12 +374,12 @@ public final class SessionRequestCliTest
 
 			// The runner copies the extracted project into the run, whose project links to read-only copies of the
 			// targets beside it, which the runner checks for changes
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(copy, run);
 			Path runProject = run.directory().resolve("project");
-			Path runLinkTargets = HarnessRunManager.linkTargets(run.directory()).toRealPath();
+			Path runLinkTargets = NestedSessionManager.linkTargets(run.directory()).toRealPath();
 			for (String name : List.of("notes.md", "tree"))
 			{
 				requireThat(Files.isSymbolicLink(runProject.resolve(name)), name + "InRun").isTrue();
@@ -482,9 +482,9 @@ public final class SessionRequestCliTest
 				RequestArchive.unpack(files.findFirst().orElseThrow(), inputs, RequestLimits.IN_RUN);
 			}
 			Path copy = inputs.resolve("project");
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.copyProject(copy, run);
 			Path runProject = run.directory().resolve("project");
 			for (String name : modes.keySet())

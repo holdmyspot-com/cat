@@ -219,7 +219,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @return the directory
 	 * @throws NullPointerException if {@code run} is null
 	 */
-	public static Path requestsDirectory(HarnessRun run)
+	public static Path requestsDirectory(NestedSession run)
 	{
 		requireThat(run, "run").isNotNull();
 		return run.directory().resolve("requests");
@@ -232,7 +232,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @return the directory
 	 * @throws NullPointerException if {@code run} is null
 	 */
-	public static Path responsesDirectory(HarnessRun run)
+	public static Path responsesDirectory(NestedSession run)
 	{
 		requireThat(run, "run").isNotNull();
 		return run.directory().resolve("responses");
@@ -246,7 +246,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @return the directory
 	 * @throws NullPointerException if {@code run} is null
 	 */
-	public static Path requestedRunsDirectory(HarnessRun run)
+	public static Path requestedRunsDirectory(NestedSession run)
 	{
 		requireThat(run, "run").isNotNull();
 		return run.directory().resolve(REQUESTED_RUNS);
@@ -326,7 +326,7 @@ public record SessionRequestAccess(Path requests, Path responses, Path requested
 	 * @throws IllegalArgumentException if {@code sessionRequests} is negative
 	 * @throws IOException              if a directory cannot be created
 	 */
-	public static Optional<SessionRequestAccess> allowing(HarnessRun run, Path artifact, int sessionRequests,
+	public static Optional<SessionRequestAccess> allowing(NestedSession run, Path artifact, int sessionRequests,
 		Platform platform, Shell shell) throws IOException
 	{
 		requireThat(run, "run").isNotNull();

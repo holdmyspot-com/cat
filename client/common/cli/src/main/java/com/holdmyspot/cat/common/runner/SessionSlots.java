@@ -436,9 +436,9 @@ public final class SessionSlots
 			Slot slot = slot(name.group("part").equals(HELD_OUT), Integer.parseInt(name.group("number")));
 			try
 			{
-				for (RecordedRun record : manifests(slot.root()))
+				for (RecordedNestedSession record : manifests(slot.root()))
 				{
-					HarnessRunManager.Manifest manifest = HarnessRunManager.readManifest(record.manifest());
+					NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
 					if (isRetained(manifest) && sessionId.equals(manifest.harnessSessionId()))
 						return Optional.of(new Retained(slot, manifest.harness()));
 				}
@@ -470,9 +470,9 @@ public final class SessionSlots
 		requireThat(slot, "slot").isNotNull();
 		try
 		{
-			for (RecordedRun record : manifests(slot.root()))
+			for (RecordedNestedSession record : manifests(slot.root()))
 			{
-				if (isRetained(HarnessRunManager.readManifest(record.manifest())))
+				if (isRetained(NestedSessionManager.readManifest(record.manifest())))
 					return true;
 			}
 		}
@@ -489,7 +489,7 @@ public final class SessionSlots
 	 * @param manifest the run's manifest
 	 * @return {@code true} if the run can continue
 	 */
-	private static boolean isRetained(HarnessRunManager.Manifest manifest)
+	private static boolean isRetained(NestedSessionManager.Manifest manifest)
 	{
 		return manifest.harnessSessionId() != null && manifest.state().equals("running");
 	}
@@ -503,7 +503,7 @@ public final class SessionSlots
 	 * @throws IOException          if a run's manifest cannot be read or does not match its run
 	 * @throws InterruptedException if the thread is interrupted while it waits
 	 */
-	private boolean stopRecordedProcesses(List<RecordedRun> records, long millis)
+	private boolean stopRecordedProcesses(List<RecordedNestedSession> records, long millis)
 		throws IOException, InterruptedException
 	{
 		long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(millis);
@@ -573,11 +573,11 @@ public final class SessionSlots
 	 */
 	private boolean empty(Slot slot) throws IOException
 	{
-		List<RecordedRun> records = manifests(slot.root());
+		List<RecordedNestedSession> records = manifests(slot.root());
 		if (!stopRecordedProcesses(records))
 			return false;
-		for (RecordedRun record : records)
-			HarnessRunManager.deleteRunDirectory(record.manifest().getParent());
+		for (RecordedNestedSession record : records)
+			NestedSessionManager.deleteRunDirectory(record.manifest().getParent());
 		TemporaryDirectories.deleteRecursively(slot.root());
 		return true;
 	}
@@ -589,25 +589,25 @@ public final class SessionSlots
 	 * @return {@code true} if no recorded process remains alive
 	 * @throws IOException if a run's manifest cannot be read or does not match its run
 	 */
-	private boolean stopRecordedProcesses(List<RecordedRun> records) throws IOException
+	private boolean stopRecordedProcesses(List<RecordedNestedSession> records) throws IOException
 	{
-		List<ValidatedRun> validated = new ArrayList<>();
-		for (RecordedRun record : records)
+		List<ValidatedNestedSession> validated = new ArrayList<>();
+		for (RecordedNestedSession record : records)
 		{
-			HarnessRunManager.Manifest manifest = HarnessRunManager.readManifest(record.manifest());
+			NestedSessionManager.Manifest manifest = NestedSessionManager.readManifest(record.manifest());
 			if (!manifest.harness().equals(record.harness()) || !manifest.id().equals(record.runId()))
 				throw new IOException("Run manifest does not match its slot path: " + record.manifest());
-			if (manifest.harnessProcessState() == HarnessRunManager.HarnessProcessState.STARTING)
+			if (manifest.harnessProcessState() == NestedSessionManager.HarnessProcessState.STARTING)
 				throw new IOException("Harness launch state is unknown; refusing to empty slot: " + record.manifest());
 			boolean currentOwner = manifest.ownerPid() == ProcessHandle.current().pid();
 			boolean ownerAlive = currentOwner || liveness.isAlive(manifest.ownerPid(), manifest.ownerStart());
 			boolean childAlive = false;
-			if (manifest.harnessProcessState() == HarnessRunManager.HarnessProcessState.RECORDED)
+			if (manifest.harnessProcessState() == NestedSessionManager.HarnessProcessState.RECORDED)
 				childAlive = liveness.isAlive(manifest.harnessPid(), manifest.harnessStart());
-			validated.add(new ValidatedRun(manifest, currentOwner, ownerAlive, childAlive));
+			validated.add(new ValidatedNestedSession(manifest, currentOwner, ownerAlive, childAlive));
 		}
 		boolean ended = true;
-		for (ValidatedRun run : validated)
+		for (ValidatedNestedSession run : validated)
 		{
 			if (run.ownerAlive() && !run.currentOwner())
 			{
@@ -637,9 +637,9 @@ public final class SessionSlots
 	 * @return the manifests
 	 * @throws IOException if the slot's directories cannot be read, or a run's manifest is not a regular file
 	 */
-	private static List<RecordedRun> manifests(Path root) throws IOException
+	private static List<RecordedNestedSession> manifests(Path root) throws IOException
 	{
-		List<RecordedRun> manifests = new ArrayList<>();
+		List<RecordedNestedSession> manifests = new ArrayList<>();
 		if (!Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS))
 			return manifests;
 		try (Stream<Path> harnesses = Files.list(root))
@@ -661,7 +661,7 @@ public final class SessionSlots
 							continue;
 						if (!Files.isRegularFile(manifest, LinkOption.NOFOLLOW_LINKS))
 							throw new IOException("Slot run manifest is not a regular file: " + manifest);
-						manifests.add(new RecordedRun(harness.getFileName().toString(),
+						manifests.add(new RecordedNestedSession(harness.getFileName().toString(),
 							run.getFileName().toString(), manifest));
 					}
 				}
@@ -687,7 +687,7 @@ public final class SessionSlots
 	 * @param runId the generated run identifier
 	 * @param manifest the expected manifest path
 	 */
-	private record RecordedRun(String harness, String runId, Path manifest)
+	private record RecordedNestedSession(String harness, String runId, Path manifest)
 	{
 	}
 
@@ -699,7 +699,7 @@ public final class SessionSlots
 	 * @param ownerAlive whether the owner is still live
 	 * @param childAlive whether the recorded harness process is still live
 	 */
-	private record ValidatedRun(HarnessRunManager.Manifest manifest, boolean currentOwner,
+	private record ValidatedNestedSession(NestedSessionManager.Manifest manifest, boolean currentOwner,
 		boolean ownerAlive, boolean childAlive)
 	{
 	}

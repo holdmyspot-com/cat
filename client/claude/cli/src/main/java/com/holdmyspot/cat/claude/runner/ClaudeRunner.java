@@ -16,33 +16,33 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
+import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCommand;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCache;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.HarnessEventListener;
+import com.holdmyspot.cat.common.runner.HarnessProcess;
+import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.HarnessProcessStarter;
 import com.holdmyspot.cat.common.runner.HarnessProcessTermination;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunLock;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessProjectRepository;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
+import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.AbstractHarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionLock;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.PluginManifest;
 import com.holdmyspot.cat.common.runner.SessionCommandLimits;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SetupCommands;
-import com.holdmyspot.cat.common.runner.UserRuleTree;
-import com.holdmyspot.cat.common.runner.HarnessEventListener;
-import com.holdmyspot.cat.common.runner.HarnessProcess;
-import com.holdmyspot.cat.common.runner.HarnessProcessResult;
 import com.holdmyspot.cat.common.runner.TurnMode;
+import com.holdmyspot.cat.common.runner.UserRuleTree;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -179,8 +179,8 @@ public final class ClaudeRunner
 	 * @throws IOException if startup fails
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	HarnessRunSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
-		HarnessRunManager manager, String executable, Map<String, String> environment, String model, String effort,
+	LiveNestedSession start(Path artifact, Path project, Path workspace, List<Path> trialPlugins,
+		NestedSessionManager manager, String executable, Map<String, String> environment, String model, String effort,
 		ClaudeAgentDefinition agent, boolean installCat, List<Path> readOnlyEvidence,
 		List<Path> deniedReads, String instructionFilesMode, boolean sessionTranscripts, int sessionRequests,
 		ChildPolicy bound, Consumer<ChildPolicy> policyListener, String gitName, String gitEmail,
@@ -201,12 +201,12 @@ public final class ClaudeRunner
 			throw new IOException("A direct CAT agent requires --install-cat");
 		Path artifactRoot = HarnessArtifact.validate(artifact, MANIFEST);
 		boolean resumes = resumedSession != null;
-		HarnessRun run;
+		NestedSession run;
 		if (resumes)
 			run = manager.resume(HARNESS_ID, resumedSession);
 		else
 			run = manager.create(HARNESS_ID);
-		HarnessRunLock lock = null;
+		NestedSessionLock lock = null;
 		AbstractHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting);
 		ExecutableFiles executables = scope.executableFiles();
 		try
@@ -320,11 +320,11 @@ public final class ClaudeRunner
 				identityRecorded = true;
 				if (watch == null)
 				{
-					HarnessRunSession session = new HarnessRunSession(run, process, scope, lock, catPlugin);
+					LiveNestedSession session = new LiveNestedSession(run, process, scope, lock, catPlugin);
 					child.release();
 					return session;
 				}
-				HarnessRunSession session = new HarnessRunSession(run, watch.guard(process), scope, lock, catPlugin);
+				LiveNestedSession session = new LiveNestedSession(run, watch.guard(process), scope, lock, catPlugin);
 				child.release();
 				return session;
 			}
@@ -394,8 +394,8 @@ public final class ClaudeRunner
 	 * @param primary the launch failure
 	 */
 	@SuppressWarnings("PMD.CloseResource")
-	private static void cleanupLaunchFailure(ProcessOwnership child, ClaudeProcess wrapper, HarnessRunManager manager,
-		HarnessRun run, boolean identityRecorded, Throwable primary)
+	private static void cleanupLaunchFailure(ProcessOwnership child, ClaudeProcess wrapper, NestedSessionManager manager,
+		NestedSession run, boolean identityRecorded, Throwable primary)
 	{
 		Process rawProcess = child.processOrNull();
 		if (rawProcess != null)
@@ -651,7 +651,7 @@ public final class ClaudeRunner
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IOException          if the results folder or a denied directory cannot be listed
 	 */
-	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment) throws IOException
 	{
 		return sessionDeniedReads(manager, run, readOnlyEvidence, deniedReads, environment, null);
@@ -659,8 +659,8 @@ public final class ClaudeRunner
 
 	/**
 	 * Returns the files and directories that a session of a run must not read, as
-	 * {@link #sessionDeniedReads(HarnessRunManager, HarnessRun, List, List, Map)} does, except that the run's requests
-	 * and responses directories stay readable when the session may request sessions.
+	 * {@link #sessionDeniedReads(NestedSessionManager, NestedSession, List, List, Map)} does, except that the run's
+	 * requests and responses directories stay readable when the session may request sessions.
 	 *
 	 * @param manager          the run manager
 	 * @param run              the session's run
@@ -672,7 +672,7 @@ public final class ClaudeRunner
 	 * @throws NullPointerException if any of the arguments other than {@code requestAccess} are null
 	 * @throws IOException          if the results folder or a denied directory cannot be listed
 	 */
-	public static List<Path> sessionDeniedReads(HarnessRunManager manager, HarnessRun run,
+	public static List<Path> sessionDeniedReads(NestedSessionManager manager, NestedSession run,
 		List<Path> readOnlyEvidence, List<Path> deniedReads, Map<String, String> environment,
 		SessionRequestAccess requestAccess) throws IOException
 	{
@@ -684,7 +684,7 @@ public final class ClaudeRunner
 		Path home = run.directory().resolve("home");
 		List<Path> accessible = new ArrayList<>(readOnlyEvidence);
 		accessible.add(run.directory().resolve("project"));
-		accessible.add(HarnessRunManager.linkTargets(run.directory()));
+		accessible.add(NestedSessionManager.linkTargets(run.directory()));
 		accessible.add(home);
 		accessible.add(run.directory().resolve("claude"));
 		if (requestAccess != null)
@@ -697,8 +697,8 @@ public final class ClaudeRunner
 		{
 			Path directory = denied.toAbsolutePath().normalize();
 			// Denying a directory that holds the session's own files would deny those files too
-			if (HarnessRunManager.containsAny(directory, accessible))
-				result.addAll(HarnessRunManager.deniedReads(directory, accessible));
+			if (NestedSessionManager.containsAny(directory, accessible))
+				result.addAll(NestedSessionManager.deniedReads(directory, accessible));
 			else
 				result.add(denied);
 		}
@@ -726,7 +726,7 @@ public final class ClaudeRunner
 	 * @return the directory containing spilled hook context
 	 * @throws IOException if the directory or its narrowly scoped Claude path alias cannot be created
 	 */
-	public static Path createHookResultsDirectory(Path isolatedHome, HarnessRun run) throws IOException
+	public static Path createHookResultsDirectory(Path isolatedHome, NestedSession run) throws IOException
 	{
 		assert isolatedHome != null;
 		assert run != null;
@@ -924,7 +924,7 @@ public final class ClaudeRunner
 	 * @param lock the acquired lock
 	 * @return an exception representing lock closure failure, or {@code null}
 	 */
-	private static Exception close(HarnessRunLock lock)
+	private static Exception close(NestedSessionLock lock)
 	{
 		assert lock != null;
 		try

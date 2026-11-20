@@ -6,8 +6,8 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
@@ -35,9 +35,9 @@ import java.util.Set;
 import java.util.TreeSet;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
-import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Supplies the allow-listed Claude variables that a nested Claude process inherits, its connection variables and
@@ -508,7 +508,7 @@ public final class ClaudeConnectionSettings
 		}
 		// The project's links to targets outside it lead to the copies in the run's link-targets directory, which the
 		// file tools read through the links; no rule or sandbox path lets the session write there
-		grants.add("Read(" + rulePattern(HarnessRunManager.linkTargets(runFolder)) + "/**)");
+		grants.add("Read(" + rulePattern(NestedSessionManager.linkTargets(runFolder)) + "/**)");
 		// A session without a sandbox has no command to run and requests no session
 		if (sandboxed && requestAccess != null)
 		{
@@ -1289,7 +1289,7 @@ public final class ClaudeConnectionSettings
 			if (inside.isEmpty())
 				rulePaths.add(deniedRead);
 			else
-				rulePaths.addAll(HarnessRunManager.deniedReads(deniedRead, inside));
+				rulePaths.addAll(NestedSessionManager.deniedReads(deniedRead, inside));
 		}
 		ArrayNode permissionDenials = array(permissions(settings), "deny");
 		for (Path deniedRead : rulePaths)

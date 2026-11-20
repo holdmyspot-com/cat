@@ -22,27 +22,27 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.runner.Conversation;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessSessionTranscripts;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.TurnMode;
 import com.holdmyspot.cat.common.runner.fakes.test.ManualTicker;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
@@ -88,10 +88,10 @@ public final class HarnessRunnerBridgeTest
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRun result = HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
+			NestedSession result = HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process,
 				new TestHarnessRunnerScope()), input, output);
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -119,10 +119,10 @@ public final class HarnessRunnerBridgeTest
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"task\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(output.toString(), "output").contains(
@@ -149,10 +149,10 @@ public final class HarnessRunnerBridgeTest
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(
 				scope.temporaryDirectory(), "cat-run-"));
-			HarnessRun run = new HarnessRun("harness", "run-1", directory);
+			NestedSession run = new NestedSession("harness", "run-1", directory);
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, scope), input,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, scope), input,
 				output);
 
 			JsonMapper json = JsonMapper.builder().build();
@@ -180,10 +180,10 @@ public final class HarnessRunnerBridgeTest
 			StringReader input = new StringReader("{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			NestedSession run = manager.create("harness");
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				input, new StringWriter());
 
 			requireThat(Files.exists(run.directory()), "runDirectory").isTrue();
@@ -205,10 +205,10 @@ public final class HarnessRunnerBridgeTest
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 				"{\"type\":\"complete\"}\n"))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			Path transcript = cleanup.add(Files.createTempFile("cat-bridge-", ".jsonl"));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), input,
 				transcript);
 
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
@@ -232,9 +232,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path project = Files.createDirectories(run.directory().resolve("project"));
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
@@ -246,20 +246,20 @@ public final class HarnessRunnerBridgeTest
 			StringWriter output = new StringWriter();
 			JsonMapper json = JsonMapper.builder().build();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, json, Yielding.fileReplacer(), input, output);
 
 			requireThat(output.toString(), "output").isEmpty();
 			requireThat(Files.readString(transcript), "transcript").contains("\"type\":\"started\"").
 				contains("\"type\":\"completed\"");
-			requireThat(HarnessRunReceipt.read(json, receipt, project).retainedProject(), "retainedProject").
+			requireThat(NestedSessionReceipt.read(json, receipt, project).retainedProject(), "retainedProject").
 				isEqualTo(project);
-			requireThat(HarnessRunReceipt.read(json, receipt, project).rawResult(), "rawResult").
+			requireThat(NestedSessionReceipt.read(json, receipt, project).rawResult(), "rawResult").
 				isEqualTo(run.directory().resolve("artifacts/bridge-transcript.jsonl"));
 			requireThat(Files.readString(run.directory().resolve("artifacts/bridge-transcript.jsonl")), "retainedOutput").
 				isEqualTo(Files.readString(transcript));
 			Files.delete(transcript);
-			requireThat(HarnessRunReceipt.read(json, receipt, project).rawResult(), "relocatedRawResult").
+			requireThat(NestedSessionReceipt.read(json, receipt, project).rawResult(), "relocatedRawResult").
 				isEqualTo(run.directory().resolve("artifacts/bridge-transcript.jsonl"));
 		}
 	}
@@ -281,9 +281,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path project = Files.createDirectories(run.directory().resolve("project"));
 			Files.writeString(project.resolve("first.txt"), "first");
 			manager.snapshotProject(run);
@@ -339,7 +339,7 @@ public final class HarnessRunnerBridgeTest
 				}
 			})
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()),
 					manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 			}
 
@@ -361,9 +361,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			manager.snapshotProject(run);
 			Path turnCopy = root.resolve("turn-copy");
@@ -419,7 +419,7 @@ public final class HarnessRunnerBridgeTest
 				HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 					"effort-a", null, null, false, false, 1, List.of(), List.of(), null, List.of(), 0, null, 0,
 					null, null, null, false, null, null, null, turnCopy, false, null, null);
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 					options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 			}
 
@@ -461,7 +461,7 @@ public final class HarnessRunnerBridgeTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			LinkedRun fixture = new LinkedRun(cleanup);
+			LinkedNestedSession fixture = new LinkedNestedSession(cleanup);
 			String named = expected.replace("<notes>", fixture.copyName("notes.md")).
 				replace("<tree>", fixture.copyName("tree"));
 			Turn turn = Turn.replies("done").withCheckpoint(printed ->
@@ -473,7 +473,7 @@ public final class HarnessRunnerBridgeTest
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run(), process,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.run(), process,
 					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
 					Yielding.fileReplacer(), input, new StringWriter());
 				throw new AssertionError("The run whose session changed a copy completed");
@@ -518,7 +518,7 @@ public final class HarnessRunnerBridgeTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			LinkedRun fixture = new LinkedRun(cleanup);
+			LinkedNestedSession fixture = new LinkedNestedSession(cleanup);
 			String changed = fixture.copyName("notes.md") + " (content changed, made writable)";
 			Turn turn = Turn.exits(143, "partial harness event").withCheckpoint(printed ->
 			{
@@ -529,7 +529,7 @@ public final class HarnessRunnerBridgeTest
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run(), process,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.run(), process,
 					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
 					Yielding.fileReplacer(), input, new StringWriter());
 				throw new AssertionError("The run whose harness exited completed");
@@ -556,7 +556,7 @@ public final class HarnessRunnerBridgeTest
 	{
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
-			LinkedRun fixture = new LinkedRun(cleanup);
+			LinkedNestedSession fixture = new LinkedNestedSession(cleanup);
 			Turn turn = Turn.replies("done").withCheckpoint(printed ->
 			{
 				if (printed == 0)
@@ -569,7 +569,7 @@ public final class HarnessRunnerBridgeTest
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(fixture.run(), process,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(fixture.run(), process,
 					new TestHarnessRunnerScope()), fixture.manager(), fixture.options(), JsonMapper.builder().build(),
 					Yielding.fileReplacer(), input, new StringWriter());
 			}
@@ -634,8 +634,8 @@ public final class HarnessRunnerBridgeTest
 	 * @param options the runner options
 	 * @param receipt the receipt that the options name
 	 */
-	private record LinkedRun(HarnessRunManager manager, HarnessRun run, Path project, HarnessRunnerOptions options,
-		Path receipt)
+	private record LinkedNestedSession(NestedSessionManager manager, NestedSession run, Path project,
+		HarnessRunnerOptions options, Path receipt)
 	{
 		/**
 		 * Creates the run.
@@ -643,7 +643,7 @@ public final class HarnessRunnerBridgeTest
 		 * @param cleanup deletes the run's files
 		 * @throws IOException if fixture I/O fails
 		 */
-		LinkedRun(TemporaryDirectories cleanup) throws IOException
+		LinkedNestedSession(TemporaryDirectories cleanup) throws IOException
 		{
 			this(cleanup.add(Files.createTempDirectory("cat-linked-run-")));
 		}
@@ -654,9 +654,9 @@ public final class HarnessRunnerBridgeTest
 		 * @param root the directory
 		 * @throws IOException if fixture I/O fails
 		 */
-		private LinkedRun(Path root) throws IOException
+		private LinkedNestedSession(Path root) throws IOException
 		{
-			this(new HarnessRunManager(new FileLocks(), root.resolve("runs"), Clock.systemUTC(),
+			this(new NestedSessionManager(new FileLocks(), root.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer()), root);
 		}
 
@@ -667,7 +667,7 @@ public final class HarnessRunnerBridgeTest
 		 * @param root    the directory
 		 * @throws IOException if fixture I/O fails
 		 */
-		private LinkedRun(HarnessRunManager manager, Path root) throws IOException
+		private LinkedNestedSession(NestedSessionManager manager, Path root) throws IOException
 		{
 			this(manager, root, manager.create("harness"));
 		}
@@ -680,7 +680,7 @@ public final class HarnessRunnerBridgeTest
 		 * @param run     the run
 		 * @throws IOException if fixture I/O fails
 		 */
-		private LinkedRun(HarnessRunManager manager, Path root, HarnessRun run) throws IOException
+		private LinkedNestedSession(NestedSessionManager manager, Path root, NestedSession run) throws IOException
 		{
 			this(manager, run, copy(manager, root, run), new HarnessRunnerOptions(root.resolve("artifact"),
 				root.resolve("runs"), root, "model-a", "effort-a", root.resolve("evidence/transcript.jsonl"),
@@ -717,7 +717,7 @@ public final class HarnessRunnerBridgeTest
 		 * @return the run's project
 		 * @throws IOException if fixture I/O fails
 		 */
-		private static Path copy(HarnessRunManager manager, Path root, HarnessRun run) throws IOException
+		private static Path copy(NestedSessionManager manager, Path root, NestedSession run) throws IOException
 		{
 			Path outside = Files.createDirectories(root.resolve("outside/tree"));
 			Files.writeString(root.resolve("outside/notes.md"), "notes");
@@ -750,9 +750,9 @@ public final class HarnessRunnerBridgeTest
 			StringReader standardInput = new StringReader(""))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path input = Files.writeString(evidence.resolve("turns.jsonl"), "{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
@@ -763,7 +763,7 @@ public final class HarnessRunnerBridgeTest
 				null, null, null, false, null, null);
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, output);
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -790,9 +790,9 @@ public final class HarnessRunnerBridgeTest
 			StringReader standardInput = new StringReader(""))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			Path folder = Files.createDirectory(cleanup.add(Files.createTempDirectory("cat-asking-")).
 				resolve("conversation"));
@@ -805,7 +805,7 @@ public final class HarnessRunnerBridgeTest
 				HarnessTemporaryRoot.of(root));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, output);
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -1017,9 +1017,9 @@ public final class HarnessRunnerBridgeTest
 				StringReader input = new StringReader(records))
 			{
 				Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-				HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+				NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 					Yielding.fileReplacer());
-				HarnessRun run = manager.create("harness");
+				NestedSession run = manager.create("harness");
 				Files.createDirectories(run.directory().resolve("project"));
 				List<String> arguments = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
 					"--results", root.toString(), "--model", "model-a", "--effort", "effort-a"));
@@ -1031,7 +1031,7 @@ public final class HarnessRunnerBridgeTest
 
 				if (continues)
 				{
-					HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+					HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()),
 						manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 
 					requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -1042,7 +1042,7 @@ public final class HarnessRunnerBridgeTest
 				{
 					try
 					{
-						HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+						HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()),
 							manager, options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 						throw new AssertionError("The bridge served the turn after the failed turn");
 					}
@@ -1112,9 +1112,9 @@ public final class HarnessRunnerBridgeTest
 			StringReader standardInput = new StringReader(input))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			List<String> arguments = new ArrayList<>(List.of("--artifact", root.resolve("artifact").toString(),
 				"--results", root.toString(), "--model", "model-a", "--effort", "effort-a"));
@@ -1136,7 +1136,7 @@ public final class HarnessRunnerBridgeTest
 			HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "harness",
 				HarnessTemporaryRoot.of(root));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -1162,9 +1162,9 @@ public final class HarnessRunnerBridgeTest
 			StringReader standardInput = new StringReader(""))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			Path folder = Files.createDirectory(cleanup.add(Files.createTempDirectory("cat-asking-")).
 				resolve("conversation"));
@@ -1175,7 +1175,7 @@ public final class HarnessRunnerBridgeTest
 				"--effort", "effort-a", "--conversation", folder.toString()}, "harness",
 				HarnessTemporaryRoot.of(root));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
 
 			requireThat(received, "received").isEqualTo(List.of("first"));
@@ -1211,9 +1211,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			Path nativeFile = run.directory().resolve("home/session-7.jsonl");
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
@@ -1232,7 +1232,7 @@ public final class HarnessRunnerBridgeTest
 				new ArrayList<>(), nativeFile, new HarnessSessionTranscripts(run.directory().resolve("home"),
 				run.sessionTranscripts(), name -> name.endsWith(".jsonl"))))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()),
 					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
 			}
 
@@ -1241,7 +1241,7 @@ public final class HarnessRunnerBridgeTest
 			requireThat(records, "records").size().isEqualTo(1);
 			requireThat(records.getFirst(), "record").contains(nativeFile.toString().replace("\\", "\\\\"));
 			requireThat(Files.exists(run.directory().resolve("home")), "homeExists").isFalse();
-			requireThat(HarnessRunReceipt.read(json, receipt, run.directory().resolve("project")).
+			requireThat(NestedSessionReceipt.read(json, receipt, run.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").
 				isEqualTo(List.of(run.sessionTranscripts().resolve("session-7.jsonl")));
 		}
@@ -1262,9 +1262,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
@@ -1279,7 +1279,7 @@ public final class HarnessRunnerBridgeTest
 				Turn.replies("two")), new ArrayList<>()))
 			{
 				harness.set(process);
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()),
 					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
 			}
 
@@ -1311,9 +1311,9 @@ public final class HarnessRunnerBridgeTest
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", evidence.resolve("transcript.jsonl"), evidence.resolve("receipt.json"), false, false, 1,
@@ -1324,7 +1324,7 @@ public final class HarnessRunnerBridgeTest
 			{
 				manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 				IOException failure = expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
-					() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
+					() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
 					Yielding.fileReplacer(), input, new StringWriter()));
 				requireThat(failure.getMessage(), "failure").contains("without a complete message");
 			}
@@ -1351,9 +1351,9 @@ public final class HarnessRunnerBridgeTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
 			TurnWriteGate gate = new TurnWriteGate(Thread.currentThread());
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				new FileReplacer(Platform.current(), Thread::yield, gate)).withFixedRunId("s-1");
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
 				"effort-a", evidence.resolve("transcript.jsonl"), evidence.resolve("receipt.json"), false, false, 1,
@@ -1367,7 +1367,7 @@ public final class HarnessRunnerBridgeTest
 				manager.recordHarnessSession(run, "5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90");
 				gate.arm();
 				expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
-					() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
+					() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
 					Yielding.fileReplacer(), input, new StringWriter()));
 				requireThat(gate.returned(), "heldAfterReturn").isFalse();
 			}
@@ -1389,9 +1389,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.recordHarnessSession(run, RESUMED_SESSION);
 			manager.writeTurnOutput(run, 1, new HarnessProcessResult(0, "first", ""));
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
@@ -1406,7 +1406,7 @@ public final class HarnessRunnerBridgeTest
 				_ -> harness.get().reportHarnessSession(RESUMED_SESSION))), new ArrayList<>()))
 			{
 				harness.set(process);
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()),
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()),
 					manager, options, json, Yielding.fileReplacer(), input, new StringWriter());
 			}
 
@@ -1434,9 +1434,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root, Clock.systemUTC(),
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedRunId("s-1");
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			manager.recordHarnessSession(run, RESUMED_SESSION);
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			HarnessRunnerOptions options = new HarnessRunnerOptions(root.resolve("artifact"), root, root, "model-a",
@@ -1450,7 +1450,7 @@ public final class HarnessRunnerBridgeTest
 			{
 				harness.set(process);
 				expectThrows(IOException.class, () -> HarnessRunnerBridge.serve(
-					() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
+					() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager, options, json,
 					Yielding.fileReplacer(), input, new StringWriter()));
 			}
 
@@ -1476,9 +1476,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n"))
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			Files.createDirectories(run.directory().resolve("project"));
 			Path evidence = cleanup.add(Files.createTempDirectory("cat-evidence-"));
 			Path transcript = evidence.resolve("transcript.jsonl");
@@ -1489,11 +1489,11 @@ public final class HarnessRunnerBridgeTest
 				null, null, null, false, null, null);
 			JsonMapper json = JsonMapper.builder().build();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, json, Yielding.fileReplacer(), input, new StringWriter());
 
 			requireThat(Files.readString(transcript), "transcript").doesNotContain("session_transcript");
-			requireThat(HarnessRunReceipt.read(json, receipt, run.directory().resolve("project")).
+			requireThat(NestedSessionReceipt.read(json, receipt, run.directory().resolve("project")).
 				sessionTranscripts(), "sessionTranscripts").isEmpty();
 			requireThat(Files.exists(run.sessionTranscripts()), "directoryExists").isFalse();
 		}
@@ -1511,13 +1511,13 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			try (ScriptedProcess process = new ScriptedProcess(List.of(), new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"unknown\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 					input, new StringWriter());
 				throw new AssertionError("Expected the bridge protocol failure");
 			}
@@ -1544,15 +1544,15 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(143, "partial harness event")),
 				new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 					input, new StringWriter());
 				throw new AssertionError("Expected the harness process failure");
 			}
@@ -1603,10 +1603,10 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"complete\"}\n", new CountDownLatch(1), "");
 			Writer output = new SignalingWriter("\"type\":\"turn_failed\"", turnFailed, new CountDownLatch(0)))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			try
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), input,
 					output);
 				throw new AssertionError("Expected the turn's failure");
 			}
@@ -1639,15 +1639,15 @@ public final class HarnessRunnerBridgeTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(fileLocks, root,
+			NestedSessionManager manager = new NestedSessionManager(fileLocks, root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("harness");
+			NestedSession run = manager.create("harness");
 			try (ScriptedProcess process = new ScriptedProcess(List.of(Turn.exits(0, "partial harness event")),
 				new ArrayList<>());
 				StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +
 					"{\"type\":\"complete\"}\n"))
 			{
-				HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+				HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 					input, new StringWriter());
 				throw new AssertionError("Expected the incomplete harness turn to fail");
 			}
@@ -1678,13 +1678,13 @@ public final class HarnessRunnerBridgeTest
 				new ArrayList<>());
 			FailingReader input = new FailingReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", started))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			CompletableFuture<NestedSession> serving = new CompletableFuture<>();
 			Thread.ofPlatform().daemon().name("bridge-under-test").start(() ->
 			{
 				try
 				{
-					serving.complete(HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
+					serving.complete(HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process,
 						new TestHarnessRunnerScope()), input, new StringWriter()));
 				}
 				catch (IOException | RuntimeException e)
@@ -1735,13 +1735,13 @@ public final class HarnessRunnerBridgeTest
 			FailingReader input = FailingReader.ending("{\"type\":\"turn\",\"prompt\":\"first\"}\n",
 				started))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
-			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			CompletableFuture<NestedSession> serving = new CompletableFuture<>();
 			Thread.ofPlatform().daemon().name("bridge-under-test").start(() ->
 			{
 				try
 				{
-					serving.complete(HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
+					serving.complete(HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process,
 						new TestHarnessRunnerScope()), input, new StringWriter()));
 				}
 				catch (IOException | RuntimeException e)
@@ -1791,10 +1791,10 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"steer\",\"prompt\":\"change course\"}\n{\"type\":\"interrupt\"}\n",
 				new CountDownLatch(1), "{\"type\":\"complete\"}\n"))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(received, "received").isEqualTo(List.of("first", "change course"));
@@ -1821,10 +1821,10 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"interrupt\"}\n", new CountDownLatch(1),
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n"))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -1853,16 +1853,16 @@ public final class HarnessRunnerBridgeTest
 			Reader input = new GatedReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n", new CountDownLatch(0),
 				"{\"type\":\"interrupt\"}\n", interruptHandled, "{\"type\":\"complete\"}\n"))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 			StringWriter output = new StringWriter();
-			CompletableFuture<HarnessRun> serving = new CompletableFuture<>();
+			CompletableFuture<NestedSession> serving = new CompletableFuture<>();
 			synchronized (process)
 			{
 				Thread.ofPlatform().daemon().name("bridge-under-test").start(() ->
 				{
 					try
 					{
-						serving.complete(HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process,
+						serving.complete(HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process,
 							new TestHarnessRunnerScope()), input, output));
 					}
 					catch (IOException | RuntimeException e)
@@ -1917,9 +1917,9 @@ public final class HarnessRunnerBridgeTest
 				"{\"type\":\"turn\",\"prompt\":\"second\"}\n{\"type\":\"complete\"}\n");
 			Writer output = new SignalingWriter("\"type\":\"turn_completed\"", firstTurnCompleted, interruptHandled))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), input,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), input,
 				output);
 
 			requireThat(received, "received").isEqualTo(List.of("first", "second"));
@@ -1982,9 +1982,9 @@ public final class HarnessRunnerBridgeTest
 				turnCompleted, "{\"type\":\"complete\"}\n");
 			Writer output = new SignalingWriter("\"type\":\"turn_completed\"", turnCompleted, new CountDownLatch(0)))
 		{
-			HarnessRun run = new HarnessRun("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
+			NestedSession run = new NestedSession("harness", "run-1", cleanup.add(Files.createTempDirectory("cat-run-")));
 
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, scope), null, input, output);
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, scope), null, input, output);
 
 			JsonMapper json = JsonMapper.builder().build();
 			List<String> records = new ArrayList<>();
@@ -2044,14 +2044,14 @@ public final class HarnessRunnerBridgeTest
 		StringReader standardInput) throws IOException
 	{
 		Path root = cleanup.add(Files.createTempDirectory("cat-run-root-"));
-		HarnessRunManager manager = new HarnessRunManager(new FileLocks(), root, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		HarnessRun run = manager.create("harness");
+		NestedSession run = manager.create("harness");
 		Files.createDirectories(run.directory().resolve("project"));
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(new String[]{"--artifact",
 			root.resolve("artifact").toString(), "--results", root.toString(), "--model", "model-a",
 			"--effort", "effort-a", "--conversation", folder.toString()}, "harness", HarnessTemporaryRoot.of(root));
-		HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+		HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 			options, JsonMapper.builder().build(), Yielding.fileReplacer(), standardInput, new StringWriter());
 	}
 

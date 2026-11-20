@@ -4,10 +4,6 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-import tools.jackson.databind.node.ArrayNode;
-import tools.jackson.databind.node.ObjectNode;
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
@@ -17,11 +13,15 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import tools.jackson.databind.node.ArrayNode;
+import tools.jackson.databind.node.ObjectNode;
 
 /**
  * Writes the retained evidence locations that an independent evaluator needs after a successful harness run.
  */
-public final class HarnessRunReceipt
+public final class NestedSessionReceipt
 {
 	/**
 	 * The optional receipt field that lists paths a kept-run copy skipped, relative to the run. An evaluator ignores it.
@@ -49,7 +49,7 @@ public final class HarnessRunReceipt
 	 * @param sessionTranscripts the copies of the harness's native session transcripts
 	 * @throws IOException if retained evidence cannot be verified, copied, or written
 	 */
-	public static void write(JsonMapper json, FileReplacer replacer, Path destination, HarnessRun run, Path rawResult,
+	public static void write(JsonMapper json, FileReplacer replacer, Path destination, NestedSession run, Path rawResult,
 		List<Path> sessionTranscripts) throws IOException
 	{
 		requireThat(json, "json").isNotNull();
@@ -317,7 +317,7 @@ public final class HarnessRunReceipt
 	/**
 	 * Prevents utility-class construction.
 	 */
-	private HarnessRunReceipt()
+	private NestedSessionReceipt()
 	{
 	}
 }

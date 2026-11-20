@@ -17,8 +17,8 @@ import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
 import com.holdmyspot.cat.common.runner.policy.ProcessDescription;
-import com.holdmyspot.cat.common.secrets.HarnessRunManagerAccess;
-import com.holdmyspot.cat.common.secrets.HarnessRunManagerSecrets;
+import com.holdmyspot.cat.common.secrets.NestedSessionManagerAccess;
+import com.holdmyspot.cat.common.secrets.NestedSessionManagerSecrets;
 
 import java.io.IOException;
 import java.nio.file.AccessDeniedException;
@@ -27,9 +27,9 @@ import java.nio.file.DirectoryNotEmptyException;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.NoSuchFileException;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.time.Clock;
 import java.time.Duration;
@@ -45,20 +45,20 @@ import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.UnaryOperator;
-import java.util.stream.Stream;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
  * Creates, records, and deletes the isolated directories used by harness executions.
  */
-public final class HarnessRunManager
+public final class NestedSessionManager
 {
 	static
 	{
-		HarnessRunManagerSecrets.setHarnessRunManagerAccess(new HarnessRunManagerAccess()
+		NestedSessionManagerSecrets.setNestedSessionManagerAccess(new NestedSessionManagerAccess()
 		{
 			@Override
 			public int maximumManifestBytes()
@@ -67,10 +67,10 @@ public final class HarnessRunManager
 			}
 
 			@Override
-			public HarnessRunManager newHarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
-				HarnessProcessLiveness processLiveness)
+			public NestedSessionManager newNestedSessionManager(FileLocks fileLocks, Path root, Clock clock,
+				FileReplacer replacer, HarnessProcessLiveness processLiveness)
 			{
-				return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness);
+				return new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness);
 			}
 		});
 	}
@@ -130,10 +130,10 @@ public final class HarnessRunManager
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 * @throws IOException              if run directories cannot be inspected or deleted
 	 */
-	public static HarnessRunManager openRunRoot(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer)
+	public static NestedSessionManager openRunRoot(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer)
 		throws IOException
 	{
-		HarnessRunManager manager = new HarnessRunManager(fileLocks, root, clock, replacer);
+		NestedSessionManager manager = new NestedSessionManager(fileLocks, root, clock, replacer);
 		manager.deleteStaleRuns(DEFAULT_RETENTION);
 		return manager;
 	}
@@ -162,7 +162,7 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	public HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer)
+	public NestedSessionManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer)
 	{
 		this(fileLocks, root, clock, replacer, new ProcessHandleLiveness());
 	}
@@ -178,7 +178,7 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code root} is relative
 	 */
-	HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
+	NestedSessionManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness)
 	{
 		this(fileLocks, root, clock, replacer, processLiveness, null, null);
@@ -199,7 +199,7 @@ public final class HarnessRunManager
 	 *   null
 	 * @throws IllegalArgumentException if {@code root} is relative, or {@code fixedRunId} is not a run identifier
 	 */
-	private HarnessRunManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
+	private NestedSessionManager(FileLocks fileLocks, Path root, Clock clock, FileReplacer replacer,
 		HarnessProcessLiveness processLiveness, String fixedRunId, List<String> launchArguments)
 	{
 		requireThat(fileLocks, "fileLocks").isNotNull();
@@ -244,25 +244,26 @@ public final class HarnessRunManager
 	 * @throws IllegalArgumentException if {@code runId} is not a run identifier, which is two groups of lowercase
 	 *                                  letters and digits joined by a hyphen
 	 */
-	public HarnessRunManager withFixedRunId(String runId)
+	public NestedSessionManager withFixedRunId(String runId)
 	{
 		requireThat(runId, "runId").isNotNull();
-		return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness, runId, launchArguments);
+		return new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness, runId, launchArguments);
 	}
 
 	/**
 	 * Returns a manager over the same root whose {@link #create(String) created} runs each record, in
-	 * {@value RunLaunch#FILE_NAME} beside their manifest, the launch options that their start fixed, so that a later
-	 * runner can continue a run's harness session as the run started it.
+	 * {@value NestedSessionLaunch#FILE_NAME} beside their manifest, the launch options that their start fixed, so that a
+	 * later runner can continue a run's harness session as the run started it.
 	 *
-	 * @param arguments the fixed options and their values, as {@link RunLaunch#fixedArguments(String[])} returns them
+	 * @param arguments the fixed options and their values, as {@link NestedSessionLaunch#fixedArguments(String[])}
+	 *                  returns them
 	 * @return the manager
 	 * @throws NullPointerException if {@code arguments} is null
 	 */
-	public HarnessRunManager withLaunchArguments(List<String> arguments)
+	public NestedSessionManager withLaunchArguments(List<String> arguments)
 	{
 		requireThat(arguments, "arguments").isNotNull();
-		return new HarnessRunManager(fileLocks, root, clock, replacer, processLiveness, fixedRunId, arguments);
+		return new NestedSessionManager(fileLocks, root, clock, replacer, processLiveness, fixedRunId, arguments);
 	}
 
 	/**
@@ -273,10 +274,10 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if {@code run} is null
 	 * @throws IOException          if the run records no launch, or its record is malformed
 	 */
-	public List<String> launchArguments(HarnessRun run) throws IOException
+	public List<String> launchArguments(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
-		return RunLaunch.read(JsonMapper.builder().build(), run.directory());
+		return NestedSessionLaunch.read(JsonMapper.builder().build(), run.directory());
 	}
 
 	/**
@@ -401,7 +402,7 @@ public final class HarnessRunManager
 	 * @return the created run
 	 * @throws IOException if the directory cannot be created, or a run with the fixed identifier exists already
 	 */
-	public HarnessRun create(String harness) throws IOException
+	public NestedSession create(String harness) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		String id = fixedRunId;
@@ -430,7 +431,7 @@ public final class HarnessRunManager
 		Files.createDirectories(directory.resolve("home"));
 		Files.createDirectories(directory.resolve("artifacts"));
 		Files.createFile(directory.resolve(".lock"));
-		HarnessRun run = new HarnessRun(harness, id, directory);
+		NestedSession run = new NestedSession(harness, id, directory);
 		ProcessHandle owner = ProcessHandle.current();
 		String ownerStart = ownerStart(owner, directory);
 		writeManifest(new Manifest(harness, id, "running", "initializing", HarnessProcessState.ABSENT,
@@ -438,7 +439,7 @@ public final class HarnessRunManager
 			clock.instant(), null, 0,
 			"", "", "", "", null, 0, null, null, ""), directory);
 		if (launchArguments != null)
-			RunLaunch.write(JsonMapper.builder().build(), directory, launchArguments, replacer);
+			NestedSessionLaunch.write(JsonMapper.builder().build(), directory, launchArguments, replacer);
 		return run;
 	}
 
@@ -475,15 +476,15 @@ public final class HarnessRunManager
 	 *                                  harness reported no session, its harness launch state is unknown, or its
 	 *                                  runner or harness process is still alive
 	 */
-	public HarnessRun reopen(String harness, String runId) throws IOException
+	public NestedSession reopen(String harness, String runId) throws IOException
 	{
 		synchronized (this)
 		{
 			requireThat(harness, "harness").isNotBlank();
 			requireThat(runId, "runId").matches(RUN_ID);
 			Path directory = root.resolve(harness).resolve(runId).normalize();
-			HarnessRun run = new HarnessRun(harness, runId, directory);
-			try (HarnessRunLock lock = acquireLock(run))
+			NestedSession run = new NestedSession(harness, runId, directory);
+			try (NestedSessionLock lock = acquireLock(run))
 			{
 				if (!lock.isHeld())
 					throw new IOException("Another process holds the run: " + runId);
@@ -521,12 +522,12 @@ public final class HarnessRunManager
 	 * @throws IllegalStateException    if the manager has no fixed run identifier
 	 * @throws IOException              if the run cannot be reopened, or it records another harness session
 	 */
-	public HarnessRun resume(String harness, String harnessSessionId) throws IOException
+	public NestedSession resume(String harness, String harnessSessionId) throws IOException
 	{
 		requireThat(harnessSessionId, "harnessSessionId").isNotNull();
 		if (fixedRunId == null)
 			throw new IllegalStateException("Only the run of a slot can be resumed");
-		HarnessRun run = new HarnessRun(harness, fixedRunId, root.resolve(harness).resolve(fixedRunId).normalize());
+		NestedSession run = new NestedSession(harness, fixedRunId, root.resolve(harness).resolve(fixedRunId).normalize());
 		if (Files.isRegularFile(run.directory().resolve("session.json")))
 		{
 			String recorded = readManifest(run).harnessSessionId();
@@ -547,7 +548,7 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if {@code run} is null
 	 * @throws IOException          if the manifest cannot be read
 	 */
-	public int turnNumber(HarnessRun run) throws IOException
+	public int turnNumber(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		return readManifest(run).turnNumber();
@@ -564,7 +565,7 @@ public final class HarnessRunManager
 	 * @throws IOException              if the run has ended, it recorded another identifier, or the manifest cannot be
 	 *                                  persisted
 	 */
-	public void recordHarnessSession(HarnessRun run, String harnessSessionId) throws IOException
+	public void recordHarnessSession(NestedSession run, String harnessSessionId) throws IOException
 	{
 		synchronized (this)
 		{
@@ -597,7 +598,7 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if {@code run} is null
 	 * @throws IOException          if the manifest is malformed or does not identify the run
 	 */
-	public Optional<String> harnessSessionId(HarnessRun run) throws IOException
+	public Optional<String> harnessSessionId(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		return Optional.ofNullable(readManifest(run).harnessSessionId());
@@ -632,7 +633,7 @@ public final class HarnessRunManager
 	 * @throws IllegalArgumentException if {@code requestsUsed} is negative
 	 * @throws IOException              if the run has ended, or the manifest cannot be read or persisted
 	 */
-	public void recordRequestsUsed(HarnessRun run, int requestsUsed) throws IOException
+	public void recordRequestsUsed(NestedSession run, int requestsUsed) throws IOException
 	{
 		synchronized (this)
 		{
@@ -658,7 +659,7 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if {@code run} is null
 	 * @throws IOException          if the manifest is malformed or does not identify the run
 	 */
-	public int requestsUsed(HarnessRun run) throws IOException
+	public int requestsUsed(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		return readManifest(run).requestsUsed();
@@ -687,7 +688,7 @@ public final class HarnessRunManager
 	 * @param command the harness command with any secret values redacted
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	public void initialize(HarnessRun run, Path artifact, Path project, String transport, List<String> command)
+	public void initialize(NestedSession run, Path artifact, Path project, String transport, List<String> command)
 		throws IOException
 	{
 		synchronized (this)
@@ -719,7 +720,7 @@ public final class HarnessRunManager
 	 * @param content the output content
 	 * @throws IOException if output cannot be persisted
 	 */
-	public void complete(HarnessRun run, Path output, String content) throws IOException
+	public void complete(NestedSession run, Path output, String content) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(output, "output").isNotNull();
@@ -739,7 +740,7 @@ public final class HarnessRunManager
 	 * @throws IOException if the manifest cannot be persisted, or this process is
 	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running run unended
 	 */
-	public void markCompleted(HarnessRun run) throws IOException
+	public void markCompleted(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		writeManifest(run, "completed", "");
@@ -751,7 +752,7 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	public void markIdle(HarnessRun run) throws IOException
+	public void markIdle(NestedSession run) throws IOException
 	{
 		setPhase(run, "idle");
 	}
@@ -762,7 +763,7 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	public void markWorking(HarnessRun run) throws IOException
+	public void markWorking(NestedSession run) throws IOException
 	{
 		setPhase(run, "working");
 	}
@@ -778,7 +779,7 @@ public final class HarnessRunManager
 	 *   {@link ProcessDescription#START_PATTERN}
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	public void recordHarnessProcess(HarnessRun run, long harnessPid, String harnessStart) throws IOException
+	public void recordHarnessProcess(NestedSession run, long harnessPid, String harnessStart) throws IOException
 	{
 		synchronized (this)
 		{
@@ -807,7 +808,7 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @throws IOException if the run is terminal, already started, or the marker cannot be persisted
 	 */
-	public void markHarnessStarting(HarnessRun run) throws IOException
+	public void markHarnessStarting(NestedSession run) throws IOException
 	{
 		synchronized (this)
 		{
@@ -825,7 +826,7 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @throws IOException if the launch state is not starting or the marker cannot be persisted
 	 */
-	public void recordNoHarnessProcess(HarnessRun run) throws IOException
+	public void recordNoHarnessProcess(NestedSession run) throws IOException
 	{
 		synchronized (this)
 		{
@@ -866,7 +867,7 @@ public final class HarnessRunManager
 	 * @param standardError the captured standard error
 	 * @throws IOException if the owned artifact files cannot be persisted
 	 */
-	public void writeCommandOutput(HarnessRun run, String commandName, String standardOutput, String standardError)
+	public void writeCommandOutput(NestedSession run, String commandName, String standardOutput, String standardError)
 		throws IOException
 	{
 		requireThat(run, "run").isNotNull();
@@ -890,7 +891,7 @@ public final class HarnessRunManager
 	 * @param result the captured harness turn result
 	 * @throws IOException if the owned turn artifacts cannot be persisted
 	 */
-	public void writeTurnOutput(HarnessRun run, int turnNumber, HarnessProcessResult result) throws IOException
+	public void writeTurnOutput(NestedSession run, int turnNumber, HarnessProcessResult result) throws IOException
 	{
 		synchronized (this)
 		{
@@ -924,7 +925,7 @@ public final class HarnessRunManager
 	 * @param event one non-blank harness event line
 	 * @throws IOException if the event cannot be persisted
 	 */
-	public void appendTurnEvent(HarnessRun run, int turnNumber, String event) throws IOException
+	public void appendTurnEvent(NestedSession run, int turnNumber, String event) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(turnNumber, "turnNumber").isPositive();
@@ -942,15 +943,15 @@ public final class HarnessRunManager
 	 * files that the session may not read. A symbolic link whose target stays inside the project stays a link with the
 	 * same target; any other link stays a link too, retargeted to a read-only copy of the file or directory tree that it
 	 * leads to, which lies in a folder of its own in the run's {@link #linkTargets(Path) link-targets} directory beside
-	 * the project and which the run records so that {@link #changedLinkCopies(HarnessRun)} can tell whether its session
-	 * changed the copy.
+	 * the project and which the run records so that {@link #changedLinkCopies(NestedSession)} can tell whether its
+	 * session changed the copy.
 	 *
 	 * @param source the source project directory
 	 * @param run the owned run
 	 * @throws IOException if the source is not a real directory, a symbolic link in it leads to a missing, unreadable or
 	 *                     hidden target, or copying fails
 	 */
-	public void copyProject(Path source, HarnessRun run) throws IOException
+	public void copyProject(Path source, NestedSession run) throws IOException
 	{
 		copyProject(source, run, RequestArchive.NULL_DEVICE);
 	}
@@ -964,7 +965,7 @@ public final class HarnessRunManager
 	 * {@link PortableFiles#setReadOnly(Path)} makes it, so that the run can neither change the target nor change its
 	 * copy. The project's link therefore still leaves the project, as the original does. The run records each copy's
 	 * paths, types, modes and file digests in its own directory, where its session may not write, so that
-	 * {@link #changedLinkCopies(HarnessRun)} can tell whether the session changed a copy anyway.
+	 * {@link #changedLinkCopies(NestedSession)} can tell whether the session changed a copy anyway.
 	 *
 	 * @param source     the source project directory
 	 * @param run        the owned run
@@ -976,7 +977,7 @@ public final class HarnessRunManager
 	 *                              unreadable or hidden target, to a directory that holds the project, or to neither a
 	 *                              file nor a directory, or copying fails
 	 */
-	public void copyProject(Path source, HarnessRun run, Path nullDevice) throws IOException
+	public void copyProject(Path source, NestedSession run, Path nullDevice) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(run, "run").isNotNull();
@@ -1063,7 +1064,7 @@ public final class HarnessRunManager
 	}
 
 	/**
-	 * Compares the read-only copies that {@link #copyProject(Path, HarnessRun, Path)} made of the targets of the
+	 * Compares the read-only copies that {@link #copyProject(Path, NestedSession, Path)} made of the targets of the
 	 * project's links outside it with the record that it kept of them. Once the run's session has ended, a change means
 	 * that the session changed a copy, and the run's result rests on files that differ from the targets. A run whose
 	 * project was never copied has no copies.
@@ -1073,7 +1074,7 @@ public final class HarnessRunManager
 	 * @throws NullPointerException if {@code run} is null
 	 * @throws IOException          if the record is malformed or a copy cannot be read
 	 */
-	public Optional<String> changedLinkCopies(HarnessRun run) throws IOException
+	public Optional<String> changedLinkCopies(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		Path record = run.directory().resolve(LinkCopies.FILE_NAME);
@@ -1084,11 +1085,11 @@ public final class HarnessRunManager
 
 	/**
 	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
-	 * HarnessRun)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused, and
-	 * so is one whose path is or lies below a link to a read-only copy of the target of a link outside the project. A
-	 * symbolic link is copied as a link with the same relative target and is never followed, so that a link of a
-	 * draft directory reaches the project file that it names. A workspace file that the sandbox has replaced with a
-	 * placeholder is left out.
+	 * NestedSession)} copied. Nothing is replaced: a workspace file whose path exists in the project already is refused,
+	 * and so is one whose path is or lies below a link to a read-only copy of the target of a link outside the project. A
+	 * symbolic link is copied as a link with the same relative target and is never followed, so that a link of a draft
+	 * directory reaches the project file that it names. A workspace file that the sandbox has replaced with a placeholder
+	 * is left out.
 	 *
 	 * @param source the directory that holds the workspace files at their paths relative to the project root
 	 * @param run the owned run
@@ -1096,14 +1097,14 @@ public final class HarnessRunManager
 	 *   whose target is absolute or lies outside the project, a workspace file's path exists in the project already or
 	 *   is or lies below a link to a read-only copy of a link's target, or copying fails
 	 */
-	public void copyWorkspace(Path source, HarnessRun run) throws IOException
+	public void copyWorkspace(Path source, NestedSession run) throws IOException
 	{
 		copyWorkspace(source, run, RequestArchive.NULL_DEVICE);
 	}
 
 	/**
 	 * Copies workspace files into the project of an owned run, on top of the files that {@link #copyProject(Path,
-	 * HarnessRun, Path)} copied, as {@link #copyWorkspace(Path, HarnessRun)} does.
+	 * NestedSession, Path)} copied, as {@link #copyWorkspace(Path, NestedSession)} does.
 	 *
 	 * @param source     the directory that holds the workspace files at their paths relative to the project root
 	 * @param run        the owned run
@@ -1116,7 +1117,7 @@ public final class HarnessRunManager
 	 *                              exists in the project already or is or lies below a link to a read-only copy of a
 	 *                              link's target, or copying fails
 	 */
-	public void copyWorkspace(Path source, HarnessRun run, Path nullDevice) throws IOException
+	public void copyWorkspace(Path source, NestedSession run, Path nullDevice) throws IOException
 	{
 		requireThat(source, "source").isNotNull();
 		requireThat(run, "run").isNotNull();
@@ -1298,7 +1299,7 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @throws IOException if copying fails
 	 */
-	public void snapshotProject(HarnessRun run) throws IOException
+	public void snapshotProject(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		Path source = run.directory().resolve("project");
@@ -1331,7 +1332,7 @@ public final class HarnessRunManager
 	 * @throws IOException if the manifest cannot be persisted, or this process is
 	 *   {@link ProcessTreeStop#stopping() stopping}, which leaves a running run unended
 	 */
-	public void fail(HarnessRun run, String diagnostic) throws IOException
+	public void fail(NestedSession run, String diagnostic) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		requireThat(diagnostic, "diagnostic").isNotBlank();
@@ -1344,7 +1345,7 @@ public final class HarnessRunManager
 	 * @param run the owned run
 	 * @throws IOException if the run is outside this manager's root or cannot be deleted
 	 */
-	public void deleteRun(HarnessRun run) throws IOException
+	public void deleteRun(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		Path directory = run.directory().toAbsolutePath().normalize();
@@ -1356,7 +1357,7 @@ public final class HarnessRunManager
 			throw new IOException("Run is not owned by this manager");
 		}
 		readManifest(run);
-		try (HarnessRunLock lock = acquireLock(run))
+		try (NestedSessionLock lock = acquireLock(run))
 		{
 			if (!lock.isHeld())
 				throw new IOException("Unable to acquire run lock");
@@ -1383,7 +1384,7 @@ public final class HarnessRunManager
 	 * @param run the completed retained run
 	 * @throws IOException if the run is not terminal or its disposable state cannot be removed
 	 */
-	public void pruneRuntime(HarnessRun run) throws IOException
+	public void pruneRuntime(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		Manifest manifest = readManifest(run);
@@ -1425,7 +1426,7 @@ public final class HarnessRunManager
 					continue;
 				if (Files.isSymbolicLink(entry) || !Files.isDirectory(entry, NOFOLLOW_LINKS))
 					throw new IOException("Harness run is not an owned directory: " + entry);
-				HarnessRun run = new HarnessRun(harness, entry.getFileName().toString(), entry);
+				NestedSession run = new NestedSession(harness, entry.getFileName().toString(), entry);
 				try
 				{
 					if (!readManifest(run).state().equals("running"))
@@ -1446,7 +1447,7 @@ public final class HarnessRunManager
 	 * @return the acquired run lock
 	 * @throws IOException if the run is outside this manager's root, unknown, or active
 	 */
-	public HarnessRunLock acquireLock(HarnessRun run) throws IOException
+	public NestedSessionLock acquireLock(NestedSession run) throws IOException
 	{
 		requireThat(run, "run").isNotNull();
 		Path directory = run.directory().toAbsolutePath().normalize();
@@ -1459,7 +1460,7 @@ public final class HarnessRunManager
 		Path lock = directory.resolve(".lock");
 		if (!Files.isRegularFile(lock, NOFOLLOW_LINKS))
 			throw new IOException("Run is missing its lock file");
-		return HarnessRunLock.acquire(fileLocks, lock);
+		return NestedSessionLock.acquire(fileLocks, lock);
 	}
 
 	/**
@@ -1489,7 +1490,7 @@ public final class HarnessRunManager
 						Manifest parsed = readManifest(manifest);
 						if (!parsed.harness().equals(harnessName) || !parsed.id().equals(run.getFileName().toString()))
 							throw new IOException("Run manifest does not match its directory: " + manifest);
-						HarnessRun ownedRun = new HarnessRun(harnessName, run.getFileName().toString(), run);
+						NestedSession ownedRun = new NestedSession(harnessName, run.getFileName().toString(), run);
 						if (parsed.state().equals("running"))
 						{
 							if (isOwnerAlive(parsed))
@@ -1510,7 +1511,7 @@ public final class HarnessRunManager
 						Instant reference = parsed.finishedAt();
 						if (reference.plus(retention).isAfter(clock.instant()))
 							continue;
-						try (HarnessRunLock lock = acquireLock(ownedRun))
+						try (NestedSessionLock lock = acquireLock(ownedRun))
 						{
 							if (lock.isHeld())
 								deleteRunDirectory(run);
@@ -1534,12 +1535,12 @@ public final class HarnessRunManager
 	 * @throws IOException if the manifest cannot be read, the harness process cannot be stopped, or terminal state cannot
 	 *     be persisted
 	 */
-	private boolean markAbandonedRunFailed(HarnessRun run) throws IOException
+	private boolean markAbandonedRunFailed(NestedSession run) throws IOException
 	{
 		synchronized (this)
 		{
 			assert run != null;
-			try (HarnessRunLock lock = acquireLock(run))
+			try (NestedSessionLock lock = acquireLock(run))
 			{
 				if (!lock.isHeld())
 					return false;
@@ -1598,7 +1599,7 @@ public final class HarnessRunManager
 	 * @throws IOException if the manifest cannot be persisted, or {@code state} ends a running run while this process
 	 *   is {@link ProcessTreeStop#stopping() stopping}
 	 */
-	private void writeManifest(HarnessRun run, String state, String diagnostic) throws IOException
+	private void writeManifest(NestedSession run, String state, String diagnostic) throws IOException
 	{
 		synchronized (this)
 		{
@@ -1631,7 +1632,7 @@ public final class HarnessRunManager
 	 * @param phase the active phase
 	 * @throws IOException if the manifest cannot be persisted
 	 */
-	private void setPhase(HarnessRun run, String phase) throws IOException
+	private void setPhase(NestedSession run, String phase) throws IOException
 	{
 		synchronized (this)
 		{
@@ -1692,7 +1693,7 @@ public final class HarnessRunManager
 	 * @return the validated manifest
 	 * @throws IOException if the manifest is malformed or does not identify the run
 	 */
-	private static Manifest readManifest(HarnessRun run) throws IOException
+	private static Manifest readManifest(NestedSession run) throws IOException
 	{
 		assert run != null;
 		Manifest manifest = readManifest(run.directory().resolve("session.json"));

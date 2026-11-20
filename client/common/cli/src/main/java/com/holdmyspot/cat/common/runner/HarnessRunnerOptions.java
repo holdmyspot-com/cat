@@ -253,13 +253,13 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 				options.turnCopy = Path.of(value).toAbsolutePath();
 			else if (option.equals(RunnerArguments.SLOT_ID_OPTION))
 			{
-				if (!HarnessRunManager.isRunId(value))
+				if (!NestedSessionManager.isRunId(value))
 					throw new InvalidArgumentsException("Invalid " + RunnerArguments.SLOT_ID_OPTION + ": " + value);
 				options.runId = value;
 			}
 			else if (option.equals(RunnerArguments.RESUME_SLOT_OPTION))
 			{
-				if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(value).matches())
+				if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(value).matches())
 				{
 					throw new InvalidArgumentsException("Invalid " + RunnerArguments.RESUME_SLOT_OPTION + ": " + value);
 				}
@@ -702,11 +702,11 @@ public record HarnessRunnerOptions(Path artifact, Path project, Path runRoot, St
 		requireThat(requestDepth, "requestDepth").isNotNegative();
 		if (requestDepth > 0 && sessionRequests == 0)
 			throw new IllegalArgumentException("--request-depth requires --session-requests");
-		if (runId != null && !HarnessRunManager.isRunId(runId))
+		if (runId != null && !NestedSessionManager.isRunId(runId))
 			throw new IllegalArgumentException("runId is not a run identifier: " + runId);
 		if (resumeRun != null)
 		{
-			if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(resumeRun).matches())
+			if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(resumeRun).matches())
 				throw new IllegalArgumentException("resumeRun is not a harness session identifier: " + resumeRun);
 			if (runId == null)
 				throw new IllegalArgumentException("resumeRun requires runId");

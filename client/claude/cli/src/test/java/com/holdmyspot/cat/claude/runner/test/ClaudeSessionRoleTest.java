@@ -9,9 +9,9 @@ import com.holdmyspot.cat.claude.runner.ClaudeSessionSandbox;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
@@ -329,8 +329,8 @@ public final class ClaudeSessionRoleTest
 		private final Path deniedFile;
 		private final Path deniedDirectory;
 		private final List<Path> deniedReads = new ArrayList<>();
-		private final HarnessRunManager manager;
-		private final HarnessRun run;
+		private final NestedSessionManager manager;
+		private final NestedSession run;
 		private final SessionRequestAccess requestAccess;
 		private final List<Path> dependencyCaches;
 		private final List<Path> evidence;
@@ -346,7 +346,7 @@ public final class ClaudeSessionRoleTest
 		{
 			root = cleanup.add(Files.createTempDirectory("cat-judge-no-sandbox-")).toRealPath();
 			Path hostProject = Files.createDirectories(root.resolve("project"));
-			manager = new HarnessRunManager(scope.fileLocks(), hostProject.resolve("runs"), Clock.systemUTC(),
+			manager = new NestedSessionManager(scope.fileLocks(), hostProject.resolve("runs"), Clock.systemUTC(),
 				Yielding.fileReplacer());
 			run = manager.create("claude");
 			manager.snapshotProject(run);
@@ -382,7 +382,7 @@ public final class ClaudeSessionRoleTest
 		 */
 		String linkTargetsRule()
 		{
-			return rule(HarnessRunManager.linkTargets(run.directory()), true);
+			return rule(NestedSessionManager.linkTargets(run.directory()), true);
 		}
 
 		/**

@@ -4,15 +4,15 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static org.testng.Assert.expectThrows;
 
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.TemporaryDirectories;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.MissingPermissionsException;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -98,7 +98,7 @@ public final class ClaudeConnectionSettingsTest
 			for (JsonNode grant : settings.path("permissions").path("allow"))
 				grants.add(grant.asString());
 			requireThat(grants, "grants").isEqualTo(List.of("Skill", "Edit(./**)",
-				"Read(/" + ClaudeConnectionSettings.rulePath(HarnessRunManager.linkTargets(root)) + "/**)",
+				"Read(/" + ClaudeConnectionSettings.rulePath(NestedSessionManager.linkTargets(root)) + "/**)",
 				"Bash(" + launcher + ":*)",
 				"Bash(" + launcher.resolveSibling("claude-runner") + ":*)",
 				"Bash(" + launcher.resolveSibling("codex-runner") + ":*)",
@@ -133,7 +133,7 @@ public final class ClaudeConnectionSettingsTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-link-target-permissions-")).toRealPath();
 			Path destination = root.resolve("isolated/settings.json");
-			Path linkTargets = HarnessRunManager.linkTargets(root);
+			Path linkTargets = NestedSessionManager.linkTargets(root);
 			ClaudeConnectionSettings.writeIsolatedSettings(scope, root.resolve("missing.json"), destination,
 				root.resolve("tmp"), root.resolve("home"), List.of(), root, List.of(), "", null, null);
 			JsonNode settings = scope.json().readTree(Files.readString(destination));
@@ -285,7 +285,7 @@ public final class ClaudeConnectionSettingsTest
 				isEqualTo(List.of("Read(//secrets/**)"));
 			requireThat(strings(result.path("permissions").path("ask")), "ask").isEqualTo(List.of("Bash(rm *)"));
 			requireThat(strings(result.path("permissions").path("allow")), "allow").isEqualTo(List.of("Skill", "Edit(./**)",
-				"Read(/" + ClaudeConnectionSettings.rulePath(HarnessRunManager.linkTargets(claudeTemporaryDirectory)) +
+				"Read(/" + ClaudeConnectionSettings.rulePath(NestedSessionManager.linkTargets(claudeTemporaryDirectory)) +
 				"/**)", "Bash"));
 			requireThat(result.path("permissions").has("additionalDirectories"), "additionalDirectories").isFalse();
 			requireThat(result.path("permissions").has("defaultMode"), "defaultMode").isFalse();
@@ -358,7 +358,7 @@ public final class ClaudeConnectionSettingsTest
 
 			JsonNode result = scope.json().readTree(Files.readString(destination));
 			requireThat(strings(result.path("permissions").path("allow")), "allow").isEqualTo(List.of("Skill", "Edit(./**)",
-				"Read(/" + ClaudeConnectionSettings.rulePath(HarnessRunManager.linkTargets(root)) + "/**)", "Bash"));
+				"Read(/" + ClaudeConnectionSettings.rulePath(NestedSessionManager.linkTargets(root)) + "/**)", "Bash"));
 			requireThat(strings(result.path("permissions").path("deny")), "deny").
 				isEqualTo(List.of("Bash(git push:*)"));
 			requireThat(result.path("sandbox").path("enabled").asBoolean(), "sandboxEnabled").isTrue();

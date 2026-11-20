@@ -8,9 +8,9 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.ToolScope;
-import com.holdmyspot.cat.common.runner.RequestArchive.RunRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
+import com.holdmyspot.cat.common.runner.RequestArchive.LaunchRequest;
 import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.launcher.ChildNeedsSource;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
@@ -711,7 +711,7 @@ public final class RequestServer
 		}
 
 		@Override
-		public RunRequest read(JsonMapper json, Path inputs) throws IOException
+		public LaunchRequest read(JsonMapper json, Path inputs) throws IOException
 		{
 			return RequestArchive.readServed(json, inputs);
 		}
@@ -755,7 +755,7 @@ public final class RequestServer
 		 *                                 written
 		 */
 		@Override
-		public List<String> options(RunRequest request, Path runRoot) throws IOException
+		public List<String> options(LaunchRequest request, Path runRoot) throws IOException
 		{
 			List<String> options = new ArrayList<>();
 			request.capacityWait().ifPresent(seconds ->

@@ -9,25 +9,25 @@ import com.holdmyspot.cat.claude.installer.Integration;
 import com.holdmyspot.cat.claude.runner.ClaudeConnectionSettings;
 import com.holdmyspot.cat.claude.runner.ClaudeProcess;
 import com.holdmyspot.cat.claude.runner.ClaudeRunner;
-import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
-import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
-import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
-import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
 import com.holdmyspot.cat.common.runner.HarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.SessionRequestAccess;
+import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SetupCommands;
 import com.holdmyspot.cat.common.runner.fakes.test.FakeHarnessCli;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.SessionRequestBroker;
+import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
+import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.File;
 import java.io.IOException;
@@ -40,9 +40,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import static org.testng.Assert.expectThrows;
 import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
+import static org.testng.Assert.expectThrows;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -929,9 +929,9 @@ public final class ClaudeRunnerTest
 			Path storeLogin = Files.writeString(store.resolve(".credentials.json"), "{}");
 			Map<String, String> environment = Map.of(Platform.current().homeVariable(), userHome.toString(),
 				"CLAUDE_CONFIG_DIR", configured.toString(), "CLAUDE_SECURESTORAGE_CONFIG_DIR", store.toString());
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			manager.snapshotProject(run);
 			Path project = Files.createDirectories(run.directory().resolve("project/.git")).getParent();
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(), List.of(), environment);
@@ -1381,7 +1381,7 @@ public final class ClaudeRunnerTest
 			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
 			Path directory = Files.createDirectories(capture.resolve("a".repeat(100)).resolve("b".repeat(100)).
 				resolve("c".repeat(100)).resolve("runs/claude/abc123-def456"));
-			HarnessRun run = new HarnessRun("claude", "abc123-def456", directory);
+			NestedSession run = new NestedSession("claude", "abc123-def456", directory);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
 			requireThat(worktree.toString().length(), "projectPathLength").isGreaterThan(260);
 
@@ -1403,7 +1403,7 @@ public final class ClaudeRunnerTest
 		{
 			Path capture = cleanup.add(Files.createTempDirectory("claude-capture-"));
 			Path directory = Files.createDirectories(capture.resolve("runs/claude/abc123-def456"));
-			HarnessRun run = new HarnessRun("claude", "abc123-def456", directory);
+			NestedSession run = new NestedSession("claude", "abc123-def456", directory);
 			Path hookResults = ClaudeRunner.createHookResultsDirectory(directory.resolve("home"), run);
 			Path worktree = directory.resolve("project").toAbsolutePath().normalize();
 			String canonicalName = ClaudeRunner.claudeProjectDirectory(worktree);
@@ -1432,16 +1432,16 @@ public final class ClaudeRunnerTest
 		{
 			Path temporary = jvm.temporaryDirectory();
 			Path root = cleanup.add(Files.createTempDirectory(temporary, "cat-run-root-"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Files.createDirectories(directory.resolve("claude"));
 			Files.writeString(Files.createDirectories(directory.resolve("home/.claude")).resolve(".credentials.json"),
 				"{}");
-			HarnessRun other = manager.create("claude");
-			HarnessRun evidence = manager.create("claude");
+			NestedSession other = manager.create("claude");
+			NestedSession evidence = manager.create("claude");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 			Path workspaces = Files.createDirectories(root.resolve("workspaces"));
 			Path heldOut = cleanup.add(Files.createTempDirectory(temporary, "cat-held-out-"));
@@ -1481,14 +1481,14 @@ public final class ClaudeRunnerTest
 			Path campaigns = Files.createDirectories(session.resolve("campaigns"));
 			Path root = Files.createDirectories(session.resolve("optimizer-runs/claude"));
 			Path heldOutRoot = Files.createDirectories(session.resolve("optimizer-runs/claude-held_out"));
-			HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), root,
+			NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), root,
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun run = manager.create("claude");
+			NestedSession run = manager.create("claude");
 			Path directory = run.directory();
 			manager.snapshotProject(run);
 			Files.createDirectories(directory.resolve("claude"));
 			Files.createDirectories(directory.resolve("home"));
-			HarnessRun evidence = manager.create("claude");
+			NestedSession evidence = manager.create("claude");
 			Path evidenceArtifacts = Files.createDirectories(evidence.directory().resolve("artifacts"));
 
 			List<Path> deniedReads = ClaudeRunner.sessionDeniedReads(manager, run, List.of(evidenceArtifacts),
@@ -1524,9 +1524,9 @@ public final class ClaudeRunnerTest
 			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-nested-run-")).toRealPath();
 			Path artifact = root.resolve("artifact");
 			Path cache = Files.createDirectories(root.resolve("cache"));
-			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun first = firstManager.create("claude");
+			NestedSession first = firstManager.create("claude");
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path firstProject = Files.createDirectories(first.directory().resolve("project/.git")).getParent();
@@ -1535,9 +1535,9 @@ public final class ClaudeRunnerTest
 				first.directory().resolve("claude"), first.directory().resolve("home"), List.of(cache),
 				first.directory(), List.of(), "", firstAccess, firstProject, first.directory(), null,
 				ExtraPermissions.NONE, "api.example");
-			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun nested = nestedManager.create("claude");
+			NestedSession nested = nestedManager.create("claude");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path nestedProject = Files.createDirectories(nested.directory().resolve("project/.git")).getParent();
@@ -1577,9 +1577,9 @@ public final class ClaudeRunnerTest
 			Path artifact = root.resolve("artifact");
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			Path results = root.resolve("runs");
-			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), results, Clock.systemUTC(),
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), results, Clock.systemUTC(),
 				Yielding.fileReplacer());
-			HarnessRun first = firstManager.create("claude");
+			NestedSession first = firstManager.create("claude");
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, 1, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path firstProject = Files.createDirectories(first.directory().resolve("project/.git")).getParent();
@@ -1593,9 +1593,9 @@ public final class ClaudeRunnerTest
 				root.resolve("missing.json"), firstHome.resolve(".claude/settings.json"),
 				first.directory().resolve("claude"), firstHome, List.of(cache), first.directory(), List.of(), "",
 				firstAccess, firstProject, first.directory(), null, ExtraPermissions.NONE, "api.example");
-			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(), firstAccess.requestedRunRoot(1),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun nested = nestedManager.create("claude");
+			NestedSession nested = nestedManager.create("claude");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path nestedProject = Files.createDirectories(nested.directory().resolve("project/.git")).getParent();
@@ -1678,14 +1678,14 @@ public final class ClaudeRunnerTest
 			Path cache = Files.createDirectories(root.resolve("cache"));
 			int sessionRequests = 500;
 			int ordinal = 358;
-			HarnessRunManager firstManager = new HarnessRunManager(jvm.fileLocks(), root.resolve("runs"),
+			NestedSessionManager firstManager = new NestedSessionManager(jvm.fileLocks(), root.resolve("runs"),
 				Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun first = firstManager.create("claude");
+			NestedSession first = firstManager.create("claude");
 			SessionRequestAccess firstAccess = SessionRequestAccess.allowing(first, artifact, sessionRequests,
 				Platform.current(), SessionRequestAccess.Shell.POSIX).orElseThrow();
-			HarnessRunManager nestedManager = new HarnessRunManager(jvm.fileLocks(),
+			NestedSessionManager nestedManager = new NestedSessionManager(jvm.fileLocks(),
 				firstAccess.requestedRunRoot(ordinal), Clock.systemUTC(), Yielding.fileReplacer());
-			HarnessRun nested = nestedManager.create("claude");
+			NestedSession nested = nestedManager.create("claude");
 			SessionRequestAccess nestedAccess = SessionRequestAccess.allowing(nested, artifact, 0, Platform.current(),
 				SessionRequestAccess.Shell.POSIX).orElseThrow();
 			Path nestedProject = Files.createDirectories(nested.directory().resolve("project/.git")).getParent();

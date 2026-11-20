@@ -5,7 +5,7 @@ import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionProtocolContract;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionProtocolContract.Inputs;
 import com.holdmyspot.cat.common.runner.contract.test.RequestedSessionProtocolContract.Observation;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
 import java.io.IOException;
 import java.io.PipedReader;
@@ -20,9 +20,9 @@ import tools.jackson.databind.json.JsonMapper;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 /**
- * Runs the shared requested-session protocol contract through the public RequestingRun forwarding path.
+ * Runs the shared requested-session protocol contract through the public RequestingNestedSession forwarding path.
  */
-public final class RequestingRunProtocolContractTest
+public final class RequestingNestedSessionProtocolContractTest
 {
 	/**
 	 * Verifies the emulator completes ordered requested turns and retains the project and transcript named by its
@@ -34,7 +34,7 @@ public final class RequestingRunProtocolContractTest
 	public void completesNormalRequestedSession() throws IOException
 	{
 		RequestedSessionProtocolContract.verifiesNormalRequestedSession(
-			RequestingRunProtocolContractTest::runRequestingSession);
+			RequestingNestedSessionProtocolContractTest::runRequestingSession);
 	}
 
 	/**
@@ -47,7 +47,7 @@ public final class RequestingRunProtocolContractTest
 	private static Observation runRequestingSession(Inputs inputs) throws IOException
 	{
 		JsonMapper json = JsonMapper.builder().build();
-		RunOutput runOutput = serveRequestingSession(inputs, json);
+		NestedSessionOutput runOutput = serveRequestingSession(inputs, json);
 		requireThat(runOutput.launches().size(), "requestedLaunchCount").isEqualTo(1);
 		List<String> launched = runOutput.launches().getFirst();
 		Path receipt = Path.of(ScriptedHarness.optionValue(launched, "--receipt"));
@@ -56,7 +56,7 @@ public final class RequestingRunProtocolContractTest
 		requireThat(response.path("status").asString(), "responseStatus").isEqualTo("completed");
 		Path transcript = Path.of(response.path("transcript").asString());
 		Path retainedRun = Path.of(response.path("run").asString());
-		requireThat(response.path("session_id").asString(), "sessionId").isEqualTo(RequestingRun.SESSION_ID);
+		requireThat(response.path("session_id").asString(), "sessionId").isEqualTo(RequestingNestedSession.SESSION_ID);
 		List<String> prompts = runOutput.received().stream().map(record -> readPrompt(json, record)).
 			filter(prompt -> !prompt.isEmpty()).toList();
 		return new Observation(transcript, receipt, retainedRun, prompts);
@@ -70,10 +70,10 @@ public final class RequestingRunProtocolContractTest
 	 * @return the child launch and records received by its fake
 	 * @throws IOException if the request cannot complete
 	 */
-	private static RunOutput serveRequestingSession(Inputs inputs, JsonMapper json) throws IOException
+	private static NestedSessionOutput serveRequestingSession(Inputs inputs, JsonMapper json) throws IOException
 	{
-		try (RequestingRun parent = new RequestingRun(inputs.root().resolve("requesting-run"), new FileLocks(), 1,
-			turn -> inputs.replies().get(turn - 1)))
+		try (RequestingNestedSession parent = new RequestingNestedSession(inputs.root().resolve("requesting-run"),
+			new FileLocks(), 1, turn -> inputs.replies().get(turn - 1)))
 		{
 			try (PipedReader input = new PipedReader(); PipedWriter turns = new PipedWriter(input);
 				CapturingTurnWriter output = new CapturingTurnWriter(json, turns, inputs.prompts()))
@@ -86,7 +86,7 @@ public final class RequestingRunProtocolContractTest
 					input, output, parent.requests(), Thread::yield);
 				requireThat(output.completedTurns, "causallyForwardedTurns").isEqualTo(2);
 			}
-			return new RunOutput(parent.launches(), parent.received());
+			return new NestedSessionOutput(parent.launches(), parent.received());
 		}
 	}
 
@@ -190,14 +190,14 @@ public final class RequestingRunProtocolContractTest
 	 * @param launches the child launches
 	 * @param received the input records
 	 */
-	private record RunOutput(List<List<String>> launches, List<String> received)
+	private record NestedSessionOutput(List<List<String>> launches, List<String> received)
 	{
 	}
 
 	/**
 	 * Prevents construction of utility class instances.
 	 */
-	public RequestingRunProtocolContractTest()
+	public RequestingNestedSessionProtocolContractTest()
 	{
 	}
 }

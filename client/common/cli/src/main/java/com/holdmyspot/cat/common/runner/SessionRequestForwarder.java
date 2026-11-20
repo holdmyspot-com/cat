@@ -286,7 +286,7 @@ public final class SessionRequestForwarder
 		String sessionId = response.path(SessionRequestBroker.SESSION_ID).asString("");
 		if (run.isEmpty() || !RecordCopy.isSessionId(sessionId))
 			return Optional.empty();
-		return KeptRunCopy.copy(Path.of(run), runs.resolve(sessionId), sessionId, project).incomplete();
+		return ResultsCopy.copy(Path.of(run), runs.resolve(sessionId), sessionId, project).incomplete();
 	}
 
 	/**
@@ -517,7 +517,7 @@ public final class SessionRequestForwarder
 				case "--tool-output-token-limit" -> request.put("tool_output_token_limit", tokenLimit(value));
 				case RunnerArguments.RESUME_OPTION ->
 				{
-					if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(value).matches())
+					if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(value).matches())
 					{
 						throw new InvalidArgumentsException(RunnerArguments.RESUME_OPTION + " needs the ID of a harness " +
 							"session: " + value);
@@ -537,7 +537,7 @@ public final class SessionRequestForwarder
 			throw new InvalidArgumentsException(Conversation.OPTION + " and --input cannot be used together");
 		if (request.has(RequestArchive.RESUME))
 		{
-			List<String> fixed = RunLaunch.fixedArguments(args);
+			List<String> fixed = NestedSessionLaunch.fixedArguments(args);
 			if (!fixed.isEmpty())
 				throw fixedAtStart(fixed.getFirst());
 		}
@@ -894,7 +894,7 @@ public final class SessionRequestForwarder
 		void deleteTurnCopies() throws IOException
 		{
 			if (turnCopied)
-				KeptRunCopy.deleteTurnCopies(runs.resolve(sessionId));
+				ResultsCopy.deleteTurnCopies(runs.resolve(sessionId));
 			turnCopied = false;
 		}
 
@@ -934,7 +934,7 @@ public final class SessionRequestForwarder
 					}
 					else if (type.equals("turn_completed") && !sessionId.isEmpty() && Files.isDirectory(turnCopy))
 					{
-						KeptRunCopy.copyTurn(turnCopy, runs.resolve(sessionId));
+						ResultsCopy.copyTurn(turnCopy, runs.resolve(sessionId));
 						turnCopied = true;
 					}
 				}

@@ -54,7 +54,7 @@ public record DiscardRequest(String sessionId)
 	public DiscardRequest
 	{
 		requireThat(sessionId, "sessionId").isNotNull();
-		if (!HarnessRunManager.HARNESS_SESSION_ID.matcher(sessionId).matches())
+		if (!NestedSessionManager.HARNESS_SESSION_ID.matcher(sessionId).matches())
 			throw new IllegalArgumentException("Not a harness session identifier: " + sessionId);
 	}
 
@@ -124,7 +124,7 @@ public record DiscardRequest(String sessionId)
 		if (!version.isInt() || version.intValue() != FORMAT_VERSION)
 			throw new IOException("A discard request's " + VERSION_FIELD + " must be " + FORMAT_VERSION);
 		JsonNode session = value.path(SESSION_FIELD);
-		if (!session.isString() || !HarnessRunManager.HARNESS_SESSION_ID.matcher(session.asString()).matches())
+		if (!session.isString() || !NestedSessionManager.HARNESS_SESSION_ID.matcher(session.asString()).matches())
 			throw new IOException("A discard request requires the identifier of a harness session");
 		return new DiscardRequest(session.asString());
 	}

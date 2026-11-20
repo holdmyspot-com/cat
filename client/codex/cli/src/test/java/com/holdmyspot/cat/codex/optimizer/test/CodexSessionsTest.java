@@ -26,22 +26,22 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.ContractAuthorFixtures;
 import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
-import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
-import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
+import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
+import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.RiskRank;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestValue;
-import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
-import com.holdmyspot.cat.common.optimizer.execution.EarlyTrialEnd;
+import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.ToolCall;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
-import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
+import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
+import com.holdmyspot.cat.common.optimizer.execution.EarlyTrialEnd;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
@@ -56,20 +56,20 @@ import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
-import com.holdmyspot.cat.common.runner.HarnessRun;
-import com.holdmyspot.cat.common.runner.HarnessRunManager;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
-import com.holdmyspot.cat.common.runner.HarnessRunSession;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
-import com.holdmyspot.cat.common.runner.KeptRunCopy;
-import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.LiveNestedSession;
+import com.holdmyspot.cat.common.runner.NestedSession;
+import com.holdmyspot.cat.common.runner.NestedSessionManager;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
+import com.holdmyspot.cat.common.runner.ResultsCopy;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
-import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
-import com.holdmyspot.cat.common.runner.fakes.test.RequestingRun;
-import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness;
+import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
+import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -77,11 +77,11 @@ import java.io.InputStream;
 import java.io.PrintWriter;
 import java.io.StringReader;
 import java.io.StringWriter;
+import java.nio.file.FileSystems;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.FileSystems;
 import java.nio.file.StandardWatchEventKinds;
 import java.nio.file.WatchKey;
 import java.nio.file.WatchService;
@@ -96,11 +96,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -245,9 +245,9 @@ public final class CodexSessionsTest
 		Path runRoot = Path.of(ScriptedHarness.optionValue(arguments, "--results"));
 		HarnessRunnerOptions options = HarnessRunnerOptions.parse(arguments.toArray(String[]::new), "codex",
 			HarnessTemporaryRoot.of(runRoot));
-		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), runRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		HarnessRun run = manager.create("codex");
+		NestedSession run = manager.create("codex");
 		Path project = run.directory().resolve("project");
 		Path notesFile = project.resolve("notes.md");
 		Files.writeString(notesFile, snapshots.getLast(), UTF_8);
@@ -307,7 +307,7 @@ public final class CodexSessionsTest
 		};
 		try (process)
 		{
-			HarnessRunnerBridge.serve(() -> new HarnessRunSession(run, process, new TestHarnessRunnerScope()), manager,
+			HarnessRunnerBridge.serve(() -> new LiveNestedSession(run, process, new TestHarnessRunnerScope()), manager,
 				options, JsonMapper.builder().build(), Yielding.fileReplacer(), input, output);
 		}
 	}
@@ -559,9 +559,9 @@ public final class CodexSessionsTest
 		throws IOException
 	{
 		Path childRoot = response.resolve("child-runs");
-		HarnessRunManager manager = new HarnessRunManager(jvm.fileLocks(), childRoot, Clock.systemUTC(),
+		NestedSessionManager manager = new NestedSessionManager(jvm.fileLocks(), childRoot, Clock.systemUTC(),
 			Yielding.fileReplacer());
-		HarnessRun child = manager.create("codex");
+		NestedSession child = manager.create("codex");
 		Files.writeString(child.directory().resolve("project/notes.md"), Files.readString(source.resolve("notes.md")),
 			UTF_8);
 		Files.createDirectories(child.directory().resolve("initial-project"));
@@ -575,11 +575,11 @@ public final class CodexSessionsTest
 		Files.writeString(childCopy, RecordedTrial.toolResult(Files.readString(source.resolve("notes.md"))) + "\n",
 			UTF_8);
 		Path receipt = child.directory().resolve("artifacts/receipt.json");
-		HarnessRunReceipt.write(json, Yielding.fileReplacer(), receipt, child, raw, List.of(rootCopy, childCopy));
+		NestedSessionReceipt.write(json, Yielding.fileReplacer(), receipt, child, raw, List.of(rootCopy, childCopy));
 		manager.initialize(child, artifact, source, "fixture", List.of("fixture"));
 		manager.markCompleted(child);
 		Path kept = response.resolve("run");
-		requireThat(KeptRunCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
+		requireThat(ResultsCopy.copy(child.directory(), kept).incomplete(), "keptRun").isEmpty();
 		ObjectNode result = json.createObjectNode().put("format_version", 1).put("id", response.getFileName().toString()).
 			put("harness", "codex").put("status", "completed").put("reason", "").put("session_id", THREAD_ID).
 			put("transcript", response.resolve("transcript.jsonl").toString()).put("receipt", receipt.toString()).
@@ -2337,7 +2337,7 @@ public final class CodexSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path runRoot = home.resolve("runs");
-			try (RequestingRun parent = new RequestingRun(home.resolve("parent"), jvm.fileLocks(), 1))
+			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(), 1))
 			{
 				CodexSessions sessions = inRun(jvm, home, runRoot, parent);
 
@@ -2394,7 +2394,8 @@ public final class CodexSessionsTest
 			Path home = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "cat-in-run-")).toRealPath();
 			Path source = Files.createDirectories(home.resolve("source"));
 			Path runRoot = home.resolve("runs");
-			try (RequestingRun parent = new RequestingRun(home.resolve("parent"), jvm.fileLocks(), sessionRequests))
+			try (RequestingNestedSession parent = new RequestingNestedSession(home.resolve("parent"), jvm.fileLocks(),
+				sessionRequests))
 			{
 				CodexSessions sessions = inRun(jvm, home, runRoot, parent);
 				SessionRequest request = new SessionRequest(SessionRole.JUDGE, partOf(SessionRole.JUDGE), source,
@@ -2430,7 +2431,7 @@ public final class CodexSessionsTest
 	 * @param parent  the run
 	 * @return the port
 	 */
-	private static CodexSessions inRun(JvmScope jvm, Path home, Path runRoot, RequestingRun parent)
+	private static CodexSessions inRun(JvmScope jvm, Path home, Path runRoot, RequestingNestedSession parent)
 	{
 		Map<String, String> environment = new HashMap<>();
 		environment.put("CAT_RUN", "1");

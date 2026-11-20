@@ -27,7 +27,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
  * The file holds a JSON object of exactly two fields: {@code schema_version}, which is {@code 1}, and
  * {@code arguments}, the fixed options and their values in the order the launch named them.
  */
-public final class RunLaunch
+public final class NestedSessionLaunch
 {
 	/**
 	 * The name of the file, in the run's directory, that records the launch.
@@ -48,7 +48,7 @@ public final class RunLaunch
 	/**
 	 * Prevents instantiation.
 	 */
-	private RunLaunch()
+	private NestedSessionLaunch()
 	{
 	}
 
@@ -109,7 +109,7 @@ public final class RunLaunch
 		}
 		String runRoot = value(options, "--results");
 		String runId = value(options, RunnerArguments.SLOT_ID_OPTION);
-		if (runRoot == null || runId == null || !HarnessRunManager.isRunId(runId))
+		if (runRoot == null || runId == null || !NestedSessionManager.isRunId(runId))
 		{
 			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires --results and " +
 				RunnerArguments.SLOT_ID_OPTION);

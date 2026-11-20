@@ -2,7 +2,7 @@ package com.holdmyspot.cat.common.runner.contract.test;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
-import com.holdmyspot.cat.common.runner.HarnessRunReceipt;
+import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -55,7 +55,7 @@ public final class RequestedSessionProtocolContract
 				requireThat(completed.path("error").asString(), "turnError").isEmpty();
 			}
 
-			HarnessEvaluationResult receipt = HarnessRunReceipt.read(json, observation.receipt(),
+			HarnessEvaluationResult receipt = NestedSessionReceipt.read(json, observation.receipt(),
 				observation.retainedRun().resolve("project"));
 			requireThat(receipt.retainedProject(), "retainedProject").
 				isEqualTo(observation.retainedRun().resolve("project"));
