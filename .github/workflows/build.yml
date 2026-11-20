@@ -1,12 +1,9 @@
-name: Build
+name: WI-146 isolated runtime
 
 on:
   push:
     branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
-  pull_request:
+      - rehearsal/wi146-runtime-0d076c42
 
 permissions:
   contents: read
@@ -20,20 +17,15 @@ jobs:
         include:
           - platform: linux-x64
             runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: 0d076c425cb87650ce66e9f6508fff90acee2d0c
+          persist-credentials: false
       - uses: actions/setup-java@v6
         with:
           distribution: zulu
@@ -65,7 +57,7 @@ jobs:
           npm install --global bats@1.13.0
           bats --version
       - name: Verify
-        run: client/mvnw -f client/pom.xml verify
+        run: client/mvnw -f client/pom.xml verify "-Dcat.build=0d076c425cb8"
       # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
       - name: Keep the test reports of a failed Windows build
         if: failure() && runner.os == 'Windows'
@@ -107,3 +99,19 @@ jobs:
       - name: Verify the Codex plugin's part launchers
         if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+      - name: Archive the verified Codex runtime
+        run: |
+          test "$(git rev-parse HEAD)" = 0d076c425cb87650ce66e9f6508fff90acee2d0c
+          test -x client/common/distribution/target/runtime/codex/bin/installer
+          git rev-parse HEAD > SOURCE_COMMIT.txt
+          tar -C client/common/distribution/target/runtime -czf codex-runtime.tar.gz codex
+          sha256sum -- codex-runtime.tar.gz SOURCE_COMMIT.txt > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v7
+        with:
+          name: codex-linux-x64-0d076c425cb8
+          path: |
+            codex-runtime.tar.gz
+            SOURCE_COMMIT.txt
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 1
