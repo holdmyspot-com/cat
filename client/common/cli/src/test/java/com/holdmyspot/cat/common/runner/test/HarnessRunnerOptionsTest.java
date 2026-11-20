@@ -462,6 +462,7 @@ public final class HarnessRunnerOptionsTest
 	@Test
 	public void rejectsKeepRun()
 	{
+		// Requirement: R-I13
 		try
 		{
 			HarnessRunnerOptions.parse(launch("--keep-run"), "harness", SESSION);

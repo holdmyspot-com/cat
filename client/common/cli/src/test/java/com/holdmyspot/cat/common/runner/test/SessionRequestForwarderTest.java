@@ -401,8 +401,9 @@ public final class SessionRequestForwarderTest
 	 * @throws IOException if the launch or its copy fails
 	 */
 	@Test
-	public void copiesResultsIntoNamedFolderInsideRun() throws IOException
+	public void copiesResultsUnderReportedSessionId() throws IOException
 	{
+		// Requirement: R-I13
 		try (TestJvmScope jvm = new TestJvmScope();
 			TemporaryDirectories cleanup = new TemporaryDirectories())
 		{

@@ -1402,6 +1402,7 @@ public final class HarnessRunnerBridgeTest
 	@Test
 	public void recordsHarnessSessionWhenReported() throws IOException
 	{
+		// Requirement: R-I13
 		FileLocks fileLocks = new FileLocks();
 		try (TemporaryDirectories cleanup = new TemporaryDirectories();
 			StringReader input = new StringReader("{\"type\":\"turn\",\"prompt\":\"first\"}\n" +

@@ -4119,6 +4119,12 @@ requirement names.
   The frozen reports and `selected-final-summary.json`, including the 15 cases of at least one second, are under
   this session's `temp/wi146-clean-verify-MVtNIo/`. The full-build and installed acceptance gates still need
   the hosted run and live receipts.
+- The traceability refresh joined the 456 reports with three passing WI-147 checks for R-I13. Those checks cover
+  adoption of the reported harness ID, the resulting results directory, and refusal of the removed
+  `--keep-run` option. The audit found 2,535 passing tag mappings across 600 Java test sources, with no unknown
+  tags or unresolved mappings. R-I1 is the only one of 142 requirements without a passing Java tag, and its proof
+  is an installed run in both harnesses. The audit and the retired-term scan are under this session's
+  `temp/trace-434e-xD2W0c/`. Installed E-series receipts are still required for gate 2.
 
 ### Continuation verification (2026-11-16, session `01a1e6ba`)
 
