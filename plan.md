@@ -419,7 +419,8 @@ now say 55 verified, 0 open. Node 37 deleted `SessionDirectoryAuditTest`. The fi
 pre-existing audit, `TestabilityAuditTest.sourcesDoNotSleep`, on the untracked fixture `WaitUntilCommandProcess`
 (`Thread.sleep` in `main`); it now polls through `Pause.sleeping`. The full uncached clean verify with an absent home
 (`temp/repair-wave-IsEzin/build-6/terminal.json`) passed: 454 reports, 6,025 tests, 0 failures, 0 errors, 6 skipped
-(five Windows-only `CatPs1Test` cases and one `CodexRunPartTest` case). 21 tests took at least 1 s; the slowest is
+(five Windows-only `CatPs1Test` cases, now in `bootstrap-windows.bats`, and one `CodexRunPartTest` case).
+21 tests took at least 1 s; the slowest is
 `DelegationTest.dirtySourceIsFrozen` at 4.86 s. Gate 1 passes for this tree. Nothing is committed: §2 makes commits wait
 for the Windows exemption decision, and the wave's test edits depend on uncommitted production sources. Focused gates
 must not set `JAVA_TOOL_OPTIONS`: the JVM prints its "Picked up" notice on stdout, and
@@ -3150,6 +3151,7 @@ revised plugin lifecycle and distribution work, which has not been implemented.
 - **Republished v1.0 (2026-11-06 UTC):** tag `v1.0` = `eb0776e896` (force-pushed after deleting the previous GitHub
   release). Release workflow run 42146194444 passed on all five platforms. Build run 42144770395 on the v1.0 branch
   passed on all five after one rerun of `linux-x64`, which had failed in `CodexPluginHooksTest.hooksStartTheirLaunchers`
+  (now the hook-command test in `bootstrap-codex.bats`)
   with "Text file busy" (an intermittent failure in an unchanged test). A local whole-reactor `clean verify` at
   `a1b815560b` passed (4,548 tests, 0 failures; java.io.tmpdir outside any Git repo); `eb0776e896` changes only
   `HumanReportTest`. 15 release assets; the signed manifest (`build` `eb0776e89628`) verifies against the `cat-release`
@@ -3185,7 +3187,8 @@ revised plugin lifecycle and distribution work, which has not been implemented.
   cooperative hosted checks that the launcher's fakes model the real OS; brief `unit-u10c.md`, on branch `srl-u10`);
   Windows launcher; one shared managed-settings list (three copies today); `ClaudeConnectionSettings.candidates`
   reading `//c/...` as POSIX on Windows; the deleter waiting on a possibly reused PID.
-- **Next release, also:** fix the intermittent "Text file busy" in `CodexPluginHooksTest`; Windows terminal detection
+- **Next release, also:** fix the intermittent "Text file busy" in `CodexPluginHooksTest`
+  (now in `bootstrap-codex.bats`); Windows terminal detection
   and `cat.ps1` pass-through of the installer's text report are unverified; `CodexSessionLauncherCli` and
   `CodexInstallation.resolveHome` still read `user.home` (the first deliberately, for account system files).
   Committed after the release (2026-11-06): both runner launchers refuse invalid options with a one-line message and
