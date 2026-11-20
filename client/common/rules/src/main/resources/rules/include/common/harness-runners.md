@@ -7,14 +7,14 @@
 - Start a session through a runner or a session request only for a task that needs a separate, isolated session, and
 	leave whether the agent delegates any other task to a subagent or does it itself to its delegation rules.
 - Prevent a runner invocation from selecting an arbitrary artifact or executable.
-- Give every run and every session request the model and the effort that its task names, or that the agent chooses
-	from the values the harness lists when its task names none, without asking the user or stopping the run for want of
-	them.
+- Give every launch and every session request the model and the effort that its task names, or that the agent
+	chooses from the values the harness lists when its task names none, without asking the user or holding back the
+	launch for want of them.
 - Relay each turn's reply from the runner's transcript without reading the whole transcript.
-- Let a session that a runner started run either harness through the same launchers, or through the session-request
-	launcher that its command environment names, without a login or a sandbox exception.
-- Let a session that a runner started find out from its run, with nothing added to its own instructions, how many
-	sessions the run still allows it, and report a refused request with the reason that names its caller's options.
+- Let a nested session run either harness through the same launchers, or through the session-request launcher that its
+	command environment names, without a login or a sandbox exception.
+- Let a nested session find out, with nothing added to its own instructions, how many more sessions it may request, and
+	report a refused request with the reason that names its caller's options.
 - Let a session send each turn of a new session after it reads the reply to the previous one, interrupt a turn, and end
 	the new session, through any of these launchers.
 - Give a new session only the capabilities its task names, such as a plugin under test, a CAT installation, extra writes
@@ -27,10 +27,10 @@
 
 This rule applies when you run a task or prompt in a new Claude Code or Codex session through CAT's runner launchers,
 `${CAT_PLUGIN_ROOT}/bin/claude-runner` for Claude Code and `${CAT_PLUGIN_ROOT}/bin/codex-runner` for Codex, including
-from a session that a runner started, and when such a session requests a new session with the `request-session`
-launcher whose absolute path its command environment names. Both CAT plugins hold both runner launchers, and they
-take the same options. Below, `<harness>-runner` stands for the launcher of the harness that runs the task, and
-`<harness>-artifact` for its artifact selector, `${CAT_PLUGIN_ROOT}/bin/claude-artifact` or
+from a nested session, which is a session that a runner started, and when a nested session requests a new session with
+the `request-session` launcher whose absolute path its command environment names. Both CAT plugins hold both runner
+launchers, and they take the same options. Below, `<harness>-runner` stands for the launcher of the harness that runs
+the task, and `<harness>-artifact` for its artifact selector, `${CAT_PLUGIN_ROOT}/bin/claude-artifact` or
 `${CAT_PLUGIN_ROOT}/bin/codex-artifact`.
 
 ### When to use a runner
@@ -43,11 +43,11 @@ delegation rules.
 
 ### Supported environments
 
-Runner sessions of both harnesses require Linux or macOS, because CAT starts each session only inside its own
+Nested sessions of both harnesses require Linux or macOS, because CAT starts each session only inside its own
 harness's sandbox. On native Windows, both runner launchers refuse to start a session, exit with status `2` and print
-the reason, which tells the user to run their harness and CAT inside WSL2. Report that reason and do not start the run
-any other way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so runner sessions are
-supported there.
+the reason, which tells the user to run their harness and CAT inside WSL2. Report that reason and do not start the
+session any other way, such as by running the launcher through `wsl`. Inside WSL2, Java reports Linux, so nested
+sessions are supported there.
 
 ### Launcher
 
@@ -57,23 +57,22 @@ skip "Outside a nested session". Do not run `<harness>-artifact` or `--verify-ar
 prerequisites of "Outside a nested session". When it does not, skip "Inside a nested session".
 
 Run the launcher by its absolute path, as one command with nothing in front of it, such as a variable assignment, `env`
-or `cd`, and no pipe or redirection. Before you run it, write the run's records with a file-writing tool into a file,
+or `cd`, and no pipe or redirection. Before you run it, write the launch's records with a file-writing tool into a file,
 one line per turn, `{"type":"turn","prompt":"<task>"}`, followed by one `{"type":"complete"}` line, and name that file
 with `--input <file>`. `--input` takes only that records file, never a prompt file; prompt files are for the
-`request-session` launcher. Use a command timeout of 600000 milliseconds and keep waiting while the run writes `waiting`
-records, which it repeats every 30 seconds while a turn writes nothing else. When a turn's prompt depends on the reply
-to the turn before it, hold a conversation instead, as "Conversations" describes.
+`request-session` launcher. Use a command timeout of 600000 milliseconds and keep waiting while the launcher writes
+`waiting` records, which it repeats every 30 seconds while a turn writes nothing else. When a turn's prompt depends on
+the reply to the turn before it, hold a conversation instead, as "Conversations" describes.
 
-Every run and every session request takes `--model <model>` and `--effort <effort>`, and the launcher refuses a run or
-request without them. Always pass them yourself; never ask
-the user for them and never stop the run for want of them. Pass the model and the effort that your task or instructions
-name. When they name no model or no effort, choose it yourself from the values that the harness lists: for Claude Code,
-the values that `claude --help` lists under `--model` and `--effort`; for Codex, the models and efforts that
-`codex debug models` lists; and for either, the effort `none`, which runs the model without reasoning and is the only
-effort of a model that lists none. When that listing command is unavailable, choose a model and an effort that you know
-the harness accepts, such as the ones this session runs under when it runs the same harness. State the model and the
-effort that you chose with the run's evidence.
-
+Every launch and every session request takes `--model <model>` and `--effort <effort>`, and the launcher refuses a
+launch or request without them. Always pass them yourself; never ask the user for them and never hold back the launch
+for want of them. Pass the model and the effort that your task or instructions name. When they name no model or no
+effort, choose it yourself from the values that the harness lists: for Claude Code, the values that `claude --help`
+lists under `--model` and `--effort`; for Codex, the models and efforts that `codex debug models` lists; and for either,
+the effort `none`, which runs the model without reasoning and is the only effort of a model that lists none. When that
+listing command is unavailable, choose a model and an effort that you know the harness accepts, such as the ones this
+session runs under when it runs the same harness. State the model and the effort that you chose with the nested
+session's evidence. 
 A session may need a write outside its session folder or a host that its harness's own needs do not cover, such as a
 package registry or a cache outside the project. Name them in a JSON file that you write with a file-writing tool, and
 pass `--extra-permissions <file>` to the launcher:
@@ -90,19 +89,20 @@ that reason and do not change sandbox settings yourself.
 
 ### Inside a nested session
 
-In the command environment, `CAT_REQUEST_SESSION` holds the absolute path of the `request-session` launcher, and the
-`claude-runner` and `codex-runner` launchers of the same run lie in the same folder. Print it with
+In the command environment, `CAT_REQUEST_SESSION` holds the absolute path of the `request-session` launcher, and this
+nested session's `claude-runner` and `codex-runner` launchers lie in the same folder. Print it with
 `printenv CAT_REQUEST_SESSION` and run each launcher by its absolute path; the plugin's `<harness>-runner` behaves the
 same way inside a nested session. A launcher does not start the harness itself, but asks the runner that started this
 session to start it outside this session's sandbox, and waits until it ends.
 
-Each launch and each session request, except a launch with `--resume`, counts against the sessions that this run
-allows. Before your first one, read
+Each launch and each session request, except a launch with `--resume`, counts against the sessions that this nested
+session may request. Before your first one, read
 `limits.json` in the `responses` folder beside the folder that `CAT_SESSION_REQUESTS` names. Its `requests_allowed`
-field gives how many sessions the run allows, `requests_used` how many it has accepted, and `depth_remaining` how many
-levels below the sessions that you request may request sessions in turn. When `requests_used` has reached
-`requests_allowed`, which is `0` when the run's caller allows none, the run refuses every further request that does not
-resume a session: do not make one, and report that this run allows no further session.
+field gives how many sessions this nested session may request, `requests_used` how many its runner has accepted, and
+`depth_remaining` how many levels below the sessions that you request may request sessions in turn. When
+`requests_used` has reached `requests_allowed`, which is `0` when this nested session's caller allows none, its runner
+refuses every further request that does not resume a session: do not make one, and report that this nested session may
+request no further session.
 
 The parent runner chooses the results folder, the artifact and the limits, so pass a runner launcher only these options,
 which do not include `--agent`:
@@ -114,7 +114,8 @@ which do not include `--agent`:
 
 To hold a conversation, pass `--conversation <folder>` in place of `--input`. The launcher writes the session's
 transcript to `--output`, or prints it, and copies its receipt to `--receipt`. It exits with `0` when the session
-completed, `75` when no capacity was free, `2` when the run refused the launch, and `1` otherwise, with the reason.
+completed, `75` when no capacity was free, `2` when this nested session's runner refused the launch, and `1`
+otherwise, with the reason.
 
 For a session request made with the `request-session` launcher, write each turn's prompt into its own file inside your
 project, and pass the model and the effort as above:
@@ -130,17 +131,18 @@ When the runner wrote them, its `transcript` field names the session's transcrip
 receipt, and with `--session-transcripts` its `session_transcripts` field names the folder of the session's own
 transcripts; you may read those files although they lie under the results folder. If the wait ends first, the launcher
 prints `id=<id>`; run the launcher again by its absolute path with only `--await <id>` to keep waiting. It exits with
-`0` when the session completed, `2` when the run refused the request, `3` when the wait ended first, and `1` otherwise.
+`0` when the session completed, `2` when this nested session's runner refused the request, `3` when the wait ended
+first, and `1` otherwise.
 
 With either launcher, `--install-cat` also installs CAT in the requested session, and each `--plugin` installs that
 plugin directory. A prompt file must not be a symbolic link, and a plugin must contain none. In the project, a symbolic
-link whose target lies inside the project stays a link, and the session gets a read-only copy of the file or folder
-that any other link points to, and the run fails if the session changes such a copy; a link whose target is missing or
+link whose target lies inside the project stays a link, and the session gets a read-only copy of the file or folder that
+any other link points to, and the launch fails if the session changes such a copy; a link whose target is missing or
 that you may not read is refused. The launcher leaves out the files that the sandbox hides behind the null device, so
 the requested session sees the project as the session does.
 
 When a launcher exits with status `2`, report its reason, or the response's `reason`, which names the options with
-which the run's caller allows the session, and do not start the session any other way.
+which this nested session's caller allows the session, and do not start the session any other way.
 
 ### Outside a nested session
 
@@ -149,10 +151,10 @@ arguments. It selects the CAT plugin installed for that harness when that plugin
 prints three lines: `artifact=<artifact>`, `runner=<runner>` and `source=installed`. When CAT is not installed in that
 harness, or is installed there at another version, it exits with a non-zero status and prints a reason that names the
 command which installs or updates CAT there; ask the user to approve and run that command, then retry. On any other
-failure, report the reason and do not start a run. `<harness>-runner` runs that same artifact itself, so do not pass
+failure, report the reason and do not launch. `<harness>-runner` runs that same artifact itself, so do not pass
 `--artifact`.
 
-Before a run, require all of these exact prerequisites:
+Before a launch, require all of these exact prerequisites:
 
 - The harness's command, `claude` for Claude Code or `codex` for Codex, is available on `PATH` and authenticated.
 - `<runner>` exists.
@@ -160,10 +162,10 @@ Before a run, require all of these exact prerequisites:
 	requested profile is supported.
 
 Do not search cache directories, install a harness, substitute another artifact version, or accept an arbitrary runner
-or artifact path. Report the missing prerequisite and do not start a run when validation fails.
+or artifact path. Report the missing prerequisite and do not launch when validation fails.
 
-For an authorized task, give the launcher a project directory and an owned results folder. For example, a one-turn run
-takes this argument list, wrapped here to fit:
+For an authorized task, give the launcher a project directory and an owned results folder. For example, a one-turn
+launch takes this argument list, wrapped here to fit:
 
 ```text
 --project <project> --results <folder> --input <records> --install-cat
@@ -171,14 +173,16 @@ takes this argument list, wrapped here to fit:
 ```
 
 The launcher always copies the session's results, its project, artifacts and receipt, into the results folder, which is
-`nested-sessions` in CAT_TEMP when you pass no `--results`. The copy is the folder `<harness>/<session ID>` there, named
-by the ID that the `session_id` record reports (see "Resuming a session"). Delete that copy once nothing needs it.
+`nested-sessions` in CAT_TEMP when you pass no `--results`. This results copy is the folder `<harness>/<session ID>`
+there, named by the ID that the `session_id` record reports (see "Resuming a session"). Delete that results copy once
+nothing needs it.
 
 Pass `--session-transcripts` only when your task needs the session's own transcript. The runner then
-copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in the run
-directory, writes a `session_transcript` record with its path, and lists the copies in the receipt.
+copies every transcript of the session, subagents' included, into `artifacts/session-transcripts` in its session
+folder, which its results copy includes, writes a `session_transcript` record with its path, and lists the copies in
+the receipt.
 
-To test a plugin, pass its directory with `--plugin <plugin>` and start a new run for each change to it.
+To test a plugin, pass its directory with `--plugin <plugin>` and start a new nested session for each change to it.
 
 Pass `--session-requests <count>` when the session needs to start sessions of its own, such as to test a plugin it
 writes. The runner does not tell the session how: it learns how from this rule only when CAT is installed in it. Add
@@ -201,7 +205,7 @@ exits with `0` when the session completed, `75` when no capacity was free, `2` w
 and `1` otherwise, and prints the reason for any status other than `0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
 other reason to the user. When it asks the user to start a new session or to change a setting, as it does when this
 session started before CAT was installed or updated, ask the user to do so and run the task in a new session. Do not
-start the run any other way, and do not change sandbox settings yourself.
+start the session any other way, and do not change sandbox settings yourself.
 
 ### Conversations
 
@@ -255,7 +259,7 @@ line that you wait for will come. The launcher then exits as it does without `--
 ### Resuming a session
 
 A session that you launched stops when this session ends before it, such as when the user stops this session or
-its connection drops, but CAT keeps its run so that you can continue it later. When the launched session starts, a
+its connection drops, but CAT retains it so that you can continue it later. When the launched session starts, a
 line that begins `{"type":"session_id"` reaches `from-child.jsonl`, or the transcript without `--conversation`, and
 its `session_id` field holds the launched harness session's ID. Note that ID while the session runs.
 
@@ -266,16 +270,17 @@ runner launcher of its harness and a new conversation folder:
 --resume <session-id> --model <model> --effort <effort> --conversation <new-folder>
 ```
 
-The session continues in its run, with the project, plugins and options that its first launch gave it. Do not pass
-`--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`,
+The session continues in its session folder, with the project, plugins and options that its first launch gave it. Do not
+pass `--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`,
 `--instruction-files`, `--session-role`, `--tool-output-token-limit` or `--agent`; the launcher refuses them. Other
 options work as for any launch. Its turns go on after the last turn that ended. The turn that was in progress when it
 stopped has no reply, so send that turn again as your first `turn` message.
 
-Only the session that launched a session can resume it, and only while its run is kept: a session that ended on its
-own cannot be resumed. The launcher exits with `2` when it cannot resume the session, such as for an ID that no kept
-run of this session records, and with `1` when the harness could not continue it; the response's status is then
-`unresumable`, and the run stays kept. Report the reason to the user in either case.
+Only the session that launched a nested session can resume it, and only while CAT retains it: a nested session that
+ended on its own cannot be resumed. The launcher exits with `2` when it cannot resume the session, such as for an ID
+that no nested session that CAT retains for this session records, and with `1` when the harness could not continue it;
+the response's status is then `unresumable`, and CAT still retains the nested session. Report the reason to the user in
+either case.
 
 ### Replies
 

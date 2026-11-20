@@ -316,9 +316,9 @@ public final class RunnerLaunchersTest
 	/**
 	 * Verifies that the bundled rule on running a harness has the agent decide whether it runs inside a nested session
 	 * before any step that applies only outside one, says that inside a nested session the agent neither selects an
-	 * artifact nor verifies one, and does not present the runner launchers beside the run's {@code request-session}
-	 * launcher as the only ones that work there, since the plugin's runner launchers forward a launch inside a nested
-	 * session as well.
+	 * artifact nor verifies one, and does not present the runner launchers beside the nested session's
+	 * {@code request-session} launcher as the only ones that work there, since the plugin's runner launchers forward a
+	 * launch inside a nested session as well.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -333,7 +333,7 @@ public final class RunnerLaunchersTest
 		Map<String, String> outsideSteps = Map.of(
 			"outsideSection", "### Outside a nested session",
 			"artifactSelection", "selects. Run `<harness>-artifact` by its absolute path",
-			"prerequisites", "Before a run, require all of these exact prerequisites",
+			"prerequisites", "Before a launch, require all of these exact prerequisites",
 			"artifactVerification", "`--verify-artifact <artifact>` succeeds");
 		for (Map.Entry<String, String> step : outsideSteps.entrySet())
 			requireThat(rule.indexOf(step.getValue()), step.getKey()).isGreaterThan(check);
@@ -358,7 +358,7 @@ public final class RunnerLaunchersTest
 		requireThat(rules, "rules").size().isEqualTo(1);
 		String rule = read(rules.getFirst()).replaceAll("\\s+", " ");
 		requireThat(rule, "rule").
-			contains("Before you run it, write the run's records with a file-writing tool into a file").
+			contains("Before you run it, write the launch's records with a file-writing tool into a file").
 			contains("`{\"type\":\"turn\",\"prompt\":\"<task>\"}`").
 			contains("`--input` takes only that records file, never a prompt file; prompt files are for the " +
 				"`request-session` launcher");
@@ -404,16 +404,16 @@ public final class RunnerLaunchersTest
 		List<URL> rules = resources(HARNESS_RUNNERS_RULE);
 		requireThat(rules, "rules").size().isEqualTo(1);
 		requireThat(read(rules.getFirst()), "rule").contains("`request-session`").
-			contains("Every run and every session request takes `--model <model>` and `--effort <effort>`").
+			contains("Every launch and every session request takes `--model <model>` and `--effort <effort>`").
 			contains("`transcript` field");
 	}
 
 	/**
 	 * Verifies that the bundled rule on running a harness tells a session inside a nested session, which no
 	 * instructions of its own tell, everything it needs to request a session: which command environment variable names
-	 * the {@code request-session} launcher, where its run states how many sessions it allows and has accepted and how
+	 * the {@code request-session} launcher, where its runner states how many sessions it allows and has accepted and how
 	 * deep they may nest, what each launcher's exit status means, which inputs a request refuses, which response field
-	 * names the native transcripts, and that a refusal's reason names the options of the run's caller.
+	 * names the native transcripts, and that a refusal's reason names the options of the nested session's caller.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
@@ -427,10 +427,10 @@ public final class RunnerLaunchersTest
 			contains("`CAT_REQUEST_SESSION` holds the absolute path of the `request-session` launcher").
 			contains("`limits.json`").contains("`requests_allowed`").contains("`requests_used`").
 			contains("`depth_remaining`").
-			contains("`2` when the run refused the launch").
-			contains("`2` when the run refused the request, `3` when the wait ended first").
+			contains("`2` when this nested session's runner refused the launch").
+			contains("`2` when this nested session's runner refused the request, `3` when the wait ended first").
 			contains("A prompt file must not be a symbolic link").contains("`session_transcripts`").
-			contains("which names the options with which the run's caller allows").
+			contains("which names the options with which this nested session's caller allows").
 			doesNotContain("its instructions name").doesNotContain("session's instructions name").
 			doesNotContain("The runner tells it how");
 	}
@@ -442,7 +442,7 @@ public final class RunnerLaunchersTest
 	 * turn-level records and {@code events.jsonl} the harness's events, to wait for a turn to end with one
 	 * {@code wait-until} whose check is the reply command, to print the reply with the same command, that the
 	 * {@code ended} line comes last, and that the session stops with the command. The rule keeps its guidance on a
-	 * run's records file.
+	 * launch's records file.
 	 *
 	 * @throws IOException if the rule cannot be read
 	 */
