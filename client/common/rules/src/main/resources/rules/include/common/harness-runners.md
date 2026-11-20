@@ -199,8 +199,8 @@ status `2` instead, report its reason to the user and do not launch, unless the 
 already serves this session.
 
 Never pass `--policy-bound`, `--capacity-held`, `--child-needs`, `--git-name`, `--git-email`,
-`--continue-after-failed-turn`, `--slot-id` or `--resume-slot`: only CAT itself passes them, and the launcher refuses
-them. The launcher
+`--continue-after-failed-turn`, `--slot-id`, `--resume-slot` or `--startup-permit`: only CAT itself passes them,
+and the launcher refuses them. The launcher
 exits with `0` when the session completed, `75` when no capacity was free, `2` when CAT refused to start the session,
 and `1` otherwise, and prints the reason for any status other than `0`. When the reason says that no request server serves this session, start it as above and launch again. Report any
 other reason to the user. When it asks the user to start a new session or to change a setting, as it does when this
