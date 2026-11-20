@@ -81,7 +81,8 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
           client/common/distribution/src/test/bats/installer-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests.
+      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell through cat.ps1, which
+      # bootstrap-windows.bats tests.
       # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
       # that plugin has no POSIX launchers, and codex-plugin-launchers-windows.bats runs that plugin's batch launchers
       # from PowerShell. A Windows installation's installer launchers are PowerShell scripts, which
@@ -92,6 +93,7 @@ jobs:
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
+          client/common/distribution/src/test/bats/bootstrap-windows.bats
           client/common/distribution/src/test/bats/codex-plugin-launchers-windows.bats
           client/common/distribution/src/test/bats/installer-launcher-windows.bats
       # The installer's sources rewrite runs here, where the shell and sed are macOS's, as well as on Linux.

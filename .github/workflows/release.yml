@@ -104,7 +104,8 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
           client/common/distribution/src/test/bats/installer-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell, which the Maven build tests.
+      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell through cat.ps1, which
+      # bootstrap-windows.bats tests.
       # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
       # that plugin has no POSIX launchers. A Windows installation's installer launchers are PowerShell scripts, which
       # installer-launcher-windows.bats tests in place of installer-launcher.bats and its POSIX launchers.
@@ -114,6 +115,7 @@ jobs:
           bats client/common/distribution/src/test/bats/bootstrap-common.bats
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
+          client/common/distribution/src/test/bats/bootstrap-windows.bats
           client/common/distribution/src/test/bats/installer-launcher-windows.bats
       # The POSIX launcher templates; the Windows plugins' batch launchers are tested by the Maven build
       - name: Verify the jlink launcher template
