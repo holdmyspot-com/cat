@@ -91,7 +91,7 @@ public final class CodexRunnerCliTest
 
 				Path sessionTemp = project.toAbsolutePath().normalize().resolve(".cat/sessions").resolve(THREAD_ID).
 					resolve("temp");
-				requireThat(options.resultsFolder().getParent(), "runRootParent").isEqualTo(sessionTemp);
+				requireThat(options.resultsFolder().getParent(), "resultsFolderParent").isEqualTo(sessionTemp);
 				requireThat(sessionTemp.resolveSibling("session.json"), "marker").isRegularFile();
 			}
 		}
@@ -407,7 +407,7 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(e.getMessage(), "message").startsWith(expected).contains("`codex debug models`");
 				}
-				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+				requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
 			}
 		}
 	}
@@ -452,7 +452,7 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(e.getMessage(), "message").contains("--agent").contains("--model").contains("--effort");
 				}
-				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+				requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
 			}
 		}
 	}
@@ -496,7 +496,7 @@ public final class CodexRunnerCliTest
 				{
 					requireThat(e.getMessage(), "message").contains(AGENT).contains("no " + missing + " ");
 				}
-				requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+				requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
 			}
 		}
 	}
@@ -883,7 +883,7 @@ public final class CodexRunnerCliTest
 			{
 				requireThat(e.getMessage(), "message").contains("--policy-bound");
 			}
-			requireThat(Files.exists(root.resolve("runs")), "runRootExists").isFalse();
+			requireThat(Files.exists(root.resolve("runs")), "resultsFolderExists").isFalse();
 		}
 	}
 
@@ -1045,7 +1045,7 @@ public final class CodexRunnerCliTest
 			requireThat(status, "status").isEqualTo(HarnessRunnerOptions.REFUSED_LAUNCH_STATUS);
 			requireThat(errors.toString(), "errors").contains("Run this command from a Claude Code or Codex session.");
 			requireThat(output.size(), "outputSize").isZero();
-			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
+			requireThat(Files.exists(home.resolve("runs")), "resultsFolderExists").isFalse();
 		}
 	}
 
@@ -1081,7 +1081,7 @@ public final class CodexRunnerCliTest
 			requireThat(output.size(), "outputSize").isZero();
 			requireThat(Files.exists(project.resolve(".cat/sessions").resolve(THREAD_ID).resolve("requests")),
 				"requestsExist").isFalse();
-			requireThat(Files.exists(home.resolve("runs")), "runRootExists").isFalse();
+			requireThat(Files.exists(home.resolve("runs")), "resultsFolderExists").isFalse();
 		}
 	}
 

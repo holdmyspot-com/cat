@@ -318,7 +318,7 @@ public final class SessionDirectoryTest
 	}
 
 	/**
-	 * Verifies a session's campaigns live in its {@code optimizer} directory and its runs in
+	 * Verifies a session's campaigns live in its {@code optimizer} directory and its nested sessions in
 	 * {@code optimizer-runs/<harness>}, and that naming them creates neither.
 	 *
 	 * @throws IOException if the test filesystem cannot be used

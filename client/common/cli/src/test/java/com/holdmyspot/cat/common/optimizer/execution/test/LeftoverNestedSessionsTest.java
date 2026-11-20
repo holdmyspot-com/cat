@@ -56,7 +56,7 @@ public final class LeftoverNestedSessionsTest
 	}
 
 	/**
-	 * Returns run manifests and the processes that each identifies. The process table reports no owner process
+	 * Returns session manifests and the processes that each identifies. The process table reports no owner process
 	 * alive.
 	 *
 	 * @return the cases

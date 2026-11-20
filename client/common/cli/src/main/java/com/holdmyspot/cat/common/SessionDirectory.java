@@ -42,8 +42,8 @@ import tools.jackson.databind.json.JsonMapper;
  * transcript. A later use keeps the marker. The sweep removes the directories of sessions that their harness no longer
  * keeps.
  * <p>
- * The session's prompt-optimizer campaigns live in {@code optimizer/<campaign-id>/}, and the runs of the nested
- * sessions that they start live below {@code optimizer-runs/}.
+ * The session's prompt-optimizer campaigns live in {@code optimizer/<campaign-id>/}, and the session folders of
+ * the nested sessions that they start live below {@code optimizer-runs/}.
  */
 public final class SessionDirectory
 {
@@ -352,8 +352,8 @@ public final class SessionDirectory
 	}
 
 	/**
-	 * Returns the directory that holds the runs of the nested sessions that the session's campaigns start through a
-	 * harness's runner. This method does not create it.
+	 * Returns the directory that holds the session folders of the nested sessions that the session's campaigns start
+	 * through a harness's runner. This method does not create it.
 	 *
 	 * @param harnessId the runner's harness, such as {@code claude}
 	 * @return the directory's path

@@ -146,7 +146,7 @@ public final class HookScopeTest
 	}
 
 	/**
-	 * Verifies that a scope accepts the variable that marks a session of a CAT run, which a runner sets in every
+	 * Verifies that a scope accepts the variable that marks a nested session, which a runner sets in every
 	 * session that it starts, so that CAT's hooks run in those sessions.
 	 *
 	 * @throws IOException if the fixture cannot be created

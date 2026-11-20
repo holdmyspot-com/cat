@@ -53,7 +53,7 @@ public final class LeftoverNestedSessions
 	 * Creates a finder that asks the operating system's process table whether each owner process is alive.
 	 *
 	 * @param sessions the session port that declares the results folders
-	 * @param json     the JSON mapper that parses run manifests
+	 * @param json     the JSON mapper that parses session manifests
 	 * @throws NullPointerException if any of the arguments are null
 	 */
 	public LeftoverNestedSessions(SessionPort sessions, JsonMapper json)
@@ -65,7 +65,7 @@ public final class LeftoverNestedSessions
 	 * Creates a finder that asks a liveness service whether each owner process is alive.
 	 *
 	 * @param sessions the session port that declares the results folders
-	 * @param json     the JSON mapper that parses run manifests
+	 * @param json     the JSON mapper that parses session manifests
 	 * @param liveness answers whether a recorded owner process is alive
 	 * @throws NullPointerException if any of the arguments are null
 	 */

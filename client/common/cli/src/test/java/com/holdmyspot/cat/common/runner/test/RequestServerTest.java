@@ -301,7 +301,7 @@ public final class RequestServerTest
 				ChildPolicy bound = bounds.get();
 				requireThat(bound.writeRoots(), "writeRoots").isEqualTo(List.of(resultsFolder));
 				requireThat(bound.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST));
-				requireThat(awaitAbsent(resultsFolder), "runRootRemains").isFalse();
+				requireThat(awaitAbsent(resultsFolder), "resultsFolderRemains").isFalse();
 				requireThat(copied.get(), "copied").contains("README.md").contains(".cat/sessions/" + SESSION_ID).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/" + RequestServer.REQUESTS).
 					doesNotContain(".cat/sessions/" + SESSION_ID + "/responses").

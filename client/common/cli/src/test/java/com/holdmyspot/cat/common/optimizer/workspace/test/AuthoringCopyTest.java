@@ -130,7 +130,7 @@ public final class AuthoringCopyTest
 				PlainWorktreeLinks.INSTANCE);
 			Path copy = port.prepareAuthoringCopy(Overlay.of(project.tree().inventory()));
 			FileInventory before = port.scanAuthoringCopy(copy);
-			// The session's runner copies the project source into a run directory, whose state is the effects
+			// The session's runner copies the project source into a session folder, whose state is the effects
 			Path effects = project.campaign().resolve("runs/run-1/project");
 			FileTrees.copy(copy, effects);
 

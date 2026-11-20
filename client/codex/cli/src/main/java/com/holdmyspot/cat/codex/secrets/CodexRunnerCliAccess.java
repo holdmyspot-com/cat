@@ -14,9 +14,9 @@ import java.util.Map;
 public interface CodexRunnerCliAccess
 {
 	/**
-	 * Opens the tool scope of a runner command. Its CAT session directory, whose temporary directory holds the runs
-	 * of a command line that names no {@code --results}, belongs to the session whose tool shell runs the command, in
-	 * the nearest CAT project.
+	 * Opens the tool scope of a runner command. Its CAT session directory, whose temporary directory holds the nested
+	 * sessions of a command line that names no {@code --results}, belongs to the session whose tool shell runs the
+	 * command, in the nearest CAT project.
 	 *
 	 * @param workingDirectory the directory from which the command was invoked
 	 * @param environment      the command's environment, whose session variable names the session

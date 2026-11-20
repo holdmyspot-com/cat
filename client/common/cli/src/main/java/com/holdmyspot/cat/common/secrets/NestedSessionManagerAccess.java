@@ -9,12 +9,12 @@ import java.nio.file.Path;
 import java.time.Clock;
 
 /**
- * Exposes the creation of run managers and the manifest limit to the module's tests.
+ * Exposes the creation of nested-session managers and the manifest limit to the module's tests.
  */
 public interface NestedSessionManagerAccess
 {
 	/**
-	 * Returns the largest run manifest, in bytes, that a manager reads.
+	 * Returns the largest session manifest, in bytes, that a manager reads.
 	 *
 	 * @return the number of bytes
 	 */
@@ -26,8 +26,8 @@ public interface NestedSessionManagerAccess
 	 * @param fileLocks the process-owned lock coordinator
 	 * @param root the absolute owned-results folder
 	 * @param clock the clock used for generated identifiers
-	 * @param replacer replaces the runs' manifests and output files
-	 * @param processLiveness the exact-process liveness service for the runs' owner and harness processes
+	 * @param replacer replaces the nested sessions' manifests and output files
+	 * @param processLiveness the exact-process liveness service for the nested sessions' owner and harness processes
 	 * @return the manager
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code root} is relative

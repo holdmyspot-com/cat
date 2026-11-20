@@ -68,7 +68,7 @@ public final class Cleanup
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
 	 * @param resultsFolders the directories that hold the nested sessions of those campaigns
-	 * @param json the JSON mapper that parses run manifests
+	 * @param json the JSON mapper that parses session manifests
 	 * @param replacer writes the record that a campaign's removal started
 	 * @throws NullPointerException if any of the arguments are null
 	 */
@@ -88,7 +88,7 @@ public final class Cleanup
 	 * @param campaigns the directory that holds the campaigns that this cleanup removes
 	 * @param forks creates and removes the campaigns' optimization worktrees
 	 * @param resultsFolders the directories that hold the nested sessions of those campaigns
-	 * @param json the JSON mapper that parses run manifests
+	 * @param json the JSON mapper that parses session manifests
 	 * @param replacer writes the record that a campaign's removal started
 	 * @param beforeStep receives each step before it runs; an exception that it throws stops the removal at that
 	 *   point, as a crash would

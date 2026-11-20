@@ -18,7 +18,7 @@ import tools.jackson.databind.json.JsonMapper;
 public interface EventSinkAccess
 {
 	/**
-	 * Returns the name of the retained harness event archive, inside the run's {@code artifacts} directory.
+	 * Returns the name of the retained harness event archive, inside the session folder's {@code artifacts} directory.
 	 *
 	 * @return the file name
 	 */
@@ -29,11 +29,11 @@ public interface EventSinkAccess
 	 *
 	 * @param json the JSON mapper
 	 * @param events the parser that absorbs every harness event
-	 * @param newPromptSources creates the prompt-source observation of a run from the directories whose staged
+	 * @param newPromptSources creates the prompt-source observation of a nested session from the directories whose staged
 	 *   locations must not appear in its value
-	 * @param harnessDirectory the directory that holds the runner's run directories for this harness
+	 * @param harnessDirectory the directory that holds the runner's session folders for this harness
 	 * @param placeholders maps each placeholder to a directory whose staged location must not appear in the
-	 *   prompt sources. The sink adds the run directory.
+	 *   prompt sources. The sink adds the session folder.
 	 * @param messages where the sink reports the runner's progress
 	 * @return the sink
 	 * @throws NullPointerException if any argument is null
