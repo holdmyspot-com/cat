@@ -1,9 +1,7 @@
-// Publishes only completed, contract-conforming language review captures from an owned matrix run.
-import {cp, mkdir, readFile, readdir, writeFile} from "node:fs/promises";
-import {dirname, join} from "node:path";
-import {fileURLToPath} from "node:url";
-
-const reviewDirectory = dirname(fileURLToPath(import.meta.url));
+// Publishes matched Base and CAT reviews from completed sessions in an owned matrix workspace.
+import {cp, mkdir, readFile, stat} from "node:fs/promises";
+import {join} from "node:path";
+import {readCapture} from "./review-session.mjs";
 
 const [matrixRoot, destination] = process.argv.slice(2);
 if ([matrixRoot, destination].some((value) => !value?.trim()))
@@ -12,64 +10,54 @@ if ([matrixRoot, destination].some((value) => !value?.trim()))
 const languages = ["typescript", "python", "java", "csharp", "cpp", "php", "go"];
 const concerns = ["architecture", "business", "deployment", "design", "legal", "performance", "requirements",
   "security", "testing", "ux", "plan-review"];
+const publishedManifestSuffix = ".session.json";
 
-async function filesBelow(directory, name)
+/**
+ * Verifies one cell's manifest identity, retained task, native events, and Codex validation when required.
+ */
+async function publicationFiles(language, harness, mode, concern)
 {
-  const files = [];
-  for (const entry of await readdir(directory, {withFileTypes: true}))
-  {
-    const path = join(directory, entry.name);
-    if (entry.isDirectory())
-      files.push(...await filesBelow(path, name));
-    else if (entry.name === name)
-      files.push(path);
-  }
-  return files;
-}
+  const name = `${harness}-${mode}-${concern}`;
+  const results = join(matrixRoot, language, "sessions", name);
+  const capture = await readCapture(results, harness);
+  const requestPath = join(results, "request.txt");
+  const request = await readFile(requestPath, "utf8");
+  const events = join(matrixRoot, language, "outputs", `${name}.events.jsonl`);
+  const eventFile = await stat(events);
+  if (!eventFile.isFile() || eventFile.size === 0)
+    throw new Error(`${events} has no native events to publish`);
 
-async function completedSession(directory)
-{
-  const manifests = await filesBelow(directory, "session.json");
-  if (manifests.length !== 1)
-    throw new Error(`${directory} must contain exactly one session manifest`);
-  const manifest = JSON.parse(await readFile(manifests[0], "utf8"));
-  if (manifest.state !== "completed")
-    throw new Error(`${manifests[0]} is ${manifest.state}, not completed`);
-  return manifests[0];
-}
-
-async function sourceDirectory(root, language, harness, mode, concern)
-{
-  const directory = join(root, language, "sessions", `${harness}-${mode}-${concern}`);
-  await completedSession(directory);
-  return directory;
-}
-
-async function publish(root, language, harness, mode, concern, outputName)
-{
-  const source = await sourceDirectory(root, language, harness, mode, concern);
-  const events = join(root, language, "outputs", `${harness}-${mode}-${concern}.events.jsonl`);
-  const target = join(destination, language);
-  await mkdir(target, {recursive: true});
-  await cp(events, join(target, `${outputName}.events.jsonl`));
-  const request = join(source, "request.txt");
-  await readFile(request);
-  await cp(request, join(target, `${outputName}.request.md`));
-  await cp(await completedSession(source), join(target, `${outputName}.run.json`));
+  const files = [[events, `${name}.events.jsonl`], [requestPath, `${name}.request.md`],
+    [capture.manifest, `${name}${publishedManifestSuffix}`]];
   if (harness === "codex" && mode === "cat")
   {
     const validation = `${events}.validation.json`;
     const result = JSON.parse(await readFile(validation, "utf8"));
     if (result.accepted !== true)
-      throw new Error(`${validation} was not accepted`);
-    await cp(validation, join(target, `${outputName}.validation.json`));
+      throw new Error(`${validation} does not record an accepted review`);
+    files.push([validation, `${name}.validation.json`]);
   }
+  return {...capture, request, files};
 }
 
+const publication = [];
 for (const language of languages)
   for (const concern of concerns)
     for (const harness of ["codex", "claude"])
-      for (const mode of ["base", "cat"])
-        await publish(matrixRoot, language, harness, mode, concern, `${harness}-${mode}-${concern}`);
+    {
+      const base = await publicationFiles(language, harness, "base", concern);
+      const cat = await publicationFiles(language, harness, "cat", concern);
+      if (!base.request.trim() || base.request !== cat.request)
+        throw new Error(`${language} ${harness} ${concern} requires the same nonempty Base and CAT review task`);
+      if (base.model !== cat.model || base.effort !== cat.effort)
+        throw new Error(`${language} ${harness} ${concern} used different model profiles for Base and CAT`);
+      publication.push({language, files: [...base.files, ...cat.files]});
+    }
 
-await writeFile(join(destination, "published-from.json"), `${JSON.stringify({matrixRoot}, null, 2)}\n`);
+for (const {language, files} of publication)
+{
+  const target = join(destination, language);
+  await mkdir(target, {recursive: true});
+  for (const [source, name] of files)
+    await cp(source, join(target, name));
+}

@@ -1173,6 +1173,18 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 	be resumed because no harness session ID was recorded for it, its nested session ended or is gone, or its harness
 	session cannot continue, has its nested session discarded as corrupt and runs again as the same logical trial with
 	the same test case; the discarded session is an infrastructure attempt.
+	The campaign records the launch request before publishing it, and the server associates that request with its slot
+	before starting the runner. This lets reconciliation recover the harness session ID when the runner recorded it
+	and the driver stopped before it received the notification. A restart settles the original launch before reusing
+	its slot, so a delayed runner cannot start after recovery has reported the launch absent. The runner records the
+	start of a turn before sending it to the harness. It records the reply and evidence of a successful turn before
+	reporting completion to the driver. The server checks the completed turn prefix while claiming the slot for
+	resumption. The driver uses that prefix to judge the whole trial and sends only the remaining turns. It saves
+	the early-ending observer's decisions before sending another turn, preserving the first turn on which each
+	assertion settled. If the observer had yet to record its decision for the last completed turn, the driver checks
+	that turn using the retained evidence. If no turns remain or the observer ended the trial, it completes the session.
+	Reconciliation spends an infrastructure attempt and retries only after the server confirms discard or that the
+	previous launch is settled and has no retained slot.
 - A run that ends without a pass or fail outcome (provider error, rate-limit rejection, an interrupted turn, crash) is an
 	infrastructure attempt. The same logical trial runs again with the same test case. After 3 infrastructure failures
 	of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections and

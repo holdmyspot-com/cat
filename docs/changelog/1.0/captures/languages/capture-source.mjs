@@ -1,162 +1,235 @@
 #!/usr/bin/env node
-// Retains one source-generation turn until the isolated runner records its terminal event.
-import {appendFile, readFile, rename, writeFile} from "node:fs/promises";
-import {join} from "node:path";
+// Captures one source-generation or validation turn through the installed CAT runner.
+import {createReadStream} from "node:fs";
+import {open, readFile, rename, writeFile} from "node:fs/promises";
+import {isAbsolute, join, resolve} from "node:path";
 import {spawn} from "node:child_process";
 import {constants} from "node:os";
 import {createInterface} from "node:readline";
+import {fileURLToPath} from "node:url";
 
-const [runner, artifact, project, promptFile, output, resultsFolder, mode] = process.argv.slice(2);
-if ([runner, artifact, project, promptFile, output, resultsFolder, mode].some((value) => !value?.trim()) ||
-  !["base", "cat"].includes(mode))
-  throw new Error("Usage: capture-source.mjs <runner> <artifact> <project> <prompt-file> <output> <results> <base|cat>");
+const recordsName = "capture-input.jsonl";
+const transcriptName = "capture-transcript.jsonl";
+const supervisorName = "capture-supervisor.json";
+const manifestName = "session.json";
+const runnerTerminationGraceMs = 15_000;
 
-const prompt = await readFile(promptFile, "utf8");
-await writeFile(output, "");
-const arguments_ = ["--artifact", artifact, "--project", project, "--results", resultsFolder];
-if (mode === "cat")
-  arguments_.push("--install-cat");
-const child = spawn(runner, arguments_, {stdio: ["pipe", "pipe", "pipe"]});
-const supervisorRecord = join(resultsFolder, "capture-supervisor.json");
-const startedAt = new Date().toISOString();
-let sessionId;
-
-await writeSupervisorRecord("running", "The supervisor accepted the capture and is awaiting a terminal runner result.");
-
-process.once("SIGTERM", () =>
+/**
+ * Captures one prompt from the project using the requested installed harness and profile.
+ * Writes runner and supervisor evidence under the caller-owned results folder and exports native events to output.
+ * Returns the successful session ID and final response. A failed launcher, turn or copy rejects the capture.
+ */
+export async function captureSource(
+  {runner, harness, project, promptFile, output, resultsFolder, mode, model, effort}, timeoutSeconds)
 {
-  void writeSupervisorRecord("interrupted", "The supervisor received SIGTERM before recording a terminal result.").
-    finally(() =>
-    {
-      child.kill("SIGTERM");
-      process.exit(143);
-    });
-});
+  const prompt = await readFile(promptFile, "utf8");
+  const input = join(resultsFolder, recordsName);
+  const transcript = join(resultsFolder, transcriptName);
+  const supervisorRecord = join(resultsFolder, supervisorName);
+  await writeFile(input, [JSON.stringify({type: "turn", prompt}), JSON.stringify({type: "complete"}), ""].join("\n"));
 
-const keepAlive = setInterval(() => {}, 1_000);
-let timedOut = false;
-const timeoutSeconds = Number.parseInt(process.env.CAPTURE_TIMEOUT_SECONDS ?? "600", 10);
-if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1)
-  throw new Error("CAPTURE_TIMEOUT_SECONDS must be a positive whole number");
-// A bounded capture keeps one failed harness from serializing the matrix. The supervisor retains its events as
-// diagnostic evidence and schedules the other isolated captures independently.
-const deadline = setTimeout(() =>
-{
-  timedOut = true;
-  child.kill("SIGTERM");
-}, timeoutSeconds * 1_000);
-const forcedTermination = setTimeout(() =>
-{
-  if (timedOut && child.exitCode === null && child.signalCode === null)
-    child.kill("SIGKILL");
-}, (timeoutSeconds + 15) * 1_000);
-let error = "";
-let started;
-let completed;
-let completion;
-let writes = Promise.resolve();
-const ready = new Promise((resolve) => { started = resolve; });
-const terminal = new Promise((resolve) => { completion = resolve; });
-const exited = new Promise((resolve) => child.once("exit", (exitCode, signal) => resolve({exitCode, signal})));
+  const args = ["--project", project, "--results", resultsFolder, "--input", input, "--output", transcript,
+    "--model", model, "--effort", effort];
+  if (mode === "cat")
+    args.push("--install-cat");
 
-createInterface({input: child.stdout}).on("line", (line) =>
-{
+  const record = {
+    schema_version: 3,
+    state: "running",
+    reason: "The supervisor accepted the capture and is awaiting a terminal runner result.",
+    process_id: process.pid,
+    runner_process_id: null,
+    session_id: null,
+    started_at: new Date().toISOString(),
+    finished_at: null,
+    exit_code: null,
+    signal: null
+  };
+  await writeSupervisorRecord(supervisorRecord, record);
+
+  let failure;
+  let response;
   try
   {
-    const message = JSON.parse(line);
-    if (message.type === "started")
-      started();
-    else if (message.type === "session_id")
-      sessionId = message.session_id;
-    else if (message.type === "harness-event")
-      writes = writes.then(() => appendFile(output, `${message.event}\n`));
-    else if (message.type === "turn-completed" && !completed)
+    const exit = await runCapture(runner, args, timeoutSeconds, record);
+    record.exit_code = exit.code;
+    record.signal = exit.signal;
+    try
     {
-      completed = true;
-      completion(message);
+      response = await exportTranscript(transcript, output, record);
+    }
+    catch (error)
+    {
+      if (exit.code === 0 || error.code !== "ENOENT")
+        throw error;
+    }
+
+    if (exit.interrupted)
+    {
+      record.state = "interrupted";
+      throw new Error("The supervisor received SIGTERM before recording a terminal result.");
+    }
+    if (exit.timedOut)
+      throw new Error(`Capture timed out after ${timeoutSeconds} seconds. Runner exit status was ${exit.code}.`);
+    if (exit.code !== 0)
+      throw new Error(`Source runner exited with status ${exit.code}.${exit.stderr ? "\n" + exit.stderr : ""}`);
+    if (response?.type !== "turn_completed" || response.exit_code !== 0)
+      throw new Error(`Source runner returned no successful completed turn.${response?.error ? "\n" + response.error : ""}`);
+
+    await requireCompletedManifest(resultsFolder, harness, record.session_id);
+    record.state = "completed";
+    record.reason = "The runner recorded a completed turn and copied its session results.";
+  }
+  catch (error)
+  {
+    if (record.state === "running")
+      record.state = "failed";
+    record.reason = error.message;
+    failure = error;
+  }
+
+  record.finished_at = new Date().toISOString();
+  try
+  {
+    await writeSupervisorRecord(supervisorRecord, record);
+  }
+  catch (error)
+  {
+    if (failure)
+      throw new Error(`${failure.message}\nUnable to record the failed capture. ${error.message}`, {cause: failure});
+    throw error;
+  }
+  if (failure)
+    throw failure;
+
+  return {sessionId: record.session_id, assistantResponse: response.assistant_response};
+}
+
+/** Runs the installed launcher and waits for its pipes to close. On timeout or SIGTERM, it terminates the launcher. */
+async function runCapture(runner, args, timeoutSeconds, record)
+{
+  const child = spawn(runner, args, {stdio: ["ignore", "ignore", "pipe"]});
+  record.runner_process_id = child.pid ?? null;
+  let stderr = "";
+  child.stderr.setEncoding("utf8");
+  child.stderr.on("data", (chunk) => { stderr = (stderr + chunk).slice(-8192); });
+  let timedOut = false;
+  let interrupted = false;
+  let forceTermination;
+
+  const terminate = () =>
+  {
+    child.kill("SIGTERM");
+    forceTermination ??= setTimeout(() => child.kill("SIGKILL"), runnerTerminationGraceMs);
+  };
+  const onTerminate = () =>
+  {
+    interrupted = true;
+    terminate();
+  };
+  process.once("SIGTERM", onTerminate);
+  const deadline = setTimeout(() =>
+  {
+    timedOut = true;
+    terminate();
+  }, timeoutSeconds * 1_000);
+
+  try
+  {
+    const {exitCode, signal} = await new Promise((resolveExit, reject) =>
+    {
+      child.once("error", reject);
+      child.once("close", (exitCode, signal) => resolveExit({exitCode, signal}));
+    });
+    const code = exitCode ?? (signal ? (128 + constants.signals[signal]) : 1);
+    return {code, signal, stderr: stderr.trim(), timedOut, interrupted};
+  }
+  finally
+  {
+    process.removeListener("SIGTERM", onTerminate);
+    clearTimeout(deadline);
+    clearTimeout(forceTermination);
+  }
+}
+
+/** Copies the runner transcript's native event strings in order and returns its one turn's terminal record. */
+async function exportTranscript(transcript, output, record)
+{
+  const events = await open(output, "w");
+  let response;
+  try
+  {
+    const lines = createInterface({input: createReadStream(transcript, {encoding: "utf8"}), crlfDelay: Infinity});
+    for await (const line of lines)
+    {
+      const message = JSON.parse(line);
+      switch (message.type)
+      {
+        case "session_id":
+          record.session_id = message.session_id;
+          break;
+        case "harness_event":
+          if (typeof message.event !== "string")
+            throw new Error(`Runner transcript ${transcript} contains a non-text native event.`);
+          await events.appendFile(`${message.event}\n`);
+          break;
+        case "turn_completed":
+        case "turn_failed":
+          response = message;
+          break;
+      }
     }
   }
-  catch (failure)
+  finally
   {
-    error += `Invalid runner response: ${failure.message}\n`;
+    await events.close();
   }
-});
-child.stderr.on("data", (chunk) => { error += chunk; });
-
-await Promise.race([ready, exited]);
-if (!child.stdin.writable)
-{
-  await recordFailure(`Source runner ended before it accepted a turn: ${error}`.trim(),
-    "The runner ended before accepting a turn.");
-}
-child.stdin.write(`${JSON.stringify({type: "turn", prompt})}\n`);
-const result = await Promise.race([terminal, exited.then(() => null)]);
-await writes;
-if (result)
-  child.stdin.write(`${JSON.stringify({type: "complete"})}\n`);
-const exit = await exited;
-clearTimeout(deadline);
-clearTimeout(forcedTermination);
-clearInterval(keepAlive);
-const exitCode = observedExitCode(exit);
-if (!result || timedOut || exitCode !== 0)
-{
-  await recordFailure(`Source capture did not complete: ${error}`.trim(), failureReason(exitCode, exit.signal),
-    exitCode, exit.signal);
-}
-await writeSupervisorRecord("completed", "The runner recorded a completed turn and exited normally.", exitCode, exit.signal);
-
-function observedExitCode(exit)
-{
-  if (Number.isSafeInteger(exit.exitCode) && exit.exitCode >= 0)
-    return exit.exitCode;
-  const signalNumber = constants.signals[exit.signal];
-  if (Number.isSafeInteger(signalNumber))
-    return 128 + signalNumber;
-  return 1;
+  return response;
 }
 
-function failureReason(exitCode, signal)
+/** Confirms the copied manifest belongs to the emitted session ID and reports a successful completed turn. */
+async function requireCompletedManifest(resultsFolder, harness, sessionId)
 {
-  const termination = signal ? `signal ${signal} (exit status ${exitCode})` : `exit status ${exitCode}`;
-  if (timedOut)
-    return `Capture timed out after ${timeoutSeconds} seconds; the runner ended with ${termination}.`;
-  if (exitCode !== 0)
-    return `Runner ended with ${termination} before the capture completed.`;
-  return "The runner ended before the capture recorded a completed turn.";
+  if (typeof sessionId !== "string" || !/^[A-Za-z0-9_-][A-Za-z0-9._-]*$/.test(sessionId))
+    throw new Error("Source runner did not report a session ID that can name its results copy.");
+
+  const path = join(resultsFolder, harness, sessionId, manifestName);
+  const manifest = JSON.parse(await readFile(path, "utf8"));
+  if (manifest.id !== sessionId || manifest.harness !== harness)
+    throw new Error(`Manifest identity does not match ${harness} session ${sessionId}: ${path}`);
+  if (manifest.state !== "completed" || manifest.exit_code !== 0 ||
+    !Number.isInteger(manifest.turn_number) || manifest.turn_number < 1)
+    throw new Error(`The manifest for ${harness} session ${sessionId} records no successful completed turn.` +
+      (manifest.diagnostic ? "\n" + manifest.diagnostic : ""));
 }
 
-// Records the failed capture in the supervisor record, then throws the capture's error. When the record cannot be
-// written, the thrown error names both failures so that the capture's error is not lost.
-async function recordFailure(captureError, reason, exitCode = null, signal = null)
+/** Atomically records the current state and terminal reason for the capture supervisor. */
+async function writeSupervisorRecord(path, record)
 {
-  try
-  {
-    await writeSupervisorRecord("failed", reason, exitCode, signal);
-  }
-  catch (failure)
-  {
-    throw new Error(`${captureError}\nUnable to record the failed capture: ${failure.message}`);
-  }
-  throw new Error(captureError);
-}
-
-async function writeSupervisorRecord(state, reason, exitCode = null, signal = null)
-{
-  const record = {
-    schemaVersion: 2,
-    state,
-    reason,
-    processId: process.pid,
-    runnerProcessId: child.pid,
-    sessionId: sessionId ?? null,
-    startedAt,
-    finishedAt: state === "running" ? null : new Date().toISOString(),
-    exitCode,
-    signal
-  };
-  const temporaryRecord = `${supervisorRecord}.${process.pid}.tmp`;
-
+  const temporaryRecord = `${path}.${process.pid}.tmp`;
   await writeFile(temporaryRecord, `${JSON.stringify(record, null, 2)}\n`);
-  await rename(temporaryRecord, supervisorRecord);
+  await rename(temporaryRecord, path);
+}
+
+/** Resolves the shared supervisor deadline from the caller's optional positive integer override. */
+export function captureTimeoutSeconds(value)
+{
+  const timeoutSeconds = Number(value ?? 600);
+  if (!Number.isSafeInteger(timeoutSeconds) || timeoutSeconds < 1)
+    throw new Error("CAPTURE_TIMEOUT_SECONDS must be a positive whole number.");
+  return timeoutSeconds;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url))
+{
+  const [runner, harness, project, promptFile, output, resultsFolder, mode, model, effort] = process.argv.slice(2);
+  if ([runner, project, promptFile, output, resultsFolder, model, effort].some((value) => !value?.trim()) ||
+    !isAbsolute(runner) || !["codex", "claude"].includes(harness) || !["base", "cat"].includes(mode))
+  {
+    throw new Error("Usage: capture-source.mjs <absolute runner> <codex|claude> <project> <prompt-file> <events-output> " +
+      "<results> <base|cat> <model> <effort>");
+  }
+  const result = await captureSource({runner, harness, project, promptFile, output, resultsFolder, mode, model, effort},
+    captureTimeoutSeconds(process.env.CAPTURE_TIMEOUT_SECONDS));
+  console.log(result.sessionId);
 }

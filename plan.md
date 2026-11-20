@@ -60,15 +60,17 @@ untracked files: they are sandbox placeholders and session data. Do not list, co
      `8be98cd395e57f622cd2e1a153050472de54e580c3812f4c31e462ccf0c8d9a8`;
    - install in both harnesses, running the installer bare;
    - restart the request server.
-3. WI-147: one live launch per harness. Then close the WI-147 row.
+3. WI-147: one live launch per harness, starting with Codex. Then close the WI-147 row.
 4. WI-146 step 7: optimizer reconciliation per Q7. The forwarder's served `--resume` must skip the spent-allowance check
    (`SessionRequestForwarder.serve()` still reads limits.json for `RequestArchive.RESUME`).
-5. Rerun E1 in both harnesses.
+5. Get the Codex instances working and verify prompt optimization through installed Codex E1 before starting any
+   Claude Code optimizer campaign. Then rerun E1 in Claude Code.
    - In the contract author's trial, check that the launcher exemption works live. No test checks that the runners'
      `start` passes the plugin folder.
    - In Codex, watch for refusals to read the trial's own project caused by the longer denied-path list (H35).
    - Check whether Claude Code exports `TMPDIR` from `CLAUDE_CODE_TMPDIR`.
-6. Then E2 to E8 (E8 alone in its harness), T3/T6, G6, gates 5 to 8, and the failure-reporting runs for both harnesses.
+6. Then E2 to E8 (E8 alone in its harness), T3/T6, G6, gates 5 to 8, and the failure-reporting optimizer runs in
+   Codex, then Claude Code.
 7. Queued, still open:
    - the per-harness shell-features rule;
    - the `PerfDisableSharedMem` answer;
@@ -4050,6 +4052,33 @@ requirement names.
 
 ## 2. Status
 
+### Continuation after the transfer
+
+- Build run [44671948793](https://github.com/holdmyspot-com/cat/actions/runs/44671948793) is the five-platform
+  run for the transfer commit `854efc264`. Its 40-minute watch ended with all five jobs queued at 23:48 Toronto time
+  on November 19. The two preceding runs, `44671745564` (`af8fdf789`) and `44670999925` (`45bf883ed`), were also
+  queued. A new dispatch would duplicate the queued jobs. The green hosted build, release and installed Codex checks
+  remain pending.
+- The current Release workflow adds the Windows bootstrap check and its Linux setup installs `jq` since the last
+  successful release. The no-publication Release run must exercise these steps before the tag update. The isolated
+  workflow under this session's `temp/release-validation-5v2aAt/source/` passes actionlint and ShellCheck. Hosted
+  execution, the three affected workers' authenticated readiness, and the 15-asset assembly are pending.
+- WI-147's reference audit found capture commands still using retired runner options and the old standard-input
+  protocol. The capture README and specification now describe the installed runner, its explicit profile, and the
+  results copy. The integrated source and review capture changes passed 20 Bats and seven Node tests, plus ShellCheck.
+  Capture and rendering accept the shipped Review Contract's tab-indented fields. Review capture verifies that the
+  selected specialist wrote the relayed reply. Claude also verifies the task delivered to the specialist. Codex encrypts
+  that task in the native transcript. The published historical capture files are retained as evidence. The original
+  source renderer rejects the two retained TypeScript Codex code prompts because they predate the current template.
+  The schema compatibility check passed with a coherent fixture. Installed-harness smoke checks remain open.
+- WI-146 step 7 has begun in isolated clones. The served-resume test reproduced the spent-allowance refusal on the
+  original code and all 23 forwarder tests passed on the revised candidate. The report and logs are under this
+  session's `temp/wi146-resume-allowance-KuqALb/`. The runner turn checkpoint producer passed its focused tests in
+  `temp/wi146-turn-checkpoint-ZnIWbd/`. On the combined candidate, all 263 tests passed across `HarnessRunnerBridgeTest`,
+  `NestedSessionManagerTest`, `RequestServerTest`, `SessionRequestBrokerTest` and `SessionRequestForwarderTest`.
+  The combined patch and log are under `temp/wi146-producers-b95S8U/`. Broker startup fencing, lookup and claim,
+  adapter evidence restoration, optimizer recovery and cleanup, and native acceptance remain open.
+
 ### Continuation verification (2026-11-16, session `01a1e6ba`)
 
 The uncached whole-client `clean verify` passed on `3e9ca6b1edf1`: 455 Surefire reports,
@@ -7693,8 +7722,9 @@ selection and download it describes are unchanged.
 	contain a completed outcome and a running logical trial with a durable assignment, record the driver and nested
 	processes by PID and process-start identity. Send SIGKILL only to that driver, wait for its abnormal exit, and
 	preserve an independent copy of its campaign and run records. In the same host session, invoke `run` again.
-	Record recovery of the abandoned runs, retention of completed outcomes, rerun of the in-flight logical keys
-	without duplicate adoption, and retention of the certification-attempt index. Distinguish processes that exited
+	Record recovery of the interrupted nested sessions, retention of completed outcomes, and continuation between turns
+	or discard and rerun during a turn. Confirm that each recovered attempt keeps its logical key, that no outcome is
+	adopted twice, and that the certification-attempt index survives. Distinguish processes that exited
 	with the driver from surviving orphans that CAT terminates during recovery. Preserve the complete native events,
 	command results, identity observations and before/after records until final acceptance. The check passes only
 	when its required crash and recovery outcomes are observed; an untriggered kill condition or uncertain process
@@ -8157,6 +8187,23 @@ selection and download it describes are unchanged.
 	7. Optimizer: the harness session ID written ahead; reconciliation resumes an interrupted trial, or discards its nested session
 		and reruns it as the same logical trial; removing a campaign discards its retained trials. Q7 is ruled; this step follows WI-147, and the forwarder's served
 		`--resume` skips its spent-allowance check.
+		- Write the launch request ID to the trial's recovery state before publishing the launch. The broker binds that ID
+			to the private slot before starting the runner, so the optimizer can find or discard the retained session even if
+			it never received the harness ID. The broker atomically writes `launch-request.json` in the slot root with
+			`format_version: 1` and the original `request_id`. A resume preserves that binding and slot cleanup removes it.
+			A lookup distinguishes a settled absence from a launch that can still be admitted or is starting or stopping.
+			Before treating a binding without a process manifest as absent, recovery fences off any delayed runner startup.
+		- The runner records when it accepts a turn and commits the completed reply and its evidence before notifying the
+			caller. The same retained-slot claim that authorizes a continuation checks that the recorded session is between
+			turns and still has the expected completed prefix. A completed notification can be lost without losing that prefix.
+		- The resumed trial uses the prefix's replies and evidence and sends only its remaining turns. Persist the early-end
+			observer's assertion settlement and end decision before sending another turn. On recovery, apply the observer
+			to the retained turn only if its decision is missing. The resumed trial retains its assignment, test case and
+			infrastructure-attempt count. Count an interrupted attempt and allow a fresh
+			launch only after the broker confirms discard or absence. Apply the same recovery to a pilot after a host crash
+			while preserving the guard pilot's rules for cancellation at a slice boundary.
+		- Check the public optimizer `run` path when a continuation has spent its launch allowance. Every command that
+			creates a new session continues to pay the existing allowance.
 	8. The runner rule's section on resuming a run.
 - **Q7 (user ruling, 2026-11-19):** only a trial interrupted between turns is resumed; one interrupted during a turn
 	has its nested session discarded and reruns as the same logical trial.

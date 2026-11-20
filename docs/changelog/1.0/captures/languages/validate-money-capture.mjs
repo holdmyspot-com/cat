@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 // Runs an independent model review of a generated TypeScript monetary capture and retains its raw verdict.
 import {copyFile, mkdir, readFile, writeFile} from "node:fs/promises";
-import {dirname, join} from "node:path";
-import {spawn} from "node:child_process";
+import {isAbsolute, join} from "node:path";
+import {captureSource, captureTimeoutSeconds} from "./capture-source.mjs";
 
-const [runner, artifact, project, taskFile, output, resultsFolder] = process.argv.slice(2);
-if ([runner, artifact, project, taskFile, output, resultsFolder].some((value) => !value?.trim()))
-  throw new Error("Usage: validate-money-capture.mjs <runner> <artifact> <project> <task-file> <events-output> <results>");
+const [runner, harness, project, taskFile, output, resultsFolder, model, effort] = process.argv.slice(2);
+if ([runner, project, taskFile, output, resultsFolder, model, effort].some((value) => !value?.trim()) ||
+  !isAbsolute(runner) || !["codex", "claude"].includes(harness))
+{
+  throw new Error("Usage: validate-money-capture.mjs <absolute runner> <codex|claude> <project> <task-file> " +
+    "<events-output> <results> <model> <effort>");
+}
+const timeoutSeconds = captureTimeoutSeconds(process.env.CAPTURE_TIMEOUT_SECONDS);
 
 const task = await readFile(taskFile, "utf8");
 const prompt = `
@@ -30,23 +35,11 @@ await writeFile(promptFile, prompt);
 const evidenceProject = join(resultsFolder, "project");
 await mkdir(evidenceProject, {recursive: true});
 await copyEvidence(project, evidenceProject);
-const captureSource = join(dirname(new URL(import.meta.url).pathname), "capture-source.mjs");
-await run(process.execPath, [captureSource, runner, artifact, evidenceProject, promptFile, output, resultsFolder,
-  "base"]);
-
-const response = latestResponse((await readFile(output, "utf8")).split("\n").filter(Boolean).map(JSON.parse));
+const {assistantResponse: response} = await captureSource(
+  {runner, harness, project: evidenceProject, promptFile, output, resultsFolder, mode: "base", model, effort},
+  timeoutSeconds);
 if (response?.trim() !== "APPROVED")
   throw new Error(`TypeScript monetary model validation rejected the capture: ${response?.trim() ?? "no final response"}`);
-
-function latestResponse(events)
-{
-  const claudeResponse = events.filter((event) => event.type === "result").at(-1)?.result;
-  if (claudeResponse)
-    return claudeResponse;
-
-  return events.filter((event) => event.method === "item/completed").map((event) => event.params?.item).
-    filter((item) => item?.type === "agentMessage" && item.phase === "final_answer").at(-1)?.text;
-}
 
 async function copyEvidence(sourceDirectory, destinationDirectory)
 {
@@ -63,20 +56,4 @@ async function copyEvidence(sourceDirectory, destinationDirectory)
         throw error;
     }
   }
-}
-
-function run(command, arguments_)
-{
-  return new Promise((resolve, reject) =>
-  {
-    const child = spawn(command, arguments_, {stdio: "inherit"});
-    child.once("error", reject);
-    child.once("exit", (code) =>
-    {
-      if (code === 0)
-        resolve();
-      else
-        reject(new Error(`Model validation runner exited with code ${code}`));
-    });
-  });
 }

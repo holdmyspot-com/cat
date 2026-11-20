@@ -4,6 +4,15 @@ import {tmpdir} from "node:os";
 import {join} from "node:path";
 
 import {delegationPrompt, reviewFormat} from "./review-format.mjs";
+import {validReviewResponse} from "./review-response.mjs";
+
+const finding = "## Findings\n\n- **[CHANGE.md:1](CHANGE.md:1) Missing validation**\n";
+const fields = ["Evidence", "Consequence", "Correction"];
+const findingFields = (indent) => fields.map((field) => `${indent}- **${field}:** test finding.`).join("\n");
+
+assert.ok(validReviewResponse(finding + findingFields("\t")), "The shipped Review Contract indents fields with tabs");
+assert.ok(validReviewResponse(finding + findingFields("  ")), "The historical evidence spells the same nesting with spaces");
+assert.equal(validReviewResponse(finding + findingFields("")), false, "Finding fields must remain nested");
 
 const artifact = await mkdtemp(join(tmpdir(), "cat-review-format-"));
 try

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Captures every independent Base/CAT source response through isolated packaged runners under one persistent supervisor.
+# Captures independent Base/CAT source responses through the request server of a top-level CAT harness session.
 set -u
 
 capture_root="${1:?capture root required}"
@@ -8,14 +8,16 @@ requested_language="${3:-all}"
 requested_example="${4:-all}"
 parallelism="${5:-${CAPTURE_PARALLELISM:-20}}"
 capture_timeout_seconds="${CAPTURE_TIMEOUT_SECONDS:-600}"
-project_root="$(CDPATH= cd -- "$(dirname -- "$0")/../../../../.." && pwd)"
-runtime="${project_root}/client/distribution/target/runtime"
+project_root="$(CDPATH='' cd -- "$(dirname -- "$0")/../../../../.." && pwd)"
+script_directory="${project_root}/docs/changelog/1.0/captures/languages"
 fixtures="${project_root}/docs/changelog/1.0/fixtures/languages"
-temporary_root="${project_root}/.cat/temp/changelog-language-captures"
-claude_temporary_root="${TMPDIR:-/tmp}/.cat/claude/changelog-language-captures"
-checkout_prompt_template="$(dirname "$0")/checkout-price-calculator.prompt.txt"
-documentation_prompt_template="$(dirname "$0")/documentation.prompt.txt"
-money_rule_source="${project_root}/client/common/rules/src/main/resources/rules/include/common/money.md"
+checkout_prompt_template="${script_directory}/checkout-price-calculator.prompt.txt"
+documentation_prompt_template="${script_directory}/documentation.prompt.txt"
+money_rule_path="rules/include/common/money.md"
+money_rule_source="${project_root}/client/common/rules/src/main/resources/${money_rule_path}"
+session_manifest_name="session.json"
+declare -A capture_models=([codex]="${CAT_CODEX_MODEL:-}" [claude]="${CAT_CLAUDE_MODEL:-}")
+declare -A capture_efforts=([codex]="${CAT_CODEX_EFFORT:-}" [claude]="${CAT_CLAUDE_EFFORT:-}")
 
 [[ "${parallelism}" =~ ^[1-9][0-9]*$ ]] || {
 	echo "Capture parallelism must be a positive integer: ${parallelism}" >&2
@@ -25,51 +27,92 @@ money_rule_source="${project_root}/client/common/rules/src/main/resources/rules/
 	echo "CAPTURE_TIMEOUT_SECONDS must be a positive integer: ${capture_timeout_seconds}" >&2
 	exit 2
 }
+export CAPTURE_TIMEOUT_SECONDS="${capture_timeout_seconds}"
+case "${requested_harness}" in
+	all | codex | claude) ;;
+	*) echo "Source capture harness must be all, codex, or claude: ${requested_harness}" >&2; exit 2 ;;
+esac
+if [[ "${CAT_SESSION_REQUESTS:-}" =~ [^[:space:]] ]]; then
+	echo "Start source capture pairs in a top-level CAT harness session with its request server running." >&2
+	exit 2
+fi
+if [[ "${CAT_CAPTURE_BIN:-}" != /* || ! -d "${CAT_CAPTURE_BIN}" ]]; then
+	echo "Set CAT_CAPTURE_BIN to the absolute bin directory of the calling harness's installed CAT plugin." >&2
+	exit 2
+fi
+if [[ "${CAT_CAPTURE_TEMP:-}" != /* || ! -d "${CAT_CAPTURE_TEMP}" ]]; then
+	echo "Set CAT_CAPTURE_TEMP to an existing directory under the calling session's CAT temporary root." >&2
+	exit 2
+fi
 
-# Verifies that both packaged harness artifacts contain the current monetary rule source.
+# Verifies a selected harness's requested profile and installed artifact before captures start.
 #
+# Arguments:
+#   The harness identifier, codex or claude.
+# Environment:
+#   CAT_CAPTURE_BIN names the calling harness's installed CAT launchers.
 # Exit status:
-#   0 if each runtime contains the current rule; 1 otherwise.
-verify_runtime_rules()
+#   0 if the selected artifact and launchers are ready; 1 otherwise.
+verify_capture_artifact()
 {
-	for harness in codex claude; do
-		runtime_money_rule="${runtime}/${harness}/rules/include/common/money.md"
-		[ -f "${runtime_money_rule}" ] && cmp -s "${money_rule_source}" "${runtime_money_rule}" || {
-			echo "${harness} runtime does not contain the current Money rule; rebuild the distribution before capturing" >&2
-			return 1
-		}
-	done
+	local harness="$1"
+	local selection artifact selected_runner source_guidance installed_guidance
+	local guidance_section="/^## Guidance\$/,\$p"
+	local -a selection_lines
+
+	if [[ -z "${capture_models[${harness}]}" || -z "${capture_efforts[${harness}]}" ]]; then
+		echo "Set CAT_${harness^^}_MODEL and CAT_${harness^^}_EFFORT to the profile for the selected harness." >&2
+		return 1
+	fi
+	if [[ ! -x "${CAT_CAPTURE_BIN}/${harness}-runner" || ! -x "${CAT_CAPTURE_BIN}/${harness}-artifact" ]]; then
+		echo "The calling CAT plugin has no executable ${harness} runner or artifact selector in ${CAT_CAPTURE_BIN}." >&2
+		return 1
+	fi
+	selection="$("${CAT_CAPTURE_BIN}/${harness}-artifact")" || return 1
+	mapfile -t selection_lines <<< "${selection}"
+	if [[ "${#selection_lines[@]}" -ne 3 || "${selection_lines[0]}" != artifact=/* ||
+		"${selection_lines[1]}" != runner=/* || "${selection_lines[2]}" != source=installed ]]; then
+		echo "The ${harness} artifact selector did not return the installed artifact and runner." >&2
+		return 1
+	fi
+	artifact="${selection_lines[0]#artifact=}"
+	selected_runner="${selection_lines[1]#runner=}"
+	if [[ ! -x "${selected_runner}" ]]; then
+		echo "The ${harness} artifact selector returned a missing or non-executable runner: ${selected_runner}" >&2
+		return 1
+	fi
+	# Packaging omits Design Goals and resolves this rule's relative lazy-load references from the plugin root.
+	source_guidance="$(sed -n -e "s;\`\./;\`\${CAT_PLUGIN_ROOT}/${money_rule_path%/*}/;g" \
+		-e "${guidance_section}" "${money_rule_source}")" || return 1
+	installed_guidance="$(sed -n "${guidance_section}" "${artifact}/${money_rule_path}")" || return 1
+	if [[ -z "${source_guidance}" || "${source_guidance}" != "${installed_guidance}" ]]; then
+		echo "The installed ${harness} CAT artifact differs from the checkout's Money rule. Update it before capturing." >&2
+		return 1
+	fi
+	if [[ "${harness}" = claude ]]; then
+		"${selected_runner}" --verify-artifact "${artifact}" || return 1
+	fi
 }
 
 # Captures one harness and mode into the caller-owned staging directory.
 #
 # Arguments:
 #   The harness, language, example, generated filename, Base/CAT mode, and staging directory.
+# Environment:
+#   CAT_CAPTURE_BIN names the calling harness's installed CAT launchers.
 # Exit status:
 #   0 if the harness produces a complete valid source artifact; 1 otherwise.
 capture_one()
 {
-	harness="$1"
-	language="$2"
-	example="$3"
-	filename="$4"
-	mode="$5"
-	staging_directory="$6"
-	# Each plugin holds its runner in bin/, where the other harness's plugin runs it
-	runner="${runtime}/codex/bin/codex-runner"
-	if [ "${harness}" = claude ]; then
-		runner="${runtime}/claude/bin/claude-runner"
-	fi
-	session_temporary_root="${temporary_root}"
-	if [ "${harness}" = claude ]; then
-		# Claude's Bubblewrap masks ancestor Git hooks; a checkout-local session can make a missing mask target abort Bash.
-		session_temporary_root="${claude_temporary_root}"
-	fi
-	mkdir -p "${session_temporary_root}"
-	results="$(mktemp -d "${session_temporary_root}/${language}-${example}-${harness}-${mode}.XXXXXX")"
+	local harness="$1" language="$2" example="$3" filename="$4" mode="$5" staging_directory="$6"
+	local runner="${CAT_CAPTURE_BIN}/${harness}-runner"
+	local model="${capture_models[${harness}]}" effort="${capture_efforts[${harness}]}"
+	local results project prompt language_name session_id session_copy manifest result validation_events
+
+	results="$(mktemp -d "${temporary_root}/${language}-${example}-${harness}-${mode}.XXXXXX")" || return 1
 	project="${results}/project"
-	mkdir -p "${project}"
-	cp -R "${fixtures}/${language}/${example}/." "${project}"
+	mkdir -p "${project}" || return 1
+	cp -R "${fixtures}/${language}/${example}/." "${project}" || return 1
 	prompt="${results}/prompt.txt"
 	if [ "${example}" = "code" ]; then
 		case "${language}" in
@@ -82,45 +125,21 @@ capture_one()
 			go) language_name="Go" ;;
 			*) echo "Unknown source-capture language: ${language}" >&2; exit 2 ;;
 		esac
-		sed "s/\\[Language\\]/${language_name}/g" "${checkout_prompt_template}" > "${prompt}"
+		sed "s/\\[Language\\]/${language_name}/g" "${checkout_prompt_template}" > "${prompt}" || return 1
 	else
-		cat "${documentation_prompt_template}" > "${prompt}"
+		cp "${documentation_prompt_template}" "${prompt}" || return 1
 	fi
-	# The node supervisor receives the capture deadline first so it can record the runner's observed terminal status.
-	if ! timeout --kill-after=15s "$((capture_timeout_seconds + 30))s" node "$(dirname "$0")/capture-source.mjs" \
-		"${runner}" "${runtime}/${harness}" "${project}" "${prompt}" \
-		"${results}/events.jsonl" "${results}" "${mode}"; then
+	if ! session_id="$(node "${script_directory}/capture-source.mjs" \
+		"${runner}" "${harness}" "${project}" "${prompt}" \
+		"${results}/events.jsonl" "${results}" "${mode}" "${model}" "${effort}")"; then
 		echo "Source capture failed for ${harness}/${language}/${example}/${mode}; retained session is diagnostic only" >&2
 		return 1
 	fi
-	for attempt in {1..30}; do
-		manifest="$(find "${results}/${harness}" -name session.json -print -quit)"
-		[ -n "${manifest}" ] || {
-			sleep 1
-			continue
-		}
-		state="$(jq -r '.state' "${manifest}")"
-		case "${state}" in
-			completed)
-				[ "$(jq -r '.exitCode' "${manifest}")" = 0 ] && [ "$(jq -r '.turnNumber' "${manifest}")" -ge 1 ] || {
-					echo "Completed ${harness} session lacks a successful turn for ${language}/${example}/${mode}" >&2
-					return 1
-				}
-				break
-				;;
-			failed)
-				echo "${harness} source session failed for ${language}/${example}/${mode}: $(jq -r '.diagnostic' "${manifest}")" >&2
-				return 1
-				;;
-		esac
-		sleep 1
-	done
-	[ "${state:-missing}" = completed ] || {
-		echo "${harness} source session did not reach a terminal successful state for ${language}/${example}/${mode}" >&2
-		return 1
-	}
-	result="$(find "${results}/${harness}" -path "*/project/${filename}" -print -quit)"
-	[ -n "${result}" ] || {
+
+	session_copy="${results}/${harness}/${session_id}"
+	manifest="${session_copy}/${session_manifest_name}"
+	result="${session_copy}/project/${filename}"
+	[ -f "${result}" ] || {
 		echo "No generated ${filename} was retained for ${harness}/${language}/${example}/${mode}" >&2
 		return 1
 	}
@@ -130,19 +149,75 @@ capture_one()
 	fi
 	if [ "${language}" = typescript ] && [ "${example}" = code ] && [ "${mode}" = cat ]; then
 		validation_events="${staging_directory}/${harness}-${mode}.money-validation.events.jsonl"
-		if ! node "$(dirname "$0")/validate-money-capture.mjs" "${runner}" "${runtime}/${harness}" \
-			"$(dirname "${result}")" "${prompt}" "${validation_events}" "${results}/money-validation"; then
+		if ! node "${script_directory}/validate-money-capture.mjs" "${runner}" "${harness}" \
+			"${session_copy}/project" "${prompt}" "${validation_events}" "${results}/money-validation" \
+			"${model}" "${effort}"; then
 			echo "${harness} source session failed TypeScript monetary model validation" >&2
 			return 1
 		fi
 	fi
-	cp "${prompt}" "${staging_directory}/${harness}-${mode}.prompt.txt"
-	cp "${results}/events.jsonl" "${staging_directory}/${harness}-${mode}.events.jsonl"
-	cp "${manifest}" "${staging_directory}/${harness}-${mode}.run.json"
+	cp "${prompt}" "${staging_directory}/${harness}-${mode}.prompt.txt" || return 1
+	cp "${results}/events.jsonl" "${staging_directory}/${harness}-${mode}.events.jsonl" || return 1
+	cp "${manifest}" "${staging_directory}/${harness}-${mode}.${session_manifest_name}" || return 1
 	cp "${result}" "${staging_directory}/${harness}-${mode}.${filename##*.}"
 }
 
-# Captures and atomically publishes one harness's Base/CAT pair for a language example.
+# Writes this pair's state, reason and optional exit status and signal to its staging directory.
+#
+# Arguments:
+#   The pair state, reason, optional numeric exit status, and optional signal name.
+write_pair_record()
+{
+	jq -n \
+		--arg state "$1" \
+		--arg reason "$2" \
+		--arg exit_code "${3:-}" \
+		--arg signal "${4:-}" \
+		--arg harness "${harness}" \
+		--arg language "${language}" \
+		--arg example "${example}" \
+		--arg started_at "${pair_started_at}" \
+		--arg process_id "${BASHPID}" \
+		'{schema_version: 2, state: $state, reason: $reason, exit_code: ($exit_code | if . == "" then null else tonumber end),
+		  signal: ($signal | if . == "" then null else . end), harness: $harness, language: $language,
+		  example: $example, process_id: ($process_id | tonumber), started_at: $started_at,
+		  finished_at: (if $state == "running" or $state == "publishing" then null else now | todateiso8601 end)}' \
+		> "${pair_record}.tmp" && mv "${pair_record}.tmp" "${pair_record}"
+}
+
+# Records a terminal decision using the same arguments as write_pair_record.
+#
+# Exit status:
+#   0 after the terminal decision is recorded; 1 when the record could not be written.
+finish_pair()
+{
+	write_pair_record "$@" || return 1
+	pair_terminal=1
+}
+
+# Records the pair's observed exit status if it ended before reaching a publication decision.
+record_pair_exit()
+{
+	exit_code=$?
+	[ "${pair_terminal}" -eq 1 ] ||
+		finish_pair interrupted "The pair shell exited before its publication decision." "${exit_code}"
+}
+
+# Records interruption with the received signal name and the shell's corresponding exit status.
+#
+# Arguments:
+#   The signal name without its SIG prefix and the shell exit status.
+# Exit status:
+#   The supplied exit status.
+record_pair_signal()
+{
+	signal="$1"
+	exit_code="$2"
+	finish_pair interrupted "The pair shell received SIG${signal} before its publication decision." "${exit_code}" "SIG${signal}"
+	exit "${exit_code}"
+}
+
+# Stages and validates one harness's Base and CAT captures before publishing their pair.
 #
 # Arguments:
 #   The harness, language, example, and generated filename.
@@ -155,51 +230,10 @@ capture_pair()
 	example="$3"
 	filename="$4"
 	published_directory="${capture_root}/${language}/${example}"
-	mkdir -p "${temporary_root}"
-	staging_directory="$(mktemp -d "${temporary_root}/${language}-${example}-${harness}.XXXXXX")"
+	staging_directory="$(mktemp -d "${temporary_root}/${language}-${example}-${harness}.XXXXXX")" || return 1
 	pair_record="${staging_directory}/capture-pair.json"
-	pair_started_at="$(date --iso-8601=seconds)"
+	pair_started_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')" || return 1
 	pair_terminal=0
-
-	write_pair_record()
-	{
-		jq -n \
-			--arg state "$1" \
-			--arg reason "$2" \
-			--arg exit_code "${3:-}" \
-			--arg signal "${4:-}" \
-			--arg harness "${harness}" \
-			--arg language "${language}" \
-			--arg example "${example}" \
-			--arg started_at "${pair_started_at}" \
-			--arg process_id "${BASHPID}" \
-			'{schemaVersion: 1, state: $state, reason: $reason, exitCode: ($exit_code | if . == "" then null else tonumber end),
-			  signal: ($signal | if . == "" then null else . end), harness: $harness, language: $language,
-			  example: $example, processId: ($process_id | tonumber), startedAt: $started_at,
-			  finishedAt: (if $state == "running" or $state == "publishing" then null else now | todateiso8601 end)}' \
-			> "${pair_record}.tmp" && mv "${pair_record}.tmp" "${pair_record}"
-	}
-
-	finish_pair()
-	{
-		pair_terminal=1
-		write_pair_record "$@"
-	}
-
-	record_pair_exit()
-	{
-		exit_code=$?
-		[ "${pair_terminal}" -eq 1 ] ||
-			finish_pair interrupted "The pair shell exited before its publication decision." "${exit_code}"
-	}
-
-	record_pair_signal()
-	{
-		signal="$1"
-		exit_code="$2"
-		finish_pair interrupted "The pair shell received SIG${signal} before its publication decision." "${exit_code}" "SIG${signal}"
-		exit "${exit_code}"
-	}
 
 	# Keep the shell's terminal reason durable so later diagnosis does not infer it from an absent process.
 	trap record_pair_exit EXIT
@@ -207,7 +241,7 @@ capture_pair()
 	trap 'record_pair_signal INT 130' INT
 	trap 'record_pair_signal TERM 143' TERM
 
-	write_pair_record running "The pair is awaiting complete Base and CAT captures."
+	write_pair_record running "The pair is awaiting complete Base and CAT captures." || return 1
 
 	if ! capture_one "${harness}" "${language}" "${example}" "${filename}" base "${staging_directory}" ||
 		! capture_one "${harness}" "${language}" "${example}" "${filename}" cat "${staging_directory}"; then
@@ -216,10 +250,10 @@ capture_pair()
 		return 1
 	fi
 
-	mkdir -p "${published_directory}"
-	write_pair_record publishing "Both captures passed; the staged pair is being copied to the published directory."
-	cp "${staging_directory}/"* "${published_directory}/"
-	finish_pair published "Both captures passed and the staged pair was copied to the published directory." 0
+	mkdir -p "${published_directory}" || return 1
+	write_pair_record publishing "Both captures passed; the staged pair is being copied to the published directory." || return 1
+	cp "${staging_directory}/"* "${published_directory}/" || return 1
+	finish_pair published "Both captures passed and the staged pair was copied to the published directory." 0 || return 1
 	cp "${pair_record}" "${published_directory}/"
 }
 
@@ -263,7 +297,13 @@ start()
 	fi
 }
 
-verify_runtime_rules || exit 1
+for harness in codex claude; do
+	if [[ "${requested_harness}" = all || "${requested_harness}" = "${harness}" ]]; then
+		verify_capture_artifact "${harness}" || exit 1
+	fi
+done
+
+temporary_root="$(mktemp -d "${CAT_CAPTURE_TEMP}/language-captures.XXXXXX")" || exit 1
 
 for example in code documentation; do
 	for language_and_file in \
@@ -289,4 +329,8 @@ done
 while [ "${active}" -gt 0 ]; do
 	wait_for_one
 done
-exit "${failed}"
+if [ "${failed}" -ne 0 ]; then
+	echo "Capture diagnostics are in ${temporary_root}. Remove this directory after inspecting the failed sessions." >&2
+	exit 1
+fi
+rm -rf -- "${temporary_root}"

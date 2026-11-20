@@ -8,6 +8,8 @@ import {spawnSync} from "node:child_process";
 const directory = dirname(fileURLToPath(import.meta.url));
 const checkoutPromptTemplate = await readFile(join(directory, "checkout-price-calculator.prompt.txt"), "utf8");
 const documentationPromptTemplate = await readFile(join(directory, "documentation.prompt.txt"), "utf8");
+const manifestSuffix = ".session.json";
+const historicalManifestSuffix = ".run.json";
 if (/\b(?:CAT|rule|plugin|agent|library|dependency|representation|API|validation|comment)\b/i.test(checkoutPromptTemplate))
   throw new Error("checkout-price-calculator.prompt.txt must state only caller-visible requirements");
 const languages = [
@@ -34,12 +36,31 @@ function expectedPrompt(language, example)
   return checkoutPromptTemplate.replaceAll("[Language]", language.label);
 }
 
-async function completedManifest(path, harness)
+/** Checks the published session manifest, using the historical schema only when no current manifest exists. */
+async function completedManifest(prefix, harness)
 {
-  const manifest = JSON.parse(await readFile(path, "utf8"));
-  if (manifest.harness !== harness || manifest.state !== "completed" || manifest.exitCode !== 0 || manifest.turnNumber < 1)
+  let path = prefix + manifestSuffix;
+  let raw;
+  let historical = false;
+  try
+  {
+    raw = await readFile(path, "utf8");
+  }
+  catch (error)
+  {
+    if (error.code !== "ENOENT")
+      throw error;
+    historical = true;
+    path = prefix + historicalManifestSuffix;
+    raw = await readFile(path, "utf8");
+  }
+
+  const manifest = JSON.parse(raw);
+  const exitCode = historical ? manifest.exitCode : manifest.exit_code;
+  const turnNumber = historical ? manifest.turnNumber : manifest.turn_number;
+  if (manifest.harness !== harness || manifest.state !== "completed" || exitCode !== 0 ||
+    !Number.isInteger(turnNumber) || turnNumber < 1)
     throw new Error(`${path} is not a completed ${harness} capture`);
-  return manifest;
 }
 
 async function terminalEvent(path, harness)
@@ -74,8 +95,8 @@ for (const language of languages)
       const basePath = join(exampleDirectory, `${harness}-base.${language.extension}`);
       const catPath = join(exampleDirectory, `${harness}-cat.${language.extension}`);
       await Promise.all([
-        completedManifest(join(exampleDirectory, `${harness}-base.run.json`), harness),
-        completedManifest(join(exampleDirectory, `${harness}-cat.run.json`), harness),
+        completedManifest(join(exampleDirectory, `${harness}-base`), harness),
+        completedManifest(join(exampleDirectory, `${harness}-cat`), harness),
         terminalEvent(join(exampleDirectory, `${harness}-base.events.jsonl`), harness),
         terminalEvent(join(exampleDirectory, `${harness}-cat.events.jsonl`), harness)
       ]);

@@ -78,14 +78,15 @@ by that harness and, when required by the host authentication relay, allow-liste
 no CAT marketplace, plugin cache, project rules, skills, agents, hooks, or inherited behavior configuration. Record the
 empty plugin/marketplace inventory before launching the harness.
 
-For every run, the calling tool scope resolves the CAT temporary root, defaulting to the gitignored project
-`.cat/temp` directory. For a **CAT** run, use the packaged `codex-runner` or `claude-runner` with `--install-cat` and
-the built artifact and retain its run directory, including its `run.json`, isolated home, plugin inventory, hook output,
-and event log. Record the installed CAT artifact revision. Do not use the host harness home for either side of a
-comparison.
+From a running harness session, use the installed `codex-runner` or `claude-runner` to start each capture with its
+own results directory in the session's CAT temporary directory. Pass `--install-cat` for the CAT capture. The
+runner starts each capture in an isolated harness home and copies the project's results and `session.json` to the
+results directory at completion. Keep the plugin inventory, hook output and event log with the manifest, and record
+the installed CAT artifact revision. Follow the launcher examples in the [capture README](captures/README.md).
 
-Before capturing a monetary example, verify that each packaged harness artifact contains the current Money rule source.
-Rebuild the distribution when it does not. Stage each harness-language Base/CAT pair outside the published capture
+Before capturing a monetary example, verify that the selected installed harness artifacts deliver the current Money
+guidance after packaging. Update the installation when the guidance differs. Stage each harness-language Base/CAT
+pair outside the published capture
 directory, then publish all four artifacts for that pair only after both runs complete and the CAT result passes its
 language-specific validation. A failed Base or CAT run remains diagnostic evidence and must not replace either member of
 the previously published pair.
