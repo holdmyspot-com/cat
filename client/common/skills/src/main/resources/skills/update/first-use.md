@@ -97,12 +97,10 @@
 		normal authorization. A named-release install uses the named-release command above and its normal authorization;
 		do not modify `update_command` to select a release. Handle a failed status as step 4 directs.
 4. Because the command ends with `--json`, the launcher prints one line of JSON. Act on its `result` field:
-	- `installed`: tell the user that the release that `version` names is installed and registered, and that it takes
-		effect once they restart or resume the session. In Codex, also say that Codex asks them to review a new or
-		changed CAT hook before it runs.
-	- `updated`: tell the user that the release that `version` names replaced the one that `previous_version` names,
-		and that it takes effect once they restart or resume the session. In Codex, also say that Codex asks them to
-		review a new or changed CAT hook before it runs.
+	- `installed`: tell the user that the release that `version` names is installed and registered.
+	- `updated`: tell the user that the release that `version` names replaced the one that `previous_version` names.
+	- After `installed` or `updated`, in Codex follow the post-install handoff in the session's CAT Environment
+		guidance. In Claude Code, tell the user that the release takes effect once they restart or resume the session.
 	- `up_to_date`: tell the user that the active CAT release, which `version` names, is already the release they asked
 		for, so no other release was installed. Also report the result's `message`, which names the permission entries
 		that the install repaired, if any.
