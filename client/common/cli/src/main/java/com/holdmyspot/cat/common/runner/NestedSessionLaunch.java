@@ -81,8 +81,9 @@ public final class NestedSessionLaunch
 
 	/**
 	 * Returns the options of a runner that continues a nested session's harness session: the options that the nested
-	 * session's start fixed, which its {@value #FILE_NAME} records, followed by the runner's own. A runner that names no
-	 * {@value RunnerArguments#RESUME_SLOT_OPTION} gets its own options back.
+	 * session's start fixed, which its {@value #FILE_NAME} records, followed by the runner's own options. The optional
+	 * {@code serve} command stays first. A runner that names no {@value RunnerArguments#RESUME_SLOT_OPTION} gets its
+	 * own arguments back.
 	 *
 	 * @param json    the mapper
 	 * @param harness the nested session's harness
@@ -115,8 +116,11 @@ public final class NestedSessionLaunch
 			throw new InvalidArgumentsException(RunnerArguments.RESUME_SLOT_OPTION + " requires --results and " +
 				RunnerArguments.SLOT_ID_OPTION);
 		}
-		List<String> resumed = new ArrayList<>(read(json, Path.of(resultsFolder).resolve(harness).resolve(slotId)));
-		resumed.addAll(options);
+		List<String> resumed = new ArrayList<>(options);
+		int firstOption = 0;
+		if (options.getFirst().equals("serve"))
+			firstOption = 1;
+		resumed.addAll(firstOption, read(json, Path.of(resultsFolder).resolve(harness).resolve(slotId)));
 		return resumed.toArray(String[]::new);
 	}
 

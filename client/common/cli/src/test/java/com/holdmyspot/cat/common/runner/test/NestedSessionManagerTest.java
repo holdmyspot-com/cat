@@ -1959,25 +1959,34 @@ public final class NestedSessionManagerTest
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-results-"));
 			List<String> fixed = List.of("--project", "/source", "--deny-read", "/secret");
+			String harness = "harness-a";
 			NestedSessionManager manager = new NestedSessionManager(new FileLocks(), root, Clock.systemUTC(),
 				Yielding.fileReplacer()).withFixedSlotId("s-1").withLaunchArguments(fixed);
-			manager.create("claude");
+			manager.create(harness);
 			JsonMapper json = JsonMapper.builder().build();
 			List<String> own = List.of("--results", root.toString(), "--slot-id", "s-1", "--resume-slot",
-				"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", "--model", "opus", "--effort", "high");
+				"5f0c2a8e-7b1d-4e3a-9c6f-2d8b1a4e7c90", "--model", "model-a", "--effort", "high");
 
-			String[] resumed = NestedSessionLaunch.resumedArguments(json, "claude", own.toArray(String[]::new));
+			String[] resumed = NestedSessionLaunch.resumedArguments(json, harness, own.toArray(String[]::new));
 
 			List<String> expected = new ArrayList<>(fixed);
 			expected.addAll(own);
 			requireThat(List.of(resumed), "resumed").isEqualTo(expected);
+
+			List<String> served = new ArrayList<>(own);
+			served.addFirst("serve");
+			List<String> servedExpected = new ArrayList<>(expected);
+			servedExpected.addFirst("serve");
+			requireThat(List.of(NestedSessionLaunch.resumedArguments(json, harness, served.toArray(String[]::new))),
+				"served").isEqualTo(servedExpected);
+
 			List<String> refixed = new ArrayList<>(own);
 			refixed.addAll(List.of("--deny-read", "/other"));
 			InvalidArgumentsException refused = expectThrows(InvalidArgumentsException.class,
-				() -> NestedSessionLaunch.resumedArguments(json, "claude", refixed.toArray(String[]::new)));
+				() -> NestedSessionLaunch.resumedArguments(json, harness, refixed.toArray(String[]::new)));
 			requireThat(refused.getMessage(), "refused").contains("--deny-read");
-			String[] started = {"--project", "/source", "--model", "opus"};
-			requireThat(List.of(NestedSessionLaunch.resumedArguments(json, "claude", started)), "started").
+			String[] started = {"--project", "/source", "--model", "model-a"};
+			requireThat(List.of(NestedSessionLaunch.resumedArguments(json, harness, started)), "started").
 				isEqualTo(List.of(started));
 		}
 	}
