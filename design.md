@@ -191,7 +191,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Prompt test configuration | The committed `prompt.json` in the target's test directory, which lists for each harness the trial plugins, and how the project builds each one that it builds ([§4.4](#44-trial-staging)). |
 | Certification history | The committed `certifications.json` beside `prompt.json` in the target's test directory, holding an entry for each delivery of the target: the certification record of a certified delivery, and a labelled delivery entry for every other delivery ([§4.7](#47-delivery), [§5](#5-measurement-identity-and-applicability)). |
 | Trial plugin | A harness plugin that the prompt test configuration lists, which every trial installs. A plugin that the project builds is installed from a build of the fork commit, with the snapshot's prompt files in place of the build's copies ([§4.4](#44-trial-staging)). |
-| Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated run directory (`ClaudeRunner`, `CodexRunner`); inside a nested session that may request sessions, its launchers forward a launch to the nested session's runner. |
+| Runner | CAT's existing component that runs one nested Claude or Codex session in a fresh isolated session folder (`ClaudeRunner`, `CodexRunner`); inside a nested session that may request sessions, its launchers forward a launch to the nested session's runner. |
 | Driver | The Java process that each `prompt-optimizer run` command starts. It makes every deterministic decision ([§3.1](#31-nested-sessions), [§3.7](#37-process-model)). |
 | Slice | One time-bounded run of the driver inside a foreground command ([§3.7](#37-process-model)). |
 | Background run | A driver run that `--background` starts as a command that the host's shell tool keeps running after the agent's turn ends. It has no slice budget, and ends only when the campaign needs the user, reaches an outcome or is stopped ([§3.7](#37-process-model)). |
@@ -469,7 +469,7 @@ scheduling decisions is at most the null value. The design meets or monitors eac
 | Provider prompt caching | Shared prefixes are cached across sessions. | Caching changes latency and cost, not sampling given the prompt. This is an assumption, recorded as a limitation. |
 | Throttling and load under parallelism | Load could change model behaviour, or turn errors into failures. | Provider errors and rate-limit rejections are infrastructure failures that rerun the same logical trial. Every trial records its concurrency level and throttle state. |
 | Parallel conditions differing from real use | Real use is usually one session at a time. | The test stays valid under the weaker null "every trial's conditional rate is at most the minimum pass rate", even when conditions vary. The only risk is that parallel conditions are better than serial ones. The report runs a descriptive comparison of pass rates by concurrency level, and the claim names the measured conditions. |
-| Discarding unfavourable outcomes | A retry could hide a failure. | A valid pass or fail outcome is recorded once. An interrupted trial never counts as an outcome: it is resumed in its own session, or its run is discarded as corrupt and it reruns ([§3.2](#32-logical-trials)). Only an attempt with no outcome reruns, as the same logical trial with the same test case. A trial that exceeds its declared time limit is judged on its behaviour, not retried, unless the provider produced no output in the turn that reached it ([§3.2](#32-logical-trials)). A logical trial with 3 infrastructure failures, not counting rate-limit rejections or provider refusals, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-commit-gate-and-edit-or-continue)). |
+| Discarding unfavourable outcomes | A retry could hide a failure. | A valid pass or fail outcome is recorded once. An interrupted trial never counts as an outcome: it is resumed in its own session, or its nested session is discarded as corrupt and it reruns ([§3.2](#32-logical-trials)). Only an attempt with no outcome reruns, as the same logical trial with the same test case. A trial that exceeds its declared time limit is judged on its behaviour, not retried, unless the provider produced no output in the turn that reached it ([§3.2](#32-logical-trials)). A logical trial with 3 infrastructure failures, not counting rate-limit rejections or provider refusals, pauses the campaign; it is never skipped. A blocking development failure discards every unadopted development trial of the working candidate, finished or not, so the discard depends only on adopted outcomes ([§2.7](#27-development-commit-gate-and-edit-or-continue)). |
 | Formal outcomes tuning the same candidate | Editing a candidate in response to its formal results. | A formal outcome may inform development, but any edit creates a new candidate and needs a new attempt. |
 | Certifying on the test cases that shaped the candidate | A candidate tuned on the test cases that then certify it is measured on its own training data, so the claim overstates how it does on cases it was not tuned for. | CAT splits every prompt test's test cases by expected outcome before any trial. Development, prompt authors and diagnosis see only development test cases; formal trials and baseline trials draw only held-out test cases, and a formal failure reaches development without its test case ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Control trials chosen by the candidate's outcomes | A control or incumbent comparison that paired its trials with chosen candidate trials, or stopped on the candidate's outcomes, could favour the candidate. | Each control or incumbent trial runs the test case of the candidate formal trial it pairs with, pairs follow assignment order, and the comparison decides only from its own pairs, up to the frozen cap ([§2.3](#23-sequential-tests)). Running the comparison only in certified cells cannot raise the false-certification probability, because a false certification still needs a false part to pass. |
@@ -982,7 +982,7 @@ snapshot of the chosen attempt.
 ### 3.1 Nested sessions
 
 CAT runs six kinds of work in nested sessions, each started through the current harness's existing runner
-(`ClaudeRunner` or `CodexRunner`) in a fresh isolated run directory:
+(`ClaudeRunner` or `CodexRunner`) in a fresh isolated session folder:
 
 | Role | Input | Output |
 |---|---|---|
@@ -1012,28 +1012,29 @@ During development, a prompt test's judge sessions may instead run under a cheap
 "Development judge" below); every judging that enters a claim uses the role profile.
 
 **Reusable session slots (user rulings, 2026-11-12):** every nested session that the optimizer starts, in every role,
-runs in a **slot**: one of a fixed set of run directories, one per session that may run at once, at paths that stay the
+runs in a **slot**: one of a fixed set of session folders, one per session that may run at once, at paths that stay the
 same for the campaign's life. A slot holds the session's isolated home and harness configuration directory and its
-project, exactly as a fresh run directory would. Before a session takes a slot, CAT empties it and builds the session's
-run in it from nothing, so no file of an earlier session remains; it does so only after every process of the slot's
+project, exactly as a fresh session folder would. Before a session takes a slot, CAT empties it and builds the session's
+folder in it from nothing, so no file of an earlier session remains; it does so only after every process of the slot's
 previous session has ended, and a session holds its slot exclusively until then. Slots live where the harness runs,
-never in the driver's results folders, which hold only kept copies: in the request server's directory for a session that
-the host session's request server serves, and in the requesting run's directory for requested sessions that serve a run,
-so the copy of the user's login in a slot's home stays out of the sandboxed driver's reach. Each request names whether
-its session belongs to the held-out part; held-out sessions take slots of their own, so the read denial between the
-parts is unchanged. A request waits for a free slot, and the slot count is the server's or run's concurrency limit. A
-run's results are copied out of its slot to the driver's results location before the slot is emptied, as today, and
-every record reads those copies (refinement after implementation, 2026-11-12). Each copy is named by the ID that the
-harness gave its session, Claude's `session_id` from its `init` event or Codex's thread ID from its `thread/start`
-response, since slot names repeat; the runner's records carry no ID of their own, and a session whose harness reported
-no ID has no copy (user ruling, 2026-11-19). A slot is not handed on while a process that its previous run recorded, the
-runner or the harness, is alive; the runner already ends the rest of the run's process tree. A run folder without its
-`session.json` records no process and does not keep its slot (user ruling, 2026-11-18). A slot whose run was interrupted
-is **retained**: its run keeps its project copy, home, harness session and `session.json` for a resume, and slot reuse
-passes it over until the run is resumed to its end, discarded, or deleted with the directory that holds the slot
-("Resuming a run" in [§8](#8-skill-and-command-interface)). A retained slot runs no process and does not count toward
-the concurrency limit, so a new session takes the lowest free slot number that holds no retained run, which may exceed
-the limit (user rulings, 2026-11-19).
+never in the driver's results folders, which hold only results copies: in the request server's directory for a session
+that the host session's request server serves, and in the requesting nested session's folder for the sessions that a
+nested session requests, so the copy of the user's login in a slot's home stays out of the sandboxed driver's reach.
+Each request names whether its session belongs to the held-out part; held-out sessions take slots of their own, so the
+read denial between the parts is unchanged. A request waits for a free slot, and the slot count is the server's or
+nested session's concurrency limit. A nested session's results are copied out of its slot to the driver's results
+location before the slot is emptied, as today, and every record reads those copies (refinement after implementation,
+2026-11-12). Each copy is named by the ID that the harness gave its session, Claude's `session_id` from its `init` event
+or Codex's thread ID from its `thread/start` response, since slot names repeat; the runner's records carry no ID of
+their own, and a session whose harness reported no ID has no copy (user ruling, 2026-11-19). A slot is not handed on
+while a process that its previous nested session recorded, the runner or the harness, is alive; the runner already ends
+the rest of the nested session's process tree. A session folder without its `session.json` records no process and does
+not keep its slot (user ruling, 2026-11-18). A slot whose nested session was interrupted is **retained**: the session
+keeps its project copy, home, harness session and `session.json` for a resume, and slot reuse passes it over until the
+session is resumed to its end, discarded, or deleted with the directory that holds the slot ("Resuming a nested session"
+in [§8](#8-skill-and-command-interface)). A retained slot runs no process and does not count toward the concurrency
+limit, so a new session takes the lowest free slot number that holds no retained session, which may exceed the limit
+(user rulings, 2026-11-19).
 
 The reason is the harnesses' prompt caches. Both harnesses put paths of the session's home, configuration directory
 and project into the instructions they send before the conversation. In a Claude session the memory path sits in the
@@ -1159,16 +1160,16 @@ through `assigned → running → judged`, and adopted or reconciled states, as 
 - Malformed retained trial evidence reports its filename and physical line as an infrastructure failure. It cannot
 	be omitted from the normalized record, converted into a correctness verdict or sent to a judge through
 	`on_tool_failure: judge`. Well-formed unrelated events remain ignorable; arbitrary tool-output text remains content.
-- **Interrupted trials (user rulings, 2026-11-19).** A trial whose run was interrupted, because its driver, the request
-	server or the host session ended before the run did ("Resuming a run" in [§8](#8-skill-and-command-interface)),
-	never counts as a result. When the campaign runs again, reconciliation resumes the trial in its own slot only when it
-	was interrupted between turns, with no turn in progress: the same root session continues with the next turn, so every
-	turn still runs in that one root session and the resumption belongs to the same attempt. A trial interrupted during a
-	turn is not resumed, so that no judged turn runs after a lost turn's prompt, partial work and file changes (user
-	ruling, 2026-11-19, Q7). Such a trial, and one that cannot be resumed because no harness session ID
-	was recorded for it, its run ended or is gone, or its harness session cannot continue, has its run discarded as
-	corrupt and runs again as the same logical trial with the same test case; the discarded run is an infrastructure
-	attempt.
+- **Interrupted trials (user rulings, 2026-11-19).** A trial whose nested session was interrupted, because its driver,
+	the request server or the host session ended before the nested session did ("Resuming a nested session" in
+	[§8](#8-skill-and-command-interface)), never counts as a result. When the campaign runs again, reconciliation
+	resumes the trial in its own slot only when it was interrupted between turns, with no turn in progress: the same
+	root session continues with the next turn, so every turn still runs in that one root session and the resumption
+	belongs to the same attempt. A trial interrupted during a turn is not resumed, so that no judged turn runs after a
+	lost turn's prompt, partial work and file changes (user ruling, 2026-11-19, Q7). Such a trial, and one that cannot
+	be resumed because no harness session ID was recorded for it, its nested session ended or is gone, or its harness
+	session cannot continue, has its nested session discarded as corrupt and runs again as the same logical trial with
+	the same test case; the discarded session is an infrastructure attempt.
 - A run that ends without a pass or fail outcome (provider error, rate-limit rejection, an interrupted turn, crash) is an
 	infrastructure attempt. The same logical trial runs again with the same test case. After 3 infrastructure failures
 	of the same logical trial, the campaign pauses with a precise infrastructure failure. Rate-limit rejections and
@@ -1348,10 +1349,10 @@ optimizer starts many nested sessions, and this bound is the only limit on their
 - Tests construct an unlimited instance or one under a test-owned directory, so no test contends with another test or
 	with real sessions.
 - One process-owned `FileLocks` coordinator is shared explicitly by the process scope and its child scopes,
-	capacity pools, campaign locks and run locks. It reserves a file before opening its channel and releases the
-	reservation after the channel closes. Coordination uses no mutable static registry; independent process scopes
-	and tests own independent coordinators. This prevents another consumer in the same JVM from opening and closing
-	a held lock file, which would release the process's POSIX lock.
+	capacity pools, campaign locks and nested-session locks. It reserves a file before opening its channel and releases
+	the reservation after the channel closes. Coordination uses no mutable static registry; independent process scopes
+	and tests own independent coordinators. This prevents another consumer in the same JVM from opening and closing a
+	held lock file, which would release the process's POSIX lock.
 
 ### 3.7 Process model
 
@@ -1455,22 +1456,22 @@ below describes.
 - **Reconciliation** runs first in every `run`. It adopts recorded outcomes that are not yet in the snapshot, resumes
 	each session that started without an outcome, discards as corrupt and reruns each one that it cannot resume
 	([§3.2](#32-logical-trials)), and verifies the optimization worktree inventory
-	([§4.6](#46-inventory-validation)). It also terminates the processes recorded in the run manifest (`ownerPid`,
-	`harnessPid`) of every run left by an earlier driver, since Codex runner processes outlive a killed driver (H20). The
-	runner's stale-run maintenance deletes orphaned run directories.
+	([§4.6](#46-inventory-validation)). It also terminates the processes recorded in the `session.json` (`ownerPid`,
+	`harnessPid`) of every nested session left by an earlier driver, since Codex runner processes outlive a killed
+	driver (H20). The runner's stale-session maintenance deletes orphaned session folders.
 - **Process ownership during recovery:** A recorded PID is actionable only with its recorded process start identity.
 	Confirmed exit or replacement permits reuse; unavailable identity for a live PID reports an `IOException` and
-	preserves the affected run and slot. Malformed or unreadable lifecycle records likewise refuse destructive cleanup.
-	A session folder in a session slot that has no `session.json` records no process: emptying the slot deletes it
-	without signalling anything, while a `session.json` that exists but is malformed or unreadable still refuses (user
-	ruling, 2026-11-18). Every deletion of a session folder removes its `session.json` last, so an interrupted deletion
-	keeps the record. Each launch records that a child may exist before spawning it, then records its complete identity.
-	Only a proven failed start or confirmed child exit can clear that uncertainty. A historical record without child
-	identity does not prove that no child exists. Historical complete identities remain usable for the same identity
-	checks. Validate every affected record before deleting slot contents, and never signal a PID whose identity is
-	uncertain. A retained slot is never emptied to hand it on. Resuming or discarding its run first stops the processes
-	that its `session.json` records, under these identity checks, and refuses while one stays alive (user ruling,
-	2026-11-19).
+	preserves the affected nested session and slot. Malformed or unreadable lifecycle records likewise refuse
+	destructive cleanup. A session folder in a session slot that has no `session.json` records no process: emptying the
+	slot deletes it without signalling anything, while a `session.json` that exists but is malformed or unreadable still
+	refuses (user ruling, 2026-11-18). Every deletion of a session folder removes its `session.json` last, so an
+	interrupted deletion keeps the record. Each launch records that a child may exist before spawning it, then records
+	its complete identity. Only a proven failed start or confirmed child exit can clear that uncertainty. A historical
+	record without child identity does not prove that no child exists. Historical complete identities remain usable for
+	the same identity checks. Validate every affected record before deleting slot contents, and never signal a PID whose
+	identity is uncertain. A retained slot is never emptied to hand it on. Resuming or discarding its nested session
+	first stops the processes that its `session.json` records, under these identity checks, and refuses while one stays
+	alive (user ruling, 2026-11-19).
 
 ### 3.9 Progress and remaining work
 
@@ -1532,9 +1533,9 @@ optimizer never starts its sessions in place (user ruling, 2026-11-07). Its data
 - the optimization worktree;
 - the delivery journal.
 
-The runs of formal and baseline trials and of judges go under a held-out results folder beside the runner's own results
-folder, so that sessions whose output reaches development can be denied them as one directory. Both results folders are
-in the owning session's CAT session directory, under `optimizer-runs/`.
+The results copies of the nested sessions of formal and baseline trials and of judges go under a held-out results folder
+beside the runner's own results folder, so that sessions whose output reaches development can be denied them as one
+directory. Both results folders are in the owning session's CAT session directory, under `optimizer-runs/`.
 
 The user's home folder is never a project, and neither is any folder that contains it, such as `/home` or the
 filesystem's root. The home folder holds CAT's user-level state in `~/.cat/`, such as the user rules, the installed
@@ -1565,10 +1566,11 @@ command for it and every start of a second campaign for its target, naming the s
 no state ([§7](#7-campaign-lifecycle), D17). Once the harness has deleted the owning session, the next session start in
 the project removes its CAT session directory (D79), first removing each of its campaigns' optimization worktrees
 through Git, so the repository keeps no stale worktree entry. A campaign that does not clean up after itself therefore
-keeps its files as long as its session exists. A campaign of a requested session whose run was interrupted stays in that
-run's retained slot, under the requesting session's directory, and resuming the run continues the same owning session
-(D17, D151); the slot goes when the run is resumed to its end or with the directory that holds it. The campaign's
-worktree is registered in the slot's own project copy, so deleting the slot leaves no stale registration.
+keeps its files as long as its session exists. A campaign of a requested session whose nested session was interrupted
+stays in that session's retained slot, under the requesting session's directory, and resuming the nested session
+continues the same owning session (D17, D151); the slot goes when the nested session is resumed to its end or with the
+directory that holds it. The campaign's worktree is registered in the slot's own project copy, so deleting the slot
+leaves no stale registration.
 
 Earlier versions of CAT kept these directories under `<base>/.cat/work/`. CAT no longer moves them: a session start
 leaves every entry of `.cat/work/`, including its former shared `temp/`, where it is and never deletes it (D81).
@@ -1590,9 +1592,9 @@ make the base worktree dirty.
 A campaign whose certification attempt ends `certified` cleans up after itself once it no longer needs its files: when
 the delivery of the certified candidate completes and is verified ([§4.7](#47-delivery)), or when the user keeps the
 incumbent instead of accepting a regression ([§2.8](#28-decision-table)). CAT then removes the optimization worktree,
-deletes the campaign's runs from both results folders and deletes the campaign directory last, so nothing of the
-campaign stays under `.cat/sessions/`. Removal is idempotent: if a fault interrupts it, the next command for the target
-completes it. Every other campaign keeps its files for resuming, diagnosis and the best candidate so far (D51).
+deletes the campaign's results copies from both results folders and deletes the campaign directory last, so nothing of
+the campaign stays under `.cat/sessions/`. Removal is idempotent: if a fault interrupts it, the next command for the
+target completes it. Every other campaign keeps its files for resuming, diagnosis and the best candidate so far (D51).
 
 ### 4.2 Fork and optimization worktree
 
@@ -1645,11 +1647,12 @@ worktree's registration move to a process outside the sandbox, and the optimizer
 
 The optimizer sends each request by the route that decides a session launch ([§8](#8-skill-and-command-interface),
 "Worktree requests"): a command that a harness's session runs sends it to the session's request server, and a command
-inside a CAT run sends it to that run's runner, for either harness. A process that no harness's command sandbox
-confines runs the operations itself, in place: the session-start sweep of the CAT session directories of ended sessions
-([§4.1](#41-storage)), which a hook runs, removes campaigns that belong to other sessions, which a request could not
-name. The optimizer refuses a command that no harness runs ([§4.1](#41-storage)), so the sweep is the only process that
-reaches the operations in place. The server, the runner and the sweep run one implementation of the operations.
+inside a nested session sends it to that nested session's runner, for either harness. A process that no harness's
+command sandbox confines runs the operations itself, in place: the session-start sweep of the CAT session directories of
+ended sessions ([§4.1](#41-storage)), which a hook runs, removes campaigns that belong to other sessions, which a
+request could not name. The optimizer refuses a command that no harness runs ([§4.1](#41-storage)), so the sweep is the
+only process that reaches the operations in place. The server, the runner and the sweep run one implementation of the
+operations.
 
 A command that has to send a request when no server serves the session refuses with status 2 before it changes
 anything, and names the command that starts a server in the background, as a session launch does. This replaces the
@@ -1724,25 +1727,26 @@ failures remain nonfatal when the target bytes are intact.
 
 The runner copies a project's symbolic link whose target stays inside the project as a link with the same target. For
 any other link, it places a read-only copy of the file or directory tree that the link leads to in its own folder of the
-run's `link-targets` directory, beside the project, and keeps the project's link, retargeted relatively to that copy, so
-the session and CAT still see an outside link while the user's file stays out of reach. It refuses a link whose target is
-missing or unreadable, records each copy and fails the run when its session changed one (`HarnessRunManager.copyProject`,
-`HarnessRunManager.changedLinkCopies`; user rulings, 2026-11-09, 2026-11-10: keep the link, read-only target).
-The run's `link-targets` directory exists only when the copied project has such a link, and each copy lies in a folder
-`link-targets/<n>`. Both harnesses let the session read `link-targets` and never write there: Claude Code through a
-`Read` rule with no write grant, Codex through a read grant in its permission profile and a read-only bind mount. The
-record names each copied file by its path from the run directory, and the runner refuses a workspace file whose project
-path is, or lies below, a link into `link-targets`. CAT still materializes **staged sources**,
-directories in which every link is already replaced by a copy of its target, which the runner copies for each trial,
-so a trial's project holds no copy of a link target outside it.
+session folder's `link-targets` directory, beside the project, and keeps the project's link, retargeted relatively to
+that copy, so the session and CAT still see an outside link while the user's file stays out of reach. It refuses a link
+whose target is missing or unreadable, records each copy and fails the nested session when it changed one
+(`NestedSessionManager.copyProject`, `NestedSessionManager.changedLinkCopies`; user rulings, 2026-11-09, 2026-11-10:
+keep the link, read-only target). The session folder's `link-targets` directory exists only when the copied project has
+such a link, and each copy lies in a folder `link-targets/<n>`. Both harnesses let the session read `link-targets` and
+never write there: Claude Code through a `Read` rule with no write grant, Codex through a read grant in its permission
+profile and a read-only bind mount. The record names each copied file by its path from the session folder, and the
+runner refuses a workspace file whose project path is, or lies below, a link into `link-targets`. CAT still materializes
+**staged sources**, directories in which every link is already replaced by a copy of its target, which the runner copies
+for each trial, so a trial's project holds no copy of a link target outside it.
 
 **Changed link copies (user ruling, 2026-11-09).** Before the session starts, the runner records in `link-copies.jsonl`,
-in the run directory, the path, type and mode of each file and directory of every read-only copy of a link target, and
+in the session folder, the path, type and mode of each file and directory of every read-only copy of a link target, and
 the SHA-256 of each file. Neither harness's sandbox lets the session write there. When the session ends, whether it
 completed, failed, was interrupted, its conversation ended or it served a forwarded request, the runner compares the
-copies with the record before it marks the run completed or writes a receipt. Any added, removed or replaced entry,
-changed content or changed mode fails the run with exit status 1, so no result rests on files that differ from the
-targets that production reads. The diagnostic names each changed path, at most 20 and then a count of the rest.
+copies with the record before it marks the nested session completed or writes a receipt. Any added, removed or replaced
+entry, changed content or changed mode fails the nested session with exit status 1, so no result rests on files that
+differ from the targets that production reads. The diagnostic names each changed path, at most 20 and then a count of
+the rest.
 
 **Trial workspace (user ruling, 2026-10-17).** A trial's workspace holds the prompt system and the project files that
 its prompt test asks for, not a copy of the whole project. Each candidate, including the incumbent, has a **base
@@ -1815,21 +1819,21 @@ The proposal lists every file of the incumbent's base source. CAT refuses, namin
 	run the prompt author's `@docs/handbook.md` import was refused three times, although each test supplied that file
 	in its workspace, and the pause named no route).
 
-Run directories lie inside the user's project, and a harness can load instruction files from the directories above its
-working directory, as Claude Code does. A nested session therefore loads no instruction file from above its run
-directory, the boundary above which Git discovery already stops; otherwise every trial would also receive the
+Session folders lie inside the user's project, and a harness can load instruction files from the directories above its
+working directory, as Claude Code does. A nested session therefore loads no instruction file from above its session
+folder, the boundary above which Git discovery already stops; otherwise every trial would also receive the
 project's incumbent instructions (end-to-end finding, 2026-10-20).
 
 Loading instructions is not the only way into the project: a session's file tools and commands can read it too. In a
 Claude E1 campaign, 104 of 160 trial sessions used paths in the user's project, and 63 read the project's copy of a
 document instead of their workspace's copy, whose content the test case had set. Every nested session therefore runs with its harness sandbox denying reads of the user's
-project, except its own run directory and the evidence it reads. A Claude session also receives only the host's deny and
-ask rules, not its grants: the host's additional directories and allow rules would let it read and write the host's
+project, except its own session folder and the evidence it reads. A Claude session also receives only the host's deny
+and ask rules, not its grants: the host's additional directories and allow rules would let it read and write the host's
 directories again. CAT itself allows the `Skill` tool, which Claude Code asks before using and a nested session has no
 user to approve (end-to-end finding, 2026-10-20).
 
 Nor does a nested session receive the paths that the host may write, which include the user's Claude and CAT
-directories. It writes only its run directory, its own home and the user's npm and Maven caches, which trials share so
+directories. It writes only its session folder, its own home and the user's npm and Maven caches, which trials share so
 that each one does not download the same packages again. Maven finds its repository from the user's account rather than
 from the home directory that CAT isolates, or from the user's `MAVEN_OPTS`, so the session keeps the user's
 `MAVEN_OPTS` (user ruling, 2026-10-20).
@@ -1940,11 +1944,11 @@ plugin copy of its candidate's base source, any other from its base copy. The tr
 own files that its staged source holds. The runner reuses the user's existing approvals of each plugin's hooks, as it
 does for CAT's. A Codex hook that the user has not approved does not run in trials, and the proposal lists it as a
 limitation. Claude Code runs every hook of an installed plugin without an approval, so its proposals list none.
-When a run installs CAT (`--install-cat`), the runner also writes into the trial's harness home the settings entries
-that CAT's installer writes for the installed copy: Claude Code's sandbox exceptions and allow rules for the installer
-and the request server, and Codex's installer rules, request-server rule and CAT hook approvals. A trial session thus
-meets the same approvals as a user's session, and starts its own requested sessions without asking. Entries that
-concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written.
+When a nested session installs CAT (`--install-cat`), the runner also writes into the trial's harness home the settings
+entries that CAT's installer writes for the installed copy: Claude Code's sandbox exceptions and allow rules for the
+installer and the request server, and Codex's installer rules, request-server rule and CAT hook approvals. A trial
+session thus meets the same approvals as a user's session, and starts its own requested sessions without asking. Entries
+that concern only the user's own home, such as the consented sandbox profile and the uninstall record, are not written.
 
 Staging excludes `.cat/sessions/`. This keeps a trial agent from reading other trials, judge results or formal
 assignments. Excluding the prompt test directories keeps a trial agent from reading a test's assertions, expected
@@ -2298,8 +2302,8 @@ proposal file holds only what belongs to this contract and to no prompt test:
 	path relative to the project; the user reviews each with its authority warning before confirming.
 
 A recorded prompt test that the author leaves unchanged therefore costs it nothing to carry, and the user reviews the
-same files that delivery writes ([§4.7](#47-delivery)). The draft directory lies in the contract author's run
-directory. When the session ends, CAT moves it into the held-out directory with the proposal ([§4.1](#41-storage)),
+same files that delivery writes ([§4.7](#47-delivery)). The draft directory lies in the contract author's session
+folder. When the session ends, CAT moves it into the held-out directory with the proposal ([§4.1](#41-storage)),
 because its values files hold expected outcomes of both parts. A revision's draft directory starts as a copy of the
 latest proposal's.
 
@@ -2643,13 +2647,14 @@ sees them with the scenario and writes new test cases that differ from them.
 **Held-out content on disk.** Both harnesses' sandboxes limit what a session writes, not what it reads, so withholding
 held-out content from a brief does not keep a session from reading it. CAT keeps every file that holds held-out content
 in one of two directories: the campaign's **held-out directory**, which holds the snapshot, the proposal and the trial
-records ([§4.1](#41-storage)), and the **held-out results folder**, which holds the run directories of formal, control
-and baseline trials and of judges. Every session whose output reaches development (development trials, targeted runs,
-triage, diagnosis, prompt authors and the contract author) runs with its harness sandbox denying reads of both
-directories, for its commands and its file tools alike. CAT denies whole directories, because in Codex a file denied by
-name becomes readable again once it is replaced. Formal, control and baseline trials and judges are not denied: they
-read held-out content by design, and only a failure summary of theirs reaches development. CAT refuses to start a
-campaign when its harness cannot apply the denial, for example when the host's settings turn the sandbox off.
+records ([§4.1](#41-storage)), and the **held-out results folder**, which holds the results copies of the nested
+sessions of formal, control and baseline trials and of judges. Every session whose output reaches development
+(development trials, targeted runs, triage, diagnosis, prompt authors and the contract author) runs with its harness
+sandbox denying reads of both directories, for its commands and its file tools alike. CAT denies whole directories,
+because in Codex a file denied by name becomes readable again once it is replaced. Formal, control and baseline trials
+and judges are not denied: they read held-out content by design, and only a failure summary of theirs reaches
+development. CAT refuses to start a campaign when its harness cannot apply the denial, for example when the host's
+settings turn the sandbox off.
 
 **Development test cases after a failed attempt (user ruling, 2026-10-04).** The development part may hold no test
 case that triggers a formal failure, so development could find nothing to edit. When a certification attempt ends with
@@ -3149,13 +3154,14 @@ launch is refused with the command that installs CAT into it through this plugin
 releases, the refusal names the command that updates it to this release through the installer. The agent asks the
 user to approve that command, runs it, then retries.
 
-**Runner profile (user ruling, 2026-10-30):** a run requires `--model` and `--effort`, in both runner launchers, outside
-a run and inside one. A launch that lacks either is refused before it takes a capacity slot or starts a harness, and the
-refusal names each missing option and where to list the supported values: `claude --help` for Claude and
-`codex debug models` for Codex. Neither CAT nor the runner supplies a default, so a run never takes the harness's
-configured model or effort without the caller choosing it. The caller is always the agent that runs the launcher: it
-passes the model and effort that its task or instructions name, and when they name none it chooses them from the values
-that the harness lists; it never asks the user and never stops the run for want of them (user rulings, 2026-11-02). The optimizer passes every session's profile (D119).
+**Runner profile (user ruling, 2026-10-30):** a launch requires `--model` and `--effort`, in both runner launchers,
+outside a nested session and inside one. A launch that lacks either is refused before it takes a capacity slot or starts
+a harness, and the refusal names each missing option and where to list the supported values: `claude --help` for Claude
+and `codex debug models` for Codex. Neither CAT nor the runner supplies a default, so a nested session never takes the
+harness's configured model or effort without the caller choosing it. The caller is always the agent that runs the
+launcher: it passes the model and effort that its task or instructions name, and when they name none it chooses them
+from the values that the harness lists; it never asks the user and never stops the launch for want of them (user
+rulings, 2026-11-02). The optimizer passes every session's profile (D119).
 
 **No reasoning (user ruling, 2026-10-30):** `--effort none` selects no reasoning, for every model, in both runner
 launchers, and the runner passes it as the harness's explicit setting for it, never leaving the effort unset (D120):
@@ -3209,56 +3215,55 @@ Windows prompts, acknowledged short lines with a hash check for file transfers, 
 rule and the skill carry organic regression scenarios now; their certification runs later with the other
 certifications (D111).
 
-**Session transcripts (user rulings, 2026-10-23, 2026-11-19):** every run's harness keeps its session, transcript
-included, in the run's isolated home, which never leaves the run's slot and is deleted with the run: a session's
-launchers read its sandbox policy from its transcript, and a resume continues an interrupted run's session from it
-("Resuming a run" below). A transcript reaches the artifacts of the run's results copy only when the caller passes
-`--session-transcripts`. With it, the runner reports each session's
-transcript path in a `session_transcript` record once the session starts, so a caller can read it while the run lasts,
-and at the end of the run copies every native transcript of the run, subagents' included, into the run's
+**Session transcripts (user rulings, 2026-10-23, 2026-11-19):** every nested session's harness keeps its session,
+transcript included, in the nested session's isolated home, which never leaves its slot and is deleted with the nested
+session: a session's launchers read its sandbox policy from its transcript, and a resume continues an interrupted nested
+session from it ("Resuming a nested session" below). A transcript reaches the artifacts of the nested session's results
+copy only when the caller passes `--session-transcripts`. With it, the runner reports each session's transcript path in
+a `session_transcript` record once the session starts, so a caller can read it while the session lasts, and at the end
+of the nested session copies every native transcript of the session, subagents' included, into its
 `artifacts/session-transcripts/` and lists them in the receipt. The optimizer passes the option for its trials, whose
 records read what a model received from those copies (D97).
 
 **Trial limits (user rulings, 2026-10-23):** the commands that a session runs have the same limits in both harnesses,
 and one harness-neutral definition that both runners apply sets them, so a limit cannot hold in one harness and not the
-other. A session's commands run with the run's isolated home as their home directory and cannot read any harness's login
-or configuration files, in the run's home or the user's, or any run under the results folder except their own. The
-exception is the session's own login in the run's home, a copy of the user's login, which a harness that the session
-starts from a command, such as the prompt optimizer's sessions, reads; the user's real logins and the other harness's
-files stay unreadable (user ruling, 2026-11-02: "Allow session's own login"). A Codex session's commands receive no
-harness credential in their environment; a Claude session's commands receive Claude's connection credentials, which the
-session's parent has too, because a child is trusted with what its parent has and is kept only from what could let it
-cheat during prompt optimization (user ruling, 2026-11-02). The user's harness directories stay readable otherwise,
-because a session's installed plugins link to files there. On native Windows, where Claude Code runs commands without
-its sandbox, sandboxed Claude sessions are refused instead, and the refusal tells the user to run Claude Code and CAT
-inside WSL2 (user ruling, 2026-11-01). A session that needs another session requests one instead of starting a harness
-directly (D98).
+other. A session's commands run with the nested session's isolated home as their home directory and cannot read any
+harness's login or configuration files, in the nested session's home or the user's, or any nested session under the
+results folder except their own. The exception is the session's own login in the nested session's home, a copy of the
+user's login, which a harness that the session starts from a command, such as the prompt optimizer's sessions, reads;
+the user's real logins and the other harness's files stay unreadable (user ruling, 2026-11-02: "Allow session's own
+login"). A Codex session's commands receive no harness credential in their environment; a Claude session's commands
+receive Claude's connection credentials, which the session's parent has too, because a child is trusted with what its
+parent has and is kept only from what could let it cheat during prompt optimization (user ruling, 2026-11-02). The
+user's harness directories stay readable otherwise, because a session's installed plugins link to files there. On native
+Windows, where Claude Code runs commands without its sandbox, sandboxed Claude sessions are refused instead, and the
+refusal tells the user to run Claude Code and CAT inside WSL2 (user ruling, 2026-11-01). A session that needs another
+session requests one instead of starting a harness directly (D98).
 
-**Claude login of a run (user rulings, 2026-11-08):** a subscription login rotates its refresh token, so a copy of the
-user's `.credentials.json` stops working once the user's own session, or any other copy, refreshes it, which can happen
-in the middle of a turn; Claude Code also replaces a symbolic link when it saves a refreshed login, so a link to the
-user's file does not help. A Claude session in a run therefore shares the user's login store instead of copying it, with
-no action by the user, and the user's own session and settings stay unchanged ("The mechanism must be automatic. So long
-as the parent is authenticated, the plugin should pass credentials to the children automatically without user
-intervention"). The runner starts each session, and each session that a run requests, with its own configuration folder
-and with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the user's Claude configuration folder (`CLAUDE_CONFIG_DIR` of the
-environment that the first runner starts in, else `~/.claude`, or that environment's own `CLAUDE_SECURESTORAGE_CONFIG_DIR`
-when it sets one); Claude Code takes the login file, the macOS Keychain
-item and the refresh lock from that variable, so a session refreshes the shared login under Claude Code's own lock, as
-two of the user's own sessions do, and the user's session reloads the refreshed login when the file changes. The user
-accepted that a session can therefore change the shared login's tokens, including Claude Code's clearing of a login whose
-refresh is refused (user ruling, 2026-11-08). On macOS with the default folder the runner sets the variable empty
-instead, because Claude Code names the Keychain item without a folder suffix only then; such a session uses the user's
-Keychain item with a refresh lock of its own, which is safe because Claude Code clears a refused login only while it
-still holds the refused refresh token. CAT never reads, copies or stores a token, and the sessions' commands stay
-denied reading the user's login file. On macOS the login is a Keychain item instead; Claude Code's sandbox lets
-commands reach the Keychain service, and Claude Code reads the item through the `security` program, which any command
-can run, so a session's commands can read it, as the user's own session's commands can, and CAT has no setting that
-denies it. When that environment sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or
-`ANTHROPIC_AUTH_TOKEN`, that variable is passed as before. With neither a variable nor a stored login, which the runner
-checks by existence only and only where the absence is certain (not on Windows, whose Credential Manager may hold
-it), the runner refuses the run before the harness starts, with status 2, and the reason tells the
-user to log in to Claude Code.
+**Claude login of a nested session (user rulings, 2026-11-08):** a subscription login rotates its refresh token, so a
+copy of the user's `.credentials.json` stops working once the user's own session, or any other copy, refreshes it, which
+can happen in the middle of a turn; Claude Code also replaces a symbolic link when it saves a refreshed login, so a link
+to the user's file does not help. A nested Claude session therefore shares the user's login store instead of copying it,
+with no action by the user, and the user's own session and settings stay unchanged ("The mechanism must be automatic. So
+long as the parent is authenticated, the plugin should pass credentials to the children automatically without user
+intervention"). The runner starts each session, and each session that a nested session requests, with its own
+configuration folder and with `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the user's Claude configuration folder
+(`CLAUDE_CONFIG_DIR` of the environment that the first runner starts in, else `~/.claude`, or that environment's own
+`CLAUDE_SECURESTORAGE_CONFIG_DIR` when it sets one); Claude Code takes the login file, the macOS Keychain item and the
+refresh lock from that variable, so a session refreshes the shared login under Claude Code's own lock, as two of the
+user's own sessions do, and the user's session reloads the refreshed login when the file changes. The user accepted that
+a session can therefore change the shared login's tokens, including Claude Code's clearing of a login whose refresh is
+refused (user ruling, 2026-11-08). On macOS with the default folder the runner sets the variable empty instead, because
+Claude Code names the Keychain item without a folder suffix only then; such a session uses the user's Keychain item with
+a refresh lock of its own, which is safe because Claude Code clears a refused login only while it still holds the
+refused refresh token. CAT never reads, copies or stores a token, and the sessions' commands stay denied reading the
+user's login file. On macOS the login is a Keychain item instead; Claude Code's sandbox lets commands reach the Keychain
+service, and Claude Code reads the item through the `security` program, which any command can run, so a session's
+commands can read it, as the user's own session's commands can, and CAT has no setting that denies it. When that
+environment sets `CLAUDE_CODE_OAUTH_TOKEN`, `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN`, that variable is passed as
+before. With neither a variable nor a stored login, which the runner checks by existence only and only where the absence
+is certain (not on Windows, whose Credential Manager may hold it), the runner refuses the launch before the harness
+starts, with status 2, and the reason tells the user to log in to Claude Code.
 
 No one can answer a nested session's approval prompt, so a session's own commands run without one. The
 Claude runner allows Bash for sessions offered commands or writing tools, requires a sandbox that forbids unsandboxed
@@ -3290,84 +3295,86 @@ they nest, which model and effort they use and which built-in agents are offered
 absent there, its settings file's `env`.
 
 **Requested sessions (user rulings, 2026-10-23):** a caller that passes `--session-requests <count>` lets the session
-request up to that many sessions over the run; the default, `0`, allows none, and the optimizer allows none in its
+request up to that many sessions over its life; the default, `0`, allows none, and the optimizer allows none in its
 trials. The session requests one by running the `request-session` launcher that the runner names in its environment,
 with the harness, a project directory, one or more prompt files or `--conversation <folder>`, a model and an effort and,
 optionally, plugins and `--session-transcripts`. It exits `0` when the session completed, `2` when CAT refused the
 request, `3` when its wait ended first, and `1` otherwise; the launcher refuses a request without a model or an effort,
 and the runner refuses such a request before it starts anything (D119). Every input and result passes as a file path,
 never as content: the launcher, which runs as one of the session's own commands and therefore inside its sandbox, packs
-the request and its inputs into one archive file in the run's `requests` directory, the one directory outside its
-project and home that the session may write. The runner answers in the run's `responses` directory, which the session
-may read but not write, so a link that the session plants cannot redirect the runner's writes: a response file that
-names copies, beside it, of the requested run's transcript, receipt and native transcripts, since the requesting session
-cannot read other runs. The runner, which runs outside the session's sandbox with the user's permissions, opens no path
-that the session chose: it opens only the archive, without following a link and refusing a file with more than one hard
-link, and unpacks it into a directory of its own, refusing absolute and parent paths, a link outside the project, a link
-whose target leaves the project, an entry that passes through a link and anything beyond its size bounds. It creates the
-project's links only after every file and directory, and extracts each read-only copy of a link target into its own
-folder of `link-targets` beside the project, with the project's link to it in its place, so the runner that serves the
-request copies, records and checks it as it does any copy of an outside link target; it refuses an entry in
-`link-targets`, and a copy that holds a writable entry, a link or another copy, or that comes after an entry inside it.
-An archive therefore holds only what the session's sandbox let it read, on every platform. The launcher leaves out of
-each tree the placeholders through which a sandbox hides a file, entries that are the null device itself, packs a
-project link whose target stays inside the project as a link and any other project link as a read-only copy of its
-target, refuses a link whose target is missing or that the sandbox does not let it read, and refuses a link elsewhere or
-any other special file, so a session may request a session over its own project (user ruling, 2026-10-25). The runner
-validates the request and starts the session through that harness's runner launcher, resolved as the runner rule
-resolves it, with the requesting session's results folder and denied reads, and with no requested sessions of its own
-unless the caller passed `--request-depth <levels>`: each level below may then request as many sessions as its parent,
-one level less deep, and each level's runner starts its own requested sessions outside its session's sandbox (D107). The
-requesting session's results folder is denied to the requested session except the requesting session's installed CAT
-plugin, which stays readable and executable but not writable, so the requested session can run a contract tool that its
-request names by absolute path there; the exemption lists the folder's entries when the requested session starts. A
-requested session therefore has at most the permissions of the session that requested it, and no credential reaches a
-command beyond those its harness's limits allow. A requested session needs a few writes outside its session folder (its
-dependency caches) and hosts (its model's host); when the requesting session's sandbox does not allow all of them, the
-launcher does not start a session with less than it needs: it answers the request `refused` before any harness starts,
-with one message that lists every missing write and host and, for the requesting session's harness, the settings entry
-that grants each (Claude Code: `sandbox.filesystem.allowWrite` and `sandbox.network.allowedDomains`; Codex: the
-permission profile's filesystem and network domain entries), and says to start a new session, because a running session
-keeps the policy it started with. A write inside a path that the requesting session's sandbox denies is listed with that
-denial, which the user removes, since allowing the folder would not help. The session folder stays allowed, and read
-denials only narrow the requested session (user ruling, 2026-11-06). A caller that knows its task needs more, such as a
-package registry's host or a cache outside the project, names a JSON file with `--extra-permissions <file>` on either
-runner launcher or on `request-session`: `{"format_version": 1, "writes": ["<absolute path>"], "hosts": ["<host
-name>"]}`, where either list may be left out and no other field is allowed. It rejects a relative path and a `*` host
-pattern, as the child's own needs do. The writes and hosts join the requested session's needs on every path that starts
-it (through the session's request server and through a run's broker), so the same rule applies: the session gets them
-when the requesting session's sandbox allows them and otherwise is refused, with each one named and the settings entry
-that grants it. A caller that names no file requests nothing extra; the file's contents travel inside the request, so
-the runner never opens a path that the requesting session chose (user ruling, 2026-11-06: a file that describes what the
-child needs, optional). It takes its own slot of its harness's shared capacity and honours its hold, but waits at most
-10 minutes for a slot, because the requesting session keeps its own slot while it waits; a request that times out fails
-with the reason `capacity`. Ending the run or interrupting its turn stops the requested sessions that still run. Before
-each completed turn's record, a session that the optimizer requests through its run's runner leaves its `project` and
-`initial-project` in the response directory's `turn-copy`, and the optimizer copies them into its results folder before
-it reads that record, so a follow-up checks the files that the session has written so far, as it does in a direct
+the request and its inputs into one archive file in the nested session's `requests` directory, the one directory outside
+its project and home that the session may write. The runner answers in the nested session's `responses` directory, which
+the session may read but not write, so a link that the session plants cannot redirect the runner's writes: a response
+file that names copies, beside it, of the requested session's transcript, receipt and native transcripts, since the
+requesting session cannot read other nested sessions. The runner, which runs outside the session's sandbox with the
+user's permissions, opens no path that the session chose: it opens only the archive, without following a link and
+refusing a file with more than one hard link, and unpacks it into a directory of its own, refusing absolute and parent
+paths, a link outside the project, a link whose target leaves the project, an entry that passes through a link and
+anything beyond its size bounds. It creates the project's links only after every file and directory, and extracts each
+read-only copy of a link target into its own folder of `link-targets` beside the project, with the project's link to it
+in its place, so the runner that serves the request copies, records and checks it as it does any copy of an outside link
+target; it refuses an entry in `link-targets`, and a copy that holds a writable entry, a link or another copy, or that
+comes after an entry inside it. An archive therefore holds only what the session's sandbox let it read, on every
+platform. The launcher leaves out of each tree the placeholders through which a sandbox hides a file, entries that are
+the null device itself, packs a project link whose target stays inside the project as a link and any other project link
+as a read-only copy of its target, refuses a link whose target is missing or that the sandbox does not let it read, and
+refuses a link elsewhere or any other special file, so a session may request a session over its own project (user
+ruling, 2026-10-25). The runner validates the request and starts the session through that harness's runner launcher,
+resolved as the runner rule resolves it, with the requesting session's results folder and denied reads, and with no
+requested sessions of its own unless the caller passed `--request-depth <levels>`: each level below may then request as
+many sessions as its parent, one level less deep, and each level's runner starts its own requested sessions outside its
+session's sandbox (D107). The requesting session's results folder is denied to the requested session except the
+requesting session's installed CAT plugin, which stays readable and executable but not writable, so the requested
+session can run a contract tool that its request names by absolute path there; the exemption lists the folder's entries
+when the requested session starts. A requested session therefore has at most the permissions of the session that
+requested it, and no credential reaches a command beyond those its harness's limits allow. A requested session needs a
+few writes outside its session folder (its dependency caches) and hosts (its model's host); when the requesting
+session's sandbox does not allow all of them, the launcher does not start a session with less than it needs: it answers
+the request `refused` before any harness starts, with one message that lists every missing write and host and, for the
+requesting session's harness, the settings entry that grants each (Claude Code: `sandbox.filesystem.allowWrite` and
+`sandbox.network.allowedDomains`; Codex: the permission profile's filesystem and network domain entries), and says to
+start a new session, because a running session keeps the policy it started with. A write inside a path that the
+requesting session's sandbox denies is listed with that denial, which the user removes, since allowing the folder would
+not help. The session folder stays allowed, and read denials only narrow the requested session (user ruling,
+2026-11-06). A caller that knows its task needs more, such as a package registry's host or a cache outside the project,
+names a JSON file with `--extra-permissions <file>` on either runner launcher or on `request-session`:
+`{"format_version": 1, "writes": ["<absolute path>"], "hosts": ["<host name>"]}`, where either list may be left out and
+no other field is allowed. It rejects a relative path and a `*` host pattern, as the child's own needs do. The writes
+and hosts join the requested session's needs on every path that starts it (through the session's request server and
+through a nested session's broker), so the same rule applies: the session gets them when the requesting session's
+sandbox allows them and otherwise is refused, with each one named and the settings entry that grants it. A caller that
+names no file requests nothing extra; the file's contents travel inside the request, so the runner never opens a path
+that the requesting session chose (user ruling, 2026-11-06: a file that describes what the child needs, optional). It
+takes its own slot of its harness's shared capacity and honours its hold, but waits at most 10 minutes for a slot,
+because the requesting session keeps its own slot while it waits; a request that times out fails with the reason
+`capacity`. Ending the nested session or interrupting its turn stops the requested sessions that still run. Before each
+completed turn's record, a session that the optimizer requests through its nested session's runner leaves its `project`
+and `initial-project` in the response directory's `turn-copy`, and the optimizer copies them into its results folder
+before it reads that record, so a follow-up checks the files that the session has written so far, as it does in a direct
 session. A launcher streams a requested conversation as `turn` records that hold only a prompt, and `interrupt` and
-`complete` records that hold only their type. Requested runs lie in groups of 100 under the requesting run, so that a
-session's sandbox denies its sibling runs with about twice the square root of their number in paths. The receipt lists
-each requested session, its run and its evidence. The runner adds nothing to a session's instructions: a session learns
-how to request one from CAT's lazy-loaded harness-runners rule, the launcher's path from `CAT_REQUEST_SESSION` and the
-run's limits from `limits.json`, and a request the run does not allow is refused with status 2 (D138).
+`complete` records that hold only their type. Requested sessions lie in groups of 100 under the requesting nested
+session, so that a session's sandbox denies its sibling sessions with about twice the square root of their number in
+paths. The receipt lists each requested session, its session folder and its evidence. The runner adds nothing to a
+session's instructions: a session learns how to request one from CAT's lazy-loaded harness-runners rule, the launcher's
+path from `CAT_REQUEST_SESSION` and the nested session's limits from `limits.json`, and a request the nested session
+does not allow is refused with status 2 (D138).
 
 **Runner launches inside a nested session (user rulings, 2026-10-25):** when `--session-requests` allows any, a session
 may also request a session by running either runner launcher, as it would outside a nested session. The session's
 command environment names the request-session launcher, beside which both runner launchers lie, and, for Claude, the
-runner grants exactly those commands. The launcher sees the run's requests directory in its environment, starts no
-harness, and packs the launch as a session request with the launch's turns as prompt files; it waits for the response,
-writes the requested session's transcript to `--output` or standard output and its receipt to `--receipt`, and exits `0`
-when the session completed, `75` when no capacity was free, `2` when CAT refused the launch, and `1` otherwise. The
-parent runner chooses the results folder, artifact, harness executable, denied reads and every limit, so the launcher
-refuses the options that would choose them and accepts only the project, plugins, model, effort, `--install-cat`,
-`--session-transcripts`, `--extra-permissions`, input or `--conversation`, output and receipt. It requires the model and
-the effort, as outside a nested session, and refuses a launch without either before it packs a request (D119). The
-session's commands stay sandboxed and read no login but the session's own copy. A runner launcher that a run's session
-runs starts no harness, because the nested session's runner counts the session's requests against the run's limit,
-passes its denied reads, capacity ceiling and remaining request depth down, keeps each requested session's evidence
-under its own run and stops the requested sessions when its run ends. A launch inside a nested session whose caller
-allows no requested sessions is refused with status 2 and starts nothing (D107).
+runner grants exactly those commands. The launcher sees the nested session's requests directory in its environment,
+starts no harness, and packs the launch as a session request with the launch's turns as prompt files; it waits for the
+response, writes the requested session's transcript to `--output` or standard output and its receipt to `--receipt`, and
+exits `0` when the session completed, `75` when no capacity was free, `2` when CAT refused the launch, and `1`
+otherwise. The parent runner chooses the results folder, artifact, harness executable, denied reads and every limit, so
+the launcher refuses the options that would choose them and accepts only the project, plugins, model, effort,
+`--install-cat`, `--session-transcripts`, `--extra-permissions`, input or `--conversation`, output and receipt. It
+requires the model and the effort, as outside a nested session, and refuses a launch without either before it packs a
+request (D119). The session's commands stay sandboxed and read no login but the session's own copy. A runner launcher
+that a nested session runs starts no harness, because the nested session's runner counts the session's requests against
+its limit, passes its denied reads, capacity ceiling and remaining request depth down, keeps each requested session's
+evidence under its own session folder and stops the requested sessions when the nested session ends. A launch inside a
+nested session whose caller allows no requested sessions is refused with status 2 and starts nothing (D107).
 
 **Session launches outside a nested session (user rulings, 2026-11-08, replacing the session launcher of 2026-11-06):**
 a sandboxed command cannot start a session whose harness sandboxes it: macOS refuses to apply a sandbox inside a
@@ -3436,16 +3443,16 @@ first").
 **Clients.** Outside a nested session, a runner launcher that a harness session runs, `request-session`, and every other
 CAT command that starts sessions, the prompt optimizer included, packs each launch as a session request, as inside a
 nested session, into `requests/` in the session's CAT session directory, waits for the response there, and writes the
-transcript, receipt and the run's results copy from it itself. Because the client packs the request and writes its
-results inside the session's sandbox, every file a request carries is one the session may read, and every file a launch
-writes is one it may write. A client that finds no request server serving the session refuses with status `2` before it
-changes anything and names the exact command to start one in the background. A runner launcher runs only from a Claude
-Code or Codex session: a command that no harness session runs, such as one in a terminal or a script, has no sandbox to
-bound the new session and no request server, so its launcher refuses with status `2` before it changes anything and says
-to run it from a Claude Code or Codex session (user ruling, 2026-11-19: CAT no longer starts a session for a launcher
-that no harness session runs). Only CAT's own starters, a session's request server and a run's runner, start a runner
-with no harness session around it, and each names the bound that it computed with `--policy-bound`; a command that hides
-which harness runs it gains nothing, because it is refused.
+transcript, receipt and the nested session's results copy from it itself. Because the client packs the request and
+writes its results inside the session's sandbox, every file a request carries is one the session may read, and every
+file a launch writes is one it may write. A client that finds no request server serving the session refuses with status
+`2` before it changes anything and names the exact command to start one in the background. A runner launcher runs only
+from a Claude Code or Codex session: a command that no harness session runs, such as one in a terminal or a script, has
+no sandbox to bound the new session and no request server, so its launcher refuses with status `2` before it changes
+anything and says to run it from a Claude Code or Codex session (user ruling, 2026-11-19: CAT no longer starts a session
+for a launcher that no harness session runs). Only CAT's own starters, a session's request server and a nested session's
+runner, start a runner with no harness session around it, and each names the bound that it computed with
+`--policy-bound`; a command that hides which harness runs it gains nothing, because it is refused.
 
 **The request server.** It serves one session, outside that session's sandbox, and treats every request as the
 session's input, because the session's model wrote it. Before it serves anything it checks the following, and it
@@ -3458,8 +3465,8 @@ refuses with status `2` and the reason when a check fails:
   command sandboxed while any read is denied, names the profile and each denied entry, and says to remove them and start
   a new Codex session (user ruling, 2026-11-08: "lets fail fast if denied reads is detected and explain why"). For any
   other reason that leaves it sandboxed, such as an entry that `install` has not added yet or a spelling that does not
-  match, it names the cause and the absolute path to run. No request server serves a session of a CAT run: that
-  session's launchers send its requests to the nested session's runner, and a run's Codex session always denies reads,
+  match, it names the cause and the absolute path to run. No request server serves a nested session: that
+  session's launchers send its requests to the nested session's runner, and a nested Codex session always denies reads,
   so a server it starts is refused with a message that says so and names the runner options that allow requested
   sessions.
 - **The session.** It identifies the session from sources that the session's commands cannot change: the harness
@@ -3484,22 +3491,22 @@ refuses with status `2` and the reason when a check fails:
   `LD_LIBRARY_PATH`, `LD_AUDIT`, `DYLD_*`, `BASH_ENV`, `ENV` and the Java option variables: the launcher scripts remove
   them before they start the JVM, and the JVM removes them again from the environment of every process it starts.
 
-For each request, the new session's permissions are the intersection of that policy and the new session's needs (its run
-folder, the denied reads, the writes and hosts that its harness's runner reports, and any `--extra-permissions`), and
-the request never supplies it: the server refuses a request that carries a bound or any other option that only CAT's
-own starters pass, such as `--capacity-held`, `--child-needs`, `--continue-after-failed-turn` and the `--git-*` options, and passes the new session no
-harness option that the request named. A need that the policy lacks is refused with the message and settings entries
-given above. The server starts the session inside its harness's own sandbox, with the read-only Claude judge exception
-described in [§6.4](#64-judge), as its own descendant, in a run of its
-own whose runner applies the request's `--session-requests` and `--request-depth` to that session's own requests, so
-the top-level session's requests have no caller limit and every deeper one does. A request for either harness is
-served, so a Claude Code session's server also starts Codex sessions, and the reverse. The server ends, and stops every
-session it started with its whole process tree, when the session's harness process ends; the requests it was serving
-fail with the reason `ended`, and each of their runs that recorded its harness session ID keeps its slot, as "Resuming a
-run" below describes. CAT's own starters, the server and the nested session's runner among them, remove the harness's
-markers from the environment of the runners they start, so that those are not taken for a harness session's commands.
-A request server that the other harness runs is refused and names the plugin to use. The request server and the
-runner launchers refuse every launch on native Windows.
+For each request, the new session's permissions are the intersection of that policy and the new session's needs (its
+session folder, the denied reads, the writes and hosts that its harness's runner reports, and any
+`--extra-permissions`), and the request never supplies it: the server refuses a request that carries a bound or any
+other option that only CAT's own starters pass, such as `--capacity-held`, `--child-needs`,
+`--continue-after-failed-turn` and the `--git-*` options, and passes the new session no harness option that the request
+named. A need that the policy lacks is refused with the message and settings entries given above. The server starts the
+session inside its harness's own sandbox, with the read-only Claude judge exception described in [§6.4](#64-judge), as
+its own descendant, in a nested session of its own whose runner applies the request's `--session-requests` and
+`--request-depth` to that session's own requests, so the top-level session's requests have no caller limit and every
+deeper one does. A request for either harness is served, so a Claude Code session's server also starts Codex sessions,
+and the reverse. The server ends, and stops every session it started with its whole process tree, when the session's
+harness process ends; the requests it was serving fail with the reason `ended`, and each of their nested sessions that
+recorded its harness session ID keeps its slot, as "Resuming a nested session" below describes. CAT's own starters, the
+server and the nested session's runner among them, remove the harness's markers from the environment of the runners they
+start, so that those are not taken for a harness session's commands. A request server that the other harness runs is
+refused and names the plugin to use. The request server and the runner launchers refuse every launch on native Windows.
 
 Another session whose sandbox lets it write this session's CAT session directory can put a request there, and the
 server serves it within this session's bound, not its own: it reaches no further than that session already does by
@@ -3518,8 +3525,8 @@ another field, an operation other than the four, or an identifier that is not sh
 server takes the rest from what the session's commands cannot change: the project from the session's transcript, as for
 a launch, and the worktree as `<project>/.cat/sessions/<session-id>/optimizer/<campaign-id>/worktree`, with the session
 ID that it identified itself. A request can therefore name only a campaign of its own session. A worktree request is not
-a requested session: it takes no slot, no capacity and no count of the run's `--session-requests` limit, and the broker
-serves it on a thread of its own, so that it never delays a launch.
+a requested session: it takes no slot, no capacity and no count of the nested session's `--session-requests` limit, and
+the broker serves it on a thread of its own, so that it never delays a launch.
 
 The server serves a worktree request only after the checks above, and refuses it with status `2` and the reason, having
 changed nothing, when:
@@ -3539,13 +3546,13 @@ the path of this session's and this campaign's worktree, `.cat/sessions/<session
 in whichever project location it was made. The `.git` file is one that the session can write, and it could otherwise
 point a repair at another worktree's registration; any other registration is `unrepairable`.
 
-Inside a nested session, the nested session's runner serves the request the same way, with the run's project in place of
-the session's project. The run's project is its own copy, which its one session can write entirely, so the runner finds
-the campaign by its identifier among the `optimizer/` directories of that project's session directories, and refuses
-when it finds none or more than one. A run whose caller allows no requested sessions gives its session no requests
-directory, so its optimizer is refused as its launches are, with status `2` and the reason that names the runner options
-that allow requested sessions. A client that finds no server serving the session refuses as a launch does, with status
-`2` and the command that starts one.
+Inside a nested session, the nested session's runner serves the request the same way, with the nested session's project
+in place of the session's project. The nested session's project is its own copy, which its one session can write
+entirely, so the runner finds the campaign by its identifier among the `optimizer/` directories of that project's
+session directories, and refuses when it finds none or more than one. A nested session whose caller allows no requested
+sessions gives its session no requests directory, so its optimizer is refused as its launches are, with status `2` and
+the reason that names the runner options that allow requested sessions. A client that finds no server serving the
+session refuses as a launch does, with status `2` and the command that starts one.
 
 **Codex.** Codex sessions use the same request. Codex's sandbox did not hit the read-only mount, but nothing in this
 design gives a reason for a second route. The optimizer already needs the request server on Codex for
@@ -3554,7 +3561,7 @@ session whose permissions deny reads, leaves the optimizer unable to start any t
 command loses anything to it. The client chooses its route by who runs the command, not by whether a sandbox confines
 it, so Codex's `prompt-optimizer` launcher, which runs outside the sandbox (D142), sends the same request to the server
 that runs beside it. A second route that depended on what the user's permission profile lets Codex's commands write
-under `.git` would fail only in some profiles. A Codex run's session has its runner serve the request, as above.
+under `.git` would fail only in some profiles. A nested Codex session has its runner serve the request, as above.
 
 The session launcher that CAT's SessionStart hook started for each harness process up to this ruling is gone, with its
 inbox, holder and `~/.cat/sessions` state folder; `install` removes that folder and its write denial. A session that
@@ -3599,18 +3606,18 @@ background command runs. The last line the launcher writes, however the child en
 so an asking session that waits for a `turn_end` that never comes sees the end instead. A launcher that copies the
 session's results into its results folder writes that line only after the copy has ended, successfully or not, so the
 line also tells the asking session that the results are in place or will not come (end-to-end finding, E5 on Claude,
-2026-11-16: the driver read the line while the launcher still copied a 2.2 GB run for about two minutes, found
-`--results` empty and took the run for lost). Appended files are the channel in both directions, because they work in
-both harnesses' sandboxes on every platform and need no reader to be present when a message is written; a background
-command in Claude Code has no standard input that the session can write to. The launcher sends each turn to the runner
-that serves its request, the nested session's runner or the session's request server, as the channel's next turn, so the
-bound and the request's evidence stay as above. The child ends when the conversation ends, when the launcher ends, or at
-its time limit, whichever comes first. The launcher then writes the transcript and receipt as for `--input` and exits
-with the same statuses. A forwarded launch inside a nested session therefore carries later turns and interrupts too;
-inside a nested session the launcher holds an operating-system lock on a file beside its request from before it
-publishes the request until it ends, and the nested session's runner stops the child once that lock is free.
-`--conversation` works on every path that starts a session: through the session's request server and through a run's
-runner.
+2026-11-16: the driver read the line while the launcher still copied a 2.2 GB nested session for about two minutes,
+found `--results` empty and took the session for lost). Appended files are the channel in both directions, because they
+work in both harnesses' sandboxes on every platform and need no reader to be present when a message is written; a
+background command in Claude Code has no standard input that the session can write to. The launcher sends each turn to
+the runner that serves its request, the nested session's runner or the session's request server, as the channel's next
+turn, so the bound and the request's evidence stay as above. The child ends when the conversation ends, when the
+launcher ends, or at its time limit, whichever comes first. The launcher then writes the transcript and receipt as for
+`--input` and exits with the same statuses. A forwarded launch inside a nested session therefore carries later turns and
+interrupts too; inside a nested session the launcher holds an operating-system lock on a file beside its request from
+before it publishes the request until it ends, and the nested session's runner stops the child once that lock is free.
+`--conversation` works on every path that starts a session: through the session's request server and through a nested
+session's runner.
 
 **Results (user ruling, 2026-11-19):** a launch has no `--keep-run`: every nested session's results, its project,
 artifacts and `session.json` without its isolated home, are copied once the session ends, and the copy belongs to the
@@ -3629,88 +3636,92 @@ it starts a nested session in with the internal option `--slot-id`, and resumes 
 `--resume-slot`. Pre-release builds wrote `run.json` and took `--run-root`, `--keep-run`, `--run-id` and
 `--resume-run`; no release did, so CAT reads none of those names.
 
-**Resuming a run (user rulings, 2026-11-19):** a run is **interrupted** when its launcher, its server (the session's
-request server, or inside a nested session the nested session's runner) or the session that requested it ends before the
-run does, whatever the launch's options. Every runner-launcher launch, with or without `--conversation`, holds the
-operating-system lock beside its request from before it publishes the request until it ends, so its server sees the
-launcher's end; a request made with `request-session`, which may outlive its launcher through `--await`, is interrupted
-only when its server or the requesting session ends. The runner records the harness's session ID in the run's
-`session.json` as soon as the harness reports it, Claude's `session_id` in its `init` event and Codex's thread ID in its
-`thread/start` response, and the launcher publishes it at once as a `{"type":"session_id","session_id":"<id>"}` line in
-`<folder>/from-child.jsonl` or the `--output` transcript. At an interruption the server stops the run's processes as for
-any run and makes no kept copy. If the run recorded its harness session ID, the server keeps its slot as a retained
-slot, with the project copy, which holds the requested session's CAT session directory and its campaigns, the isolated
-home with the harness session, and `session.json`; a run interrupted before its harness reported an ID has nothing to
-resume, and its slot is emptied as corrupt. A slot holds a retained run while its `session.json` records a harness
-session ID and no end, so a server that crashed leaves its runs retained too. A run that ends any other way, at `{"end":
-true}`, at the end of its `--input`, at a refusal, a failure or its time limit, or when its harness exits, ended
-normally: its results copy is made as for any run, its slot is emptied, and it cannot be resumed.
+**Resuming a nested session (user rulings, 2026-11-19):** a nested session is **interrupted** when its launcher, its
+server (the session's request server, or inside a nested session the nested session's runner) or the session that
+requested it ends before the nested session does, whatever the launch's options. Every runner-launcher launch, with or
+without `--conversation`, holds the operating-system lock beside its request from before it publishes the request until
+it ends, so its server sees the launcher's end; a request made with `request-session`, which may outlive its launcher
+through `--await`, is interrupted only when its server or the requesting session ends. The runner records the harness's
+session ID in the nested session's `session.json` as soon as the harness reports it, Claude's `session_id` in its `init`
+event and Codex's thread ID in its `thread/start` response, and the launcher publishes it at once as a
+`{"type":"session_id","session_id":"<id>"}` line in `<folder>/from-child.jsonl` or the `--output` transcript. At an
+interruption the server stops the nested session's processes as for any nested session and makes no results copy. If the
+session recorded its harness session ID, the server keeps its slot as a retained slot, with the project copy, which
+holds the requested session's CAT session directory and its campaigns, the isolated home with the harness session, and
+`session.json`; a nested session interrupted before its harness reported an ID has nothing to resume, and its slot is
+emptied as corrupt. A slot holds a retained nested session while its `session.json` records a harness session ID and no
+end, so a server that crashed leaves its nested sessions retained too. A nested session that ends any other way, at
+`{"end": true}`, at the end of its `--input`, at a refusal, a failure or its time limit, or when its harness exits,
+ended normally: its results copy is made as for any nested session, its slot is emptied, and it cannot be resumed.
 
-Only the session that started a run can resume it, through the server that serves that session, after its harness has
-resumed the session under its own ID. It runs the same harness's runner launcher with `--resume <session-id>`, `--model`
-and `--effort`, and either `--conversation` with a new or empty folder or `--input`; `--output`, `--receipt`,
-`--results`, `--session-transcripts`, `--extra-permissions`, `--session-requests` and `--request-depth` apply to the
-resumed launch as to any launch, and the resumed run's results are copied at its normal end as any run's are. The launch
-takes a concurrency permit as any launch does. A resume continues the same session and is not a new request: it uses
-none of the requesting run's `--session-requests` allowance, and each run keeps the `requests_used` count of the
-requests it accepted in its `session.json`, so a resumed run continues its count and its allowance covers its whole
-life. The server finds its retained slot whose `session.json` records that ID, stops any process that the run recorded,
-under the identity checks of [§3.8](#38-interruption-and-crash-consistency), and starts the nested session's runner in
-the slot in resume mode. The runner copies no project, installs no plugin and leaves the harness's session store as it
-is; it writes again only the files that the current sandbox bound decides, the harness settings, the Codex permission
-profile and configuration and the copy of the user's login, and continues the same harness session in the same home and
-working directory: Claude with `--resume <session-id>`, Codex with `thread/resume`, naming the permission profile and
-workspace roots, or the sandbox, that the current bound gives. The resume sends no developer instructions or agent
-contract: the session keeps those its start gave it, and runs under the resuming launch's `--model` and `--effort`, even
-for a run started with `--agent`. The runner ends the launch unless the harness reports the recorded ID, so the
-requested session keeps its ID and project path, and with them its CAT session directory and the campaigns it owns
-(D17). Turn numbers continue after the last turn that ended, and the `started` record says `"resumed": true`. The turn
-in progress at the interruption has no reply: the harness keeps its prompt and what it did before the interruption, and
-a later `turn` message asks it again. The sessions that the run had requested were interrupted with it, and their
-retained slots wait in the run's directory for the resumed session to resume them; each of the run's requests that has
-no response is answered `ended`. A resumed launch that is itself interrupted leaves the slot retained again. Options
-that the run fixed at its start, `--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`,
-`--deny-read`, `--instruction-files`, `--session-role`, `--tool-output-token-limit` and `--agent`, are refused with
-status 2; the model and effort may differ, and the receipt records both. The server also refuses with status 2 a session
-ID that none of its retained slots records, naming the session to resume when a retained slot of another session of the
-project records it, a run of the other harness, naming its launcher, and a run that another launch is resuming or whose
-recorded process stays alive. A resume or discard that arrives while the server is still stopping the interrupted
-launch waits for that launch to end instead, and finds no run if that launch ended its run normally. A harness session that cannot continue, because the harness rejects the resume or reports
-another ID, fails the launch with status 1, the harness's reason and the response status `unresumable`, and its slot
-stays retained.
+Only the session that started a nested session can resume it, through the server that serves that session, after its
+harness has resumed the session under its own ID. It runs the same harness's runner launcher with `--resume
+<session-id>`, `--model` and `--effort`, and either `--conversation` with a new or empty folder or `--input`;
+`--output`, `--receipt`, `--results`, `--session-transcripts`, `--extra-permissions`, `--session-requests` and
+`--request-depth` apply to the resumed launch as to any launch, and the resumed session's results are copied at its
+normal end as any nested session's are. The launch takes a concurrency permit as any launch does. A resume continues the
+same session and is not a new request: it uses none of the requesting session's `--session-requests` allowance, and each
+nested session keeps the `requests_used` count of the requests it accepted in its `session.json`, so a resumed nested
+session continues its count and its allowance covers its whole life. The server finds its retained slot whose
+`session.json` records that ID, stops any process that the nested session recorded, under the identity checks of
+[§3.8](#38-interruption-and-crash-consistency), and starts the nested session's runner in the slot in resume mode. The
+runner copies no project, installs no plugin and leaves the harness's session store as it is; it writes again only the
+files that the current sandbox bound decides, the harness settings, the Codex permission profile and configuration and
+the copy of the user's login, and continues the same harness session in the same home and working directory: Claude with
+`--resume <session-id>`, Codex with `thread/resume`, naming the permission profile and workspace roots, or the sandbox,
+that the current bound gives. The resume sends no developer instructions or agent contract: the session keeps those its
+start gave it, and runs under the resuming launch's `--model` and `--effort`, even for a nested session started with
+`--agent`. The runner ends the launch unless the harness reports the recorded ID, so the requested session keeps its ID
+and project path, and with them its CAT session directory and the campaigns it owns (D17). Turn numbers continue after
+the last turn that ended, and the `started` record says `"resumed": true`. The turn in progress at the interruption has
+no reply: the harness keeps its prompt and what it did before the interruption, and a later `turn` message asks it
+again. The sessions that the nested session had requested were interrupted with it, and their retained slots wait in its
+session folder for the resumed session to resume them; each of its requests that has no response is answered `ended`. A
+resumed launch that is itself interrupted leaves the slot retained again. Options that the nested session fixed at its
+start, `--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`,
+`--instruction-files`, `--session-role`, `--tool-output-token-limit` and `--agent`, are refused with status 2; the model
+and effort may differ, and the receipt records both. The server also refuses with status 2 a session ID that none of its
+retained slots records, naming the session to resume when a retained slot of another session of the project records it,
+a nested session of the other harness, naming its launcher, and a nested session that another launch is resuming or
+whose recorded process stays alive. A resume or discard that arrives while the server is still stopping the interrupted
+launch waits for that launch to end instead, and finds no nested session if that launch ended it normally. A harness
+session that cannot continue, because the harness rejects the resume or reports another ID, fails the launch with status
+1, the harness's reason and the response status `unresumable`, and its slot stays retained.
 
-A retained run is deleted only when a launch that resumed it ends normally, when the optimizer discards it as corrupt,
-or with the directory that holds its slot: the requesting session's CAT session directory once the harness has deleted
-that session (D79), or the requesting run when its own slot is emptied. No time limit deletes it, and no runner
-launcher option discards it. The optimizer resumes an interrupted trial by the same request, and discards one that it
-cannot resume, or one of a campaign that it removes, by a discard request that names the run's harness session ID. The
-server serves a discard request like a worktree request, on a thread of its own with no slot and no permit: it empties
-the slot after stopping the run's recorded processes and refuses while one stays alive or a launch is resuming the run.
+A retained nested session is deleted only when a launch that resumed it ends normally, when the optimizer discards it as
+corrupt, or with the directory that holds its slot: the requesting session's CAT session directory once the harness has
+deleted that session (D79), or the requesting nested session when its own slot is emptied. No time limit deletes it, and
+no runner launcher option discards it. The optimizer resumes an interrupted trial by the same request, and discards one
+that it cannot resume, or one of a campaign that it removes, by a discard request that names the nested session's
+harness session ID. The server serves a discard request like a worktree request, on a thread of its own with no slot and
+no permit: it empties the slot after stopping the nested session's recorded processes and refuses while one stays alive
+or a launch is resuming the session.
 
 **Sessions that a requested session's commands start (user rulings, 2026-11-07):** inside a nested session whose caller
 allows requested sessions, every CAT command that starts sessions, the prompt optimizer included, sends each launch to
-the run's runner as the runner launchers do. Such a request may carry the options that only narrow the requested session
-or describe its own inputs: further denied reads, the workspace files, the read-only evidence paths, the tool-output
-token limit and the instruction files. Each path it names must be one the requesting session's sandbox lets it read, and
-so must the target of each link in the project that the request carries as a read-only copy, a directory target counting
-against the same size bounds; its contents travel inside the request archive, so the workspace files and the evidence
-reach the requested session at new paths inside its run, not at the paths the command named. A command run with
-`--install-cat` names the candidate CAT artifact as the request's first plugin when it differs from the run's own. The
-nested session's runner copies every requested session's run, without its isolated home, into its response, and a
-requesting command that names a results folder copies it from there into that results folder, as the optimizer does, so
-the optimizer reads its trial's run where it reads it outside a nested session. The copy's manifest names the project
-that the launch named, as a run outside a nested session does, so cleanup finds the campaign's runs. The nested
-session's runner also keeps `limits.json` in the responses directory, which the session may read and not write:
-`{"format_version": 1, "requests_allowed": <n>, "requests_used": <n>, "depth_remaining": <n>}`, rewritten whenever it
-accepts a request, so a command can tell before it changes anything whether the run allows any further session; a
-session reads it to learn how many sessions its run still allows. A requested session whose remaining request depth is 0
-gets a `requests_allowed` of 0; `depth_remaining` only reports the depth. Each such session counts against the run's
-request limit and request depth, so a caller that lets its child run a campaign passes a `--session-requests` large
-enough for that campaign's sessions and a `--request-depth` of at least 1. A command inside a run whose caller allows no
-requested sessions, or whose depth or limit is spent, is refused with status 2 before it changes anything, and its
-message names the caller's options that would allow the sessions; it does not suggest starting Codex with `--no-daemon`,
-which concerns only a session on Codex's shared background server. A campaign whose run's limit runs out after it
-started pauses with the same message instead of counting the refused session as a failure.
+the nested session's runner as the runner launchers do. Such a request may carry the options that only narrow the
+requested session or describe its own inputs: further denied reads, the workspace files, the read-only evidence paths,
+the tool-output token limit and the instruction files. Each path it names must be one the requesting session's sandbox
+lets it read, and so must the target of each link in the project that the request carries as a read-only copy, a
+directory target counting against the same size bounds; its contents travel inside the request archive, so the workspace
+files and the evidence reach the requested session at new paths inside its session folder, not at the paths the command
+named. A command run with `--install-cat` names the candidate CAT artifact as the request's first plugin when it differs
+from the nested session's own. The nested session's runner copies every requested session's folder, without its isolated
+home, into its response, and a requesting command that names a results folder copies it from there into that results
+folder, as the optimizer does, so the optimizer reads its trial's results copy where it reads it outside a nested
+session. The copy's manifest names the project that the launch named, as a launch outside a nested session does, so
+cleanup finds the campaign's results copies. The nested session's runner also keeps `limits.json` in the responses
+directory, which the session may read and not write: `{"format_version": 1, "requests_allowed": <n>, "requests_used":
+<n>, "depth_remaining": <n>}`, rewritten whenever it accepts a request, so a command can tell before it changes anything
+whether the nested session allows any further session; a session reads it to learn how many sessions its nested session
+still allows. A requested session whose remaining request depth is 0 gets a `requests_allowed` of 0; `depth_remaining`
+only reports the depth. Each such session counts against the nested session's request limit and request depth, so a
+caller that lets its child run a campaign passes a `--session-requests` large enough for that campaign's sessions and a
+`--request-depth` of at least 1. A command inside a nested session whose caller allows no requested sessions, or whose
+depth or limit is spent, is refused with status 2 before it changes anything, and its message names the caller's options
+that would allow the sessions; it does not suggest starting Codex with `--no-daemon`, which concerns only a session on
+Codex's shared background server. A campaign whose nested session's limit runs out after it started pauses with the same
+message instead of counting the refused session as a failure.
 
 **Source-only content in prompt files (user rulings, 2026-10-23):** a prompt file's `## Design Goals` section is the
 reference that its authors update the guidance from, and its HTML comments remind the plugin developers why a Design
@@ -3865,7 +3876,7 @@ child, a `setsid` child and a `nohup` child, then records heartbeats and signals
 | H1 | Claude's PreToolUse input provides the session, prompt, tool-use and transcript-path identities, but no model or effort. | CAT probe; https://code.claude.com/docs/en/hooks#common-input-fields |
 | H2 | In one persisted sample, the transcript's assistant record with the matching tool use appeared about 0.085 seconds after PreToolUse. | One print-mode sample; no latency guarantee. |
 | H3 | A nested Claude launched with the `haiku` alias reported `gpt-5.6-luna` in its harness assistant events, and `perTurnEffort` was null. | The observed model must come from harness events, not configuration. |
-| H4 | The runner copies the project into its run directory, skips `.git`, creates a fresh Git baseline, keeps each symbolic link whose target stays inside the project, keeps every other link, retargeted to a read-only copy of its target in the run's `link-targets` directory, which it records and checks for changes when the session ends, and refuses a link whose target is missing, unreadable or holds the project. | `HarnessRunManager.copyProject`, `HarnessRunManager.changedLinkCopies`, `HarnessRunnerBridge`. |
+| H4 | The runner copies the project into its session folder, skips `.git`, creates a fresh Git baseline, keeps each symbolic link whose target stays inside the project, keeps every other link, retargeted to a read-only copy of its target in the session folder's `link-targets` directory, which it records and checks for changes when the session ends, and refuses a link whose target is missing, unreadable or holds the project. | `NestedSessionManager.copyProject`, `NestedSessionManager.changedLinkCopies`, `HarnessRunnerBridge`. |
 | H5 | Nested processes cannot reach the outer Codex daemon socket. | Earlier CAT probe. |
 | H6 | In the sandboxed Claude Bash tool, the command ran in its own PID namespace. When the command ended normally, all three children stopped within one second. On ESC, the command and every child stopped at once, with no catchable signal recorded. | 2026-09-30 probe, sandboxed host only (premise P2). |
 | H7 | A Claude tool command that exceeded its timeout was moved to the background instead of being killed. | 2026-09-30 probe. |
@@ -3918,7 +3929,7 @@ records with the evidence.
 | P5 | Both harnesses expose per-session token usage. | Omit token statistics. | Passed (H15). |
 | P6 | CAT can tell a subscription login from an API key in each harness's credentials. | Show the authentication warning unconditionally. | Passed on the documented fields; one login kind per harness observed (H16). Inside a Claude run the class comes from the runner's `CAT_HOST_LOGIN`; a macOS Keychain login without a readable store file is `unknown` unless an API-key variable is set. |
 | P7 | In trials, child completion, recursive and parallel children, child worktree merges and cancellation are observable enough to reconcile. | Record observation limits; an affected trial gets no invented label. | Partly passed (H17–H19): completion and parallelism are observable once the runner waits for children (§3.2); H24 later observed Claude grandchildren. Codex trials could not create child worktrees under the runner's sandbox (H18); since `d97383fb6b` they can except on Windows, which stays a limit recorded in §3.2. H18's Linux check of 2026-10-26 established Codex child-worktree creation and merging; the unverified interruption and reconciliation clauses remain, so the later observations do not establish every P7 clause. |
-| P8 | Runner harness processes are descendants of the driver, so killing the driver leaves no live harness session. | Reconciliation terminates orphans recorded through `HarnessRunManager.recordHarnessProcess`. | Passed for Claude, failed for Codex (H20). Fallback applied in §3.8. |
+| P8 | Runner harness processes are descendants of the driver, so killing the driver leaves no live harness session. | Reconciliation terminates orphans recorded through `NestedSessionManager.recordHarnessProcess`. | Passed for Claude, failed for Codex (H20). Fallback applied in §3.8. |
 | P9 | CAT can observe which prompt sources a nested session loaded. | Derive loading from documented rules, and record the limit. | Failed for instruction files (H21). Fallback applied in §6.1. |
 | P10 | Codex lets a command run for the slice budget, and reports what happens when a command exceeds its limit. | Shorten Codex slices to fit the observed limit. | Passed for the 8-minute slice; no limit was reached in 662 seconds, so the over-limit behaviour is unobserved (H22). |
 | P11 | Judge sessions read the evidence read-only and return schema-valid results reliably in both harnesses. | Measure the invalid-output rate. Retries of the same logical trial cover the rate if it is low; otherwise the judge profile cannot be confirmed. | Passed with the §3.1 extraction rule (H23). |
@@ -4076,7 +4087,7 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D137 | The Claude runner classifies the user's login from key names and states the class to its sessions in `CAT_HOST_LOGIN` (user rulings, 2026-11-09: "Read the store", "Runner states it"). | A session's commands are denied reading the login file, so every trial recorded its login as `unknown`; lifting the denial for key names would break the guarantee that commands cannot read the login. | The variable carries only a class word; a caller's own value is never inherited. A macOS Keychain-only login stays `unknown`. |
 | D138 | Never add guidance to a session's instructions; a session that may request sessions learns how from CAT's lazy-loaded rules and its run's files, and the run enforces its limits by refusal (user rulings, 2026-11-09: "never eagerly inject this prompt into a session"). | Injected request instructions reached optimizer trials, which a user's own sessions never see, so tests and production ran different prompts. | A session without CAT installed has no rules telling it how to request a session; its caller passes `--install-cat` or explains it in its own prompt. Whether a session finds the launcher from the rules alone needs a live check. |
 | D139 | The contract declares the files that its target refers to in its text; CAT copies each into every trial unchanged, never optimizes it, and shows its authority warning in the proposal; undeclared references in prose stay absent (user ruling, 2026-11-10: option A). | The end-to-end E7 run's target referred to `docs/reply-rules.md`, a link to a file outside the project, which no trial held, and the status text hid why; reading prose for references would make the staged files depend on guesses. | A referenced file that the contract author does not declare is absent from trials until a revision declares it; a declared file that the campaign cannot edit limits what it can repair; contracts that declare files change identity. |
-| D140 | Every nested session of the optimizer runs in a reusable slot, a run directory at a fixed path that CAT empties and rebuilds after the previous session's processes end (user rulings, 2026-11-12). | Each session's own home and project put different paths into the system prompt, so both harnesses' prompt caches reused only the shared prefix; an E1 campaign wrote about 88 million of its 91 million cache-write tokens on first calls. Options that move parts of the system prompt would change what sessions receive, and mount namespaces work only on Linux. | A slot's reuse depends on emptying it completely; a session may wait for a slot; paths that sessions see change once, which no identity includes. |
+| D140 | Every nested session of the optimizer runs in a reusable slot, a session folder at a fixed path that CAT empties and rebuilds after the previous session's processes end (user rulings, 2026-11-12). | Each session's own home and project put different paths into the system prompt, so both harnesses' prompt caches reused only the shared prefix; an E1 campaign wrote about 88 million of its 91 million cache-write tokens on first calls. Options that move parts of the system prompt would change what sessions receive, and mount namespaces work only on Linux. | A slot's reuse depends on emptying it completely; a session may wait for a slot; paths that sessions see change once, which no identity includes. |
 | D141 | `start` and `revise` run the guard pilot in slices and return `running` until it ends; repeating `start` continues it, and `run` continues the pilot of a test revision (user ruling, 2026-11-12: option B). | One call ran a pilot for 81 minutes in E5 r2; past Claude's 10-minute tool timeout the command moves to the background (H7), so the agent waits with no status or progress, and anything that ends the command, such as the session ending or the user pressing ESC (H6), loses the trials in flight; a detached worker is ruled out (H6). A background command run through the host's shell tool is not detached, and `--background` runs the whole pilot in one command with no slice (D142). | More calls and agent turns per pilot; a pilot's last slice may run past the budget by the grace period. |
 | D142 | Run the driver as a background command where the host's shell tool keeps one running after the agent's turn, with no slice and no time cap, and keep foreground slices as the fallback. The agent learns of the end from the host's exit notice where there is one and otherwise from a message that the driver queues to its own session, and on Codex the `prompt-optimizer` launcher runs outside the session's sandbox so that it can (user ruling, 2026-11-13: "yes, run driver outside of sandbox"). Delivery also refuses a target that changed in the base during the campaign (user rulings, 2026-11-12). | A detached worker is killed by the Claude sandbox (H6), which D5 and D141 rely on, but a command the host itself runs in the background is tracked and survives the turn and an unrelated ESC (H36, H38). A flag file that the skill tests at every turn start would still leave an idle Codex agent waiting for the user's next message; a queued message wakes it (H39), and Claude's own notice already does (H38), so no flag is kept. Inside Codex's sandbox the queue write is refused (H39). A heartbeat that detects a dead driver protects only the abnormal-death case, which no requirement names. Ending a run on a host interrupt would let an unrelated ESC stop it. Delivering over a base edit would apply a candidate that was measured against a different target. | The agent learns of a dead driver only when the user asks or the session resumes. `cancel` takes up to the grace period plus 30 seconds. The Codex `prompt-optimizer` launcher joins the request server among the commands that run outside the session's sandbox, so every argument and environment variable it accepts is untrusted input that it validates (D133); where Codex keeps an allowed command sandboxed (openai/codex#38318), `--background` is refused and foreground slices remain. A queued message appears to the agent as a user message. A foreground host keeps the 480-second gap, and a long campaign needs a harness that supports background commands. |
 | D143 | Race the accepted prompt author attempts after a revert, when the attempts cannot settle on one diagnosis, and before a stalled-development pause: each racer is a development series, drops by exploratory Wilson bounds on equal prefixes, and the winner is minimised and promoted (user ruling, 2026-11-12). | Choosing by the promotion runs alone picks a winner from a handful of runs, which is noise where development is stuck. One session that writes the alternatives shares its bias, so the alternatives are independent attempts under different approaches. Dropping on observed rates instead of bounds drops a racer as good as its rival by chance, the failure that revert's bounds avoid. Racing every round multiplies development trials for no gain where one attempt already wins clearly. | A race spends development trials on attempts that lose, up to 100 per cell for each remaining racer; the working candidate stops sampling while it runs; the winner's counts restart if the minimality pass changes it. |
@@ -4085,10 +4096,10 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D146 | The development judge compares its verdicts with the frozen judge's stored verdicts (the held-out trials that the frozen judge judges anyway), runs overlapping candidates, shadows live only when the shadowed trials can reach qualification before the next certification attempt, and carries a qualification into a later campaign on the same target (§6.4); a campaign whose project was moved or copied repairs or recreates its optimization worktree (§4.2) (user rulings, 2026-11-12, evening). | The token comparison certified with no candidate qualified: each test reached only 144–152 of the 299 shadowed trials needed, and the candidates cost about $30 for nothing. | Shadowing every trial until qualification was rejected, and batched judging stays deferred until the comparison shows how much of the cost judge start-up still is. |
 
 | D147 | Show the proposal and ask the applicable question in one message: begin with the proposal file's complete text verbatim, with nothing before it, and end with the question (user ruling recorded in the implementation handoff). | The user selected variant s6 after comparing one-message and two-message presentation. The user must see every proposed term before deciding. | The full proposal remains required even when long; conflicts and unranked models still require resolution before confirmation. |
-| D148 | The request server, outside the session's sandbox, adds, recreates, removes and repairs the registration of the prompt optimizer's optimization worktree, the nested session's runner does the same inside a CAT run, and a process that no sandbox confines does it in place; the request names an operation and a campaign and no path or Git argument, and Codex uses the same request (user ruling, 2026-11-16: the request server, which runs outside the session's sandbox, creates and deletes the optimizer's worktrees). | Claude Code 2.1.323 mounts `.git/worktrees` read-only in its sandbox over any write grant, with or without the environment scrub (probed 2026-11-16), so the optimizer's sandboxed commands cannot register their worktree, while every other Git operation of the optimizer still works there. The server already runs outside the sandbox and already identifies the session, its project and its CAT session directory, so a request that carries no path leaves the session no way to choose what is created or deleted; a second server or an exception for the optimizer would give a second way to leave the sandbox, which D134 declined. One request for both harnesses needs no test of what a Codex profile lets its commands write. | A start, a recreate and a removal need a request server serving the session (or a run that allows requested sessions), and a command whose worktree links are intact and that removes nothing works without one. The server refuses when the session's sandbox lets its commands write `.git/config` or `.git/hooks` (user ruling, 2026-11-16), because Git outside the sandbox would run what they name. A build command that writes the worktree's index or `HEAD` still fails in the sandbox. The runner's grant of `.git/worktrees` is removed. `status` never reconnects the worktree, and a campaign without its worktree is not a fork; the next `run` or `choose` recreates it through the server (decided 2026-11-16). |
+| D148 | The request server, outside the session's sandbox, adds, recreates, removes and repairs the registration of the prompt optimizer's optimization worktree, the nested session's runner does the same inside a nested session, and a process that no sandbox confines does it in place; the request names an operation and a campaign and no path or Git argument, and Codex uses the same request (user ruling, 2026-11-16: the request server, which runs outside the session's sandbox, creates and deletes the optimizer's worktrees). | Claude Code 2.1.323 mounts `.git/worktrees` read-only in its sandbox over any write grant, with or without the environment scrub (probed 2026-11-16), so the optimizer's sandboxed commands cannot register their worktree, while every other Git operation of the optimizer still works there. The server already runs outside the sandbox and already identifies the session, its project and its CAT session directory, so a request that carries no path leaves the session no way to choose what is created or deleted; a second server or an exception for the optimizer would give a second way to leave the sandbox, which D134 declined. One request for both harnesses needs no test of what a Codex profile lets its commands write. | A start, a recreate and a removal need a request server serving the session (or a nested session that allows requested sessions), and a command whose worktree links are intact and that removes nothing works without one. The server refuses when the session's sandbox lets its commands write `.git/config` or `.git/hooks` (user ruling, 2026-11-16), because Git outside the sandbox would run what they name. A build command that writes the worktree's index or `HEAD` still fails in the sandbox. The runner's grant of `.git/worktrees` is removed. `status` never reconnects the worktree, and a campaign without its worktree is not a fork; the next `run` or `choose` recreates it through the server (decided 2026-11-16). |
 | D149 | Judge every assertion that no built-in tool decided in every trial, even when a built-in tool with `on_tool_failure: fail` failed: the failed tool fails only its own assertion, nothing is imputed to the others, and the trial fails when any assertion fails (user ruling, 2026-11-16, which replaces the earlier ruling that only a guard pilot's trials were judged after such a failure and a campaign's trials skipped the judge). | One assertion's failure policy must not decide another assertion. A fail-mode tool that fails often (the motto tool failed 0 of 20 control trials of the E1 `deficient` fixture) left every judged guard decided in no trial, and the imputation that covered the gap, passing a control's judged assertions and failing a candidate's, scored assertions that no one had judged. | One judge session more for each trial that fails a fail-mode tool and has a judged assertion, in every purpose, which raises the cost of a prompt test whose fail-mode tool fails often (about 20 sessions for its guard pilot alone). A failed tool's assertion stays failed, pilot trials still enter no count and spend no allowance, and a judged guard that a failing trial passes now counts as passed in the control and incumbent pairs. |
 | D150 | In a runner conversation, end a Claude turn at the first `idle` that follows the turn's reply, whatever background work is listed; trials and every other use keep ending at `idle` with an empty task list (user ruling, 2026-11-16). | A user message written while Claude works is queued and answered (H41), nothing in a conversation is scored per turn, and a real user can type at idle; in the E2, E3 and E5 runs on Claude the second turn stayed open 40 to 50 minutes because `run --background` kept the driver listed, so the asking session could not send its next message. The trial rule exists because each trial turn's reply is judged and must be whole (H17, H24, H25), which no conversation turn needs. | A conversation turn may end while a child or command still runs, and the child's completion reply then arrives as a late follow-up reported on the next turn. A conversation that must see a child's result waits for it itself. Codex is unaffected: its turn already ends while a background command runs. |
-| D151 | Keep every interrupted run, whatever its options: when its launcher, its server or the requesting session ends before the run does, the server stops its processes and retains its slot, with the project copy, home, harness session and `session.json`, and slot reuse passes it over. The session that started the run continues the same harness session in the same slot with `--resume <session-id>`, and the optimizer resumes an interrupted trial, or else discards its run as corrupt and reruns the trial. Every run keeps its harness session in its home, its results are copied at a normal end, a run that ended normally cannot be resumed, retained slots do not count toward the concurrency limit, and a retained run is deleted when it is resumed to its end, when the optimizer discards it, or with the directory that holds its slot (user rulings, 2026-11-19). | "Interruption is something that happens, not something you plan for ahead of time" (user, 2026-11-19): in E1 a parent restart lost a certified campaign although the launch named `--keep-run`. A copy without the home cannot continue the harness session, and with it the campaign's owner (D17); moving campaigns between sessions was ruled out (2026-11-10); moving the slot would break the absolute paths in transcripts and worktree registrations; a time limit could delete an uncollected certified campaign. Both harnesses keep the session's ID across a resume (P18, P19). | Disk for each retained slot (2.4 GB in E1) until one of the three deletions, with no bound on their number; a harness session and login copy in every run's home while the run lasts; a resume mode in both runners and a discard request. A resumed trial's context holds its interrupted turn's prompt and partial work, and its project copy that turn's file changes, before the turn is sent again, and Claude Code adds an empty reply to the unanswered prompt (P18). A top-level run whose resume cannot continue keeps its slot until the requesting session's directory goes. |
+| D151 | Keep every interrupted nested session, whatever its options: when its launcher, its server or the requesting session ends before the nested session does, the server stops its processes and retains its slot, with the project copy, home, harness session and `session.json`, and slot reuse passes it over. The session that started the nested session continues the same harness session in the same slot with `--resume <session-id>`, and the optimizer resumes an interrupted trial, or else discards its nested session as corrupt and reruns the trial. Every nested session keeps its harness session in its home, its results are copied at a normal end, a nested session that ended normally cannot be resumed, retained slots do not count toward the concurrency limit, and a retained nested session is deleted when it is resumed to its end, when the optimizer discards it, or with the directory that holds its slot (user rulings, 2026-11-19). | "Interruption is something that happens, not something you plan for ahead of time" (user, 2026-11-19): in E1 a parent restart lost a certified campaign although the launch named `--keep-run`. A copy without the home cannot continue the harness session, and with it the campaign's owner (D17); moving campaigns between sessions was ruled out (2026-11-10); moving the slot would break the absolute paths in transcripts and worktree registrations; a time limit could delete an uncollected certified campaign. Both harnesses keep the session's ID across a resume (P18, P19). | Disk for each retained slot (2.4 GB in E1) until one of the three deletions, with no bound on their number; a harness session and login copy in every nested session's home while the session lasts; a resume mode in both runners and a discard request. A resumed trial's context holds its interrupted turn's prompt and partial work, and its project copy that turn's file changes, before the turn is sent again, and Claude Code adds an empty reply to the unanswered prompt (P18). A top-level nested session whose resume cannot continue keeps its slot until the requesting session's directory goes. |
 
 ## 14. Acceptance evidence
 
