@@ -36,5 +36,5 @@ Selection and substitutions:
   `item_completed` lines and the `response_item` lines whose payload is a `function_call`, `function_call_output`,
   `custom_tool_call`, `custom_tool_call_output` or `agent_message`. The `session_meta` line is re-serialized with its
   `base_instructions` text replaced by `<omitted>`.
-- The run directory is replaced with `/recorded/run` and the project that held the campaign with `/recorded/project`,
+- The session folder is replaced with `/recorded/run` and the project that held the campaign with `/recorded/project`,
   throughout the text. Thread, turn and item identifiers, timestamps and encrypted values are unchanged.
