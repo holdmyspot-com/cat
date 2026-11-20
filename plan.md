@@ -4057,11 +4057,27 @@ requirement names.
 
 ### Continuation after the transfer
 
+- Commit `aa7b81c56468180bd4cd8c6ab4ac4d3b1594b468` passed the five-platform
+  [Build](https://github.com/holdmyspot-com/cat/actions/runs/44729034574). The separate
+  [Release rehearsal](https://github.com/holdmyspot-com/cat/actions/runs/44733021482) passed on all five platforms,
+  assembled 15 assets, and closed the interactive Linux x64, Linux arm64 and Windows x64 sessions successfully.
+- With user approval, [Release](https://github.com/holdmyspot-com/cat/actions/runs/44737520153) republished `v1.0`
+  from that commit. The independent verifier passed for all 15 published assets, including the trusted manifest
+  signature, archive identities and checksums, and release entry scripts. Its receipt is in this session's
+  `temp/release-handoff-evidence-2uvhuD/published-aa7b81c5/verification.json`.
+- Codex and Claude Code both updated to `1.0+baa7b81c56468`, with consistent installation state. The bare Codex
+  request-server launcher recognized this session when run outside the command sandbox. WI-147 passed on the
+  installed Codex runner first (`gpt-6.2-sol`, `low`), then on the installed Claude runner (`claude-sonnet-5-5`, `low`).
+  Both completed one live turn and wrote `session.json` under the exact harness-reported ID, with both stored ID
+  fields and the installed artifact path verified. The transcripts and results are in this session's
+  `temp/release-handoff-evidence-2uvhuD/wi147-live-fixture-2jW5A0/`. Together with the retired-term scan, tests and
+  five-platform Build below, this closes WI-147 and R-I13. Next is WI-146 live recovery, starting in Codex. Run E1
+  successfully in installed Codex before starting a Claude Code optimizer campaign.
+
 - Build run [44671948793](https://github.com/holdmyspot-com/cat/actions/runs/44671948793) is the five-platform
   run for the transfer commit `854efc264`. All five `Verify` jobs eventually ran. Each reported one error, in
   `FixtureCampaignTest.committedFixtureMatchesStoreOutput`. The local commit `4a5155b96` fixes the fixture by
-  matching the generated format 48 file byte for byte. A hosted build of the corrected revision, the release,
-  and the installed Codex checks remain pending.
+  matching the generated format 48 file byte for byte.
 - The absent-home, uncached `clean verify` on `0e7e92e8c` stopped in `common/cli` after 3,829 tests. The newly
   generated campaign fixture differed from the committed copy only in its format version. The committed copy now
   matches the generated format 48 file byte for byte. Two OSHI integration tests also errored because their system
@@ -4071,7 +4087,7 @@ requirement names.
   successful release. The no-publication Release run must exercise these steps before the tag update. The isolated
   workflow under this session's `temp/release-rehearsal-current-04e5/` is based on `04e5f1850` and passes
   actionlint, ShellCheck and a comparison with the production step bodies. It retains the affected workers' live
-  retry path and the 15-asset assembly check. Hosted execution and assembly remain pending.
+  retry path and the 15-asset assembly check. The successful rehearsal is linked above.
 - WI-147's reference audit found capture commands still using retired runner options and the old standard-input
   protocol. The capture README and specification now describe the installed runner, its explicit profile, and the
   results copy. The integrated source and review capture changes passed 20 Bats and seven Node tests, plus ShellCheck.
@@ -4079,7 +4095,7 @@ requirement names.
   selected specialist wrote the relayed reply. Claude also verifies the task delivered to the specialist. Codex encrypts
   that task in the native transcript. The published historical capture files are retained as evidence. The original
   source renderer rejects the two retained TypeScript Codex code prompts because they predate the current template.
-  The schema compatibility check passed with a coherent fixture. Installed-harness smoke checks remain open.
+  The schema compatibility check passed with a coherent fixture. The installed-harness checks passed as noted above.
 - WI-146 step 7 has begun in isolated clones. The served-resume test reproduced the spent-allowance refusal on the
   original code and all 23 forwarder tests passed on the revised candidate. The report and logs are under this
   session's `temp/wi146-resume-allowance-KuqALb/`. The runner turn checkpoint producer passed its focused tests in
@@ -4117,8 +4133,8 @@ requirement names.
   It reached the end of `verify` with 456 Surefire reports, 6,250 tests, one skip, and zero failures or errors.
   Both `HOME` and the test JVM's `user.home` pointed to the same absent directory, which remained absent.
   The frozen reports and `selected-final-summary.json`, including the 15 cases of at least one second, are under
-  this session's `temp/wi146-clean-verify-MVtNIo/`. The full-build and installed acceptance gates still need
-  the hosted run and live receipts.
+  this session's `temp/wi146-clean-verify-MVtNIo/`. The five-platform Build passed as noted above. WI-146 still needs
+  installed recovery receipts.
 - The traceability refresh joined the 456 reports with three passing WI-147 checks for R-I13. Those checks cover
   adoption of the reported harness ID, the resulting results directory, and refusal of the removed
   `--keep-run` option. The audit found 2,535 passing tag mappings across 600 Java test sources, with no unknown
