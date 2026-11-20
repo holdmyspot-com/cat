@@ -60,17 +60,17 @@ capture_one()
 	if [ "${harness}" = claude ]; then
 		runner="${runtime}/claude/bin/claude-runner"
 	fi
-	run_temporary_root="${temporary_root}"
+	session_temporary_root="${temporary_root}"
 	if [ "${harness}" = claude ]; then
-		# Claude's Bubblewrap masks ancestor Git hooks; a checkout-local run can make a missing mask target abort Bash.
-		run_temporary_root="${claude_temporary_root}"
+		# Claude's Bubblewrap masks ancestor Git hooks; a checkout-local session can make a missing mask target abort Bash.
+		session_temporary_root="${claude_temporary_root}"
 	fi
-	mkdir -p "${run_temporary_root}"
-	run_root="$(mktemp -d "${run_temporary_root}/${language}-${example}-${harness}-${mode}.XXXXXX")"
-	project="${run_root}/project"
+	mkdir -p "${session_temporary_root}"
+	results="$(mktemp -d "${session_temporary_root}/${language}-${example}-${harness}-${mode}.XXXXXX")"
+	project="${results}/project"
 	mkdir -p "${project}"
 	cp -R "${fixtures}/${language}/${example}/." "${project}"
-	prompt="${run_root}/prompt.txt"
+	prompt="${results}/prompt.txt"
 	if [ "${example}" = "code" ]; then
 		case "${language}" in
 			typescript) language_name="TypeScript" ;;
@@ -89,12 +89,12 @@ capture_one()
 	# The node supervisor receives the capture deadline first so it can record the runner's observed terminal status.
 	if ! timeout --kill-after=15s "$((capture_timeout_seconds + 30))s" node "$(dirname "$0")/capture-source.mjs" \
 		"${runner}" "${runtime}/${harness}" "${project}" "${prompt}" \
-		"${run_root}/events.jsonl" "${run_root}" "${mode}"; then
-		echo "Source capture failed for ${harness}/${language}/${example}/${mode}; retained run is diagnostic only" >&2
+		"${results}/events.jsonl" "${results}" "${mode}"; then
+		echo "Source capture failed for ${harness}/${language}/${example}/${mode}; retained session is diagnostic only" >&2
 		return 1
 	fi
 	for attempt in {1..30}; do
-		manifest="$(find "${run_root}/${harness}" -name run.json -print -quit)"
+		manifest="$(find "${results}/${harness}" -name session.json -print -quit)"
 		[ -n "${manifest}" ] || {
 			sleep 1
 			continue
@@ -103,41 +103,41 @@ capture_one()
 		case "${state}" in
 			completed)
 				[ "$(jq -r '.exitCode' "${manifest}")" = 0 ] && [ "$(jq -r '.turnNumber' "${manifest}")" -ge 1 ] || {
-					echo "Completed ${harness} run lacks a successful turn for ${language}/${example}/${mode}" >&2
+					echo "Completed ${harness} session lacks a successful turn for ${language}/${example}/${mode}" >&2
 					return 1
 				}
 				break
 				;;
 			failed)
-				echo "${harness} source run failed for ${language}/${example}/${mode}: $(jq -r '.diagnostic' "${manifest}")" >&2
+				echo "${harness} source session failed for ${language}/${example}/${mode}: $(jq -r '.diagnostic' "${manifest}")" >&2
 				return 1
 				;;
 		esac
 		sleep 1
 	done
 	[ "${state:-missing}" = completed ] || {
-		echo "${harness} source run did not reach a terminal successful state for ${language}/${example}/${mode}" >&2
+		echo "${harness} source session did not reach a terminal successful state for ${language}/${example}/${mode}" >&2
 		return 1
 	}
-	result="$(find "${run_root}/${harness}" -path "*/project/${filename}" -print -quit)"
+	result="$(find "${results}/${harness}" -path "*/project/${filename}" -print -quit)"
 	[ -n "${result}" ] || {
 		echo "No generated ${filename} was retained for ${harness}/${language}/${example}/${mode}" >&2
 		return 1
 	}
 	if rg -q 'TODO: implement' "${result}"; then
-		echo "${harness} source run left ${filename} unimplemented for ${language}/${example}/${mode}" >&2
+		echo "${harness} source session left ${filename} unimplemented for ${language}/${example}/${mode}" >&2
 		return 1
 	fi
 	if [ "${language}" = typescript ] && [ "${example}" = code ] && [ "${mode}" = cat ]; then
 		validation_events="${staging_directory}/${harness}-${mode}.money-validation.events.jsonl"
 		if ! node "$(dirname "$0")/validate-money-capture.mjs" "${runner}" "${runtime}/${harness}" \
-			"$(dirname "${result}")" "${prompt}" "${validation_events}" "${run_root}/money-validation"; then
-			echo "${harness} source run failed TypeScript monetary model validation" >&2
+			"$(dirname "${result}")" "${prompt}" "${validation_events}" "${results}/money-validation"; then
+			echo "${harness} source session failed TypeScript monetary model validation" >&2
 			return 1
 		fi
 	fi
 	cp "${prompt}" "${staging_directory}/${harness}-${mode}.prompt.txt"
-	cp "${run_root}/events.jsonl" "${staging_directory}/${harness}-${mode}.events.jsonl"
+	cp "${results}/events.jsonl" "${staging_directory}/${harness}-${mode}.events.jsonl"
 	cp "${manifest}" "${staging_directory}/${harness}-${mode}.run.json"
 	cp "${result}" "${staging_directory}/${harness}-${mode}.${filename##*.}"
 }
@@ -212,7 +212,7 @@ capture_pair()
 	if ! capture_one "${harness}" "${language}" "${example}" "${filename}" base "${staging_directory}" ||
 		! capture_one "${harness}" "${language}" "${example}" "${filename}" cat "${staging_directory}"; then
 		finish_pair withheld "A required Base or CAT capture did not reach every publication gate." 1
-		echo "Source capture pair failed for ${harness}/${language}/${example}; retained runs are diagnostic only" >&2
+		echo "Source capture pair failed for ${harness}/${language}/${example}; retained sessions are diagnostic only" >&2
 		return 1
 	fi
 

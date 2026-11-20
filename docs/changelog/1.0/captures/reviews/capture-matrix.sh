@@ -18,7 +18,7 @@ runtime="${project_root}/client/distribution/target/runtime"
 	exit 1
 }
 
-mkdir -p "${capture_root}/outputs" "${capture_root}/runs"
+mkdir -p "${capture_root}/outputs" "${capture_root}/sessions"
 
 capture_one()
 {
@@ -31,10 +31,10 @@ capture_one()
 		runner="${runtime}/claude/bin/claude-runner"
 	fi
 	output="${capture_root}/outputs/${harness}-${mode}-${concern}.events.jsonl"
-	run_root="${capture_root}/runs/${harness}-${mode}-${concern}"
-	project="${run_root}/project"
+	results="${capture_root}/sessions/${harness}-${mode}-${concern}"
+	project="${results}/project"
 	mkdir -p "${project}"
-	prompt="${run_root}/request.txt"
+	prompt="${results}/request.txt"
     case "${concern}" in
       architecture) reviewer="Architecture" ;;
       business) reviewer="Business" ;;
@@ -54,15 +54,15 @@ capture_one()
 	if [ "${mode}" = "cat" ]; then
 		if [ "${harness}" = "codex" ]; then
 			node "${review_directory}/capture-codex-review.mjs" "${runner}" "${runtime}/${harness}" "${project}" \
-				"${prompt}" "${output}" "${run_root}" "${concern}-medium"
+				"${prompt}" "${output}" "${results}" "${concern}-medium"
 		else
 			node "${review_directory}/capture-claude-review.mjs" "${runner}" "${runtime}/${harness}" "${project}" \
-				"${prompt}" "${output}" "${run_root}" "${concern}-medium"
+				"${prompt}" "${output}" "${results}" "${concern}-medium"
 		fi
 	else
 		{ printf '{"type":"turn","prompt":'; jq -Rs . < "${prompt}"; printf '}\n{"type":"complete"}\n'; } |
 			"${runner}" --artifact "${runtime}/${harness}" --project "${project}" --output "${output}" \
-				--run-root "${run_root}" --keep-run
+				--results "${results}"
 	fi
 	if [ "${harness}" = "codex" ] && [ "${mode}" = "cat" ]; then
 		validation_output="${output}.validation.json"
@@ -72,9 +72,9 @@ capture_one()
 		}
 	fi
 
-	manifest="$(find "${run_root}/${harness}" -mindepth 2 -maxdepth 2 -name run.json -print -quit)"
+	manifest="$(find "${results}/${harness}" -mindepth 2 -maxdepth 2 -name session.json -print -quit)"
 	[ -n "${manifest}" ] || {
-		echo "No ${harness} run manifest was created for ${mode}:${concern}" >&2
+		echo "No ${harness} session manifest was created for ${mode}:${concern}" >&2
 		exit 1
 	}
 
@@ -84,7 +84,7 @@ capture_one()
 		case "${state}" in
 			completed)
 				[ -s "${output}" ] || {
-					echo "Completed ${harness} run has no retained output for ${mode}:${concern}" >&2
+					echo "Completed ${harness} session has no retained output for ${mode}:${concern}" >&2
 					exit 1
 				}
 				if [ "${harness}" = "claude" ]; then
@@ -94,7 +94,7 @@ capture_one()
 						select(.type == "agentMessage" and .phase == "final_answer") | .text] | last // empty' "${output}")"
 				fi
 				[ -n "${terminal_response}" ] || {
-					echo "Completed ${harness} run has no terminal response for ${mode}:${concern}" >&2
+					echo "Completed ${harness} session has no terminal response for ${mode}:${concern}" >&2
 					exit 1
 				}
 				if [ "${mode}" = "cat" ]; then

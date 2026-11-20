@@ -27,11 +27,11 @@ async function filesBelow(directory, name)
   return files;
 }
 
-async function completedRun(directory)
+async function completedSession(directory)
 {
-  const manifests = await filesBelow(directory, "run.json");
+  const manifests = await filesBelow(directory, "session.json");
   if (manifests.length !== 1)
-    throw new Error(`${directory} must contain exactly one run manifest`);
+    throw new Error(`${directory} must contain exactly one session manifest`);
   const manifest = JSON.parse(await readFile(manifests[0], "utf8"));
   if (manifest.state !== "completed")
     throw new Error(`${manifests[0]} is ${manifest.state}, not completed`);
@@ -40,8 +40,8 @@ async function completedRun(directory)
 
 async function sourceDirectory(root, language, harness, mode, concern)
 {
-  const directory = join(root, language, "runs", `${harness}-${mode}-${concern}`);
-  await completedRun(directory);
+  const directory = join(root, language, "sessions", `${harness}-${mode}-${concern}`);
+  await completedSession(directory);
   return directory;
 }
 
@@ -55,7 +55,7 @@ async function publish(root, language, harness, mode, concern, outputName)
   const request = join(source, "request.txt");
   await readFile(request);
   await cp(request, join(target, `${outputName}.request.md`));
-  await cp(await completedRun(source), join(target, `${outputName}.run.json`));
+  await cp(await completedSession(source), join(target, `${outputName}.run.json`));
   if (harness === "codex" && mode === "cat")
   {
     const validation = `${events}.validation.json`;

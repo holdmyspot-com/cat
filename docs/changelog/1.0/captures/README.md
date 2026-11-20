@@ -28,13 +28,14 @@ client/mvnw -q -Dmaven.build.cache.enabled=false -f client/pom.xml verify
 { printf '{"type":"turn","prompt":'; jq -Rs . < code-request.txt; printf '}\n{"type":"complete"}\n'; } |
   client/distribution/target/runtime/codex/bin/codex-runner \
   --artifact client/distribution/target/runtime/codex --project <fixture> \
-  --output <events> --model gpt-5.6-sol --keep-run
+  --output <events> --model gpt-5.6-sol --results <results>
 { printf '{"type":"turn","prompt":'; jq -Rs . < code-request.txt; printf '}\n{"type":"complete"}\n'; } |
   client/distribution/target/runtime/codex/bin/codex-runner \
   --artifact client/distribution/target/runtime/codex --project <fixture> \
-  --output <events> --model gpt-5.6-sol --keep-run --install-cat
+  --output <events> --model gpt-5.6-sol --results <results> --install-cat
 ```
 
-For Claude, run the `claude` artifact's `bin/claude-runner` analogously, with the `sonnet` model. Keep each successful
-run with `--keep-run`, verify the Base plugin inventory is empty before accepting the capture, and copy only the safe
-files in this directory into version control.
+For Claude, run the `claude` artifact's `bin/claude-runner` analogously, with the `sonnet` model. The runner copies
+each nested session's results, its project and its `session.json`, into `<results>/<harness>/<session ID>`. Verify the
+Base plugin inventory is empty before accepting the capture, and copy only the safe files in this directory into
+version control.

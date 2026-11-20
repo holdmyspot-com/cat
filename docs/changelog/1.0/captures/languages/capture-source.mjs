@@ -6,20 +6,20 @@ import {spawn} from "node:child_process";
 import {constants} from "node:os";
 import {createInterface} from "node:readline";
 
-const [runner, artifact, project, promptFile, output, runRoot, mode] = process.argv.slice(2);
-if ([runner, artifact, project, promptFile, output, runRoot, mode].some((value) => !value?.trim()) ||
+const [runner, artifact, project, promptFile, output, resultsFolder, mode] = process.argv.slice(2);
+if ([runner, artifact, project, promptFile, output, resultsFolder, mode].some((value) => !value?.trim()) ||
   !["base", "cat"].includes(mode))
-  throw new Error("Usage: capture-source.mjs <runner> <artifact> <project> <prompt-file> <output> <run-root> <base|cat>");
+  throw new Error("Usage: capture-source.mjs <runner> <artifact> <project> <prompt-file> <output> <results> <base|cat>");
 
 const prompt = await readFile(promptFile, "utf8");
 await writeFile(output, "");
-const arguments_ = ["--artifact", artifact, "--project", project, "--run-root", runRoot, "--keep-run"];
+const arguments_ = ["--artifact", artifact, "--project", project, "--results", resultsFolder];
 if (mode === "cat")
   arguments_.push("--install-cat");
 const child = spawn(runner, arguments_, {stdio: ["pipe", "pipe", "pipe"]});
-const supervisorRecord = join(runRoot, "capture-supervisor.json");
+const supervisorRecord = join(resultsFolder, "capture-supervisor.json");
 const startedAt = new Date().toISOString();
-let runId;
+let sessionId;
 
 await writeSupervisorRecord("running", "The supervisor accepted the capture and is awaiting a terminal runner result.");
 
@@ -65,10 +65,9 @@ createInterface({input: child.stdout}).on("line", (line) =>
   {
     const message = JSON.parse(line);
     if (message.type === "started")
-    {
-      runId = message.runId;
       started();
-    }
+    else if (message.type === "session_id")
+      sessionId = message.session_id;
     else if (message.type === "harness-event")
       writes = writes.then(() => appendFile(output, `${message.event}\n`));
     else if (message.type === "turn-completed" && !completed)
@@ -145,12 +144,12 @@ async function recordFailure(captureError, reason, exitCode = null, signal = nul
 async function writeSupervisorRecord(state, reason, exitCode = null, signal = null)
 {
   const record = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     state,
     reason,
     processId: process.pid,
     runnerProcessId: child.pid,
-    runId: runId ?? null,
+    sessionId: sessionId ?? null,
     startedAt,
     finishedAt: state === "running" ? null : new Date().toISOString(),
     exitCode,

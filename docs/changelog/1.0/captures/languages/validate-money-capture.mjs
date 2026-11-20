@@ -4,9 +4,9 @@ import {copyFile, mkdir, readFile, writeFile} from "node:fs/promises";
 import {dirname, join} from "node:path";
 import {spawn} from "node:child_process";
 
-const [runner, artifact, project, taskFile, output, runRoot] = process.argv.slice(2);
-if ([runner, artifact, project, taskFile, output, runRoot].some((value) => !value?.trim()))
-  throw new Error("Usage: validate-money-capture.mjs <runner> <artifact> <project> <task-file> <events-output> <run-root>");
+const [runner, artifact, project, taskFile, output, resultsFolder] = process.argv.slice(2);
+if ([runner, artifact, project, taskFile, output, resultsFolder].some((value) => !value?.trim()))
+  throw new Error("Usage: validate-money-capture.mjs <runner> <artifact> <project> <task-file> <events-output> <results>");
 
 const task = await readFile(taskFile, "utf8");
 const prompt = `
@@ -27,11 +27,12 @@ REJECTED: followed by one concise, evidence-based reason.
 const promptFile = `${output}.prompt.txt`;
 await writeFile(promptFile, prompt);
 
-const evidenceProject = join(runRoot, "project");
+const evidenceProject = join(resultsFolder, "project");
 await mkdir(evidenceProject, {recursive: true});
 await copyEvidence(project, evidenceProject);
 const captureSource = join(dirname(new URL(import.meta.url).pathname), "capture-source.mjs");
-await run(process.execPath, [captureSource, runner, artifact, evidenceProject, promptFile, output, runRoot, "base"]);
+await run(process.execPath, [captureSource, runner, artifact, evidenceProject, promptFile, output, resultsFolder,
+  "base"]);
 
 const response = latestResponse((await readFile(output, "utf8")).split("\n").filter(Boolean).map(JSON.parse));
 if (response?.trim() !== "APPROVED")

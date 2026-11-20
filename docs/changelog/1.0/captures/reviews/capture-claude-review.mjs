@@ -5,9 +5,9 @@ import {spawn} from "node:child_process";
 import {createInterface} from "node:readline";
 import {delegationPrompt, reviewFormat} from "./review-format.mjs";
 
-const [runner, artifact, project, promptFile, output, runRoot, reviewer] = process.argv.slice(2);
-if ([runner, artifact, project, promptFile, output, runRoot, reviewer].some((value) => !value))
-	throw new Error("Usage: capture-claude-review.mjs <runner> <artifact> <project> <prompt-file> <output> <run-root> <reviewer>");
+const [runner, artifact, project, promptFile, output, resultsFolder, reviewer] = process.argv.slice(2);
+if ([runner, artifact, project, promptFile, output, resultsFolder, reviewer].some((value) => !value))
+	throw new Error("Usage: capture-claude-review.mjs <runner> <artifact> <project> <prompt-file> <output> <results> <reviewer>");
 const valid = (response) => response?.trim() === "APPROVED" || (response?.split("\n").find(line => line.trim()) === "## Findings" &&
   (matches => matches.length > 0 && matches.every((match, index) => {
     const finding = response.slice(match.index, matches[index + 1]?.index);
@@ -16,7 +16,7 @@ const valid = (response) => response?.trim() === "APPROVED" || (response?.split(
 const initial = await readFile(promptFile, "utf8");
 const reviewContract = await reviewFormat(artifact);
 await writeFile(output, "");
-const child = spawn(runner, ["--artifact", artifact, "--project", project, "--run-root", runRoot, "--keep-run", "--install-cat"], {stdio: ["pipe", "pipe", "pipe"]});
+const child = spawn(runner, ["--artifact", artifact, "--project", project, "--results", resultsFolder, "--install-cat"], {stdio: ["pipe", "pipe", "pipe"]});
 const keepAlive = setInterval(() => {}, 1_000); let error = ""; let started; const ready = new Promise(resolve => { started = resolve; }); let complete; const turns = []; let writes = Promise.resolve();
 createInterface({input: child.stdout}).on("line", line => { const message = JSON.parse(line); if (message.type === "started") started(); if (message.type === "harness-event") writes = writes.then(() => appendFile(output, `${message.event}\n`)); if (message.type === "turn-completed") { if (complete) { complete(message); complete = null; } else turns.push(message); } });
 child.stderr.on("data", chunk => { error += chunk; });

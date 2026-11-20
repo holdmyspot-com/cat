@@ -19,9 +19,9 @@ assert.match(captureScript, /documentation_prompt_template=.*documentation\.prom
 assert.match(captureScript, /cmp -s "\$\{money_rule_source\}" "\$\{runtime_money_rule\}"/,
   "the capture script must reject a runtime with a stale Money rule");
 assert.match(captureScript, /claude_temporary_root="\$\{TMPDIR:-\/tmp\}\/.cat\/claude\/changelog-language-captures"/,
-  "the capture script must keep Claude runs outside the checkout to avoid Bubblewrap ancestor Git mounts");
-assert.match(captureScript, /\[ "\$\{harness\}" = claude \][\s\S]*run_temporary_root="\$\{claude_temporary_root\}"/,
-  "the capture script must select the system temporary root for Claude runs");
+  "the capture script must keep Claude sessions outside the checkout to avoid Bubblewrap ancestor Git mounts");
+assert.match(captureScript, /\[ "\$\{harness\}" = claude \][\s\S]*session_temporary_root="\$\{claude_temporary_root\}"/,
+  "the capture script must select the system temporary root for Claude sessions");
 assert.match(captureScript, /capture_pair\(\)[\s\S]*capture_one .* base .*staging_directory[\s\S]*capture_one .* cat .*staging_directory/,
   "the capture script must stage a complete Base/CAT pair before publishing it");
 assert.match(captureScript, /capture-pair\.json[\s\S]*awaiting complete Base and CAT captures[\s\S]*withheld[\s\S]*published/s,

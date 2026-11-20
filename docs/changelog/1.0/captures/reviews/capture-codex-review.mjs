@@ -5,9 +5,9 @@ import {spawn} from "node:child_process";
 import {createInterface} from "node:readline";
 import {delegationPrompt, reviewFormat} from "./review-format.mjs";
 
-const [runner, artifact, project, promptFile, output, runRoot, reviewer] = process.argv.slice(2);
-if ([runner, artifact, project, promptFile, output, runRoot, reviewer].some((value) => !value))
-	throw new Error("Usage: capture-codex-review.mjs <runner> <artifact> <project> <prompt-file> <output> <run-root> <reviewer>");
+const [runner, artifact, project, promptFile, output, resultsFolder, reviewer] = process.argv.slice(2);
+if ([runner, artifact, project, promptFile, output, resultsFolder, reviewer].some((value) => !value))
+	throw new Error("Usage: capture-codex-review.mjs <runner> <artifact> <project> <prompt-file> <output> <results> <reviewer>");
 const validationOutput = `${output}.validation.json`;
 
 function latestReviewerResponse(events)
@@ -45,8 +45,8 @@ function valid(response)
 const initialPrompt = await readFile(promptFile, "utf8");
 const reviewContract = await reviewFormat(artifact);
 await writeFile(output, "");
-const runnerArguments = ["--artifact", artifact, "--project", project, "--run-root", runRoot,
-	"--keep-run", "--install-cat"];
+const runnerArguments = ["--artifact", artifact, "--project", project, "--results",
+	resultsFolder, "--install-cat"];
 const child = spawn(runner, runnerArguments, {stdio: ["pipe", "pipe", "pipe"], env: process.env});
 // A pending Promise does not keep a non-interactive Node process alive. Retain this parent until it records the child
 // runner's final raw events; otherwise the runner becomes orphaned and the capture has no accepted terminal response.
