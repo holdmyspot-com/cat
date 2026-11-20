@@ -2,8 +2,8 @@
 
 # Tests the template that every generated plugin launcher shares: a launcher runs its program from a plugin path that
 # contains spaces, without Bubblewrap even where it cannot create a namespace, and Java can name a file that is not ASCII
-# in the caller's C locale. A launcher finds Java only through the plugin's bin/runtime-binding: it passes its JVM
-# options, the plugin's module path and its arguments to the bound java, discards the JVM options that the environment
+# in the caller's C locale. A launcher uses bundled Java or a legacy runtime binding. It passes its JVM
+# options, the plugin's module path and its arguments to the selected java, discards the JVM options that the environment
 # supplies, passes a set, non-empty TMPDIR as java.io.tmpdir, and refuses an unusable binding with one line naming it
 # and exit status 3. A launcher starts Java from the plugin's startup cache bin/aot/session-start.aot when that file
 # exists, Java accepts a cache trained through the plugin's java wrapper, and a cache that Java cannot use changes
@@ -35,6 +35,18 @@ load bootstrap-helpers
 	[ "${output}" = "$(printf 'first\n[End of %s. The file was deleted]' "${file}")" ]
 }
 
+@test "a launcher with a bundled runtime binding runs Java from its relocated plugin copy" {
+	plugin="${TEST_ROOT}/relocated plugin"
+	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${plugin}"
+	[ -f "${plugin}/bin/bundled-runtime" ]
+	printf '%s\n' "${TEST_ROOT}/removed runtime" > "${plugin}/bin/runtime-binding"
+
+	run "${plugin}/bin/plugin-info"
+
+	[ "${status}" -eq 0 ]
+	[[ "${output}" == "harness=codex"$'\n'* ]]
+}
+
 # Copies the generated Codex plugin to a path with spaces and binds it, through a link whose path also holds spaces,
 # to a runtime whose java prints the environment's JVM options and its arguments, one per line.
 #
@@ -45,6 +57,7 @@ create_echo_runtime_plugin()
 {
 	PLUGIN="${TEST_ROOT}/copied plugin"
 	cp -R "${GENERATED_RUNTIME_DIRECTORY}/codex" "${PLUGIN}"
+	rm "${PLUGIN}/bin/bundled-runtime"
 	BINDING="${PLUGIN}/bin/runtime-binding"
 	local runtime="${TEST_ROOT}/echo runtime"
 	mkdir -p "${runtime}/bin"

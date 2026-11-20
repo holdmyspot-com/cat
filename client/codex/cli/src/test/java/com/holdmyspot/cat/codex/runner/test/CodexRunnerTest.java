@@ -14,12 +14,15 @@ import com.holdmyspot.cat.codex.runner.CodexRunner.SessionSandbox;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.PortableFiles;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.release.fakes.test.FakeRelease;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.InstalledRuntime;
 import com.holdmyspot.cat.common.runner.LocalMarketplace;
 import com.holdmyspot.cat.common.runner.NestedSession;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestBroker;
 import com.holdmyspot.cat.common.runner.SetupCommands;
@@ -225,6 +228,40 @@ public final class CodexRunnerTest
 				path("plugins").path(0).path("source").path("path").asString();
 			requireThat(installation.marketplaceRoot().resolve(source).normalize(), "manifestSource").
 				isEqualTo(installation.marketplacePlugin());
+		}
+	}
+
+	/**
+	 * Verifies that the isolated installation can still start its original Java after the owner removes its runtime.
+	 *
+	 * @throws IOException if the fixture cannot be written or the isolated plugin's runtime cannot be used
+	 */
+	@Test
+	public void retainsJavaAfterOwnerRuntimeIsRemoved() throws IOException
+	{
+		// Requirement: R-I12
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-retained-runtime-"));
+			Platform platform = Platform.current();
+			Path ownerHome = root.resolve("owner");
+			Path artifact = artifact(ownerHome);
+			Path ownerRuntime = FakeRelease.runtime(artifact.resolve(PluginDirectory.RUNTIME), platform);
+			Files.createFile(artifact.resolve(RuntimeBinding.BUNDLED_PATH));
+			RuntimeBinding.write(artifact, ownerRuntime);
+			String originalIdentity = InstalledRuntime.identity(ownerRuntime);
+			Path home = root.resolve("isolated");
+			CodexRunner.installPlugins("codex", artifact, true, List.of(), ownerHome, home, installationEnvironment(root),
+				Yielding.executableFiles(), Yielding.fileReplacer(), codexAdds(home, "1.0+b0123456789ab"));
+
+			Files.move(ownerRuntime, root.resolve("removed-runtime"));
+
+			Path installed = CodexRunner.installedCat(home);
+			requireThat(Files.readString(installed.resolve(RuntimeBinding.PATH)), "retainedBinding").
+				isEqualTo(ownerRuntime + "\n");
+			Path runtime = RuntimeBinding.readUsable(installed, platform);
+			requireThat(runtime, "runtime").isEqualTo(installed.resolve(PluginDirectory.RUNTIME));
+			requireThat(InstalledRuntime.identity(runtime), "runtimeIdentity").isEqualTo(originalIdentity);
 		}
 	}
 
