@@ -210,30 +210,44 @@ public final class CodexRunner
 				isolatedHome.resolve(LOGIN));
 			ChildPolicy policy = ChildPolicy.intersect(bound, new ChildNeeds(nestedSession.directory().toAbsolutePath(),
 				caches.directories(), List.of(), Set.of(modelHost)).with(extraPermissions));
-			CodexConnectionConfiguration.copy(configuration(hostHome), isolatedConfiguration,
-				nestedSession.directory().resolve("project"), caches,
-				temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState, policy,
-				extraPermissions);
-			if (!Platform.current().isWindows())
-			{
-				CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,
-					CodexConnectionConfiguration.MANAGED_LAYER, policy);
-			}
-			policyListener.accept(policy);
 			boolean pluginsInstalled = installCat || !trialPlugins.isEmpty();
 			List<String> appServer = appServerCommand(executable, pluginsInstalled);
-			SessionSandbox sandbox = sessionSandbox(isolatedConfiguration, manager, nestedSession, readOnlyEvidence,
-				deniedReads, Platform.current(), environment, requestAccess, appServer);
+			Path worktree = nestedSession.directory().resolve("project");
+			FileReplacer replacer = FileReplacer.retrying(waiting);
+			// An interrupted resume must leave the installed plugin and trust records available for another attempt.
+			Path stagedConfiguration = Files.createTempFile(isolatedHome, ".config-", ".toml");
+			SessionSandbox sandbox;
+			try
+			{
+				Path retainedConfiguration = null;
+				if (resumes)
+					retainedConfiguration = isolatedConfiguration;
+				CodexConnectionConfiguration.copy(configuration(hostHome), stagedConfiguration, worktree, caches,
+					temporaryDirectory, toolOutputTokenLimit, requestAccess, Platform.current(), parentState, policy,
+					extraPermissions, retainedConfiguration);
+				if (!Platform.current().isWindows())
+				{
+					CodexConnectionConfiguration.requireNarrowingLayers(CodexConnectionConfiguration.SYSTEM_LAYER,
+						CodexConnectionConfiguration.MANAGED_LAYER, policy);
+				}
+				policyListener.accept(policy);
+				sandbox = sessionSandbox(stagedConfiguration, manager, nestedSession, readOnlyEvidence, deniedReads,
+					Platform.current(), environment, requestAccess, appServer);
+				replacer.replace(stagedConfiguration, isolatedConfiguration);
+			}
+			finally
+			{
+				Files.deleteIfExists(stagedConfiguration);
+			}
 			Map<String, String> isolatedEnvironment = processEnvironment(environment, caches, isolatedHome,
 				nestedSession.directory(), temporaryDirectory, Platform.current());
-			Path worktree = nestedSession.directory().resolve("project");
 			requireNetworkProxy(arguments -> commandOutput(executable, arguments, worktree, isolatedEnvironment,
 				executables, manager, nestedSession), featureFlags(pluginsInstalled), policy.hosts());
 			// A resumed nested session keeps the plugins that its start installed in its home
 			if (!resumes)
 			{
 				installPlugins(executable, artifact, installCat, trialPlugins, hostHome, isolatedHome,
-					isolatedEnvironment, executables, FileReplacer.retrying(waiting), (setup, step) ->
+					isolatedEnvironment, executables, replacer, (setup, step) ->
 						HarnessCommand.execute(setup, worktree, isolatedEnvironment, executables, manager, nestedSession, step));
 			}
 			// The requested sessions of the session may read the CAT version that Codex installed, whose launchers the

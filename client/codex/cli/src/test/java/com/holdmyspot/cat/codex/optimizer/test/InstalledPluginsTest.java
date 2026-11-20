@@ -104,11 +104,13 @@ public final class InstalledPluginsTest
 			Path home = cleanup.add(Files.createTempDirectory("cat-codex-home-")).toRealPath();
 			requireThat(InstalledPlugins.names(home), "withoutConfiguration").isEmpty();
 
-			Files.writeString(home.resolve("config.toml"), "[plugins]\n\n[plugins.\"zeta@market\"]\nenabled = true\n\n" +
+			Files.writeString(home.resolve("config.toml"), "[plugins]\n'zeta@market' = { enabled = true }\n\n" +
 				"[hooks.state.\"tools@market:hooks/hooks.json:stop:0:0\"]\ntrusted_hash = \"x\"\n\n" +
-				"[plugins.\"" + NAME + "\"] # formatter\nenabled = true\n", UTF_8);
+				"[plugins.'" + NAME + "'] # formatter\nenabled = true\n", UTF_8);
 
 			requireThat(InstalledPlugins.names(home), "names").isEqualTo(List.of("zeta@market", NAME));
+			Path copy = pluginCopy(home, "1.0.0");
+			requireThat(InstalledPlugins.of(home, NAME), "copies").isEqualTo(List.of(copy));
 		}
 	}
 

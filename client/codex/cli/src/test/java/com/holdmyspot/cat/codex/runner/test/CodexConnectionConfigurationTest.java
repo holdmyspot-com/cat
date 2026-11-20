@@ -3,10 +3,13 @@ package com.holdmyspot.cat.codex.runner.test;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 import static org.testng.Assert.expectThrows;
 
+import com.holdmyspot.cat.codex.optimizer.InstalledPlugins;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
 import com.holdmyspot.cat.codex.runner.CodexParentMultiAgentState;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.fakes.test.Yielding;
 import com.holdmyspot.cat.common.runner.HarnessDependencyCaches;
 import com.holdmyspot.cat.common.runner.policy.ChildNeeds;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
@@ -34,6 +37,112 @@ import tools.jackson.dataformat.toml.TomlMapper;
  */
 public final class CodexConnectionConfigurationTest
 {
+	/**
+	 * Verifies that refreshing an interrupted session keeps its own registrations and trust while replacing its former
+	 * connection and permissions with the current parent's settings.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void resumedConfigurationKeepsPluginsAndTrust() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-codex-resume-")).toRealPath();
+			Path session = Files.createDirectories(root.resolve("session"));
+			Path project = Files.createDirectory(session.resolve("project"));
+			Path home = Files.createDirectory(session.resolve("home"));
+			Path cat = Files.createDirectories(home.resolve("plugins/cache/cat/cat/1/.codex-plugin"));
+			Files.writeString(cat.resolve("plugin.json"), "{}");
+			Path trial = Files.createDirectories(home.resolve("plugins/cache/trial/trial/1/.codex-plugin"));
+			Files.writeString(trial.resolve("plugin.json"), "{}");
+			Path destination = home.resolve("config.toml");
+			Path source = Files.writeString(root.resolve("parent.toml"), """
+				model = "current-model"
+				[plugins."host@host"]
+				enabled = true
+				""");
+			JsonMapper json = JsonMapper.builder().build();
+			String catHook = "cat@cat:hooks/hooks.json:session_start:0:0";
+			String trialHook = "hooks/hooks.json:post_tool_use:0:0";
+			String catHash = "sha256:" + "b".repeat(64);
+			String trialHash = "sha256:" + "c".repeat(64);
+			Files.writeString(destination, """
+				model = "old-model"
+				tool_output_token_limit = 99
+				[plugins."cat@cat"]
+				enabled = true
+				[plugins."trial@trial"]
+				enabled = true
+				[plugins."trial@trial".mcp_servers.trial-server]
+				enabled_tools = ["one", "two"]
+				[marketplaces.cat]
+				source = %s
+				source_type = "local"
+				[marketplaces.trial]
+				source = %s
+				source_type = "local"
+				[hooks.state."%s"]
+				trusted_hash = "%s"
+				[hooks.state."trial@trial:%s"]
+				trusted_hash = "%s"
+				enabled = false
+				[projects.%s]
+				trust_level = "trusted"
+				[permissions.cat-runner.network.domains]
+				"old-host.example" = "allow"
+				[shell_environment_policy.set]
+				CAT_OLD_REQUEST_TOKEN = "old-token"
+				""".formatted(json.writeValueAsString(home.resolve("plugins/cat-marketplace").toString()),
+				json.writeValueAsString(home.resolve("plugins/trial-marketplace").toString()), catHook, catHash, trialHook,
+				trialHash, json.writeValueAsString(project.toString())));
+			TomlMapper toml = TomlMapper.builder().build();
+			JsonNode prior = toml.readTree(Files.readString(destination));
+			Path secret = Files.writeString(root.resolve("secret"), "private");
+			Path deniedRead = Files.writeString(root.resolve("denied-read"), "private");
+			ParentPolicy parent = new ParentPolicy(true, List.of(session), List.of(), List.of(secret), List.of(),
+				HostAccess.listed(Set.of("current-host.example")), false, List.of());
+			ChildPolicy policy = ChildPolicy.intersect(parent, new ChildNeeds(session, List.of(), List.of(),
+				Set.of("current-host.example")));
+
+			// Reopen both the original configuration and one already refreshed by the runner.
+			Path staged = home.resolve("staged.toml");
+			for (int attempt = 0; attempt < 2; ++attempt)
+			{
+				CodexConnectionConfiguration.copy(source, staged, project, HarnessDependencyCaches.NONE,
+					home.resolve("tmp"), 42, null, Platform.LINUX_X64, CodexParentMultiAgentState.NONE, policy,
+					ExtraPermissions.NONE, destination);
+				CodexConnectionConfiguration.addSessionProfile(staged, List.of(), List.of(deniedRead));
+				Yielding.fileReplacer().replace(staged, destination);
+			}
+
+			requireThat(CodexRunner.installedCat(home), "catInstallation").isEqualTo(cat.getParent());
+			requireThat(InstalledPlugins.of(home, "trial@trial"), "trialInstallation").isEqualTo(List.of(trial.getParent()));
+			requireThat(InstalledPlugins.names(home), "pluginNames").isEqualTo(List.of("cat@cat", "trial@trial"));
+			requireThat(CodexConnectionConfiguration.pluginHookApprovals(destination, "trial"), "trialApprovals").
+				isEqualTo(Map.of(trialHook, trialHash));
+			Path childConfiguration = home.resolve("child.toml");
+			CodexConnectionConfiguration.copyTrustedCatHooks(destination, childConfiguration);
+			JsonNode appliedCatTrust = toml.readTree(Files.readString(childConfiguration)).path("hooks").path("state");
+			requireThat(appliedCatTrust.path(catHook).path("trusted_hash").asString(), "catApproval").isEqualTo(catHash);
+			JsonNode refreshed = toml.readTree(Files.readString(destination));
+			for (String table : List.of("plugins", "marketplaces", "projects"))
+				requireThat(refreshed.path(table), table).isEqualTo(prior.path(table));
+			requireThat(refreshed.path("hooks").path("state"), "hookTrust").isEqualTo(prior.path("hooks").path("state"));
+			requireThat(refreshed.path("model").asString(), "model").isEqualTo("current-model");
+			requireThat(refreshed.path("tool_output_token_limit").asInt(), "toolOutputLimit").isEqualTo(42);
+			JsonNode profile = refreshed.path("permissions").path("cat-runner");
+			requireThat(profile.path("network").path("domains").path("current-host.example").asString(), "currentHost").
+				isEqualTo("allow");
+			requireThat(profile.path("network").path("domains").has("old-host.example"), "oldHost").isFalse();
+			requireThat(profile.path("filesystem").path(secret.toString()).asString(), "currentDenial").isEqualTo("deny");
+			requireThat(refreshed.path("permissions").path("cat-denied-reads").path("filesystem").
+				path(deniedRead.toString()).asString(), "additionalDenial").isEqualTo("deny");
+			requireThat(refreshed.path("shell_environment_policy").path("set").has("CAT_OLD_REQUEST_TOKEN"),
+				"oldRequestToken").isFalse();
+		}
+	}
+
 	/**
 	 * Verifies that the runner configuration grants writes only to its copied project's Git metadata, while keeping
 	 * configuration and hooks read-only even through validator and denied-read profiles.

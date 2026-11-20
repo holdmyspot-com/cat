@@ -9,12 +9,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
-import java.util.regex.Matcher;
+import java.util.Map.Entry;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
+
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.MissingNode;
+import tools.jackson.dataformat.toml.TomlMapper;
 
 /**
  * Finds the user's installed copies of a plugin through Codex's install records.
@@ -35,11 +38,9 @@ public final class InstalledPlugins
 	 */
 	private static final int MAXIMUM_CONFIGURATION_BYTES = 1_048_576;
 	/**
-	 * The header of a configuration table that records one installed plugin, capturing its
-	 * {@code <plugin>@<marketplace>} name.
+	 * The format of a plugin identifier, {@code <plugin>@<marketplace>}.
 	 */
-	private static final Pattern PLUGIN_TABLE = Pattern.compile(
-		"(?m)^\\s*\\[plugins\\.\"(?<name>[^@/\\\\\"]+@[^@/\\\\\"]+)\"]\\s*(?:#.*)?$");
+	private static final Pattern PLUGIN_NAME = Pattern.compile("[^@/\\\\\"]+@[^@/\\\\\"]+");
 
 	/**
 	 * Prevents construction of utility class instances.
@@ -57,18 +58,13 @@ public final class InstalledPlugins
 	 *   configuration does not record the plugin
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code name} is not {@code <plugin>@<marketplace>}
-	 * @throws IOException if the configuration exists but cannot be read, or the cache cannot be listed
+	 * @throws IOException if the configuration exists but cannot be read or parsed, or the cache cannot be listed
 	 */
 	public static List<Path> of(Path home, String name) throws IOException
 	{
 		requireThat(home, "home").isNotNull();
-		requireThat(name, "name").matches("[^@/\\\\\"]+@[^@/\\\\\"]+");
-		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
-		if (!Files.isRegularFile(configuration))
-			return List.of();
-		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-		Pattern table = Pattern.compile("(?m)^\\s*\\[plugins\\.\"" + Pattern.quote(name) + "\"]\\s*(?:#.*)?$");
-		if (!table.matcher(text).find())
+		requireThat(name, "name").matches(PLUGIN_NAME.pattern());
+		if (!registrations(home).path(name).isObject())
 			return List.of();
 
 		int separator = name.indexOf('@');
@@ -95,19 +91,35 @@ public final class InstalledPlugins
 	 * @return each name of a {@code [plugins."<plugin>@<marketplace>"]} table, once, in file order; empty if the
 	 *   configuration does not exist
 	 * @throws NullPointerException if {@code home} is null
-	 * @throws IOException          if the configuration exists but cannot be read
+	 * @throws IOException          if the configuration exists but cannot be read or parsed
 	 */
 	public static List<String> names(Path home) throws IOException
 	{
 		requireThat(home, "home").isNotNull();
+		return registrations(home).properties().stream().filter(entry -> entry.getValue().isObject()).
+			map(Entry::getKey).filter(name -> PLUGIN_NAME.matcher(name).matches()).toList();
+	}
+
+	/**
+	 * Returns the parsed plugin registrations of a Codex home in configuration order.
+	 *
+	 * @param home the Codex home directory
+	 * @return the plugin registrations, or a missing node
+	 * @throws IOException if the configuration exists but cannot be read or parsed
+	 */
+	private static JsonNode registrations(Path home) throws IOException
+	{
 		Path configuration = new CodexInstallation(home.toAbsolutePath()).configuration();
 		if (!Files.isRegularFile(configuration))
-			return List.of();
+			return MissingNode.getInstance();
 		String text = BoundedInput.readUtf8(configuration, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-		Set<String> names = new LinkedHashSet<>();
-		Matcher table = PLUGIN_TABLE.matcher(text);
-		while (table.find())
-			names.add(table.group("name"));
-		return List.copyOf(names);
+		try
+		{
+			return TomlMapper.builder().build().readTree(text).path("plugins");
+		}
+		catch (JacksonException e)
+		{
+			throw new IOException("Cannot parse Codex configuration from " + configuration, e);
+		}
 	}
 }

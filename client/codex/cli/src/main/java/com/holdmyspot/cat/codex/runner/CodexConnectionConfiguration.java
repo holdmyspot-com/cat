@@ -96,8 +96,7 @@ public final class CodexConnectionConfiguration
 		"max_concurrent_threads_per_session", "max_depth", "job_max_runtime_seconds", "interrupt_message");
 	static final List<String> CAT_HOOK_KEYS = List.of("cat@cat:hooks/hooks.json:session_start:0:0",
 		"cat@cat:hooks/hooks.json:subagent_start:0:0", "cat@cat:hooks/hooks.json:post_tool_use:0:0");
-	private static final Pattern TRUSTED_HASH = Pattern.compile(
-		"(?m)^trusted_hash\\s*=\\s*\\\"(sha256:[0-9a-f]{64})\\\"\\s*$");
+	private static final Pattern TRUSTED_HASH = Pattern.compile("sha256:[0-9a-f]{64}");
 
 	/**
 	 * Returns the parent's explicitly configured project instruction settings as TOML. An absent setting stays absent;
@@ -114,18 +113,19 @@ public final class CodexConnectionConfiguration
 		if (!Files.isRegularFile(source))
 			return Optional.empty();
 		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-		return instructionSettings(parse(source, configuration));
+		return instructionSettings(parse(source, configuration, "instruction settings"));
 	}
 
 	/**
-	 * Parses an already bounded host configuration.
+	 * Parses an already bounded Codex configuration.
 	 *
 	 * @param source        the source file, named when parsing fails
-	 * @param configuration the host configuration
+	 * @param configuration the configuration
+	 * @param description   the part of the configuration that the caller needs
 	 * @return the configuration's values
 	 * @throws IOException if the configuration cannot be parsed
 	 */
-	private static JsonNode parse(Path source, String configuration) throws IOException
+	private static JsonNode parse(Path source, String configuration, String description) throws IOException
 	{
 		assert source != null;
 		assert configuration != null;
@@ -135,7 +135,7 @@ public final class CodexConnectionConfiguration
 		}
 		catch (JacksonException e)
 		{
-			throw new IOException("Cannot parse Codex instruction settings from " + source, e);
+			throw new IOException("Cannot parse Codex " + description + " from " + source, e);
 		}
 	}
 
@@ -182,7 +182,7 @@ public final class CodexConnectionConfiguration
 		if (Files.isRegularFile(source))
 		{
 			JsonNode configuration = parse(source, BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES,
-				"Codex configuration"));
+				"Codex configuration"), "connection settings");
 			JsonNode baseUrl = configuration.path("openai_base_url");
 			if (baseUrl.isString())
 				return urlHost(source, baseUrl.asString());
@@ -630,6 +630,34 @@ public final class CodexConnectionConfiguration
 		CodexParentMultiAgentState parentState, ChildPolicy policy, ExtraPermissions extraPermissions)
 		throws IOException
 	{
+		copy(source, destination, project, caches, temporaryDirectory, toolOutputTokenLimit, requestAccess, platform,
+			parentState, policy, extraPermissions, null);
+	}
+
+	/**
+	 * Generates the session's current configuration and retains the native plugin registrations and trust from its
+	 * previous launch, if any. The runner stages the new configuration in the same home as the retained configuration
+	 * before replacing it.
+	 *
+	 * @param source                the host configuration file
+	 * @param destination           the staged configuration in the session's home
+	 * @param project               the session's project
+	 * @param caches                the verified writable dependency caches
+	 * @param temporaryDirectory    the session's temporary directory
+	 * @param toolOutputTokenLimit  the maximum tokens of each tool output, or {@code 0} for Codex's default
+	 * @param requestAccess         the session's request access, or {@code null} if it may request no sessions
+	 * @param platform              the platform that the session runs on
+	 * @param parentState           the parent thread's recorded multi-agent settings
+	 * @param policy                the current sandbox policy
+	 * @param extraPermissions      the writes and hosts the launch asks for beyond what Codex needs
+	 * @param retainedConfiguration the session's previous configuration on resume, or {@code null} on a fresh launch
+	 * @throws IOException if a configuration cannot be read, parsed or written
+	 */
+	public static void copy(Path source, Path destination, Path project, HarnessDependencyCaches caches,
+		Path temporaryDirectory, int toolOutputTokenLimit, SessionRequestAccess requestAccess, Platform platform,
+		CodexParentMultiAgentState parentState, ChildPolicy policy, ExtraPermissions extraPermissions,
+		Path retainedConfiguration) throws IOException
+	{
 		requireThat(project, "project").isNotNull();
 		requireThat(caches, "caches").isNotNull();
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
@@ -652,7 +680,7 @@ public final class CodexConnectionConfiguration
 		if (Files.isRegularFile(source))
 		{
 			String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-			parentConfiguration = parse(source, configuration);
+			parentConfiguration = parse(source, configuration, "connection settings");
 			instructionSettings(parentConfiguration).ifPresent(copied::append);
 			for (String line : configuration.lines().toList())
 			{
@@ -666,6 +694,24 @@ public final class CodexConnectionConfiguration
 				if (CONNECTION_SETTINGS.contains(name))
 					copied.append(line).append(System.lineSeparator());
 			}
+		}
+		TomlMapper mapper = TomlMapper.builder().build();
+		if (retainedConfiguration != null)
+		{
+			JsonNode previous = parse(retainedConfiguration, BoundedInput.readUtf8(retainedConfiguration,
+				MAXIMUM_CONFIGURATION_BYTES, "Codex configuration"), "retained configuration");
+			ObjectNode state = mapper.createObjectNode();
+			for (String table : List.of("plugins", "marketplaces", "projects"))
+			{
+				if (previous.has(table))
+					state.set(table, previous.get(table));
+			}
+			JsonNode hookState = previous.path("hooks").path("state");
+			if (hookState.isObject())
+				state.putObject("hooks").set("state", hookState);
+			// The mapper writes dotted keys, which belong at the root before any table header.
+			if (!state.isEmpty())
+				copied.append(System.lineSeparator()).append(mapper.writeValueAsString(state));
 		}
 		List<Path> keptWrites = new ArrayList<>();
 		for (Path cache : caches.directories())
@@ -708,7 +754,6 @@ public final class CodexConnectionConfiguration
 			copied.append(variable.getKey()).append(" = \"").append(value).append('"').append(System.lineSeparator());
 		}
 		copied.append("TMPDIR = \"").append(toml(temporaryDirectory)).append('"').append(System.lineSeparator());
-		TomlMapper mapper = TomlMapper.builder().build();
 		ObjectNode features = mapper.createObjectNode();
 		if (platform.isWindows())
 		{
@@ -1197,20 +1242,15 @@ public final class CodexConnectionConfiguration
 	{
 		if (!Files.isRegularFile(source))
 			return;
-		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
+		JsonNode state = hookState(source);
 		StringBuilder approvals = new StringBuilder(256);
 		for (String key : CAT_HOOK_KEYS)
 		{
-			Pattern statePattern = Pattern.compile("(?ms)^\\[hooks\\.state\\.\\\"" + Pattern.quote(key) +
-				"\\\"]\\R(.*?)(?=^\\[|\\z)");
-			Matcher state = statePattern.matcher(configuration);
-			if (!state.find())
-				continue;
-			Matcher hash = TRUSTED_HASH.matcher(state.group(1));
-			if (!hash.find())
+			String hash = state.path(key).path("trusted_hash").asString("");
+			if (!TRUSTED_HASH.matcher(hash).matches())
 				continue;
 			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(key).append("\"]").
-				append(System.lineSeparator()).append("trusted_hash = \"").append(hash.group(1)).append('"').
+				append(System.lineSeparator()).append("trusted_hash = \"").append(hash).append('"').
 				append(System.lineSeparator());
 		}
 		if (approvals.isEmpty())
@@ -1243,8 +1283,9 @@ public final class CodexConnectionConfiguration
 		StringBuilder approvals = new StringBuilder(256);
 		for (Entry<String, String> approval : pluginHookApprovals(source, plugin).entrySet())
 		{
-			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(plugin).append('@').
-				append(plugin).append(':').append(approval.getKey()).append("\"]").append(System.lineSeparator()).
+			String key = TomlStrings.escape(plugin + '@' + plugin + ':' + approval.getKey());
+			approvals.append(System.lineSeparator()).append("[hooks.state.\"").append(key).
+				append("\"]").append(System.lineSeparator()).
 				append("trusted_hash = \"").append(approval.getValue()).append('"').append(System.lineSeparator());
 		}
 		if (approvals.isEmpty())
@@ -1274,16 +1315,29 @@ public final class CodexConnectionConfiguration
 		Map<String, String> approvals = new LinkedHashMap<>();
 		if (!Files.isRegularFile(source))
 			return approvals;
-		String configuration = BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration");
-		Matcher state = Pattern.compile("(?ms)^\\[hooks\\.state\\.\"" + Pattern.quote(plugin) +
-			"@[^:\"]+:([^\"]+)\"]\\R(.*?)(?=^\\[|\\z)").matcher(configuration);
-		while (state.find())
+		Pattern key = Pattern.compile(Pattern.quote(plugin) + "@[^:\"]+:([^\"]+)");
+		for (Entry<String, JsonNode> approval : hookState(source).properties())
 		{
-			Matcher hash = TRUSTED_HASH.matcher(state.group(2));
-			if (hash.find())
-				approvals.put(state.group(1), hash.group(1));
+			Matcher match = key.matcher(approval.getKey());
+			String hash = approval.getValue().path("trusted_hash").asString("");
+			if (match.matches() && TRUSTED_HASH.matcher(hash).matches())
+				approvals.put(match.group(1), hash);
 		}
 		return approvals;
+	}
+
+	/**
+	 * Returns the hook state in an existing Codex configuration.
+	 *
+	 * @param source the configuration file
+	 * @return the hook state, or a missing node
+	 * @throws IOException if the configuration cannot be read or parsed
+	 */
+	private static JsonNode hookState(Path source) throws IOException
+	{
+		return parse(source, BoundedInput.readUtf8(source, MAXIMUM_CONFIGURATION_BYTES, "Codex configuration"),
+			"hook state").
+			path("hooks").path("state");
 	}
 
 	/**
