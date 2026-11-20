@@ -4059,6 +4059,10 @@ requirement names.
   on November 19. The two preceding runs, `44671745564` (`af8fdf789`) and `44670999925` (`45bf883ed`), were also
   queued. A new dispatch would duplicate the queued jobs. The green hosted build, release and installed Codex checks
   remain pending.
+- The absent-home, uncached `clean verify` on `0e7e92e8c` stopped in `common/cli` after 3,829 tests. The newly
+  generated campaign fixture differed from the committed copy only in its format version. The committed copy now
+  matches the generated format 48 file byte for byte. Two OSHI integration tests also errored because their system
+  directory was absent in the sandbox. The build log is in this session's `temp/wi147-clean-build-VbPK96/`.
 - The current Release workflow adds the Windows bootstrap check and its Linux setup installs `jq` since the last
   successful release. The no-publication Release run must exercise these steps before the tag update. The isolated
   workflow under this session's `temp/release-validation-5v2aAt/source/` passes actionlint and ShellCheck. Hosted
