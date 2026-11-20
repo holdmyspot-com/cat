@@ -94,7 +94,8 @@ bats client/common/distribution/src/test/bats/bootstrap-common.bats \
 ```
 
 On Windows, run them from Git Bash with `codex-plugin-launchers-windows.bats` and `installer-launcher-windows.bats` in
-place of `codex-plugin-launchers.bats`, `jlink-launchers.bats` and `installer-launcher.bats`.
+place of `codex-plugin-launchers.bats`, `jlink-launchers.bats` and `installer-launcher.bats`, and add
+`bootstrap-windows.bats`, which tests the PowerShell entry script `cat.ps1`.
 
 Java tests call production classes directly. Bats is reserved for shell, entry-script, and generated-launcher boundaries
 that Java tests cannot exercise directly.
