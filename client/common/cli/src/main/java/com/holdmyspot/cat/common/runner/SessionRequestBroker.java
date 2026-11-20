@@ -312,7 +312,12 @@ public final class SessionRequestBroker implements Closeable
 				throw reported;
 			}
 			Path requests = site.requests();
-			for (String id : RequestArchive.pendingIds(requests, ""))
+			List<String> pending = RequestArchive.pendingIds(requests, "");
+			// The requests are listed before the ended launchers are stopped, so that a launch that resumes or discards
+			// the session of a launcher that ended before the launch was made finds that session being stopped, and
+			// waits for it instead of being refused as if another launch held it
+			serveStreams(requests);
+			for (String id : pending)
 			{
 				Path file = requests.resolve(id + RequestArchive.EXTENSION);
 				Path directory = site.responses().resolve(id);
@@ -330,6 +335,7 @@ public final class SessionRequestBroker implements Closeable
 						site.taken(file);
 				}
 			}
+			// The requests that this scan took receive their first records without waiting for the next scan
 			serveStreams(requests);
 		}
 	}

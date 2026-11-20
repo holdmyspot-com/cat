@@ -51,6 +51,7 @@ import com.holdmyspot.cat.common.runner.fakes.test.ScriptedHarness.Turn;
 import com.holdmyspot.cat.common.runner.fakes.test.ScriptedProcess;
 import com.holdmyspot.cat.common.runner.fakes.test.TestHarnessRunnerScope;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.ArrayList;
@@ -1213,6 +1214,93 @@ public final class SessionRequestBrokerTest
 					Thread.yield();
 				requireThat(Files.exists(manifest), "runKept").isFalse();
 			}
+		}
+	}
+
+	/**
+	 * Verifies that a launch that resumes an interrupted session continues it when the scan that takes the resume is
+	 * also the first to see that the interrupted launch's launcher ended. The broker stops the interrupted launch before
+	 * it starts the resume, so the resume waits for the slot instead of being refused as if another launch held it.
+	 *
+	 * @throws IOException if fixture, broker or launch I/O fails
+	 */
+	@Test(timeOut = 30_000)
+	public void resumeTakenWithItsLauncherEndContinues() throws IOException
+	{
+		FileLocks fileLocks = new FileLocks();
+		try (Fixture fixture = new Fixture("--session-requests", "1"))
+		{
+			Path held = Files.writeString(fixture.root.resolve("held.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"hold\"}\n{\"type\":\"complete\"}\n");
+			Path again = Files.writeString(fixture.root.resolve("again.jsonl"),
+				"{\"type\":\"turn\",\"prompt\":\"again\"}\n{\"type\":\"complete\"}\n");
+			AtomicReference<FakeHarnessCli> child = new AtomicReference<>();
+			AtomicInteger checks = new AtomicInteger();
+			// The requests that the broker had taken when it stopped the interrupted launch's session
+			List<String> takenBeforeStop = new CopyOnWriteArrayList<>();
+			try (SessionRequestBroker broker = new SessionRequestBroker(fixture.run, fixture.manager, fixture.options,
+				(_, options, directory) ->
+				{
+					FakeHarnessCli process = resumableRunner(fixture, fileLocks, options, child);
+					if (!options.contains(RunnerArguments.RESUME_SLOT_OPTION))
+						process.whenExited(() -> takenBeforeStop.addAll(otherRequests(fixture, directory)));
+					child.set(process);
+					return process;
+				}))
+			{
+				String[] first = {"--project", fixture.project.toString(), "--model", "haiku", "--effort", "low",
+					"--input", held.toString()};
+				expectThrows(IOException.class, () -> SessionRequestForwarder.forward("claude", first,
+					new StringReader(""), fixture.requests, () ->
+					{
+						if (checks.incrementAndGet() > 1_000_000)
+							throw new IOException("The requested session never received its records");
+						broker.scan();
+						FakeHarnessCli process = child.get();
+						if (process != null && process.requests().size() == 2)
+							throw new IOException("The launcher was stopped");
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(new StringWriter(), true)));
+
+				// No scan runs between the launcher's end and the resume's request, so one scan sees both
+				String[] resume = {RunnerArguments.RESUME_OPTION, RESUMED_SESSION, "--model", "haiku", "--effort",
+					"low", "--input", again.toString()};
+				StringWriter errors = new StringWriter();
+				int status = SessionRequestForwarder.forward("claude", resume, new StringReader(""), fixture.requests,
+					() ->
+					{
+						if (checks.incrementAndGet() > 2_000_000)
+							throw new IOException("The resumed session never ended");
+						broker.scan();
+						Thread.yield();
+					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+
+				requireThat(takenBeforeStop, "takenBeforeStop").isEmpty();
+				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+			}
+		}
+	}
+
+	/**
+	 * Returns the requests that a broker has taken, other than one.
+	 *
+	 * @param fixture   the requesting run
+	 * @param directory the response directory of the request to leave out
+	 * @return the names of the response directories of the other requests
+	 * @throws UncheckedIOException if the responses cannot be listed
+	 */
+	private static List<String> otherRequests(Fixture fixture, Path directory)
+	{
+		try (Stream<Path> answered = Files.list(fixture.responses))
+		{
+			return answered.filter(entry -> Files.isDirectory(entry, LinkOption.NOFOLLOW_LINKS)).
+				filter(entry -> !entry.getFileName().toString().startsWith(".")).
+				filter(entry -> !entry.equals(directory)).
+				map(entry -> entry.getFileName().toString()).toList();
+		}
+		catch (IOException e)
+		{
+			throw new UncheckedIOException(e);
 		}
 	}
 
