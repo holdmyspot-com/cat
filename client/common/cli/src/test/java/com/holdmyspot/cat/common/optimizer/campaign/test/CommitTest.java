@@ -245,16 +245,16 @@ public final class CommitTest
 
 		Sha256 edit = Builder.snapshot("edit");
 		campaign = TransitionSteps.submit(campaign, "safety", edit, List.of());
-		while (campaign.development().promptAuthor().runs().stream().anyMatch(run -> run.verdict() == null))
+		while (campaign.development().promptAuthor().replays().stream().anyMatch(replay -> replay.verdict() == null))
 		{
 			PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
+			PromotionReplay replay = promptAuthor.replays().stream().filter(element -> element.verdict() == null).
 				findFirst().orElseThrow();
 			Sha256 snapshot = edit;
-			if (run.role() == PromotionReplay.Role.WORKING_REFERENCE)
+			if (replay.role() == PromotionReplay.Role.WORKING_REFERENCE)
 				snapshot = frozen.snapshot();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, promptAuthor.number(), snapshot,
-				run.testCase(), Verdict.PASS);
+				replay.testCase(), Verdict.PASS);
 		}
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(edit));
 		requireThat(campaign.attempt(1).candidate(), "frozen").isEqualTo(frozen);

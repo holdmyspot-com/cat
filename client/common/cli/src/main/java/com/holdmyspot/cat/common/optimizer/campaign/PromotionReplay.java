@@ -40,21 +40,21 @@ public record PromotionReplay(Role role, DrawnTestCase testCase, TrialKey trial,
 		 * The attempt replays a regression test case again because its group's failures were neither absent nor
 		 * unlikely for the working candidate.
 		 */
-		REGRESSION_RERUN,
+		PAIRED_REGRESSION,
 		/**
-		 * The working candidate replays the test case of the attempt's regression rerun at the same position, so that
-		 * each rerun of the attempt has a paired rerun of the working candidate.
+		 * The working candidate replays the test case of the attempt's paired regression replay at the same position, so
+		 * that each paired regression replay of the attempt is paired with a replay of the working candidate.
 		 */
-		WORKING_RERUN;
+		PAIRED_WORKING;
 
 		/**
 		 * Indicates whether a replay of this role tests the working candidate rather than the attempt.
 		 *
-		 * @return {@code true} for {@link #WORKING_REFERENCE} and {@link #WORKING_RERUN}
+		 * @return {@code true} for {@link #WORKING_REFERENCE} and {@link #PAIRED_WORKING}
 		 */
 		public boolean measuresWorking()
 		{
-			return this == WORKING_REFERENCE || this == WORKING_RERUN;
+			return this == WORKING_REFERENCE || this == PAIRED_WORKING;
 		}
 	}
 

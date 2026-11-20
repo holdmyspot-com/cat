@@ -156,13 +156,14 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Version-43 to version-45 documents are upgraded on read: version 43 lacks the saved approach
- * rotation, so existing rounds keep their nine-approach rotation; version 44 lacks the paired-rerun roles of promotion
- * runs, which its runs never use; and versions 43 to 45 lack the throttle's peak window. An upgraded snapshot's peak
- * window is 1 while a rejection's backoffs are counted, and otherwise the campaign's ceiling, because its window cap
- * may hold a window that had just dropped. An upgraded trial session's peak window is its window cap, the level at
- * which that throttle stopped growth. Other unsupported versions are refused with a message that asks the user to
- * start a new campaign.
+ * round-trip exactly. Version-43 to version-47 documents are upgraded on read: version 43 lacks the saved approach
+ * rotation, so existing rounds keep their nine-approach rotation; version 44 lacks the roles of paired replays, which
+ * its promotion replays never use; versions 43 to 45 lack the throttle's peak window; and versions 43 to 47 name the
+ * promotion replays {@code runs} and {@code accepted_runs} and the roles of paired replays {@code regression_rerun}
+ * and {@code working_rerun}. An upgraded snapshot's peak window is 1 while a rejection's backoffs are counted, and
+ * otherwise the campaign's ceiling, because its window cap may hold a window that had just dropped. An upgraded trial
+ * session's peak window is its window cap, the level at which that throttle stopped growth. Other unsupported versions
+ * are refused with a message that asks the user to start a new campaign.
  * <p>
  * A document records the campaign's target, and every path inside the project where a trial session's or a prompt
  * author's evidence was retained, relative to the project root, so that the campaign keeps working after its project
@@ -196,7 +197,18 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 47;
+	private static final int FORMAT_VERSION = 48;
+	/**
+	 * The names that version-43 to version-47 documents gave the arrays of promotion replays, mapped to their current
+	 * names.
+	 */
+	private static final Map<String, String> EARLIER_REPLAY_FIELDS = Map.of("runs", "replays", "accepted_runs",
+		"accepted_replays");
+	/**
+	 * The names that version-43 to version-47 documents gave the roles of paired replays, mapped to their current names.
+	 */
+	private static final Map<String, String> EARLIER_PAIRED_ROLES = Map.of("regression_rerun", "paired_regression",
+		"working_rerun", "paired_working");
 	/**
 	 * The names of measurement conditions that CAT no longer records. A document written while CAT recorded one still
 	 * loads: reading drops the condition.
@@ -604,7 +616,7 @@ final class CampaignJson
 			attempt.put("number", result.number());
 			attempt.put("cell", result.cell());
 			attempt.put("snapshot", result.snapshot().hex());
-			attempt.set("runs", writePromotionReplays(result.runs()));
+			attempt.set("replays", writePromotionReplays(result.replays()));
 			attempt.put("changed_lines", result.changedLines());
 			attempt.put("accepted", result.accepted());
 			attempt.put("winner", result.winner());
@@ -782,7 +794,7 @@ final class CampaignJson
 		{
 			results.add(new AttemptResult(integer(attempt, "round"), sha256(attempt, "working"),
 				integer(attempt, "number"), text(attempt, "cell"), sha256(attempt, "snapshot"),
-				readPromotionReplays(attempt, "runs"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
+				readPromotionReplays(attempt, "replays"), integer(attempt, "changed_lines"), bool(attempt, "accepted"),
 				bool(attempt, "winner")));
 		}
 		Map<Integer, ApproachAssignment> approaches = new TreeMap<>();
@@ -1909,26 +1921,26 @@ final class CampaignJson
 		node.put("cell", attempt.cell());
 		node.put("snapshot", attempt.snapshot().hex());
 		node.set("minimality", writeMinimality(attempt.minimality()));
-		node.set("runs", writePromotionReplays(attempt.runs()));
+		node.set("replays", writePromotionReplays(attempt.replays()));
 		return node;
 	}
 
 	/**
 	 * Writes the targeted evidence used by promotion, minimality and retained reports.
 	 *
-	 * @param runs the promotion replays
+	 * @param replays the promotion replays
 	 * @return their documents
 	 */
-	private ArrayNode writePromotionReplays(List<PromotionReplay> runs)
+	private ArrayNode writePromotionReplays(List<PromotionReplay> replays)
 	{
 		ArrayNode array = json.createArrayNode();
-		for (PromotionReplay run : runs)
+		for (PromotionReplay replay : replays)
 		{
 			ObjectNode node = array.addObject();
-			node.put("role", EnumNames.lowerCase(run.role()));
-			node.set("test_case", writeTestCase(run.testCase()));
-			putKey(node, "trial", run.trial());
-			putConstant(node, "verdict", run.verdict());
+			node.put("role", EnumNames.lowerCase(replay.role()));
+			node.set("test_case", writeTestCase(replay.testCase()));
+			putKey(node, "trial", replay.trial());
+			putConstant(node, "verdict", replay.verdict());
 		}
 		return array;
 	}
@@ -1942,7 +1954,7 @@ final class CampaignJson
 	private static PromptAuthorAttempt readPromptAuthorAttempt(JsonNode node)
 	{
 		return new PromptAuthorAttempt(integer(node, "number"), text(node, "cell"), sha256(node, "snapshot"),
-			readPromotionReplays(node, "runs"), readMinimality(field(node, "minimality")));
+			readPromotionReplays(node, "replays"), readMinimality(field(node, "minimality")));
 	}
 
 	/**
@@ -1950,18 +1962,18 @@ final class CampaignJson
 	 *
 	 * @param node the parent document
 	 * @param name the array field
-	 * @return the runs in plan order
+	 * @return the replays in plan order
 	 */
 	private static List<PromotionReplay> readPromotionReplays(JsonNode node, String name)
 	{
-		List<PromotionReplay> runs = new ArrayList<>();
-		for (JsonNode run : elements(node, name))
+		List<PromotionReplay> replays = new ArrayList<>();
+		for (JsonNode replay : elements(node, name))
 		{
-			runs.add(new PromotionReplay(constant(run, "role", PromotionReplay.Role.class),
-				readTestCase(field(run, "test_case")), nullableKey(run, "trial"),
-				nullableConstant(run, "verdict", Verdict.class)));
+			replays.add(new PromotionReplay(constant(replay, "role", PromotionReplay.Role.class),
+				readTestCase(field(replay, "test_case")), nullableKey(replay, "trial"),
+				nullableConstant(replay, "verdict", Verdict.class)));
 		}
-		return runs;
+		return replays;
 	}
 
 	/**
@@ -1996,14 +2008,14 @@ final class CampaignJson
 			putContent(element, "before", file.before());
 			putContent(element, "after", file.after());
 		}
-		ArrayNode runs = node.putArray("accepted_runs");
-		for (PromotionReplay run : state.acceptedRuns())
+		ArrayNode replays = node.putArray("accepted_replays");
+		for (PromotionReplay replay : state.acceptedReplays())
 		{
-			ObjectNode element = runs.addObject();
-			element.put("role", EnumNames.lowerCase(run.role()));
-			element.set("test_case", writeTestCase(run.testCase()));
-			putKey(element, "trial", run.trial());
-			putConstant(element, "verdict", run.verdict());
+			ObjectNode element = replays.addObject();
+			element.put("role", EnumNames.lowerCase(replay.role()));
+			element.set("test_case", writeTestCase(replay.testCase()));
+			putKey(element, "trial", replay.trial());
+			putConstant(element, "verdict", replay.verdict());
 		}
 		return node;
 	}
@@ -2043,18 +2055,18 @@ final class CampaignJson
 			files.add(new FileDelta(Path.of(text(element, "path")), before, after,
 				PosixFilePermissions.fromString(text(element, "permissions"))));
 		}
-		List<PromotionReplay> runs = new ArrayList<>();
-		for (JsonNode run : elements(node, "accepted_runs"))
+		List<PromotionReplay> replays = new ArrayList<>();
+		for (JsonNode replay : elements(node, "accepted_replays"))
 		{
-			runs.add(new PromotionReplay(constant(run, "role", PromotionReplay.Role.class),
-				readTestCase(field(run, "test_case")), nullableKey(run, "trial"),
-				nullableConstant(run, "verdict", Verdict.class)));
+			replays.add(new PromotionReplay(constant(replay, "role", PromotionReplay.Role.class),
+				readTestCase(field(replay, "test_case")), nullableKey(replay, "trial"),
+				nullableConstant(replay, "verdict", Verdict.class)));
 		}
 		List<String> testing = null;
 		if (nullable(node, "testing") != null)
 			testing = readStrings(node, "testing");
 		return new Minimality(files, readStrings(node, "retained"), integer(node, "groups"), integer(node, "group"),
-			testing, sha256(node, "accepted"), runs);
+			testing, sha256(node, "accepted"), replays);
 	}
 
 	/**
@@ -3210,23 +3222,75 @@ final class CampaignJson
 	{
 		requireObject(root, "$");
 		int version = integer(root, VERSION);
-		if (version == 43)
-			upgradeVersion43((ObjectNode) root);
-		// Version 44 differs from version 45 only by lacking the paired-rerun roles, so its runs read unchanged
-		boolean lacksPeakWindow = version >= 43 && version <= 45;
-		if (lacksPeakWindow)
-		{
-			upgradeVersion45((ObjectNode) root);
-			return;
-		}
-		// Version 46 differs only by recording absolute paths inside the project, which reading moves below the
-		// project root
-		if (version != FORMAT_VERSION && version != 46)
+		if (version < 43 || version > FORMAT_VERSION)
 		{
 			throw new IllegalArgumentException(VERSION + " is " + version + ": this is a version " + version +
 				" campaign file, but this version of CAT reads only version " + FORMAT_VERSION + ". Start a new " +
 				"campaign.");
 		}
+		if (version == FORMAT_VERSION)
+			return;
+		ObjectNode document = (ObjectNode) root;
+		if (version == 43)
+			upgradeVersion43(document);
+		// Version 44 differs from version 45 only by lacking the paired roles, so its replays read unchanged
+		if (version <= 45)
+			upgradeVersion45(document);
+		// Version 46 differs from version 47 only by recording absolute paths inside the project, which reading moves
+		// below the project root
+		renamePromotionReplays(document);
+		document.put(VERSION, FORMAT_VERSION);
+	}
+
+	/**
+	 * Renames the promotion replays of a version-43 to version-47 document to the current names, wherever they are: an
+	 * array of replays, whose elements each have a {@code role} and a {@code test_case}, moves from {@code runs} to
+	 * {@code replays} and from {@code accepted_runs} to {@code accepted_replays}, and the roles {@code regression_rerun}
+	 * and {@code working_rerun} become {@code paired_regression} and {@code paired_working}.
+	 *
+	 * @param node a node of the document, mutated to the current names
+	 */
+	private static void renamePromotionReplays(JsonNode node)
+	{
+		if (node instanceof ArrayNode array)
+		{
+			for (JsonNode element : array)
+				renamePromotionReplays(element);
+			return;
+		}
+		if (!(node instanceof ObjectNode object))
+			return;
+		for (Entry<String, String> field : EARLIER_REPLAY_FIELDS.entrySet())
+		{
+			if (!(object.get(field.getKey()) instanceof ArrayNode replays) || !isPromotionReplays(replays))
+				continue;
+			object.remove(field.getKey());
+			object.set(field.getValue(), replays);
+			for (JsonNode replay : replays)
+			{
+				String role = EARLIER_PAIRED_ROLES.get(replay.get("role").asString());
+				if (role != null)
+					((ObjectNode) replay).put("role", role);
+			}
+		}
+		for (JsonNode child : object)
+			renamePromotionReplays(child);
+	}
+
+	/**
+	 * Indicates whether an array holds promotion replays.
+	 *
+	 * @param array the array
+	 * @return {@code true} if every element is an object with a {@code role} string and a {@code test_case}
+	 */
+	private static boolean isPromotionReplays(ArrayNode array)
+	{
+		for (JsonNode element : array)
+		{
+			if (!(element instanceof ObjectNode replay) || !replay.path("role").isString() || !replay.has("test_case"))
+				return false;
+		}
+		return true;
 	}
 
 	/**
@@ -3252,11 +3316,10 @@ final class CampaignJson
 	 * in progress still holds admissions until it ends. A trial session's peak window becomes its window cap, the
 	 * level at which that historical throttle stopped growth.
 	 *
-	 * @param root the version-43 to version-45 document, mutated to the current format
+	 * @param root the version-43 to version-45 document, mutated to the version-46 format
 	 */
 	private static void upgradeVersion45(ObjectNode root)
 	{
-		root.put(VERSION, FORMAT_VERSION);
 		if (root.get("throttle") instanceof ObjectNode throttle)
 		{
 			int peak = Campaign.DEFAULT_CEILING;

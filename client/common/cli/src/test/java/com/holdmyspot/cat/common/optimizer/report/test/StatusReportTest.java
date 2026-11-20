@@ -626,12 +626,12 @@ public final class StatusReportTest
 		requireThat(attempts.size(), "attempts").isEqualTo(2);
 		requireThat(attempts.get(0).get("round").asInt(), "round").isEqualTo(1);
 		requireThat(attempts.get(0).get("number").asInt(), "attemptNumber").isEqualTo(1);
-		requireThat(attempts.get(0).get("passing_runs").asInt(), "passingRuns").isEqualTo(2);
-		requireThat(attempts.get(0).get("total_runs").asInt(), "totalRuns").isEqualTo(2);
+		requireThat(attempts.get(0).get("passing_replays").asInt(), "passingReplays").isEqualTo(2);
+		requireThat(attempts.get(0).get("total_replays").asInt(), "totalReplays").isEqualTo(2);
 		requireThat(attempts.get(0).get("accepted").asBoolean(), "accepted").isTrue();
 		requireThat(attempts.get(0).get("winner").asBoolean(), "winner").isTrue();
-		requireThat(attempts.get(1).get("passing_runs").asInt(), "passingRuns").isEqualTo(1);
-		requireThat(attempts.get(1).get("total_runs").asInt(), "totalRuns").isEqualTo(2);
+		requireThat(attempts.get(1).get("passing_replays").asInt(), "passingReplays").isEqualTo(1);
+		requireThat(attempts.get(1).get("total_replays").asInt(), "totalReplays").isEqualTo(2);
 		requireThat(attempts.get(1).get("accepted").asBoolean(), "accepted").isFalse();
 		requireThat(attempts.get(1).get("winner").asBoolean(), "winner").isFalse();
 		requireThat(report.summary(ZoneOffset.UTC), "summary").contains("Attempt 1").contains("2/2").
@@ -675,8 +675,8 @@ public final class StatusReportTest
 		requireThat(attempts, "attempts").isNotNull();
 		requireThat(attempts.size(), "attempts").isEqualTo(1);
 		requireThat(attempts.get(0).get("number").asInt(), "attemptNumber").isEqualTo(1);
-		requireThat(attempts.get(0).get("passing_runs").asInt(), "passingRuns").isEqualTo(0);
-		requireThat(attempts.get(0).get("total_runs").asInt(), "totalRuns").isEqualTo(0);
+		requireThat(attempts.get(0).get("passing_replays").asInt(), "passingReplays").isEqualTo(0);
+		requireThat(attempts.get(0).get("total_replays").asInt(), "totalReplays").isEqualTo(0);
 		requireThat(attempts.get(0).get("accepted").isNull(), "acceptancePending").isTrue();
 		requireThat(attempts.get(0).get("snapshot").isNull(), "promptAuthorPending").isTrue();
 		requireThat(attempts.get(0).get("winner").asBoolean(), "winner").isFalse();

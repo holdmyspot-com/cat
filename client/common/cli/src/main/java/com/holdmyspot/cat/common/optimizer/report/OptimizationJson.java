@@ -96,8 +96,8 @@ final class OptimizationJson
 				attempt.putNull("snapshot");
 			else
 				attempt.put("snapshot", progress.snapshot().hex());
-			attempt.put("passing_runs", progress.passingRuns());
-			attempt.put("total_runs", progress.totalRuns());
+			attempt.put("passing_replays", progress.passingReplays());
+			attempt.put("total_replays", progress.totalReplays());
 			attempt.put("accepted", progress.accepted());
 			attempt.put("rejected_early", progress.rejectedEarly());
 			attempt.put("winner", progress.winner());

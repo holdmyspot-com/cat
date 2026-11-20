@@ -925,6 +925,101 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	}
 
 	/**
+	 * Verifies that a prompt author attempt stores its promotion replays as {@code replays}, the minimality pass's last
+	 * accepted ones as {@code accepted_replays}, and the roles of paired replays as {@code paired_regression} and
+	 * {@code paired_working}.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void storesPromotionReplaysUnderReplayNames() throws IOException
+	{
+		// Requirement: R-D3
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-replays-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(pairedReplays());
+
+			JsonNode snapshot = JSON.readTree(Files.readString(heldOutDirectory(campaigns).resolve("campaign.json"),
+				UTF_8));
+			JsonNode promptAuthor = snapshot.get("development").get("prompt_author");
+			requireThat(promptAuthor.has("runs"), "hasRuns").isFalse();
+			List<String> roles = new ArrayList<>();
+			for (JsonNode replay : promptAuthor.get("replays"))
+				roles.add(replay.get("role").asString());
+			requireThat(roles, "roles").isEqualTo(List.of("triggering", "paired_regression", "paired_working"));
+			JsonNode minimality = promptAuthor.get("minimality");
+			requireThat(minimality.has("accepted_runs"), "hasAcceptedRuns").isFalse();
+			requireThat(minimality.get("accepted_replays").size(), "acceptedReplays").isEqualTo(1);
+		}
+	}
+
+	/**
+	 * Verifies that a version 47 campaign, which stores promotion replays as {@code runs} and {@code accepted_runs} and
+	 * the roles of paired replays as {@code regression_rerun} and {@code working_rerun}, loads with the same replays.
+	 *
+	 * @throws IOException if the store fails
+	 */
+	@Test
+	public void upgradesVersion47PromotionReplays() throws IOException
+	{
+		// Requirement: R-D3
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-campaign-version-47-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign campaign = pairedReplays();
+			store.replaceSnapshot(campaign);
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			root.put("format_version", 47);
+			ObjectNode promptAuthor = (ObjectNode) root.get("development").get("prompt_author");
+			ArrayNode replays = (ArrayNode) promptAuthor.remove("replays");
+			for (JsonNode replay : replays)
+			{
+				ObjectNode element = (ObjectNode) replay;
+				String role = element.get("role").asString();
+				if (role.equals("paired_regression"))
+					element.put("role", "regression_rerun");
+				else if (role.equals("paired_working"))
+					element.put("role", "working_rerun");
+			}
+			promptAuthor.set("runs", replays);
+			ObjectNode minimality = (ObjectNode) promptAuthor.get("minimality");
+			minimality.set("accepted_runs", minimality.remove("accepted_replays"));
+			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
+
+			Campaign loaded = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID).orElseThrow();
+			requireThat(loaded.development().promptAuthor(), "promptAuthor").
+				isEqualTo(campaign.development().promptAuthor());
+		}
+	}
+
+	/**
+	 * Returns a campaign whose prompt author attempt has a triggering replay and a pair of paired replays, and whose
+	 * minimality pass accepted the triggering replay.
+	 *
+	 * @return the campaign
+	 */
+	private static Campaign pairedReplays()
+	{
+		FileDelta file = new FileDelta(Path.of("CLAUDE.md"), new FileContent("first\n".getBytes(UTF_8)),
+			new FileContent("needed\n".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"));
+		TrialKey key = new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("prompt_author"), "safety", 1);
+		PromotionReplay triggering = new PromotionReplay(PromotionReplay.Role.TRIGGERING,
+			Builder.targeted("safety", "cache"), key, Verdict.PASS);
+		Minimality search = Minimality.start(List.of(file), key.snapshot()).advance(key.snapshot(), List.of(triggering),
+			Promotion.Decision.PROMOTE);
+		return new Builder().header(header(ID)).confirmed().working(1).round(new Round(Map.of("safety", 0))).
+			promptAuthor(new PromptAuthorAttempt(1, "safety", Builder.snapshot("reduction"), List.of(triggering,
+				new PromotionReplay(PromotionReplay.Role.PAIRED_REGRESSION, Builder.targeted("safety", "logs"), null,
+					null),
+				new PromotionReplay(PromotionReplay.Role.PAIRED_WORKING, Builder.targeted("safety", "logs"), null,
+					null)), search)).build();
+	}
+
+	/**
 	 * Verifies that pending prompt author reservations, received contenders and zero-run rejected evidence survive
 	 * reload.
 	 *
@@ -1278,10 +1373,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(47);
+					"recordVersion").isEqualTo(48);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(47);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(48);
 		}
 	}
 
@@ -1350,7 +1445,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign loaded = legacyStore.load(ID).orElseThrow();
 			legacyStore.replaceSnapshot(loaded);
 			JsonNode rewritten = JSON.readTree(Files.readString(copiedSnapshot, UTF_8));
-			requireThat(rewritten.get("format_version").asInt(), "rewrittenVersion").isEqualTo(47);
+			requireThat(rewritten.get("format_version").asInt(), "rewrittenVersion").isEqualTo(48);
 			requireThat(rewritten.get("header").get("root").asString(), "rewrittenRoot").isEqualTo(copy.toString());
 			requireThat(rewritten.get("header").get("target").asString(), "rewrittenTarget").isEqualTo("AGENTS.md");
 			requireThat(contents(original), "original").isEqualTo(before);
@@ -2272,7 +2367,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 48);
+			root.put("format_version", 49);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);

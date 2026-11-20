@@ -29,7 +29,7 @@ final class MinimalityAdvancement
 
 	/**
 	 * Advances a completed promotion decision to its next reduction or final minimal candidate. Promotion requires
-	 * reductions to preserve every triggering fix from the last accepted runs.
+	 * reductions to preserve every triggering fix from the last accepted replays.
 	 *
 	 * @param context the execution ports
 	 * @param campaign the state after completed outcomes are adopted
@@ -48,7 +48,7 @@ final class MinimalityAdvancement
 		Promotion.Decision decision = Promotion.decide(promptAuthor, campaign);
 		if (decision == Promotion.Decision.PENDING)
 			return campaign;
-		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.runs(), decision);
+		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.replays(), decision);
 		Sha256 snapshot = next.accepted();
 		if (next.testing() != null)
 		{

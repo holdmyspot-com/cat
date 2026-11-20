@@ -250,7 +250,7 @@ public final class ConcurrencyPolicy
 	 *   comparison is below its reference, out of reach or at its cap.</li>
 	 *   <li>Reproduction: the further matched failures before the round reproduces its group.</li>
 	 *   <li>Promotion: the triggering test cases that the attempt can still fix, less one; none for a minimality
-	 *   reduction; and no more than the failing regression runs that keep each prompt test's failures likely for the
+	 *   reduction; and no more than the failing regression replays that keep each prompt test's failures likely for the
 	 *   working candidate.</li>
 	 * </ul>
 	 *

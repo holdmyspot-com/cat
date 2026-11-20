@@ -83,7 +83,7 @@ public final class SchedulerTest
 	{
 		Sha256 snapshot = Builder.snapshot("extended");
 		Campaign campaign = TransitionSteps.submit(PromotionTest.streakRound(1), "safety", snapshot, List.of());
-		DrawnTestCase testCase = campaign.development().promptAuthor().runs().getFirst().testCase();
+		DrawnTestCase testCase = campaign.development().promptAuthor().replays().getFirst().testCase();
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, testCase, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, testCase, Verdict.PASS);
 		List<Admission> plan = Scheduler.plan(campaign, NOW, 1);
@@ -414,7 +414,7 @@ public final class SchedulerTest
 
 	/**
 	 * Verifies that the promotion replays of a prompt author attempt are admitted, each with its snapshot, and that its
-	 * regression runs follow once a triggering test case has passed twice. With one triggering test case, its first
+	 * regression replays follow once a triggering test case has passed twice. With one triggering test case, its first
 	 * failing run rejects the attempt, so the runs start one at a time, and the window doubles after a full window of
 	 * passes.
 	 */

@@ -173,8 +173,8 @@ public final class Scheduler
 	/**
 	 * Plans the diagnostic rerun that is due and the unassigned promotion replays. A diagnostic rerun runs alone: the
 	 * next one is due only after the last one's outcome. Each prompt author attempt under validation runs at most its
-	 * concurrency window of runs at once; a decided attempt still runs the working candidate's reference runs that an
-	 * undecided contender shares.
+	 * concurrency window of replays at once; a decided attempt still runs the working candidate's reference replays that
+	 * an undecided contender shares.
 	 *
 	 * @param campaign the campaign
 	 * @param plan the admissions planned so far
@@ -202,7 +202,7 @@ public final class Scheduler
 				else
 				{
 					planPromotion(attempt, working, plan, allocations, Integer.MAX_VALUE,
-						run -> isSharedReference(run, pending));
+						replay -> isSharedReference(replay, pending));
 				}
 			}
 			return;
@@ -212,23 +212,23 @@ public final class Scheduler
 	}
 
 	/**
-	 * Indicates whether a decided contender's run is a working reference that an undecided contender still needs.
+	 * Indicates whether a decided contender's replay is a working reference that an undecided contender still needs.
 	 *
-	 * @param run the decided contender's run
+	 * @param replay the decided contender's replay
 	 * @param pending the undecided contenders
-	 * @return {@code true} if the run measures the working candidate on a test case of another contender's regression
-	 *   run
+	 * @return {@code true} if the replay measures the working candidate on a test case of another contender's regression
+	 *   replay
 	 */
-	private static boolean isSharedReference(PromotionReplay run, List<PromptAuthorAttempt> pending)
+	private static boolean isSharedReference(PromotionReplay replay, List<PromptAuthorAttempt> pending)
 	{
-		if (run.role() != PromotionReplay.Role.WORKING_REFERENCE)
+		if (replay.role() != PromotionReplay.Role.WORKING_REFERENCE)
 			return false;
 		for (PromptAuthorAttempt attempt : pending)
 		{
-			for (PromotionReplay other : attempt.runs())
+			for (PromotionReplay other : attempt.replays())
 			{
 				if (other.role() == PromotionReplay.Role.REGRESSION &&
-					Promotion.isSameTestCase(other.testCase(), run.testCase()))
+					Promotion.isSameTestCase(other.testCase(), replay.testCase()))
 				{
 					return true;
 				}
@@ -238,48 +238,48 @@ public final class Scheduler
 	}
 
 	/**
-	 * Returns how many more runs of a prompt author attempt under validation may start: its concurrency window less
-	 * its runs that are assigned and have no outcome.
+	 * Returns how many more replays of a prompt author attempt under validation may start: its concurrency window less
+	 * its replays that are assigned and have no outcome.
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the attempt
-	 * @return the number of runs, possibly negative
+	 * @return the number of replays, possibly negative
 	 */
 	private static int promotionSlots(Campaign campaign, PromptAuthorAttempt attempt)
 	{
 		int inFlight = 0;
-		for (PromotionReplay run : attempt.runs())
+		for (PromotionReplay replay : attempt.replays())
 		{
-			if (run.trial() != null && run.verdict() == null)
+			if (replay.trial() != null && replay.verdict() == null)
 				++inFlight;
 		}
 		return ConcurrencyPolicy.limit(campaign, WorkUnit.promotion(attempt)) - inFlight;
 	}
 
 	/**
-	 * Plans an attempt's unassigned runs that a filter selects. A rejected attempt plans no run of its own, and plans
-	 * only the working candidate's reference runs that an undecided contender shares.
+	 * Plans an attempt's unassigned replays that a filter selects. A rejected attempt plans no replay of its own, and
+	 * plans only the working candidate's reference replays that an undecided contender shares.
 	 *
 	 * @param promptAuthor the attempt
 	 * @param working the working snapshot
 	 * @param plan the planned admissions
 	 * @param allocations the allocation decisions
-	 * @param slots the most runs to plan
-	 * @param due selects the runs to plan
+	 * @param slots the most replays to plan
+	 * @param due selects the replays to plan
 	 */
 	private static void planPromotion(PromptAuthorAttempt promptAuthor, Sha256 working, List<Admission> plan,
 		Allocations allocations, int slots, Predicate<PromotionReplay> due)
 	{
 		int planned = 0;
-		for (PromotionReplay run : promptAuthor.runs())
+		for (PromotionReplay replay : promptAuthor.replays())
 		{
 			if (planned >= slots)
 				return;
-			if (run.trial() != null || run.verdict() != null || !due.test(run))
+			if (replay.trial() != null || replay.verdict() != null || !due.test(replay))
 				continue;
 			++planned;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, promptAuthor.number(), Promotion.snapshot(promptAuthor,
-				run, working), run.testCase().cellId(), run.testCase(), allocations.of(AllocationRule.TARGETED)));
+				replay, working), replay.testCase().cellId(), replay.testCase(), allocations.of(AllocationRule.TARGETED)));
 		}
 	}
 

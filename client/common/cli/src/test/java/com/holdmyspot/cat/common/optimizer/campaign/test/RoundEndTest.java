@@ -114,7 +114,7 @@ public final class RoundEndTest
 		Campaign submitted = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
 		PromptAuthorAttempt promptAuthor = submitted.development().promptAuthor();
 		return TransitionSteps.adopt(submitted, Purpose.PROMOTION, promptAuthor.number(), ATTEMPT,
-			promptAuthor.runs().getFirst().testCase(), Verdict.FAIL);
+			promptAuthor.replays().getFirst().testCase(), Verdict.FAIL);
 	}
 
 	/**
@@ -347,13 +347,13 @@ public final class RoundEndTest
 			"blockingFailureOnSettledTestCase").isFalse();
 
 		campaign = TransitionSteps.submit(campaign, "safety", ATTEMPT, List.of());
-		while (campaign.development().promptAuthor().runs().stream().anyMatch(run -> run.verdict() == null))
+		while (campaign.development().promptAuthor().replays().stream().anyMatch(replay -> replay.verdict() == null))
 		{
 			PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
+			PromotionReplay replay = promptAuthor.replays().stream().filter(element -> element.verdict() == null).
 				findFirst().orElseThrow();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, promptAuthor.number(), ATTEMPT,
-				run.testCase(), failOnlyContent(run.testCase(), logs));
+				replay.testCase(), failOnlyContent(replay.testCase(), logs));
 		}
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
 
@@ -389,7 +389,7 @@ public final class RoundEndTest
 			List.of());
 		PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
 		campaign = TransitionSteps.assign(campaign, Purpose.PROMOTION, promptAuthor.number(), ATTEMPT,
-			promptAuthor.runs().getFirst().testCase());
+			promptAuthor.replays().getFirst().testCase());
 		PromptAuthorAttempt assigned = campaign.development().promptAuthor();
 		Round beforeInterruption = campaign.development().round();
 		TrialKey key = TransitionSteps.last(campaign);
@@ -416,13 +416,13 @@ public final class RoundEndTest
 		// Requirement: R-D6
 		Campaign campaign = TransitionSteps.submit(lastAttempt(FAILURE_LIMIT + 1), "safety", ATTEMPT,
 			List.of());
-		while (campaign.development().promptAuthor().runs().stream().anyMatch(run -> run.verdict() == null))
+		while (campaign.development().promptAuthor().replays().stream().anyMatch(replay -> replay.verdict() == null))
 		{
 			PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).
+			PromotionReplay replay = promptAuthor.replays().stream().filter(element -> element.verdict() == null).
 				findFirst().orElseThrow();
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, promptAuthor.number(), ATTEMPT,
-				run.testCase(), Verdict.PASS);
+				replay.testCase(), Verdict.PASS);
 		}
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(ATTEMPT));
 		requireThat(campaign.outcome(), "outcome").isNull();

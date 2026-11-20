@@ -625,9 +625,9 @@ public final class Transitions
 	 *
 	 * @param draft the state
 	 * @param admission the admission
-	 * @param key the run's key
+	 * @param key the replay's key
 	 * @return the test case
-	 * @throws IllegalArgumentException if no unassigned run matches the admission
+	 * @throws IllegalArgumentException if no unassigned replay matches the admission
 	 */
 	private static DrawnTestCase assignPromotion(Draft draft, Admission.Assign admission, TrialKey key)
 	{
@@ -635,18 +635,18 @@ public final class Transitions
 		if (promptAuthor == null)
 			throw new IllegalArgumentException("No prompt author attempt " + admission.series() +
 			" is under validation");
-		List<PromotionReplay> runs = new ArrayList<>(promptAuthor.runs());
-		for (int i = 0; i < runs.size(); ++i)
+		List<PromotionReplay> replays = new ArrayList<>(promptAuthor.replays());
+		for (int i = 0; i < replays.size(); ++i)
 		{
-			PromotionReplay run = runs.get(i);
-			Sha256 snapshot = Promotion.snapshot(promptAuthor, run, draft.working.snapshot());
-			if (run.trial() == null && snapshot.equals(admission.snapshot()) &&
-				Promotion.isSameTestCase(run.testCase(), admission.testCase()))
+			PromotionReplay replay = replays.get(i);
+			Sha256 snapshot = Promotion.snapshot(promptAuthor, replay, draft.working.snapshot());
+			if (replay.trial() == null && snapshot.equals(admission.snapshot()) &&
+				Promotion.isSameTestCase(replay.testCase(), admission.testCase()))
 			{
-				runs.set(i, new PromotionReplay(run.role(), run.testCase(), key, null));
+				replays.set(i, new PromotionReplay(replay.role(), replay.testCase(), key, null));
 				draft.updatePromptAuthor(new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
-					promptAuthor.snapshot(), runs, promptAuthor.minimality()));
-				return run.testCase();
+					promptAuthor.snapshot(), replays, promptAuthor.minimality()));
+				return replay.testCase();
 			}
 		}
 		throw new IllegalArgumentException("No unassigned promotion replay matches " + admission);
@@ -833,7 +833,7 @@ public final class Transitions
 	}
 
 	/**
-	 * Receives a validated attempt into its reserved slot and plans its triggering runs.
+	 * Receives a validated attempt into its reserved slot and plans its triggering replays.
 	 *
 	 * @param draft the state
 	 * @param submit the received attempt
@@ -851,7 +851,7 @@ public final class Transitions
 			throw new IllegalStateException("No pending prompt author attempt " + number + " addresses " + cell);
 		}
 		++draft.promptAuthorAttempts;
-		List<PromotionReplay> runs = List.of();
+		List<PromotionReplay> replays = List.of();
 		if (!submit.snapshot().equals(draft.working.snapshot()))
 		{
 			List<DrawnTestCase> failures = draft.developmentFailures.stream().map(Failure::testCase).toList();
@@ -862,9 +862,9 @@ public final class Transitions
 				cells = draft.developmentCells().stream().filter(other -> other.testId().equals(testId)).
 					map(Cell::id).toList();
 			}
-			runs = Promotion.plan(cells, failures, draft.generator());
+			replays = Promotion.plan(cells, failures, draft.generator());
 		}
-		PromptAuthorAttempt attempt = new PromptAuthorAttempt(number, cell, submit.snapshot(), runs,
+		PromptAuthorAttempt attempt = new PromptAuthorAttempt(number, cell, submit.snapshot(), replays,
 			Minimality.start(submit.changes(), submit.snapshot()));
 		draft.round = round.withAttempt(attempt);
 		if (round.weak())
@@ -884,7 +884,7 @@ public final class Transitions
 	}
 
 	/**
-	 * Advances the shared reduction policy after the current attempt's runs have settled.
+	 * Advances the shared reduction policy after the current attempt's replays have settled.
 	 *
 	 * @param draft the state
 	 * @param snapshot the saved overlay of the next reduction
@@ -895,7 +895,7 @@ public final class Transitions
 		PromptAuthorAttempt promptAuthor = draft.promptAuthor;
 		if (promptAuthor == null || draft.trials.stream().anyMatch(trial -> trial.key().purpose() == Purpose.PROMOTION))
 			throw new IllegalStateException("Minimality needs a completed attempt with no remaining promotion trials");
-		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.runs(),
+		Minimality next = promptAuthor.minimality().advance(promptAuthor.snapshot(), promptAuthor.replays(),
 			TrialAdoption.decision(draft, promptAuthor));
 		if (next.testing() == null)
 		{
@@ -906,11 +906,11 @@ public final class Transitions
 				draft.optimization.tokenUsage(), draft.optimization.approaches(), draft.optimization.commands(),
 				draft.optimization.earlyEnds());
 			TrialAdoption.promote(draft, new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
-				next.accepted(), next.acceptedRuns(), next));
+				next.accepted(), next.acceptedReplays(), next));
 			return;
 		}
-		List<PromotionReplay> runs = Promotion.resetRuns(promptAuthor.runs());
-		draft.promptAuthor = new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(), snapshot, runs, next);
+		List<PromotionReplay> replays = Promotion.resetReplays(promptAuthor.replays());
+		draft.promptAuthor = new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(), snapshot, replays, next);
 	}
 
 	/**

@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * A resumable delta-debugging search over one prompt author's original hunks. A passing reduction replaces the retained
  * set; failed reductions split into progressively smaller groups until each retained hunk has been tested alone.
- * Promotion judges each reduction against every triggering test case fixed by the last accepted runs.
+ * Promotion judges each reduction against every triggering test case fixed by the last accepted replays.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
@@ -23,11 +23,11 @@ import java.util.List;
  * @param group the group currently being removed, from zero
  * @param testing the remaining hunks being tested, or {@code null} before the first pass or when finished
  * @param accepted the last passing snapshot
- * @param acceptedRuns its promotion evidence, whose fixed triggering test cases reductions must preserve; empty before
- *   the original attempt passes
+ * @param acceptedReplays its promotion evidence, whose fixed triggering test cases reductions must preserve; empty
+ *   before the original attempt passes
  */
 public record Minimality(List<FileDelta> files, List<String> retained, int groups, int group,
-	List<String> testing, Sha256 accepted, List<PromotionReplay> acceptedRuns)
+	List<String> testing, Sha256 accepted, List<PromotionReplay> acceptedReplays)
 {
 	/**
 	 * Creates a search state.
@@ -38,7 +38,7 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 	 * @param group the group index
 	 * @param testing the hunks being tested, or {@code null}
 	 * @param accepted the last passing snapshot
-	 * @param acceptedRuns its promotion replays
+	 * @param acceptedReplays its promotion replays
 	 * @throws NullPointerException if a required argument or list element is null
 	 * @throws IllegalArgumentException if a partition size or index is invalid
 	 */
@@ -51,7 +51,7 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 		if (testing != null)
 			testing = List.copyOf(testing);
 		requireThat(accepted, "accepted").isNotNull();
-		acceptedRuns = List.copyOf(acceptedRuns);
+		acceptedReplays = List.copyOf(acceptedReplays);
 	}
 
 	/**
@@ -73,19 +73,19 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 	 * current reduction. This method schedules no trials and consumes no allowance.
 	 *
 	 * @param snapshot the tested snapshot
-	 * @param runs the completed promotion replays
+	 * @param replays the completed promotion replays
 	 * @param decision their decision
 	 * @return the next reduction or a finished state with {@code testing == null}
 	 * @throws IllegalArgumentException if the decision is pending or the original attempt failed
 	 */
-	public Minimality advance(Sha256 snapshot, List<PromotionReplay> runs, Promotion.Decision decision)
+	public Minimality advance(Sha256 snapshot, List<PromotionReplay> replays, Promotion.Decision decision)
 	{
 		requireThat(decision, "decision").isNotEqualTo(Promotion.Decision.PENDING);
-		if (testing == null && acceptedRuns.isEmpty() && decision != Promotion.Decision.PROMOTE)
+		if (testing == null && acceptedReplays.isEmpty() && decision != Promotion.Decision.PROMOTE)
 			throw new IllegalArgumentException("The original attempt must pass before reduction");
 		List<String> kept = retained;
 		Sha256 passing = accepted;
-		List<PromotionReplay> evidence = acceptedRuns;
+		List<PromotionReplay> evidence = acceptedReplays;
 		int partitions = groups;
 		int index = group;
 		if (decision == Promotion.Decision.PROMOTE)
@@ -93,7 +93,7 @@ public record Minimality(List<FileDelta> files, List<String> retained, int group
 			if (testing != null)
 				kept = testing;
 			passing = snapshot;
-			evidence = runs;
+			evidence = replays;
 			partitions = Math.max(2, partitions - 1);
 			index = 0;
 		}

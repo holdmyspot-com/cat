@@ -171,12 +171,12 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that the accepted contender with more passing runs wins: every contender fixes {@code cache}, and only
+	 * Verifies that the accepted contender with more passing replays wins: every contender fixes {@code cache}, and only
 	 * the second also fixes {@code tmp}.
 	 */
 	// Requirement: R-D3
 	@Test
-	public void mostPassingRunsWins()
+	public void mostPassingReplaysWins()
 	{
 		// Requirement: R-D12
 		Campaign campaign = contenders(List.of(1, 1, 1), List.of("cache", "tmp"));
@@ -186,12 +186,12 @@ public final class AttemptSelectionTest
 			Verdict tmp = Verdict.FAIL;
 			if (attempt == 2)
 				tmp = Verdict.PASS;
-			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 			{
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
 					Builder.targeted("safety", "cache"), Verdict.PASS);
 			}
-			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 			{
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
 					Builder.targeted("safety", "tmp"), tmp);
@@ -203,11 +203,11 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * A partial fix wins when it passes more of its own promotion replays, excluding reference runs.
+	 * A partial fix wins when it passes more of its own promotion replays, excluding reference replays.
 	 */
 	// Requirement: R-D3
 	@Test
-	public void partialFixWithMorePassingRunsWins()
+	public void partialFixWithMorePassingReplaysWins()
 	{
 		DrawnTestCase logs = Builder.targeted("safety", "logs");
 		DrawnTestCase cache = Builder.targeted("safety", "cache");
@@ -216,21 +216,21 @@ public final class AttemptSelectionTest
 		for (int number = 1; number <= 2; ++number)
 		{
 			Sha256 snapshot = Builder.snapshot("attempt" + number);
-			List<PromotionReplay> runs = new ArrayList<>();
+			List<PromotionReplay> replays = new ArrayList<>();
 			for (DrawnTestCase testCase : List.of(logs, cache, tmp))
 			{
 				Verdict verdict = Verdict.FAIL;
 				if (testCase.equals(logs) || number == 2 && testCase.equals(cache))
 					verdict = Verdict.PASS;
-				for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
-					runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
-						new TrialKey(Purpose.PROMOTION, number, snapshot, "safety", runs.size() + 1), verdict));
+				for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
+					replays.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
+						new TrialKey(Purpose.PROMOTION, number, snapshot, "safety", replays.size() + 1), verdict));
 			}
-			runs.add(new PromotionReplay(PromotionReplay.Role.REGRESSION, Builder.targeted("formatting", "formal"),
+			replays.add(new PromotionReplay(PromotionReplay.Role.REGRESSION, Builder.targeted("formatting", "formal"),
 				new TrialKey(Purpose.PROMOTION, number, snapshot, "formatting", 1), Verdict.PASS));
-			runs.add(new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, Builder.targeted("formatting", "formal"),
+			replays.add(new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, Builder.targeted("formatting", "formal"),
 				new TrialKey(Purpose.PROMOTION, number, Builder.snapshot("working"), "formatting", 2), Verdict.PASS));
-			attempts.add(new PromptAuthorAttempt(number, "safety", snapshot, runs, Minimality.start(List.of(),
+			attempts.add(new PromptAuthorAttempt(number, "safety", snapshot, replays, Minimality.start(List.of(),
 				snapshot)));
 		}
 		List<TestCaseOutcomes> workingOutcomes = List.of(new TestCaseOutcomes(logs, 0, 4),
@@ -241,19 +241,19 @@ public final class AttemptSelectionTest
 				"accepted").isEqualTo(Promotion.Decision.PROMOTE);
 		}
 		requireThat(AttemptSelection.select(attempts).orElseThrow().number(), "winner").isEqualTo(2);
-		requireThat(AttemptSelection.passingRuns(attempts.getLast().runs()), "ownPasses").isEqualTo(5L);
-		requireThat(AttemptSelection.plannedRuns(attempts.getLast().runs()), "ownRuns").isEqualTo(7L);
+		requireThat(AttemptSelection.passingReplays(attempts.getLast().replays()), "ownPasses").isEqualTo(5L);
+		requireThat(AttemptSelection.plannedReplays(attempts.getLast().replays()), "ownReplays").isEqualTo(7L);
 	}
 
 	/**
-	 * A weak round's winner is ranked without paired reruns: the first attempt fixes one triggering test case, fails its
-	 * regression run and passes 15 paired reruns, so it has more passing runs of its own only because of its reruns;
-	 * the second fixes both triggering test cases and passes its regression run, and wins. The status still counts
-	 * every run the first attempt ran.
+	 * A weak round's winner is ranked without paired replays: the first attempt fixes one triggering test case, fails its
+	 * regression replay and passes 15 paired replays, so it has more passing replays of its own only because of its
+	 * paired replays; the second fixes both triggering test cases and passes its regression replay, and wins. The status
+	 * still counts every replay the first attempt ran.
 	 */
 	// Requirement: R-D12
 	@Test
-	public void pairedRerunsDoNotRankWinner()
+	public void pairedReplaysDoNotRankWinner()
 	{
 		DrawnTestCase logs = Builder.targeted("safety", "logs");
 		DrawnTestCase cache = Builder.targeted("safety", "cache");
@@ -270,12 +270,12 @@ public final class AttemptSelectionTest
 		Sha256 working = campaign.development().working().snapshot();
 
 		Sha256 rerun = Builder.snapshot("attempt1");
-		for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+		for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, logs, Verdict.PASS);
-		for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+		for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, cache, Verdict.FAIL);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, formal, Verdict.FAIL);
-		for (int pair = 0; pair < Promotion.MAXIMUM_RERUNS; ++pair)
+		for (int pair = 0; pair < Promotion.MAXIMUM_PAIRED_REPLAYS; ++pair)
 		{
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, rerun, formal, Verdict.PASS);
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, working, formal, Verdict.PASS);
@@ -284,7 +284,7 @@ public final class AttemptSelectionTest
 		Sha256 firstPass = Builder.snapshot("attempt2");
 		for (DrawnTestCase testCase : List.of(logs, cache))
 		{
-			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 2, firstPass, testCase, Verdict.PASS);
 		}
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 2, firstPass, formal, Verdict.PASS);
@@ -297,7 +297,7 @@ public final class AttemptSelectionTest
 		List<AttemptResult> retained = campaign.optimization().attempts();
 		AttemptResult reran = retained.stream().filter(result -> result.number() == 1).findFirst().orElseThrow();
 		requireThat(reran.accepted(), "rerunAccepted").isTrue();
-		requireThat(reran.passingRuns(), "statusPassingRuns").isEqualTo(2L + Promotion.MAXIMUM_RERUNS);
+		requireThat(reran.passingReplays(), "statusPassingReplays").isEqualTo(2L + Promotion.MAXIMUM_PAIRED_REPLAYS);
 		requireThat(campaign.development().promptAuthor().number(), "winner").isEqualTo(2);
 	}
 
@@ -323,7 +323,7 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that the earlier attempt wins when passing runs and changed lines tie.
+	 * Verifies that the earlier attempt wins when passing replays and changed lines tie.
 	 */
 	// Requirement: R-D3
 	@Test
@@ -344,11 +344,11 @@ public final class AttemptSelectionTest
 	}
 
 	/**
-	 * Verifies that an attempt's passing runs exclude the working candidate's reference runs, which measure the working
-	 * candidate rather than the attempt.
+	 * Verifies that an attempt's passing replays exclude the working candidate's reference replays, which measure the
+	 * working candidate rather than the attempt.
 	 */
 	@Test
-	public void referenceRunsDoNotCountForAttempt()
+	public void referenceReplaysDoNotCountForAttempt()
 	{
 		// Requirement: R-D12
 		Sha256 snapshot = Builder.snapshot("attempt1");
@@ -358,7 +358,7 @@ public final class AttemptSelectionTest
 			new PromotionReplay(PromotionReplay.Role.WORKING_REFERENCE, Builder.targeted("safety", "logs"),
 				new TrialKey(Purpose.PROMOTION, 1, snapshot, "safety", 2), Verdict.PASS)),
 			Minimality.start(List.of(), snapshot));
-		requireThat(AttemptSelection.passingRuns(attempt.runs()), "passingRuns").isEqualTo(1L);
+		requireThat(AttemptSelection.passingReplays(attempt.replays()), "passingReplays").isEqualTo(1L);
 	}
 
 	/**
@@ -470,7 +470,7 @@ public final class AttemptSelectionTest
 		for (int attempt = 3; attempt >= 1; --attempt)
 		{
 			Sha256 snapshot = Builder.snapshot("attempt" + attempt);
-			for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+			for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 				campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,
 					Builder.targeted("safety", "cache"), Verdict.PASS);
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, attempt, snapshot,

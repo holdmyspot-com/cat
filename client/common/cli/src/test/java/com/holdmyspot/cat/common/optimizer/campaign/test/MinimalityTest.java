@@ -55,17 +55,17 @@ public final class MinimalityTest
 		Campaign campaign = TransitionSteps.submit(PromotionTest.streakRound(1), "safety", original, List.of(
 			new FileDelta(Path.of("CLAUDE.md"), new FileContent("before".getBytes(UTF_8)),
 				new FileContent("after".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
-		DrawnTestCase testCase = campaign.development().promptAuthor().runs().getFirst().testCase();
+		DrawnTestCase testCase = campaign.development().promptAuthor().replays().getFirst().testCase();
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, testCase, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, testCase, Verdict.PASS);
-		requireThat(campaign.development().promptAuthor().runs(), "originalExtension").size().isEqualTo(3);
+		requireThat(campaign.development().promptAuthor().replays(), "originalExtension").size().isEqualTo(3);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, testCase, Verdict.PASS);
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(reduced));
-		requireThat(campaign.development().promptAuthor().runs(), "reductionStartingRuns").size().isEqualTo(2);
+		requireThat(campaign.development().promptAuthor().replays(), "reductionStartingReplays").size().isEqualTo(2);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, testCase, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, testCase, Verdict.PASS);
 		PromptAuthorAttempt promptAuthor = campaign.development().promptAuthor();
-		requireThat(promptAuthor.runs(), "reductionExtension").size().isEqualTo(3);
+		requireThat(promptAuthor.replays(), "reductionExtension").size().isEqualTo(3);
 		requireThat(Promotion.decide(promptAuthor, campaign.development().working().snapshot(),
 			campaign.lineage().regressionSet(),
 			campaign.development().testCaseOutcomes()), "pendingReduction").
@@ -92,7 +92,7 @@ public final class MinimalityTest
 		campaign = TransitionSteps.submit(campaign, "safety", snapshot, List.of(
 			new FileDelta(Path.of("CLAUDE.md"), new FileContent("before".getBytes(UTF_8)),
 				new FileContent("after".getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"))));
-		for (int run = 0; run < Promotion.STARTING_TRIGGERING_RUNS; ++run)
+		for (int replay = 0; replay < Promotion.STARTING_TRIGGERING_REPLAYS; ++replay)
 			campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, snapshot, failure, Verdict.PASS);
 		requireThat(campaign.development().working().number(), "working").isEqualTo(1);
 		requireThat(campaign.development().promptAuthor(), "attempt").isNotNull();
@@ -109,12 +109,12 @@ public final class MinimalityTest
 		Sha256 snapshot = Builder.snapshot("attempt");
 		DrawnTestCase logs = Builder.targeted("safety", "logs");
 		DrawnTestCase cache = Builder.targeted("safety", "cache");
-		List<PromotionReplay> accepted = List.of(run(logs, Verdict.PASS), run(logs, Verdict.PASS),
-			run(cache, Verdict.PASS), run(cache, Verdict.PASS));
+		List<PromotionReplay> accepted = List.of(replay(logs, Verdict.PASS), replay(logs, Verdict.PASS),
+			replay(cache, Verdict.PASS), replay(cache, Verdict.PASS));
 		Minimality search = new Minimality(List.of(), List.of("CLAUDE.md#1", "CLAUDE.md#2"), 2, 0,
 			List.of("CLAUDE.md#2"), snapshot, accepted);
-		PromptAuthorAttempt lost = new PromptAuthorAttempt(1, "safety", snapshot, List.of(run(logs, Verdict.FAIL),
-			run(logs, Verdict.PASS), run(cache, Verdict.PASS), run(cache, Verdict.PASS)), search);
+		PromptAuthorAttempt lost = new PromptAuthorAttempt(1, "safety", snapshot, List.of(replay(logs, Verdict.FAIL),
+			replay(logs, Verdict.PASS), replay(cache, Verdict.PASS), replay(cache, Verdict.PASS)), search);
 		PromptAuthorAttempt kept = new PromptAuthorAttempt(1, "safety", snapshot, accepted, search);
 		requireThat(Promotion.decide(lost, Builder.snapshot("working"), List.of(), List.of(
 			new TestCaseOutcomes(logs, 0, 4), new TestCaseOutcomes(cache, 0, 4))), "lostFix").
@@ -129,9 +129,9 @@ public final class MinimalityTest
 	 *
 	 * @param testCase the triggering test case
 	 * @param verdict its outcome
-	 * @return the run
+	 * @return the replay
 	 */
-	private static PromotionReplay run(DrawnTestCase testCase, Verdict verdict)
+	private static PromotionReplay replay(DrawnTestCase testCase, Verdict verdict)
 	{
 		return new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase,
 			new TrialKey(Purpose.PROMOTION, 1, Builder.snapshot("attempt"), testCase.cellId(), 1), verdict);
@@ -152,8 +152,8 @@ public final class MinimalityTest
 			new RegularFile(file.before().hash(), file.permissions()))));
 		DrawnTestCase first = Builder.targeted("safety", "logs");
 		DrawnTestCase second = Builder.targeted("safety", "cache");
-		List<PromotionReplay> accepted = List.of(run(first, Verdict.PASS), run(first, Verdict.PASS),
-			run(second, Verdict.PASS), run(second, Verdict.PASS));
+		List<PromotionReplay> accepted = List.of(replay(first, Verdict.PASS), replay(first, Verdict.PASS),
+			replay(second, Verdict.PASS), replay(second, Verdict.PASS));
 		Minimality search = Minimality.start(List.of(file), Builder.snapshot("full")).
 			advance(Builder.snapshot("full"), accepted, Promotion.Decision.PROMOTE);
 		for (int iteration = 0; iteration < 20 && search.testing() != null; ++iteration)
@@ -169,10 +169,10 @@ public final class MinimalityTest
 			Verdict secondVerdict = Verdict.FAIL;
 			if (lines.contains("needed-c"))
 				secondVerdict = Verdict.PASS;
-			List<PromotionReplay> runs = List.of(run(first, firstVerdict), run(first, firstVerdict),
-				run(second, secondVerdict), run(second, secondVerdict));
-			PromptAuthorAttempt attempt = new PromptAuthorAttempt(1, "safety", reduced.identity(), runs, search);
-			search = search.advance(reduced.identity(), runs, Promotion.decide(attempt, working.identity(), List.of(),
+			List<PromotionReplay> replays = List.of(replay(first, firstVerdict), replay(first, firstVerdict),
+				replay(second, secondVerdict), replay(second, secondVerdict));
+			PromptAuthorAttempt attempt = new PromptAuthorAttempt(1, "safety", reduced.identity(), replays, search);
+			search = search.advance(reduced.identity(), replays, Promotion.decide(attempt, working.identity(), List.of(),
 				List.of(new TestCaseOutcomes(first, 0, 4), new TestCaseOutcomes(second, 0, 4))));
 		}
 		requireThat(search.testing(), "finished").isNull();
@@ -184,8 +184,8 @@ public final class MinimalityTest
 	}
 
 	/**
-	 * A reduction plans its regression runs at once and is judged by the same pooled rule as the attempt it reduces:
-	 * one regression failure that the working candidate's paired reruns show to be likely does not reject it.
+	 * A reduction plans its regression replays at once and is judged by the same pooled rule as the attempt it reduces:
+	 * one regression failure that the working candidate's paired replays show to be likely does not reject it.
 	 */
 	// Requirement: R-D11
 	@Test
@@ -202,8 +202,8 @@ public final class MinimalityTest
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, logs, Verdict.PASS);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, original, formal, Verdict.PASS);
 		campaign = Transitions.apply(campaign, new CampaignEvent.AdvanceMinimality(reduced));
-		requireThat(campaign.development().promptAuthor().runs().stream().map(PromotionReplay::role).toList(),
-			"reductionRuns").isEqualTo(List.of(PromotionReplay.Role.TRIGGERING, PromotionReplay.Role.TRIGGERING,
+		requireThat(campaign.development().promptAuthor().replays().stream().map(PromotionReplay::role).toList(),
+			"reductionReplays").isEqualTo(List.of(PromotionReplay.Role.TRIGGERING, PromotionReplay.Role.TRIGGERING,
 				PromotionReplay.Role.REGRESSION));
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, formal, Verdict.FAIL);
 		campaign = TransitionSteps.adopt(campaign, Purpose.PROMOTION, 1, reduced, logs, Verdict.PASS);

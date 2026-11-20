@@ -25,16 +25,16 @@ import java.util.TreeMap;
  * @param working the starting working snapshot
  * @param cell the representative addressed cell
  * @param snapshot the original prompt author snapshot, or {@code null} before the prompt author submits
- * @param passingRuns the attempt's own passing promotion replays, excluding the working candidate's runs
- * @param totalRuns the attempt's own planned promotion replays while it is pending, or its own runs that ran once it
- *   is decided, excluding the working candidate's runs
+ * @param passingReplays the attempt's own passing promotion replays, excluding the working candidate's replays
+ * @param totalReplays the attempt's own planned promotion replays while it is pending, or its own replays that ran once
+ *   it is decided, excluding the working candidate's replays
  * @param accepted indicates whether promotion accepted the attempt, or {@code null} while pending
- * @param rejectedEarly indicates whether the attempt was rejected before all of its planned runs ran
+ * @param rejectedEarly indicates whether the attempt was rejected before all of its planned replays ran
  * @param winner indicates whether this attempt was selected for minimality
  * @param assignment the editing approach and the origin of its round's order
  */
 public record AttemptProgress(int round, int number, Sha256 working, String cell, Sha256 snapshot,
-	long passingRuns, long totalRuns, Boolean accepted, boolean rejectedEarly, boolean winner,
+	long passingReplays, long totalReplays, Boolean accepted, boolean rejectedEarly, boolean winner,
 	ApproachAssignment assignment)
 {
 	/**
@@ -45,10 +45,10 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 	 * @param working the starting snapshot
 	 * @param cell the addressed cell
 	 * @param snapshot the original snapshot, or {@code null} before submission
-	 * @param passingRuns passing promotion replays
-	 * @param totalRuns planned or run promotion replays
+	 * @param passingReplays passing promotion replays
+	 * @param totalReplays planned or run promotion replays
 	 * @param accepted the promotion decision, or {@code null} while pending
-	 * @param rejectedEarly whether the attempt was rejected before all of its planned runs ran
+	 * @param rejectedEarly whether the attempt was rejected before all of its planned replays ran
 	 * @param winner whether this attempt won
 	 * @param assignment the durable editing approach and order origin
 	 * @throws NullPointerException if working or cell is null
@@ -62,8 +62,8 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		requireThat(working, "working").isNotNull();
 		requireThat(cell, "cell").isNotBlank();
 		requireThat(assignment, "assignment").isNotNull();
-		requireThat(passingRuns, "passingRuns").isNotNegative();
-		requireThat(totalRuns, "totalRuns").isGreaterThanOrEqualTo(passingRuns);
+		requireThat(passingReplays, "passingReplays").isNotNegative();
+		requireThat(totalReplays, "totalReplays").isGreaterThanOrEqualTo(passingReplays);
 		if (winner)
 			requireThat(Boolean.TRUE.equals(accepted), "accepted").isTrue();
 		if (rejectedEarly)
@@ -72,7 +72,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 
 	/**
 	 * Collects retained results and unfinished reservations in launch order. Retained results take precedence over
-	 * reduction runs so minimality cannot replace an original attempt's promotion totals.
+	 * reductions so minimality cannot replace an original attempt's promotion totals.
 	 *
 	 * @param campaign the campaign
 	 * @return the attempt statuses
@@ -86,7 +86,7 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 		for (AttemptResult result : campaign.optimization().attempts())
 		{
 			progress.put(result.number(), new AttemptProgress(roundPositions.get(result.round()), result.number(),
-				result.working(), result.cell(), result.snapshot(), result.passingRuns(), result.totalRuns(),
+				result.working(), result.cell(), result.snapshot(), result.passingReplays(), result.totalReplays(),
 				result.accepted(), result.rejectedEarly(), result.winner(),
 				campaign.optimization().approach(result.number(), result.cell())));
 		}
@@ -118,13 +118,13 @@ public record AttemptProgress(int round, int number, Sha256 working, String cell
 						case REJECT -> false;
 					};
 				}
-				long totalRuns = AttemptSelection.plannedRuns(attempt.runs());
+				long totalReplays = AttemptSelection.plannedReplays(attempt.replays());
 				if (accepted != null)
-					totalRuns = AttemptSelection.judgedRuns(attempt.runs());
-				boolean rejectedEarly = Boolean.FALSE.equals(accepted) && totalRuns < AttemptSelection.plannedRuns(
-					attempt.runs());
+					totalReplays = AttemptSelection.judgedReplays(attempt.replays());
+				boolean rejectedEarly = Boolean.FALSE.equals(accepted) && totalReplays < AttemptSelection.plannedReplays(
+					attempt.replays());
 				progress.put(entry.getKey(), new AttemptProgress(roundPositions.get(round.number()), entry.getKey(), working,
-					entry.getValue(), attempt.snapshot(), AttemptSelection.passingRuns(attempt.runs()), totalRuns,
+					entry.getValue(), attempt.snapshot(), AttemptSelection.passingReplays(attempt.replays()), totalReplays,
 					accepted, rejectedEarly, false,
 					assignment(campaign, entry.getKey(), entry.getValue())));
 			}

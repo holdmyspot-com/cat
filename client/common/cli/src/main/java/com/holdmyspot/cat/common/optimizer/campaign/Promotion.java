@@ -13,26 +13,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Plans trial runs and decides whether a proposed edit replaces the working candidate.
+ * Plans promotion replays and decides whether a proposed edit replaces the working candidate.
  * <p>
- * A triggering test case is a failure in the edited cell, the prompt test under a runner profile. The edit
- * starts each triggering test case with two runs. An edit fixes a triggering test case when every run passes and its
- * passing streak has probability below 10% under the working candidate's smoothed observed pass rate,
- * {@code (passes + 1) / (outcomes + 2)} on the same test case. A passing streak extends one run at a time until it is
- * unlikely, so the more often the working candidate passes a test case, the more runs a fix needs there; the smoothed
- * rate is below 1, so every streak that keeps passing ends in a fix.
+ * A triggering test case is a failure in the edited cell, the prompt test under a runner profile. The edit starts each
+ * triggering test case with two replays. An edit fixes a triggering test case when every replay passes and its passing
+ * streak has probability below 10% under the working candidate's smoothed observed pass rate,
+ * {@code (passes + 1) / (outcomes + 2)} on the same test case. A passing streak extends one replay at a time until it
+ * is unlikely, so the more often the working candidate passes a test case, the more replays a fix needs there; the
+ * smoothed rate is below 1, so every streak that keeps passing ends in a fix.
  * <p>
  * Once some triggering test case has two passes and no failure, or at once for a minimality reduction, the edit runs
  * each other test case in the regression set once, and the working candidate runs each of those test cases on which it
- * has no outcome. The regression runs of each prompt test form a group. A group passes when none of its runs fails;
- * it regresses when its failures would occur with probability below 5%, {@code 1 / REGRESSION_BAR}, at the working
- * candidate's smoothed pass rate on the group's test cases. Otherwise the edit and the working candidate run
- * {@link #RERUN_STEP} paired reruns of the group's test cases, and the group is judged again, until it regresses or
- * has had {@link #MAXIMUM_RERUNS} paired reruns and passes.
+ * has no outcome. The regression replays of each prompt test form a group. A group passes when none of its replays
+ * fails; it regresses when its failures would occur with probability below 5%, {@code 1 / REGRESSION_BAR}, at the
+ * working candidate's smoothed pass rate on the group's test cases. Otherwise the edit and the working candidate run
+ * {@link #PAIRED_REPLAY_STEP} paired replays of the group's test cases, and the group is judged again, until it
+ * regresses or has had {@link #MAXIMUM_PAIRED_REPLAYS} paired replays and passes.
  * <p>
  * The edit replaces the working candidate when it fixes at least one triggering test case and every group passes; it
  * is rejected as soon as every fix is impossible or a group regresses. A minimality reduction must preserve every
- * triggering fix in the last accepted runs. These runs reuse fixed test cases and never count as representative
+ * triggering fix in the last accepted replays. These replays reuse fixed test cases and never count as representative
  * evidence.
  */
 public final class Promotion
@@ -52,26 +52,26 @@ public final class Promotion
 	/**
 	 * The initial number of promotion replays planned for each distinct triggering test case.
 	 */
-	public static final int STARTING_TRIGGERING_RUNS = 2;
+	public static final int STARTING_TRIGGERING_REPLAYS = 2;
 	/**
-	 * The probability below which a group's regression failures show that the edit is worse than the working
-	 * candidate, as a denominator: the bar is {@code 1 / 20}, or 5%. Simulated at a 93% working pass rate, the
-	 * regression check with this bar, {@link #RERUN_STEP} and {@link #MAXIMUM_RERUNS} rejects an equally good edit about
-	 * 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
+	 * The probability below which a group's regression failures show that the edit is worse than the working candidate,
+	 * as a denominator: the bar is {@code 1 / 20}, or 5%. Simulated at a 93% working pass rate, the regression check with
+	 * this bar, {@link #PAIRED_REPLAY_STEP} and {@link #MAXIMUM_PAIRED_REPLAYS} rejects an equally good edit about 2.4%
+	 * of the time per prompt test and an edit that passes 80% about 38% of the time.
 	 */
 	private static final int REGRESSION_BAR = 20;
 	/**
-	 * The number of paired reruns that a group receives before it is judged again. Simulated at a 93% working pass
-	 * rate, the regression check with this step, {@link #REGRESSION_BAR} and {@link #MAXIMUM_RERUNS} rejects an
+	 * The number of paired replays that a group receives before it is judged again. Simulated at a 93% working pass
+	 * rate, the regression check with this step, {@link #REGRESSION_BAR} and {@link #MAXIMUM_PAIRED_REPLAYS} rejects an
 	 * equally good edit about 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
 	 */
-	public static final int RERUN_STEP = 5;
+	public static final int PAIRED_REPLAY_STEP = 5;
 	/**
-	 * The number of paired reruns after which a group that has not regressed passes. Simulated at a 93% working pass
-	 * rate, the regression check with this limit, {@link #REGRESSION_BAR} and {@link #RERUN_STEP} rejects an equally
-	 * good edit about 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
+	 * The number of paired replays after which a group that has not regressed passes. Simulated at a 93% working pass
+	 * rate, the regression check with this limit, {@link #REGRESSION_BAR} and {@link #PAIRED_REPLAY_STEP} rejects an
+	 * equally good edit about 2.4% of the time per prompt test and an edit that passes 80% about 38% of the time.
 	 */
-	public static final int MAXIMUM_RERUNS = 15;
+	public static final int MAXIMUM_PAIRED_REPLAYS = 15;
 
 	/**
 	 * The state of a prompt author attempt's promotion.
@@ -79,7 +79,7 @@ public final class Promotion
 	public enum Decision
 	{
 		/**
-		 * Some run that the decision needs has no outcome yet.
+		 * Some replay that the decision needs has no outcome yet.
 		 */
 		PENDING,
 		/**
@@ -100,13 +100,13 @@ public final class Promotion
 	}
 
 	/**
-	 * Plans the triggering runs of a prompt author attempt for all triggering cells of one addressed test. The
-	 * regression runs follow once {@link #extend} finds them due.
+	 * Plans the triggering replays of a prompt author attempt for all triggering cells of one addressed test. The
+	 * regression replays follow once {@link #extend} finds them due.
 	 *
 	 * @param cells the triggering cells
-	 * @param failures the failing test cases that the prompt author received; only those in {@code cells} trigger runs
+	 * @param failures the failing test cases that the prompt author received; only those in {@code cells} trigger replays
 	 * @param generator the contract's generator, which marks the test cases targeted
-	 * @return the unassigned runs, {@link #STARTING_TRIGGERING_RUNS} for each distinct triggering test case
+	 * @return the unassigned replays, {@link #STARTING_TRIGGERING_REPLAYS} for each distinct triggering test case
 	 * @throws NullPointerException if any argument is null or {@code failures} contains null
 	 * @throws IllegalArgumentException if {@code cells} is empty
 	 */
@@ -125,25 +125,26 @@ public final class Promotion
 				continue;
 			DrawnTestCase testCase = generator.markTargeted(failure);
 			triggeringTestCases.add(testCase);
-			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
+			for (int replay = 0; replay < STARTING_TRIGGERING_REPLAYS; ++replay)
 				triggering.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 		}
 		return triggering;
 	}
 
 	/**
-	 * Plans the runs that the attempt's adopted outcomes make due: one extra run for each fully passing triggering
-	 * streak that is still likely; the regression runs and the working candidate's missing reference runs once they
-	 * are due and not yet planned; and {@link #RERUN_STEP} paired reruns for each group whose last check neither passed
-	 * nor regressed. A group's reruns cycle through its test cases in regression run order, those the attempt failed
-	 * first, and each rerun of the attempt is followed by the working candidate's rerun of the same test case.
+	 * Plans the replays that the attempt's adopted outcomes make due: one extra replay for each fully passing triggering
+	 * streak that is still likely; the regression replays and the working candidate's missing reference replays once they
+	 * are due and not yet planned; and {@link #PAIRED_REPLAY_STEP} paired replays for each group whose last check neither
+	 * passed nor regressed. A group's paired replays cycle through its test cases in regression replay order, those the
+	 * attempt failed first, and each paired replay of the attempt is followed by the working candidate's paired replay of
+	 * the same test case.
 	 *
 	 * @param attempt the attempt whose adopted outcomes determine extensions
 	 * @param regressionSet the lineage's regression set
 	 * @param workingOutcomes the working candidate's adopted outcomes, aggregated by test case
-	 * @param sharedReferences the test cases on which another run already measures the working candidate, so that the
-	 *   attempt plans no reference run of its own there
-	 * @return the attempt with unassigned runs appended, or the same attempt if none is due
+	 * @param sharedReferences the test cases on which another replay already measures the working candidate, so that the
+	 *   attempt plans no reference replay of its own there
+	 * @return the attempt with unassigned replays appended, or the same attempt if none is due
 	 * @throws NullPointerException if an argument or element is null
 	 */
 	public static PromptAuthorAttempt extend(PromptAuthorAttempt attempt, List<RegressionTestCase> regressionSet,
@@ -154,90 +155,91 @@ public final class Promotion
 		requireThat(workingOutcomes, "workingOutcomes").isNotNull();
 		requireThat(sharedReferences, "sharedReferences").isNotNull();
 
-		List<PromotionReplay> runs = new ArrayList<>(attempt.runs());
-		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
+		List<PromotionReplay> replays = new ArrayList<>(attempt.replays());
+		for (DrawnTestCase testCase : triggeringTestCases(attempt.replays()))
 		{
-			List<PromotionReplay> streak = attempt.runs().stream().filter(run ->
-				run.role() == PromotionReplay.Role.TRIGGERING && isSameTestCase(testCase, run.testCase())).toList();
-			if (streak.size() >= STARTING_TRIGGERING_RUNS && streak.stream().allMatch(run -> run.verdict() == Verdict.PASS) &&
+			List<PromotionReplay> streak = attempt.replays().stream().filter(replay ->
+				replay.role() == PromotionReplay.Role.TRIGGERING && isSameTestCase(testCase, replay.testCase())).toList();
+			if (streak.size() >= STARTING_TRIGGERING_REPLAYS &&
+				streak.stream().allMatch(replay -> replay.verdict() == Verdict.PASS) &&
 				!isUnlikely(testCase, streak.size(), workingOutcomes))
 			{
-				runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
+				replays.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 			}
 		}
 		if (isRegressionUnplanned(attempt))
 		{
-			for (PromotionReplay run : regressionRuns(attempt, regressionSet))
+			for (PromotionReplay replay : regressionReplays(attempt, regressionSet))
 			{
-				if (run.role() == PromotionReplay.Role.REGRESSION || !containsTestCase(sharedReferences, run.testCase()))
-					runs.add(run);
+				if (replay.role() == PromotionReplay.Role.REGRESSION || !containsTestCase(sharedReferences, replay.testCase()))
+					replays.add(replay);
 			}
 		}
-		for (String testId : regressionGroups(attempt.runs()))
+		for (String testId : regressionGroups(attempt.replays()))
 		{
-			if (checkGroup(testId, attempt, regressionSet) != GroupCheck.NEEDS_RERUNS)
+			if (checkGroup(testId, attempt, regressionSet) != GroupCheck.NEEDS_PAIRED_REPLAYS)
 				continue;
-			List<DrawnTestCase> order = rerunOrder(testId, attempt.runs());
-			long planned = attempt.runs().stream().filter(run -> run.role() == PromotionReplay.Role.REGRESSION_RERUN &&
-				run.testCase().testId().equals(testId)).count();
-			for (long rerun = planned; rerun < planned + RERUN_STEP; ++rerun)
+			List<DrawnTestCase> order = pairedReplayOrder(testId, attempt.replays());
+			long planned = attempt.replays().stream().filter(replay ->
+				replay.role() == PromotionReplay.Role.PAIRED_REGRESSION && replay.testCase().testId().equals(testId)).count();
+			for (long pair = planned; pair < planned + PAIRED_REPLAY_STEP; ++pair)
 			{
-				DrawnTestCase testCase = order.get((int) (rerun % order.size()));
-				runs.add(new PromotionReplay(PromotionReplay.Role.REGRESSION_RERUN, testCase, null, null));
-				runs.add(new PromotionReplay(PromotionReplay.Role.WORKING_RERUN, testCase, null, null));
+				DrawnTestCase testCase = order.get((int) (pair % order.size()));
+				replays.add(new PromotionReplay(PromotionReplay.Role.PAIRED_REGRESSION, testCase, null, null));
+				replays.add(new PromotionReplay(PromotionReplay.Role.PAIRED_WORKING, testCase, null, null));
 			}
 		}
-		if (runs.size() == attempt.runs().size())
+		if (replays.size() == attempt.replays().size())
 			return attempt;
-		return new PromptAuthorAttempt(attempt.number(), attempt.cell(), attempt.snapshot(), runs,
+		return new PromptAuthorAttempt(attempt.number(), attempt.cell(), attempt.snapshot(), replays,
 			attempt.minimality());
 	}
 
 	/**
-	 * Indicates whether the attempt's regression runs are due but not planned. They are due for a minimality
-	 * reduction, and for an original attempt once some triggering test case has {@link #STARTING_TRIGGERING_RUNS}
+	 * Indicates whether the attempt's regression replays are due but not planned. They are due for a minimality
+	 * reduction, and for an original attempt once some triggering test case has {@link #STARTING_TRIGGERING_REPLAYS}
 	 * passes and no failure.
 	 *
 	 * @param attempt the attempt
-	 * @return {@code true} if the attempt has no regression run and its regression runs are due
+	 * @return {@code true} if the attempt has no regression replay and its regression replays are due
 	 */
 	private static boolean isRegressionUnplanned(PromptAuthorAttempt attempt)
 	{
-		if (attempt.runs().stream().anyMatch(run -> run.role() == PromotionReplay.Role.REGRESSION))
+		if (attempt.replays().stream().anyMatch(replay -> replay.role() == PromotionReplay.Role.REGRESSION))
 			return false;
 		if (attempt.minimality().testing() != null)
 			return true;
-		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
+		for (DrawnTestCase testCase : triggeringTestCases(attempt.replays()))
 		{
 			int passes = 0;
 			boolean failed = false;
-			for (PromotionReplay run : attempt.runs())
+			for (PromotionReplay replay : attempt.replays())
 			{
-				if (run.role() != PromotionReplay.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
+				if (replay.role() != PromotionReplay.Role.TRIGGERING || !isSameTestCase(testCase, replay.testCase()))
 					continue;
-				if (run.verdict() == Verdict.FAIL)
+				if (replay.verdict() == Verdict.FAIL)
 					failed = true;
-				else if (run.verdict() == Verdict.PASS)
+				else if (replay.verdict() == Verdict.PASS)
 					++passes;
 			}
-			if (!failed && passes >= STARTING_TRIGGERING_RUNS)
+			if (!failed && passes >= STARTING_TRIGGERING_REPLAYS)
 				return true;
 		}
 		return false;
 	}
 
 	/**
-	 * Returns the regression runs of an attempt: one run of each regression test case that does not trigger the
-	 * attempt, then one reference run of the working candidate on each such test case on which it has no outcome.
+	 * Returns the regression replays of an attempt: one replay of each regression test case that does not trigger the
+	 * attempt, then one reference replay of the working candidate on each such test case on which it has no outcome.
 	 *
 	 * @param attempt the attempt
 	 * @param regressionSet the lineage's regression set
-	 * @return the unassigned runs
+	 * @return the unassigned replays
 	 */
-	private static List<PromotionReplay> regressionRuns(PromptAuthorAttempt attempt,
+	private static List<PromotionReplay> regressionReplays(PromptAuthorAttempt attempt,
 		List<RegressionTestCase> regressionSet)
 	{
-		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
+		List<DrawnTestCase> triggering = triggeringTestCases(attempt.replays());
 		List<PromotionReplay> regressions = new ArrayList<>();
 		List<PromotionReplay> references = new ArrayList<>();
 		for (RegressionTestCase regression : regressionSet)
@@ -256,35 +258,35 @@ public final class Promotion
 	}
 
 	/**
-	 * Starts a reduction's triggering streaks at two runs, resets regression runs while retaining working references,
-	 * and drops paired reruns, which each reduction plans again for itself.
+	 * Starts a reduction's triggering streaks at two replays, resets regression replays while retaining working
+	 * references, and drops paired replays, which each reduction plans again for itself.
 	 *
-	 * @param acceptedRuns the preceding attempt's runs
-	 * @return the unassigned triggering and regression runs, followed by retained working reference runs
-	 * @throws NullPointerException if {@code acceptedRuns} or an element is null
+	 * @param acceptedReplays the preceding attempt's replays
+	 * @return the unassigned triggering and regression replays, followed by retained working reference replays
+	 * @throws NullPointerException if {@code acceptedReplays} or an element is null
 	 */
-	public static List<PromotionReplay> resetRuns(List<PromotionReplay> acceptedRuns)
+	public static List<PromotionReplay> resetReplays(List<PromotionReplay> acceptedReplays)
 	{
-		requireThat(acceptedRuns, "acceptedRuns").isNotNull();
+		requireThat(acceptedReplays, "acceptedReplays").isNotNull();
 
-		List<PromotionReplay> runs = new ArrayList<>();
-		for (DrawnTestCase testCase : triggeringTestCases(acceptedRuns))
+		List<PromotionReplay> replays = new ArrayList<>();
+		for (DrawnTestCase testCase : triggeringTestCases(acceptedReplays))
 		{
-			for (int run = 0; run < STARTING_TRIGGERING_RUNS; ++run)
-				runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
+			for (int replay = 0; replay < STARTING_TRIGGERING_REPLAYS; ++replay)
+				replays.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, testCase, null, null));
 		}
-		for (PromotionReplay run : acceptedRuns)
+		for (PromotionReplay replay : acceptedReplays)
 		{
-			switch (run.role())
+			switch (replay.role())
 			{
-				case REGRESSION -> runs.add(new PromotionReplay(run.role(), run.testCase(), null, null));
-				case WORKING_REFERENCE -> runs.add(run);
-				case TRIGGERING, REGRESSION_RERUN, WORKING_RERUN ->
+				case REGRESSION -> replays.add(new PromotionReplay(replay.role(), replay.testCase(), null, null));
+				case WORKING_REFERENCE -> replays.add(replay);
+				case TRIGGERING, PAIRED_REGRESSION, PAIRED_WORKING ->
 				{
 				}
 			}
 		}
-		return List.copyOf(runs);
+		return List.copyOf(replays);
 	}
 
 	/**
@@ -304,7 +306,7 @@ public final class Promotion
 
 	/**
 	 * Returns the decision on an attempt: the recorded decision of an original attempt whose result is retained, or
-	 * else the decision of the adopted runs. A retained result keeps the decision that was made when it was retained,
+	 * else the decision of the adopted replays. A retained result keeps the decision that was made when it was retained,
 	 * including one made under an earlier promotion rule.
 	 *
 	 * @param attempt         the prompt author attempt
@@ -320,7 +322,7 @@ public final class Promotion
 	{
 		requireThat(attempt, "attempt").isNotNull();
 		requireThat(retained, "retained").isNotNull();
-		if (attempt.minimality().testing() == null && attempt.minimality().acceptedRuns().isEmpty())
+		if (attempt.minimality().testing() == null && attempt.minimality().acceptedReplays().isEmpty())
 		{
 			for (AttemptResult result : retained)
 			{
@@ -335,8 +337,8 @@ public final class Promotion
 	}
 
 	/**
-	 * Decides promotion from the adopted runs. An original attempt must fix at least one triggering test case; a
-	 * reduction must retain every fix from its minimality search's last accepted runs. Either is rejected as soon as
+	 * Decides promotion from the adopted replays. An original attempt must fix at least one triggering test case; a
+	 * reduction must retain every fix from its minimality search's last accepted replays. Either is rejected as soon as
 	 * a regression group regresses, and waits for all needed outcomes unless rejection is certain. A reduction equal to
 	 * the working snapshot is rejected without further checks because it preserves no edit.
 	 *
@@ -359,14 +361,14 @@ public final class Promotion
 		if (restoresWorking)
 			return Decision.REJECT;
 
-		List<DrawnTestCase> triggering = triggeringTestCases(attempt.runs());
+		List<DrawnTestCase> triggering = triggeringTestCases(attempt.replays());
 		if (attempt.minimality().testing() != null)
 		{
-			List<PromotionReplay> accepted = attempt.minimality().acceptedRuns();
+			List<PromotionReplay> accepted = attempt.minimality().acceptedReplays();
 			for (DrawnTestCase testCase : triggeringTestCases(accepted))
 			{
 				if (triggeringVerdict(testCase, accepted, workingOutcomes) == Verdict.PASS &&
-					triggeringVerdict(testCase, attempt.runs(), workingOutcomes) == Verdict.FAIL)
+					triggeringVerdict(testCase, attempt.replays(), workingOutcomes) == Verdict.FAIL)
 				{
 					return Decision.REJECT;
 				}
@@ -376,7 +378,7 @@ public final class Promotion
 		boolean possibleFix = false;
 		for (DrawnTestCase testCase : triggering)
 		{
-			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) != Verdict.FAIL)
+			if (triggeringVerdict(testCase, attempt.replays(), workingOutcomes) != Verdict.FAIL)
 				possibleFix = true;
 		}
 		if (!possibleFix)
@@ -385,17 +387,17 @@ public final class Promotion
 		boolean pending = false;
 		for (DrawnTestCase testCase : triggering)
 		{
-			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) == null)
+			if (triggeringVerdict(testCase, attempt.replays(), workingOutcomes) == null)
 				pending = true;
 		}
-		for (PromotionReplay run : attempt.runs())
+		for (PromotionReplay replay : attempt.replays())
 		{
-			if (run.role() == PromotionReplay.Role.TRIGGERING && run.verdict() == null)
+			if (replay.role() == PromotionReplay.Role.TRIGGERING && replay.verdict() == null)
 				pending = true;
 		}
-		if (isRegressionUnplanned(attempt) && !regressionRuns(attempt, regressionSet).isEmpty())
+		if (isRegressionUnplanned(attempt) && !regressionReplays(attempt, regressionSet).isEmpty())
 			pending = true;
-		for (String testId : regressionGroups(attempt.runs()))
+		for (String testId : regressionGroups(attempt.replays()))
 		{
 			switch (checkGroup(testId, attempt, regressionSet))
 			{
@@ -403,7 +405,7 @@ public final class Promotion
 				{
 					return Decision.REJECT;
 				}
-				case WAITS, NEEDS_RERUNS -> pending = true;
+				case WAITS, NEEDS_PAIRED_REPLAYS -> pending = true;
 				case PASSES ->
 				{
 				}
@@ -415,16 +417,16 @@ public final class Promotion
 	}
 
 	/**
-	 * Returns the failing runs that a prompt author attempt under validation can absorb before the next one rejects
-	 * it, which wastes the runs still in flight.
+	 * Returns the failing replays that a prompt author attempt under validation can absorb before the next one rejects
+	 * it, which wastes the replays still in flight.
 	 * <p>
-	 * A failing run of a triggering test case ends that test case's fix, and the attempt is rejected once no
-	 * triggering test case can be fixed, so the triggering runs absorb one failure less than the test cases they can
-	 * still fix. A minimality reduction is rejected by the first failure of a test case that its accepted runs fixed,
-	 * so it absorbs none. A failing regression run rejects the attempt once its prompt test's failures are unlikely for
-	 * the working candidate; the regression runs absorb the failures that keep every prompt test below that bar, with
-	 * every pending run of the working candidate assumed to pass. Failing runs of the working candidate decide nothing
-	 * and consume none.
+	 * A failing replay of a triggering test case ends that test case's fix, and the attempt is rejected once no
+	 * triggering test case can be fixed, so the triggering replays absorb one failure less than the test cases they can
+	 * still fix. A minimality reduction is rejected by the first failure of a test case that its accepted replays fixed,
+	 * so it absorbs none. A failing regression replay rejects the attempt once its prompt test's failures are unlikely
+	 * for the working candidate; the regression replays absorb the failures that keep every prompt test below that bar,
+	 * with every pending replay of the working candidate assumed to pass. Failing replays of the working candidate decide
+	 * nothing and consume none.
 	 *
 	 * @param attempt the prompt author attempt
 	 * @param regressionSet the current lineage's regression set
@@ -441,20 +443,20 @@ public final class Promotion
 		if (attempt.minimality().testing() != null)
 			return 0;
 		int fixable = 0;
-		for (DrawnTestCase testCase : triggeringTestCases(attempt.runs()))
+		for (DrawnTestCase testCase : triggeringTestCases(attempt.replays()))
 		{
-			if (triggeringVerdict(testCase, attempt.runs(), workingOutcomes) != Verdict.FAIL)
+			if (triggeringVerdict(testCase, attempt.replays(), workingOutcomes) != Verdict.FAIL)
 				++fixable;
 		}
 		int spare = Math.min(Campaign.MAXIMUM_CEILING, Math.max(0, fixable - 1));
-		for (String testId : regressionGroups(attempt.runs()))
+		for (String testId : regressionGroups(attempt.replays()))
 			spare = Math.min(spare, regressionSpareFailures(testId, attempt, regressionSet));
 		return spare;
 	}
 
 	/**
-	 * Returns the further failing runs that one prompt test's regression runs absorb before its failures are unlikely
-	 * for the working candidate.
+	 * Returns the further failing replays that one prompt test's regression replays absorb before its failures are
+	 * unlikely for the working candidate.
 	 *
 	 * @param testId the prompt test's identifier
 	 * @param attempt the prompt author attempt
@@ -464,32 +466,32 @@ public final class Promotion
 	private static int regressionSpareFailures(String testId, PromptAuthorAttempt attempt,
 		List<RegressionTestCase> regressionSet)
 	{
-		int runs = 0;
+		int replays = 0;
 		int failures = 0;
 		int pending = 0;
 		List<DrawnTestCase> testCases = new ArrayList<>();
 		int workingPasses = 0;
 		int workingOutcomes = 0;
-		for (PromotionReplay run : attempt.runs())
+		for (PromotionReplay replay : attempt.replays())
 		{
-			if (!run.testCase().testId().equals(testId))
+			if (!replay.testCase().testId().equals(testId))
 				continue;
-			switch (run.role())
+			switch (replay.role())
 			{
-				case REGRESSION, REGRESSION_RERUN ->
+				case REGRESSION, PAIRED_REGRESSION ->
 				{
-					++runs;
-					if (run.verdict() == null)
+					++replays;
+					if (replay.verdict() == null)
 						++pending;
-					else if (run.verdict() == Verdict.FAIL)
+					else if (replay.verdict() == Verdict.FAIL)
 						++failures;
-					if (run.role() == PromotionReplay.Role.REGRESSION && !containsTestCase(testCases, run.testCase()))
-						testCases.add(run.testCase());
+					if (replay.role() == PromotionReplay.Role.REGRESSION && !containsTestCase(testCases, replay.testCase()))
+						testCases.add(replay.testCase());
 				}
-				case WORKING_RERUN ->
+				case PAIRED_WORKING ->
 				{
 					++workingOutcomes;
-					if (run.verdict() != Verdict.FAIL)
+					if (replay.verdict() != Verdict.FAIL)
 						++workingPasses;
 				}
 				case TRIGGERING, WORKING_REFERENCE ->
@@ -505,19 +507,19 @@ public final class Promotion
 		}
 		for (int further = 1; further <= Math.min(pending, Campaign.MAXIMUM_CEILING); ++further)
 		{
-			if (isRegression(failures + further, runs, workingPasses, workingOutcomes))
+			if (isRegression(failures + further, replays, workingPasses, workingOutcomes))
 				return further - 1;
 		}
 		return Campaign.MAXIMUM_CEILING;
 	}
 
 	/**
-	 * The state of one prompt test's regression runs.
+	 * The state of one prompt test's regression replays.
 	 */
 	private enum GroupCheck
 	{
 		/**
-		 * No run failed, or the group had all its paired reruns without regressing.
+		 * No replay failed, or the group had all its paired replays without regressing.
 		 */
 		PASSES,
 		/**
@@ -525,36 +527,37 @@ public final class Promotion
 		 */
 		REGRESSES,
 		/**
-		 * A run that the next check needs has no outcome.
+		 * A replay that the next check needs has no outcome.
 		 */
 		WAITS,
 		/**
-		 * The latest check neither passed nor regressed, and the next check needs reruns that are not planned.
+		 * The latest check neither passed nor regressed, and the next check needs paired replays that are not planned.
 		 */
-		NEEDS_RERUNS
+		NEEDS_PAIRED_REPLAYS
 	}
 
 	/**
-	 * Returns the prompt tests of the attempt's regression runs, in run order.
+	 * Returns the prompt tests of the attempt's regression replays, in replay order.
 	 *
-	 * @param runs the attempt's runs
+	 * @param replays the attempt's replays
 	 * @return the distinct test identifiers
 	 */
-	private static List<String> regressionGroups(List<PromotionReplay> runs)
+	private static List<String> regressionGroups(List<PromotionReplay> replays)
 	{
 		List<String> testIds = new ArrayList<>();
-		for (PromotionReplay run : runs)
+		for (PromotionReplay replay : replays)
 		{
-			if (run.role() == PromotionReplay.Role.REGRESSION && !testIds.contains(run.testCase().testId()))
-				testIds.add(run.testCase().testId());
+			if (replay.role() == PromotionReplay.Role.REGRESSION && !testIds.contains(replay.testCase().testId()))
+				testIds.add(replay.testCase().testId());
 		}
 		return testIds;
 	}
 
 	/**
-	 * Checks one prompt test's regression runs at the end of the first pass and after every {@link #RERUN_STEP}
-	 * paired reruns, up to {@link #MAXIMUM_RERUNS}. The first pass counts the attempt's regression runs and one outcome
-	 * of the working candidate on each of their test cases; each paired rerun adds one run of each.
+	 * Checks one prompt test's regression replays at the end of the first pass and after every {@link
+	 * #PAIRED_REPLAY_STEP} paired replays, up to {@link #MAXIMUM_PAIRED_REPLAYS}. The first pass counts the attempt's
+	 * regression replays and one outcome of the working candidate on each of their test cases; each paired replay adds
+	 * one replay of each.
 	 *
 	 * @param testId the prompt test
 	 * @param attempt the attempt
@@ -564,29 +567,29 @@ public final class Promotion
 	private static GroupCheck checkGroup(String testId, PromptAuthorAttempt attempt,
 		List<RegressionTestCase> regressionSet)
 	{
-		List<PromotionReplay> attemptReruns = new ArrayList<>();
-		List<PromotionReplay> workingReruns = new ArrayList<>();
+		List<PromotionReplay> pairedAttemptReplays = new ArrayList<>();
+		List<PromotionReplay> pairedWorkingReplays = new ArrayList<>();
 		List<DrawnTestCase> testCases = new ArrayList<>();
-		int runs = 0;
+		int replays = 0;
 		int failures = 0;
-		for (PromotionReplay run : attempt.runs())
+		for (PromotionReplay replay : attempt.replays())
 		{
-			if (!run.testCase().testId().equals(testId))
+			if (!replay.testCase().testId().equals(testId))
 				continue;
-			switch (run.role())
+			switch (replay.role())
 			{
 				case REGRESSION ->
 				{
-					if (run.verdict() == null)
+					if (replay.verdict() == null)
 						return GroupCheck.WAITS;
-					++runs;
-					if (run.verdict() == Verdict.FAIL)
+					++replays;
+					if (replay.verdict() == Verdict.FAIL)
 						++failures;
-					if (!containsTestCase(testCases, run.testCase()))
-						testCases.add(run.testCase());
+					if (!containsTestCase(testCases, replay.testCase()))
+						testCases.add(replay.testCase());
 				}
-				case REGRESSION_RERUN -> attemptReruns.add(run);
-				case WORKING_RERUN -> workingReruns.add(run);
+				case PAIRED_REGRESSION -> pairedAttemptReplays.add(replay);
+				case PAIRED_WORKING -> pairedWorkingReplays.add(replay);
 				case TRIGGERING, WORKING_REFERENCE ->
 				{
 				}
@@ -605,19 +608,19 @@ public final class Promotion
 			if (verdict == Verdict.PASS)
 				++workingPasses;
 		}
-		for (int reruns = 0; ; reruns += RERUN_STEP)
+		for (int pairs = 0; ; pairs += PAIRED_REPLAY_STEP)
 		{
-			if (reruns > 0)
+			if (pairs > 0)
 			{
-				if (attemptReruns.size() < reruns || workingReruns.size() < reruns)
-					return GroupCheck.NEEDS_RERUNS;
-				for (int index = reruns - RERUN_STEP; index < reruns; ++index)
+				if (pairedAttemptReplays.size() < pairs || pairedWorkingReplays.size() < pairs)
+					return GroupCheck.NEEDS_PAIRED_REPLAYS;
+				for (int index = pairs - PAIRED_REPLAY_STEP; index < pairs; ++index)
 				{
-					Verdict attemptVerdict = attemptReruns.get(index).verdict();
-					Verdict workingVerdict = workingReruns.get(index).verdict();
+					Verdict attemptVerdict = pairedAttemptReplays.get(index).verdict();
+					Verdict workingVerdict = pairedWorkingReplays.get(index).verdict();
 					if (attemptVerdict == null || workingVerdict == null)
 						return GroupCheck.WAITS;
-					++runs;
+					++replays;
 					if (attemptVerdict == Verdict.FAIL)
 						++failures;
 					++workingOutcomes;
@@ -625,36 +628,36 @@ public final class Promotion
 						++workingPasses;
 				}
 			}
-			if (isRegression(failures, runs, workingPasses, workingOutcomes))
+			if (isRegression(failures, replays, workingPasses, workingOutcomes))
 				return GroupCheck.REGRESSES;
-			if (reruns == MAXIMUM_RERUNS)
+			if (pairs == MAXIMUM_PAIRED_REPLAYS)
 				return GroupCheck.PASSES;
 		}
 	}
 
 	/**
-	 * Returns the order in which a group's reruns cycle through its test cases: the test cases whose regression run
-	 * failed, then the others, each in regression run order.
+	 * Returns the order in which a group's paired replays cycle through its test cases: the test cases whose regression
+	 * replay failed, then the others, each in regression replay order.
 	 *
 	 * @param testId the prompt test
-	 * @param runs the attempt's runs
+	 * @param replays the attempt's replays
 	 * @return the distinct test cases
 	 */
-	private static List<DrawnTestCase> rerunOrder(String testId, List<PromotionReplay> runs)
+	private static List<DrawnTestCase> pairedReplayOrder(String testId, List<PromotionReplay> replays)
 	{
 		List<DrawnTestCase> failed = new ArrayList<>();
 		List<DrawnTestCase> passed = new ArrayList<>();
-		for (PromotionReplay run : runs)
+		for (PromotionReplay replay : replays)
 		{
-			if (run.role() != PromotionReplay.Role.REGRESSION || !run.testCase().testId().equals(testId))
+			if (replay.role() != PromotionReplay.Role.REGRESSION || !replay.testCase().testId().equals(testId))
 				continue;
-			if (run.verdict() == Verdict.FAIL)
+			if (replay.verdict() == Verdict.FAIL)
 			{
-				if (!containsTestCase(failed, run.testCase()))
-					failed.add(run.testCase());
+				if (!containsTestCase(failed, replay.testCase()))
+					failed.add(replay.testCase());
 			}
-			else if (!containsTestCase(passed, run.testCase()))
-				passed.add(run.testCase());
+			else if (!containsTestCase(passed, replay.testCase()))
+				passed.add(replay.testCase());
 		}
 		List<DrawnTestCase> order = new ArrayList<>(failed);
 		for (DrawnTestCase testCase : passed)
@@ -667,82 +670,82 @@ public final class Promotion
 
 	/**
 	 * Indicates whether an edit's regression failures are unlikely for the working candidate: the probability of at
-	 * least {@code failures} failures in {@code runs} runs, at the failure rate {@code 1 - p} where
+	 * least {@code failures} failures in {@code replays} replays, at the failure rate {@code 1 - p} where
 	 * {@code p = (passes + 1) / (outcomes + 2)}, is below {@code 1 / REGRESSION_BAR}.
 	 *
-	 * @param failures the edit's failed runs
-	 * @param runs the edit's judged runs
+	 * @param failures the edit's failed replays
+	 * @param replays the edit's judged replays
 	 * @param passes the working candidate's passes
 	 * @param outcomes the working candidate's outcomes
-	 * @return {@code true} when {@code REGRESSION_BAR * sum(C(runs, k) * a^k * b^(runs - k)) < (outcomes + 2)^runs}
-	 *   over {@code k} from {@code failures} to {@code runs}, with {@code a = outcomes + 1 - passes} and
+	 * @return {@code true} when {@code REGRESSION_BAR * sum(C(replays, k) * a^k * b^(replays - k)) < (outcomes +
+	 *   2)^replays} over {@code k} from {@code failures} to {@code replays}, with {@code a = outcomes + 1 - passes} and
 	 *   {@code b = passes + 1}, compared exactly
 	 */
-	private static boolean isRegression(int failures, int runs, int passes, int outcomes)
+	private static boolean isRegression(int failures, int replays, int passes, int outcomes)
 	{
 		BigInteger failureWeight = BigInteger.valueOf(outcomes + 1 - passes);
 		BigInteger passWeight = BigInteger.valueOf(passes + 1);
 		BigInteger total = BigInteger.valueOf(outcomes + 2);
 		BigInteger tail = BigInteger.ZERO;
 		BigInteger combinations = BigInteger.ONE;
-		for (int k = 0; k <= runs; ++k)
+		for (int k = 0; k <= replays; ++k)
 		{
 			if (k > 0)
 			{
-				combinations = combinations.multiply(BigInteger.valueOf(runs - k + 1)).
+				combinations = combinations.multiply(BigInteger.valueOf(replays - k + 1)).
 					divide(BigInteger.valueOf(k));
 			}
 			if (k >= failures)
-				tail = tail.add(combinations.multiply(failureWeight.pow(k)).multiply(passWeight.pow(runs - k)));
+				tail = tail.add(combinations.multiply(failureWeight.pow(k)).multiply(passWeight.pow(replays - k)));
 		}
-		return tail.multiply(BigInteger.valueOf(REGRESSION_BAR)).compareTo(total.pow(runs)) < 0;
+		return tail.multiply(BigInteger.valueOf(REGRESSION_BAR)).compareTo(total.pow(replays)) < 0;
 	}
 
 	/**
-	 * Returns each triggering test case once, in run order.
+	 * Returns each triggering test case once, in replay order.
 	 *
-	 * @param runs the promotion evidence
+	 * @param replays the promotion evidence
 	 * @return the distinct triggering test cases
 	 */
-	private static List<DrawnTestCase> triggeringTestCases(List<PromotionReplay> runs)
+	private static List<DrawnTestCase> triggeringTestCases(List<PromotionReplay> replays)
 	{
 		List<DrawnTestCase> testCases = new ArrayList<>();
-		for (PromotionReplay run : runs)
+		for (PromotionReplay replay : replays)
 		{
-			if (run.role() == PromotionReplay.Role.TRIGGERING && !containsTestCase(testCases, run.testCase()))
-				testCases.add(run.testCase());
+			if (replay.role() == PromotionReplay.Role.TRIGGERING && !containsTestCase(testCases, replay.testCase()))
+				testCases.add(replay.testCase());
 		}
 		return testCases;
 	}
 
 	/**
-	 * Returns the verdict of a test case's triggering runs: whether they establish a fix or make one impossible.
+	 * Returns the verdict of a test case's triggering replays: whether they establish a fix or make one impossible.
 	 *
 	 * @param testCase the triggering test case, matched by content
-	 * @param runs the tested attempt's runs
+	 * @param replays the tested attempt's replays
 	 * @param workingOutcomes the working candidate's records by test case
-	 * @return {@code PASS} for an unlikely passing streak, {@code FAIL} for a failed run or fewer than two planned runs,
-	 *   or {@code null} while a run or extension is needed
+	 * @return {@code PASS} for an unlikely passing streak, {@code FAIL} for a failed replay or fewer than two planned
+	 *   replays, or {@code null} while a replay or extension is needed
 	 */
-	private static Verdict triggeringVerdict(DrawnTestCase testCase, List<PromotionReplay> runs,
+	private static Verdict triggeringVerdict(DrawnTestCase testCase, List<PromotionReplay> replays,
 		List<TestCaseOutcomes> workingOutcomes)
 	{
 		int passes = 0;
 		boolean pending = false;
-		for (PromotionReplay run : runs)
+		for (PromotionReplay replay : replays)
 		{
-			if (run.role() != PromotionReplay.Role.TRIGGERING || !isSameTestCase(testCase, run.testCase()))
+			if (replay.role() != PromotionReplay.Role.TRIGGERING || !isSameTestCase(testCase, replay.testCase()))
 				continue;
-			if (run.verdict() == Verdict.FAIL)
+			if (replay.verdict() == Verdict.FAIL)
 				return Verdict.FAIL;
-			if (run.verdict() == Verdict.PASS)
+			if (replay.verdict() == Verdict.PASS)
 				++passes;
 			else
 				pending = true;
 		}
 		if (pending)
 			return null;
-		if (passes < STARTING_TRIGGERING_RUNS)
+		if (passes < STARTING_TRIGGERING_REPLAYS)
 			return Verdict.FAIL;
 		if (isUnlikely(testCase, passes, workingOutcomes))
 			return Verdict.PASS;
@@ -774,7 +777,7 @@ public final class Promotion
 
 	/**
 	 * Returns the working candidate's verdict on a test case: the regression set's verdict, or else the verdict of
-	 * the attempt's reference run.
+	 * the attempt's reference replay.
 	 *
 	 * @param testCase the test case
 	 * @param attempt the prompt author attempt
@@ -789,12 +792,12 @@ public final class Promotion
 			if (regression.working() != null && isSameTestCase(regression.testCase(), testCase))
 				return regression.working();
 		}
-		for (PromotionReplay run : attempt.runs())
+		for (PromotionReplay replay : attempt.replays())
 		{
-			if (run.role() == PromotionReplay.Role.WORKING_REFERENCE && run.verdict() != null &&
-				isSameTestCase(run.testCase(), testCase))
+			if (replay.role() == PromotionReplay.Role.WORKING_REFERENCE && replay.verdict() != null &&
+				isSameTestCase(replay.testCase(), testCase))
 			{
-				return run.verdict();
+				return replay.verdict();
 			}
 		}
 		return null;
@@ -821,14 +824,14 @@ public final class Promotion
 	 * Returns the snapshot that a promotion replay tests.
 	 *
 	 * @param attempt the prompt author attempt
-	 * @param run one of its runs
+	 * @param replay one of its replays
 	 * @param working the working candidate's snapshot
-	 * @return {@code working} for a run that measures the working candidate, otherwise the prompt author attempt's
+	 * @return {@code working} for a replay that measures the working candidate, otherwise the prompt author attempt's
 	 *   snapshot
 	 */
-	static Sha256 snapshot(PromptAuthorAttempt attempt, PromotionReplay run, Sha256 working)
+	static Sha256 snapshot(PromptAuthorAttempt attempt, PromotionReplay replay, Sha256 working)
 	{
-		if (run.role().measuresWorking())
+		if (replay.role().measuresWorking())
 			return working;
 		return attempt.snapshot();
 	}

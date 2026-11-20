@@ -187,15 +187,15 @@ public final class RaceDriverTest
 			harness.overlays().save(contender);
 			FileDelta change = new FileDelta(DriverHarness.PROMPT, new FileContent(before.getBytes(UTF_8)),
 				new FileContent(after.getBytes(UTF_8)), PosixFilePermissions.fromString("rw-r--r--"));
-			List<PromotionReplay> runs = new ArrayList<>();
+			List<PromotionReplay> replays = new ArrayList<>();
 			for (int sequence = 1; sequence <= 3; ++sequence)
 			{
 				TrialKey key = new TrialKey(Purpose.PROMOTION, number, contender.identity(), CELL, sequence);
-				runs.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, key, Verdict.PASS));
+				replays.add(new PromotionReplay(PromotionReplay.Role.TRIGGERING, trigger, key, Verdict.PASS));
 				builder.adopted(key);
 				builder.adopted(new TrialKey(Purpose.RACE, number, contender.identity(), CELL, sequence));
 			}
-			attempts.add(new PromptAuthorAttempt(number, CELL, contender.identity(), runs,
+			attempts.add(new PromptAuthorAttempt(number, CELL, contender.identity(), replays,
 				Minimality.start(List.of(change), contender.identity())));
 		}
 		Map<Integer, String> reservations = new LinkedHashMap<>();

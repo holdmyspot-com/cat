@@ -84,7 +84,7 @@ public final class TrialAdoption
 				PromptAuthorAttempt promptAuthor = draft.findPromptAuthor(key.series());
 				if (promptAuthor == null)
 					yield findRetainedSession(draft, key) < 0;
-				yield promptAuthor.runs().stream().noneMatch(run -> key.equals(run.trial()));
+				yield promptAuthor.replays().stream().noneMatch(replay -> key.equals(replay.trial()));
 			}
 		};
 	}
@@ -105,8 +105,8 @@ public final class TrialAdoption
 
 	/**
 	 * Indicates whether a trial is a queued promotion replay of a rejected attempt. The decision cannot change, so the
-	 * run is cancelled before it starts; a run that already started finishes, and its outcome is recorded once it is
-	 * judged.
+	 * replay is cancelled before it starts; a replay that already started finishes, and its outcome is recorded once it
+	 * is judged.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
@@ -124,11 +124,11 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Finds a retained attempt result's unjudged run of a trial, which a rejected sequential attempt left running.
+	 * Finds a retained attempt result's unjudged replay of a trial, which a rejected sequential attempt left running.
 	 *
 	 * @param draft the state
 	 * @param key the trial's key
-	 * @return the index of the result in the retained attempts, or {@code -1} if none has such a run
+	 * @return the index of the result in the retained attempts, or {@code -1} if none has such a replay
 	 */
 	private static int findRetainedSession(Draft draft, TrialKey key)
 	{
@@ -137,7 +137,7 @@ public final class TrialAdoption
 		{
 			AttemptResult result = results.get(i);
 			if (result.number() == key.series() &&
-				result.runs().stream().anyMatch(run -> key.equals(run.trial()) && run.verdict() == null))
+				result.replays().stream().anyMatch(replay -> key.equals(replay.trial()) && replay.verdict() == null))
 			{
 				return i;
 			}
@@ -159,12 +159,12 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Plans the runs that an attempt's adopted outcomes make due, sharing the working candidate's reference runs that
-	 * another trial or weak contender already owns.
+	 * Plans the replays that an attempt's adopted outcomes make due, sharing the working candidate's reference replays
+	 * that another trial or weak contender already owns.
 	 *
 	 * @param draft the state
 	 * @param attempt the attempt
-	 * @return the attempt with the due runs appended
+	 * @return the attempt with the due replays appended
 	 */
 	static PromptAuthorAttempt refresh(Draft draft, PromptAuthorAttempt attempt)
 	{
@@ -180,10 +180,10 @@ public final class TrialAdoption
 			{
 				if (other.number() == attempt.number())
 					continue;
-				for (PromotionReplay run : other.runs())
+				for (PromotionReplay replay : other.replays())
 				{
-					if (run.role() == PromotionReplay.Role.WORKING_REFERENCE)
-						references.add(run.testCase());
+					if (replay.role() == PromotionReplay.Role.WORKING_REFERENCE)
+						references.add(replay.testCase());
 				}
 			}
 		}
@@ -288,8 +288,8 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Applies the promotion decision of the attempts under validation, so that runs that became due without a new
-	 * outcome are planned, such as paired reruns of an attempt that a campaign saved under an earlier promotion rule
+	 * Applies the promotion decision of the attempts under validation, so that replays that became due without a new
+	 * outcome are planned, such as paired replays of an attempt that a campaign saved under an earlier promotion rule
 	 * left undecided. The decision is idempotent, so repeating it changes nothing.
 	 *
 	 * @param draft the state
@@ -352,8 +352,8 @@ public final class TrialAdoption
 			trial.key().snapshot().equals(draft.working.snapshot()))
 		{
 			draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, trial.testCase(), trial.verdict());
-			// A paired rerun extends one group's check; the regression set keeps the outcome that the check started from
-			if (!isWorkingRerun(draft, trial))
+			// A paired replay extends one group's check; the regression set keeps the outcome that the check started from
+			if (!isPairedWorkingReplay(draft, trial))
 				recordWorkingVerdict(draft, trial.testCase(), trial.verdict());
 		}
 		switch (purpose)
@@ -878,29 +878,30 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Indicates whether a trial is the working candidate's paired rerun.
+	 * Indicates whether a trial is the working candidate's paired replay.
 	 *
 	 * @param draft the state
 	 * @param trial the trial
-	 * @return {@code true} if the trial's owner planned it as a paired rerun of the working candidate
+	 * @return {@code true} if the trial's owner planned it as a paired replay of the working candidate
 	 */
-	private static boolean isWorkingRerun(Draft draft, LogicalTrial trial)
+	private static boolean isPairedWorkingReplay(Draft draft, LogicalTrial trial)
 	{
 		TrialKey key = trial.key();
 		if (key.purpose() != Purpose.PROMOTION)
 			return false;
-		List<PromotionReplay> runs;
+		List<PromotionReplay> replays;
 		PromptAuthorAttempt owner = draft.findPromptAuthor(key.series());
 		if (owner != null)
-			runs = owner.runs();
+			replays = owner.replays();
 		else
 		{
 			int retained = findRetainedSession(draft, key);
 			if (retained < 0)
 				return false;
-			runs = draft.optimization.attempts().get(retained).runs();
+			replays = draft.optimization.attempts().get(retained).replays();
 		}
-		return runs.stream().anyMatch(run -> run.role() == PromotionReplay.Role.WORKING_RERUN && key.equals(run.trial()));
+		return replays.stream().anyMatch(replay ->
+			replay.role() == PromotionReplay.Role.PAIRED_WORKING && key.equals(replay.trial()));
 	}
 
 	/**
@@ -921,27 +922,27 @@ public final class TrialAdoption
 				decidePromotion(draft);
 			return;
 		}
-		List<PromotionReplay> runs = new ArrayList<>(promptAuthor.runs());
+		List<PromotionReplay> replays = new ArrayList<>(promptAuthor.replays());
 		PromotionReplay.Role role = null;
-		for (int i = 0; i < runs.size(); ++i)
+		for (int i = 0; i < replays.size(); ++i)
 		{
-			PromotionReplay run = runs.get(i);
-			if (trial.key().equals(run.trial()))
+			PromotionReplay replay = replays.get(i);
+			if (trial.key().equals(replay.trial()))
 			{
-				runs.set(i, new PromotionReplay(run.role(), run.testCase(), run.trial(), trial.verdict()));
-				role = run.role();
+				replays.set(i, new PromotionReplay(replay.role(), replay.testCase(), replay.trial(), trial.verdict()));
+				role = replay.role();
 				break;
 			}
 		}
 		PromptAuthorAttempt updated = new PromptAuthorAttempt(promptAuthor.number(), promptAuthor.cell(),
-			promptAuthor.snapshot(), runs, promptAuthor.minimality());
+			promptAuthor.snapshot(), replays, promptAuthor.minimality());
 		WorkUnit unit = WorkUnit.promotion(promptAuthor);
 		int spare = Promotion.spareFailures(promptAuthor, draft.regressionSet, draft.testCaseOutcomes);
 		if (trial.verdict() == Verdict.PASS)
 			draft.recordPass(unit, spare);
 		else
 		{
-			// A failing run of the working candidate decides nothing about the attempt
+			// A failing replay of the working candidate decides nothing about the attempt
 			boolean consuming = role != null && !role.measuresWorking();
 			draft.recordFailure(unit, spare, consuming, Promotion.spareFailures(updated, draft.regressionSet,
 				draft.testCaseOutcomes));
@@ -954,7 +955,7 @@ public final class TrialAdoption
 	}
 
 	/**
-	 * Records the outcome of a run that was running when its sequential attempt was rejected. The outcome is shown
+	 * Records the outcome of a replay that was running when its sequential attempt was rejected. The outcome is shown
 	 * with the attempt's result but cannot change the recorded decision.
 	 *
 	 * @param draft the state
@@ -965,15 +966,15 @@ public final class TrialAdoption
 	{
 		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
 		AttemptResult result = results.get(index);
-		List<PromotionReplay> runs = new ArrayList<>(result.runs());
-		for (int i = 0; i < runs.size(); ++i)
+		List<PromotionReplay> replays = new ArrayList<>(result.replays());
+		for (int i = 0; i < replays.size(); ++i)
 		{
-			PromotionReplay run = runs.get(i);
-			if (trial.key().equals(run.trial()))
-				runs.set(i, new PromotionReplay(run.role(), run.testCase(), run.trial(), trial.verdict()));
+			PromotionReplay replay = replays.get(i);
+			if (trial.key().equals(replay.trial()))
+				replays.set(i, new PromotionReplay(replay.role(), replay.testCase(), replay.trial(), trial.verdict()));
 		}
 		results.set(index, new AttemptResult(result.round(), result.working(), result.number(), result.cell(),
-			result.snapshot(), runs, result.changedLines(), result.accepted(), result.winner()));
+			result.snapshot(), replays, result.changedLines(), result.accepted(), result.winner()));
 		draft.optimization = new OptimizationEvidence(draft.optimization.promptAuthors(), draft.optimization.removed(),
 			draft.optimization.promptSizes(), draft.optimization.trialInputs(), results, draft.optimization.tokenUsage(),
 			draft.optimization.approaches(), draft.optimization.commands(), draft.optimization.earlyEnds());
@@ -993,11 +994,11 @@ public final class TrialAdoption
 		{
 			case PENDING ->
 			{
-				// More runs are needed
+				// More replays are needed
 			}
 			case PROMOTE ->
 			{
-				if (promptAuthor.minimality().acceptedRuns().isEmpty())
+				if (promptAuthor.minimality().acceptedReplays().isEmpty())
 					retainAttempt(draft, promptAuthor, true, true);
 			}
 			case REJECT ->
@@ -1014,7 +1015,7 @@ public final class TrialAdoption
 	/**
 	 * Retains each contender as soon as it is decided, and selects among the accepted contenders once every addressed
 	 * test received all three attempts and every contender is decided. A rejected contender is retained when it is
-	 * rejected; outcomes of its runs that were already running update its retained runs, never its decision.
+	 * rejected; outcomes of its replays that were already running update its retained replays, never its decision.
 	 *
 	 * @param draft the campaign state
 	 */
@@ -1154,7 +1155,7 @@ public final class TrialAdoption
 	{
 		List<AttemptResult> results = new ArrayList<>(draft.optimization.attempts());
 		AttemptResult result = new AttemptResult(draft.round.number(), draft.working.snapshot(), attempt.number(),
-			attempt.cell(), attempt.snapshot(), attempt.runs(), AttemptSelection.changedLines(attempt), accepted,
+			attempt.cell(), attempt.snapshot(), attempt.replays(), AttemptSelection.changedLines(attempt), accepted,
 			winner);
 		int index = -1;
 		for (int i = 0; i < results.size(); ++i)
@@ -1225,10 +1226,10 @@ public final class TrialAdoption
 			}
 		}
 		draft.predecessor = predecessor;
-		for (PromotionReplay run : promptAuthor.runs())
+		for (PromotionReplay replay : promptAuthor.replays())
 		{
-			if (!run.role().measuresWorking() && run.verdict() != null)
-				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, run.testCase(), run.verdict());
+			if (!replay.role().measuresWorking() && replay.verdict() != null)
+				draft.testCaseOutcomes = TestCaseOutcomes.add(draft.testCaseOutcomes, replay.testCase(), replay.verdict());
 		}
 		StalledDevelopment.roundPromoted(draft, completed);
 		draft.judges.replaceAll((_, judge) -> judge.roundCompleted());
@@ -1239,18 +1240,18 @@ public final class TrialAdoption
 	 *
 	 * @param promptAuthor the promoted prompt author attempt
 	 * @param testCase the test case
-	 * @return the verdict of the attempt's latest judged run on the test case, or {@code null} if the attempt did not
+	 * @return the verdict of the attempt's latest judged replay on the test case, or {@code null} if the attempt did not
 	 *   run it
 	 */
 	private static Verdict promotedVerdict(PromptAuthorAttempt promptAuthor, DrawnTestCase testCase)
 	{
 		Verdict verdict = null;
-		for (PromotionReplay run : promptAuthor.runs())
+		for (PromotionReplay replay : promptAuthor.replays())
 		{
-			if (!run.role().measuresWorking() && run.verdict() != null &&
-				Promotion.isSameTestCase(run.testCase(), testCase))
+			if (!replay.role().measuresWorking() && replay.verdict() != null &&
+				Promotion.isSameTestCase(replay.testCase(), testCase))
 			{
-				verdict = run.verdict();
+				verdict = replay.verdict();
 			}
 		}
 		return verdict;

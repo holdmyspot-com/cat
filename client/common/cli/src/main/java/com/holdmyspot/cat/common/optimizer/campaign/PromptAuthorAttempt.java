@@ -15,10 +15,10 @@ import java.util.List;
  * @param number the attempt's number within the campaign, from 1
  * @param cell the failing cell that the attempt addresses
  * @param snapshot the attempt's snapshot
- * @param runs the promotion replays
+ * @param replays the promotion replays
  * @param minimality the original changes and reduction progress
  */
-public record PromptAuthorAttempt(int number, String cell, Sha256 snapshot, List<PromotionReplay> runs,
+public record PromptAuthorAttempt(int number, String cell, Sha256 snapshot, List<PromotionReplay> replays,
 	Minimality minimality)
 {
 	/**
@@ -27,7 +27,7 @@ public record PromptAuthorAttempt(int number, String cell, Sha256 snapshot, List
 	 * @param number the attempt's number within the campaign, from 1
 	 * @param cell the failing cell that the attempt addresses
 	 * @param snapshot the attempt's snapshot
-	 * @param runs the promotion replays
+	 * @param replays the promotion replays
 	 * @param minimality the original changes and reduction progress
 	 * @throws NullPointerException if any argument is null
 	 * @throws IllegalArgumentException if {@code number} is not positive or {@code cell} is blank
@@ -37,8 +37,8 @@ public record PromptAuthorAttempt(int number, String cell, Sha256 snapshot, List
 		requireThat(number, "number").isPositive();
 		requireThat(cell, "cell").isNotBlank();
 		requireThat(snapshot, "snapshot").isNotNull();
-		requireThat(runs, "runs").isNotNull();
+		requireThat(replays, "replays").isNotNull();
 		requireThat(minimality, "minimality").isNotNull();
-		runs = List.copyOf(runs);
+		replays = List.copyOf(replays);
 	}
 }

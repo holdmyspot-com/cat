@@ -290,7 +290,7 @@ public final class ConcurrencyPolicyTest
 
 	/**
 	 * Verifies that a prompt author attempt runs as many promotion replays at once as it has triggering test cases that
-	 * it can still fix, and that a failing triggering run lowers the window to the test cases still open.
+	 * it can still fix, and that a failing triggering replay lowers the window to the test cases still open.
 	 */
 	@Test
 	public void promotionWindowFollowsFixableTestCases()

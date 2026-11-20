@@ -407,22 +407,22 @@ final class Draft
 		PromptAuthorAttempt owner = findPromptAuthor(key.series());
 		if (owner != null)
 		{
-			return owner.runs().stream().anyMatch(run -> run.role() == PromotionReplay.Role.WORKING_REFERENCE &&
-				key.equals(run.trial()));
+			return owner.replays().stream().anyMatch(replay -> replay.role() == PromotionReplay.Role.WORKING_REFERENCE &&
+				key.equals(replay.trial()));
 		}
 		for (PromptAuthorAttempt attempt : round.validationAttempts())
 		{
-			if (attempt.number() == key.series() && attempt.runs().stream().anyMatch(run ->
-				run.role() == PromotionReplay.Role.WORKING_REFERENCE &&
-					Promotion.isSameTestCase(run.testCase(), trial.testCase())))
+			if (attempt.number() == key.series() && attempt.replays().stream().anyMatch(replay ->
+				replay.role() == PromotionReplay.Role.WORKING_REFERENCE &&
+					Promotion.isSameTestCase(replay.testCase(), trial.testCase())))
 			{
 				return true;
 			}
 		}
 		for (AttemptResult result : optimization.attempts())
 		{
-			if (result.number() == key.series() && result.runs().stream().anyMatch(run ->
-				run.role() == PromotionReplay.Role.WORKING_REFERENCE && key.equals(run.trial())))
+			if (result.number() == key.series() && result.replays().stream().anyMatch(replay ->
+				replay.role() == PromotionReplay.Role.WORKING_REFERENCE && key.equals(replay.trial())))
 			{
 				return true;
 			}

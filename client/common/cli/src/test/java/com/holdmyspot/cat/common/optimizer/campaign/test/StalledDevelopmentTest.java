@@ -102,10 +102,10 @@ public final class StalledDevelopmentTest
 		while (result.development().promptAuthor() != null)
 		{
 			PromptAuthorAttempt promptAuthor = result.development().promptAuthor();
-			PromotionReplay run = promptAuthor.runs().stream().filter(element -> element.verdict() == null).findFirst().
+			PromotionReplay replay = promptAuthor.replays().stream().filter(element -> element.verdict() == null).findFirst().
 				orElseThrow();
 			result = TransitionSteps.adopt(result, Purpose.PROMOTION, promptAuthor.number(), snapshot,
-				run.testCase(), Verdict.FAIL);
+				replay.testCase(), Verdict.FAIL);
 		}
 		return result;
 	}
