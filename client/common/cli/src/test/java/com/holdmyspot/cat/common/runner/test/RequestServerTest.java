@@ -69,6 +69,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -402,7 +403,7 @@ public final class RequestServerTest
 			fixture.peer = Optional.of(peer);
 			fixture.policy.allow(fixture.policy(List.of(fixture.project, writable)));
 			fixture.child = _ -> new ExitedProcess(new ProcessBuilder(), 1, "", "");
-			try (Fixture.Running server = fixture.start())
+			try (Fixture.Running server = fixture.startForRequest())
 			{
 				JsonNode response = server.request(fixture.manifest().put("harness", "codex"));
 				requireThat(fixture.needsCalls.get(), "needsCalls").withContext(response, "response").isEqualTo(0);
@@ -428,7 +429,7 @@ public final class RequestServerTest
 			Path writable = runtime.resolve("bin");
 			fixture.policy.allow(fixture.policy(List.of(fixture.project, writable)));
 			fixture.child = _ -> new ExitedProcess(new ProcessBuilder(), 1, "", "");
-			try (Fixture.Running server = fixture.start())
+			try (Fixture.Running server = fixture.startForRequest())
 			{
 				fixture.policy.allow(fixture.policy(List.of(fixture.project)));
 				JsonNode response = server.request(fixture.manifest().put("harness", "codex"));
@@ -461,7 +462,7 @@ public final class RequestServerTest
 				process.exit();
 				return process;
 			};
-			try (Fixture.Running server = fixture.start())
+			try (Fixture.Running server = fixture.startForRequest())
 			{
 				JsonNode response = server.request(fixture.manifest().put("harness", "codex"));
 				requireThat(fixture.needsCalls.get(), "needsCalls").withContext(response, "response").isEqualTo(1);
@@ -1679,6 +1680,19 @@ public final class RequestServerTest
 		}
 
 		/**
+		 * Starts a server whose next scan can wait for the fixture to publish a request.
+		 *
+		 * @return the running server
+		 * @throws IOException if the server does not serve in time
+		 */
+		private Running startForRequest() throws IOException
+		{
+			Semaphore requestReady = new Semaphore(0);
+			pause = Pause.interruptible(requestReady::acquire);
+			return start(Optional.empty(), requestReady::release);
+		}
+
+		/**
 		 * Starts the server with the selected native comparison service.
 		 *
 		 * @param comparison the comparison service, if the fixture serves one
@@ -1687,8 +1701,24 @@ public final class RequestServerTest
 		 */
 		private Running start(Optional<RequestServer.ComparisonHost> comparison) throws IOException
 		{
+			return start(comparison, () ->
+			{
+			});
+		}
+
+		/**
+		 * Starts the server with the selected comparison service and scan signal.
+		 *
+		 * @param comparison the comparison service, if the fixture serves one
+		 * @param wake wakes the server after publication or when the owner ends
+		 * @return the running server
+		 * @throws IOException if the server does not serve in time
+		 */
+		private Running start(Optional<RequestServer.ComparisonHost> comparison, Runnable wake) throws IOException
+		{
+			StringWriter errors = new StringWriter();
 			Future<Integer> exit = executor.submit(() -> RequestServer.serve(new String[0], host(),
-				new PrintWriter(new StringWriter(), true), comparison));
+				new PrintWriter(errors, true), comparison));
 			Path requests = sessionDirectory().resolve(RequestServer.REQUESTS);
 			long deadline = System.nanoTime() + WAIT.toNanos();
 			while (!Files.isDirectory(sessionDirectory().resolve("responses")))
@@ -1696,10 +1726,13 @@ public final class RequestServerTest
 				if (exit.isDone())
 					throw new AssertionError("The server ended: " + result(exit));
 				if (System.nanoTime() > deadline)
-					throw new AssertionError("The server created no request directories");
-				Thread.onSpinWait();
+				{
+					exit.cancel(true);
+					throw new AssertionError("The server created no request directories. " + errors);
+				}
+				Thread.yield();
 			}
-			return new Running(exit, requests);
+			return new Running(exit, requests, wake, errors);
 		}
 
 		/**
@@ -1733,8 +1766,11 @@ public final class RequestServerTest
 		 *
 		 * @param exit     the server's exit status
 		 * @param requests the directory into which the session's commands write their requests
+		 * @param wake wakes the server if it waits for the test to publish a request
+		 * @param errors the server's diagnostics
 		 */
-		private record Running(Future<Integer> exit, Path requests) implements AutoCloseable
+		private record Running(Future<Integer> exit, Path requests, Runnable wake, StringWriter errors)
+			implements AutoCloseable
 		{
 			/**
 			 * Writes a request archive that holds a manifest, a project and one prompt, and waits for its response.
@@ -1756,14 +1792,21 @@ public final class RequestServerTest
 					entry(archive, "project/marker", "original".getBytes(StandardCharsets.UTF_8));
 					entry(archive, "prompts/0", "hello".getBytes(StandardCharsets.UTF_8));
 				}
-				Files.move(staging, requests.resolve(id + ".tar"));
+				Path published = Files.move(staging, requests.resolve(id + ".tar"));
+				wake.run();
 				Path response = requests.resolveSibling("responses").resolve(id).resolve("response.json");
 				long deadline = System.nanoTime() + WAIT.toNanos();
 				while (!Files.isRegularFile(response))
 				{
+					if (exit.isDone())
+						throw new AssertionError("The server ended before answering " + id + ": " + result(exit) + ". " + errors);
 					if (System.nanoTime() > deadline)
-						throw new AssertionError("The server did not answer " + id);
-					Thread.onSpinWait();
+					{
+						throw new AssertionError("The server did not answer " + id + ". Request still in inbox: " +
+							Files.exists(published) + ". Response folder created: " + Files.isDirectory(response.getParent()) +
+							". " + errors);
+					}
+					Thread.yield();
 				}
 				return json.readTree(Files.readString(response));
 			}
@@ -1851,6 +1894,7 @@ public final class RequestServerTest
 			 */
 			private int end() throws InterruptedException
 			{
+				wake.run();
 				try
 				{
 					return exit.get(WAIT.toSeconds(), TimeUnit.SECONDS);
