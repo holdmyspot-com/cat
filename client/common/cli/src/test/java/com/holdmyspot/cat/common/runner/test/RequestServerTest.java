@@ -587,7 +587,11 @@ public final class RequestServerTest
 				Future<Boolean> keptWhenEnded = fixture.executor.submit(() ->
 				{
 					while (!(Files.isRegularFile(fromChild) && Files.readString(fromChild).contains("\"ended\"")))
-						Thread.sleep(1);
+					{
+						if (Thread.currentThread().isInterrupted())
+							throw new InterruptedException("Observation of the conversation end was cancelled");
+						Thread.yield();
+					}
 					Path claude = results.resolve("claude");
 					if (!Files.isDirectory(claude))
 						return false;
