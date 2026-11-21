@@ -239,7 +239,7 @@ final class Session implements SessionHandle
 					{
 						if (request.evidencePrompt().isPresent())
 						{
-							String rendered = request.evidencePrompt().get().apply(evidencePaths);
+						String rendered = request.evidencePrompt().get().render(evidencePaths);
 							prompt = RoleRules.fill(settings.artifact(), request.role(),
 								sessions.ruleVariables(settings.artifact()), rendered);
 						}

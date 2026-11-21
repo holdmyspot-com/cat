@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.WorkspaceFiles;
 import com.holdmyspot.cat.common.optimizer.contract.TestWorkspace;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
 
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
@@ -13,8 +14,6 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
-import java.util.function.Function;
-import java.util.function.UnaryOperator;
 
 /**
  * What a nested session needs in order to start.
@@ -48,7 +47,7 @@ import java.util.function.UnaryOperator;
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
 	Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
-	Optional<TurnObserver> turnObserver, Optional<Function<UnaryOperator<Path>, String>> evidencePrompt)
+	Optional<TurnObserver> turnObserver, Optional<EvidencePrompt> evidencePrompt)
 {
 	/**
 	 * Creates a request whose workspace receives no files.
@@ -271,13 +270,13 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	/**
 	 * Returns this request with a first turn that can render the runner's offered evidence paths.
 	 *
-	 * @param render fills the first turn's evidence references with the paths accessible to the session
+	 * @param prompt the template and inputs for the first turn
 	 * @return the updated request
-	 * @throws NullPointerException if {@code render} is null
+	 * @throws NullPointerException if {@code prompt} is null
 	 */
-	public SessionRequest withEvidencePrompt(Function<UnaryOperator<Path>, String> render)
+	public SessionRequest withEvidencePrompt(EvidencePrompt prompt)
 	{
 		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
-			controlSource, extraPermissions, turnObserver, Optional.of(render));
+			controlSource, extraPermissions, turnObserver, Optional.of(prompt));
 	}
 }

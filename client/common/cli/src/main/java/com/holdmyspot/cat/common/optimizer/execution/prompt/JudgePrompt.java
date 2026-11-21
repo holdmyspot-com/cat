@@ -11,14 +11,13 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
-import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
-import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.nio.file.Path;
@@ -30,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.function.UnaryOperator;
 
 import tools.jackson.databind.JsonNode;
@@ -139,18 +137,7 @@ public final class JudgePrompt implements JudgeProtocol
 			"tool_results", pretty(resultArray),
 			"result_schema", pretty(json.readTree(profile.resultSchema()))));
 		values.keySet().removeIf(name -> !profile.prompt().contains("{{" + name + "}}"));
-		PromptTemplate template = new PromptTemplate(profile.prompt());
-		Function<UnaryOperator<Path>, String> render = offered ->
-		{
-			Path transcript = offered.apply(originalTranscript);
-			Path effects = offered.apply(originalEffects);
-			Map<String, String> staged = new HashMap<>(values);
-			staged.computeIfPresent("transcript", (_, _) -> transcript.toString());
-			staged.computeIfPresent("effects", (_, _) -> effects.toString());
-			staged.computeIfPresent("evidence", (_, section) ->
-				EvidenceSection.withPaths(section, originalTranscript, originalEffects, transcript, effects));
-			return template.fill(staged);
-		};
+		EvidencePrompt prompt = new EvidencePrompt(profile.prompt(), values, originalTranscript, originalEffects);
 
 		List<Path> readOnly = new ArrayList<>();
 		readOnly.add(originalEffects);
@@ -159,7 +146,8 @@ public final class JudgePrompt implements JudgeProtocol
 			!readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
 		return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory,
-			List.of(template.fill(values)), readOnly, TIME_LIMIT, profile.profile()).withEvidencePrompt(render);
+			List.of(prompt.render(UnaryOperator.identity())), readOnly, TIME_LIMIT, profile.profile()).
+			withEvidencePrompt(prompt);
 	}
 
 	/**
