@@ -81,6 +81,29 @@ public final class CertifiedEnvironmentTest
 	}
 
 	/**
+	 * A certification measured by one peer reports the harness, loader and plugins recorded on its cell.
+	 */
+	@Test
+	public void namesSolePeerEvaluator()
+	{
+		// Requirement: R-M7, R-L9
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(), Map.of("example", Map.of(
+			MeasurementCondition.PROVIDER, "claude", MeasurementCondition.HARNESS_VERSION, "2.1.286 (Claude Code)",
+			MeasurementCondition.LOADER_FILES, ".claude/settings.json", MeasurementCondition.MODEL, "claude-haiku-4-5",
+			MeasurementCondition.TRIAL_PLUGINS, "peer-tools@market", MeasurementCondition.PLUGIN_VERSIONS,
+			"peer-tools@market 2.3.1", MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, "1.0")));
+		CertificationRecord record = new CertificationRecord(Path.of("rules/common.md"), 1,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			List.of(new CellResult("example", "example", 100, 0, Map.of(), Map.of())), Map.of(), identity);
+
+		String lines = String.join("\n", CertifiedEnvironment.of(record, List.of()).lines());
+
+		requireThat(lines, "report").contains("Claude Code 2.1.286").contains("Plugins: peer-tools@market 2.3.1").
+			contains("Harness settings: the project's .claude/settings.json").contains("Model: claude-haiku-4-5").
+			contains("Trial setup: as introduced in CAT 1.0");
+	}
+
+	/**
 	 * A Codex certification with a project-built and an installed trial plugin, one cell and a settings file of the
 	 * project reads as the block that names each of them, followed by the limitation that trials ran with the
 	 * machine's programs and outside sources, which CAT neither records nor controls.

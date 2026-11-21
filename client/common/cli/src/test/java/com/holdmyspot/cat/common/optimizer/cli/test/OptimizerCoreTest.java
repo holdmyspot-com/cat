@@ -2617,6 +2617,8 @@ public final class OptimizerCoreTest
 				}
 				""");
 			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			int judgeVersion = repository.sessions().port().judgeVersion();
+			peer.port().judgeVersion(judgeVersion + 1);
 			Path installedManifest = prepareSharedPlugin(repository, peer, cleanup, target, entry);
 
 			ObjectNode started = output(repository, List.of("start", target.toString(), "--harness", "codex",
@@ -2637,8 +2639,12 @@ public final class OptimizerCoreTest
 				isEqualTo(Set.of(Harness.CODEX, Harness.CLAUDE));
 			requireThat(confirmed.identity().values().containsKey(MeasurementCondition.PROVIDER), "globalProvider").
 				isFalse();
+			requireThat(confirmed.identity().values().get(MeasurementCondition.JUDGE_HARNESS), "judgeHarness").
+				isEqualTo("claude");
 			for (Cell cell : confirmed.contract().cells())
 			{
+				requireThat(confirmed.identity().valueOf(cell.id(), MeasurementCondition.JUDGE), "judgeVersion").
+					isEqualTo(String.valueOf(judgeVersion));
 				requireThat(confirmed.identity().valueOf(cell.id(), MeasurementCondition.PROVIDER), "cellProvider").
 					isEqualTo(cell.evaluator().orElseThrow().commandName());
 				Harness evaluator = cell.evaluator().orElseThrow();
@@ -2670,6 +2676,60 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Starts and resumes a Codex-only evaluation from its Claude Code owner, with the configured peer plugin.
+	 *
+	 * @throws Exception if a fixture or command fails
+	 */
+	@Test
+	public void resumesPeerOnlyPilotFromCli() throws Exception
+	{
+		// Requirement: R-L6
+		// Requirement: R-L7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Repository repository = repository(cleanup, _ -> derivation(OptimizerCoreTest::keepFirstTest),
+				Set.of(target, entry));
+			Files.writeString(repository.root().resolve(entry), "Read CLAUDE.md for the shared instructions.\n");
+			configure(repository.root(), """
+				{"codex": {"plugins": [{"name": "peer-tools@market"}]}}
+				""");
+			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			installSharedPeerPlugin(peer, cleanup);
+
+			ObjectNode started = output(repository, List.of("start", target.toString(), "--harness", "codex",
+				"--max-concurrency", "2"));
+			String id = started.path("campaign").asString();
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.header().harness(), "owner").isEqualTo(Harness.CLAUDE);
+			requireThat(campaign.header().evaluationHarnesses(), "evaluators").isEqualTo(Set.of(Harness.CODEX));
+			requireThat(campaign.pluginsFor(Harness.CLAUDE), "ownerPlugins").isEmpty();
+			requireThat(campaign.pluginsFor(Harness.CODEX).orElseThrow().stream().map(TrialPlugin::name).toList(),
+				"peerPlugins").isEqualTo(List.of("peer-tools@market"));
+			Path pilotFile = repository.directory(id).resolve("held_out/pilot.json");
+			JsonNode pilots = JSON.readTree(Files.readString(pilotFile));
+			JsonNode tests = pilots.path("tests");
+			requireThat(tests.size(), "pilots").isEqualTo(1);
+			JsonNode pilot = tests.get(0);
+			requireThat(pilot.has("evaluator"), "qualifiedPilot").isFalse();
+			requireThat(pilot.path("trials").size(), "pilotOutcomes").isEqualTo(20);
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isEqualTo(20);
+			for (SessionRequest request : peer.requests(SessionRole.TRIAL))
+				checkSharedPluginRequest(request, Harness.CODEX, "\"2.3\"");
+			requireThat(repository.sessions().requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
+
+			Repository reopened = new Repository(repository.root(), repository.scope(), repository.sessions(),
+				new OptimizerCore(repository.scope()), repository.trialEnd());
+			resumeSharedCampaign(reopened, target, peer, campaign);
+			requireThat(JSON.readTree(Files.readString(pilotFile)), "resumedPilot").isEqualTo(pilots);
+			output(reopened, List.of("confirm", id));
+			Cell cell = reopened.load(id).contract().findCell(pilot.path("cell").asString()).orElseThrow();
+			requireThat(cell.evaluator(), "confirmedCellEvaluator").isEqualTo(Optional.of(Harness.CODEX));
+		}
+	}
+
+	/**
 	 * Exercises a missing peer plugin and a peer loader that does not load the target in the same project.
 	 *
 	 * @param repository the shared campaign's project and owner
@@ -2688,11 +2748,7 @@ public final class OptimizerCoreTest
 		requireThat(refused.path("reason").asString(), "reason").isEqualTo("evaluator_unavailable");
 		requireThat(refused.path("message").asString(), "message").contains("peer-tools@market");
 
-		Path installed = cleanup.add(Files.createTempDirectory("shared-installed-plugin-")).toRealPath();
-		Path manifest = installed.resolve(".codex-plugin/plugin.json");
-		Files.createDirectories(manifest.getParent());
-		Files.writeString(manifest, "{\"name\":\"peer-tools\",\"version\":\"2.3\"}");
-		peer.install("peer-tools@market", List.of(installed));
+		Path manifest = installSharedPeerPlugin(peer, cleanup);
 		List<DerivedSource> sources = sharedPeerSources(target, entry);
 		peer.derivedSources(List.of(sources.getFirst()));
 
@@ -2705,6 +2761,24 @@ public final class OptimizerCoreTest
 		requireThat(peer.requests(), "peerRequests").isEmpty();
 		requireThat(Files.exists(repository.campaigns()), "campaignDirectory").isFalse();
 		peer.derivedSources(sources);
+		return manifest;
+	}
+
+	/**
+	 * Registers the Codex fixture's installed trial plugin.
+	 *
+	 * @param peer the Codex fixture
+	 * @param cleanup removes temporary plugin directories
+	 * @return the installed plugin manifest
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static Path installSharedPeerPlugin(SessionScript peer, TemporaryDirectories cleanup) throws IOException
+	{
+		Path installed = cleanup.add(Files.createTempDirectory("shared-installed-plugin-")).toRealPath();
+		Path manifest = installed.resolve(".codex-plugin/plugin.json");
+		Files.createDirectories(manifest.getParent());
+		Files.writeString(manifest, "{\"name\":\"peer-tools\",\"version\":\"2.3\"}");
+		peer.install("peer-tools@market", List.of(installed));
 		return manifest;
 	}
 

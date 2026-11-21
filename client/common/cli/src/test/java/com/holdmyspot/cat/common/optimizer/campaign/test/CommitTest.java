@@ -2,6 +2,7 @@ package com.holdmyspot.cat.common.optimizer.campaign.test;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Admission;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
@@ -9,6 +10,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
 import com.holdmyspot.cat.common.optimizer.campaign.Candidate;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationProcedure;
+import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
@@ -22,6 +24,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -33,6 +36,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Map;
 import org.testng.annotations.Test;
 
 /**
@@ -57,6 +61,24 @@ public final class CommitTest
 	{
 		return new Builder().confirmed().working(1).readyDevelopment().baseline("formatting", 50, 0).
 			baseline("plain_list", 50, 0).baseline("safety", 48, 2);
+	}
+
+	/**
+	 * Returns a shared candidate with passing development and baseline evidence for both evaluators.
+	 *
+	 * @return the campaign builder
+	 */
+	static Builder readyShared()
+	{
+		Contract local = ContractFixtures.contract();
+		TrialProfiles profiles = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, local.profiles(),
+			Harness.CODEX, local.profiles()));
+		Contract contract = new Contract(local.requirements(), local.tests(), profiles, local.judge(),
+			local.limitations(), local.minimumPassRate(), local.salt());
+		Header owner = new Builder().build().header();
+		Header shared = new Header(owner.id(), owner.root(), owner.target(), owner.harness(), owner.lifecycle(),
+			owner.goal(), owner.extraPermissions(), profiles.byEvaluator().keySet());
+		return new Builder().header(shared).confirmed(contract, 1).working(1).readyDevelopment().readyBaseline();
 	}
 
 	/**
@@ -311,5 +333,35 @@ public final class CommitTest
 		requireThat(procedure.cells(), "cells").isEqualTo(List.of(TierFixtures.SMALL_HIGH, TierFixtures.SAFETY));
 		requireThat(procedure.improvementLevel(), "improvementLevel").isEqualTo(ErrorBudget.improvementLevel(1, 2));
 		requireThat(procedure.boundaries().comparisons().size(), "comparisons").isEqualTo(2);
+	}
+
+	/**
+	 * Committing a shared candidate freezes its snapshot and spends one attempt's budget across both evaluators.
+	 */
+	@Test
+	public void commitFreezesSharedScopeAndBudget()
+	{
+		// Requirement: R-L9
+		Campaign before = readyShared().baseline("claude:safety", 48, 2).build();
+		Campaign after = Transitions.apply(before, new CampaignEvent.Commit(calibration(1), 41, Builder.CONTROL));
+		requireThat(after.attempts().size(), "attempts").isEqualTo(1);
+		CertificationAttempt attempt = after.attempt(1);
+		requireThat(attempt.candidate(), "frozenCandidate").isEqualTo(before.development().working());
+		CertificationProcedure procedure = attempt.procedure();
+		List<String> cells = List.of("claude:formatting", "claude:plain_list", "claude:safety", "codex:formatting",
+			"codex:plain_list", "codex:safety");
+		requireThat(procedure.cells(), "cells").isEqualTo(cells);
+		requireThat(procedure.boundaries().level(), "certificationLevel").isEqualTo(ErrorBudget.certificationLevel(1));
+		requireThat(procedure.boundaries().cap(), "cap").isEqualTo(calibration(1).cap());
+		SignificanceLevel improvement = ErrorBudget.improvementLevel(1, cells.size());
+		SignificanceLevel incumbent = ErrorBudget.incumbentLevel(1, cells.size());
+		requireThat(procedure.improvementLevel(), "improvementLevel").isEqualTo(improvement);
+		requireThat(procedure.boundaries().comparisons().size(), "comparisonCount").isEqualTo(cells.size());
+		requireThat(procedure.boundaries().comparisons().get(cells.indexOf("claude:safety")).comparison(),
+			"claudeSafetyComparison").isEqualTo(Comparison.freeze(48, 2, incumbent, improvement,
+			Contract.DEFAULT_MINIMUM_PASS_RATE));
+		requireThat(procedure.boundaries().comparisons().get(cells.indexOf("codex:safety")).comparison(),
+			"codexSafetyComparison").isEqualTo(Comparison.freeze(50, 0, incumbent, improvement,
+			Contract.DEFAULT_MINIMUM_PASS_RATE));
 	}
 }

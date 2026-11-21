@@ -161,6 +161,63 @@ public final class CertificationHistoryTest
 	}
 
 	/**
+	 * A certification measured by one peer is indexed under that peer and compares its known loader conditions.
+	 */
+	@Test
+	public void peerOnlyConditionChangesAreHistorical()
+	{
+		// Requirement: R-M7, R-L9
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(), Map.of("example", Map.of(
+			MeasurementCondition.PROVIDER, "claude", MeasurementCondition.LOADER_CONFIGURATION, "peer-loader")));
+		CertificationRecord peer = new CertificationRecord(TARGET, 1, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			List.of(new CellResult("example", "example", 100, 0, Map.of(), Map.of())), Map.of(), identity);
+		CertificationHistory history = CertificationHistory.EMPTY.appended(peer);
+		requireThat(peer.harness(), "harness").isEqualTo(Optional.of("claude"));
+		requireThat(history.latestCertification(Optional.of("claude")), "peer").isEqualTo(Optional.of(peer));
+		requireThat(history.latestCertification(Optional.of("codex")), "owner").isEqualTo(Optional.empty());
+
+		MeasurementIdentity owner = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "codex",
+			MeasurementCondition.LOADER_CONFIGURATION, "owner-loader"));
+		Applicability unchecked = peer.applicability(peer.promptFiles(), owner, Contract.DEFAULT_MINIMUM_PASS_RATE);
+		requireThat(unchecked.status(), "ownerStatus").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(unchecked.unchecked(), "unchecked").contains(MeasurementCondition.LOADER_CONFIGURATION);
+
+		MeasurementIdentity changed = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "claude",
+			MeasurementCondition.LOADER_CONFIGURATION, "new-peer-loader"));
+		Applicability historical = peer.applicability(peer.promptFiles(), changed, Contract.DEFAULT_MINIMUM_PASS_RATE);
+		requireThat(historical.status(), "peerStatus").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(historical.changed(), "conditions").isEqualTo(List.of(MeasurementCondition.LOADER_CONFIGURATION));
+	}
+
+	/**
+	 * Only the harness that judged a trial can verify the judge version of a peer-only certification.
+	 */
+	@Test
+	public void peerCertificateChecksOwnerJudge()
+	{
+		// Requirement: R-M7, R-L9
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(
+			MeasurementCondition.JUDGE_HARNESS, "codex", MeasurementCondition.JUDGE, "1"), Map.of("example",
+			Map.of(MeasurementCondition.PROVIDER, "claude")));
+		CertificationRecord peer = new CertificationRecord(TARGET, 1, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			List.of(new CellResult("example", "example", 100, 0, Map.of(), Map.of())), Map.of(), identity);
+
+		MeasurementIdentity actualJudge = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "codex",
+			MeasurementCondition.JUDGE, "2"));
+		Applicability changed = peer.applicability(peer.promptFiles(), actualJudge, Contract.DEFAULT_MINIMUM_PASS_RATE);
+		requireThat(changed.status(), "ownerJudgeStatus").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(changed.changed(), "changed").isEqualTo(List.of(MeasurementCondition.JUDGE));
+
+		MeasurementIdentity evaluator = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "claude",
+			MeasurementCondition.JUDGE, "3"));
+		Applicability unchecked = peer.applicability(peer.promptFiles(), evaluator, Contract.DEFAULT_MINIMUM_PASS_RATE);
+		requireThat(unchecked.status(), "peerJudgeStatus").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(unchecked.unchecked(), "unchecked").contains(MeasurementCondition.JUDGE);
+	}
+
+	/**
 	 * Appending a record to the history of a target that has no file creates a history of that record alone, and its
 	 * file reads back as the same history.
 	 *

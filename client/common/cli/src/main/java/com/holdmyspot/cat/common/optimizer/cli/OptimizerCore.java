@@ -1326,7 +1326,7 @@ public final class OptimizerCore implements Core
 			}
 			else
 			{
-				campaign = campaign.withEvaluatorPlugins(inputs.plugins());
+				campaign = withPreparedPlugins(campaign, fork.workspace(), inputs.plugins());
 				store.replaceSnapshot(campaign);
 			}
 			result = derive(root, store, campaign, fork, null, null, sliceStart);
@@ -1947,7 +1947,7 @@ public final class OptimizerCore implements Core
 				throw new IllegalArgumentException("Shared evaluation requires its evaluator-specific configurations");
 			Map<Harness, List<TrialPlugin>> empty = new EnumMap<>(Harness.class);
 			campaign.header().evaluationHarnesses().forEach(evaluator -> empty.put(evaluator, List.of()));
-			Campaign withoutPlugins = campaign.withEvaluatorPlugins(empty);
+			Campaign withoutPlugins = withPreparedPlugins(campaign, fork.workspace(), empty);
 			store.replaceSnapshot(withoutPlugins);
 			return withoutPlugins;
 		}
@@ -1958,6 +1958,27 @@ public final class OptimizerCore implements Core
 		Campaign built = campaign.withPlugins(mapped, versions);
 		store.replaceSnapshot(built);
 		return built;
+	}
+
+	/**
+	 * Records frozen plugin lists, using the single list when the campaign evaluates in just one harness.
+	 *
+	 * @param campaign the campaign's recorded evaluation scope
+	 * @param workspace the workspace holding the frozen plugin bases
+	 * @param plugins the prepared plugin list for every selected evaluator
+	 * @return the campaign with the prepared plugin lists recorded
+	 * @throws IOException if a base's manifest cannot be read
+	 */
+	private static Campaign withPreparedPlugins(Campaign campaign, WorkspacePort workspace,
+		Map<Harness, List<TrialPlugin>> plugins) throws IOException
+	{
+		if (plugins.size() == 1)
+		{
+			Map.Entry<Harness, List<TrialPlugin>> evaluator = plugins.entrySet().iterator().next();
+			return campaign.withPlugins(evaluator.getValue(),
+				pluginVersions(workspace, evaluator.getKey(), evaluator.getValue()));
+		}
+		return campaign.withEvaluatorPlugins(plugins);
 	}
 
 	/**
@@ -4719,7 +4740,10 @@ public final class OptimizerCore implements Core
 			for (Cell stress : CellTier.stressCells(contract, scope.harness(), cell.id()))
 				cells.put(stress.id(), local);
 		}
-		return new MeasurementIdentity(campaignEnvironment().values(), cells);
+		Map<MeasurementCondition, String> shared = new EnumMap<>(campaignEnvironment().values());
+		shared.put(MeasurementCondition.JUDGE_HARNESS, scope.harness().commandName());
+		shared.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
+		return new MeasurementIdentity(shared, cells);
 	}
 
 	/**
@@ -4738,7 +4762,6 @@ public final class OptimizerCore implements Core
 			MeasurementCondition.HARNESS_VERSION, runtime.harnessVersion(),
 			MeasurementCondition.SESSION_ENVIRONMENT_VERSION, String.valueOf(runtime.environmentVersion()),
 			MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, runtime.environmentRelease(),
-			MeasurementCondition.JUDGE, String.valueOf(runtime.judgeVersion()),
 			MeasurementCondition.LOADER_CONFIGURATION, report.loaderIdentity(),
 			MeasurementCondition.LOADER_FILES, files.toString());
 	}

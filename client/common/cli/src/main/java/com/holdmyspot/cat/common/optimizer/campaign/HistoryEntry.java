@@ -43,10 +43,10 @@ public sealed interface HistoryEntry permits CertificationRecord, DeliveryEntry
 	MeasurementIdentity identity();
 
 	/**
-	 * Returns the harness that the entry's conditions were measured in.
+	 * Returns the sole harness that the entry's conditions were measured in.
 	 *
 	 * @return the model provider that the measurement conditions record, which names the harness, or empty if they
-	 *   record none
+	 *   record no unique harness
 	 */
 	default Optional<String> harness()
 	{

@@ -435,7 +435,7 @@ public final class ProposalSchema
 		contract.limitations().forEach(limitations::add);
 		root.put("minimum_pass_rate", contract.minimumPassRate());
 		root.put(SALT, contract.salt());
-		writeDependents(contract, root);
+		writeDependents(contract.dependents(), root);
 		writeReferencedFiles(contract, root);
 		return json.writeValueAsString(root);
 	}
@@ -455,6 +455,20 @@ public final class ProposalSchema
 	 */
 	public String toJson(Contract contract, PromptTest test)
 	{
+		return toJson(contract, test, null);
+	}
+
+	/**
+	 * Writes a prompt test definition for one evaluator's control trials.
+	 *
+	 * @param contract the contract
+	 * @param test a prompt test of {@code contract}
+	 * @param evaluator whose packaged dependents to retain, or null to retain every dependent
+	 * @return the definition with the test, checked requirements, judge, applicable dependents and referenced files
+	 * @throws NullPointerException if a required argument is null
+	 */
+	public String toJson(Contract contract, PromptTest test, Harness evaluator)
+	{
 		requireThat(contract, "contract").isNotNull();
 		requireThat(test, "test").isNotNull();
 		ObjectNode root = json.createObjectNode();
@@ -466,7 +480,14 @@ public final class ProposalSchema
 				write(requirement, requirements.addObject());
 		}
 		write(contract.judge(), root.putObject("judge"));
-		writeDependents(contract, root);
+		List<Dependent> dependents = contract.dependents();
+		if (evaluator != null)
+		{
+			dependents = dependents.stream().
+				filter(dependent -> dependent.evaluator().isEmpty() || dependent.evaluator().orElseThrow() == evaluator).
+				toList();
+		}
+		writeDependents(dependents, root);
 		writeReferencedFiles(contract, root);
 		return json.writeValueAsString(root);
 	}
@@ -505,16 +526,16 @@ public final class ProposalSchema
 	/**
 	 * Writes the dependents of the target prompt file, if the contract lists any.
 	 *
-	 * @param contract the contract
+	 * @param selected the dependents to write in order
 	 * @param root the object that receives the {@value #DEPENDENTS} property
 	 */
-	private static void writeDependents(Contract contract, ObjectNode root)
+	private static void writeDependents(List<Dependent> selected, ObjectNode root)
 	{
 		// A contract without dependents keeps the identity that it had before the property existed
-		if (contract.dependents().isEmpty())
+		if (selected.isEmpty())
 			return;
 		ArrayNode dependents = root.putArray(DEPENDENTS);
-		for (Dependent dependent : contract.dependents())
+		for (Dependent dependent : selected)
 		{
 			ObjectNode node = dependents.addObject();
 			node.put("location", EnumNames.lowerCase(dependent.location()));

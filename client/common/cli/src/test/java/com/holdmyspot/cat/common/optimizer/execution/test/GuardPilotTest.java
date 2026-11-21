@@ -355,6 +355,51 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * Revising a packaged dependent reruns only the evaluator whose plugin copy removes it.
+	 *
+	 * @throws IOException if the workspace cannot be staged
+	 * @throws InterruptedException if waiting for tests is interrupted
+	 */
+	@Test
+	public void sharedPilotReusesUnchangedDependents() throws IOException, InterruptedException
+	{
+		// Requirement: R-L7
+		Contract contract = sharedContract();
+		Contract revised = ContractFixtures.withDependents(contract, List.of(new Dependent(
+			Dependent.Location.PLUGIN, "cat", PLUGIN_READ_PART, new Dependent.WholeFile(), "Reads a part.",
+			Optional.of(Harness.CLAUDE))));
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-evaluator-dependent"));
+			FakeWorkspacePort workspace = workspace(directory);
+			TrialPlugin built = builtPlugin(copyTemporaryPluginBase(workspace, cleanup));
+			Map<Harness, List<TrialPlugin>> plugins = Map.of(Harness.CLAUDE, List.of(built), Harness.CODEX, List.of(built));
+			SessionScript owner = new SessionScript(directory.resolve("owner"), _ -> "pass");
+			SessionScript peer = new SessionScript(directory.resolve("peer"), _ -> "pass");
+			Map<String, PilotResult> initial = sharedPilot(owner, peer, workspace).run(contract, plugins, control(),
+				Set.of(), SELECTION, Map.of(), new SplittableRandom(1), _ ->
+				{
+				}, null);
+
+			SessionScript nextOwner = new SessionScript(directory.resolve("next-owner"), _ -> "pass");
+			SessionScript nextPeer = new SessionScript(directory.resolve("next-peer"), _ -> "pass");
+			Map<String, PilotResult> resumed = sharedPilot(nextOwner, nextPeer, workspace).run(revised, plugins,
+				control(), Set.of(), SELECTION, initial, new SplittableRandom(2), _ ->
+				{
+				}, null);
+
+			requireThat(nextOwner.requests(SessionRole.TRIAL).size(), "changedTrials").
+				isEqualTo(contract.tests().size() * GuardPilot.TRIALS);
+			requireThat(nextPeer.requests(SessionRole.TRIAL), "unchangedTrials").isEmpty();
+			requireThat(resumed.get("codex:safety"), "retainedPilot").isEqualTo(initial.get("codex:safety"));
+			requireThat(resumed.get("codex:formatting"), "retainedFormatting").
+				isEqualTo(initial.get("codex:formatting"));
+			requireThat(resumed.get("claude:safety").definition(), "changedPilotDefinition").
+				isNotEqualTo(initial.get("claude:safety").definition());
+		}
+	}
+
+	/**
 	 * Each assertion's tally counts the trials in which the judge passed it; a guard that the agent fails in 5 of 20
 	 * control trials is below a minimum pass rate of 95% but not below 75%.
 	 *

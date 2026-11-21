@@ -158,14 +158,17 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 	}
 
 	/**
-	 * Describes a record with campaign-wide harness and loader conditions.
+	 * Describes a record with one evaluator's harness and loader conditions.
 	 *
 	 * @param lines the block's lines
 	 */
 	private void singletonLines(List<String> lines)
 	{
-		lines.add(checked(harness(null), MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION));
-		lines.add(checked("Plugins: " + plugins(null), MeasurementCondition.TRIAL_PLUGINS,
+		String evaluatorCell = null;
+		if (!identity.values().containsKey(MeasurementCondition.PROVIDER))
+			evaluatorCell = evaluators.values().stream().flatMap(List::stream).findFirst().orElse(null);
+		lines.add(checked(harness(evaluatorCell), MeasurementCondition.PROVIDER, MeasurementCondition.HARNESS_VERSION));
+		lines.add(checked("Plugins: " + plugins(evaluatorCell), MeasurementCondition.TRIAL_PLUGINS,
 			MeasurementCondition.PLUGIN_BASES, MeasurementCondition.PLUGIN_VERSIONS, MeasurementCondition.PLUGIN_BUILDS,
 			MeasurementCondition.PLUGIN_MAPPINGS));
 		if (cells.isEmpty())
@@ -178,9 +181,9 @@ public record CertifiedEnvironment(MeasurementIdentity identity, List<String> ce
 			lines.add(checked("Model: " + model(cell), MeasurementCondition.MODEL, MeasurementCondition.REASONING));
 		}
 		lines.add(checked("Prompt files loaded: " + promptFileList(), MeasurementCondition.PROMPT_SOURCES));
-		lines.add(checked("Harness settings: " + settings(null), MeasurementCondition.LOADER_CONFIGURATION,
+		lines.add(checked("Harness settings: " + settings(evaluatorCell), MeasurementCondition.LOADER_CONFIGURATION,
 			MeasurementCondition.LOADER_FILES));
-		lines.add(checked("Trial setup: " + trialSetup(null), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
+		lines.add(checked("Trial setup: " + trialSetup(evaluatorCell), MeasurementCondition.SESSION_ENVIRONMENT_VERSION,
 			MeasurementCondition.SESSION_ENVIRONMENT_RELEASE));
 	}
 

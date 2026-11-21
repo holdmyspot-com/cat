@@ -27,6 +27,10 @@ public enum MeasurementCondition
 	 */
 	JUDGE,
 	/**
+	 * The owning harness that runs the judge when trials are dispatched to separately selected evaluators.
+	 */
+	JUDGE_HARNESS,
+	/**
 	 * The trial model as observed in harness events.
 	 */
 	MODEL,
@@ -113,6 +117,7 @@ public enum MeasurementCondition
 			case CONTRACT -> "contract";
 			case GENERATOR -> "generator";
 			case JUDGE -> "judge version";
+			case JUDGE_HARNESS -> "judge harness";
 			case MODEL -> "trial model";
 			case REASONING -> "trial reasoning";
 			case TOOL_OUTPUT_LIMIT -> "trial tool-output token limit";
@@ -153,15 +158,15 @@ public enum MeasurementCondition
 	 * harness cannot observe the value that a result records.
 	 *
 	 * @return {@code true} for the harness, its version, the session environment version and release, the judge
-	 *   version, the trial model, its reasoning and tool-output token limit, and the trial plugins, which the prompt
-	 *   test configuration lists for each harness
+	 *   harness and version, the trial model, its reasoning and tool-output token limit, and the trial plugins
+	 *   listed for each harness in the prompt test configuration
 	 */
 	public boolean isHarnessSpecific()
 	{
 		return switch (this)
 		{
-			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, SESSION_ENVIRONMENT_RELEASE, JUDGE, MODEL,
-				REASONING, TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_VERSIONS, PLUGIN_BUILDS,
+			case PROVIDER, HARNESS_VERSION, SESSION_ENVIRONMENT_VERSION, SESSION_ENVIRONMENT_RELEASE, JUDGE, JUDGE_HARNESS,
+				MODEL, REASONING, TOOL_OUTPUT_LIMIT, TRIAL_PLUGINS, PLUGIN_BASES, PLUGIN_VERSIONS, PLUGIN_BUILDS,
 				PLUGIN_MAPPINGS -> true;
 			default -> false;
 		};

@@ -3168,7 +3168,9 @@ same candidate across all required development cells. Carry forward completed re
 assignments. A prior candidate's pass does not count toward the new candidate's gate.
 
 **Certification and delivery.** Freeze the candidate and the per-harness evaluation conditions once for the joint
-attempt. Use fresh formal trials from the held-out part under [§2](#2-statistical-design) and one campaign budget and
+attempt. The owning harness runs the judges and records its judge version for the whole attempt. Only observations
+from that harness can verify the recorded judge version. Use fresh formal trials from the held-out part under
+[§2](#2-statistical-design) and one campaign budget and
 attempt index across the union of certification cells. The scheduler may evaluate those cells serially or concurrently.
 Report per-cell progress and provisional results, and apply the certification label only after all required cells
 pass on the frozen snapshot. If an attempt returns to development, any failures shared with the editor follow the

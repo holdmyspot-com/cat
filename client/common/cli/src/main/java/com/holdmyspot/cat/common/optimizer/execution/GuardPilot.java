@@ -427,15 +427,15 @@ public final class GuardPilot
 	 * @return the pilots by test and evaluator, in contract order
 	 * @throws IOException if the source or plugins cannot be staged or the pilots cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while waiting for a session
-	 * @throws IllegalArgumentException if plugin lists are missing or do not match the shared scope
+	 * @throws IllegalArgumentException if plugin lists are missing or do not match the evaluator scope
 	 */
 	public Map<String, PilotResult> run(Contract contract, Map<Harness, List<TrialPlugin>> plugins, Overlay control,
 		Set<Path> excluded, SourceSelection selection, Map<String, PilotResult> stored, RandomGenerator random,
 		PilotCheckpoint checkpoint, PilotSlice slice) throws IOException, InterruptedException
 	{
 		Set<Harness> scope = contract.profiles().byEvaluator().keySet();
-		if (scope.size() <= 1 || !scope.equals(plugins.keySet()))
-			throw new IllegalArgumentException("Provide trial plugin lists for the shared evaluator scope " + scope);
+		if (scope.isEmpty() || !scope.equals(plugins.keySet()))
+			throw new IllegalArgumentException("Provide trial plugin lists for the evaluator scope " + scope);
 		return runPilot(contract, plugins::get, control, excluded, selection, stored, random, checkpoint, slice);
 	}
 
@@ -482,7 +482,6 @@ public final class GuardPilot
 		{
 			if (contract.split().testCases(test, Part.DEVELOPMENT).isEmpty())
 				continue;
-			Sha256 definition = definition(contract, test);
 			for (TrialProfiles local : localProfiles)
 			{
 				if (local.cellsOf(test.id()).isEmpty())
@@ -492,13 +491,15 @@ public final class GuardPilot
 					continue;
 				Cell cell = selected.orElseThrow();
 				Harness evaluator = cell.evaluator().orElse(null);
+				Sha256 definition = Sha256.of(schema.toJson(contract, test, evaluator).getBytes(UTF_8));
 				SessionPort trials = trialSessions(evaluator);
-				if (!shared)
-					evaluator = null;
 				List<TrialPlugin> plugins = List.copyOf(pluginSelection.apply(evaluator));
-				PilotConditions conditions = new PilotConditions(cell, evaluator, trials, definition,
+				Harness pilotEvaluator = null;
+				if (shared)
+					pilotEvaluator = evaluator;
+				PilotConditions conditions = new PilotConditions(cell, pilotEvaluator, trials, definition,
 					controlIdentity(files, selection, trials, evaluator, plugins), plugins);
-				String key = PilotResult.key(test.id(), evaluator);
+				String key = PilotResult.key(test.id(), pilotEvaluator);
 				PilotResult earlier = stored.get(key);
 				if (earlier != null && earlier.ranIn(definition, cell.id(), conditions.control()))
 				{
@@ -1036,7 +1037,7 @@ public final class GuardPilot
 	 * @param files the identity of the control source's files
 	 * @param selection the files of the control source that the staged control source holds
 	 * @param trials the trial sessions of the selected evaluator
-	 * @param evaluator the evaluator for a shared pilot, or null for a singleton
+	 * @param evaluator the assigned evaluator, or null for an unassigned singleton
 	 * @param plugins the selected trial plugins
 	 * @return the identity
 	 */

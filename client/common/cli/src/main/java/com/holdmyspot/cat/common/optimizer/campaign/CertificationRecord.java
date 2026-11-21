@@ -161,9 +161,18 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 				evaluators.computeIfAbsent(evaluator, _ -> new ArrayList<>()).add(cell);
 		}
 		if (cells.isEmpty())
-			harness().ifPresent(harness -> evaluators.put(harness, List.of()));
+			HistoryEntry.super.harness().ifPresent(harness -> evaluators.put(harness, List.of()));
 		evaluators.replaceAll((_, result) -> List.copyOf(result));
 		return Collections.unmodifiableMap(evaluators);
+	}
+
+	@Override
+	public Optional<String> harness()
+	{
+		Set<String> evaluators = evaluatorCells().keySet();
+		if (evaluators.size() == 1)
+			return Optional.of(evaluators.iterator().next());
+		return Optional.empty();
 	}
 
 	/**
@@ -252,15 +261,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		requireThat(known, "known").isNotNull();
 		MeasurementIdentity identity = entry.identity();
 		boolean promptContentChanged = !entry.promptFiles().equals(currentPromptFiles);
-		String recordedProvider = identity.values().get(MeasurementCondition.PROVIDER);
-		String knownProvider = known.values().get(MeasurementCondition.PROVIDER);
-		if (knownProvider != null)
-		{
-			if (entry instanceof CertificationRecord record && record.evaluatorCells().size() > 1)
-				known = observationsInCells(known, record.evaluatorCells().getOrDefault(knownProvider, List.of()));
-			else if (recordedProvider != null && !recordedProvider.equals(knownProvider))
-				known = known.withoutHarnessSpecific();
-		}
+		known = observationsFor(entry, known);
 		List<MeasurementCondition> changed = identity.differences(known);
 		List<MeasurementCondition> unchecked = identity.unobservedBy(known);
 		Applicability.Status status = Applicability.Status.CURRENT;
@@ -270,28 +271,68 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	}
 
 	/**
+	 * Scopes observations from one live provider to the conditions it can verify in a recorded delivery.
+	 *
+	 * @param entry the delivery
+	 * @param known the current observations
+	 * @return the applicable observations
+	 */
+	private static MeasurementIdentity observationsFor(HistoryEntry entry, MeasurementIdentity known)
+	{
+		String knownProvider = known.values().get(MeasurementCondition.PROVIDER);
+		if (knownProvider == null)
+			return known;
+		String recordedProvider = entry.identity().values().get(MeasurementCondition.PROVIDER);
+		if (entry instanceof CertificationRecord record)
+		{
+			Map<String, List<String>> evaluatorCells = record.evaluatorCells();
+			if (evaluatorCells.size() > 1 || recordedProvider == null && !evaluatorCells.isEmpty())
+			{
+				return observationsInCells(known, evaluatorCells.getOrDefault(knownProvider, List.of()),
+					entry.identity().values().get(MeasurementCondition.JUDGE_HARNESS));
+			}
+		}
+		if (recordedProvider != null && !recordedProvider.equals(knownProvider))
+			return known.withoutHarnessSpecific();
+		return known;
+	}
+
+	/**
 	 * Assigns a single live evaluator's environment observations only to its own measured cells.
 	 *
 	 * @param known the observations from one live evaluator
 	 * @param matchingCells the measured cells for that evaluator
+	 * @param judgeHarness the owning judge harness, or null for an earlier record without one
 	 * @return the shared observations and the matched evaluator's local observations
 	 */
-	private static MeasurementIdentity observationsInCells(MeasurementIdentity known, List<String> matchingCells)
+	private static MeasurementIdentity observationsInCells(MeasurementIdentity known, List<String> matchingCells,
+		String judgeHarness)
 	{
 		Map<MeasurementCondition, String> shared = new EnumMap<>(MeasurementCondition.class);
 		shared.putAll(known.withoutHarnessSpecific().values());
 		shared.remove(MeasurementCondition.LOADER_CONFIGURATION);
 		shared.remove(MeasurementCondition.LOADER_FILES);
+		if (judgeHarness != null && judgeHarness.equals(known.values().get(MeasurementCondition.PROVIDER)))
+		{
+			String judgeVersion = known.values().get(MeasurementCondition.JUDGE);
+			if (judgeVersion != null)
+			{
+				shared.put(MeasurementCondition.JUDGE_HARNESS, judgeHarness);
+				shared.put(MeasurementCondition.JUDGE, judgeVersion);
+			}
+		}
 		Map<String, Map<MeasurementCondition, String>> local = new HashMap<>();
 		for (String cell : matchingCells)
 		{
 			Map<MeasurementCondition, String> conditions = new EnumMap<>(MeasurementCondition.class);
 			conditions.putAll(known.values());
 			conditions.putAll(known.cells().getOrDefault(cell, Map.of()));
+			if (judgeHarness != null)
+				conditions.remove(MeasurementCondition.JUDGE);
 			local.put(cell, conditions);
 		}
 		List<MeasurementIdentity> accepted = known.acceptedChanges().stream().
-			map(identity -> observationsInCells(identity, matchingCells)).toList();
+			map(identity -> observationsInCells(identity, matchingCells, judgeHarness)).toList();
 		return new MeasurementIdentity(shared, local, accepted);
 	}
 

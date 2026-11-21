@@ -316,25 +316,28 @@ public final class DriverTest
 			TrialPlugin codexPlugin = new TrialPlugin("guide@fixture",
 				InventoryScanner.scan(codexBase, Set.of()).identity().hex(), new TrialPlugin.Installed(), List.of(), null);
 			Campaign initial = new Builder().header(header).confirmed(shared, 1).working(1).readyBaseline().
-				identity(new MeasurementIdentity(global)).build().withEvaluatorPlugins(
+				ceiling(1).window(1).identity(new MeasurementIdentity(global)).build().withEvaluatorPlugins(
 					Map.of(Harness.CLAUDE, List.of(claudePlugin), Harness.CODEX, List.of(codexPlugin)));
 			DriverHarness harness = new DriverHarness(directory, initial);
 			Path claudeCopy = harness.workspace().pluginBase(harness.workspace().copyPluginBase(claudeBase));
 			Path codexCopy = harness.workspace().pluginBase(harness.workspace().copyPluginBase(codexBase));
 			Set<List<Path>> dispatched = new HashSet<>();
+			Map<String, TrialKey> firstAssignments = new HashMap<>();
 			harness.trials(request ->
 			{
 				dispatched.add(request.plugins());
+				TrialKey key = runningTrial(harness, request).key();
+				requireThat(key.purpose(), "purpose").isEqualTo(Purpose.DEVELOPMENT);
+				requireThat(key.snapshot(), "assignedSnapshot").isEqualTo(initial.development().working().snapshot());
+				firstAssignments.putIfAbsent(key.cell(), key);
 				return harness.passed();
 			});
 			Set<Path> peerTranscripts = new HashSet<>();
-			List<Sha256> peerSnapshots = new ArrayList<>();
 			SessionPort peer = new FakeSessionPort()
 			{
 				@Override
 				public SessionHandle start(SessionRequest request) throws IOException
 				{
-					peerSnapshots.add(harness.snapshot(request));
 					requireThat(request.plugins(), "peerPlugins").isEqualTo(List.of(claudeCopy));
 					return harness.sessions().start(request);
 				}
@@ -361,14 +364,17 @@ public final class DriverTest
 					allMatch(cell -> state.development().count(cell).outcomes() > 0));
 			}
 			requireThat(dispatched, "dispatchedPlugins").containsExactly(Set.of(List.of(claudeCopy), List.of(codexCopy)));
-			requireThat(peerSnapshots, "peerSnapshots").isNotEmpty();
-			requireThat(new HashSet<>(peerSnapshots), "evaluatedSnapshots").
-				isEqualTo(Set.of(initial.development().working().snapshot()));
 			requireThat(peerTranscripts, "peerTranscripts").isNotEmpty();
 			requireThat(settled.identity().values().containsKey(MeasurementCondition.PROMPT_SOURCES),
 				"campaignWidePromptSources").isFalse();
+			requireThat(firstAssignments.keySet(), "assignedCells").
+				isEqualTo(Set.copyOf(CellTier.developmentCellIds(settled)));
 			for (String cellId : CellTier.developmentCellIds(settled))
 			{
+				TrialKey key = firstAssignments.get(cellId);
+				CampaignEvent.Complete outcome = recordedOutcome(harness, key).orElseThrow();
+				requireThat(outcome.key(), "outcomeKey").isEqualTo(key);
+				requireThat(outcome.verdict(), "outcomeVerdict").isEqualTo(Verdict.PASS);
 				Map<MeasurementCondition, String> observation = settled.identity().cells().get(cellId);
 				requireThat(observation.get(MeasurementCondition.LOADER_CONFIGURATION), "loader").
 					isEqualTo(cellConditions.get(cellId).get(MeasurementCondition.LOADER_CONFIGURATION));
