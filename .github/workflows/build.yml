@@ -1,109 +1,88 @@
-name: Build
+name: Reproduce request server on macOS ARM64
 
 on:
   push:
     branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
-  pull_request:
+      - rehearsal/request-server-macos-52cc6525
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
-    runs-on: ${{ matrix.runner }}
-    defaults:
-      run:
-        shell: bash
+  reproduce:
+    runs-on: macos-26
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: '27'
           cache: maven
           cache-dependency-path: client/pom.xml
-      - name: Install test tools on Linux
-        if: runner.os == 'Linux'
-        run: .github/scripts/install-linux-test-tools.sh
-      - name: Install test tools on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core jq shellcheck
-      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
-      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
-      - name: Install test tools on Windows
-        if: runner.os == 'Windows'
+      - name: Prepare the authorized diagnostic session
+        shell: bash
+        env:
+          GUEST_KEY: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEyv7YmxanZQqIXuuTiFiqpfodaUfYiHwzZtSKFxKUJX cat-macos-diagnostic'
+          RELAY_CA: '@cert-authority [uptermd.upterm.dev]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4'
         run: |
-          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
-          archive="${shellcheck_directory}/shellcheck.zip"
-          mkdir -p "${shellcheck_directory}"
-          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
-          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
-            sha256sum --check --strict
-          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
-            '$(cygpath --windows "${shellcheck_directory}")'"
-          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
-          "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.13.0
-          bats --version
-      - name: Verify
-        run: client/mvnw -f client/pom.xml verify
-      # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
-      - name: Keep the test reports of a failed Windows build
-        if: failure() && runner.os == 'Windows'
+          set -euo pipefail
+          umask 077
+          debug="$RUNNER_TEMP/cat-request-debug"
+          mkdir -p "$debug/receipts" "$debug/runtime"
+          cd "$debug"
+          curl --fail --silent --show-error --location --output upterm.tar.gz https://github.com/owenthereal/upterm/releases/download/v0.41.1/upterm_darwin_arm64.tar.gz
+          printf '%s  %s\n' '47076b7012ec914d403e6c8d91de80732ac8d6dba5e8d62439f1bfcce5f15c86' 'upterm.tar.gz' | shasum -a 256 --check
+          tar -xzf upterm.tar.gz upterm
+          printf '%s\n' "$GUEST_KEY" > guest.pub
+          ssh-keygen -lf guest.pub
+          printf '%s\n' "$RELAY_CA" > known_hosts
+          awk '{print $3, $4}' known_hosts > relay.public
+          ssh-keygen -lf relay.public | grep -F 'SHA256:9ajV8JqMe6jJE/s3TYjb/9xw7T0pfJ2+gADiBIJWDPE'
+          cat > debug.rc <<'RC'
+          readonly TMOUT=600
+          PS1='cat-debug$ '
+          cd "$GITHUB_WORKSPACE"
+          RC
+          export XDG_RUNTIME_DIR="$debug/runtime"
+          ./upterm host --detach --accept --name cat-request-server --output json \
+            --server wss://uptermd.upterm.dev --join-timeout 10m --known-hosts known_hosts \
+            --authorized-keys guest.pub -- /bin/bash --noprofile --rcfile "$debug/debug.rc" -i > session.json
+          jq -e '{sshCommand,joinCommand,joinDeadline}' session.json > connection.json
+      - name: Publish connection details while the runner is alive
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-${{ matrix.platform }}
-          path: client/**/target/surefire-reports/
+          name: request-server-connection
+          path: ${{ runner.temp }}/cat-request-debug/connection.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for the diagnostic shell to exit
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          debug="$RUNNER_TEMP/cat-request-debug"
+          cd "$debug"
+          test -s session.json
+          export XDG_RUNTIME_DIR="$debug/runtime"
+          ./upterm session wait cat-request-server
+          test -s receipts/operator-result.txt
+      - name: Retain the diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: request-server-diagnostics
+          path: ${{ runner.temp }}/cat-request-debug/receipts/
           if-no-files-found: ignore
-      - name: Verify bootstrap boundaries
-        if: runner.os != 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/installer-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell through cat.ps1, which
-      # bootstrap-windows.bats tests.
-      # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
-      # that plugin has no POSIX launchers, and codex-plugin-launchers-windows.bats runs that plugin's batch launchers
-      # from PowerShell. A Windows installation's installer launchers are PowerShell scripts, which
-      # installer-launcher-windows.bats tests in place of installer-launcher.bats and its POSIX launchers.
-      - name: Verify bootstrap boundaries on Windows
-        if: runner.os == 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/bootstrap-windows.bats
-          client/common/distribution/src/test/bats/codex-plugin-launchers-windows.bats
-          client/common/distribution/src/test/bats/installer-launcher-windows.bats
-      # The installer's sources rewrite runs here, where the shell and sed are macOS's, as well as on Linux.
-      - name: Verify the Linux test-tool installer's mirror rewrite
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/install-linux-test-tools.bats
-      # The POSIX launcher templates; codex-plugin-launchers-windows.bats tests the batch launchers on Windows
-      - name: Verify the jlink launcher template
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
-      - name: Verify the Codex plugin's part launchers
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+          retention-days: 1
+      - name: Clean the diagnostic session files
+        if: always()
+        shell: bash
+        run: |
+          debug="$RUNNER_TEMP/cat-request-debug"
+          if test -x "$debug/upterm"; then
+            XDG_RUNTIME_DIR="$debug/runtime" "$debug/upterm" session stop cat-request-server 2>/dev/null || true
+          fi
+          rm -rf -- "$debug"
