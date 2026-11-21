@@ -6,6 +6,9 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.TemporaryDirectories;
+import com.holdmyspot.cat.common.optimizer.campaign.Admission;
+import com.holdmyspot.cat.common.optimizer.campaign.Allocation;
+import com.holdmyspot.cat.common.optimizer.campaign.AllocationRule;
 import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.AttemptResult;
 import com.holdmyspot.cat.common.optimizer.campaign.PromptAuthorApproach;
@@ -37,6 +40,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.FailureGroup;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureSummary;
 import com.holdmyspot.cat.common.optimizer.campaign.Header;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Impact;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
 import com.holdmyspot.cat.common.optimizer.campaign.LogicalTrial;
@@ -60,6 +64,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialKey;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialState;
+import com.holdmyspot.cat.common.optimizer.campaign.Transitions;
 import com.holdmyspot.cat.common.optimizer.campaign.TriedTestCase;
 import com.holdmyspot.cat.common.optimizer.campaign.Verdict;
 import com.holdmyspot.cat.common.optimizer.campaign.WorkUnit;
@@ -74,6 +79,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
@@ -138,6 +144,7 @@ import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
+import com.holdmyspot.cat.common.optimizer.port.test.FakeSessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -280,6 +287,216 @@ public final class DriverTest
 				}
 			}
 		}
+	}
+
+	/**
+	 * Verifies that a shared candidate goes to its assigned peer and retains its own evidence and loader conditions.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void sharedDevelopmentUsesPeer() throws IOException
+	{
+		// Requirement: R-L8
+		Contract shared = sharedContract();
+		Header header = sharedHeader();
+		Map<MeasurementCondition, String> global = new EnumMap<>(MeasurementCondition.class);
+		global.putAll(Builder.confirmedIdentity(DriverHarness.MODEL).values());
+		global.remove(MeasurementCondition.LOADER_CONFIGURATION);
+		global.remove(MeasurementCondition.PROMPT_SOURCES);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("shared-driver"));
+			Path claudeBase = Files.createDirectory(directory.resolve("claude-plugin"));
+			Path codexBase = Files.createDirectory(directory.resolve("codex-plugin"));
+			Files.writeString(claudeBase.resolve("guide.md"), "Claude fixture");
+			Files.writeString(codexBase.resolve("guide.md"), "Codex fixture");
+			TrialPlugin claudePlugin = new TrialPlugin("guide@fixture",
+				InventoryScanner.scan(claudeBase, Set.of()).identity().hex(), new TrialPlugin.Installed(), List.of(), null);
+			TrialPlugin codexPlugin = new TrialPlugin("guide@fixture",
+				InventoryScanner.scan(codexBase, Set.of()).identity().hex(), new TrialPlugin.Installed(), List.of(), null);
+			Campaign initial = new Builder().header(header).confirmed(shared, 1).working(1).readyBaseline().
+				identity(new MeasurementIdentity(global)).build().withEvaluatorPlugins(
+					Map.of(Harness.CLAUDE, List.of(claudePlugin), Harness.CODEX, List.of(codexPlugin)));
+			DriverHarness harness = new DriverHarness(directory, initial);
+			Path claudeCopy = harness.workspace().pluginBase(harness.workspace().copyPluginBase(claudeBase));
+			Path codexCopy = harness.workspace().pluginBase(harness.workspace().copyPluginBase(codexBase));
+			Set<List<Path>> dispatched = new HashSet<>();
+			harness.trials(request ->
+			{
+				dispatched.add(request.plugins());
+				return harness.passed();
+			});
+			Set<Path> peerTranscripts = new HashSet<>();
+			List<Sha256> peerSnapshots = new ArrayList<>();
+			SessionPort peer = new FakeSessionPort()
+			{
+				@Override
+				public SessionHandle start(SessionRequest request) throws IOException
+				{
+					peerSnapshots.add(harness.snapshot(request));
+					requireThat(request.plugins(), "peerPlugins").isEqualTo(List.of(claudeCopy));
+					return harness.sessions().start(request);
+				}
+
+				@Override
+				public SessionEvidence readEvidence(Path transcript)
+				{
+					peerTranscripts.add(transcript);
+					return harness.sessions().readEvidence(transcript);
+				}
+			};
+			Map<String, Map<MeasurementCondition, String>> cellConditions = new HashMap<>();
+			for (String cellId : shared.cellIds())
+			{
+				Harness evaluator = shared.findCell(cellId).orElseThrow().evaluator().orElseThrow();
+				cellConditions.put(cellId, Map.of(MeasurementCondition.LOADER_CONFIGURATION, evaluator.commandName()));
+			}
+			DriverContext context = harness.context(harness.sessions(),
+				Map.of(Harness.CLAUDE, peer, Harness.CODEX, harness.sessions()), cellConditions);
+			Campaign settled;
+			try (Driver driver = Driver.open(context, header.id()).orElseThrow())
+			{
+				settled = harness.runUntil(driver, state -> CellTier.developmentCellIds(state).stream().
+					allMatch(cell -> state.development().count(cell).outcomes() > 0));
+			}
+			requireThat(dispatched, "dispatchedPlugins").containsExactly(Set.of(List.of(claudeCopy), List.of(codexCopy)));
+			requireThat(peerSnapshots, "peerSnapshots").isNotEmpty();
+			requireThat(new HashSet<>(peerSnapshots), "evaluatedSnapshots").
+				isEqualTo(Set.of(initial.development().working().snapshot()));
+			requireThat(peerTranscripts, "peerTranscripts").isNotEmpty();
+			requireThat(settled.identity().values().containsKey(MeasurementCondition.PROMPT_SOURCES),
+				"campaignWidePromptSources").isFalse();
+			for (String cellId : CellTier.developmentCellIds(settled))
+			{
+				Map<MeasurementCondition, String> observation = settled.identity().cells().get(cellId);
+				requireThat(observation.get(MeasurementCondition.LOADER_CONFIGURATION), "loader").
+					isEqualTo(cellConditions.get(cellId).get(MeasurementCondition.LOADER_CONFIGURATION));
+				requireThat(observation.get(MeasurementCondition.PROMPT_SOURCES), "promptSources").
+					isEqualTo(DriverHarness.PROMPT_SOURCES);
+			}
+		}
+	}
+
+	/**
+	 * A provider hold queues its rejected trial while the other evaluator uses the campaign's only slot.
+	 *
+	 * @throws IOException if the fixture cannot be used
+	 */
+	@Test
+	public void sharedHoldLeavesOtherEvaluatorRunning() throws IOException
+	{
+		// Requirement: R-L8
+		Contract contract = sharedContract();
+		Header header = sharedHeader();
+		Campaign initial = new Builder().header(header).confirmed(contract, 1).working(1).readyBaseline().
+			ceiling(1).window(1).build();
+		String peerCell = CellTier.developmentCells(initial).stream().
+			filter(cell -> cell.evaluator().orElseThrow() == Harness.CLAUDE).findFirst().orElseThrow().id();
+		Allocation allocation = new Allocation(AllocationRule.LOWEST_EXPLORATORY_BOUND, initial.evidenceRevision(),
+			DriverHarness.START);
+		Admission.Assign admission = new Admission.Assign(Purpose.DEVELOPMENT, initial.development().series(),
+			initial.development().working().snapshot(), peerCell, null, allocation);
+		initial = Transitions.apply(initial, new CampaignEvent.Assign(admission));
+		TrialKey peerKey = initial.trials().getLast().key();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			DriverHarness harness = new DriverHarness(cleanup.add(Files.createTempDirectory("shared-hold")), initial);
+			Instant resetsAt = DriverHarness.START.plusSeconds(60);
+			AtomicBoolean limited = new AtomicBoolean();
+			SessionPort peer = new FakeSessionPort(HostLogin.API_KEY)
+			{
+				@Override
+				public SessionHandle start(SessionRequest request) throws IOException
+				{
+					return harness.sessions().start(request);
+				}
+
+				@Override
+				public SessionEvidence readEvidence(Path transcript)
+				{
+					return harness.sessions().readEvidence(transcript);
+				}
+
+				@Override
+				public Optional<Instant> sharedHoldUntil(Instant now)
+				{
+					if (limited.get() && now.isBefore(resetsAt))
+						return Optional.of(resetsAt);
+					return Optional.empty();
+				}
+			};
+			DriverContext context = harness.context(harness.sessions(),
+				Map.of(Harness.CLAUDE, peer, Harness.CODEX, harness.sessions()), Map.of());
+			try (Driver driver = Driver.open(context, header.id()).orElseThrow())
+			{
+				driver.step();
+				FakeSession rejected = harness.runningTrials().getFirst();
+				limited.set(true);
+				rejected.end(new SessionResult.RateLimited(new Hold(resetsAt, 0), List.of()));
+				driver.step();
+
+				Campaign held = harness.campaign();
+				LogicalTrial queued = Reconciler.find(held, peerKey).orElseThrow();
+				requireThat(queued.state(), "heldTrial").isEqualTo(TrialState.ASSIGNED);
+				requireThat(queued.infrastructureFailures(), "infrastructureFailures").isEqualTo(0);
+				requireThat(held.windows(), "windows").isEqualTo(initial.windows());
+				TrialSession peerSession = harness.crashingStore().trialSessions(peerKey).getFirst();
+				requireThat(peerSession.login(), "peerLogin").isEqualTo(HostLogin.API_KEY);
+				List<LogicalTrial> running = trials(held, TrialState.RUNNING);
+				requireThat(running.size(), "running").isEqualTo(1);
+				Cell other = contract.findCell(running.getFirst().key().cell()).orElseThrow();
+				requireThat(other.evaluator().orElseThrow(), "activeEvaluator").isEqualTo(Harness.CODEX);
+				harness.runningTrials().getFirst().end(harness.passed());
+				harness.settle(driver);
+				requireThat(harness.campaign().development().count(other.id()).outcomes(), "outcomes").isPositive();
+				TrialSession ownerSession = harness.crashingStore().trialSessions(running.getFirst().key()).getFirst();
+				requireThat(ownerSession.login(), "ownerLogin").isEqualTo(HostLogin.UNKNOWN);
+
+				harness.clock().set(resetsAt);
+				harness.runningTrials().forEach(trial -> trial.end(harness.passed()));
+				harness.runUntil(driver, state -> Reconciler.find(state, peerKey).
+					map(trial -> trial.state() == TrialState.RUNNING).orElse(false));
+				FakeSession resumed = harness.runningTrials().getFirst();
+				assertSameTrialRequest(resumed.request(), rejected.request());
+				resumed.end(new SessionResult.Refused(new Hold(resetsAt.plusSeconds(1800), 6), true, List.of()));
+
+				SliceResult stopped = harness.runSlice(driver);
+				requireThat(stopped.status().outcome(), "outcome").isEqualTo("infrastructure failure");
+				requireThat(stopped.status().outcomeDetail(), "outcomeDetail").
+					contains("claude").contains("30-minute hold");
+				LogicalTrial waiting = Reconciler.find(harness.campaign(), peerKey).orElseThrow();
+				requireThat(waiting.state(), "waitingTrial").isEqualTo(TrialState.ASSIGNED);
+				requireThat(waiting.infrastructureFailures(), "chargedFailures").isEqualTo(0);
+				requireThat(harness.crashingStore().trialSessions(peerKey).size(), "peerSessions").isEqualTo(2);
+			}
+		}
+	}
+
+	/**
+	 * Returns a fixture contract with a local set of cells in each evaluator.
+	 *
+	 * @return the contract
+	 */
+	private static Contract sharedContract()
+	{
+		Contract base = ContractFixtures.contract();
+		TrialProfiles profiles = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, base.profiles(),
+			Harness.CODEX, base.profiles()));
+		return new Contract(base.requirements(), base.tests(), profiles, base.judge(), base.limitations(),
+			base.minimumPassRate(), base.salt());
+	}
+
+	/**
+	 * Returns the header for a shared campaign started from Codex.
+	 *
+	 * @return the header
+	 */
+	private static Header sharedHeader()
+	{
+		Header owner = new Builder().build().header();
+		return new Header(owner.id(), owner.root(), owner.target(), Harness.CODEX, owner.lifecycle(),
+			owner.goal(), owner.extraPermissions(), Set.of(Harness.CODEX, Harness.CLAUDE));
 	}
 
 	/**
@@ -4809,6 +5026,9 @@ public final class DriverTest
 				List<Path> expected = List.of(harness.workspace().pluginCopy(plugin, trial.source(), PluginRemovals.NONE),
 					harness.workspace().pluginCopy(installed, trial.source(), PluginRemovals.NONE));
 				requireThat(trial.plugins(), "plugins").isEqualTo(expected);
+				requireThat(trial.pluginInputs().getFirst().installedId(), "builtSource").isEmpty();
+				requireThat(trial.pluginInputs().getLast().installedId(), "installedSource").
+					isEqualTo(Optional.of("tools@market"));
 			}
 		}
 	}

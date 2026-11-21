@@ -270,11 +270,13 @@ runner launcher of its harness and a new conversation folder:
 --resume <session-id> --model <model> --effort <effort> --conversation <new-folder>
 ```
 
-The session continues in its session folder, with the project, plugins and options that its first launch gave it. Do not
-pass `--project`, `--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`,
-`--instruction-files`, `--session-role`, `--tool-output-token-limit` or `--agent`; the launcher refuses them. Other
-options work as for any launch. Its turns go on after the last turn that ended. The turn that was in progress when it
-stopped has no reply, so send that turn again as your first `turn` message.
+The session keeps its project, plugins, and completed turns in the same session folder. Do not pass `--project`,
+`--plugin`, `--install-cat`, `--workspace`, `--read-only-evidence`, `--deny-read`, `--instruction-files`,
+`--session-role`, `--tool-output-token-limit` or `--agent`; the launcher refuses them. Other options apply to the
+resumed launch. If the resumed session needs to launch child sessions, pass `--session-requests` again with the
+intended total allowance. Pass `--request-depth` again if those children need to launch sessions of their own. The
+previously used request count still applies. The turn that was in progress when the session stopped has no reply, so
+send it again as your first `turn` message.
 
 Only the session that launched a nested session can resume it, and only while CAT retains it: a nested session that
 ended on its own cannot be resumed. The launcher exits with `2` when it cannot resume the session, such as for an ID

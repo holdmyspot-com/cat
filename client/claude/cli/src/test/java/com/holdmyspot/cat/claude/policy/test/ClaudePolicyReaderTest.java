@@ -3,13 +3,17 @@ package com.holdmyspot.cat.claude.policy.test;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReader;
 import com.holdmyspot.cat.claude.policy.ClaudePolicyReading;
 import com.holdmyspot.cat.claude.policy.ClaudeSession;
+import com.holdmyspot.cat.claude.runner.ClaudeRequestServerCli;
+import com.holdmyspot.cat.common.runner.launcher.ChildBound;
 import com.holdmyspot.cat.common.runner.policy.HostAccess;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
+import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
 
@@ -17,6 +21,7 @@ import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.json;
 import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.rule;
 import static com.holdmyspot.cat.claude.policy.test.ClaudeSessionFixture.write;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 /**
  * Tests that CAT reads a Claude Code session's sandbox policy from its command line and settings as Claude Code
@@ -500,6 +505,43 @@ public final class ClaudePolicyReaderTest
 			requireThat(policy.hosts().allows("api.example.com"), "snapshotHost").isTrue();
 			requireThat(policy.hosts().allows("new.example.com"), "newHost").isFalse();
 			requireThat(policy.allowLocalBinding(), "allowLocalBinding").isFalse();
+		}
+	}
+
+	/**
+	 * Verifies that the request server checks a runner's sources against both readings. The narrowed command policy
+	 * allows writing neither path, but a file in either location could have been modified by the owner.
+	 *
+	 * @throws IOException if the fixture cannot be created or its policy cannot be read
+	 */
+	@Test
+	public void checksPeerSourcesBeforeIntersection() throws IOException
+	{
+		// Requirement: R-L7
+		try (ClaudeSessionFixture fixture = new ClaudeSessionFixture())
+		{
+			Path startupOnly = fixture.root.resolve("startup-writable");
+			Path currentOnly = fixture.root.resolve("current-writable");
+			String settings = """
+				{"sandbox": {"enabled": true, "filesystem": {"allowWrite": ["%s"]}}}""";
+			fixture.userSettings(settings.formatted(json(startupOnly)));
+			ChildBound bound = new ChildBound(ClaudeRequestServerCli.policySource(fixture.reader(), fixture::session));
+			requireThat(bound.parentPolicy(Optional.empty()).mayWrite(startupOnly), "startup").isTrue();
+			fixture.userSettings(settings.formatted(json(currentOnly)));
+
+			ParentPolicy narrowed = bound.parentPolicy(Optional.empty());
+			requireThat(narrowed.mayWrite(startupOnly), "narrowedStartupPath").isFalse();
+			requireThat(narrowed.mayWrite(currentOnly), "narrowedCurrentPath").isFalse();
+			for (Path source : List.of(startupOnly, currentOnly))
+			{
+				SessionRefusedException refused = expectThrows(SessionRefusedException.class, () ->
+					bound.parentPolicy(Optional.empty(), policies ->
+					{
+						for (ParentPolicy policy : policies)
+							policy.requireTrustedTree(source);
+					}));
+				requireThat(refused.getMessage(), "refusal").contains(source.toString());
+			}
 		}
 	}
 

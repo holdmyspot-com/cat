@@ -110,6 +110,27 @@ public final class GitlessForks implements Forks
 	@Override
 	public ForkView create(Path base, Path campaign, Set<Path> participants) throws IOException
 	{
+		return record(base, campaign, participants, ignoreNotice);
+	}
+
+	@Override
+	public ForkView prepare(Path base, Path scratch, Set<Path> participants) throws IOException
+	{
+		return record(base, scratch, participants, Optional.empty());
+	}
+
+	/**
+	 * Records a source and materializes it in a directory without a Git registration.
+	 *
+	 * @param base the project root
+	 * @param campaign the fork's storage directory
+	 * @param participants the paths to record beyond the tracked files
+	 * @param notice the session ignore notice to report
+	 * @return the fork
+	 * @throws IOException if the fork cannot be recorded or materialized
+	 */
+	private ForkView record(Path base, Path campaign, Set<Path> participants, Optional<String> notice) throws IOException
+	{
 		if (dirty)
 			throw ForkGit.dirtyBase(base, List.of("?? scratch.md"));
 		Set<Path> paths = new HashSet<>(participants);
@@ -123,7 +144,7 @@ public final class GitlessForks implements Forks
 		Files.createDirectories(campaign.resolve("worktree"));
 		Fork fork = Fork.open(base, campaign, replacer, PlainWorktreeLinks.INSTANCE);
 		fork.workspace().materialize(Overlay.of(fork.inventory()));
-		return new Noticing(fork, ignoreNotice);
+		return new Noticing(fork, notice);
 	}
 
 	@Override

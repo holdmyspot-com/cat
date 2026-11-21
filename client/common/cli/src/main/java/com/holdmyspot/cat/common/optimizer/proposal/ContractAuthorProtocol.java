@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
@@ -27,6 +28,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
+import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -129,6 +131,60 @@ public final class ContractAuthorProtocol
 		List<TrialPlugin> trialPlugins, Path launcher,
 		Function<TrialProfile, OptionalLong> toolOutputBytes)
 	{
+		this(json, schema, judge, scenarios, target, goal, reportsExitStatus, trialPlugins(trialPlugins), launcher,
+			toolOutputBytes);
+	}
+
+	/**
+	 * Creates the contract author protocol of a shared campaign.
+	 *
+	 * @param json              the operation-owned JSON mapper
+	 * @param schema            the proposal schema
+	 * @param judge             the judge fields that CAT adds to every proposal
+	 * @param scenarios         the available recorded scenarios, of which CAT supplies and checks those of the target
+	 * @param target            the absolute path of the campaign's target, a prompt file or a directory of prompt
+	 *                          files
+	 * @param goal              what the user wants the target to achieve, in the user's own words, or {@code null} if
+	 *                          the user stated no goal
+	 * @param reportsExitStatus {@code true} if the harness reports the exit status of commands, so that a built-in
+	 *                          check that needs it can be decided
+	 * @param trialPlugins      the ordered trial plugins of each evaluator, including empty lists
+	 * @param launcher          the absolute path of the launcher that provides the contract tools
+	 * @param toolOutputBytes   returns the number of bytes of each tool output that a trial of a profile receives
+	 *                          whole, or empty if the harness's limit is not known
+	 * @throws NullPointerException     if any of the arguments other than {@code goal} are null
+	 * @throws IllegalArgumentException if {@code goal} is blank, {@code target} lies outside the project, or
+	 *                                  {@code target} or {@code launcher} are relative
+	 * @throws UncheckedIOException     if a packaged prompt or schema cannot be read
+	 */
+	public ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
+		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
+		Map<Harness, List<TrialPlugin>> trialPlugins, Path launcher,
+		Function<TrialProfile, OptionalLong> toolOutputBytes)
+	{
+		this(json, schema, judge, scenarios, target, goal, reportsExitStatus, trialPlugins(trialPlugins), launcher,
+			toolOutputBytes);
+	}
+
+	/**
+	 * Creates a contract author protocol with the formatted plugin inputs.
+	 *
+	 * @param json the operation-owned JSON mapper
+	 * @param schema the proposal schema
+	 * @param judge the judge fields that CAT owns
+	 * @param scenarios the recorded scenarios
+	 * @param target the absolute path of the campaign's target
+	 * @param goal the user's goal, or {@code null}
+	 * @param reportsExitStatus whether the target evaluator reports command exit status
+	 * @param trialPlugins the Markdown description of all plugin inputs
+	 * @param launcher the absolute launcher path
+	 * @param toolOutputBytes the tool output limit by trial profile
+	 */
+	private ContractAuthorProtocol(JsonMapper json, ProposalSchema schema, JudgeTemplate judge,
+		RegressionScenarios scenarios, Path target, String goal, boolean reportsExitStatus,
+		String trialPlugins, Path launcher,
+		Function<TrialProfile, OptionalLong> toolOutputBytes)
+	{
 		requireThat(json, "json").isNotNull();
 		requireThat(schema, "schema").isNotNull();
 		requireThat(judge, "judge").isNotNull();
@@ -137,7 +193,6 @@ public final class ContractAuthorProtocol
 		requireThat(target.isAbsolute(), "target.isAbsolute()").isTrue();
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
-		requireThat(trialPlugins, "trialPlugins").isNotNull();
 		requireThat(launcher, "launcher").isNotNull();
 		requireThat(launcher.isAbsolute(), "launcher.isAbsolute()").isTrue();
 		requireThat(toolOutputBytes, "toolOutputBytes").isNotNull();
@@ -151,7 +206,7 @@ public final class ContractAuthorProtocol
 		this.check = new ProposalCheck(json, schema, judge, relativeTarget(), reportsExitStatus, recorded);
 		this.launcher = launcher;
 		this.toolOutputBytes = toolOutputBytes;
-		this.trialPlugins = trialPlugins(trialPlugins);
+		this.trialPlugins = trialPlugins;
 		this.outputFile = new OutputFile(json);
 		this.prompt = withPromptTests(PROMPT_RESOURCE);
 		this.outputSchema = outputSchema(json, schema);
@@ -222,7 +277,25 @@ public final class ContractAuthorProtocol
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(hooks, "hooks").isNotNull();
 		requireThat(loadedFiles, "loadedFiles").isNotNull();
-		return request(promptSystem, profiles, hooks, loadedFiles, NONE, NONE,
+		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
+			draft -> DraftDirectory.seed(scenarios, draft), salt);
+	}
+
+	/**
+	 * Returns the initial request for a proposal whose evaluator registrations differ.
+	 *
+	 * @param promptSystem the staged project
+	 * @param profiles the offered trial profiles by evaluator
+	 * @param hooks the native registrations by evaluator
+	 * @param loadedFiles the files that load in trials
+	 * @param salt the proposal's salt
+	 * @return the contract author request
+	 * @throws NullPointerException if any argument is null
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, Map<Harness, List<HookRegistration>> hooks,
+		List<DerivedSource> loadedFiles, long salt)
+	{
+		return request(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, NONE, NONE,
 			draft -> DraftDirectory.seed(scenarios, draft), salt);
 	}
 
@@ -247,9 +320,47 @@ public final class ContractAuthorProtocol
 	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
 		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
 	{
+		requireThat(hooks, "hooks").isNotNull();
+		return revisedRequest(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, previous, feedback, pilots);
+	}
+
+	/**
+	 * Returns the feedback request for a proposal whose evaluator registrations differ.
+	 *
+	 * @param promptSystem the staged project
+	 * @param profiles the offered trial profiles by evaluator
+	 * @param hooks the native registrations by evaluator
+	 * @param loadedFiles the files that load in trials
+	 * @param previous the proposal that the user reviewed
+	 * @param feedback the user's feedback
+	 * @param pilots the previously observed guard pilot results
+	 * @return the contract author request
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the feedback is blank or the previous proposal holds no draft
+	 */
+	public SessionRequest request(Path promptSystem, ProfileEvidence profiles, Map<Harness, List<HookRegistration>> hooks,
+		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
+	{
+		return revisedRequest(promptSystem, profiles, hookRegistrations(hooks), loadedFiles, previous, feedback, pilots);
+	}
+
+	/**
+	 * Returns the feedback request with the formatted hook registrations.
+	 *
+	 * @param promptSystem the staged project
+	 * @param profiles the offered trial profiles
+	 * @param hooks the native hook registrations as Markdown
+	 * @param loadedFiles the files that load in trials
+	 * @param previous the proposal that the user reviewed
+	 * @param feedback the user's feedback
+	 * @param pilots the previously observed guard pilot results
+	 * @return the contract author request
+	 */
+	private SessionRequest revisedRequest(Path promptSystem, ProfileEvidence profiles, String hooks,
+		List<DerivedSource> loadedFiles, DerivedProposal previous, String feedback, Map<String, PilotResult> pilots)
+	{
 		requireThat(promptSystem, "promptSystem").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
-		requireThat(hooks, "hooks").isNotNull();
 		requireThat(loadedFiles, "loadedFiles").isNotNull();
 		requireThat(previous, "previous").isNotNull();
 		requireThat(feedback, "feedback").isNotBlank();
@@ -267,7 +378,7 @@ public final class ContractAuthorProtocol
 	 *
 	 * @param promptSystem the directory that holds the prompt system
 	 * @param profiles     the harness's profile inventory and its capability ranking
-	 * @param hooks        every hook registration of the prompt system and of the trial plugins
+	 * @param hooks        the native hook registrations as Markdown
 	 * @param loadedFiles  the files that load in trials, each with the rule that loads it
 	 * @param previous     the previous proposal, or {@code none}
 	 * @param feedback     the user's feedback, or {@code none}
@@ -275,22 +386,33 @@ public final class ContractAuthorProtocol
 	 * @param salt         the salt that CAT drew for the proposal
 	 * @return the request, which returns the problems of a refused proposal to the session once
 	 */
-	private SessionRequest request(Path promptSystem, ProfileEvidence profiles, List<HookRegistration> hooks,
+	private SessionRequest request(Path promptSystem, ProfileEvidence profiles, String hooks,
 		List<DerivedSource> loadedFiles, String previous, String feedback, DraftSource source, long salt)
 	{
-		ProfileCatalog inventory = profiles.inventory();
 		StringJoiner lines = new StringJoiner("\n");
-		lines.add("Source: " + inventory.source());
-		for (TrialProfile profile : inventory.profiles())
-			lines.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
+		StringJoiner rankings = new StringJoiner("\n");
+		if (profiles.byEvaluator().isEmpty())
+		{
+			appendInventory(lines, profiles.inventory());
+			rankings.add(profiles.ranking().describe());
+		}
+		else
+		{
+			new EnumMap<>(profiles.byEvaluator()).forEach((harness, evidence) ->
+			{
+				lines.add(harness.productName() + " trial profiles");
+				appendInventory(lines, evidence.inventory());
+				rankings.add(harness.productName() + " " + evidence.ranking().describe());
+			});
+		}
 		ContractAuthorFiles files = files(promptSystem, profiles, source, Optional.empty());
 		String turn = prompt.fill(Map.ofEntries(Map.entry("previous_proposal", previous),
 			Map.entry("feedback", feedback), Map.entry("profile_inventory", lines.toString()),
-			Map.entry("capability_ranking", profiles.ranking().describe()), Map.entry("output_schema", outputSchema),
+			Map.entry("capability_ranking", rankings.toString()), Map.entry("output_schema", outputSchema),
 			Map.entry("generators", ValueGenerators.describeAll()),
 			Map.entry("target_prompt_file", targetPromptFile()), Map.entry("goal", goal()),
 			Map.entry("loaded_files", loadedFiles(loadedFiles)), Map.entry("trial_plugins", trialPlugins),
-			Map.entry("hook_registrations", hookRegistrations(hooks)),
+			Map.entry("hook_registrations", hooks),
 			Map.entry("recorded_tests", recordedTests()),
 			Map.entry("test_directory", PortablePaths.text(PromptTestLocations.scenarioDirectory(relativeTarget()))),
 			Map.entry("proposal_file", files.context().proposalFile()),
@@ -299,6 +421,19 @@ public final class ContractAuthorProtocol
 		FollowUp correct = result -> correction(result, promptSystem, profiles, salt);
 		return new SessionRequest(SessionRole.CONTRACT_AUTHOR, Part.DEVELOPMENT, promptSystem, List.of(turn),
 			readOnlyDirectories(loadedFiles), TIME_LIMIT, role(), files, List.of(), Optional.of(correct));
+	}
+
+	/**
+	 * Adds the offered trial profiles from one evaluator's inventory.
+	 *
+	 * @param lines the lines of profile inventory in the author's prompt
+	 * @param inventory the evaluator's profile inventory
+	 */
+	private static void appendInventory(StringJoiner lines, ProfileCatalog inventory)
+	{
+		lines.add("Source: " + inventory.source());
+		for (TrialProfile profile : inventory.profiles())
+			lines.add("- model `" + profile.model() + "`, effort `" + profile.effort() + "`");
 	}
 
 	/**
@@ -381,6 +516,7 @@ public final class ContractAuthorProtocol
 	 */
 	private static String trialPlugins(List<TrialPlugin> plugins)
 	{
+		requireThat(plugins, "trialPlugins").isNotNull();
 		StringJoiner list = new StringJoiner("\n");
 		for (TrialPlugin plugin : plugins)
 		{
@@ -408,6 +544,22 @@ public final class ContractAuthorProtocol
 	}
 
 	/**
+	 * Returns the trial plugins grouped by evaluator, naming each evaluator as it appears in the output schema.
+	 *
+	 * @param plugins the ordered trial plugin list of each evaluator
+	 * @return a Markdown block for each evaluator, or {@code none} if no evaluator is listed
+	 */
+	private static String trialPlugins(Map<Harness, List<TrialPlugin>> plugins)
+	{
+		Map<Harness, List<TrialPlugin>> ordered = new EnumMap<>(Harness.class);
+		ordered.putAll(Map.copyOf(plugins));
+		StringJoiner groups = new StringJoiner("\n\n").setEmptyValue(NONE);
+		ordered.forEach((evaluator, local) -> groups.add("Evaluator `" + evaluator.commandName() + "`\n\n" +
+			trialPlugins(local)));
+		return groups.toString();
+	}
+
+	/**
 	 * Returns the hook registrations as a Markdown list.
 	 *
 	 * @param hooks the hook registrations
@@ -432,6 +584,23 @@ public final class ContractAuthorProtocol
 			list.add(item);
 		}
 		return list.toString();
+	}
+
+	/**
+	 * Shows registrations under the evaluator whose native loader supplied them.
+	 *
+	 * @param hooks the native registrations by evaluator
+	 * @return the registrations for each evaluator
+	 */
+	private static String hookRegistrations(Map<Harness, List<HookRegistration>> hooks)
+	{
+		requireThat(hooks, "hooks").isNotNull();
+		Map<Harness, List<HookRegistration>> ordered = new EnumMap<>(Harness.class);
+		ordered.putAll(hooks);
+		StringJoiner text = new StringJoiner("\n\n").setEmptyValue(NONE);
+		ordered.forEach((harness, registrations) ->
+			text.add(harness.productName() + " hook registrations\n" + hookRegistrations(registrations)));
+		return text.toString();
 	}
 
 	/**

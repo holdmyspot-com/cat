@@ -1,13 +1,15 @@
 package com.holdmyspot.cat.common.optimizer.cli;
 
-import java.util.List;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Set;
 
 /**
  * One command that the {@code prompt-optimizer} launcher accepts, after {@link Commands#parse(List)} has
@@ -41,24 +43,45 @@ public sealed interface Command
 	 * <p>
 	 * <b>Thread Safety:</b> This class is thread-safe.
 	 *
-	 * @param target the prompt file or prompt system, as the user wrote it
-	 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
-	 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user
-	 *   stated no goal
-	 * @param extraPermissions the file that lists the writes and hosts that every session of a new campaign needs
+	 * @param target              the prompt file or prompt system, as the user wrote it
+	 * @param ceiling             the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+	 * @param goal                what the user wants the target to achieve, in the user's own words, or {@code null}
+	 *   if the user stated no goal
+	 * @param extraPermissions    the file that lists the writes and hosts that every session of a new campaign needs
 	 *   beyond its own, as the user wrote it, or {@code null} if the user named none
+	 * @param evaluationHarnesses the requested evaluation harnesses, or empty to use the campaign's recorded
+	 *   harnesses on resume or the owning harness for a new campaign
 	 */
-	record Start(Path target, int ceiling, String goal, Path extraPermissions) implements Command
+	record Start(Path target, int ceiling, String goal, Path extraPermissions, Set<Harness> evaluationHarnesses)
+		implements Command
 	{
+		/**
+		 * Creates the command with default evaluation harnesses.
+		 *
+		 * @param target           the prompt file or prompt system, as the user wrote it
+		 * @param ceiling          the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+		 * @param goal             what the user wants the target to achieve, in the user's own words, or {@code null}
+		 *   if the user stated no goal
+		 * @param extraPermissions the file of extra permissions, or {@code null} if the user named none
+		 * @throws NullPointerException     if {@code target} is null
+		 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
+		 *   {@code goal} is blank
+		 */
+		public Start(Path target, int ceiling, String goal, Path extraPermissions)
+		{
+			this(target, ceiling, goal, extraPermissions, Set.of());
+		}
+
 		/**
 		 * Creates the command.
 		 *
-		 * @param target the prompt file or prompt system, as the user wrote it
-		 * @param ceiling the maximum simultaneous nested sessions of a new campaign, from 1 to 16
-		 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the
-		 *   user stated no goal
-		 * @param extraPermissions the file of extra permissions, or {@code null} if the user named none
-		 * @throws NullPointerException if {@code target} is null
+		 * @param target              the prompt file or prompt system, as the user wrote it
+		 * @param ceiling             the maximum simultaneous nested sessions of a new campaign, from 1 to 16
+		 * @param goal                what the user wants the target to achieve, in the user's own words, or
+		 *   {@code null} if the user stated no goal
+		 * @param extraPermissions    the file of extra permissions, or {@code null} if the user named none
+		 * @param evaluationHarnesses the requested evaluation harnesses, or empty to use the campaign default
+		 * @throws NullPointerException     if a required argument or an evaluation harness is null
 		 * @throws IllegalArgumentException if {@code ceiling} is outside [1, {@value Campaign#MAXIMUM_CEILING}] or
 		 *   {@code goal} is blank
 		 */
@@ -68,6 +91,7 @@ public sealed interface Command
 			requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
 			if (goal != null)
 				requireThat(goal, "goal").isNotBlank();
+			evaluationHarnesses = Set.copyOf(evaluationHarnesses);
 		}
 	}
 

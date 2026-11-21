@@ -8,6 +8,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
@@ -104,6 +105,59 @@ public final class CertificationHistoryTest
 		// Requirement: R-M6
 		requireThat(record(1, "codex").harness(), "harness").isEqualTo(Optional.of("codex"));
 		requireThat(record(1, null).harness(), "harness").isEqualTo(Optional.empty());
+	}
+
+	/**
+	 * A joint receipt remains the latest entry for one evaluator after the other delivers again.
+	 *
+	 * @throws IOException if the history cannot be written or read
+	 */
+	@Test
+	public void indexesJointReceiptByEachEvaluator() throws IOException
+	{
+		// Requirement: R-M6, R-L9
+		CertificationRecord joint = jointRecord();
+		CertificationHistoryJson codec = new CertificationHistoryJson(JSON);
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path file = cleanup.add(Files.createTempDirectory("joint-history-")).resolve("certifications.json");
+			Files.write(file, codec.write(CertificationHistory.EMPTY.appended(record(1, "claude")).appended(joint)));
+			CertificationHistory history = codec.read(file);
+
+			requireThat(history.latest(), "latest").isEqualTo(List.of(joint));
+			requireThat(history.latestCertification(Optional.of("claude")), "claude").isEqualTo(Optional.of(joint));
+			requireThat(history.latestCertification(Optional.of("codex")), "codex").isEqualTo(Optional.of(joint));
+			requireThat(history.latestCertification(Optional.empty()), "unknown").isEqualTo(Optional.empty());
+			requireThat(history.latestCertification(Optional.of("unused")), "unused").isEqualTo(Optional.empty());
+
+			CertificationRecord newer = record(3, "claude");
+			CertificationHistory updated = history.appended(newer);
+			requireThat(updated.latest(), "updated").isEqualTo(List.of(joint, newer));
+			requireThat(updated.latestCertification(Optional.of("claude")), "claude").isEqualTo(Optional.of(newer));
+		}
+	}
+
+	/**
+	 * Observing one evaluator's current environment leaves the other evaluator's conditions unchecked.
+	 */
+	@Test
+	public void observesOnlyTheMatchingEvaluator()
+	{
+		// Requirement: R-M7, R-L9
+		CertificationRecord joint = jointRecord();
+		MeasurementIdentity known = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "codex",
+			MeasurementCondition.HARNESS_VERSION, "codex-v1", MeasurementCondition.LOADER_CONFIGURATION, "codex-loader"));
+
+		Applicability same = joint.applicability(joint.promptFiles(), known, Contract.DEFAULT_MINIMUM_PASS_RATE);
+
+		requireThat(same.status(), "status").isEqualTo(Applicability.Status.CURRENT);
+		requireThat(same.unchecked(), "unchecked").contains(MeasurementCondition.HARNESS_VERSION).
+			contains(MeasurementCondition.LOADER_CONFIGURATION);
+		MeasurementIdentity changed = new MeasurementIdentity(Map.of(MeasurementCondition.PROVIDER, "codex",
+			MeasurementCondition.HARNESS_VERSION, "codex-v2"));
+		Applicability different = joint.applicability(joint.promptFiles(), changed, Contract.DEFAULT_MINIMUM_PASS_RATE);
+		requireThat(different.status(), "changed").isEqualTo(Applicability.Status.HISTORICAL);
+		requireThat(different.changed(), "conditions").isEqualTo(List.of(MeasurementCondition.HARNESS_VERSION));
 	}
 
 	/**
@@ -614,6 +668,26 @@ public final class CertificationHistoryTest
 		return new CertificationRecord(TARGET, index, CertificationScope.LATEST_VERSIONS,
 			CertificationParameters.current(index, Contract.DEFAULT_MINIMUM_PASS_RATE), List.of(),
 			Map.of(TARGET, Sha256.of(("prompt " + index).getBytes(UTF_8))), new MeasurementIdentity(values));
+	}
+
+	/**
+	 * Returns one attempt's certification with evidence from two evaluators and an unused inventory cell.
+	 *
+	 * @return the certification record
+	 */
+	private static CertificationRecord jointRecord()
+	{
+		List<CellResult> cells = List.of(new CellResult("test", "claude:test", 100, 0, Map.of(), Map.of()),
+			new CellResult("test", "codex:test", 100, 0, Map.of(), Map.of()));
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(), Map.of(
+			"claude:test", Map.of(MeasurementCondition.PROVIDER, "claude", MeasurementCondition.HARNESS_VERSION,
+				"claude-v1", MeasurementCondition.LOADER_CONFIGURATION, "claude-loader"),
+			"codex:test", Map.of(MeasurementCondition.PROVIDER, "codex", MeasurementCondition.HARNESS_VERSION,
+				"codex-v1", MeasurementCondition.LOADER_CONFIGURATION, "codex-loader"),
+			"unused:test", Map.of(MeasurementCondition.PROVIDER, "unused")));
+		return new CertificationRecord(TARGET, 2, CertificationScope.LATEST_VERSIONS,
+			CertificationParameters.current(2, Contract.DEFAULT_MINIMUM_PASS_RATE), cells,
+			Map.of(TARGET, Sha256.of("joint prompt".getBytes(UTF_8))), identity);
 	}
 
 	/**

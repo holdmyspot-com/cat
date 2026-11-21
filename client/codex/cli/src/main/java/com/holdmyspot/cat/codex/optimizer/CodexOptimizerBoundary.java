@@ -7,8 +7,9 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import com.holdmyspot.cat.common.Platform;
 import java.util.function.Supplier;
 
@@ -23,6 +24,7 @@ public final class CodexOptimizerBoundary
 	private final RequestServer.SessionFinder sessions;
 	private final Supplier<String> sandboxReason;
 	private RequestServer.Session session;
+	private ParentPolicy validatedPolicy;
 	private final Map<String, String> environment;
 
 	/**
@@ -99,17 +101,14 @@ public final class CodexOptimizerBoundary
 	 */
 	public void validate(Command command) throws IOException
 	{
+		clearValidation();
 		if (!outside(plugin))
 			return;
 		try
 		{
-			session = sessions.find();
-			ParentPolicy policy = session.policy().read(session.askingThread());
-			validateEnvironment(environment, policy);
-			policy.requireTrusted(plugin);
-			Path project = session.project().toRealPath();
-			if (!directory.toRealPath().startsWith(project))
-				throw new IOException("The optimizer's working directory is outside its host session's project.");
+			RequestServer.Session owner = sessions.find();
+			ParentPolicy policy = owner.policy().read(owner.askingThread());
+			Path project = validateOwner(owner, policy);
 			if (command instanceof Command.Background background)
 				command = background.command();
 			if (command instanceof Command.Start start)
@@ -121,6 +120,8 @@ public final class CodexOptimizerBoundary
 					!policy.mayRead(directory.resolve(start.extraPermissions()).toRealPath()))
 					throw new IOException("The session cannot read the extra permissions file.");
 			}
+			session = owner;
+			validatedPolicy = policy;
 		}
 		catch (PolicyRefusal e)
 		{
@@ -129,8 +130,37 @@ public final class CodexOptimizerBoundary
 	}
 
 	/**
+	 * Clears any authority from an earlier command before validating a new one.
+	 */
+	private void clearValidation()
+	{
+		session = null;
+		validatedPolicy = null;
+	}
+
+	/**
+	 * Verifies the policy inputs and the optimizer's working directory against the authenticated owner.
+	 *
+	 * @param owner the authenticated native session
+	 * @param policy the owner's command policy
+	 * @return the real project directory
+	 * @throws IOException if the environment or working directory cannot be validated
+	 * @throws PolicyRefusal if a policy input could be changed by the session
+	 */
+	private Path validateOwner(RequestServer.Session owner, ParentPolicy policy) throws IOException, PolicyRefusal
+	{
+		validateEnvironment(environment, policy);
+		policy.requireTrusted(plugin);
+		Path project = owner.project().toRealPath();
+		if (!directory.toRealPath().startsWith(project))
+			throw new IOException("The optimizer's working directory is outside its host session's project.");
+		return project;
+	}
+
+	/**
 	 * Validates the environment inputs that can redirect the optimizer's files or executable programs. Other values
 	 * are data forwarded through the request server, whose policy enforces their session permissions.
+	 * The only accepted Git override is {@code GIT_PAGER=cat}, which disables Git's pager.
 	 *
 	 * @param environment the inherited environment
 	 * @param policy the host policy read from protected records
@@ -141,8 +171,12 @@ public final class CodexOptimizerBoundary
 		throws IOException, PolicyRefusal
 	{
 		for (String name : environment.keySet())
-			if (name.startsWith("GIT_"))
+		{
+			// Codex sets this value in tool shells, and Git recognizes it without starting a pager process.
+			boolean disablesGitPager = name.equals("GIT_PAGER") && Objects.equals(environment.get(name), "cat");
+			if (name.startsWith("GIT_") && !disablesGitPager)
 				throw new IOException("The optimizer refuses inherited Git override " + name + ".");
+		}
 		for (String name : java.util.List.of(CodexOptimizerCommandScope.HOME_VARIABLE, "CODEX_HOME", "TMPDIR", "TMP",
 			"TEMP"))
 		{
@@ -182,5 +216,25 @@ public final class CodexOptimizerBoundary
 		if (session == null)
 			throw new IOException("The optimizer has no validated host session for its exit notice.");
 		return session;
+	}
+
+	/**
+	 * Reads the authenticated session's current protected policy before starting a hook.
+	 * The installation probe alone cannot establish command confinement.
+	 *
+	 * @return the owning session's command policy
+	 * @throws IOException if the owner or its policy cannot be read or validated
+	 * @throws PolicyRefusal if the current thread's policy inputs are not trusted
+	 */
+	ParentPolicy hookPolicy() throws IOException, PolicyRefusal
+	{
+		RequestServer.Session owner = session;
+		if (owner == null)
+			owner = sessions.find();
+		ParentPolicy result = owner.policy().read(owner.askingThread());
+		if (validatedPolicy != null)
+			result = validatedPolicy.intersect(result);
+		validateOwner(owner, result);
+		return result;
 	}
 }

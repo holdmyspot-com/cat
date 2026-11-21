@@ -105,8 +105,10 @@ public sealed interface CampaignEvent
 	 * @param contract the confirmed contract, with the certification scope that the user chose
 	 * @param contractHash the contract's identity
 	 * @param seed the seed of the lineage's development and baseline draw streams
+	 * @param environment the newly confirmed evaluation environment, or empty for the existing single-harness flow
 	 */
-	record Confirm(Contract contract, Sha256 contractHash, long seed) implements CampaignEvent
+	record Confirm(Contract contract, Sha256 contractHash, long seed, MeasurementIdentity environment)
+		implements CampaignEvent
 	{
 		/**
 		 * Creates the event.
@@ -114,15 +116,31 @@ public sealed interface CampaignEvent
 		 * @param contract the confirmed contract, with the certification scope that the user chose
 		 * @param contractHash the contract's identity
 		 * @param seed the seed of the lineage's development and baseline draw streams
-		 * @throws NullPointerException if {@code contract} or {@code contractHash} are null
+		 * @param environment the newly confirmed evaluation environment
+		 * @throws NullPointerException if any of the arguments are null
 		 * @throws IllegalArgumentException if {@code contract} has no certification scope
 		 */
 		public Confirm
 		{
 			requireThat(contract, "contract").isNotNull();
 			requireThat(contractHash, "contractHash").isNotNull();
+			requireThat(environment, "environment").isNotNull();
 			if (contract.profiles().scope() == null)
 				throw new IllegalArgumentException("A confirmed contract needs a certification scope");
+		}
+
+		/**
+		 * Creates a confirmation using the campaign's existing environment.
+		 *
+		 * @param contract the confirmed contract with its certification scope
+		 * @param contractHash the contract's identity
+		 * @param seed the seed of the lineage's development and baseline draw streams
+		 * @throws NullPointerException if any of the arguments are null
+		 * @throws IllegalArgumentException if the contract has no certification scope
+		 */
+		public Confirm(Contract contract, Sha256 contractHash, long seed)
+		{
+			this(contract, contractHash, seed, MeasurementIdentity.EMPTY);
 		}
 	}
 

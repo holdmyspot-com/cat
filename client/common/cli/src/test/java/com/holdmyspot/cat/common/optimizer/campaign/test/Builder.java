@@ -52,6 +52,7 @@ import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
 import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.AuthorityWarning;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -929,7 +930,16 @@ public final class Builder
 	private Lineage lineage(int number, List<RegressionTestCase> regressions, Set<Outcome> conditions,
 		AddedTestCases addedTestCases)
 	{
-		return new Lineage(number, contract, contractHash(), new DrawStream.State(DrawStream.Kind.DEVELOPMENT,
+		Contract recorded = contract;
+		if (contract.profiles().byEvaluator().isEmpty() && header.evaluationHarnesses().size() == 1)
+		{
+			Harness evaluator = header.evaluationHarnesses().iterator().next();
+			TrialProfiles profiles = TrialProfiles.forEvaluators(Map.of(evaluator, contract.profiles()));
+			recorded = new Contract(contract.requirements(), contract.tests(), profiles, contract.judge(),
+				contract.limitations(), contract.minimumPassRate(), contract.salt(), contract.dependents(),
+				contract.referencedFiles());
+		}
+		return new Lineage(number, recorded, contractHash(), new DrawStream.State(DrawStream.Kind.DEVELOPMENT,
 			number, 0, true), new DrawStream.State(DrawStream.Kind.BASELINE, number, 0, true), regressions,
 			conditions, addedTestCases);
 	}

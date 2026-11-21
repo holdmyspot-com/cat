@@ -188,6 +188,10 @@ final class Draft
 	 */
 	final Optional<List<TrialPlugin>> plugins;
 	/**
+	 * The ordered plugin lists of all evaluators once recorded separately.
+	 */
+	final Map<Harness, List<TrialPlugin>> evaluatorPlugins;
+	/**
 	 * How each prompt test chooses the profile that judges its development trials, by test identifier.
 	 */
 	Map<String, DevelopmentJudge> judges;
@@ -252,6 +256,7 @@ final class Draft
 		answeredWarnings = new ArrayList<>(campaign.answeredWarnings());
 		testRevisions = campaign.testRevisions();
 		plugins = campaign.plugins();
+		evaluatorPlugins = campaign.evaluatorPlugins();
 		judges = new LinkedHashMap<>(campaign.judges());
 	}
 
@@ -663,6 +668,6 @@ final class Draft
 		return new Campaign(header, ceiling, builtLineages, identity, incumbent, candidates, promptAuthorAttempts,
 			development, baseline, attempts, trials, sequences, evidenceRevision, windows, throttle,
 			pendingDecisions, revisionRequested, outcome, delivery, optimization, answeredWarnings, testRevisions,
-			plugins, judges);
+			plugins, judges, evaluatorPlugins);
 	}
 }

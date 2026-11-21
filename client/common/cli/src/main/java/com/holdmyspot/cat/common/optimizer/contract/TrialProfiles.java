@@ -2,7 +2,10 @@ package com.holdmyspot.cat.common.optimizer.contract;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -22,18 +25,18 @@ import java.util.regex.Pattern;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param inventory the harness's profile inventory and its source
- * @param ranking the model families ranked by advertised capability
- * @param bindings every prompt file that binds a model or an effort
- * @param restriction the patterns that the user restricted the profile set to, or empty if the user did not restrict
- *   it. An empty dimension of a pattern matches every value.
- * @param described the patterns of the profiles that the user described as the certification scope, or empty if the
- *   user described none. An empty dimension of a pattern matches every value.
- * @param scope the certification scope, or null until the user chooses it at confirmation
- * @param cells every cell, grouped by test in test order
+ * @param inventory   the profile inventory and its source for the individual or first evaluator
+ * @param ranking     the model families ranked by capability for the individual or first evaluator
+ * @param bindings    the prompt files that bind a model or an effort for the individual or first evaluator
+ * @param restriction the selected profile patterns for the individual or first evaluator, or empty
+ * @param described   the certification scope patterns for the individual or first evaluator, or empty
+ * @param scope       the certification scope, or null until the user chooses it at confirmation
+ * @param cells       every cell, in evaluator order and then test order
+ * @param byEvaluator the assigned evaluator profile sets, or empty for an individual profile set
  */
 public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking, List<ProfileBinding> bindings,
-	List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells)
+	List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells,
+	Map<Harness, TrialProfiles> byEvaluator)
 {
 	/**
 	 * The identifier of a contract cell under a tool-output token limit: the contract cell's identifier, then
@@ -43,16 +46,48 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		"([1-9][0-9]*)");
 
 	/**
+	 * Combines independently computed profile sets into the cells of one contract.
+	 *
+	 * @param evaluators a nonempty map of harnesses to their individual profile sets
+	 * @return the combined profile sets; each cell names its evaluator and shared contracts qualify their addresses
+	 * @throws NullPointerException     if the map or one of its keys or values is null
+	 * @throws IllegalArgumentException if a profile set is itself combined, a cell is assigned to another evaluator,
+	 *   or the profile sets use different certification scopes
+	 */
+	public static TrialProfiles forEvaluators(Map<Harness, TrialProfiles> evaluators)
+	{
+		requireThat(evaluators, "evaluators").isNotEmpty();
+		Map<Harness, TrialProfiles> assigned = new EnumMap<>(Harness.class);
+		List<Cell> cells = new ArrayList<>();
+		boolean shared = evaluators.size() > 1;
+		for (Map.Entry<Harness, TrialProfiles> entry : new EnumMap<>(Map.copyOf(evaluators)).entrySet())
+		{
+			Harness evaluator = entry.getKey();
+			TrialProfiles local = entry.getValue();
+			if (!local.byEvaluator().isEmpty())
+				throw new IllegalArgumentException("Expected an individual profile set for " + evaluator.commandName());
+			List<Cell> localCells = local.cells().stream().map(cell -> assign(cell, evaluator, shared)).toList();
+			assigned.put(evaluator, new TrialProfiles(local.inventory(), local.ranking(), local.bindings(),
+				local.restriction(), local.described(), local.scope(), localCells));
+			cells.addAll(localCells);
+		}
+		TrialProfiles first = assigned.values().iterator().next();
+		return new TrialProfiles(first.inventory(), first.ranking(), first.bindings(), first.restriction(),
+			first.described(), first.scope(), cells, assigned);
+	}
+
+	/**
 	 * Creates the trial profiles.
 	 *
-	 * @param inventory the harness's profile inventory and its source
-	 * @param ranking the model families ranked by advertised capability
-	 * @param bindings every prompt file that binds a model or an effort
+	 * @param inventory   the inventory and its source for the individual or first evaluator
+	 * @param ranking     the capability ranking for the individual or first evaluator
+	 * @param bindings    the model and effort bindings for the individual or first evaluator
 	 * @param restriction the patterns that the user restricted the profile set to, or empty
-	 * @param described the patterns of the profiles that the user described as the certification scope, or empty
-	 * @param scope the certification scope, or null until the user chooses it
-	 * @param cells every cell, grouped by test in test order
-	 * @throws NullPointerException if any of the arguments other than {@code scope} are null
+	 * @param described   the patterns of the profiles that the user described as the certification scope, or empty
+	 * @param scope       the certification scope, or null until the user chooses it
+	 * @param cells       every cell, in evaluator order and then test order
+	 * @param byEvaluator the assigned evaluator profile sets, or empty for an individual profile set
+	 * @throws NullPointerException     if any of the arguments other than {@code scope} are null
 	 * @throws IllegalArgumentException if {@code cells} is empty, two cells share an identifier, two bindings name the
 	 *   same file, a restriction or described pattern binds nothing or matches no inventory profile, the described
 	 *   patterns leave a test of several cells without a cell, {@code scope} is
@@ -71,6 +106,101 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		restriction = List.copyOf(restriction);
 		described = List.copyOf(described);
 		cells = List.copyOf(cells);
+		byEvaluator = Map.copyOf(byEvaluator);
+		if (!byEvaluator.isEmpty())
+		{
+			byEvaluator = Collections.unmodifiableMap(new EnumMap<>(byEvaluator));
+			verifyCombined(scope, cells, byEvaluator);
+		}
+		else
+			verifyLocal(inventory, ranking, bindings, restriction, described, scope, cells);
+	}
+
+	/**
+	 * Creates one evaluator's profile set before assignment.
+	 *
+	 * @param inventory   the inventory and its source
+	 * @param ranking     the model families ranked by capability
+	 * @param bindings    the model and effort bindings of prompt files
+	 * @param restriction the selection patterns, or empty
+	 * @param described   the certification scope patterns, or empty
+	 * @param scope       the certification scope, or null until confirmed
+	 * @param cells       the individual profile set's cells
+	 * @throws NullPointerException     if any required value is null
+	 * @throws IllegalArgumentException if the canonical constructor rejects a value
+	 */
+	public TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking, List<ProfileBinding> bindings,
+		List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells)
+	{
+		this(inventory, ranking, bindings, restriction, described, scope, cells, Map.of());
+	}
+
+	/**
+	 * Assigns an individual cell and checks the evaluator of a previously assigned cell.
+	 *
+	 * @param cell      the cell to assign
+	 * @param evaluator the evaluator of the cell
+	 * @param shared    whether the address includes an evaluator prefix
+	 * @return the assigned cell
+	 * @throws IllegalArgumentException if a recorded cell belongs to another evaluator or has an invalid prefix
+	 */
+	private static Cell assign(Cell cell, Harness evaluator, boolean shared)
+	{
+		String id = cell.id();
+		String prefix = evaluator.commandName() + ":";
+		if (shared && cell.evaluator().isEmpty())
+			id = prefix + id;
+		if (cell.evaluator().orElse(evaluator) != evaluator || shared && !id.startsWith(prefix))
+			throw new IllegalArgumentException("The cell '" + id + "' is not qualified for " + evaluator.commandName());
+		return new Cell(id, cell.testId(), cell.profile(), Optional.of(evaluator));
+	}
+
+	/**
+	 * Checks that the combined cells and scope agree with the evaluator profile sets.
+	 *
+	 * @param scope       the shared certification scope
+	 * @param cells       the combined cells in evaluator order
+	 * @param byEvaluator the evaluator profile sets in evaluator order
+	 * @throws IllegalArgumentException if the profile sets do not account for each cell and agree on scope
+	 */
+	private static void verifyCombined(CertificationScope scope, List<Cell> cells,
+		Map<Harness, TrialProfiles> byEvaluator)
+	{
+		List<Cell> combined = new ArrayList<>();
+		Set<String> addresses = new HashSet<>();
+		for (Map.Entry<Harness, TrialProfiles> entry : byEvaluator.entrySet())
+		{
+			Harness evaluator = entry.getKey();
+			TrialProfiles local = entry.getValue();
+			if (local.scope() != scope || !local.byEvaluator().isEmpty())
+				throw new IllegalArgumentException("The profile set for " + evaluator.commandName() +
+					" must use the shared certification scope");
+			for (Cell cell : local.cells())
+			{
+				if (cell.evaluator().orElse(null) != evaluator || !addresses.add(cell.id()))
+					throw new IllegalArgumentException("The cell '" + cell.id() + "' does not have one evaluator");
+				combined.add(cell);
+			}
+		}
+		if (!cells.equals(combined))
+			throw new IllegalArgumentException("Combined cells differ from the evaluator profile sets");
+	}
+
+	/**
+	 * Checks profile selections within an individual evaluator's inventory.
+	 *
+	 * @param inventory   the inventory and its source
+	 * @param ranking     the model families ranked by capability
+	 * @param bindings    the model and effort bindings of prompt files
+	 * @param restriction the selection patterns, or empty
+	 * @param described   the certification scope patterns, or empty
+	 * @param scope       the certification scope, or null until confirmed
+	 * @param cells       the individual profile set's cells
+	 * @throws IllegalArgumentException if the profiles cannot support the contract
+	 */
+	private static void verifyLocal(ProfileCatalog inventory, CapabilityRanking ranking, List<ProfileBinding> bindings,
+		List<TrialProfile> restriction, List<TrialProfile> described, CertificationScope scope, List<Cell> cells)
+	{
 		Set<String> files = new HashSet<>();
 		for (ProfileBinding binding : bindings)
 		{
@@ -161,6 +291,8 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	public boolean isDescribed(Cell cell)
 	{
 		requireThat(cell, "cell").isNotNull();
+		if (!byEvaluator.isEmpty())
+			return forEvaluator(cell.evaluator().orElseThrow()).isDescribed(cell);
 		return isDescribed(cell.profile(), described);
 	}
 
@@ -191,6 +323,18 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	 */
 	public List<String> describe()
 	{
+		if (byEvaluator.size() == 1)
+			return byEvaluator.values().iterator().next().describe();
+		if (!byEvaluator.isEmpty())
+		{
+			List<String> byHarness = new ArrayList<>();
+			for (Map.Entry<Harness, TrialProfiles> entry : byEvaluator.entrySet())
+			{
+				byHarness.add("Evaluation harness: " + entry.getKey().commandName());
+				byHarness.addAll(entry.getValue().describe());
+			}
+			return byHarness;
+		}
 		List<String> lines = new ArrayList<>();
 		lines.add("Trial profile inventory (" + inventory.source() + "): " + labels(inventory.profiles()));
 		lines.add(ranking.describe());
@@ -224,20 +368,38 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		Map<List<TrialProfile>, List<String>> byProfiles = new LinkedHashMap<>();
 		for (Map.Entry<String, List<TrialProfile>> entry : byTest.entrySet())
 			byProfiles.computeIfAbsent(entry.getValue(), _ -> new ArrayList<>()).add(entry.getKey());
+		String prefix = addressPrefix();
 		for (Map.Entry<List<TrialProfile>, List<String>> entry : byProfiles.entrySet())
-			lines.add("  - " + describeGroup(entry.getValue(), entry.getKey()));
+			lines.add("  - " + describeGroup(entry.getValue(), entry.getKey(), prefix));
 		return lines;
+	}
+
+	/**
+	 * Finds the common evaluator prefix for the displayed addresses of an individual profile set.
+	 *
+	 * @return the evaluator prefix, or empty for unqualified addresses
+	 */
+	private String addressPrefix()
+	{
+		Cell first = cells.getFirst();
+		if (first.evaluator().isEmpty())
+			return "";
+		String prefix = first.evaluator().orElseThrow().commandName() + ":";
+		if (first.id().startsWith(prefix))
+			return prefix;
+		return "";
 	}
 
 	/**
 	 * Describes the prompt tests that share a profile set: how many cells each has, how the cells are named and the
 	 * profiles.
 	 *
-	 * @param testIds the identifiers of the tests
+	 * @param testIds  the identifiers of the tests
 	 * @param profiles the profiles of each test's cells
+	 * @param prefix   the evaluator prefix of the cell addresses, or empty
 	 * @return the description
 	 */
-	private static String describeGroup(List<String> testIds, List<TrialProfile> profiles)
+	private static String describeGroup(List<String> testIds, List<TrialProfile> profiles, String prefix)
 	{
 		String tests;
 		String each;
@@ -257,11 +419,13 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 		{
 			count = "1 cell";
 			naming = "named by the test";
+			if (!prefix.isEmpty())
+				naming = "named `" + prefix + "<test>`";
 		}
 		else
 		{
 			count = profiles.size() + " cells";
-			naming = "named `<test>@<profile>`";
+			naming = "named `" + prefix + "<test>@<profile>`";
 		}
 		return tests + String.join(", ", testIds) + " (" + count + each + ", " + naming + "): " +
 			labels(profiles);
@@ -433,6 +597,8 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	 */
 	public List<String> unranked()
 	{
+		if (!byEvaluator.isEmpty())
+			return byEvaluator.values().stream().flatMap(local -> local.unranked().stream()).distinct().toList();
 		return ranking.unranked(inventory);
 	}
 
@@ -448,10 +614,35 @@ public record TrialProfiles(ProfileCatalog inventory, CapabilityRanking ranking,
 	public TrialProfiles withScope(CertificationScope scope)
 	{
 		requireThat(scope, "scope").isNotNull();
+		if (!byEvaluator.isEmpty())
+		{
+			Map<Harness, TrialProfiles> scoped = new EnumMap<>(Harness.class);
+			byEvaluator.forEach((evaluator, local) -> scoped.put(evaluator, local.withScope(scope)));
+			return forEvaluators(scoped);
+		}
 		List<TrialProfile> kept = described;
 		if (scope != CertificationScope.DESCRIBED)
 			kept = List.of();
 		return new TrialProfiles(inventory, ranking, bindings, restriction, kept, scope, cells);
+	}
+
+	/**
+	 * Looks up an evaluator's inventory, ranking and cells within these profiles.
+	 *
+	 * @param evaluator the requested evaluator
+	 * @return the evaluator's profile set, or this set if assignment has not happened yet
+	 * @throws NullPointerException     if {@code evaluator} is null
+	 * @throws IllegalArgumentException if assigned profiles do not contain the requested evaluator
+	 */
+	public TrialProfiles forEvaluator(Harness evaluator)
+	{
+		requireThat(evaluator, "evaluator").isNotNull();
+		if (byEvaluator.isEmpty() && cells.getFirst().evaluator().orElse(evaluator) == evaluator)
+			return this;
+		TrialProfiles local = byEvaluator.get(evaluator);
+		if (local == null)
+			throw new IllegalArgumentException("No profile set for evaluation harness " + evaluator.commandName());
+		return local;
 	}
 
 	/**

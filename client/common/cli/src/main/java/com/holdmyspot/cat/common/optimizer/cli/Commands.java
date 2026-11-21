@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryEntry;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryLabel;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.HistoryEntry;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractTools;
@@ -32,6 +33,7 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
@@ -63,6 +65,12 @@ public final class Commands
 	private static final String MAX_CONCURRENCY = "--max-concurrency";
 	private static final String GOAL = "--goal";
 	private static final String EXTRA_PERMISSIONS = ExtraPermissions.OPTION;
+	private static final String HARNESS = "--harness";
+	/**
+	 * The arguments of {@code start}.
+	 */
+	private static final String START_FORM = "<target> [%s <text>] [%s <1..%d>] [%s <file>] [%s <harness>]...".
+		formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, EXTRA_PERMISSIONS, HARNESS);
 	/**
 	 * The arguments of {@code contract workspace}.
 	 */
@@ -73,7 +81,7 @@ public final class Commands
 	 */
 	public static final String USAGE = """
 		usage: prompt-optimizer <command> ...
-		  start <target> [%s <text>] [%s <1..%d>] [%s <file>] [--background]
+		  start %s [--background]
 		  run <campaign> [--background]
 		  status <campaign | target>
 		  confirm <campaign> [<%s>]
@@ -81,8 +89,12 @@ public final class Commands
 		  choose <campaign> <choice> [--attempt N | --review-point N] [--background]
 		  cancel <campaign>
 		  contract check <context file>
-		  contract workspace %s""".formatted(GOAL, MAX_CONCURRENCY, Campaign.MAXIMUM_CEILING, EXTRA_PERMISSIONS,
-		scopeIds(), WORKSPACE_FORM);
+		  contract workspace %s
+
+		start prompts/example.md uses the current harness for a new campaign and the recorded harnesses on resume.
+		start prompts/example.md %s selects each named evaluation harness.
+		On resume, an explicit selection must match the recorded harnesses.""".formatted(START_FORM, scopeIds(),
+		WORKSPACE_FORM, evaluationHarnessOptions());
 	private final Core core;
 	private final JsonMapper json;
 	private final ZoneId zone;
@@ -184,8 +196,8 @@ public final class Commands
 	}
 
 	/**
-	 * Parses {@code start}, whose options may appear in any order, each at most once. The ceiling defaults to 8,
-	 * and the goal and the file of extra permissions to none.
+	 * Parses {@code start}, whose options may appear in any order. Each evaluation harness may be named once. All
+	 * other options may appear at most once. The ceiling defaults to 8, and the goal and extra permissions to none.
 	 *
 	 * @param rest the arguments after the command's name
 	 * @return the command
@@ -193,21 +205,35 @@ public final class Commands
 	 */
 	private static Command start(List<String> rest)
 	{
-		String form = "<target> [" + GOAL + " <text>] [" + MAX_CONCURRENCY + " <1.." + Campaign.MAXIMUM_CEILING +
-			">] [" + EXTRA_PERMISSIONS + " <file>]";
 		if (rest.isEmpty())
-			throw new InvalidCommandException("start: expected " + form);
+			throw new InvalidCommandException("start: expected " + START_FORM);
 		Path target = target("start", rest.getFirst());
 		Map<String, String> options = new HashMap<>();
+		Set<Harness> evaluationHarnesses = EnumSet.noneOf(Harness.class);
 		for (int i = 1; i < rest.size(); i += 2)
 		{
 			String option = rest.get(i);
-			if (!option.equals(GOAL) && !option.equals(MAX_CONCURRENCY) && !option.equals(EXTRA_PERMISSIONS))
-				throw new InvalidCommandException("start: expected " + form + "; unknown option '" + option + "'.");
+			if (!option.equals(GOAL) && !option.equals(MAX_CONCURRENCY) && !option.equals(EXTRA_PERMISSIONS) &&
+				!option.equals(HARNESS))
+			{
+				throw new InvalidCommandException("start: expected " + START_FORM + "; unknown option '" + option + "'.");
+			}
 			if (i + 1 == rest.size())
-				throw new InvalidCommandException("start: " + option + " needs a value; expected " + form);
-			if (options.putIfAbsent(option, rest.get(i + 1)) != null)
-				throw new InvalidCommandException("start: expected " + form + "; each option may appear only once.");
+				throw new InvalidCommandException("start: " + option + " needs a value; expected " + START_FORM);
+
+			String value = rest.get(i + 1);
+			if (option.equals(HARNESS))
+			{
+				Harness harness = Harness.fromCommandName(value).orElseThrow(() ->
+					new InvalidCommandException("Unknown evaluation harness '" + value + "'."));
+				if (!evaluationHarnesses.add(harness))
+					throw new InvalidCommandException("Repeated evaluation harness '" + value + "'.");
+			}
+			else if (options.putIfAbsent(option, value) != null)
+			{
+				throw new InvalidCommandException("start: expected " + START_FORM + "; " + option +
+					" may appear only once.");
+			}
 		}
 
 		int ceiling = Campaign.DEFAULT_CEILING;
@@ -232,7 +258,20 @@ public final class Commands
 		String extraPermissionsText = options.get(EXTRA_PERMISSIONS);
 		if (extraPermissionsText != null)
 			extraPermissions = path("start", "the " + EXTRA_PERMISSIONS + " file", extraPermissionsText);
-		return new Command.Start(target, ceiling, goal, extraPermissions);
+		return new Command.Start(target, ceiling, goal, extraPermissions, evaluationHarnesses);
+	}
+
+	/**
+	 * Returns the evaluation options for selecting every supported harness in the usage example.
+	 *
+	 * @return one option and its canonical name per harness, separated by spaces
+	 */
+	private static String evaluationHarnessOptions()
+	{
+		StringJoiner options = new StringJoiner(" ");
+		for (Harness harness : Harness.values())
+			options.add(HARNESS + " " + harness.commandName());
+		return options.toString();
 	}
 
 	/**
@@ -562,7 +601,10 @@ public final class Commands
 		}
 		catch (CommandRefusedException e)
 		{
-			out.println(statusMessage(json, "refused", e.getMessage()));
+			ObjectNode refusal = statusNode(json, "refused", e.getMessage());
+			if (e.reason() != null)
+				refusal.put("reason", e.reason().name().toLowerCase(Locale.ROOT));
+			out.println(json.writeValueAsString(refusal));
 			return 1;
 		}
 		catch (WorktreeRefusedException e)
@@ -661,7 +703,8 @@ public final class Commands
 		return switch (command)
 		{
 			case Command.Background background -> core.background(() -> dispatch(background.command()));
-			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal(), start.extraPermissions());
+			case Command.Start start -> core.start(start.target(), start.ceiling(), start.goal(), start.extraPermissions(),
+				start.evaluationHarnesses());
 			case Command.Run run -> core.run(run.campaign());
 			case Command.Status status -> core.status(status.subject());
 			case Command.Confirm confirm -> core.confirm(confirm.campaign(), confirm.scope());
@@ -806,6 +849,13 @@ public final class Commands
 			{
 				node.put("attempt", record.certificationIndex());
 				node.put("scope", record.scope().id());
+				Set<String> evaluators = record.evaluatorCells().keySet();
+				if (evaluators.size() > 1)
+				{
+					ArrayNode harnesses = node.putArray("evaluation_harnesses");
+					evaluators.forEach(harnesses::add);
+					record.snapshot().ifPresent(snapshot -> node.put("snapshot", snapshot.hex()));
+				}
 			}
 			case DeliveryEntry delivery ->
 			{
@@ -842,9 +892,22 @@ public final class Commands
 	 */
 	static String statusMessage(JsonMapper json, String status, String message)
 	{
+		return json.writeValueAsString(statusNode(json, status, message));
+	}
+
+	/**
+	 * Creates the shared fields of a failure or usage result.
+	 *
+	 * @param json the JSON mapper
+	 * @param status the result status
+	 * @param message the explanation
+	 * @return the JSON object
+	 */
+	private static ObjectNode statusNode(JsonMapper json, String status, String message)
+	{
 		ObjectNode root = json.createObjectNode();
 		root.put("status", status);
 		root.put("message", message);
-		return json.writeValueAsString(root);
+		return root;
 	}
 }

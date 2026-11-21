@@ -61,15 +61,6 @@ public interface DistributionMainAccess
 	Path stageBin(ApplicationModules application, Path runtime, Path bin, JsonMapper json) throws IOException;
 
 	/**
-	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote.
-	 *
-	 * @param plugin  the assembled plugin
-	 * @param runtime the release runtime
-	 * @throws IOException if the binding cannot be written
-	 */
-	void writeRuntimeBinding(Path plugin, Path runtime) throws IOException;
-
-	/**
 	 * Returns the Maven coordinates of a third-party dependency JAR that a distribution ships.
 	 *
 	 * @param groupId the Maven group identifier

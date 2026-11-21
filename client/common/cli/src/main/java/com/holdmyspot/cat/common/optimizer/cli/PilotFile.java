@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.cli;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileReplacer;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
@@ -28,7 +29,7 @@ import java.util.UUID;
 
 /**
  * Persists the guard pilot of the latest proposal in the campaign's {@code held_out} directory, so that a resumed
- * campaign presents the same results and a revision reruns only the prompt tests that changed.
+ * campaign presents the same results and a revision reruns only the controls whose conditions changed.
  * <p>
  * The file holds held-out content: the values of the development test cases that the trials ran and the judges'
  * rationales, and each unfinished trial's recovery state.
@@ -44,7 +45,15 @@ final class PilotFile
 	/**
 	 * The version of the file's layout.
 	 */
-	private static final int FORMAT_VERSION = 5;
+	private static final int FORMAT_VERSION = 6;
+	/**
+	 * The layout with trial terminology and no explicit evaluator.
+	 */
+	private static final int SINGLE_EVALUATOR_VERSION = 5;
+	/**
+	 * The property that qualifies a pilot in a shared campaign.
+	 */
+	private static final String EVALUATOR = "evaluator";
 	/**
 	 * The first version to store unfinished trials.
 	 */
@@ -74,7 +83,7 @@ final class PilotFile
 	/**
 	 * Replaces the stored pilots.
 	 *
-	 * @param pilots the pilot of each prompt test that has one, by prompt test
+	 * @param pilots the pilots, by test and, in shared campaigns, evaluator
 	 * @throws NullPointerException if {@code pilots} is null
 	 * @throws IOException if the file cannot be written
 	 */
@@ -82,12 +91,17 @@ final class PilotFile
 	{
 		requireThat(pilots, "pilots").isNotNull();
 		ObjectNode root = json.createObjectNode();
-		root.put("format_version", FORMAT_VERSION);
+		int version = SINGLE_EVALUATOR_VERSION;
+		if (pilots.values().stream().anyMatch(pilot -> pilot.evaluator() != null))
+			version = FORMAT_VERSION;
+		root.put("format_version", version);
 		ArrayNode tests = root.putArray("tests");
 		for (PilotResult pilot : pilots.values())
 		{
 			ObjectNode test = tests.addObject();
 			test.put("test", pilot.testId());
+			if (pilot.evaluator() != null)
+				test.put(EVALUATOR, pilot.evaluator().commandName());
 			test.put("definition", pilot.definition().hex());
 			test.put("cell", pilot.cellId());
 			test.put("control", pilot.control().hex());
@@ -148,7 +162,7 @@ final class PilotFile
 	/**
 	 * Reads the stored pilots.
 	 *
-	 * @return the pilot of each prompt test, by prompt test; empty if no pilot is stored
+	 * @return the pilots by test and, in shared campaigns, evaluator; empty if no pilot is stored
 	 * @throws IOException if the file cannot be read or is not a pilot file of a readable version
 	 */
 	Map<String, PilotResult> read() throws IOException
@@ -170,8 +184,9 @@ final class PilotFile
 			for (JsonNode test : root.get("tests"))
 			{
 				PilotResult pilot = pilot(test, version);
-				if (pilots.put(pilot.testId(), pilot) != null)
-					throw new IllegalArgumentException("Two stored pilots describe test " + pilot.testId());
+				String key = pilot.key();
+				if (pilots.put(key, pilot) != null)
+					throw new IllegalArgumentException("Two stored pilots use the key " + key);
 			}
 		}
 		catch (IllegalArgumentException e)
@@ -243,9 +258,16 @@ final class PilotFile
 					throw new IllegalArgumentException("Two undecided trials hold position " + position);
 			}
 		}
+		Harness evaluator = null;
+		if (version > SINGLE_EVALUATOR_VERSION && test.has(EVALUATOR))
+		{
+			String name = text(test.get(EVALUATOR));
+			evaluator = Harness.fromCommandName(name).orElseThrow(() ->
+				new IllegalArgumentException("Unknown pilot evaluator " + name));
+		}
 		return new PilotResult(text(test.path("test")), new Sha256(text(test.path("definition"))),
 			text(test.path("cell")), new Sha256(text(test.path("control"))), test.get("seed").asLong(), trials,
-			failedTrials, stopReason, test.get("paused").asBoolean(), pending);
+			failedTrials, stopReason, test.get("paused").asBoolean(), pending, evaluator);
 	}
 
 	/**

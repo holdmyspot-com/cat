@@ -3,7 +3,6 @@ package com.holdmyspot.cat.common.optimizer.campaign;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
-import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
@@ -26,14 +25,14 @@ import java.util.Set;
  * and reasoning profile.
  * <p>
  * Formal trials and the incumbent baseline run in the cells of the contract's {@link CertificationScope}. Development
- * runs in each test's development cells: its weakest cell, plus every cell where a certification attempt of the
- * lineage adopted a failure and every cell where a failure group of the lineage reproduced. The weakest cell is the
+ * runs in each test's development cells: its weakest cell in each evaluator, plus every cell where a certification
+ * attempt of the lineage adopted a failure and every cell where a failure group reproduced. The weakest cell is the
  * lowest effort of the least capable model by the contract's {@link CapabilityRanking}; the contract lists each
  * test's cells in inventory order, and the inventory lists each model's efforts from the lowest to the highest, so
  * a model's first cell in a test is its lowest effort.
  * <p>
  * A running attempt's formal trials go to its open cells: each test's development cells, and each other scope cell
- * once every development cell of its test and every scope cell of its test below it are certified.
+ * once the same test's development cells and lower scope cells in its evaluator are certified.
  */
 public final class CellTier
 {
@@ -63,20 +62,42 @@ public final class CellTier
 	{
 		requireThat(profiles, "profiles").isNotNull();
 		requireThat(scope, "scope").isNotNull();
+		if (!profiles.byEvaluator().isEmpty())
+			return profiles.byEvaluator().values().stream().flatMap(local -> scopeCells(local, scope).stream()).toList();
 		List<Cell> scopeCells = new ArrayList<>();
 		for (List<Cell> testCells : byTest(profiles.cells()))
 		{
 			if (scope == CertificationScope.WEAKEST_CELL)
-			{
-				String testId = testCells.getFirst().testId();
-				scopeCells.add(weakestCell(profiles, scope, testId).orElseThrow(() ->
-					new IllegalArgumentException("The weakest cell of the test '" + testId + "' depends on " +
-						"a model whose family the capability ranking does not list")));
-			}
+				scopeCells.add(requireWeakestCell(profiles, scope, testCells.getFirst().testId()));
 			else
 				scopeCells.addAll(candidates(profiles, scope, testCells));
 		}
 		return scopeCells;
+	}
+
+	/**
+	 * Returns the weakest cell of each applicable test in each evaluator.
+	 *
+	 * @param contract a confirmed contract
+	 * @return the cells in contract order
+	 * @throws NullPointerException if {@code contract} is null
+	 * @throws IllegalArgumentException if the contract has no certification scope
+	 */
+	public static List<Cell> weakestCells(Contract contract)
+	{
+		requireThat(contract, "contract").isNotNull();
+		CertificationScope scope = scope(contract);
+		TrialProfiles profiles = contract.profiles();
+		Collection<TrialProfiles> localProfiles = profiles.byEvaluator().values();
+		if (localProfiles.isEmpty())
+			localProfiles = List.of(profiles);
+		List<Cell> cells = new ArrayList<>();
+		for (TrialProfiles local : localProfiles)
+		{
+			for (List<Cell> testCells : byTest(local.cells()))
+				cells.add(requireWeakestCell(local, scope, testCells.getFirst().testId()));
+		}
+		return cells;
 	}
 
 	/**
@@ -170,9 +191,23 @@ public final class CellTier
 	public static Cell weakestCell(Contract contract, String testId)
 	{
 		requireThat(contract, "contract").isNotNull();
-		CertificationScope scope = scope(contract);
-		// A confirmed contract ranks every inventory model, so the weakest cell is known
-		return weakestCell(contract.profiles(), scope, testId).orElseThrow();
+		return requireWeakestCell(contract.profiles(), scope(contract), testId);
+	}
+
+	/**
+	 * Returns a test's weakest cell in one evaluator's profiles.
+	 *
+	 * @param profiles one evaluator's profiles
+	 * @param scope the certification scope
+	 * @param testId the test
+	 * @return the weakest cell
+	 * @throws IllegalArgumentException if the test has no cell or its weakest cell is unranked
+	 */
+	private static Cell requireWeakestCell(TrialProfiles profiles, CertificationScope scope, String testId)
+	{
+		return weakestCell(profiles, scope, testId).orElseThrow(() ->
+			new IllegalArgumentException("The weakest cell of the test '" + testId + "' depends on " +
+				"a model whose family the capability ranking does not list"));
 	}
 
 	/**
@@ -239,8 +274,8 @@ public final class CellTier
 		requireThat(contract, "contract").isNotNull();
 		requireThat(attempts, "attempts").isNotNull();
 		Set<String> cells = new HashSet<>();
-		for (PromptTest test : contract.tests())
-			cells.add(weakestCell(contract, test.id()).id());
+		for (Cell cell : weakestCells(contract))
+			cells.add(cell.id());
 		for (CertificationAttempt attempt : attempts)
 		{
 			if (attempt.lineage() != lineage)
@@ -295,7 +330,7 @@ public final class CellTier
 	 * Codex, the cell itself under a tool-output token limit of 5000. A failure is likelier under each.
 	 *
 	 * @param contract a confirmed contract
-	 * @param harness the harness that runs the campaign
+	 * @param harness the campaign owner, used when the cell has no assigned evaluator
 	 * @param cellId the identifier of a contract cell
 	 * @return the stress cells, in the order that rounds try them
 	 * @throws NullPointerException if any of the arguments are null
@@ -313,7 +348,8 @@ public final class CellTier
 		// The contract lists a test's cells in inventory order, and the inventory lists each model's efforts
 		// lowest first, so the model's previous cell is its next lower effort
 		Cell lower = null;
-		for (Cell other : contract.profiles().cellsOf(cell.testId()))
+		TrialProfiles profiles = cell.evaluator().map(contract.profiles()::forEvaluator).orElse(contract.profiles());
+		for (Cell other : profiles.cellsOf(cell.testId()))
 		{
 			if (other.equals(cell))
 				break;
@@ -322,7 +358,7 @@ public final class CellTier
 		}
 		if (lower != null)
 			stress.add(lower);
-		switch (harness)
+		switch (cell.evaluator().orElse(harness))
 		{
 			case CODEX -> stress.add(cell.withToolOutputTokenLimit(STRESS_TOOL_OUTPUT_TOKENS));
 			case CLAUDE ->
@@ -381,8 +417,8 @@ public final class CellTier
 
 	/**
 	 * Returns the open cells of a running certification attempt: in each test, its development cells, and each
-	 * other cell of the attempt once every development cell of the test and every cell of the test below it
-	 * are certified.
+	 * other cell of the attempt once the same test's development cells and lower cells in its evaluator are
+	 * certified.
 	 * <p>
 	 * A cell is below another when its model ranks no higher by the contract's {@link CapabilityRanking}, its effort
 	 * is no higher, and the two differ. The inventory lists each model's efforts from the lowest to the highest, and
@@ -411,14 +447,18 @@ public final class CellTier
 				certified.add(id);
 		}
 		Set<String> development = new HashSet<>(developmentCellIds(campaign));
-		Map<String, Set<String>> higherEfforts = higherEfforts(profiles.inventory());
+		Map<ProfileCatalog, Map<String, Set<String>>> effortsByInventory = new HashMap<>();
 		List<Cell> open = new ArrayList<>();
 		for (Cell cell : cells)
 		{
+			TrialProfiles local = cell.evaluator().map(profiles::forEvaluator).orElse(profiles);
+			Map<String, Set<String>> higherEfforts = effortsByInventory.computeIfAbsent(local.inventory(),
+				CellTier::higherEfforts);
 			if (development.contains(cell.id()) ||
-				cells.stream().noneMatch(other -> other.testId().equals(cell.testId()) &&
+				cells.stream().noneMatch(other -> other.evaluator().equals(cell.evaluator()) &&
+					other.testId().equals(cell.testId()) &&
 					!other.equals(cell) && !certified.contains(other.id()) && (development.contains(other.id()) ||
-					isBelow(profiles.ranking(), higherEfforts, other.profile(), cell.profile()))))
+						isBelow(local.ranking(), higherEfforts, other.profile(), cell.profile()))))
 			{
 				open.add(cell);
 			}

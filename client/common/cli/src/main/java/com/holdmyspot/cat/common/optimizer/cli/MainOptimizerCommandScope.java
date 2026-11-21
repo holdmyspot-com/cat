@@ -6,19 +6,23 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.MainJvmScope;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.Platform;
+import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
+import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.statistics.CapCalibration;
 import com.holdmyspot.cat.common.optimizer.workspace.Forks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitForks;
 import com.holdmyspot.cat.common.optimizer.workspace.GitWorktreeRegistrar;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.HarnessEnvironment;
+import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessSandbox;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
@@ -145,6 +149,115 @@ public abstract class MainOptimizerCommandScope extends AbstractOptimizerCommand
 			name += ".cmd";
 		return PluginDirectory.of(MainOptimizerCommandScope.class).resolve("bin").resolve(name);
 	}
+
+	/**
+	 * Returns the installed evaluator's already resolved native configuration directory.
+	 *
+	 * @return the path that the native evaluator uses for its configuration
+	 */
+	final Path evaluatorConfigurationDirectory()
+	{
+		ensureOpen();
+		return configurationDirectory;
+	}
+
+	@Override
+	protected final SessionPort evaluatorInspection(Path project, Path results)
+	{
+		ensureOpen();
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(this, plugin(), results, List::of, true,
+			environment, configurationDirectory, HarnessCapacity.unlimited(), clock(), fileReplacer(),
+			Optional.of(ProjectRuleLoader.rulesDirectory(home())), project);
+		return evaluatorSessions(settings, (_, _, _) ->
+		{
+			throw new IOException("Metadata inspection cannot start a session");
+		});
+	}
+
+	@Override
+	protected final Optional<String> hookComparisonRefusal(Harness evaluator)
+	{
+		ensureOpen();
+		if (evaluator == Harness.CODEX)
+			return Optional.of("CAT could not verify native Codex approval for the exact startup hooks in the " +
+				"staged project. The comparison stopped before executing the hooks.");
+		return Optional.empty();
+	}
+
+	@Override
+	final Optional<HookCheck.PeerComparator> peerHookComparison(Harness evaluator)
+	{
+		ensureOpen();
+		if (harness != Harness.CLAUDE || evaluator != Harness.CODEX || !Platform.current().isLinux())
+			return Optional.empty();
+		return Optional.of(request ->
+		{
+			try (WorktreeRequestClient.Channel owner = worktreeChannel().orElseThrow(() ->
+				new IOException("The campaign owner has no request broker for the Codex hook comparison")))
+			{
+				if (!(owner instanceof ServerChannel))
+					throw new IOException("Codex hook comparison requires the top-level Claude Code request server");
+				return request.compare(json(), owner, waiting().every(SessionRequestForwarder.RESPONSE_POLL));
+			}
+		});
+	}
+
+	@Override
+	protected final SessionPort peerTrialSessions(Harness evaluator, EvaluatorMetadata metadata) throws IOException
+	{
+		ensureOpen();
+		if (evaluator == harness || metadata.harness() != evaluator)
+			throw new IOException("The trial metadata does not identify the requested peer evaluator");
+		Path artifact = peerEvaluatorArtifact(evaluator);
+		try (WorktreeRequestClient.Channel owner = worktreeChannel().orElseThrow(() ->
+			new IOException("The campaign owner has no request broker for the evaluator")))
+		{
+			SessionRequestForwarder.Route route;
+			if (owner instanceof ServerChannel)
+				route = SessionRequestForwarder.Route.SERVER;
+			else
+				route = SessionRequestForwarder.Route.RUN;
+			return new PeerTrialSessions(this, artifact, metadata, route, owner.requests(), hostProject(),
+				resultsFolder(), this::heldOutDirectories, evaluatorCapacity(evaluator), retainedTrials());
+		}
+	}
+
+	/**
+	 * Creates the installed evaluator's trial adapter using the caller's trusted owner channel.
+	 *
+	 * @param launch the origin and results of the owner-selected trial
+	 * @return an adapter that launches from this installation
+	 */
+	final SessionPort evaluatorTrialSessions(PeerTrialProtocol.Launch launch)
+	{
+		ensureOpen();
+		RunnerSessions.Settings settings = new RunnerSessions.Settings(this, plugin(), launch.results(),
+			launch::heldOut, true, environment, configurationDirectory, evaluatorCapacity(harness), clock(),
+			fileReplacer(), Optional.of(ProjectRuleLoader.rulesDirectory(home())), launch.project());
+		Bridge bridge = RunnerSessions.evaluatorBridge(settings, harness.commandName(), launch.route(), launch.requests());
+		return evaluatorSessions(settings, bridge);
+	}
+
+	/**
+	 * Finds the shared capacity and provider hold of the given native evaluator.
+	 *
+	 * @param evaluator the harness whose capacity is shared
+	 * @return its capacity ledger
+	 */
+	private HarnessCapacity evaluatorCapacity(Harness evaluator)
+	{
+		return HarnessCapacity.forHome(fileLocks(), home(), evaluator.commandName(), HarnessCapacity.MAXIMUM_CONCURRENCY,
+			waiting());
+	}
+
+	/**
+	 * Creates the installed harness's adapter.
+	 *
+	 * @param settings the evaluator configuration
+	 * @param bridge   the adapter's launch bridge
+	 * @return the native optimizer adapter
+	 */
+	protected abstract SessionPort evaluatorSessions(RunnerSessions.Settings settings, Bridge bridge);
 
 	/**
 	 * Returns the ID of the host session that the harness's session variable names.

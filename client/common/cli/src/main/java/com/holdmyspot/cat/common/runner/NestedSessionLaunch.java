@@ -39,7 +39,7 @@ public final class NestedSessionLaunch
 	 */
 	public static final Set<String> FIXED_VALUE_OPTIONS = Set.of("--project", "--plugin", "--workspace",
 		"--read-only-evidence", "--deny-read", "--instruction-files", "--session-role", "--tool-output-token-limit",
-		"--agent");
+		"--agent", TrialPluginInput.ID_OPTION);
 	/**
 	 * The options that the nested session's start fixed and that take no value.
 	 */

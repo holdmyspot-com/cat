@@ -295,6 +295,7 @@
 				"properties": {
 					"location": {"description": "project if path is relative to the project root; plugin if it is relative to the directory of a trial plugin that the project builds.", "type": "string", "pattern": "^(project|plugin)$"},
 					"plugin": {"description": "With location plugin: the name of the trial plugin, as the request lists it. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},
+					"evaluator": {"description": "For a packaged dependent, use codex or claude when the same name identifies different trial plugin builds. Omit for a project file.", "type": "string", "pattern": "^(claude|codex)$"},
 					"path": {"description": "The file that holds the dependent, relative to its location.", "type": "string", "pattern": "\\S"},
 					"removes": {"description": "file to delete the whole file; span to delete text, which must occur in the file exactly once; hook_registration to unregister every hook of event with command from a hook configuration, whose hooks object maps each event to groups of hooks.", "type": "string", "pattern": "^(file|span|hook_registration)$"},
 					"text": {"description": "With span: the exact text to delete. Otherwise null.", "type": ["string", "null"], "pattern": "\\S"},

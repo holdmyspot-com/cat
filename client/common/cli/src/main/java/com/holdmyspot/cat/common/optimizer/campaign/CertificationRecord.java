@@ -15,10 +15,13 @@ import java.math.BigDecimal;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.EnumMap;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.Set;
 import java.util.TreeMap;
 
@@ -40,10 +43,11 @@ import java.util.TreeMap;
  * @param cells the certified attempt's counts of each cell, in cell order
  * @param promptFiles the content hash of each delivered prompt file, keyed by its path relative to the project
  * @param identity the measurement conditions that the attempt was measured under
+ * @param snapshot the frozen candidate's snapshot digest, or empty for a record predating it
  */
 public record CertificationRecord(Path target, int certificationIndex, CertificationScope scope,
 	CertificationParameters parameters, List<CellResult> cells, Map<Path, Sha256> promptFiles,
-	MeasurementIdentity identity) implements HistoryEntry
+	MeasurementIdentity identity, Optional<Sha256> snapshot) implements HistoryEntry
 {
 	/**
 	 * Creates a record.
@@ -55,6 +59,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 	 * @param cells the certified attempt's counts of each cell, in cell order
 	 * @param promptFiles the content hash of each delivered prompt file, keyed by its path relative to the project
 	 * @param identity the measurement conditions that the attempt was measured under
+	 * @param snapshot the frozen candidate's snapshot digest, or empty for a record predating it
 	 * @throws NullPointerException if any of the arguments are null, or {@code cells} or {@code promptFiles} contain
 	 *   null
 	 * @throws IllegalArgumentException if {@code target} or a prompt file's path is absolute or empty, or if
@@ -71,6 +76,7 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		requireThat(cells, "cells").isNotNull();
 		requireThat(promptFiles, "promptFiles").isNotNull();
 		requireThat(identity, "identity").isNotNull();
+		requireThat(snapshot, "snapshot").isNotNull();
 		for (Path file : promptFiles.keySet())
 		{
 			requireThat(PortablePaths.isRooted(file), "promptFiles.isRooted(file)").withContext(file, "file").isFalse();
@@ -78,6 +84,24 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		}
 		cells = List.copyOf(cells);
 		promptFiles = Collections.unmodifiableMap(new TreeMap<>(promptFiles));
+	}
+
+	/**
+	 * Creates a record without a frozen snapshot digest.
+	 *
+	 * @param target the campaign's target, relative to the project
+	 * @param certificationIndex the certification index of the certified attempt
+	 * @param scope the certification scope that the user confirmed
+	 * @param parameters the certification claim's parameters
+	 * @param cells the certified attempt's counts of each cell, in cell order
+	 * @param promptFiles the content hash of each delivered prompt file, keyed by its path relative to the project
+	 * @param identity the measurement conditions that the attempt was measured under
+	 */
+	public CertificationRecord(Path target, int certificationIndex, CertificationScope scope,
+		CertificationParameters parameters, List<CellResult> cells, Map<Path, Sha256> promptFiles,
+		MeasurementIdentity identity)
+	{
+		this(target, certificationIndex, scope, parameters, cells, promptFiles, identity, Optional.empty());
 	}
 
 	/**
@@ -117,7 +141,29 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		}
 
 		return new CertificationRecord(target, attempt.index(), contract.profiles().scope(), attempt.parameters(),
-			cells, promptFilesOf(snapshot, promptSources), attempt.identity());
+			cells, promptFilesOf(snapshot, promptSources), attempt.identity(), Optional.of(attempt.candidate().snapshot()));
+	}
+
+	/**
+	 * Returns the measured cells of each evaluator recorded for this attempt.
+	 *
+	 * @return the cell identifiers in cell order, keyed by recorded harness in name order. An older record that
+	 *   names only a campaign-wide harness and has no cell results lists that harness with no cells.
+	 */
+	public Map<String, List<String>> evaluatorCells()
+	{
+		Map<String, List<String>> evaluators = new TreeMap<>();
+		for (CellResult result : cells)
+		{
+			String cell = result.cell();
+			String evaluator = identity.valueOf(cell, MeasurementCondition.PROVIDER);
+			if (evaluator != null)
+				evaluators.computeIfAbsent(evaluator, _ -> new ArrayList<>()).add(cell);
+		}
+		if (cells.isEmpty())
+			harness().ifPresent(harness -> evaluators.put(harness, List.of()));
+		evaluators.replaceAll((_, result) -> List.copyOf(result));
+		return Collections.unmodifiableMap(evaluators);
 	}
 
 	/**
@@ -208,15 +254,45 @@ public record CertificationRecord(Path target, int certificationIndex, Certifica
 		boolean promptContentChanged = !entry.promptFiles().equals(currentPromptFiles);
 		String recordedProvider = identity.values().get(MeasurementCondition.PROVIDER);
 		String knownProvider = known.values().get(MeasurementCondition.PROVIDER);
-		// Another harness cannot observe what the recording harness recorded, so its values are unchecked
-		if (recordedProvider != null && knownProvider != null && !recordedProvider.equals(knownProvider))
-			known = known.withoutHarnessSpecific();
+		if (knownProvider != null)
+		{
+			if (entry instanceof CertificationRecord record && record.evaluatorCells().size() > 1)
+				known = observationsInCells(known, record.evaluatorCells().getOrDefault(knownProvider, List.of()));
+			else if (recordedProvider != null && !recordedProvider.equals(knownProvider))
+				known = known.withoutHarnessSpecific();
+		}
 		List<MeasurementCondition> changed = identity.differences(known);
 		List<MeasurementCondition> unchecked = identity.unobservedBy(known);
 		Applicability.Status status = Applicability.Status.CURRENT;
 		if (promptContentChanged || !changed.isEmpty() || !notImplied.isEmpty())
 			status = Applicability.Status.HISTORICAL;
 		return new Applicability(status, promptContentChanged, changed, notImplied, unchecked);
+	}
+
+	/**
+	 * Assigns a single live evaluator's environment observations only to its own measured cells.
+	 *
+	 * @param known the observations from one live evaluator
+	 * @param matchingCells the measured cells for that evaluator
+	 * @return the shared observations and the matched evaluator's local observations
+	 */
+	private static MeasurementIdentity observationsInCells(MeasurementIdentity known, List<String> matchingCells)
+	{
+		Map<MeasurementCondition, String> shared = new EnumMap<>(MeasurementCondition.class);
+		shared.putAll(known.withoutHarnessSpecific().values());
+		shared.remove(MeasurementCondition.LOADER_CONFIGURATION);
+		shared.remove(MeasurementCondition.LOADER_FILES);
+		Map<String, Map<MeasurementCondition, String>> local = new HashMap<>();
+		for (String cell : matchingCells)
+		{
+			Map<MeasurementCondition, String> conditions = new EnumMap<>(MeasurementCondition.class);
+			conditions.putAll(known.values());
+			conditions.putAll(known.cells().getOrDefault(cell, Map.of()));
+			local.put(cell, conditions);
+		}
+		List<MeasurementIdentity> accepted = known.acceptedChanges().stream().
+			map(identity -> observationsInCells(identity, matchingCells)).toList();
+		return new MeasurementIdentity(shared, local, accepted);
 	}
 
 	/**

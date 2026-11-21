@@ -107,7 +107,7 @@ public record CertificationHistory(List<HistoryEntry> entries)
 		requireThat(harness, "harness").isNotNull();
 		for (HistoryEntry entry : entries.reversed())
 		{
-			if (entry instanceof CertificationRecord record && record.harness().equals(harness))
+			if (entry instanceof CertificationRecord record && harnesses(record).contains(harness))
 				return Optional.of(record);
 		}
 		return Optional.empty();
@@ -124,9 +124,26 @@ public record CertificationHistory(List<HistoryEntry> entries)
 		Set<Optional<String>> seen = new HashSet<>();
 		for (int i = entries.size() - 1; i >= 0; --i)
 		{
-			if (seen.add(entries.get(i).harness()))
+			if (seen.addAll(harnesses(entries.get(i))))
 				positions.add(i);
 		}
 		return positions.reversed();
+	}
+
+	/**
+	 * Returns the harness memberships of one entry. A joint record counts once under each of its measured harnesses.
+	 *
+	 * @param entry the entry
+	 * @return the harnesses, or a single empty membership for an entry that records none
+	 */
+	private static List<Optional<String>> harnesses(HistoryEntry entry)
+	{
+		if (entry instanceof CertificationRecord record)
+		{
+			Set<String> evaluators = record.evaluatorCells().keySet();
+			if (!evaluators.isEmpty())
+				return evaluators.stream().map(Optional::of).toList();
+		}
+		return List.of(entry.harness());
 	}
 }

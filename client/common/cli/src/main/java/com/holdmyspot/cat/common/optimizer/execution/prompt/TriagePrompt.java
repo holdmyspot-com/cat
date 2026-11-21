@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.TriageProtocol;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
@@ -24,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.UnaryOperator;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -44,7 +46,7 @@ public final class TriagePrompt implements TriageProtocol
 	private final JsonMapper json;
 	private final Path triageDirectory;
 	private final JsonResponse responses;
-	private final PromptTemplate prompt;
+	private final String prompt;
 	private final String resultSchema;
 
 	/**
@@ -63,7 +65,7 @@ public final class TriagePrompt implements TriageProtocol
 		this.json = json;
 		this.triageDirectory = triageDirectory;
 		this.responses = new JsonResponse(json);
-		this.prompt = PromptTemplate.load(PROMPT_RESOURCE);
+		this.prompt = PromptTemplate.load(PROMPT_RESOURCE).text();
 		this.resultSchema = pretty(json.readTree(PromptTemplate.load(SCHEMA_RESOURCE).text()));
 	}
 
@@ -102,22 +104,25 @@ public final class TriagePrompt implements TriageProtocol
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
-		String turn = prompt.fill(Map.of(
+		Path originalTranscript = evidence.transcript();
+		Path originalEffects = evidence.effects();
+		EvidencePrompt evidencePrompt = new EvidencePrompt(prompt, Map.of(
 			"failure", failure,
 			"test_case", pretty(TestCaseJson.encode(json, testCase)),
 			"responses", pretty(responseArray),
 			"evidence", evidenceSection,
-			"effects", evidence.effects().toString(),
-			"transcript", evidence.transcript().toString(),
+			"effects", originalEffects.toString(),
+			"transcript", originalTranscript.toString(),
 			"tool_results", pretty(resultArray),
-			"result_schema", resultSchema));
+			"result_schema", resultSchema), originalTranscript, originalEffects);
 		List<Path> readOnly = new ArrayList<>();
-		readOnly.add(evidence.effects());
-		Path transcriptDirectory = evidence.transcript().getParent();
+		readOnly.add(originalEffects);
+		Path transcriptDirectory = originalTranscript.getParent();
 		if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
-		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory, List.of(turn), readOnly,
-			TIME_LIMIT, profile);
+		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory,
+			List.of(evidencePrompt.render(UnaryOperator.identity())), readOnly, TIME_LIMIT, profile).
+			withEvidencePrompt(evidencePrompt);
 	}
 
 	/**

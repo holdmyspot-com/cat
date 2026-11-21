@@ -2,6 +2,7 @@ package com.holdmyspot.cat.codex.optimizer.test;
 
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
 import com.holdmyspot.cat.common.runner.fakes.test.RequestingNestedSession;
@@ -133,6 +134,105 @@ public final class CodexPromptOptimizerTest
 		}
 		output.append(bytes.toString(StandardCharsets.UTF_8));
 		return exit;
+	}
+
+	/**
+	 * Verifies that a metadata query resolves the plugin through the Codex installation for this evaluator.
+	 *
+	 * @throws IOException if the installation fixture cannot be created
+	 */
+	@Test
+	public void findsInstalledEvaluatorPluginInCodexHome() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path project = cleanup.add(Files.createTempDirectory("codex-evaluator-project")).toRealPath();
+			Path home = cleanup.add(Files.createTempDirectory("codex-evaluator-home")).toRealPath();
+			Path codexHome = Files.createDirectory(home.resolve("custom-codex-home"));
+			Path base = codexHome.resolve("plugins/cache/fixture/docs/1.0");
+			Path manifest = base.resolve(".codex-plugin/plugin.json");
+			Files.createDirectories(manifest.getParent());
+			Files.writeString(manifest, "{\"name\":\"docs\"}");
+			Files.writeString(codexHome.resolve("config.toml"), "[plugins.\"docs@fixture\"]\nenabled = true\n");
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			String[] args = {"evaluator-info", "installed-plugins", project.toString(), "docs@fixture"};
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				int exit = PromptOptimizerCli.run(args, () ->
+					CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
+						newCodexOptimizerCommandScope(Map.of("CODEX_HOME", codexHome.toString()), home, project,
+							home.resolve("artifact"), Yielding.waiting()), ZoneOffset.UTC, out);
+				requireThat(exit, "exit").isEqualTo(0);
+			}
+			JsonNode report = JsonMapper.builder().build().readTree(bytes.toString(StandardCharsets.UTF_8));
+			requireThat(report.path("harness").stringValue(), "harness").isEqualTo("CODEX");
+			requireThat(report.path("installed").get(0).stringValue(), "installed").isEqualTo(base.toString());
+			requireThat(report.path("installed").size(), "installedCount").isEqualTo(1);
+			requireThat(Files.exists(project.resolve(".cat/sessions")), "sessionsCreated").isFalse();
+		}
+	}
+
+	/**
+	 * Startup-hook inspection reports native home overlays and adapter inputs without running the declared command.
+	 *
+	 * @throws IOException if the fixture cannot be created or read
+	 */
+	@Test
+	public void describesEvaluatorStartupHooks() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("codex-evaluator-hooks")).toRealPath();
+			Path project = Files.createDirectory(root.resolve("project"));
+			Path codex = Files.createDirectories(project.resolve(".codex"));
+			Files.writeString(codex.resolve("hooks.json"), """
+				{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command",
+				  "command":"echo invoked > unexpected-hook-effect", "timeout":3}]}]}}
+				""");
+			Path plugins = Files.writeString(root.resolve("plugins.json"), "[]");
+			Path home = Files.createDirectory(root.resolve("native-home"));
+			Path codexHome = Files.createDirectory(home.resolve("custom-codex"));
+			Path trialHome = Files.createDirectory(root.resolve("trial-home"));
+			Map<String, String> inherited = Map.of("CODEX_HOME", codexHome.toString(),
+				"OPENAI_API_KEY", "fixture-secret-value");
+			JsonMapper json = JsonMapper.builder().build();
+			for (Path selectedHome : List.of(home, trialHome))
+			{
+				List<String> args = new ArrayList<>(List.of("evaluator-info", "early-hooks", project.toString(),
+					project.toString(), plugins.toString()));
+				Path configuration = codexHome;
+				if (selectedHome.equals(trialHome))
+				{
+					args.add(trialHome.toString());
+					configuration = trialHome.resolve(".codex");
+				}
+				ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+				try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+				{
+					int exit = PromptOptimizerCli.run(args.toArray(String[]::new), () ->
+						CodexOptimizerCommandScopeSecrets.getCodexOptimizerCommandScopeAccess().
+							newCodexOptimizerCommandScope(inherited, home, project, root.resolve("artifact"),
+								Yielding.waiting()), ZoneOffset.UTC, out);
+					requireThat(exit, "exit").isEqualTo(0);
+				}
+				String response = bytes.toString(StandardCharsets.UTF_8);
+				requireThat(response, "response").doesNotContain("OPENAI_API_KEY").doesNotContain("fixture-secret-value");
+				JsonNode report = json.readTree(response);
+				requireThat(report.path("harness").stringValue(), "harness").isEqualTo("codex");
+				requireThat(report.path("hooks").size(), "hookCount").isEqualTo(1);
+				JsonNode hook = report.path("hooks").get(0);
+				Map<String, String> expectedOverlay = new HashMap<>(
+					HarnessEnvironment.homeVariables(selectedHome, Platform.current()));
+				expectedOverlay.put("CODEX_HOME", configuration.toString());
+				JsonNode expectedEnvironment = json.valueToTree(expectedOverlay);
+				requireThat(hook.get("environment"), "environment").isEqualTo(expectedEnvironment);
+				JsonNode input = json.readTree(hook.path("input").stringValue());
+				requireThat(input.path("cwd").stringValue(), "cwd").isEqualTo(project.toString());
+				requireThat(input.path("prompt").stringValue(), "prompt").isEqualTo("Describe this project.");
+				requireThat(hook.path("timeout").stringValue(), "timeout").isEqualTo("PT3S");
+			}
+			requireThat(Files.exists(project.resolve("unexpected-hook-effect")), "hookRan").isFalse();
+		}
 	}
 
 	/**
@@ -354,6 +454,7 @@ public final class CodexPromptOptimizerTest
 			Setup setup = setup(scope);
 			Map<String, String> environment = new HashMap<>(variables);
 			environment.put(Platform.current().homeVariable(), setup.home().toString());
+			List<String> before = tree(setup.root());
 			StringBuilder output = new StringBuilder();
 
 			int exit = run(setup, environment, List.of("start", "prompts/missing.md"), output);
@@ -362,6 +463,8 @@ public final class CodexPromptOptimizerTest
 			JsonNode json = JsonMapper.builder().build().readTree(output.toString());
 			requireThat(json.get("status").asString(), "status").isEqualTo("refused");
 			requireThat(json.get("message").asString(), "message").startsWith(refusal);
+			if (!variables.containsKey("CODEX_THREAD_ID"))
+				requireThat(tree(setup.root()), "tree").isEqualTo(before);
 		}
 	}
 

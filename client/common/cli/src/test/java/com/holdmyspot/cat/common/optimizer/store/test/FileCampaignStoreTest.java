@@ -25,10 +25,12 @@ import com.holdmyspot.cat.common.optimizer.campaign.Round;
 import com.holdmyspot.cat.common.optimizer.campaign.StallProgress;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialAttemptFailure;
 import com.holdmyspot.cat.common.optimizer.campaign.TrialInputs;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
+import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
 import com.holdmyspot.cat.common.optimizer.inventory.FileDelta;
 import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
@@ -88,6 +90,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -132,6 +135,119 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 	 */
 	public FileCampaignStoreTest()
 	{
+	}
+
+	/**
+	 * A legacy campaign saves its recorded owner as its only evaluator when the snapshot is next written.
+	 *
+	 * @throws IOException if the campaign cannot be stored or loaded
+	 */
+	@Test
+	public void upgradesLegacyEvaluatorScope() throws IOException
+	{
+		// Requirement: R-L6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-legacy-evaluator-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign campaign = start();
+			store.replaceSnapshot(campaign);
+			LogicalTrial trial = trial(1, TrialState.ASSIGNED);
+			store.writeAssignment(ID, trial);
+			Path record = onlyRecord(campaigns);
+			ObjectNode trialDocument = (ObjectNode) JSON.readTree(Files.readString(record, UTF_8));
+			trialDocument.put("format_version", 48);
+			Files.writeString(record, JSON.writeValueAsString(trialDocument), UTF_8);
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode document = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			document.put("format_version", 48);
+			ObjectNode header = (ObjectNode) document.get("header");
+			header.put("harness", Harness.CLAUDE.commandName());
+			header.remove("evaluation_harnesses");
+			ObjectNode contract = (ObjectNode) document.get("lineages").get(0).get("contract");
+			contract.set("trial_profiles", contract.get("trial_profiles").get("evaluators").get(0).get("profiles"));
+			Files.writeString(snapshot, JSON.writeValueAsString(document), UTF_8);
+
+			FileCampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign loaded = reopened.readSnapshot(ID).orElseThrow();
+			requireThat(reopened.listHeaders(), "listedHeaders").isEqualTo(List.of(loaded.header()));
+			requireThat(loaded.header().evaluationHarnesses(), "evaluators").isEqualTo(Set.of(Harness.CLAUDE));
+			requireThat(loaded.contract().findCell("safety").orElseThrow().evaluator(), "cellEvaluator").
+				isEqualTo(Optional.of(Harness.CLAUDE));
+			requireThat(reopened.readRecord(ID, trial.key()).orElseThrow().key(), "savedTrialKey").isEqualTo(trial.key());
+			requireThat(onlyRecord(campaigns), "savedTrialPath").isEqualTo(record);
+			reopened.replaceSnapshot(loaded);
+			JsonNode saved = JSON.readTree(Files.readString(snapshot, UTF_8));
+			ArrayNode expected = JSON.createArrayNode().add(Harness.CLAUDE.commandName());
+			requireThat(saved.get("header").get("evaluation_harnesses"), "savedEvaluators").isEqualTo(expected);
+		}
+	}
+
+	/**
+	 * A snapshot and a header listing retain the starting harness and the evaluators after a lifecycle change.
+	 *
+	 * @throws IOException if the campaign cannot be stored or loaded
+	 */
+	@Test
+	public void preservesExplicitEvaluatorScope() throws IOException
+	{
+		// Requirement: R-L6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-explicit-evaluators-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Header owner = header(ID);
+			Set<Harness> evaluators = EnumSet.allOf(Harness.class);
+			Header header = new Header(owner.id(), owner.root(), owner.target(), owner.harness(), owner.lifecycle(),
+				owner.goal(), owner.extraPermissions(), evaluators);
+			evaluators.clear();
+			Header cancelled = header.withLifecycle(Lifecycle.CANCELLED);
+			Campaign snapshot = new Builder().header(cancelled).build();
+			store.replaceSnapshot(snapshot);
+
+			FileCampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Header loaded = reopened.readSnapshot(ID).orElseThrow().header();
+			requireThat(loaded.harness(), "owner").isEqualTo(owner.harness());
+			requireThat(loaded.lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+			requireThat(loaded.evaluationHarnesses(), "evaluators").isEqualTo(EnumSet.allOf(Harness.class));
+			requireThat(reopened.listHeaders(), "listedHeaders").isEqualTo(List.of(loaded));
+		}
+	}
+
+	/**
+	 * A shared campaign reloads each evaluator's cells from its saved lineage.
+	 *
+	 * @throws IOException if the campaign cannot be stored or loaded
+	 */
+	@Test
+	public void storesQualifiedEvaluatorCells() throws IOException
+	{
+		// Requirement: R-L8
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-qualified-cells-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Contract fixture = ContractFixtures.contract();
+			TrialProfiles local = fixture.profiles();
+			TrialProfiles shared = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, local, Harness.CODEX, local));
+			Contract contract = new Contract(fixture.requirements(), fixture.tests(), shared, fixture.judge(),
+				fixture.limitations(), fixture.minimumPassRate(), fixture.salt());
+			Header owner = header(ID);
+			Header header = new Header(owner.id(), owner.root(), owner.target(), owner.harness(), owner.lifecycle(),
+				owner.goal(), owner.extraPermissions(), shared.byEvaluator().keySet());
+			store.replaceSnapshot(new Builder().header(header).confirmed(contract, 1).build());
+
+			FileCampaignStore reopened = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			Campaign loaded = reopened.readSnapshot(ID).orElseThrow();
+			requireThat(loaded.contract().profiles().byEvaluator().keySet(), "evaluators").
+				isEqualTo(header.evaluationHarnesses());
+			for (Harness evaluator : header.evaluationHarnesses())
+			{
+				String id = evaluator.commandName() + ":safety";
+				requireThat(loaded.contract().findCell(id).orElseThrow().evaluator(), "cellEvaluator").
+					isEqualTo(Optional.of(evaluator));
+			}
+		}
 	}
 
 	/**
@@ -378,7 +494,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Path file = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(file, UTF_8));
 			JsonNode contract = root.get("lineages").get(0).get("contract");
-			JsonNode profiles = contract.get("trial_profiles");
+			JsonNode profiles = contract.get("trial_profiles").get("evaluators").get(0).get("profiles");
 			for (JsonNode profile : profiles.get("inventory"))
 				((ObjectNode) profile).put("effort", "");
 			for (JsonNode cell : profiles.get("cells"))
@@ -839,6 +955,51 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 				orElseThrow().plugins().orElseThrow().getFirst();
 			requireThat(older.repository(), "olderRepository").isNull();
 			requireThat(older.isCat(), "olderIsCat").isFalse();
+		}
+	}
+
+	/**
+	 * Shared plugin snapshots retain configuration order and an explicitly empty evaluator.
+	 *
+	 * @throws IOException if the campaign cannot be stored or loaded
+	 */
+	@Test
+	public void storesEvaluatorPluginLists() throws IOException
+	{
+		// Requirement: R-L6, R-L8
+		TrialPlugin first = new TrialPlugin("second@local", "a".repeat(64), new TrialPlugin.Installed(), List.of(),
+			PluginInfo.CAT_REPOSITORY);
+		TrialPlugin second = new TrialPlugin("first@local", "b".repeat(64), new TrialPlugin.Installed(), List.of(),
+			null);
+		Header owner = header(ID);
+		Header header = new Header(owner.id(), owner.root(), owner.target(), owner.harness(), owner.lifecycle(),
+			owner.goal(), owner.extraPermissions(), EnumSet.allOf(Harness.class));
+		Campaign original = new Builder().header(header).build();
+		Campaign configured = original.withEvaluatorPlugins(Map.of(Harness.CODEX, List.of(first, second),
+			Harness.CLAUDE, List.of()));
+		Campaign cancelled = Transitions.apply(configured, new CampaignEvent.Cancel());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path campaigns = cleanup.add(Files.createTempDirectory("cat-evaluator-plugins-"));
+			FileCampaignStore store = new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer());
+			store.replaceSnapshot(cancelled);
+			Campaign loaded = store.load(ID).orElseThrow();
+
+			requireThat(loaded.pluginsFor(Harness.CODEX), "codexPlugins").isEqualTo(Optional.of(List.of(first, second)));
+			requireThat(loaded.pluginsFor(Harness.CLAUDE), "claudePlugins").isEqualTo(Optional.of(List.of()));
+			requireThat(loaded.plugins(), "legacyPlugins").isEqualTo(Optional.empty());
+			requireThat(loaded.identity(), "identity").isEqualTo(original.identity());
+
+			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
+			ObjectNode previous = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
+			previous.put("format_version", 49);
+			previous.remove("evaluator_plugins");
+			previous.putArray("plugins");
+			Files.writeString(snapshot, JSON.writeValueAsString(previous), UTF_8);
+			Campaign legacy = store.readSnapshot(ID).orElseThrow();
+			requireThat(legacy.header().evaluationHarnesses(), "legacyEvaluators").isEqualTo(EnumSet.allOf(Harness.class));
+			requireThat(legacy.pluginsFor(Harness.CODEX), "legacyCodex").isEqualTo(Optional.of(List.of()));
+			requireThat(legacy.pluginsFor(Harness.CLAUDE), "legacyClaude").isEqualTo(Optional.of(List.of()));
 		}
 	}
 
@@ -1507,10 +1668,10 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			{
 				requireThat(record.getFileName().toString(), "record").endsWith(".json");
 				requireThat(JSON.readTree(Files.readString(record, UTF_8)).get("format_version").asInt(),
-					"recordVersion").isEqualTo(48);
+					"recordVersion").isEqualTo(50);
 			}
 			JsonNode snapshot = JSON.readTree(Files.readString(directory.resolve("campaign.json"), UTF_8));
-			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(48);
+			requireThat(snapshot.get("format_version").asInt(), "snapshotVersion").isEqualTo(50);
 		}
 	}
 
@@ -1579,7 +1740,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			Campaign loaded = legacyStore.load(ID).orElseThrow();
 			legacyStore.replaceSnapshot(loaded);
 			JsonNode rewritten = JSON.readTree(Files.readString(copiedSnapshot, UTF_8));
-			requireThat(rewritten.get("format_version").asInt(), "rewrittenVersion").isEqualTo(48);
+		requireThat(rewritten.get("format_version").asInt(), "rewrittenVersion").isEqualTo(50);
 			requireThat(rewritten.get("header").get("root").asString(), "rewrittenRoot").isEqualTo(copy.toString());
 			requireThat(rewritten.get("header").get("target").asString(), "rewrittenTarget").isEqualTo("AGENTS.md");
 			requireThat(contents(original), "original").isEqualTo(before);
@@ -2501,7 +2662,7 @@ public final class FileCampaignStoreTest extends CampaignStoreContract
 			store.replaceSnapshot(start());
 			Path snapshot = heldOutDirectory(campaigns).resolve("campaign.json");
 			ObjectNode root = (ObjectNode) JSON.readTree(Files.readString(snapshot, UTF_8));
-			root.put("format_version", 49);
+			root.put("format_version", Integer.MAX_VALUE);
 			Files.writeString(snapshot, JSON.writeValueAsString(root), UTF_8);
 
 			new FileCampaignStore(campaigns, JSON, Yielding.fileReplacer()).load(ID);

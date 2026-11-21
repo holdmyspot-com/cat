@@ -11,7 +11,8 @@
 
 ## Scenario
 
-Use the prompt-optimizer skill to optimize and certify the compliance of {{target}}. I have no separate goal.
+Use the prompt-optimizer skill to optimize and certify the compliance of {{target}} for the harness we're using now.
+I have no separate goal.
 Start in background mode; if the launcher refuses, follow the skill's instructions. Do not create the missing target.
 
 Run this task in a fresh sandboxed harness session with the real CAT plugin installed and one allowed session
@@ -29,9 +30,9 @@ before creating a campaign. Observe the actual launcher results; this scenario d
 ### foreground_start_continues
 
 - **kind**: effect
-- **description**: After the refusal, the agent runs `start {{target}}` without `--background`, with the same other
-	arguments. It shows the foreground missing-target refusal and stops instead of ending at the background refusal
-	or asking the user whether to retry. The foreground launcher returns before the tool needs to wait.
+- **description**: After the refusal, the agent runs `start {{target}}` again with the same `--harness` argument
+	and without `--background`. It shows the foreground missing-target refusal and stops instead of ending at the
+	background refusal or asking the user whether to retry. The foreground launcher returns before the tool needs to wait.
 
 ### no_campaign_created
 

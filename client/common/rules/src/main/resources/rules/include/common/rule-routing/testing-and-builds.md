@@ -20,8 +20,9 @@ After you read the log of a job that failed on another machine, and before you c
 `../upstream-fallbacks.md` when the log shows a download from an upstream server that failed because the server could
 not be reached, whether or not you loaded `../ci-debugging.md`.
 
-When running a CI or hosted workflow on a remote runner to test changed commands that it runs there, lazy load
-`../remote-runner-testing.md` before dispatching the run.
+Before dispatching a CI or hosted run to test changed workflow commands, or to investigate an unresolved project
+failure that needs the failing worker's state or a retry in its workspace, lazy load `../remote-runner-testing.md`.
+The diagnostic trigger applies even when the workflow and command are unchanged.
 
 Before starting a run of a workflow that publishes, such as by pushing a release tag or dispatching a deployment, lazy
 load `../publishing-workflows.md`.

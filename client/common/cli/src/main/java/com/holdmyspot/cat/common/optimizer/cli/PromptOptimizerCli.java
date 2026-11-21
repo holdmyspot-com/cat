@@ -78,13 +78,21 @@ public final class PromptOptimizerCli
 		List<String> arguments = List.of(args);
 		if (Commands.isContractTool(arguments))
 			return Commands.executeContractTool(JsonMapper.builder().build(), arguments, out);
+		boolean evaluatorInfo = !arguments.isEmpty() && arguments.getFirst().equals(EvaluatorInfo.COMMAND);
+		boolean evaluatorTrial = arguments.size() == 1 && arguments.getFirst().equals(EvaluatorTrial.COMMAND);
 		try (AbstractOptimizerCommandScope scope = factory.open())
 		{
+			if (evaluatorInfo)
+				return EvaluatorInfo.run(scope, arguments, out);
+			if (evaluatorTrial && scope instanceof MainOptimizerCommandScope installed)
+				return EvaluatorTrial.run(installed, System.in, out);
 			return run(scope, arguments, zone, Platform.current(), out);
 		}
 		catch (IOException e)
 		{
 			// Scope creation failed before a scope-owned mapper became available.
+			if (evaluatorInfo || evaluatorTrial)
+				return fail(JsonMapper.builder().build(), out, "Could not initialize the installed evaluator.");
 			return fail(JsonMapper.builder().build(), out, e.getMessage());
 		}
 	}

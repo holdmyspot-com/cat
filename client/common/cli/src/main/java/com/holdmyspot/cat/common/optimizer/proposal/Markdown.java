@@ -302,7 +302,26 @@ public final class Markdown
 	 */
 	private Optional<String> pluginFile(String path)
 	{
-		for (Map.Entry<String, Path> entry : plugin.baseDirectories().entrySet())
+		if (plugin.byEvaluator().isEmpty())
+			return pluginFile(path, plugin.baseDirectories());
+		StringJoiner matches = new StringJoiner(", ");
+		plugin.byEvaluator().forEach((evaluator, check) -> pluginFile(path, check.baseDirectories()).
+			ifPresent(file -> matches.add(evaluator.productName() + " " + file)));
+		if (matches.length() == 0)
+			return Optional.empty();
+		return Optional.of(matches.toString());
+	}
+
+	/**
+	 * Names a file relative to one evaluator's plugin base.
+	 *
+	 * @param path the file's recorded path
+	 * @param baseDirectories the plugin base directories
+	 * @return the relative description, or empty if no matching plugin base exists
+	 */
+	private static Optional<String> pluginFile(String path, Map<String, Path> baseDirectories)
+	{
+		for (Map.Entry<String, Path> entry : baseDirectories.entrySet())
 		{
 			String prefix = entry.getValue().toAbsolutePath().normalize() + File.separator;
 			if (path.startsWith(prefix))
@@ -765,7 +784,12 @@ public final class Markdown
 			switch (dependent.location())
 			{
 				case PROJECT -> text.append("The project file `");
-				case PLUGIN -> text.append("The file of the trial plugin `").append(dependent.plugin()).append("` `");
+				case PLUGIN ->
+				{
+					text.append("The file of the trial plugin `").append(dependent.plugin()).append('`');
+					dependent.evaluator().ifPresent(evaluator -> text.append(" for ").append(evaluator.productName()));
+					text.append(" `");
+				}
 			}
 			text.append(dependent.path()).append("`: ");
 			switch (dependent.removal())
@@ -799,9 +823,29 @@ public final class Markdown
 	private void trialPlugins()
 	{
 		heading("Trial plugins");
-		if (plugin.plugins().isEmpty())
+		if (plugin.byEvaluator().isEmpty())
+		{
+			trialPlugins(plugin);
+			return;
+		}
+		plugin.byEvaluator().forEach((evaluator, check) ->
+		{
+			text.append("### ").append(evaluator.productName()).append("\n\n");
+			trialPlugins(check);
+			text.append('\n');
+		});
+	}
+
+	/**
+	 * Shows one evaluator's installed plugins and observations.
+	 *
+	 * @param check the evaluator's check
+	 */
+	private void trialPlugins(PluginCheck check)
+	{
+		if (check.plugins().isEmpty())
 			text.append("Trials install no plugin.\n");
-		for (TrialPlugin trialPlugin : plugin.plugins())
+		for (TrialPlugin trialPlugin : check.plugins())
 		{
 			text.append("- `").append(trialPlugin.name()).append("`: ");
 			switch (trialPlugin.source())
@@ -824,34 +868,34 @@ public final class Markdown
 				case TrialPlugin.Installed _ -> text.append("the user's installed copy\n");
 			}
 		}
-		if (!plugin.differing().isEmpty())
+		if (!check.differing().isEmpty())
 		{
 			text.append("\nWarning: the content of these mapped files differs from the base's, because the base " +
 				"predates them or the build changes them. Trials load the project's content:\n\n");
-			for (PluginMapping.Difference difference : plugin.differing())
+			for (PluginMapping.Difference difference : check.differing())
 			{
 				text.append("- `").append(PortablePaths.text(difference.file())).append("` → `").
 					append(difference.plugin()).append("` `").append(PortablePaths.text(difference.mapped())).
 					append("`\n");
 			}
 		}
-		if (!plugin.uncovered().isEmpty())
+		if (!check.uncovered().isEmpty())
 		{
 			text.append("\nThese prompt files do not load from the project, and no trial plugin that the project " +
 				"builds holds a copy of them, so a candidate's edit to them never reaches trials:\n\n");
-			for (Path path : plugin.uncovered())
+			for (Path path : check.uncovered())
 				text.append("- `").append(PortablePaths.text(path)).append("`\n");
 		}
-		if (!plugin.productionOnly().isEmpty())
+		if (!check.productionOnly().isEmpty())
 		{
 			text.append("\nThese files load in the user's sessions of the harness but not in trials:\n\n");
-			productionOnlyGroups();
+			productionOnlyGroups(check.productionOnly());
 		}
-		if (!plugin.homeOnly().isEmpty())
+		if (!check.homeOnly().isEmpty())
 		{
 			text.append("\nThese hooks, plugins and MCP servers of the user's harness configuration run in the user's " +
 				"sessions but not in trials:\n\n");
-			for (String entry : plugin.homeOnly())
+			for (String entry : check.homeOnly())
 			{
 				text.append("- ").append(Character.toUpperCase(entry.charAt(0))).append(entry.substring(1)).
 					append('\n');
@@ -863,11 +907,13 @@ public final class Markdown
 	 * Shows the files that load in the user's sessions but not in trials, one line per directory. The directories are
 	 * the deepest directory that holds every file, and each of its subdirectories that holds files. A group of at
 	 * most {@code MAX_LISTED_FILES} files lists its files; a larger group shows its directory and its file count.
+	 *
+	 * @param productionOnly the files that load only in production
 	 */
-	private void productionOnlyGroups()
+	private void productionOnlyGroups(List<String> productionOnly)
 	{
 		List<Path> files = new ArrayList<>();
-		for (String name : plugin.productionOnly())
+		for (String name : productionOnly)
 			files.add(Path.of(name));
 		Path common = files.get(0).getParent();
 		for (Path file : files)

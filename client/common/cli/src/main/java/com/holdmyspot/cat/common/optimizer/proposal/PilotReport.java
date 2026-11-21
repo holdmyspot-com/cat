@@ -2,11 +2,13 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.execution.GuardPilot;
 import com.holdmyspot.cat.common.optimizer.execution.PilotResult;
 import com.holdmyspot.cat.common.optimizer.execution.PilotTrial;
@@ -58,22 +60,58 @@ final class PilotReport
 		requireThat(contract, "contract").isNotNull();
 		requireThat(pilots, "pilots").isNotNull();
 		StringBuilder text = new StringBuilder(INITIAL_CAPACITY);
+		Map<Harness, TrialProfiles> scopes = contract.profiles().byEvaluator();
+		boolean shared = scopes.size() > 1;
 		text.append("Before presenting this proposal, CAT ran ").append(GuardPilot.TRIALS).
-			append(" control trials of each prompt test in its weakest cell, drawing only development test cases, and " +
-				"decided them with the proposed checks and judge. Control trials run the incumbent with the target " +
-				"prompt files emptied. Pilot trials enter no count and spend no allowance.\n");
+			append(" control trials of each prompt test in its weakest cell");
+		if (shared)
+			text.append(" on each applicable evaluator");
+		text.append(", drawing only development test cases, and decided them with the proposed checks and judge. " +
+			"Control trials run the incumbent with the target prompt files emptied. Pilot trials enter no count and " +
+			"spend no allowance.\n");
 		for (PromptTest test : contract.tests())
 		{
-			PilotResult pilot = pilots.get(test.id());
-			if (pilot == null)
+			if (!shared)
 			{
-				text.append("\n### `").append(test.id()).append("`\n\nNo pilot: ").
-					append(whyNoPilot(contract, test, controlRefused)).append('\n');
+				scopedTest(text, contract, test, contract.profiles(), pilots.get(test.id()), null, controlRefused);
 				continue;
 			}
-			test(text, contract, test, pilot);
+			for (Map.Entry<Harness, TrialProfiles> scope : scopes.entrySet())
+			{
+				TrialProfiles local = scope.getValue();
+				if (local.cellsOf(test.id()).isEmpty())
+					continue;
+				Harness evaluator = scope.getKey();
+				PilotResult pilot = pilots.get(PilotResult.key(test.id(), evaluator));
+				scopedTest(text, contract, test, local, pilot, evaluator, controlRefused);
+			}
 		}
 		return text.toString();
+	}
+
+	/**
+	 * Appends one applicable pilot or explains why it has no result.
+	 *
+	 * @param text the text to append to
+	 * @param contract the proposed contract
+	 * @param test the prompt test
+	 * @param profiles the evaluator's trial profiles
+	 * @param pilot the result, or {@code null} if the pilot has no result
+	 * @param evaluator the evaluator that qualifies a shared result, or {@code null} for a single evaluator
+	 * @param controlRefused {@code true} if the control source cannot be built
+	 */
+	private static void scopedTest(StringBuilder text, Contract contract, PromptTest test, TrialProfiles profiles,
+		PilotResult pilot, Harness evaluator, boolean controlRefused)
+	{
+		if (pilot != null)
+		{
+			test(text, contract, test, pilot);
+			return;
+		}
+		text.append("\n### `").append(test.id()).append('`');
+		if (evaluator != null)
+			text.append(" on ").append(evaluator.productName());
+		text.append("\n\nNo pilot: ").append(whyNoPilot(contract, test, profiles, controlRefused)).append('\n');
 	}
 
 	/**
@@ -150,12 +188,13 @@ final class PilotReport
 	 *
 	 * @param contract the proposed contract
 	 * @param test the prompt test
+	 * @param profiles the evaluator's trial profiles
 	 * @param controlRefused {@code true} if the control source cannot be built, so no control trial could run
 	 * @return the reason, as a sentence
 	 */
-	private static String whyNoPilot(Contract contract, PromptTest test, boolean controlRefused)
+	private static String whyNoPilot(Contract contract, PromptTest test, TrialProfiles profiles, boolean controlRefused)
 	{
-		if (GuardPilot.pilotCell(contract, test.id()).isEmpty())
+		if (GuardPilot.pilotCell(profiles, test.id()).isEmpty())
 			return "its weakest cell depends on a model whose family is unranked.";
 		if (contract.split().testCases(test, Part.DEVELOPMENT).isEmpty())
 			return "it has no development test case.";

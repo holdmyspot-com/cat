@@ -47,10 +47,10 @@ public final class PluginArchiveTest
 	}
 
 	/**
-	 * Verifies that a source checkout's plugin is bound to the release runtime that the build wrote, and that its
+	 * Verifies that a source checkout's plugin selects its bundled runtime, and that its
 	 * archive is named after its harness, platform and release, holds every launcher, the hooks' and the installer's
 	 * included, holds the Java runtime with the plugin's modules in {@code bin/runtime/} and the installer's default
-	 * policy in {@code bin/conf/installer/}, has no {@code client/} folder, and leaves out the binding.
+	 * policy in {@code bin/conf/installer/}, has no {@code client/} folder, and holds the bundled runtime selector.
 	 */
 	@Test
 	public void archiveHoldsRuntimeAndInstaller() throws IOException
@@ -72,11 +72,7 @@ public final class PluginArchiveTest
 			new PluginInstaller(scope, PluginInfo.CAT_VERSION, "").write(bin, Platform.LINUX_X64, true);
 			Path plugin = new PluginArtifactBuilder(PluginVersion.parse("1.0+b0123456789ab")).build(List.of(), bin,
 				legal, List.of(), directory.resolve("plugin"));
-			Path runtime = directory.resolve("runtime");
-			access.writeRuntimeBinding(plugin, runtime);
-
-			requireThat(Files.readString(plugin.resolve("bin/runtime-binding")), "binding").
-				isEqualTo(runtime.toAbsolutePath().normalize() + "\n");
+			requireThat(plugin.resolve("bin/bundled-runtime"), "selector").isRegularFile();
 			Path archive = new ReleasePackager(PluginInfo.CAT_VERSION).packageArtifact("codex", Platform.LINUX_X64,
 				plugin, directory.resolve("release"));
 			requireThat(archive.getFileName().toString(), "archive").
@@ -92,7 +88,7 @@ public final class PluginArchiveTest
 					binEntries.add(relative);
 			}
 			requireThat(binEntries, "binEntries").contains("bin/runtime/modules/app.jar").
-				contains("bin/runtime/bin/java").contains("bin/installer").
+				contains("bin/runtime/bin/java").contains("bin/bundled-runtime").contains("bin/installer").
 				contains("bin/conf/installer/default-policy.json").
 				contains("bin/runtime-requirement.json").contains("bin/VERSION").contains("bin/java").
 				contains("bin/plugin-info").contains("bin/session-start").contains("bin/post-tool-use").

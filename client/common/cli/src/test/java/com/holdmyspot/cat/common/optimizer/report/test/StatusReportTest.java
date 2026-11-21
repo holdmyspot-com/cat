@@ -21,6 +21,8 @@ import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.DeliveryRequest;
 import com.holdmyspot.cat.common.optimizer.campaign.FailureKind;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
+import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.HunkEvidence;
 import com.holdmyspot.cat.common.optimizer.campaign.IncumbentBaseline;
 import com.holdmyspot.cat.common.optimizer.campaign.Lifecycle;
@@ -47,6 +49,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCase;
 import com.holdmyspot.cat.common.optimizer.evidence.CommandSummary;
 import com.holdmyspot.cat.common.optimizer.contract.AddedTestCases;
+import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
@@ -54,6 +57,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Generator;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.PromptAuthorConflict;
@@ -86,6 +90,7 @@ import com.holdmyspot.cat.common.optimizer.statistics.ErrorBudget;
 import com.holdmyspot.cat.common.optimizer.statistics.ExploratoryBounds;
 import com.holdmyspot.cat.common.optimizer.statistics.Interval;
 import com.holdmyspot.cat.common.optimizer.statistics.SignificanceLevel;
+import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -2151,6 +2156,60 @@ public final class StatusReportTest
 	}
 
 	/**
+	 * A shared status reports each evaluator's weakest cell, trial results, inventory and capability ranking.
+	 */
+	@Test
+	public void showsEachEvaluatorsWeakestCell()
+	{
+		// Requirement: R-L8
+		// Requirement: R-L9
+		Contract codex = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		CapabilityRanking claudeRanking = new CapabilityRanking(List.of("small", "big"), "Claude ranking fixture");
+		TrialProfiles claude = TierFixtures.contract(TierFixtures.TIERED_PROFILES, claudeRanking, List.of(),
+			new TrialProfile("big", "high")).withScope(CertificationScope.WEAKEST_CELL).profiles();
+		TrialProfiles profiles = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, claude, Harness.CODEX,
+			codex.profiles()));
+		Contract contract = new Contract(codex.requirements(), codex.tests(), profiles, codex.judge(),
+			codex.limitations(), codex.minimumPassRate(), codex.salt());
+		String claudeCell = Harness.CLAUDE.commandName() + ":" + TierFixtures.BIG_LOW;
+		String codexCell = Harness.CODEX.commandName() + ":" + TierFixtures.SMALL_HIGH;
+		Path root = Path.of("/project").toAbsolutePath();
+		Header header = new Header("shared-campaign", root, root.resolve("rules.md"), Harness.CODEX, Lifecycle.ACTIVE,
+			null, ExtraPermissions.NONE, profiles.byEvaluator().keySet());
+		Campaign campaign = new Builder().header(header).confirmed(contract, 1).working(1).
+			development(claudeCell, 9, 1).development(codexCell, 7, 3).build();
+		StatusReport report = StatusReport.of(campaign, ReportEvidence.NONE);
+		JsonNode json = report.toJson(JsonMapper.builder().build());
+
+		List<JsonNode> tiers = json.path("cell_tier").path("tests").valueStream().
+			filter(test -> test.path("test").asString().equals("formatting")).toList();
+		requireThat(tiers.size(), "formattingTiers").isEqualTo(2);
+		requireThat(tiers.getFirst().path("evaluator").asString(), "claudeTier").isEqualTo(Harness.CLAUDE.commandName());
+		requireThat(tiers.getFirst().path("weakest_cell").asString(), "claudeWeakest").isEqualTo(claudeCell);
+		requireThat(tiers.getLast().path("weakest_cell").asString(), "codexWeakest").isEqualTo(codexCell);
+		requireThat(tiers.getFirst().path("development_cells").get(0).asString(), "claudeDevelopment").
+			isEqualTo(claudeCell);
+		requireThat(tiers.getLast().path("development_cells").get(0).asString(), "codexDevelopment").
+			isEqualTo(codexCell);
+		requireThat(values(json.path("cells"), "evaluator"), "resultEvaluators").isEqualTo(List.of(
+			Harness.CLAUDE.commandName(), Harness.CLAUDE.commandName(), Harness.CODEX.commandName(),
+			Harness.CODEX.commandName()));
+		requireThat(cell(report, claudeCell).passes(), "claudePasses").isEqualTo(9);
+		requireThat(cell(report, codexCell).passes(), "codexPasses").isEqualTo(7);
+		JsonNode evaluators = json.path("trial_profiles").path("evaluators");
+		requireThat(values(evaluators, "evaluator"), "profileEvaluators").
+			isEqualTo(List.of(Harness.CLAUDE.commandName(), Harness.CODEX.commandName()));
+		requireThat(evaluators.get(0).path("ranking").path("source").asString(), "claudeRanking").
+			isEqualTo(claudeRanking.source());
+		requireThat(evaluators.get(1).path("inventory_source").asString(), "codexInventory").
+			isEqualTo(codex.profiles().inventory().source());
+		requireThat(report.summary(ZoneOffset.UTC), "summary").
+			contains("Test formatting (codex): weakest cell " + codexCell);
+		requireThat(report.claim(), "claim").contains("formatting in codex under small/high").
+			contains("formatting in claude under big/low");
+	}
+
+	/**
 	 * Verifies that every JSON status key whose value is a cell identifier names it a cell, and that {@code test}
 	 * remains only where the value is a test.
 	 */
@@ -2168,6 +2227,8 @@ public final class StatusReportTest
 
 		requireThat(json.has("tests"), "tests").isFalse();
 		requireThat(values(json.path("cells"), "cell"), "cells").isEqualTo(cells);
+		requireThat(json.path("cells").get(0).has("evaluator"), "singletonCellEvaluator").isFalse();
+		requireThat(json.path("cell_tier").path("tests").get(0).has("evaluator"), "singletonTierEvaluator").isFalse();
 		requireThat(json.path("allocation").propertyNames(), "allocation").containsExactly(cells);
 		requireThat(json.path("benchmark").has("tests"), "benchmark.tests").isFalse();
 		requireThat(values(json.path("benchmark").path("cells"), "cell"), "benchmark.cells").isEqualTo(cells);

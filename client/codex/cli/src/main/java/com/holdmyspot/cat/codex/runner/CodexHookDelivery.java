@@ -9,7 +9,8 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
 /**
- * Verifies that CAT's configured Codex hooks are trusted and that every newly started subagent receives its start hook.
+ * Verifies that CAT's configured Codex hooks are enabled and trusted and that every newly started subagent receives
+ * its start hook.
  * <p>
  * Codex lists every hook that a plugin declares, trusted or not. The start hooks, which deliver CAT's rules, must be
  * listed; the PostToolUse hook is checked only when the plugin declares it.
@@ -84,12 +85,12 @@ public final class CodexHookDelivery
 	}
 
 	/**
-	 * Verifies one configured CAT hook is trusted or managed by Codex.
+	 * Verifies one configured CAT hook is enabled and trusted or managed by Codex.
 	 *
 	 * @param hooks the harness hook metadata list
 	 * @param key the expected CAT hook key
 	 * @param required indicates whether the plugin must declare the hook
-	 * @throws IOException if a required hook is unavailable, or a listed hook is untrusted
+	 * @throws IOException if a required hook is unavailable, or a listed hook is disabled or untrusted
 	 */
 	private static void verifyConfiguredHook(JsonNode hooks, String key, boolean required) throws IOException
 	{
@@ -99,6 +100,11 @@ public final class CodexHookDelivery
 		{
 			if (!key.equals(text(hook.path("key"))))
 				continue;
+			JsonNode enabled = hook.path("enabled");
+			if (!enabled.isBoolean())
+				throw new IOException("Codex did not report whether CAT's " + hookName(key) + " hook is enabled");
+			if (!enabled.booleanValue())
+				throw new IOException("CAT " + hookName(key) + " hook is disabled in the isolated Codex session");
 			String trust = text(hook.path("trustStatus"));
 			if (trust.equals("trusted") || trust.equals("managed"))
 				return;

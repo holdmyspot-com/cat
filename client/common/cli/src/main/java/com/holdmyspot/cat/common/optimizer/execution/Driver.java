@@ -29,6 +29,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CarriedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.DevelopmentJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.Header;
 import com.holdmyspot.cat.common.optimizer.campaign.JudgeBasis;
 import com.holdmyspot.cat.common.optimizer.campaign.ShadowResult;
 import com.holdmyspot.cat.common.optimizer.campaign.FailedAssertion;
@@ -98,6 +99,7 @@ import com.holdmyspot.cat.common.optimizer.port.HostLogin;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.RateLimitWindow;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
+import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
@@ -120,6 +122,7 @@ import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialRequest;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse;
 import com.holdmyspot.cat.common.runner.RetainedTrialUnresumableException;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 
 import java.io.Closeable;
 import java.io.IOException;
@@ -129,6 +132,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
@@ -140,6 +144,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletionException;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
@@ -182,13 +187,16 @@ public final class Driver implements AutoCloseable
 	private final Instant deadline;
 	private final Instant graceEnd;
 	/**
-	 * How the harness authenticates, classified when the driver opened.
+	 * How each evaluation harness authenticates, classified when the driver opened.
 	 */
-	private final HostLogin login;
+	private final Map<Harness, HostLogin> evaluatorLogins;
 	private final SessionEvents events = new SessionEvents();
 	private final Map<Long, InFlight> inFlight = new LinkedHashMap<>();
 	private final Map<TrialKey, TrialRecovery> trialRequests;
 	private final Map<TrialKey, FailedContinuation> failedContinuations = new HashMap<>();
+	private final Map<Harness, Instant> evaluatorHolds = new EnumMap<>(Harness.class);
+	private final Set<Harness> refusedHarnesses = EnumSet.noneOf(Harness.class);
+	private final Set<TrialKey> heldContinuations = new HashSet<>();
 	private final Object trialProgressLock = new Object();
 	private final List<Judging> judgingQueue = new ArrayList<>();
 	private final List<Triaging> triageQueue = new ArrayList<>();
@@ -230,10 +238,10 @@ public final class Driver implements AutoCloseable
 	 * @param lock the campaign's write lock
 	 * @param recovery the reconciled campaign and the launches that the broker still owns
 	 * @param sliceStart when the slice started
-	 * @param login how the harness authenticates
+	 * @param evaluatorLogins how each trial evaluator authenticates
 	 */
 	private Driver(DriverContext context, CampaignLock lock, Reconciler.Recovery recovery, Instant sliceStart,
-		HostLogin login)
+		Map<Harness, HostLogin> evaluatorLogins)
 	{
 		this.context = context;
 		this.lock = lock;
@@ -243,7 +251,7 @@ public final class Driver implements AutoCloseable
 		this.sliceStart = sliceStart;
 		this.deadline = context.settings().deadline(sliceStart);
 		this.graceEnd = context.settings().graceEnd(sliceStart);
-		this.login = login;
+		this.evaluatorLogins = Map.copyOf(evaluatorLogins);
 	}
 
 	/**
@@ -304,15 +312,57 @@ public final class Driver implements AutoCloseable
 	public static Driver open(DriverContext context, String campaignId, CampaignLock lock, Instant sliceStart)
 		throws IOException
 	{
+		return open(context, campaignId, lock, sliceStart, true);
+	}
+
+	/**
+	 * Reconciles the campaign and applies user events without starting a slice or resolving evaluator logins.
+	 * Takes ownership of the lock and releases it when done or on failure.
+	 *
+	 * @param context the driver's context with the campaign's stored measurement conditions
+	 * @param campaignId the campaign's identifier
+	 * @param lock the campaign's write lock
+	 * @param events the events to apply in order
+	 * @throws IllegalArgumentException if the campaign does not exist or an event is not accepted
+	 * @throws IllegalStateException if the campaign's state does not permit an event
+	 * @throws IOException if the store, worktree or nested session records cannot be read or written
+	 */
+	public static void applyEvents(DriverContext context, String campaignId, CampaignLock lock,
+		List<CampaignEvent> events) throws IOException
+	{
+		try (Driver driver = open(context, campaignId, lock, null, false))
+		{
+			for (CampaignEvent event : events)
+				driver.apply(event);
+		}
+	}
+
+	/**
+	 * Reconciles the campaign under the lock and prepares the driver for the requested operation.
+	 *
+	 * @param context the driver's context
+	 * @param campaignId the campaign's identifier
+	 * @param lock the campaign's write lock, released if opening fails
+	 * @param sliceStart when the slice began, or {@code null} if it begins now
+	 * @param runningSlice whether to resolve the selected evaluator logins for trial launches
+	 * @return the reconciled driver
+	 * @throws IOException if the campaign cannot be reconciled or a required evaluator login cannot be read
+	 */
+	private static Driver open(DriverContext context, String campaignId, CampaignLock lock, Instant sliceStart,
+		boolean runningSlice) throws IOException
+	{
 		try
 		{
 			Instant now = context.clock().instant();
-			HostLogin login = context.sessions().hostLogin();
-			Reconciler.Recovery recovery = Reconciler.reconcile(context, load(context, campaignId), now);
+			Campaign campaign = load(context, campaignId);
+			Map<Harness, HostLogin> logins = Map.of();
+			if (runningSlice)
+				logins = evaluatorLogins(context, campaign.header());
+			Reconciler.Recovery recovery = Reconciler.reconcile(context, campaign, now);
 			Instant began = now;
 			if (sliceStart != null)
 				began = sliceStart;
-			return new Driver(context, lock, recovery, began, login);
+			return new Driver(context, lock, recovery, began, logins);
 		}
 		catch (IOException | RuntimeException e)
 		{
@@ -321,6 +371,27 @@ public final class Driver implements AutoCloseable
 				throw e;
 			}
 		}
+	}
+
+	/**
+	 * Looks up the login types for the trial evaluators the campaign selected.
+	 *
+	 * @param context the driver's context with the evaluator ports
+	 * @param header the campaign's header with the selected evaluators
+	 * @return the login type for each selected evaluator
+	 * @throws IOException if the ports do not match the selection or a required login file cannot be read
+	 */
+	private static Map<Harness, HostLogin> evaluatorLogins(DriverContext context, Header header) throws IOException
+	{
+		Map<Harness, SessionPort> ports = context.evaluationSessions();
+		if (ports.isEmpty())
+			ports = Map.of(header.harness(), context.sessions());
+		if (!header.evaluationHarnesses().equals(ports.keySet()))
+			throw new IOException("Evaluator session ports do not match the campaign's evaluation harnesses");
+		Map<Harness, HostLogin> logins = new EnumMap<>(Harness.class);
+		for (Map.Entry<Harness, SessionPort> port : ports.entrySet())
+			logins.put(port.getKey(), port.getValue().hostLogin());
+		return logins;
 	}
 
 	/**
@@ -456,6 +527,7 @@ public final class Driver implements AutoCloseable
 		if (!isDrained() && isPending(PendingDecision.MeasurementChanged.class))
 			cancel("The measurement conditions changed", now);
 
+		refreshEvaluatorHolds(now);
 		boolean started = startTriages(now);
 		started |= startJudges(now);
 		discardRemovedTrials();
@@ -476,14 +548,23 @@ public final class Driver implements AutoCloseable
 			started |= startNearMisses(now);
 			started |= admit(now);
 		}
+		Instant holdUntil = nextHoldEnd(now);
+		boolean canWaitForHold = holdUntil.isAfter(now) && holdUntil.isBefore(deadline);
+		if (!refusedHarnesses.isEmpty() && cancellationEnd == null && !started && inFlight.isEmpty() &&
+			failedContinuations.isEmpty() && !canWaitForHold && (isAdmissible() || !isDrained()))
+		{
+			String harnesses = refusedHarnesses.stream().map(Harness::commandName).collect(Collectors.joining(", "));
+			infrastructureFailure = "The provider refused " + harnesses + " requests after a 30-minute hold";
+			cancel(infrastructureFailure, now);
+			return stop();
+		}
 		if (!isDrained() || !failedContinuations.isEmpty())
 			return new Step.Continue(nextWake(now));
 		if (deliver())
 			return stop();
 		if (started)
 			return new Step.Continue(now);
-		Instant holdUntil = campaign.throttle().holdUntil();
-		if (isAdmissible() && holdUntil.isAfter(now) && holdUntil.isBefore(deadline))
+		if (isAdmissible() && canWaitForHold)
 			return new Step.Continue(holdUntil);
 		return stop();
 	}
@@ -586,7 +667,7 @@ public final class Driver implements AutoCloseable
 		Instant wake = graceEnd;
 		if (now.isBefore(deadline))
 			wake = deadline;
-		Instant holdUntil = campaign.throttle().holdUntil();
+		Instant holdUntil = nextHoldEnd(now);
 		if (holdUntil.isAfter(now) && holdUntil.isBefore(wake))
 			wake = holdUntil;
 		if (!failedContinuations.isEmpty())
@@ -596,6 +677,78 @@ public final class Driver implements AutoCloseable
 				wake = recheck;
 		}
 		return wake;
+	}
+
+	/**
+	 * Returns when the driver should next recheck admissions currently held.
+	 *
+	 * @param now the time of this step
+	 * @return the earliest active hold's end, or now if no hold is active
+	 */
+	private Instant nextHoldEnd(Instant now)
+	{
+		Instant global = campaign.throttle().holdUntil();
+		if (global.isAfter(now))
+			return global;
+		return evaluatorHolds.values().stream().filter(end -> end.isAfter(now)).min(Instant::compareTo).orElse(now);
+	}
+
+	/**
+	 * Reads active holds from the evaluator capacity ledgers and the owner's ledger for campaign support sessions.
+	 *
+	 * @param now the time of this step
+	 * @throws IOException if a capacity ledger cannot be read
+	 */
+	private void refreshEvaluatorHolds(Instant now) throws IOException
+	{
+		Map<Harness, SessionPort> evaluators = context.evaluationSessions();
+		if (evaluators.isEmpty())
+			return;
+		evaluatorHolds.clear();
+		for (Map.Entry<Harness, SessionPort> evaluator : evaluators.entrySet())
+		{
+			if (!refusedHarnesses.contains(evaluator.getKey()))
+			{
+				evaluator.getValue().sharedHoldUntil(now).
+					ifPresent(until -> evaluatorHolds.put(evaluator.getKey(), until));
+			}
+		}
+		Harness owner = campaign.header().harness();
+		if (!evaluators.containsKey(owner) && !refusedHarnesses.contains(owner))
+			context.sessions().sharedHoldUntil(now).ifPresent(until -> evaluatorHolds.put(owner, until));
+	}
+
+	/**
+	 * Returns whether the campaign can start a support session through the owner.
+	 *
+	 * @param now the time of this step
+	 * @return whether the campaign throttle and owner ledger permit a start
+	 */
+	private boolean ownerAllowsAdmission(Instant now)
+	{
+		return campaign.throttle().allowsAdmission(now) && harnessAllowsAdmission(campaign.header().harness());
+	}
+
+	/**
+	 * Returns whether the assigned evaluator can start a trial of a cell.
+	 *
+	 * @param cellId the cell identifier
+	 * @return whether the assigned evaluator admits sessions
+	 */
+	private boolean evaluatorAllowsAdmission(String cellId)
+	{
+		return harnessAllowsAdmission(evaluatorOf(cellId));
+	}
+
+	/**
+	 * Returns whether the harness is available to start a session in this slice.
+	 *
+	 * @param harness the harness that would start the session
+	 * @return whether it has no active hold and has not refused requests after its longest hold
+	 */
+	private boolean harnessAllowsAdmission(Harness harness)
+	{
+		return !evaluatorHolds.containsKey(harness) && !refusedHarnesses.contains(harness);
 	}
 
 	/**
@@ -662,9 +815,19 @@ public final class Driver implements AutoCloseable
 		SessionResult result = event.result();
 		observeUsage(session, result);
 
-		if (result != null && !result.windows().isEmpty())
-			record(new CampaignEvent.ObserveRateLimit(result.windows(), now));
-		holdAdmissions(result);
+		if (context.evaluationSessions().isEmpty())
+		{
+			if (result != null && !result.windows().isEmpty())
+				record(new CampaignEvent.ObserveRateLimit(result.windows(), now));
+			holdAdmissions(result);
+		}
+		else if (result instanceof SessionResult.Refused refused && refused.afterLongestHold())
+		{
+			Harness harness = campaign.header().harness();
+			if (session instanceof InFlight.Trial trial)
+				harness = evaluatorOf(trial.key().cell());
+			refusedHarnesses.add(harness);
+		}
 		// Every later session is refused the same way until the user acts, so the slice stops with the refusal
 		if (result instanceof SessionResult.LaunchRefused refused && infrastructureFailure == null)
 			infrastructureFailure = refused.reason();
@@ -756,25 +919,13 @@ public final class Driver implements AutoCloseable
 		if (result instanceof SessionResult.Completed completed)
 		{
 			usage = completed.usage();
-			commands = readCommands(completed);
+			commands = trialPort(trial.key().cell()).readEvidence(completed.transcript()).commands();
 		}
+		HostLogin login = evaluatorLogins.get(evaluatorOf(trial.key().cell()));
 		context.store().writeTrialSession(campaignId, trial.key(), new TrialSession(trial.startedAt(), now,
 			trial.concurrency(), campaign.throttle(), windows, login, usage, commands));
 		if (result instanceof SessionResult.Completed)
 			record(new CampaignEvent.ObserveCommands(trial.key(), commands));
-	}
-
-	/**
-	 * Reads how a completed trial session's shell commands ran. Missing command measurements yield an unknown summary;
-	 * a failure to read the required transcript escapes.
-	 *
-	 * @param completed the session's result
-	 * @return the recorded summary, or unknown if the evidence has no command measurements
-	 * @throws IOException if the transcript cannot be read
-	 */
-	private CommandSummary readCommands(SessionResult.Completed completed) throws IOException
-	{
-		return context.sessions().readEvidence(completed.transcript()).commands();
 	}
 
 	/**
@@ -850,7 +1001,7 @@ public final class Driver implements AutoCloseable
 		DrawnTestCase testCase = trial.testCase();
 		PromptTest test = campaign.contract().findTest(testCase.testId()).orElseThrow();
 		new Generator(campaign.contract(), campaign.developmentTestCases()).validate(testCase);
-		TrialEvidence evidence = TrialEvidence.read(context.sessions(), completed);
+		TrialEvidence evidence = TrialEvidence.read(trialPort(trial.key().cell()), completed);
 		List<BuiltInToolResult> results;
 		try
 		{
@@ -1067,7 +1218,7 @@ public final class Driver implements AutoCloseable
 	private Optional<String> renderEvidence(TrialKey key, SessionResult.Completed completed, Instant now)
 		throws IOException
 	{
-		TrialEvidence evidence = TrialEvidence.read(context.sessions(), completed);
+		TrialEvidence evidence = TrialEvidence.read(trialPort(key.cell()), completed);
 		try
 		{
 			return Optional.of(evidence.render());
@@ -1127,7 +1278,7 @@ public final class Driver implements AutoCloseable
 	private boolean startJudges(Instant now) throws IOException
 	{
 		boolean started = false;
-		while (!judgingQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
+		while (!judgingQueue.isEmpty() && freeCapacity() > 0 && ownerAllowsAdmission(now))
 		{
 			Judging judging = judgingQueue.removeFirst();
 			if (findRunningTrial(judging.key()).isEmpty() || isAbandoned(judging))
@@ -1359,7 +1510,7 @@ public final class Driver implements AutoCloseable
 	{
 		planNearMisses();
 		boolean started = false;
-		while (!nearMissQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
+		while (!nearMissQueue.isEmpty() && freeCapacity() > 0 && ownerAllowsAdmission(now))
 		{
 			NearMissJob job = nearMissQueue.removeFirst();
 			if (job.batch().isDone())
@@ -1587,7 +1738,7 @@ public final class Driver implements AutoCloseable
 	private boolean startTriages(Instant now) throws IOException
 	{
 		boolean started = false;
-		while (!triageQueue.isEmpty() && freeCapacity() > 0 && campaign.throttle().allowsAdmission(now))
+		while (!triageQueue.isEmpty() && freeCapacity() > 0 && ownerAllowsAdmission(now))
 		{
 			Triaging triaging = triageQueue.removeFirst();
 			if (findRunningTrial(triaging.key()).isEmpty())
@@ -1763,10 +1914,9 @@ public final class Driver implements AutoCloseable
 	}
 
 	/**
-	 * Returns the measurement conditions under which a trial was observed: the driver's environment, the trial
-	 * session's loaded prompt sources, and the trial session's model and reasoning configuration and, in a cell that
-	 * limits tool output, the tool-output token limit that the session started under, which are recorded for the
-	 * trial's cell.
+	 * Returns the trial's observed conditions. Shared campaigns record the trial's loaded sources alongside the
+	 * assigned evaluator's other conditions in that cell. A campaign with an implicit evaluator records its loaded
+	 * sources campaign-wide. Model, reasoning, and a configured tool-output limit belong to the trial's cell.
 	 *
 	 * @param testCase the trial's test case
 	 * @param trial the trial session's result
@@ -1774,19 +1924,24 @@ public final class Driver implements AutoCloseable
 	 */
 	private MeasurementIdentity observedIdentity(DrawnTestCase testCase, SessionResult.Completed trial)
 	{
+		String cellId = testCase.cellId();
+		MeasurementIdentity environment = context.environment();
 		Map<MeasurementCondition, String> values = new EnumMap<>(MeasurementCondition.class);
-		values.putAll(context.environment().values());
-		values.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
+		values.putAll(environment.values());
 		Map<MeasurementCondition, String> cell = new EnumMap<>(MeasurementCondition.class);
+		cell.putAll(environment.cells().getOrDefault(cellId, Map.of()));
+		if (context.evaluationSessions().isEmpty())
+			values.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
+		else
+			cell.put(MeasurementCondition.PROMPT_SOURCES, trial.promptSources());
 		if (trial.model() != null)
 			cell.put(MeasurementCondition.MODEL, trial.model());
 		if (trial.reasoning() != null)
 			cell.put(MeasurementCondition.REASONING, trial.reasoning());
-		int toolOutputTokenLimit = campaign.contract().findCell(testCase.cellId()).orElseThrow().profile().
-			toolOutputTokenLimit();
+		int toolOutputTokenLimit = campaign.contract().findCell(cellId).orElseThrow().profile().toolOutputTokenLimit();
 		if (toolOutputTokenLimit > 0)
 			cell.put(MeasurementCondition.TOOL_OUTPUT_LIMIT, String.valueOf(toolOutputTokenLimit));
-		return new MeasurementIdentity(values, Map.of(testCase.cellId(), cell));
+		return new MeasurementIdentity(values, Map.of(cellId, cell));
 	}
 
 	/**
@@ -1830,7 +1985,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private boolean startValues(Instant now)
 	{
-		if (!isAdmissible() || hasValuesSession() || freeCapacity() <= 0 || !campaign.throttle().allowsAdmission(now))
+		if (!isAdmissible() || hasValuesSession() || freeCapacity() <= 0 || !ownerAllowsAdmission(now))
 			return false;
 		Optional<CertificationAttempt> reproducing = campaign.reproducing();
 		if (reproducing.isEmpty())
@@ -1947,7 +2102,7 @@ public final class Driver implements AutoCloseable
 		boolean started = false;
 		while (isAdmissible() && campaign.development().round() != null && campaign.development().
 			promptAuthor() == null && promptAuthorFailures < PROMPT_AUTHOR_FAILURE_LIMIT && freeCapacity() > 0 &&
-			campaign.throttle(). allowsAdmission(now))
+			ownerAllowsAdmission(now))
 		{
 			Round round = campaign.development().round();
 			if (round.weak() && campaign.trials().stream().anyMatch(trial -> trial.key().purpose() == Purpose.DEVELOPMENT))
@@ -2164,10 +2319,15 @@ public final class Driver implements AutoCloseable
 	{
 		Harness harness = campaign.header().harness();
 		Set<Path> loaderConfiguration = context.authority().loaderConfiguration();
-		List<TrialPlugin> plugins = campaign.plugins().orElse(List.of());
 		if (!campaign.isConfirmed())
-			return TrialSelection.base(harness, context.promptSources(), loaderConfiguration, plugins);
-		return TrialSelection.base(harness, context.promptSources(), loaderConfiguration, campaign.contract(), plugins);
+		{
+			return TrialSelection.base(harness, context.promptSources(), loaderConfiguration,
+				campaign.pluginsFor(harness).orElse(List.of()));
+		}
+		Set<Harness> evaluators = campaign.header().evaluationHarnesses();
+		List<TrialPlugin> plugins = evaluators.stream().
+			flatMap(evaluator -> campaign.pluginsFor(evaluator).orElse(List.of()).stream()).distinct().toList();
+		return TrialSelection.base(evaluators, context.promptSources(), loaderConfiguration, campaign.contract(), plugins);
 	}
 
 	/**
@@ -2184,11 +2344,12 @@ public final class Driver implements AutoCloseable
 		Map<Integer, String> sections = new HashMap<>();
 		for (int index = 0; index < failures.size(); ++index)
 		{
-			TrialFiles files = failures.get(index).files();
+			Failure failure = failures.get(index);
+			TrialFiles files = failure.files();
 			if (Files.isRegularFile(files.transcript()) && Files.isDirectory(files.effects()) &&
 				Files.isDirectory(files.initialProject()))
 			{
-				SessionEvidence activity = context.sessions().readEvidence(files.transcript());
+				SessionEvidence activity = trialPort(failure.testCase().cellId()).readEvidence(files.transcript());
 				sections.put(index, EvidenceSection.render(activity, files.transcript(), files.effects(),
 					files.initialProject()));
 			}
@@ -2556,13 +2717,13 @@ public final class Driver implements AutoCloseable
 		int free = freeCapacity();
 		for (TrialKey key : trialRequests.keySet())
 		{
-			if (!hasLocalTrial(key) && findRunningTrial(key).isPresent())
+			if (!hasLocalTrial(key) && !heldContinuations.contains(key) && findRunningTrial(key).isPresent())
 				--free;
 		}
 		if (free <= 0)
 			return false;
 		List<LogicalTrial> admitted = new ArrayList<>();
-		for (Admission admission : Scheduler.plan(campaign, now, free))
+		for (Admission admission : Scheduler.plan(campaign, now, free, this::evaluatorAllowsAdmission, heldContinuations))
 		{
 			Campaign next = campaign;
 			LogicalTrial trial = switch (admission)
@@ -2611,6 +2772,7 @@ public final class Driver implements AutoCloseable
 	 */
 	private boolean recoverTrials(Instant now, boolean canResume) throws IOException
 	{
+		heldContinuations.clear();
 		boolean advanced = false;
 		for (TrialRecovery original : List.copyOf(trialRequests.values()))
 		{
@@ -2632,6 +2794,11 @@ public final class Driver implements AutoCloseable
 				int completed = response.completedTurns().orElseThrow();
 				if (saved.canResumePrefix(trial, completed))
 				{
+					if (!evaluatorAllowsAdmission(key.cell()))
+					{
+						heldContinuations.add(key);
+						continue;
+					}
 					if (canResume && freeCapacity() > 0 && infrastructureFailure == null)
 					{
 						RetainedTrialClaim claim = new RetainedTrialClaim(original.requestId(),
@@ -2794,11 +2961,13 @@ public final class Driver implements AutoCloseable
 		SessionRequest request;
 		try
 		{
-			List<Path> plugins = TrialPlugins.of(campaign.plugins().orElse(List.of()), campaign.contract(),
-				context.workspace(), source, control, context.json());
+			Harness evaluator = evaluatorOf(key.cell());
+			List<TrialPlugin> selected = campaign.pluginsFor(evaluator).orElse(List.of());
+			List<TrialPluginInput> plugins = TrialPlugins.of(evaluator, selected, campaign.contract(), context.workspace(),
+				source, control, context.json());
 			request = new SessionRequest(SessionRole.TRIAL, key.purpose().part(), source,
 				trial.testCase().turns(), List.of(), test.timeLimit(), profile,
-				TestWorkspace.of(test, trial.testCase().testCase()), plugins, Optional.empty(), control);
+				TestWorkspace.of(test, trial.testCase().testCase()), Optional.empty(), control, plugins);
 		}
 		catch (IOException e)
 		{
@@ -2838,10 +3007,11 @@ public final class Driver implements AutoCloseable
 	private SessionHandle launchTrial(LogicalTrial trial, PromptTest test, SessionRequest request,
 		RetainedTrialClaim claim) throws IOException
 	{
-		if (!context.sessions().recoversTrials())
+		SessionPort sessions = trialPort(trial.key().cell());
+		if (!sessions.recoversTrials())
 		{
-			return context.sessions().start(request.withTurnObserver(
-				EarlyTrialEnd.forTest(test, trial.testCase().testCase(), context.sessions())));
+			return sessions.start(request.withTurnObserver(EarlyTrialEnd.forTest(test, trial.testCase().testCase(),
+				sessions)));
 		}
 		int ordinal = TrialRecovery.attemptOrdinal(trial);
 		TrialRecovery recovery;
@@ -2857,10 +3027,37 @@ public final class Driver implements AutoCloseable
 				new IOException("The recovery record disappeared for trial " + trial.key()));
 		}
 		Progress saved = new Progress(recovery.observerTurn(), recovery.settledAssertions(), recovery.endedEarly());
-		EarlyTrialEnd observer = EarlyTrialEnd.forTest(test, trial.testCase().testCase(), context.sessions(), saved,
+		EarlyTrialEnd observer = EarlyTrialEnd.forTest(test, trial.testCase().testCase(), sessions, saved,
 			progress -> recordTrialProgress(recovery, progress));
-		return context.sessions().startTrial(request.withTurnObserver(observer), recovery.requestId(),
-			Optional.ofNullable(claim));
+		return sessions.startTrial(request.withTurnObserver(observer), recovery.requestId(), Optional.ofNullable(claim));
+	}
+
+	/**
+	 * Returns the port that starts and reads trials in a contract cell.
+	 *
+	 * @param cellId the identifier of the cell, including its stress setting if present
+	 * @return the assigned evaluator's port
+	 */
+	private SessionPort trialPort(String cellId)
+	{
+		Map<Harness, SessionPort> evaluators = context.evaluationSessions();
+		if (evaluators.isEmpty())
+			return context.sessions();
+		return evaluators.get(evaluatorOf(cellId));
+	}
+
+	/**
+	 * Returns the harness assigned to a trial, using the owner for an implicit evaluator.
+	 *
+	 * @param cellId the identifier of the trial's cell, including its stress setting if present
+	 * @return the assigned evaluator
+	 */
+	private Harness evaluatorOf(String cellId)
+	{
+		if (context.evaluationSessions().isEmpty())
+			return campaign.header().harness();
+		Cell cell = campaign.contract().findCell(cellId).orElseThrow();
+		return cell.evaluator().orElse(campaign.header().harness());
 	}
 
 	/**

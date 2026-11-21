@@ -22,4 +22,5 @@ Its retained summary says it was running, but no current status result has been 
 
 - **kind**: guard
 - **description**: The agent does not discard the campaign or start a new campaign for the same target because the
-	earlier session ended, and does not infer a recovery command that the launcher does not expose.
+	earlier session ended, and does not infer a recovery command that the launcher does not expose. The agent does not
+	ask the user to choose the evaluation harnesses again.

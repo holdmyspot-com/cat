@@ -98,14 +98,15 @@ public final class SessionRequestForwarder
 	/**
 	 * Options that a launch may name more than once.
 	 */
-	private static final Set<String> REPEATABLE_OPTIONS = Set.of("--plugin", "--deny-read", "--read-only-evidence");
+	private static final Set<String> REPEATABLE_OPTIONS = Set.of("--plugin", TrialPluginInput.ID_OPTION, "--deny-read",
+		"--read-only-evidence");
 	/**
 	 * The options that take a value and that a launch may name.
 	 */
 	private static final Set<String> VALUE_OPTIONS = Set.of("--artifact", "--results", "--project", "--plugin",
 		"--model", "--effort", "--input", "--output", "--receipt", ExtraPermissions.OPTION, Conversation.OPTION,
 		"--deny-read", "--workspace", "--read-only-evidence", "--instruction-files", "--session-role",
-		"--tool-output-token-limit", RunnerArguments.RESUME_OPTION);
+		"--tool-output-token-limit", RunnerArguments.RESUME_OPTION, TrialPluginInput.ID_OPTION);
 
 	/**
 	 * Forwards one launch and waits for its requested session to end.
@@ -418,6 +419,8 @@ public final class SessionRequestForwarder
 			!isSame(launch.artifact(), ownArtifact))
 		{
 			request.withArray("plugins").insert(0, launch.artifact().toString());
+			if (request.has(TrialPluginInput.PROVENANCE_FIELD))
+				request.withArray(TrialPluginInput.PROVENANCE_FIELD).insertNull(0);
 		}
 		JsonNode response;
 		Path responses = responses(requests, id);
@@ -544,6 +547,7 @@ public final class SessionRequestForwarder
 			put("harness", harness);
 		request.putArray("prompts");
 		request.putArray("plugins");
+		List<TrialPluginInput> plugins = new ArrayList<>();
 		Path records = null;
 		Path conversation = null;
 		Path transcript = null;
@@ -551,6 +555,7 @@ public final class SessionRequestForwarder
 		Path resultsFolder = null;
 		Path artifact = null;
 		Set<String> scalars = new HashSet<>();
+		int pluginIdValue = -1;
 		for (int index = 0; index < args.length; ++index)
 		{
 			String option = args[index];
@@ -607,7 +612,17 @@ public final class SessionRequestForwarder
 				// The parent runner chooses the results folder; a served session's results copy is copied below it
 				case "--results" -> resultsFolder = Path.of(value).toAbsolutePath();
 				case "--project" -> project = Path.of(value).toAbsolutePath();
-				case "--plugin" -> request.withArray("plugins").add(Path.of(value).toAbsolutePath().toString());
+				case "--plugin" ->
+				{
+					plugins.add(new TrialPluginInput(Path.of(value).toAbsolutePath(), Optional.empty()));
+					pluginIdValue = index + 2;
+				}
+				case TrialPluginInput.ID_OPTION ->
+				{
+					if (index != pluginIdValue)
+						throw new InvalidArgumentsException(TrialPluginInput.ID_OPTION + " must follow --plugin");
+					TrialPluginInput.bindLast(plugins, value);
+				}
 				case "--model", "--effort" -> request.put(option.substring(2), value);
 				case "--input" -> records = Path.of(value);
 				case Conversation.OPTION -> conversation = Path.of(value).toAbsolutePath();
@@ -648,6 +663,9 @@ public final class SessionRequestForwarder
 		}
 		HarnessRunnerOptions.requireProfile(harness, request.path("model").asString(""),
 			request.path("effort").asString(""));
+		for (TrialPluginInput plugin : plugins)
+			request.withArray("plugins").add(plugin.path().toString());
+		TrialPluginInput.writeProvenance(plugins, request);
 		// A launch that resumes a session continues in the project that the session's nested session copied at its start
 		if (!request.has(RequestArchive.RESUME))
 			request.put("project", project.toString());
@@ -755,6 +773,23 @@ public final class SessionRequestForwarder
 	private static Path responses(Path requests, String id)
 	{
 		return requests.toAbsolutePath().getParent().resolve("responses").resolve(id);
+	}
+
+	/**
+	 * Returns the location where the broker offers the read-only evidence at a position in the request's evidence list.
+	 *
+	 * @param requests the request directory the launch uses
+	 * @param requestId the launch identifier
+	 * @param index the position in its evidence list
+	 * @return the path in the child session for that evidence
+	 */
+	public static Path offeredEvidence(Path requests, UUID requestId, int index)
+	{
+		requireThat(requests, "requests").isNotNull();
+		requireThat(requestId, "requestId").isNotNull();
+		requireThat(index, "index").isNotNegative();
+		return responses(requests, requestId.toString()).resolve(SessionRequestBroker.INPUTS).
+			resolve(RequestArchive.evidenceEntry(index));
 	}
 
 	/**

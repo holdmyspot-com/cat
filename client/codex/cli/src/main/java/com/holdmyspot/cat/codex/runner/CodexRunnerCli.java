@@ -6,6 +6,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.codex.CodexSessionHarness;
+import com.holdmyspot.cat.codex.optimizer.CodexHookProcess;
 import com.holdmyspot.cat.codex.secrets.CodexRunnerCliSecrets;
 import com.holdmyspot.cat.common.CommandLineArguments;
 import com.holdmyspot.cat.common.FileReplacer;
@@ -17,6 +18,8 @@ import com.holdmyspot.cat.common.SessionHarness;
 import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.ToolScope;
 import com.holdmyspot.cat.common.Waiting;
+import com.holdmyspot.cat.common.optimizer.cli.HookCheck;
+import com.holdmyspot.cat.common.optimizer.port.HookInspection;
 import com.holdmyspot.cat.common.runner.HarnessArtifact;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
@@ -24,8 +27,12 @@ import com.holdmyspot.cat.common.runner.HarnessMarkers;
 import com.holdmyspot.cat.common.runner.HarnessRunnerBridge;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.HookComparisonLaunch;
+import com.holdmyspot.cat.common.runner.HookComparisonRequest;
+import com.holdmyspot.cat.common.runner.HookComparisonResult;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRoute;
+import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
 import com.holdmyspot.cat.common.runner.NestedSessionLaunch;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
@@ -35,22 +42,26 @@ import com.holdmyspot.cat.common.runner.RequestServer;
 import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.SessionRequestAccess;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.runner.launcher.RunnerArguments;
 import com.holdmyspot.cat.common.runner.policy.ChildNeedsReport;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
 import com.holdmyspot.cat.common.runner.policy.PolicyBoundFile;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.common.runner.policy.SessionRefusedException;
 
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
 import java.io.Reader;
 import java.io.Writer;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
@@ -113,6 +124,8 @@ public final class CodexRunnerCli
 	 * With {@code serve}, {@value ChildNeedsReport#OPTION} and a file, it writes what a Codex child session needs to
 	 * that file, as {@link CodexRunner#childNeeds(Map)} reports it, for the request server that asks before it
 	 * starts the child, and starts nothing.
+	 * <p>
+	 * A brokered hook comparison reads its launch from standard input and writes its result to standard output.
 	 *
 	 * @param args the command and its options
 	 * @throws IOException if runner startup, the harness, or bridge I/O fails
@@ -144,10 +157,73 @@ public final class CodexRunnerCli
 			CodexRunner.childNeeds(environment).write(JsonMapper.builder().build(), Path.of(args[2]));
 			return;
 		}
+		if (args.length == 2 && args[1].equals(HookComparisonLaunch.OPTION))
+		{
+			ProcessTreeStop.onExit();
+			System.exit(compareHooks(environment, Pause::sleeping, System.in, System.out, errors()));
+		}
 		String[] launch = args;
 		ProcessTreeStop.onExit();
 		System.exit(HarnessRunnerOptions.refusingInvalidArguments(() -> launch(launch, environment, Pause::sleeping,
 			new InputStreamReader(System.in, UTF_8), System.out, errors()), errors()));
+	}
+
+	/**
+	 * Performs a brokered native hook comparison without creating a Codex session.
+	 *
+	 * @param environment the broker's native process environment
+	 * @param waiting creates pauses for native process operations
+	 * @param input the broker's private launch record
+	 * @param output receives the bounded comparison result
+	 * @param errors receives a refusal
+	 * @return the process status
+	 */
+	private static int compareHooks(Map<String, String> environment, Waiting waiting, InputStream input,
+		OutputStream output, PrintWriter errors)
+	{
+		try (MainHarnessRunnerScope scope = new MainHarnessRunnerScope(environment, waiting))
+		{
+			JsonMapper json = scope.json();
+			HookComparisonLaunch launch = HookComparisonLaunch.read(json, input);
+			HookComparisonRequest request = HookComparisonRequest.read(json, launch.inputs());
+			Path trialHome = Files.createDirectory(request.trial().resolveSibling("home"));
+			ParentPolicy policy = launch.policy();
+			CodexStartupHookComparison.Context context = new CodexStartupHookComparison.Context(launch.project(),
+				launch.nativeHome(), launch.executable().toString(), environment, policy, scope,
+				Optional.of(launch.sandbox()));
+			HookInspection inspection = CodexStartupHookComparison.resolve(context, request.plugins(), request.production(),
+				request.trial(), trialHome, HookCheck.PROMPT);
+			HookCheck.Result result = HookCheck.comparePrepared(inspection, (builder, scratch, isolatedHome) ->
+			{
+				try
+				{
+					CodexHookProcess.prepare(builder, scratch, isolatedHome, launch.executable(), policy, json);
+					return scope.executableFiles().run(builder);
+				}
+				catch (PolicyRefusal e)
+				{
+					throw new IOException(e.messageFor("Codex"), e);
+				}
+			}, request.production(), request.trial(), trialHome, request.workspace());
+			HookComparisonResult response = new HookComparisonResult(result.report(), result.failures(),
+				result.unapproved().orElseThrow());
+			byte[] bytes = json.writeValueAsBytes(response.document(json));
+			if (bytes.length > HookComparisonResult.MAXIMUM_BYTES)
+				throw new IOException("The native hook comparison returned too much output");
+			output.write(bytes);
+			output.flush();
+			return 0;
+		}
+		catch (InterruptedException _)
+		{
+			Thread.currentThread().interrupt();
+			errors.println("The native hook comparison was interrupted.");
+		}
+		catch (IOException e)
+		{
+			errors.println(e.getMessage());
+		}
+		return HarnessRunnerOptions.REFUSED_LAUNCH_STATUS;
 	}
 
 	/**
@@ -334,6 +410,8 @@ public final class CodexRunnerCli
 		requireThat(environment, "environment").isNotNull();
 		requireThat(platform, "platform").isNotNull();
 		requireThat(errors, "errors").isNotNull();
+		if (Arrays.asList(args).contains(HookComparisonLaunch.OPTION))
+			return refusesComparison(args, environment, platform, errors);
 		if (refusesOverride(args, environment, errors))
 			return true;
 		boolean startsNothing = args.length == 1 && args[0].equals("--help") ||
@@ -348,6 +426,33 @@ public final class CodexRunnerCli
 		}
 		return HarnessRunnerOptions.refusesHomeProject(args, workingDirectory, environment, platform, errors) ||
 			ParentSandbox.refusesNetworkOff(HARNESS_ID, environment, errors);
+	}
+
+	/**
+	 * Refuses malformed or marked calls before accepting the broker's private launch input.
+	 *
+	 * @param args the argument list that names the internal option
+	 * @param environment the native process environment
+	 * @param platform the platform of the launched runner
+	 * @param errors receives the refusal
+	 * @return whether the comparison is refused
+	 */
+	private static boolean refusesComparison(String[] args, Map<String, String> environment, Platform platform,
+		PrintWriter errors)
+	{
+		if (args.length != 2 || !args[0].equals("serve") || !args[1].equals(HookComparisonLaunch.OPTION) ||
+			!MARKERS.without(environment).equals(environment) ||
+			environment.containsKey(SessionRequestAccess.REQUESTS_VARIABLE))
+		{
+			errors.println("Only the request server can start a native hook comparison.");
+			return true;
+		}
+		if (!platform.isLinux())
+		{
+			errors.println("Native Codex hook comparison requires Linux.");
+			return true;
+		}
+		return false;
 	}
 
 	/**
@@ -444,7 +549,7 @@ public final class CodexRunnerCli
 				try (HarnessCapacity.Permit _ = permit)
 				{
 					AtomicReference<ChildPolicy> policy = new AtomicReference<>();
-					List<Path> trialPlugins = options.trialPlugins(CodexRunner.MANIFEST);
+					List<TrialPluginInput> trialPlugins = options.trialPluginInputs(CodexRunner.MANIFEST);
 					HarnessRunnerBridge.serve(() -> new CodexRunner(process.waiting()).start(cat, options.project(),
 						options.workspace(), trialPlugins, manager, "codex", environment, options.model(),
 						options.effort(), options.installCat(), agent, options.readOnlyEvidence(), options.deniedReads(),
@@ -508,8 +613,8 @@ public final class CodexRunnerCli
 				String launcher = "codex-runner";
 				if (Platform.current().isWindows())
 					launcher += ".cmd";
-				yield new RequestedRunner(scope, artifact.toAbsolutePath().resolve("bin").resolve(launcher),
-					List.of("serve"));
+				Path root = artifact.toAbsolutePath();
+				yield new RequestedRunner(scope, root, root.resolve("bin").resolve(launcher), List.of("serve"));
 			}
 			case CLAUDE_ID -> RequestedRunner.resolved(scope, ClaudeArtifact.execute(environment), List.of());
 			default -> throw new IllegalArgumentException("Unsupported requested harness: " + harness);

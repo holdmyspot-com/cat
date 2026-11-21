@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.execution;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.FileLocks;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
@@ -17,6 +18,7 @@ import com.holdmyspot.cat.common.optimizer.store.DevelopmentJudgeRecords;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.random.RandomGenerator;
 
@@ -48,7 +50,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits that
  *   prompt authors report needing
  * @param promptSources the in-project prompt sources, relative to the project
- * @param environment the measurement conditions that the driver observes outside trials; it records no
+ * @param environment the campaign-wide and per-cell conditions that the driver observes outside trials; it records no
  *   {@link MeasurementCondition#MODEL}, {@link MeasurementCondition#REASONING},
  *   {@link MeasurementCondition#TOOL_OUTPUT_LIMIT} or {@link MeasurementCondition#PROMPT_SOURCES}, which only
  *   sessions observe
@@ -59,6 +61,7 @@ import tools.jackson.databind.json.JsonMapper;
  * @param candidateJudges the profiles that a prompt test may examine as its development judge, cheapest first;
  *   empty if every test keeps the frozen judge
  * @param judgeRecords the development judges that earlier campaigns on the same project and target qualified
+ * @param evaluationSessions the selected evaluation harnesses' session ports
  * @param temporaryDirectory the directory under which the driver creates its temporary directories; the process
  *   temporary directory of the command that runs the driver
  */
@@ -69,7 +72,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	CapCalibrator calibrator, ProcessTerminator terminator, LeftoverNestedSessions leftoverSessions, Authority authority,
 	Set<Path> promptSources, MeasurementIdentity environment, Path lockFile, RandomGenerator random,
 	SliceSettings settings, JsonMapper json, List<TrialProfile> candidateJudges, DevelopmentJudgeRecords judgeRecords,
-	Path temporaryDirectory)
+	Map<Harness, SessionPort> evaluationSessions, Path temporaryDirectory)
 {
 	/**
 	 * Creates a context.
@@ -91,7 +94,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param calibrator calibrates the cap of a certification attempt
 	 * @param terminator requests termination of processes that an earlier driver left running
 	 * @param leftoverSessions finds the processes of sessions that an earlier driver left running, in the session
- *   port's results folders
+	 *   port's results folders
 	 * @param authority the confirmed edit authority, which validates prompt author attempts and diagnoses the edits
 	 *   that prompt authors report needing
 	 * @param promptSources the in-project prompt sources, relative to the project
@@ -102,6 +105,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	 * @param json reads and writes the hook configurations from which control trials remove the target's dependents
 	 * @param candidateJudges the profiles that a prompt test may examine as its development judge, cheapest first
 	 * @param judgeRecords the development judges that earlier campaigns on the same project and target qualified
+	 * @param evaluationSessions the selected evaluation harnesses' session ports
 	 * @param temporaryDirectory the directory under which the driver creates its temporary directories
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code environment} records a condition that only sessions observe
@@ -127,9 +131,14 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		requireThat(authority, "authority").isNotNull();
 		requireThat(promptSources, "promptSources").isNotNull();
 		requireThat(environment, "environment").isNotNull();
-		requireThat(environment.values().keySet(), "environment.values().keySet()").
-			doesNotContainAny(Set.of(MeasurementCondition.MODEL, MeasurementCondition.REASONING,
-				MeasurementCondition.TOOL_OUTPUT_LIMIT, MeasurementCondition.PROMPT_SOURCES));
+		Set<MeasurementCondition> trialOnly = Set.of(MeasurementCondition.MODEL, MeasurementCondition.REASONING,
+			MeasurementCondition.TOOL_OUTPUT_LIMIT, MeasurementCondition.PROMPT_SOURCES);
+		requireThat(environment.values().keySet(), "environment.values().keySet()").doesNotContainAny(trialOnly);
+		for (Map.Entry<String, Map<MeasurementCondition, String>> cell : environment.cells().entrySet())
+		{
+			requireThat(cell.getValue().keySet(), "environment.cells()[" + cell.getKey() + "].keySet()").
+				doesNotContainAny(trialOnly);
+		}
 		requireThat(lockFile, "lockFile").isNotNull();
 		requireThat(random, "random").isNotNull();
 		requireThat(settings, "settings").isNotNull();
@@ -139,6 +148,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 		requireThat(temporaryDirectory, "temporaryDirectory").isNotNull();
 		promptSources = Set.copyOf(promptSources);
 		candidateJudges = List.copyOf(candidateJudges);
+		evaluationSessions = Map.copyOf(evaluationSessions);
 	}
 
 	/**
@@ -181,7 +191,7 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	{
 		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
 			values, deliverer, calibrator, terminator, leftoverSessions, authority, promptSources, environment, lockFile,
-			random, settings, json, List.of(), DevelopmentJudgeRecords.none(), temporaryDirectory);
+			random, settings, json, List.of(), DevelopmentJudgeRecords.none(), Map.of(), temporaryDirectory);
 	}
 
 	/**
@@ -225,6 +235,6 @@ public record DriverContext(FileLocks fileLocks, CampaignStore store, SessionPor
 	{
 		this(fileLocks, store, sessions, workspace, interrupts, clock, overlays, judge, triage, ranking, promptAuthor,
 			values, deliverer, calibrator, terminator, leftoverSessions, authority, promptSources, environment, lockFile,
-			random, settings, json, candidateJudges, DevelopmentJudgeRecords.none(), temporaryDirectory);
+			random, settings, json, candidateJudges, DevelopmentJudgeRecords.none(), Map.of(), temporaryDirectory);
 	}
 }

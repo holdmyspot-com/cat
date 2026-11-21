@@ -19,9 +19,8 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
  * Reads and writes the file that binds a CAT plugin directory to the Java runtime its launchers run.
  *
  * <p>
- * Release archives hold no binding. The installation that places a plugin directory writes it, so each directory
- * names the runtime of its own installation, and a copy of the directory keeps that runtime. The file holds exactly
- * one line, the runtime directory's absolute normalized path, followed by a line feed.
+ * A packaged selector binds the plugin to the Java runtime inside its own directory. Earlier packages use an
+ * installation-written binding holding one absolute normalized runtime path followed by a line feed.
  */
 public final class RuntimeBinding
 {
@@ -29,6 +28,13 @@ public final class RuntimeBinding
 	 * The binding's location, relative to the plugin directory.
 	 */
 	public static final Path PATH = PluginDirectory.BIN.resolve("runtime-binding");
+
+	/**
+	 * The packaged file whose presence selects the runtime in the plugin's own {@code bin} directory. The selector
+	 * takes precedence over the installation-written binding, which an older installer can still add.
+	 */
+	public static final Path BUNDLED_PATH = PluginDirectory.BIN.resolve("bundled-runtime");
+
 	/**
 	 * The largest binding that CAT reads.
 	 */
@@ -40,13 +46,16 @@ public final class RuntimeBinding
 	 * @param plugin the plugin directory
 	 * @return the bound runtime directory, an absolute normalized path
 	 * @throws NullPointerException if {@code plugin} is null
-	 * @throws IOException          if the binding is missing, is not a regular file, or does not hold exactly one line
-	 *                              with an absolute normalized path. The message names the binding file.
+	 * @throws IOException          if the bundled selector is invalid, or the legacy binding is missing, is not a
+	 *                              regular file, or does not name an absolute normalized path
 	 */
 	public static Path read(Path plugin) throws IOException
 	{
 		requireThat(plugin, "plugin").isNotNull();
-		Path binding = plugin.toAbsolutePath().normalize().resolve(PATH);
+		Path root = plugin.toAbsolutePath().normalize();
+		if (selectsBundled(root))
+			return root.resolve(PluginDirectory.RUNTIME);
+		Path binding = root.resolve(PATH);
 		if (!Files.isRegularFile(binding, NOFOLLOW_LINKS))
 		{
 			throw new IOException("The plugin has no runtime binding " + binding + ". Install the plugin through " +
@@ -57,8 +66,9 @@ public final class RuntimeBinding
 		if (!content.endsWith("\n") || line.isEmpty() || line.indexOf('\n') >= 0 || line.indexOf('\r') >= 0)
 		{
 			throw new IOException("The runtime binding " + binding + " must hold exactly one line, the runtime " +
-				"directory's absolute path, followed by a line feed.");
+				"directory's absolute path followed by a line feed.");
 		}
+
 		Path runtime;
 		try
 		{
@@ -74,6 +84,25 @@ public final class RuntimeBinding
 				"normalized path.");
 		}
 		return runtime;
+	}
+
+	/**
+	 * Checks whether the plugin declares that it uses its bundled Java runtime.
+	 *
+	 * @param plugin the plugin directory
+	 * @return whether the packaged selector exists
+	 * @throws NullPointerException if {@code plugin} is null
+	 * @throws IOException if the selector exists but is not a regular file
+	 */
+	public static boolean selectsBundled(Path plugin) throws IOException
+	{
+		requireThat(plugin, "plugin").isNotNull();
+		Path selector = plugin.resolve(BUNDLED_PATH);
+		if (Files.notExists(selector, NOFOLLOW_LINKS))
+			return false;
+		if (!Files.isRegularFile(selector, NOFOLLOW_LINKS))
+			throw new IOException("The bundled runtime selector is not a regular file: " + selector);
+		return true;
 	}
 
 	/**
@@ -99,9 +128,12 @@ public final class RuntimeBinding
 			java = runtime.resolve("bin/java");
 		if (!Files.isRegularFile(java) || !Files.isExecutable(java))
 		{
-			throw new IOException("The runtime binding " + plugin.toAbsolutePath().normalize().resolve(PATH) +
-				" names " + runtime + ", whose program " + java + " is not executable. Rerun the CAT entry command to " +
-				"reinstall this harness's Java runtime.");
+			Path root = plugin.toAbsolutePath().normalize();
+			Path binding = root.resolve(PATH);
+			if (selectsBundled(root))
+				binding = root.resolve(BUNDLED_PATH);
+			throw new IOException("The runtime binding " + binding + " names " + runtime + ", whose program " + java +
+				" is not executable. Rerun the CAT entry command to reinstall this harness's Java runtime.");
 		}
 		return runtime;
 	}

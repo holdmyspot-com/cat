@@ -4,12 +4,14 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
 import com.holdmyspot.cat.common.optimizer.proposal.ProfileEvidence;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import tools.jackson.databind.JsonNode;
+import tools.jackson.core.JacksonException;
 import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ArrayNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -19,7 +21,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -68,10 +72,11 @@ final class ProposalFile
 	 * @param observedSources the prompt sources that the harness reported loading in the contract author session
 	 * @param derivedSources the prompt files that CAT listed as loading although no harness event reports them
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
+	 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 	 * @param salt the salt that CAT drew for the proposal
 	 */
 	record Stored(String derivation, Path draft, String observedSources, List<DerivedSource> derivedSources,
-		ProfileEvidence profiles, long salt)
+		ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators, long salt)
 	{
 		/**
 		 * Creates a stored proposal.
@@ -81,6 +86,7 @@ final class ProposalFile
 		 * @param observedSources the prompt sources that the harness reported loading in the contract author session
 		 * @param derivedSources the prompt files that CAT listed as loading although no harness event reports them
 		 * @param profiles the profile inventory and bindings
+		 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 		 * @param salt the salt that CAT drew for the proposal
 		 * @throws NullPointerException if any of the arguments are null, or {@code derivedSources} contains null
 		 */
@@ -91,6 +97,17 @@ final class ProposalFile
 			requireThat(observedSources, "observedSources").isNotNull();
 			derivedSources = List.copyOf(derivedSources);
 			requireThat(profiles, "profiles").isNotNull();
+			evaluators = Map.copyOf(evaluators);
+			requireThat(evaluators.keySet(), "evaluators").isEqualTo(profiles.byEvaluator().keySet());
+			for (Map.Entry<Harness, EvaluatorMetadata> entry : evaluators.entrySet())
+			{
+				EvaluatorMetadata report = entry.getValue();
+				if (report.harness() != entry.getKey() || report.refusal().isPresent() ||
+					!report.profiles().equals(profiles.byEvaluator().get(entry.getKey())))
+				{
+					throw new IllegalArgumentException("Inconsistent evidence for " + entry.getKey().productName());
+				}
+			}
 		}
 
 		/**
@@ -164,11 +181,13 @@ final class ProposalFile
 	 *
 	 * @param derived the proposal, whose draft directory the held-out directory stores
 	 * @param profiles the profile inventory, capability ranking and bindings that CAT read when the contract author ran
+	 * @param evaluators the staged loader and runtime evidence of the selected evaluators
 	 * @throws NullPointerException if any of the arguments are null
 	 * @throws IllegalArgumentException if the proposal's draft directory does not lie in the held-out directory
 	 * @throws IOException if the file cannot be written or another draft directory cannot be removed
 	 */
-	void write(DerivedProposal derived, ProfileEvidence profiles) throws IOException
+	void write(DerivedProposal derived, ProfileEvidence profiles, Map<Harness, EvaluatorMetadata> evaluators)
+		throws IOException
 	{
 		requireThat(derived, "derived").isNotNull();
 		requireThat(profiles, "profiles").isNotNull();
@@ -184,6 +203,12 @@ final class ProposalFile
 		root.put("derivation", derived.derivation());
 		root.put("salt", derived.contract().salt());
 		profiles.write(root);
+		if (!evaluators.isEmpty())
+		{
+			ArrayNode reports = root.putArray("evaluators");
+			for (EvaluatorMetadata evaluator : new EnumMap<>(evaluators).values())
+				evaluator.write(json, reports.addObject());
+		}
 		Path temporary = file.resolveSibling(file.getFileName() + ".tmp");
 		Files.writeString(temporary, json.writerWithDefaultPrettyPrinter().writeValueAsString(root),
 			StandardCharsets.UTF_8);
@@ -234,18 +259,38 @@ final class ProposalFile
 			throw new IOException(file + " names the draft directory " + draft + ", which the held-out directory does " +
 				"not store.");
 		List<DerivedSource> derivedSources = new ArrayList<>();
-		ProfileEvidence profiles;
 		try
 		{
 			for (JsonNode node : root.get("derived_sources"))
 				derivedSources.add(new DerivedSource(node.path("path").asString(), node.path("rule").asString()));
-			profiles = ProfileEvidence.read(root);
+			return Optional.of(new Stored(derivation, draft, root.get("observed_sources").asString(), derivedSources,
+				ProfileEvidence.read(root), readEvaluators(root.path("evaluators")), root.get("salt").asLong()));
 		}
-		catch (IllegalArgumentException e)
+		catch (IllegalArgumentException | JacksonException e)
 		{
-			throw new IOException(file + " holds invalid derived sources or trial profiles: " + e.getMessage(), e);
+			throw new IOException(file + " holds invalid derived sources or evaluator evidence: " + e.getMessage(), e);
 		}
-		return Optional.of(new Stored(derivation, draft, root.get("observed_sources").asString(), derivedSources, profiles,
-			root.get("salt").asLong()));
+	}
+
+	/**
+	 * Restores the optional evaluator reports. Proposals written before shared evaluation have no report array.
+	 *
+	 * @param node the stored report array, if present
+	 * @return the reports indexed by their evaluator
+	 */
+	private Map<Harness, EvaluatorMetadata> readEvaluators(JsonNode node)
+	{
+		if (node.isMissingNode())
+			return Map.of();
+		if (!node.isArray() || node.isEmpty() || node.size() > Harness.values().length)
+			throw new IllegalArgumentException("Invalid evaluator reports");
+		Map<Harness, EvaluatorMetadata> result = new EnumMap<>(Harness.class);
+		for (JsonNode report : node)
+		{
+			EvaluatorMetadata metadata = EvaluatorMetadata.read(json, report);
+			if (result.putIfAbsent(metadata.harness(), metadata) != null)
+				throw new IllegalArgumentException("Repeated report for " + metadata.harness().productName());
+		}
+		return result;
 	}
 }

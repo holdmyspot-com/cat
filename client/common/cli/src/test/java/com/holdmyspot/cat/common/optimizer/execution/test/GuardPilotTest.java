@@ -8,6 +8,7 @@ import static org.testng.Assert.expectThrows;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInToolResult;
@@ -25,6 +26,7 @@ import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
 import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.contract.TrialProfiles;
 import com.holdmyspot.cat.common.optimizer.contract.test.ContractFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures;
 import com.holdmyspot.cat.common.optimizer.execution.Driver;
@@ -199,6 +201,156 @@ public final class GuardPilotTest
 				for (PilotTrial trial : pilots.get(test.id()).trials())
 					requireThat(development, "development").contains(trial.values());
 			}
+		}
+	}
+
+	/**
+	 * A shared pilot requires evaluator-specific trial ports before it starts a control trial.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void sharedPilotRequiresEvaluatorPorts() throws IOException, InterruptedException
+	{
+		// Requirement: R-L7
+		Contract contract = sharedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-missing-evaluators"));
+			SessionScript sessions = new SessionScript(directory, _ -> "pass");
+
+			IllegalArgumentException refused = expectThrows(IllegalArgumentException.class, () ->
+				pilot(sessions, workspace(directory), 4).run(contract, List.of(), control(), Set.of(), SELECTION,
+					Map.of(), new SplittableRandom(1)));
+
+			requireThat(refused.getMessage(), "refusal").contains("evaluator trial ports");
+			requireThat(sessions.requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
+		}
+	}
+
+	/**
+	 * Identical tests and cell names retain separate controls in each evaluator. Changing one evaluator's execution
+	 * conditions causes only its controls to run again, and the owner judges both evaluators' trial evidence.
+	 *
+	 * @throws IOException          if the test directory cannot be used
+	 * @throws InterruptedException if the thread is interrupted
+	 */
+	@Test
+	public void sharedPilotReusesUnchangedEvaluator() throws IOException, InterruptedException
+	{
+		// Requirement: R-L7
+		Contract contract = sharedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-evaluator-resume"));
+			FakeWorkspacePort workspace = workspace(directory);
+			SessionScript owner = new SessionScript(directory.resolve("owner"), _ -> "pass");
+			SessionScript peer = new SessionScript(directory.resolve("peer"), request ->
+			{
+				if (isSafety(request))
+					return "fail:asks_before_deleting";
+				return "pass";
+			});
+
+			Map<String, PilotResult> initial = sharedPilot(owner, peer, workspace).
+				run(contract, List.of(), control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(1));
+			int trialsPerEvaluator = contract.tests().size() * GuardPilot.TRIALS;
+			requireThat(initial.keySet(), "pilotKeys").
+				containsExactly(Set.of("claude:formatting", "claude:safety", "codex:formatting", "codex:safety"));
+			requireThat(owner.requests(SessionRole.TRIAL).size(), "ownerTrials").isEqualTo(trialsPerEvaluator);
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isEqualTo(trialsPerEvaluator);
+			requireThat(owner.requests(SessionRole.JUDGE).size(), "ownerJudges").isEqualTo(2 * trialsPerEvaluator);
+			requireThat(peer.requests(SessionRole.JUDGE), "peerJudges").isEmpty();
+			requireThat(owner.port().readTranscripts().size(), "ownerTranscripts").isEqualTo(trialsPerEvaluator);
+			requireThat(peer.port().readTranscripts().size(), "peerTranscripts").isEqualTo(trialsPerEvaluator);
+
+			PilotResult ownerSafety = initial.get("claude:safety");
+			PilotResult peerSafety = initial.get("codex:safety");
+			requireThat(ownerSafety.cellId(), "ownerCell").isEqualTo("claude:" + TierFixtures.SAFETY);
+			requireThat(peerSafety.cellId(), "peerCell").isEqualTo("codex:" + TierFixtures.SAFETY);
+			requireThat(ownerSafety.evaluator(), "ownerEvaluator").isEqualTo(Harness.CLAUDE);
+			requireThat(peerSafety.evaluator(), "peerEvaluator").isEqualTo(Harness.CODEX);
+			requireThat(ownerSafety.passes("asks_before_deleting"), "ownerPasses").isEqualTo(GuardPilot.TRIALS);
+			requireThat(peerSafety.passes("asks_before_deleting"), "peerPasses").isEqualTo(0);
+
+			SessionScript nextOwner = new SessionScript(directory.resolve("next-owner"), _ -> "pass");
+			SessionScript nextPeer = new SessionScript(directory.resolve("next-peer"), _ -> "pass");
+			nextPeer.port().sessionEnvironmentVersion(peer.port().sessionEnvironmentVersion() + 1);
+			Map<String, PilotResult> resumed = sharedPilot(nextOwner, nextPeer, workspace).
+				run(contract, List.of(), control(), Set.of(), SELECTION, initial, new SplittableRandom(2));
+
+			requireThat(nextOwner.requests(SessionRole.TRIAL), "resumedOwnerTrials").isEmpty();
+			requireThat(nextPeer.requests(SessionRole.TRIAL).size(), "resumedPeerTrials").isEqualTo(trialsPerEvaluator);
+			requireThat(nextOwner.requests(SessionRole.JUDGE).size(), "resumedOwnerJudges").isEqualTo(trialsPerEvaluator);
+			requireThat(resumed.get("claude:formatting"), "retainedFormatting").isEqualTo(initial.get("claude:formatting"));
+			requireThat(resumed.get("claude:safety"), "retainedSafety").isEqualTo(ownerSafety);
+			PilotResult resumedPeer = resumed.get("codex:safety");
+			requireThat(resumedPeer.control(), "peerControl").isNotEqualTo(peerSafety.control());
+			requireThat(resumedPeer.passes("asks_before_deleting"), "resumedPeerPasses").isEqualTo(GuardPilot.TRIALS);
+		}
+	}
+
+	/**
+	 * Shared controls stage one project, install their own ordered plugin copies, and resume independently.
+	 *
+	 * @throws IOException if the workspace cannot be staged
+	 * @throws InterruptedException if waiting for tests is interrupted
+	 */
+	@Test
+	public void sharedControlsInstallEvaluatorPlugins() throws IOException, InterruptedException
+	{
+		Contract contract = sharedContract();
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path directory = cleanup.add(Files.createTempDirectory("pilot-evaluator-plugins"));
+			FakeWorkspacePort workspace = workspace(directory);
+			TrialPlugin built = builtPlugin(copyTemporaryPluginBase(workspace, cleanup));
+			Path installedBase = Files.createDirectory(directory.resolve("installed"));
+			Files.writeString(installedBase.resolve("guide.md"), "Codex fixture");
+			TrialPlugin installed = new TrialPlugin("guide@fixture", workspace.copyPluginBase(installedBase),
+				new TrialPlugin.Installed(), List.of(), null);
+			SessionScript owner = new SessionScript(directory.resolve("owner"), _ -> "pass");
+			SessionScript peer = new SessionScript(directory.resolve("peer"), _ -> "pass");
+
+			GuardPilot pilot = sharedPilot(owner, peer, workspace);
+			Map<String, PilotResult> initial = pilot.run(contract,
+				Map.of(Harness.CLAUDE, List.of(built, installed), Harness.CODEX, List.of(installed)),
+				control(), Set.of(), SELECTION, Map.of(), new SplittableRandom(1), _ ->
+				{
+				}, null);
+
+			List<SessionRequest> ownerTrials = owner.requests(SessionRole.TRIAL);
+			List<SessionRequest> peerTrials = peer.requests(SessionRole.TRIAL);
+			Path source = ownerTrials.getFirst().source();
+			Path builtCopy = workspace.pluginCopy(built, source, PluginRemovals.NONE);
+			Path installedCopy = workspace.pluginBase(installed.baseDigest());
+			for (SessionRequest trial : ownerTrials)
+			{
+				requireThat(trial.source(), "source").isEqualTo(source);
+				requireThat(trial.plugins(), "plugins").isEqualTo(List.of(builtCopy, installedCopy));
+			}
+			requireThat(peerTrials, "peerTrials").isNotEmpty();
+			for (SessionRequest trial : peerTrials)
+			{
+				requireThat(trial.source(), "source").isEqualTo(source);
+				requireThat(trial.plugins(), "plugins").isEqualTo(List.of(installedCopy));
+			}
+
+			SessionScript nextOwner = new SessionScript(directory.resolve("next-owner"), _ -> "pass");
+			SessionScript nextPeer = new SessionScript(directory.resolve("next-peer"), _ -> "pass");
+			Map<String, PilotResult> resumed = sharedPilot(nextOwner, nextPeer, workspace).run(contract,
+				Map.of(Harness.CLAUDE, List.of(built, installed), Harness.CODEX, List.of()),
+				control(), Set.of(), SELECTION, initial, new SplittableRandom(2), _ ->
+				{
+				}, null);
+			requireThat(nextOwner.requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
+			requireThat(nextPeer.requests(SessionRole.TRIAL), "peerTrials").isNotEmpty();
+			for (SessionRequest trial : nextPeer.requests(SessionRole.TRIAL))
+				requireThat(trial.plugins(), "plugins").isEmpty();
+			requireThat(resumed.get("claude:safety"), "retainedPilot").isEqualTo(initial.get("claude:safety"));
+			requireThat(resumed.get("codex:safety").control(), "newPilot").
+				isNotEqualTo(initial.get("codex:safety").control());
 		}
 	}
 
@@ -1556,7 +1708,12 @@ public final class GuardPilotTest
 			List<SessionRequest> trials = sessions.requests(SessionRole.TRIAL);
 			requireThat(trials, "trials").isNotEmpty();
 			for (SessionRequest trial : trials)
+			{
 				requireThat(trial.plugins(), "plugins").isEqualTo(expected);
+				requireThat(trial.pluginInputs().getFirst().installedId(), "builtSource").isEmpty();
+				requireThat(trial.pluginInputs().getLast().installedId(), "installedSource").
+					isEqualTo(Optional.of("tools@market"));
+			}
 		}
 	}
 
@@ -2054,6 +2211,34 @@ public final class GuardPilotTest
 	}
 
 	/**
+	 * Returns a pilot with evaluator trials and the owner's judge.
+	 *
+	 * @param owner starts Claude trials and judges both evaluators' evidence
+	 * @param peer starts Codex trials
+	 * @param workspace stages the control source
+	 * @return the pilot
+	 */
+	private GuardPilot sharedPilot(SessionScript owner, SessionScript peer, FakeWorkspacePort workspace)
+	{
+		return new GuardPilot(owner.port(), Map.of(Harness.CLAUDE, owner.port(), Harness.CODEX, peer.port()),
+			workspace, PROMPT, owner.judge(), new ProposalSchema(json), json, 4);
+	}
+
+	/**
+	 * Returns a contract with the same test and profiles in both evaluators.
+	 *
+	 * @return the shared contract
+	 */
+	private static Contract sharedContract()
+	{
+		Contract contract = TierFixtures.tieredContract();
+		TrialProfiles profiles = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, contract.profiles(),
+			Harness.CODEX, contract.profiles()));
+		return new Contract(contract.requirements(), contract.tests(), profiles, contract.judge(),
+			contract.limitations(), contract.minimumPassRate(), contract.salt());
+	}
+
+	/**
 	 * Returns a pilot whose passing project directories use the supplied remover.
 	 *
 	 * @param sessions the session port
@@ -2312,6 +2497,7 @@ public final class GuardPilotTest
 					synchronized (lock)
 					{
 						judged.put(evidence.effects(), assertions);
+						trialReplies.put(evidence.effects(), evidence.responses().getFirst().getFirst());
 					}
 					return judgePrompt.request(profile, testCase, evidence, assertions, results, evidenceSection);
 				}
@@ -2480,7 +2666,6 @@ public final class GuardPilotTest
 				synchronized (lock)
 				{
 					trials.add(trial);
-					trialReplies.put(trial.effects(), trial.responses().getFirst().getFirst());
 				}
 				result = trial;
 			}

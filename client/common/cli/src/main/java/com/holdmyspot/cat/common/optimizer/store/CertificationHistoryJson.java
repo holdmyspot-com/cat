@@ -35,6 +35,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Optional;
 import java.util.TreeMap;
 
 import tools.jackson.databind.JsonNode;
@@ -158,6 +159,7 @@ public final class CertificationHistoryJson
 		root.put("target", PortablePaths.text(record.target()));
 		root.put(LABEL, record.label().label());
 		root.put("certification_index", record.certificationIndex());
+		record.snapshot().ifPresent(snapshot -> root.put("snapshot", snapshot.hex()));
 		root.put("scope", record.scope().id());
 		CertificationParameters parameters = record.parameters();
 		root.put("minimum_pass_rate", parameters.minimumPassRate().toPlainString());
@@ -360,8 +362,11 @@ public final class CertificationHistoryJson
 				readComparisons(element, "incumbent_comparisons", "incumbent_only")));
 		}
 
+		Optional<Sha256> snapshot = Optional.empty();
+		if (root.has("snapshot"))
+			snapshot = Optional.of(new Sha256(text(root, "snapshot")));
 		return new CertificationRecord(Path.of(text(root, "target")), integer(root, "certification_index"), scope,
-			parameters, cells, readPromptFiles(root), CampaignJson.readIdentity(field(root, "identity")));
+			parameters, cells, readPromptFiles(root), CampaignJson.readIdentity(field(root, "identity")), snapshot);
 	}
 
 	/**

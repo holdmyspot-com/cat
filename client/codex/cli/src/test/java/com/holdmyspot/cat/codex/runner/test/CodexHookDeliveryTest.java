@@ -24,8 +24,8 @@ public final class CodexHookDeliveryTest
 		{
 			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
 				{"result":{"data":[{"hooks":[
-				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","trustStatus":"trusted"},
-				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","trustStatus":"untrusted"}
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","enabled":true,"trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","enabled":true,"trustStatus":"untrusted"}
 				]}]}}
 				"""));
 		}
@@ -44,9 +44,9 @@ public final class CodexHookDeliveryTest
 		{
 			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
 				{"result":{"data":[{"hooks":[
-				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","trustStatus":"trusted"},
-				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","trustStatus":"trusted"},
-				{"key":"cat@cat:hooks/hooks.json:post_tool_use:0:0","trustStatus":"untrusted"}
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","enabled":true,"trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","enabled":true,"trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:post_tool_use:0:0","enabled":true,"trustStatus":"untrusted"}
 				]}]}}
 				"""));
 		}
@@ -65,11 +65,31 @@ public final class CodexHookDeliveryTest
 		{
 			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
 				{"result":{"data":[{"hooks":[
-				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","trustStatus":"trusted"},
-				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","trustStatus":"trusted"}
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","enabled":true,"trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","enabled":true,"trustStatus":"trusted"}
 				]}]}}
 				"""));
 			requireThat(true, "accepted").isTrue();
+		}
+	}
+
+	/**
+	 * Verifies that a trusted hook must also be enabled before CAT relies on its delivery.
+	 *
+	 * @throws IOException if the trusted hook is disabled
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*session start hook is disabled.*")
+	public void rejectsDisabledTrustedHook() throws IOException
+	{
+		try (ToolScope scope = new TestToolScope())
+		{
+			CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree("""
+				{"result":{"data":[{"hooks":[
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","enabled":false,"trustStatus":"trusted"},
+				{"key":"cat@cat:hooks/hooks.json:subagent_start:0:0","enabled":true,"trustStatus":"trusted"}
+				]}]}}
+				"""));
 		}
 	}
 
