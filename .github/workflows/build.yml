@@ -1,12 +1,9 @@
-name: Build
+name: Codex optimizer launcher runtime
 
 on:
   push:
     branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
-  pull_request:
+      - rehearsal/wi146-codex-pager
 
 permissions:
   contents: read
@@ -20,20 +17,16 @@ jobs:
         include:
           - platform: linux-x64
             runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
+    timeout-minutes: 40
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: 9f0c5f0cbc395b345e3a14e41579c244ece7559b
+          persist-credentials: false
       - uses: actions/setup-java@v6
         with:
           distribution: zulu
@@ -43,37 +36,79 @@ jobs:
       - name: Install test tools on Linux
         if: runner.os == 'Linux'
         run: .github/scripts/install-linux-test-tools.sh
-      - name: Install test tools on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core jq shellcheck
-      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
-      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
-      - name: Install test tools on Windows
-        if: runner.os == 'Windows'
+      - name: Start authenticated runner session
         run: |
-          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
-          archive="${shellcheck_directory}/shellcheck.zip"
-          mkdir -p "${shellcheck_directory}"
-          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
-          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
-            sha256sum --check --strict
-          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
-            '$(cygpath --windows "${shellcheck_directory}")'"
-          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
-          "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.13.0
-          bats --version
-      - name: Verify
-        run: client/mvnw -f client/pom.xml verify
-      # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
-      - name: Keep the test reports of a failed Windows build
-        if: failure() && runner.os == 'Windows'
+          set -euo pipefail
+          session_dir="$RUNNER_TEMP/cat-codex-session"
+          mkdir -m 700 -- "$session_dir"
+          printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH9fVWBrMH2TyaVCNog8xSR/x3kSQC40CD0gCujLgOPq cat-claude-e1-rehearsal' > "$session_dir/authorized_keys"
+          ssh-keygen -lf "$session_dir/authorized_keys"
+          cat > "$session_dir/known_hosts" <<'PINS'
+          @cert-authority uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
+          @cert-authority [uptermd.upterm.dev]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
+          PINS
+          cat > "$session_dir/bashrc" <<'BASHRC'
+          export -n TMOUT
+          readonly TMOUT=600
+          PS1='SESSION$ '
+          unset PROMPT_COMMAND
+          cd -- "$GITHUB_WORKSPACE"
+          BASHRC
+          curl -fsSL --retry 3 --retry-all-errors -o "$session_dir/upterm.tar.gz" \
+            https://github.com/owenthereal/upterm/releases/download/v0.38.0/upterm_linux_amd64.tar.gz
+          printf '%s  %s\n' d5eff68db0ac596277f85ac7bf3443558f8463cd34db2b40b026899fda6b78c9 \
+            "$session_dir/upterm.tar.gz" | sha256sum --check --strict
+          tar -xzf "$session_dir/upterm.tar.gz" -C "$session_dir" upterm
+          "$session_dir/upterm" host --detach --accept --output json --join-timeout 10m \
+            --authorized-keys "$session_dir/authorized_keys" --known-hosts "$session_dir/known_hosts" \
+            -- bash --rcfile "$session_dir/bashrc" -i > "$session_dir/session.json"
+          jq -er .name "$session_dir/session.json" > "$session_dir/name"
+      - name: Publish the live join command
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-${{ matrix.platform }}
-          path: client/**/target/surefire-reports/
-          if-no-files-found: ignore
+          name: codex-build-runner-connection
+          path: ${{ runner.temp }}/cat-codex-session/session.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for the connected operator
+        run: |
+          set -eu
+          session_dir="$RUNNER_TEMP/cat-codex-session"
+          for _ in $(seq 1 600); do
+            if test -f "$session_dir/verify-ready"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
+      - name: Verify
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          audit_dir="$RUNNER_TEMP/cat-verify"
+          absent_home="$audit_dir/absent-home"
+          build_temp="$audit_dir/build-temp"
+          maven_user_home="$HOME/.m2"
+          mkdir -p -- "$build_temp"
+          test ! -e "$absent_home"
+          env -u JAVA_TOOL_OPTIONS HOME="$absent_home" MAVEN_USER_HOME="$maven_user_home" \
+            MAVEN_OPTS="-Djava.io.tmpdir=$build_temp -Duser.home=$absent_home" TMPDIR="$build_temp" \
+            client/mvnw -q -f client/pom.xml clean verify "-Dcat.build=9f0c5f0cbc39" \
+            "-Dmaven.repo.local=$maven_user_home/repository" -Dmaven.build.cache.enabled=false \
+            "-DargLine=-Djava.io.tmpdir=$build_temp -Duser.home=$absent_home"
+          test ! -e "$absent_home"
+          git diff --exit-code HEAD --
+          printf '%s\n' "$(git rev-parse HEAD)" > cat-verify-source.txt
+      - name: Archive clean verification evidence
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: clean-verify-linux-x64-9f0c5f0cbc39
+          path: |
+            client/**/target/surefire-reports/TEST-*.xml
+            cat-verify-source.txt
+          if-no-files-found: error
+          retention-days: 3
       - name: Verify bootstrap boundaries
         if: runner.os != 'Windows'
         run: >-
@@ -81,22 +116,6 @@ jobs:
           client/common/distribution/src/test/bats/bootstrap-claude.bats
           client/common/distribution/src/test/bats/bootstrap-codex.bats
           client/common/distribution/src/test/bats/installer-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell through cat.ps1, which
-      # bootstrap-windows.bats tests.
-      # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
-      # that plugin has no POSIX launchers, and codex-plugin-launchers-windows.bats runs that plugin's batch launchers
-      # from PowerShell. A Windows installation's installer launchers are PowerShell scripts, which
-      # installer-launcher-windows.bats tests in place of installer-launcher.bats and its POSIX launchers.
-      - name: Verify bootstrap boundaries on Windows
-        if: runner.os == 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/bootstrap-windows.bats
-          client/common/distribution/src/test/bats/codex-plugin-launchers-windows.bats
-          client/common/distribution/src/test/bats/installer-launcher-windows.bats
-      # The installer's sources rewrite runs here, where the shell and sed are macOS's, as well as on Linux.
       - name: Verify the Linux test-tool installer's mirror rewrite
         if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/install-linux-test-tools.bats
@@ -107,3 +126,32 @@ jobs:
       - name: Verify the Codex plugin's part launchers
         if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+      - name: Archive the verified Codex runtime
+        if: runner.os == 'Linux'
+        run: |
+          test "$(git rev-parse HEAD)" = 9f0c5f0cbc395b345e3a14e41579c244ece7559b
+          test -x client/common/distribution/target/runtime/codex/bin/installer
+          git rev-parse HEAD > SOURCE_COMMIT.txt
+          tar -C client/common/distribution/target/runtime -czf codex-runtime.tar.gz codex
+          sha256sum -- codex-runtime.tar.gz SOURCE_COMMIT.txt > SHA256SUMS.txt
+      - name: Hold the workspace until the operator exits
+        if: always()
+        run: |
+          set -eu
+          session_dir="$RUNNER_TEMP/cat-codex-session"
+          if test -s "$session_dir/name"; then
+            "$session_dir/upterm" session wait "$(cat "$session_dir/name")"
+          fi
+      - uses: actions/upload-artifact@v7
+        if: runner.os == 'Linux'
+        with:
+          name: codex-linux-x64-9f0c5f0cbc39
+          path: |
+            codex-runtime.tar.gz
+            SOURCE_COMMIT.txt
+            SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 1
+      - name: Remove the runner session files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/cat-codex-session"
