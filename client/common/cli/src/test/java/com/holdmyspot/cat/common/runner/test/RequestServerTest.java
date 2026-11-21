@@ -586,13 +586,8 @@ public final class RequestServerTest
 				// The asking session reads the results folder as soon as it reads the line that ends the conversation
 				Future<Boolean> keptWhenEnded = fixture.executor.submit(() ->
 				{
-					long deadline = System.nanoTime() + WAIT.toNanos();
 					while (!(Files.isRegularFile(fromChild) && Files.readString(fromChild).contains("\"ended\"")))
-					{
-						if (System.nanoTime() > deadline)
-							throw new IOException("The conversation did not end");
-						Thread.onSpinWait();
-					}
+						Thread.sleep(1);
 					Path claude = results.resolve("claude");
 					if (!Files.isDirectory(claude))
 						return false;
@@ -602,31 +597,39 @@ public final class RequestServerTest
 							Files.isRegularFile(copy.resolve(lastFile)));
 					}
 				});
-				StringWriter errors = new StringWriter();
-				long deadline = System.nanoTime() + WAIT.toNanos();
-				int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
-					new String[]{"--project", fixture.project.toString(), "--results", results.toString(),
-						"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
-					new StringReader(""), server.requests(), results, () ->
-					{
-						if (System.nanoTime() > deadline)
-							throw new IOException("The conversation did not end");
-						// Once the session runs, its nested session holds many files, so that copying it takes a while
-						if (!served.isEmpty() && !endSent.get())
+				try
+				{
+					StringWriter errors = new StringWriter();
+					long deadline = System.nanoTime() + WAIT.toNanos();
+					int status = SessionRequestForwarder.forward(SessionRequestForwarder.Route.SERVER, "claude",
+						new String[]{"--project", fixture.project.toString(), "--results", results.toString(),
+							"--model", "haiku", "--effort", "low", "--conversation", folder.toString()},
+						new StringReader(""), server.requests(), results, () ->
 						{
-							Path many = Files.createDirectories(served.getFirst().nestedSession().directory().
-								resolve("artifacts/many"));
-							for (int i = 0; i < 400; ++i)
-								Files.writeString(many.resolve("file-" + i), "content");
-							Files.writeString(toChild, "{\"end\": true}\n", StandardOpenOption.CREATE,
-								StandardOpenOption.APPEND);
-							endSent.set(true);
-						}
-						Thread.yield();
-					}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
+							if (System.nanoTime() > deadline)
+								throw new IOException("The conversation did not end");
+							// Once the session runs, its nested session holds many files, so that copying it takes a while
+							if (!served.isEmpty() && !endSent.get())
+							{
+								Path many = Files.createDirectories(served.getFirst().nestedSession().directory().
+									resolve("artifacts/many"));
+								for (int i = 0; i < 400; ++i)
+									Files.writeString(many.resolve("file-" + i), "content");
+								Files.writeString(toChild, "{\"end\": true}\n", StandardOpenOption.CREATE,
+									StandardOpenOption.APPEND);
+								endSent.set(true);
+							}
+							Thread.yield();
+						}, OutputStream.nullOutputStream(), new PrintWriter(errors, true));
 
-				requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
-				requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "sessionKeptInPlaceWhenEnded").isTrue();
+					requireThat(status, "status").withContext(errors, "errors").isEqualTo(0);
+					requireThat(keptWhenEnded.get(WAIT.toSeconds(), TimeUnit.SECONDS), "sessionKeptInPlaceWhenEnded").
+						isTrue();
+				}
+				finally
+				{
+					keptWhenEnded.cancel(true);
+				}
 			}
 		}
 	}
