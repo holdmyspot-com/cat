@@ -1,9 +1,9 @@
-name: Integrated Codex runtime
+name: Integrated Claude runtime
 
 on:
   push:
     branches:
-      - rehearsal/wi146-integrated-runtime
+      - rehearsal/wi146-claude-runtime
 
 permissions:
   contents: read
@@ -17,6 +17,7 @@ jobs:
         include:
           - platform: linux-x64
             runner: ubuntu-26.04
+    timeout-minutes: 40
     runs-on: ${{ matrix.runner }}
     defaults:
       run:
@@ -35,6 +36,51 @@ jobs:
       - name: Install test tools on Linux
         if: runner.os == 'Linux'
         run: .github/scripts/install-linux-test-tools.sh
+      - name: Start authenticated runner session
+        run: |
+          set -euo pipefail
+          session_dir="$RUNNER_TEMP/cat-claude-session"
+          mkdir -m 700 -- "$session_dir"
+          printf '%s\n' 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH9fVWBrMH2TyaVCNog8xSR/x3kSQC40CD0gCujLgOPq cat-claude-e1-rehearsal' > "$session_dir/authorized_keys"
+          ssh-keygen -lf "$session_dir/authorized_keys"
+          cat > "$session_dir/known_hosts" <<'PINS'
+          @cert-authority uptermd.upterm.dev ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
+          @cert-authority [uptermd.upterm.dev]:443 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICiecex8Dq718eSe1CCLgLvDmI7AagvCtax7brPFWkh4
+          PINS
+          cat > "$session_dir/bashrc" <<'BASHRC'
+          export -n TMOUT
+          readonly TMOUT=600
+          PS1='SESSION$ '
+          unset PROMPT_COMMAND
+          cd -- "$GITHUB_WORKSPACE"
+          BASHRC
+          curl -fsSL --retry 3 --retry-all-errors -o "$session_dir/upterm.tar.gz" \
+            https://github.com/owenthereal/upterm/releases/download/v0.38.0/upterm_linux_amd64.tar.gz
+          printf '%s  %s\n' d5eff68db0ac596277f85ac7bf3443558f8463cd34db2b40b026899fda6b78c9 \
+            "$session_dir/upterm.tar.gz" | sha256sum --check --strict
+          tar -xzf "$session_dir/upterm.tar.gz" -C "$session_dir" upterm
+          "$session_dir/upterm" host --detach --accept --output json --join-timeout 10m \
+            --authorized-keys "$session_dir/authorized_keys" --known-hosts "$session_dir/known_hosts" \
+            -- bash --rcfile "$session_dir/bashrc" -i > "$session_dir/session.json"
+          jq -er .name "$session_dir/session.json" > "$session_dir/name"
+      - name: Publish the live join command
+        uses: actions/upload-artifact@v7
+        with:
+          name: claude-build-runner-connection
+          path: ${{ runner.temp }}/cat-claude-session/session.json
+          if-no-files-found: error
+          retention-days: 1
+      - name: Wait for the connected operator
+        run: |
+          set -eu
+          session_dir="$RUNNER_TEMP/cat-claude-session"
+          for _ in $(seq 1 600); do
+            if test -f "$session_dir/verify-ready"; then
+              exit 0
+            fi
+            sleep 1
+          done
+          exit 1
       - name: Verify
         if: runner.os == 'Linux'
         run: |
@@ -80,21 +126,32 @@ jobs:
       - name: Verify the Codex plugin's part launchers
         if: runner.os != 'Windows'
         run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
-      - name: Archive the verified Codex runtime
+      - name: Archive the verified Claude runtime
         if: runner.os == 'Linux'
         run: |
           test "$(git rev-parse HEAD)" = 08307c76ca2a5f9449b99479c6cf2dbdf1b237f0
-          test -x client/common/distribution/target/runtime/codex/bin/installer
+          test -x client/common/distribution/target/runtime/claude/bin/installer
           git rev-parse HEAD > SOURCE_COMMIT.txt
-          tar -C client/common/distribution/target/runtime -czf codex-runtime.tar.gz codex
-          sha256sum -- codex-runtime.tar.gz SOURCE_COMMIT.txt > SHA256SUMS.txt
+          tar -C client/common/distribution/target/runtime -czf claude-runtime.tar.gz claude
+          sha256sum -- claude-runtime.tar.gz SOURCE_COMMIT.txt > SHA256SUMS.txt
+      - name: Hold the workspace until the operator exits
+        if: always()
+        run: |
+          set -eu
+          session_dir="$RUNNER_TEMP/cat-claude-session"
+          if test -s "$session_dir/name"; then
+            "$session_dir/upterm" session wait "$(cat "$session_dir/name")"
+          fi
       - uses: actions/upload-artifact@v7
         if: runner.os == 'Linux'
         with:
-          name: codex-linux-x64-08307c76ca2a
+          name: claude-linux-x64-08307c76ca2a
           path: |
-            codex-runtime.tar.gz
+            claude-runtime.tar.gz
             SOURCE_COMMIT.txt
             SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 1
+      - name: Remove the runner session files
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/cat-claude-session"
