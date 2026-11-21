@@ -7,8 +7,9 @@ import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Optional;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Optional;
 import com.holdmyspot.cat.common.Platform;
 import java.util.function.Supplier;
 
@@ -131,6 +132,7 @@ public final class CodexOptimizerBoundary
 	/**
 	 * Validates the environment inputs that can redirect the optimizer's files or executable programs. Other values
 	 * are data forwarded through the request server, whose policy enforces their session permissions.
+	 * The only accepted Git override is {@code GIT_PAGER=cat}, which disables Git's pager.
 	 *
 	 * @param environment the inherited environment
 	 * @param policy the host policy read from protected records
@@ -141,8 +143,12 @@ public final class CodexOptimizerBoundary
 		throws IOException, PolicyRefusal
 	{
 		for (String name : environment.keySet())
-			if (name.startsWith("GIT_"))
+		{
+			// Codex sets this value in tool shells, and Git recognizes it without starting a pager process.
+			boolean disablesGitPager = name.equals("GIT_PAGER") && Objects.equals(environment.get(name), "cat");
+			if (name.startsWith("GIT_") && !disablesGitPager)
 				throw new IOException("The optimizer refuses inherited Git override " + name + ".");
+		}
 		for (String name : java.util.List.of(CodexOptimizerCommandScope.HOME_VARIABLE, "CODEX_HOME", "TMPDIR", "TMP",
 			"TEMP"))
 		{

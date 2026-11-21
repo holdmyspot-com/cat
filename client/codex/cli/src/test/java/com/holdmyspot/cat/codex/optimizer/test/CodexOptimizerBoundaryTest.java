@@ -15,6 +15,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import org.testng.annotations.Test;
@@ -127,6 +128,31 @@ public final class CodexOptimizerBoundaryTest
 		}
 	}
 	/**
+	 * Accepts the no-pagination setting that Codex gives its tool shells.
+	 *
+	 * @throws IOException   if validation refuses the environment
+	 * @throws PolicyRefusal if validation refuses an executable
+	 */
+	@Test
+	public void acceptsCodexPagerSetting() throws IOException, PolicyRefusal
+	{
+		CodexOptimizerBoundary.validateEnvironment(Map.of("GIT_PAGER", "cat"), ParentPolicy.UNSANDBOXED);
+	}
+
+	/**
+	 * Refuses an environment that can select a pager executable.
+	 *
+	 * @throws IOException   if validation refuses the environment
+	 * @throws PolicyRefusal if validation refuses an executable
+	 */
+	@Test(expectedExceptions = IOException.class,
+		expectedExceptionsMessageRegExp = ".*Git override GIT_PAGER.*")
+	public void refusesPagerExecutable() throws IOException, PolicyRefusal
+	{
+		CodexOptimizerBoundary.validateEnvironment(Map.of("GIT_PAGER", "less"), ParentPolicy.UNSANDBOXED);
+	}
+
+	/**
 	 * Git environment overrides are refused before an unsandboxed optimizer can execute them.
 	 *
 	 * @throws Exception if validation fails
@@ -135,7 +161,7 @@ public final class CodexOptimizerBoundaryTest
 		expectedExceptionsMessageRegExp = ".*Git override GIT_CONFIG_COUNT.*")
 	public void refusesGitEnvironmentOverrides() throws Exception
 	{
-		CodexOptimizerBoundary.validateEnvironment(java.util.Map.of("GIT_CONFIG_COUNT", "1"),
+		CodexOptimizerBoundary.validateEnvironment(Map.of("GIT_CONFIG_COUNT", "1"),
 			ParentPolicy.UNSANDBOXED);
 	}
 
@@ -148,6 +174,6 @@ public final class CodexOptimizerBoundaryTest
 		expectedExceptionsMessageRegExp = ".*absolute directory in CODEX_HOME.*")
 	public void refusesRelativeConfigurationHome() throws Exception
 	{
-		CodexOptimizerBoundary.validateEnvironment(java.util.Map.of("CODEX_HOME", "relative"), ParentPolicy.UNSANDBOXED);
+		CodexOptimizerBoundary.validateEnvironment(Map.of("CODEX_HOME", "relative"), ParentPolicy.UNSANDBOXED);
 	}
 }
