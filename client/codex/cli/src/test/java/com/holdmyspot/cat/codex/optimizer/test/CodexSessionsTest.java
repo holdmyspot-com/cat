@@ -29,7 +29,10 @@ import com.holdmyspot.cat.common.optimizer.adapter.fakes.test.RoleRuleFixtures;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.AssertionKind;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.DrawStream;
+import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.ExpectedOutcomeTool;
+import com.holdmyspot.cat.common.optimizer.contract.JudgedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.MappedAssertion;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
@@ -42,6 +45,8 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialPlugin;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import com.holdmyspot.cat.common.optimizer.contract.VariableDeclaration;
 import com.holdmyspot.cat.common.optimizer.execution.EarlyTrialEnd;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.JudgePrompt;
+import com.holdmyspot.cat.common.optimizer.execution.prompt.TriagePrompt;
 import com.holdmyspot.cat.common.optimizer.port.HookInvocation;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.HostLogin;
@@ -53,6 +58,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.TokenUsage;
+import com.holdmyspot.cat.common.optimizer.proposal.JudgeTemplate;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessProcess;
 import com.holdmyspot.cat.common.runner.HarnessProcessResult;
@@ -2358,6 +2364,96 @@ public final class CodexSessionsTest
 				requireThat(parent.launches().size(), "launches").isEqualTo(1);
 				requireThat(ScriptedHarness.optionValue(parent.launches().getFirst(), "--model"), "model").
 					isEqualTo(SESSION_PROFILE.model());
+			}
+		}
+	}
+
+	/**
+	 * Supplies the evaluator role, the transcript directory and the expected number of evidence grants.
+	 *
+	 * @return the evaluator fixtures
+	 */
+	@DataProvider
+	public static Object[][] servedEvidence()
+	{
+		return new Object[][]{{SessionRole.JUDGE, "trial/artifacts", 2}, {SessionRole.TRIAGE, "trial/project", 1}};
+	}
+
+	/**
+	 * Verifies that the evaluator receives paths to the evidence offered by the broker, while the literal path that
+	 * the trial mentioned remains intact in its quoted reply.
+	 *
+	 * @param role the evaluator to launch
+	 * @param transcriptDirectory the trial's transcript directory relative to the fixture root
+	 * @param expectedGrants the number of paths the broker should offer the evaluator
+	 * @throws IOException          if a fixture cannot be read or written
+	 * @throws InterruptedException if the wait is interrupted
+	 * @throws ExecutionException   if the session cannot determine a result
+	 * @throws TimeoutException     if the session does not finish
+	 */
+	@Test(dataProvider = "servedEvidence", timeOut = 30_000)
+	public void servedEvaluatorReceivesEvidencePaths(SessionRole role, String transcriptDirectory, int expectedGrants)
+		throws IOException, InterruptedException, ExecutionException, TimeoutException
+	{
+		// Requirement: R-E21
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(), "served-judge-")).toRealPath();
+			Path effects = Files.createDirectories(root.resolve("trial/project"));
+			Path artifacts = Files.createDirectories(root.resolve(transcriptDirectory));
+			Path transcript = Files.writeString(artifacts.resolve("transcript.jsonl"), "{\"method\":\"turn/completed\"}\n");
+			Files.writeString(effects.resolve("shipping.txt"), "Loading is ready.");
+			Path evaluatorDirectory = Files.createDirectories(root.resolve("evaluator"));
+			String trialReply = "I recorded the check in " + transcript + " under the label {{transcript}}.";
+			SessionResult.Completed evidence = new SessionResult.Completed(transcript, List.of(List.of(trialReply)),
+				effects, root.resolve("trial/initial-project"), SESSION_PROFILE.model(), null, null, List.of(),
+				"none", List.of());
+			TestCase values = new TestCase(Map.of("team", new TestValue.Text("loading")), "Loading is ready.");
+			DrawnTestCase testCase = new DrawnTestCase("shipping", "shipping", values,
+				List.of("Can the loading team start?"), "Loading is ready.", "generator-1", DrawStream.Kind.DEVELOPMENT,
+				0, false);
+			JsonMapper json = JsonMapper.builder().build();
+			String section = "Transcript: " + transcript + "\nEffects directory: " + effects +
+				"\n\nTurn 1\nCompleted the dispatch check.";
+			SessionRequest request;
+			if (role == SessionRole.JUDGE)
+			{
+				JudgePrompt judge = new JudgePrompt(json, evaluatorDirectory);
+				request = judge.request(new JudgeTemplate(json, SESSION_PROFILE).
+					profile("Use the dispatch record.", "Pass when the evidence confirms the answer."), testCase, evidence,
+					List.of(new JudgedAssertion(Assertion.expectedOutcome(AssertionKind.GUARD), null)), List.of(), section);
+			}
+			else
+			{
+				TriagePrompt triage = new TriagePrompt(json, evaluatorDirectory);
+				request = triage.request(SESSION_PROFILE, testCase, evidence, List.of(), section, "The answer was late.");
+			}
+			try (RequestingNestedSession parent = new RequestingNestedSession(root.resolve("parent"), jvm.fileLocks(), 1))
+			{
+				CodexSessions sessions = inNestedSession(jvm, root, root.resolve("results"), parent);
+				requireThat(await(sessions.start(request)), "result").isInstanceOf(SessionResult.Completed.class);
+				List<String> launch = parent.launches().getFirst();
+				List<Path> copies = new ArrayList<>();
+				for (int index = 0; index < launch.size() - 1; ++index)
+				{
+					if (launch.get(index).equals("--read-only-evidence"))
+						copies.add(Path.of(launch.get(index + 1)));
+				}
+				requireThat(copies.size(), "evidenceCount").isEqualTo(expectedGrants);
+				Path offeredEffects = copies.getFirst();
+				Path offeredTranscript = copies.getLast().resolve(transcript.getFileName());
+				requireThat(Files.readString(offeredEffects.resolve("shipping.txt")), "effects").
+					isEqualTo("Loading is ready.");
+				requireThat(Files.readString(offeredTranscript), "transcript").isEqualTo(Files.readString(transcript));
+				String turn = parent.received().stream().map(json::readTree).
+					filter(record -> record.path("type").asString().equals("turn")).findFirst().orElseThrow().
+					path("prompt").asString();
+				requireThat(turn, "evaluatorTurn").
+					contains("project directory after the trial, " + offeredEffects + ",").
+					contains("transcript, " + offeredTranscript + ",").
+					contains("Transcript: " + offeredTranscript + "\nEffects directory: " + offeredEffects).
+					contains(json.writeValueAsString(trialReply));
 			}
 		}
 	}

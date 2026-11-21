@@ -758,6 +758,23 @@ public final class SessionRequestForwarder
 	}
 
 	/**
+	 * Returns the location where the broker offers the read-only evidence at a position in the request's evidence list.
+	 *
+	 * @param requests the request directory the launch uses
+	 * @param requestId the launch identifier
+	 * @param index the position in its evidence list
+	 * @return the path in the child session for that evidence
+	 */
+	public static Path offeredEvidence(Path requests, UUID requestId, int index)
+	{
+		requireThat(requests, "requests").isNotNull();
+		requireThat(requestId, "requestId").isNotNull();
+		requireThat(index, "index").isNotNegative();
+		return responses(requests, requestId.toString()).resolve(SessionRequestBroker.INPUTS).
+			resolve(RequestArchive.evidenceEntry(index));
+	}
+
+	/**
 	 * Publishes a request whose records come from a conversation and follows it: sends each of the conversation's
 	 * messages as the request's next record and copies the requested session's records to the conversation and to the
 	 * transcript, until the parent runner publishes its response. The sender's lock is held from before the request

@@ -220,7 +220,7 @@ public final class RequestArchive
 				for (int index = 0; index < evidence.size(); ++index)
 				{
 					Path source = Path.of(evidence.get(index).asString());
-					String name = "read_only_evidence/" + index;
+					String name = evidenceEntry(index);
 					if (Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS))
 						packTree(archive, source, name, budget, nullDevice, skipped);
 					else
@@ -239,6 +239,17 @@ public final class RequestArchive
 			}
 			return request;
 		});
+	}
+
+	/**
+	 * Returns the archive name of the evidence input at the given position.
+	 *
+	 * @param index the position in the read-only evidence list
+	 * @return the entry name
+	 */
+	static String evidenceEntry(int index)
+	{
+		return "read_only_evidence/" + index;
 	}
 
 	/**

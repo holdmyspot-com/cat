@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.List;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 /**
  * What a nested session needs in order to start.
@@ -41,11 +43,12 @@ import java.util.Optional;
  *   the session gets when its parent's sandbox allows them and otherwise cannot start; {@link ExtraPermissions#NONE}
  *   if the session needs none
  * @param turnObserver observes completed turns and may end a trial before its remaining turns
+ * @param evidencePrompt renders the first turn with the paths offered by the runner, when it stages read-only evidence
  */
 public record SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
 	Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
 	Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
-	Optional<TurnObserver> turnObserver)
+	Optional<TurnObserver> turnObserver, Optional<Function<UnaryOperator<Path>, String>> evidencePrompt)
 {
 	/**
 	 * Creates a request whose workspace receives no files.
@@ -212,6 +215,7 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		requireThat(followUp, "followUp").isNotNull();
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		requireThat(turnObserver, "turnObserver").isNotNull();
+		requireThat(evidencePrompt, "evidencePrompt").isNotNull();
 		if (turnObserver.isPresent() && role != SessionRole.TRIAL)
 			throw new IllegalArgumentException("Only a trial session may end early");
 		if (role != SessionRole.TRIAL && role != SessionRole.CONTRACT_AUTHOR && !files.isEmpty())
@@ -223,6 +227,16 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 		turns = List.copyOf(turns);
 		plugins = List.copyOf(plugins);
 		readOnly = List.copyOf(readOnly);
+	}
+
+	/** Creates a request whose turns do not depend on where the runner offers evidence. */
+	public SessionRequest(SessionRole role, Part part, Path source, List<String> turns, List<Path> readOnly,
+		Duration timeLimit, TrialProfile profile, WorkspaceFiles files, List<Path> plugins,
+		Optional<FollowUp> followUp, boolean controlSource, ExtraPermissions extraPermissions,
+		Optional<TurnObserver> turnObserver)
+	{
+		this(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp, controlSource,
+			extraPermissions, turnObserver, Optional.empty());
 	}
 
 	/** Creates a request without a completed-turn observer. */
@@ -244,13 +258,26 @@ public record SessionRequest(SessionRole role, Part part, Path source, List<Stri
 	public SessionRequest withExtraPermissions(ExtraPermissions permissions)
 	{
 		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
-			controlSource, permissions, turnObserver);
+			controlSource, permissions, turnObserver, evidencePrompt);
 	}
 
 	/** Returns this request with a completed-turn observer. */
 	public SessionRequest withTurnObserver(TurnObserver observer)
 	{
 		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
-			controlSource, extraPermissions, Optional.of(observer));
+			controlSource, extraPermissions, Optional.of(observer), evidencePrompt);
+	}
+
+	/**
+	 * Returns this request with a first turn that can render the runner's offered evidence paths.
+	 *
+	 * @param render fills the first turn's evidence references with the paths accessible to the session
+	 * @return the updated request
+	 * @throws NullPointerException if {@code render} is null
+	 */
+	public SessionRequest withEvidencePrompt(Function<UnaryOperator<Path>, String> render)
+	{
+		return new SessionRequest(role, part, source, turns, readOnly, timeLimit, profile, files, plugins, followUp,
+			controlSource, extraPermissions, turnObserver, Optional.of(render));
 	}
 }

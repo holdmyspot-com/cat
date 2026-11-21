@@ -9,6 +9,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.execution.TriageProtocol;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
@@ -24,6 +25,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -102,22 +105,33 @@ public final class TriagePrompt implements TriageProtocol
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
-		String turn = prompt.fill(Map.of(
-			"failure", failure,
-			"test_case", pretty(TestCaseJson.encode(json, testCase)),
-			"responses", pretty(responseArray),
-			"evidence", evidenceSection,
-			"effects", evidence.effects().toString(),
-			"transcript", evidence.transcript().toString(),
-			"tool_results", pretty(resultArray),
-			"result_schema", resultSchema));
+		String caseJson = pretty(TestCaseJson.encode(json, testCase));
+		String repliesJson = pretty(responseArray);
+		String toolsJson = pretty(resultArray);
+		Path originalTranscript = evidence.transcript();
+		Path originalEffects = evidence.effects();
+		Function<UnaryOperator<Path>, String> render = offered ->
+		{
+			Path transcript = offered.apply(originalTranscript);
+			Path effects = offered.apply(originalEffects);
+			return prompt.fill(Map.of(
+				"failure", failure,
+				"test_case", caseJson,
+				"responses", repliesJson,
+				"evidence", EvidenceSection.withPaths(evidenceSection, originalTranscript, originalEffects,
+					transcript, effects),
+				"effects", effects.toString(),
+				"transcript", transcript.toString(),
+				"tool_results", toolsJson,
+				"result_schema", resultSchema));
+		};
 		List<Path> readOnly = new ArrayList<>();
-		readOnly.add(evidence.effects());
-		Path transcriptDirectory = evidence.transcript().getParent();
+		readOnly.add(originalEffects);
+		Path transcriptDirectory = originalTranscript.getParent();
 		if (transcriptDirectory != null && !readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
-		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory, List.of(turn), readOnly,
-			TIME_LIMIT, profile);
+		return new SessionRequest(SessionRole.TRIAGE, Part.DEVELOPMENT, triageDirectory,
+			List.of(render.apply(UnaryOperator.identity())), readOnly, TIME_LIMIT, profile).withEvidencePrompt(render);
 	}
 
 	/**

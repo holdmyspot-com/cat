@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import com.holdmyspot.cat.common.runner.StartupCache;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,11 +19,11 @@ import java.util.Set;
 
 /**
  * Writes the launchers of a plugin's {@code bin} folder, which start the plugin's Java programs on the installation's
- * Java runtime that the installation-written file {@code bin/runtime-binding} names.
+ * bundled Java runtime selected by the package, or the runtime that a legacy installation binds.
  * <p>
  * A launcher finds {@code bin/} from its own real folder, reads the binding, and runs nothing when the binding is
- * missing, holds anything but one line naming an absolute, normalized path, or names a runtime without an executable
- * {@code bin/java}: it writes one line naming the binding to standard error and exits with status
+ * missing, holds anything but one line naming the bundled runtime or an absolute normalized path, or names a
+ * runtime without an executable {@code bin/java}. It writes one line naming the binding and exits with status
  * {@value #UNUSABLE_BINDING_STATUS}. Otherwise it runs {@code java} with fixed JVM options, the plugin's
  * {@code bin/runtime/modules} as the module path, {@code org.slf4j.nop} added so that logging never depends on
  * incidental service binding, and the program's module and main class, followed by the caller's arguments. It discards
@@ -115,7 +116,7 @@ public final class PluginLaunchers
 		"# Java on Windows follows TEMP and TMP, and does not read Git Bash's TMPDIR.";
 	private static final String POSIX_TEMPLATE = """
 		#!/bin/sh
-		# Starts %1$s on the Java runtime that the plugin's bin/runtime-binding names.
+		# Starts %1$s on the plugin's selected Java runtime.
 		unset JAVA_TOOL_OPTIONS JDK_JAVA_OPTIONS _JAVA_OPTIONS CLASSPATH JLINK_VM_OPTIONS
 		unset LD_PRELOAD LD_LIBRARY_PATH LD_AUDIT BASH_ENV ENV
 		for name in $(env | sed -n 's/=.*//p'); do
@@ -140,18 +141,25 @@ public final class PluginLaunchers
 		    "$binding" "$1" >&2
 		  exit %3$d
 		}
-		[ -f "$binding" ] && [ -r "$binding" ] || fail 'is missing'
-		extra=
-		{ IFS= read -r runtime && ! IFS= read -r extra && [ -z "$extra" ]; } < "$binding" ||
-		  fail 'must hold exactly one line, the absolute path of a Java runtime'
-		case $runtime in
-		  /* | [A-Za-z]:[\\\\/]*) ;;
-		  *) fail 'names a relative path' ;;
-		esac
-		case $runtime in
-		  ?*[\\\\/] | *[\\\\/][\\\\/]* | *[\\\\/]. | *[\\\\/].. | *[\\\\/].[\\\\/]* | *[\\\\/]..[\\\\/]*)
-		    fail 'names a path that is not normalized' ;;
-		esac
+		selector=$bin/%9$s
+		if [ -e "$selector" ] || [ -L "$selector" ]; then
+		  binding=$selector
+		  [ -f "$selector" ] && [ ! -L "$selector" ] || fail 'is not a regular file'
+		  runtime=$bin/runtime
+		else
+		  [ -f "$binding" ] && [ -r "$binding" ] || fail 'is missing'
+		  extra=
+		  { IFS= read -r runtime && ! IFS= read -r extra && [ -z "$extra" ]; } < "$binding" ||
+		    fail 'must hold exactly one line, the absolute path of a Java runtime'
+		  case $runtime in
+		    /* | [A-Za-z]:[\\\\/]*) ;;
+		    *) fail 'names a relative path' ;;
+		  esac
+		  case $runtime in
+		    ?*[\\\\/] | *[\\\\/][\\\\/]* | *[\\\\/]. | *[\\\\/].. | *[\\\\/].[\\\\/]* | *[\\\\/]..[\\\\/]*)
+		      fail 'names a path that is not normalized' ;;
+		  esac
+		fi
 		java=$runtime/bin/%2$s
 		[ -f "$java" ] && [ -x "$java" ] || fail 'names a runtime without an executable bin/%2$s'
 		case ${LC_ALL:-${LC_CTYPE:-${LANG:-}}} in
@@ -175,7 +183,7 @@ public final class PluginLaunchers
 		""";
 	private static final String BATCH_TEMPLATE = """
 		@echo off
-		rem Starts %1$s on the Java runtime that the plugin's bin\\runtime-binding names.
+		rem Starts %1$s on the plugin's selected Java runtime.
 		setlocal DisableDelayedExpansion
 		set JAVA_TOOL_OPTIONS=
 		set JDK_JAVA_OPTIONS=
@@ -184,6 +192,13 @@ public final class PluginLaunchers
 		set JLINK_VM_OPTIONS=
 		for %%%%I in ("%%~dp0.") do set "BIN=%%%%~fI"
 		set "BINDING=%%BIN%%\\runtime-binding"
+		if exist "%%BIN%%\\%7$s" (
+		  set "BINDING=%%BIN%%\\%7$s"
+		  set "REASON=is not a regular file"
+		  if exist "%%BIN%%\\%7$s\\" goto fail
+		  set "RUNTIME=%%BIN%%\\runtime"
+		  goto runtime_resolved
+		)
 		set "RUNTIME="
 		set "LINES=0"
 		if not exist "%%BINDING%%" (
@@ -208,6 +223,7 @@ public final class PluginLaunchers
 		if "%%RUNTIME:~-1%%"=="\\" goto fail
 		if "%%RUNTIME:~-2%%"=="\\." goto fail
 		if "%%RUNTIME:~-3%%"=="\\.." goto fail
+		:runtime_resolved
 		set "JAVA=%%RUNTIME%%\\bin\\java.exe"
 		set "REASON=names a runtime without bin\\java.exe"
 		if not exist "%%JAVA%%" goto fail
@@ -317,7 +333,8 @@ public final class PluginLaunchers
 			tmpdirLines = IGNORE_TMPDIR;
 		}
 		Files.writeString(path, POSIX_TEMPLATE.formatted(program, javaName, UNUSABLE_BINDING_STATUS, VM_OPTIONS,
-			arguments, CACHE_FROM_BIN.replace('\\', '/'), MODULES_FROM_BIN.replace('\\', '/'), tmpdirLines), UTF_8);
+			arguments, CACHE_FROM_BIN.replace('\\', '/'), MODULES_FROM_BIN.replace('\\', '/'), tmpdirLines,
+			RuntimeBinding.BUNDLED_PATH.getFileName()), UTF_8);
 		PosixFileAttributeView attributes = Files.getFileAttributeView(path, PosixFileAttributeView.class);
 		if (attributes != null)
 			attributes.setPermissions(LAUNCHER_PERMISSIONS);
@@ -334,7 +351,8 @@ public final class PluginLaunchers
 	private static void writeBatch(Path path, String program, String arguments) throws IOException
 	{
 		String content = BATCH_TEMPLATE.formatted(program, VM_OPTIONS, arguments, UNUSABLE_BINDING_STATUS,
-			CACHE_FROM_BIN.replace('/', '\\'), MODULES_FROM_BIN.replace('/', '\\'));
+			CACHE_FROM_BIN.replace('/', '\\'), MODULES_FROM_BIN.replace('/', '\\'),
+			RuntimeBinding.BUNDLED_PATH.getFileName());
 		Files.writeString(path, content.replace("\n", "\r\n"), UTF_8);
 	}
 }

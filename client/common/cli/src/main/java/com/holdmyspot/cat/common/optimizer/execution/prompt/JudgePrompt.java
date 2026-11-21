@@ -11,6 +11,7 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidenceSection;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
@@ -29,6 +30,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -122,28 +125,41 @@ public final class JudgePrompt implements JudgeProtocol
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
+		Path originalTranscript = evidence.transcript();
+		Path originalEffects = evidence.effects();
 		Map<String, String> values = new HashMap<>(Map.of(
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
 			"assertions", pretty(assertionArray),
 			"test_case", pretty(TestCaseJson.encode(json, testCase)),
 			"responses", pretty(responseArray),
-			"effects", evidence.effects().toString(),
-			"transcript", evidence.transcript().toString(),
+			"effects", originalEffects.toString(),
+			"transcript", originalTranscript.toString(),
 			"evidence", evidenceSection,
 			"tool_results", pretty(resultArray),
 			"result_schema", pretty(json.readTree(profile.resultSchema()))));
 		values.keySet().removeIf(name -> !profile.prompt().contains("{{" + name + "}}"));
-		String turn = new PromptTemplate(profile.prompt()).fill(values);
+		PromptTemplate template = new PromptTemplate(profile.prompt());
+		Function<UnaryOperator<Path>, String> render = offered ->
+		{
+			Path transcript = offered.apply(originalTranscript);
+			Path effects = offered.apply(originalEffects);
+			Map<String, String> staged = new HashMap<>(values);
+			staged.computeIfPresent("transcript", (_, _) -> transcript.toString());
+			staged.computeIfPresent("effects", (_, _) -> effects.toString());
+			staged.computeIfPresent("evidence", (_, section) ->
+				EvidenceSection.withPaths(section, originalTranscript, originalEffects, transcript, effects));
+			return template.fill(staged);
+		};
 
 		List<Path> readOnly = new ArrayList<>();
-		readOnly.add(evidence.effects());
-		Path transcriptDirectory = evidence.transcript().getParent();
+		readOnly.add(originalEffects);
+		Path transcriptDirectory = originalTranscript.getParent();
 		if (profile.prompt().contains("{{transcript}}") && transcriptDirectory != null &&
 			!readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
-		return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT,
-			profile.profile());
+		return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory,
+			List.of(template.fill(values)), readOnly, TIME_LIMIT, profile.profile()).withEvidencePrompt(render);
 	}
 
 	/**

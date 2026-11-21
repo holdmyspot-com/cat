@@ -29,8 +29,40 @@ public final class EvidenceSection
 		requireThat(transcript, "transcript").isNotNull();
 		requireThat(effects, "effects").isNotNull();
 		requireThat(initialProject, "initialProject").isNotNull();
-		return "Transcript: " + transcript + "\nEffects directory: " + effects + "\n\n" + activity.render() +
+		return paths(transcript, effects) + activity.render() +
 			"\nFile changes\n" + FileChanges.render(initialProject, effects);
+	}
+
+	/**
+	 * Replaces the evidence heading's original paths with the paths offered to the reader. The recorded activity and
+	 * file changes remain as recorded.
+	 *
+	 * @param section the rendered evidence
+	 * @param transcript the original transcript
+	 * @param effects the original effects directory
+	 * @param offeredTranscript the reader's transcript
+	 * @param offeredEffects the reader's effects directory
+	 * @return the section with the updated heading, or the original section if it has no matching heading
+	 */
+	public static String withPaths(String section, Path transcript, Path effects, Path offeredTranscript,
+		Path offeredEffects)
+	{
+		String heading = paths(transcript, effects);
+		if (!section.startsWith(heading))
+			return section;
+		return paths(offeredTranscript, offeredEffects) + section.substring(heading.length());
+	}
+
+	/**
+	 * Returns the heading for an evidence section with the given paths.
+	 *
+	 * @param transcript the transcript file
+	 * @param effects the effects directory
+	 * @return the heading
+	 */
+	private static String paths(Path transcript, Path effects)
+	{
+		return "Transcript: " + transcript + "\nEffects directory: " + effects + "\n\n";
 	}
 
 	/**

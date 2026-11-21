@@ -56,9 +56,9 @@ public final class ReleasePackager
 
 	/**
 	 * Packages a plugin artifact as a deterministic archive, replacing an existing archive at its generated path
-	 * {@code cat-<harness>-<platform>-v<version>.tar.gz}. The archive leaves out the
-	 * {@link RuntimeBinding runtime binding}, which names a runtime on the building machine, and the
-	 * {@link StartupCache startup cache}, which Java accepts only at the location where it was written.
+	 * {@code cat-<harness>-<platform>-v<version>.tar.gz}. The archive preserves the packaged bundled-runtime selector
+	 * and leaves out any {@link RuntimeBinding#PATH absolute runtime binding} and {@link StartupCache startup cache},
+	 * which are specific to their installation paths.
 	 *
 	 * @param component        the plugin harness identifier, used in the generated archive filename
 	 * @param platform         distribution platform whose identifier is included in the generated archive filename

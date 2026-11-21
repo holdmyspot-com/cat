@@ -61,7 +61,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.UnaryOperator;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
@@ -171,37 +173,66 @@ public abstract class RunnerSessions implements SessionPort
 			@Override
 			public void serve(List<String> arguments, Reader input, Writer output) throws IOException
 			{
-				serveRoute(Optional.empty(), Optional.empty(), Optional.empty(), arguments, input, output);
+				serveRoute(UUID.randomUUID(), Optional.empty(), Optional.empty(), arguments, input, output, _ -> {});
+			}
+
+			@Override
+			public void serveWithEvidence(List<String> arguments, List<Path> evidence,
+				Consumer<UnaryOperator<Path>> bindPaths, Reader input, Writer output) throws IOException
+			{
+				UUID requestId = UUID.randomUUID();
+				serveRoute(requestId, Optional.empty(), Optional.empty(), arguments, input, output, requests ->
+					bindPaths.accept(path ->
+					{
+						Path absolute = path.toAbsolutePath().normalize();
+						int selectedIndex = -1;
+						Path selectedRoot = null;
+						for (int index = 0; index < evidence.size(); ++index)
+						{
+							Path root = evidence.get(index).toAbsolutePath().normalize();
+							if (absolute.startsWith(root) &&
+								(selectedRoot == null || root.getNameCount() > selectedRoot.getNameCount()))
+							{
+								selectedIndex = index;
+								selectedRoot = root;
+							}
+						}
+						if (selectedRoot == null)
+							return path;
+						return SessionRequestForwarder.offeredEvidence(requests, requestId, selectedIndex).
+							resolve(selectedRoot.relativize(absolute));
+					}));
 			}
 
 			@Override
 			public void serveTrial(UUID requestId, Optional<RetainedTrialClaim> claim, Path source,
 				List<String> arguments, Reader input, Writer output) throws IOException
 			{
-				serveRoute(Optional.of(requestId), claim, Optional.of(source), arguments, input, output);
+				serveRoute(requestId, claim, Optional.of(source), arguments, input, output, _ -> {});
 			}
 
 			/**
 			 * Resolves the broker that owns the caller's launches.
 			 *
-			 * @param requestId the original tracked request identifier, or empty for an ordinary launch
+			 * @param requestId the request identifier
 			 * @param claim the checkpoint that a continuation must claim
 			 * @param source the requesting trial's project, or empty if the launch is untracked
 			 * @param arguments the runner options
 			 * @param input the streamed requests
 			 * @param output the streamed replies
+			 * @param onRoute receives the broker's request directory before any reply is forwarded
 			 * @throws IOException if no broker serves the launch or forwarding fails
 			 */
-			private void serveRoute(Optional<UUID> requestId, Optional<RetainedTrialClaim> claim, Optional<Path> source,
-				List<String> arguments, Reader input, Writer output) throws IOException
+			private void serveRoute(UUID requestId, Optional<RetainedTrialClaim> claim, Optional<Path> source,
+				List<String> arguments, Reader input, Writer output, Consumer<Path> onRoute) throws IOException
 			{
 				String[] args = arguments.toArray(String[]::new);
 				switch (LaunchRoute.decide(harness, harness, running, args, settings.environment()))
 				{
 					case LaunchRoute.Served _ -> forward(SessionRequestForwarder.Route.SERVER, servedRequests(settings),
-						requestId, claim, source, arguments, input, output);
+						requestId, claim, source, arguments, input, output, onRoute);
 					case LaunchRoute.Forward(Path requests) -> forward(SessionRequestForwarder.Route.RUN, requests,
-						requestId, claim, source, arguments, input, output);
+						requestId, claim, source, arguments, input, output, onRoute);
 					case LaunchRoute.Refused(String reason) -> throw new LaunchRefusedException(reason);
 					case LaunchRoute.Bounded _ -> throw new LaunchRefusedException(
 						"CAT cannot start the session: no Claude Code or Codex session runs this command, so no request " +
@@ -214,32 +245,29 @@ public abstract class RunnerSessions implements SessionPort
 			 *
 			 * @param route which kind of broker serves the launch
 			 * @param requests the broker's request directory
-			 * @param requestId the original tracked request identifier, or empty for an ordinary launch
+			 * @param requestId the request identifier
 			 * @param claim the checkpoint that a continuation must claim
 			 * @param source the requesting trial's project, or empty if the launch is untracked
 			 * @param arguments the runner options
 			 * @param input the streamed requests
 			 * @param output the streamed replies
+			 * @param onRoute receives the broker's request directory before any reply is forwarded
 			 * @throws IOException if the launch fails
 			 */
-			private void forward(SessionRequestForwarder.Route route, Path requests, Optional<UUID> requestId,
+			private void forward(SessionRequestForwarder.Route route, Path requests, UUID requestId,
 				Optional<RetainedTrialClaim> claim, Optional<Path> source, List<String> arguments, Reader input,
-				Writer output) throws IOException
+				Writer output, Consumer<Path> onRoute) throws IOException
 			{
 				Pause pause = settings.scope().waiting().every(SessionRequestForwarder.RESPONSE_POLL);
+				onRoute.accept(requests);
 				if (claim.isPresent())
 				{
 					SessionRequestForwarder.serveRetainedTrial(route, claim.get(), COMMAND, harness, settings.artifact(),
 						source.orElseThrow(), arguments, input, output, requests, pause);
 				}
-				else if (requestId.isPresent())
-				{
-					SessionRequestForwarder.serve(route, requestId.get(), COMMAND, harness, settings.artifact(),
-						arguments, input, output, requests, pause);
-				}
 				else
-					SessionRequestForwarder.serve(route, COMMAND, harness, settings.artifact(), arguments, input, output,
-						requests, pause);
+					SessionRequestForwarder.serve(route, requestId, COMMAND, harness, settings.artifact(), arguments,
+						input, output, requests, pause);
 			}
 		};
 	}

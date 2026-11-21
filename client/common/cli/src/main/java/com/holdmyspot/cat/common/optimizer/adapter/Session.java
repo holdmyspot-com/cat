@@ -35,6 +35,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.UnaryOperator;
 
 import tools.jackson.databind.json.JsonMapper;
 
@@ -94,6 +95,7 @@ final class Session implements SessionHandle
 	private final AtomicBoolean interruptRequested = new AtomicBoolean();
 	private final CompletableFuture<SessionResult> completion = new CompletableFuture<>();
 	private final List<List<String>> responses = new ArrayList<>();
+	private volatile UnaryOperator<Path> evidencePaths = UnaryOperator.identity();
 	private String sessionId;
 	private Message.Ended ended;
 	private boolean timedOut;
@@ -214,7 +216,7 @@ final class Session implements SessionHandle
 	private SessionResult drive() throws IOException
 	{
 		String brief = request.turns().getFirst();
-		if (retained.isEmpty() || retained.get().completedTurns() == 0)
+		if (request.evidencePrompt().isEmpty() && (retained.isEmpty() || retained.get().completedTurns() == 0))
 			brief = RoleRules.fill(settings.artifact(), request.role(), sessions.ruleVariables(settings.artifact()),
 				brief);
 
@@ -234,7 +236,16 @@ final class Session implements SessionHandle
 					turn += 1;
 					String prompt = request.turns().get(turn - 1);
 					if (turn == 1)
-						prompt = brief;
+					{
+						if (request.evidencePrompt().isPresent())
+						{
+							String rendered = request.evidencePrompt().get().apply(evidencePaths);
+							prompt = RoleRules.fill(settings.artifact(), request.role(),
+								sessions.ruleVariables(settings.artifact()), rendered);
+						}
+						else
+							prompt = brief;
+					}
 					outcome = sendTurn(turn, prompt);
 					if (outcome != Outcome.TURN_COMPLETED)
 						break;
@@ -370,6 +381,8 @@ final class Session implements SessionHandle
 			List<String> options = arguments(workspace, permissions);
 			if (requestId.isPresent())
 				sessions.bridge().serveTrial(requestId.get(), retained, request.source(), options, feed, sink);
+			else if (request.evidencePrompt().isPresent())
+				sessions.bridge().serveWithEvidence(options, request.readOnly(), paths -> evidencePaths = paths, feed, sink);
 			else
 				sessions.bridge().serve(options, feed, sink);
 		}

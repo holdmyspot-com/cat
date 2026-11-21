@@ -119,6 +119,35 @@ public final class RunnerRuntimeManifestTest
 	}
 
 	/**
+	 * Verifies that the bundled Java and its application modules are covered by the same packaged entries.
+	 *
+	 * @throws IOException if fixture I/O fails
+	 */
+	@Test
+	public void identifiesBundledRuntime() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("runner-runtime-bundled"));
+			Path artifact = root.resolve("artifact");
+			Path java = write(artifact, "bin/runtime/bin/java", "runtime one\n");
+			write(artifact, "bin/runtime/modules/example.jar", "application one\n");
+			Files.createFile(artifact.resolve(RuntimeBinding.BUNDLED_PATH));
+			RunnerRuntimeManifest.write(artifact);
+			RuntimeBinding.write(artifact, root.resolve("removed-runtime"));
+
+			String identity = RunnerRuntimeManifest.fingerprint(artifact);
+			requireThat(identity, "bundledRuntimeIdentity").
+				isEqualTo(RunnerRuntimeManifest.packagedFingerprint(artifact));
+
+			Files.writeString(java, "runtime two\n");
+			Files.delete(artifact.resolve(RunnerRuntimeManifest.PATH));
+			RunnerRuntimeManifest.write(artifact);
+			requireThat(RunnerRuntimeManifest.fingerprint(artifact), "changedRuntimeIdentity").isNotEqualTo(identity);
+		}
+	}
+
+	/**
 	 * Verifies that binding a packaged plugin to another installation's runtime leaves its packaged identity unchanged,
 	 * because the binding is written by the installation rather than packaged.
 	 *

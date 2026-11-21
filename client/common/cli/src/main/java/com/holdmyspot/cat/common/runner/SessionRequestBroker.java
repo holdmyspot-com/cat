@@ -67,6 +67,8 @@ public final class SessionRequestBroker implements Closeable
 	 * The most bytes of a requested runner's refusal that the broker reads.
 	 */
 	private static final int MAXIMUM_REFUSAL_BYTES = 65_536;
+	/** The directory in a response that holds the request's extracted inputs. */
+	static final String INPUTS = "inputs";
 	/**
 	 * The directory of a response directory that holds the results copy of the requested session, which the requester
 	 * reads.
@@ -495,7 +497,7 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		WorktreeRequest request;
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		try
 		{
 			unpack(file, directory, inputs);
@@ -539,7 +541,7 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		DiscardRequest request;
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		try
 		{
 			unpack(file, directory, inputs);
@@ -625,7 +627,7 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		RetainedTrialRequest request;
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		try
 		{
 			unpack(file, directory, inputs);
@@ -852,7 +854,7 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private LaunchRequest read(Path file, Path directory) throws IOException
 	{
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		unpack(file, directory, inputs);
 		return site.read(json, inputs);
 	}
