@@ -443,9 +443,10 @@ public final class RequestServerTest
 	 * Verifies that the broker starts a trusted peer with one selection for the probe and the launch.
 	 *
 	 * @throws IOException if the fixture cannot be created or a request cannot be served
+	 * @throws InterruptedException if the test is interrupted while the server ends
 	 */
 	@Test(timeOut = 60_000)
-	public void reusesTrustedPeerForProbeAndLaunch() throws IOException
+	public void reusesTrustedPeerForProbeAndLaunch() throws IOException, InterruptedException
 	{
 		try (Fixture fixture = new Fixture())
 		{
@@ -454,7 +455,11 @@ public final class RequestServerTest
 			fixture.child = _ ->
 			{
 				launches.incrementAndGet();
-				return new ExitedProcess(new ProcessBuilder(), 1, "", "");
+				FakeHarnessCli process = new FakeHarnessCli(_ ->
+				{
+				}, 1);
+				process.exit();
+				return process;
 			};
 			try (Fixture.Running server = fixture.start())
 			{
@@ -462,6 +467,8 @@ public final class RequestServerTest
 				requireThat(fixture.needsCalls.get(), "needsCalls").withContext(response, "response").isEqualTo(1);
 				requireThat(fixture.peerSelections.get(), "peerSelections").isEqualTo(1);
 				requireThat(launches.get(), "launches").isEqualTo(1);
+				fixture.processes.end(fixture.harness);
+				requireThat(server.end(), "exit").isEqualTo(0);
 			}
 		}
 	}
