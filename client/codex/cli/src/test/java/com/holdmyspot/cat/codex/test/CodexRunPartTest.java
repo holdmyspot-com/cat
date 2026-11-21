@@ -143,7 +143,7 @@ public final class CodexRunPartTest
 				{
 					requireThat(output.firstLine.await(10, TimeUnit.SECONDS), "arrived").isTrue();
 					requireThat(task.isDone(), "childStillRunning").isFalse();
-					requireThat(output.text(), "liveOutput").startsWith("first\n");
+					requireThat(output.text(), "liveOutput").startsWith("first" + EOL);
 					Files.writeString(config, "tool_output_token_limit = 100\n");
 				}
 				finally
@@ -151,8 +151,9 @@ public final class CodexRunPartTest
 					Files.createFile(release);
 				}
 				int status = task.get(10, TimeUnit.SECONDS);
-				requireThat(output.text(), "output").startsWith("first\nline-1\n").contains("[More output follows: ");
-				requireThat(count(output.text(), "first\n"), "firstCopies").isEqualTo(1);
+				requireThat(output.text(), "output").startsWith("first" + EOL + "line-1" + EOL).
+					contains("[More output follows: ");
+				requireThat(count(output.text(), "first" + EOL), "firstCopies").isEqualTo(1);
 				requireThat(status, "status").isEqualTo(0);
 				requireThat(error.toString(UTF_8), "error").isEmpty();
 			}
@@ -201,8 +202,8 @@ public final class CodexRunPartTest
 						Files.createFile(release);
 				}
 				int status = task.get(10, TimeUnit.SECONDS);
-				requireThat(output.text(), "output").startsWith("first\nsecond\n[End of ");
-				requireThat(count(output.text(), "first\n"), "firstCopies").isEqualTo(1);
+				requireThat(output.text(), "output").startsWith("first" + EOL + "second" + EOL + "[End of ");
+				requireThat(count(output.text(), "first" + EOL), "firstCopies").isEqualTo(1);
 				requireThat(status, "status").isEqualTo(5);
 				requireThat(error.toString(UTF_8), "error").isEmpty();
 			}
@@ -822,7 +823,7 @@ public final class CodexRunPartTest
 			synchronized (this)
 			{
 				super.write(value);
-				if (toString(UTF_8).startsWith("first\n"))
+				if (toString(UTF_8).startsWith("first" + EOL))
 					firstLine.countDown();
 			}
 		}
@@ -833,7 +834,7 @@ public final class CodexRunPartTest
 			synchronized (this)
 			{
 				super.write(bytes, offset, length);
-				if (toString(UTF_8).startsWith("first\n"))
+				if (toString(UTF_8).startsWith("first" + EOL))
 					firstLine.countDown();
 			}
 		}
