@@ -1,10 +1,11 @@
 {
-	"format_version" : 48,
+	"format_version" : 50,
 	"header" : {
 		"id" : "fixture-campaign",
 		"root" : "/project",
 		"target" : "CLAUDE.md",
 		"harness" : "claude",
+		"evaluation_harnesses" : [ "claude" ],
 		"lifecycle" : "active",
 		"goal" : null
 	},
@@ -210,34 +211,39 @@
 				} ]
 			} ],
 			"trial_profiles" : {
-				"inventory_source" : "test inventory of one profile",
-				"inventory" : [ {
-					"model" : "test-model",
-					"effort" : "high"
-				} ],
-				"ranking" : {
-					"source" : "test ranking in inventory order",
-					"families" : [ "test-model" ]
-				},
-				"bindings" : [ ],
-				"restriction" : [ ],
-				"described" : [ ],
-				"scope" : "latest_versions",
-				"cells" : [ {
-					"id" : "formatting",
-					"test" : "formatting",
-					"model" : "test-model",
-					"effort" : "high"
-				}, {
-					"id" : "plain_list",
-					"test" : "plain_list",
-					"model" : "test-model",
-					"effort" : "high"
-				}, {
-					"id" : "safety",
-					"test" : "safety",
-					"model" : "test-model",
-					"effort" : "high"
+				"evaluators" : [ {
+					"evaluator" : "claude",
+					"profiles" : {
+						"inventory_source" : "test inventory of one profile",
+						"inventory" : [ {
+							"model" : "test-model",
+							"effort" : "high"
+						} ],
+						"ranking" : {
+							"source" : "test ranking in inventory order",
+							"families" : [ "test-model" ]
+						},
+						"bindings" : [ ],
+						"restriction" : [ ],
+						"described" : [ ],
+						"scope" : "latest_versions",
+						"cells" : [ {
+							"id" : "formatting",
+							"test" : "formatting",
+							"model" : "test-model",
+							"effort" : "high"
+						}, {
+							"id" : "plain_list",
+							"test" : "plain_list",
+							"model" : "test-model",
+							"effort" : "high"
+						}, {
+							"id" : "safety",
+							"test" : "safety",
+							"model" : "test-model",
+							"effort" : "high"
+						} ]
+					}
 				} ]
 			},
 			"judge" : {

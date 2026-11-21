@@ -21,6 +21,7 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
@@ -56,6 +57,10 @@ public final class CodexProcess implements HarnessProcess
 	 */
 	private final HarnessSessionTranscripts transcripts;
 	private final StringBuilder startupEvents = new StringBuilder();
+	/**
+	 * Whether the app-server handshake has started; guarded by {@link #input}.
+	 */
+	private boolean protocolStarted;
 	/**
 	 * The path of the root thread's rollout, or an empty string until Codex answers the {@code thread/start} request.
 	 */
@@ -194,7 +199,7 @@ public final class CodexProcess implements HarnessProcess
 	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
 		String permissionProfile) throws IOException
 	{
-		initialize(workingDirectory, model, developerInstructions, effort, permissionProfile, null);
+		initialize(workingDirectory, model, developerInstructions, effort, permissionProfile, null, Map.of());
 	}
 
 	/**
@@ -210,7 +215,7 @@ public final class CodexProcess implements HarnessProcess
 	public void resume(Path workingDirectory, String threadId, String model, String effort) throws IOException
 	{
 		requireThat(threadId, "threadId").isNotBlank();
-		initialize(workingDirectory, model, "", effort, "", threadId);
+		initialize(workingDirectory, model, "", effort, "", threadId, Map.of());
 	}
 
 	/**
@@ -223,10 +228,11 @@ public final class CodexProcess implements HarnessProcess
 	 * @param effort                the optional reasoning effort
 	 * @param permissionProfile     the optional named Codex permission profile
 	 * @param resumedThread         the recorded thread to continue, or {@code null} to start a thread
+	 * @param boundHooks            the transferred exact trial hook keys and their full native hashes
 	 * @throws IOException if startup fails or no thread ID is returned
 	 */
 	void initialize(Path workingDirectory, String model, String developerInstructions, String effort,
-		String permissionProfile, String resumedThread) throws IOException
+		String permissionProfile, String resumedThread, Map<String, String> boundHooks) throws IOException
 	{
 		requireThat(workingDirectory, "workingDirectory").isNotNull();
 		requireThat(model, "model").isNotNull();
@@ -235,8 +241,19 @@ public final class CodexProcess implements HarnessProcess
 		this.effort = effort;
 		synchronized (input)
 		{
-			readResponse(1, CodexAppServerProtocol.initialize());
-			writeDuringStartup(CodexAppServerProtocol.initialized(), "after its response to request 1");
+			initializeProtocol();
+			if (verifyCatHookDelivery || !boundHooks.isEmpty())
+			{
+				// Codex records accepted approvals in its writable trial home when it lists hooks.
+				JsonNode hooks = readHooks(workingDirectory);
+				if (verifyCatHookDelivery)
+					CodexHookDelivery.verifyConfiguredHooks(hooks);
+				if (!boundHooks.isEmpty())
+				{
+					CodexPluginHooks.requireTrusted(CodexPluginHooks.records(hooks.path("result"), workingDirectory),
+						boundHooks);
+				}
+			}
 			String thread;
 			if (resumedThread == null)
 			{
@@ -249,14 +266,76 @@ public final class CodexProcess implements HarnessProcess
 					developerInstructions, permissionProfile);
 			}
 			threadId = threadId(readResponse(2, thread));
-			if (verifyCatHookDelivery)
-			{
-				long requestId = nextRequestId;
-				nextRequestId += 1;
-				CodexHookDelivery.verifyConfiguredHooks(scope.json().readTree(readResponse(requestId,
-					CodexAppServerProtocol.hooksList(requestId, workingDirectory))));
-			}
 		}
+	}
+
+	/**
+	 * Initializes a fresh app-server and returns its native hook state without starting or resuming a thread.
+	 *
+	 * @param workingDirectory the absolute project directory to inspect
+	 * @return the app-server's unmodified {@code hooks/list} result object
+	 * @throws IllegalArgumentException if the working directory is relative
+	 * @throws IOException if startup fails or Codex refuses to list hooks
+	 */
+	public JsonNode inspectHooks(Path workingDirectory) throws IOException
+	{
+		requireThat(workingDirectory, "workingDirectory").isNotNull();
+		if (!workingDirectory.isAbsolute())
+			throw new IllegalArgumentException("workingDirectory must be absolute");
+		synchronized (input)
+		{
+			initializeProtocol();
+			return readHooks(workingDirectory).path("result");
+		}
+	}
+
+	/**
+	 * Performs the app-server handshake while the caller holds {@link #input}.
+	 *
+	 * @throws IOException if the app-server was already initialized or the handshake fails
+	 */
+	private void initializeProtocol() throws IOException
+	{
+		if (protocolStarted)
+			throw new IOException("Codex app-server initialization has already started");
+		protocolStarted = true;
+		requireResult(readResponse(1, CodexAppServerProtocol.initialize()), "initialize");
+		writeDuringStartup(CodexAppServerProtocol.initialized(), "after its response to request 1");
+	}
+
+	/**
+	 * Reads the full hook response while the caller holds {@link #input}.
+	 *
+	 * @param workingDirectory the absolute project directory
+	 * @return the app-server's response
+	 * @throws IOException if the request fails or does not return a result
+	 */
+	private JsonNode readHooks(Path workingDirectory) throws IOException
+	{
+		long requestId = nextRequestId;
+		nextRequestId += 1;
+		JsonNode response = readResponse(requestId, CodexAppServerProtocol.hooksList(requestId, workingDirectory));
+		requireResult(response, "hooks/list");
+		return response;
+	}
+
+	/**
+	 * Validates the object result returned by an app-server request.
+	 *
+	 * @param response the app-server's response
+	 * @param operation the native method name
+	 * @throws IOException if the app-server returned an error or omitted the result object
+	 */
+	private static void requireResult(JsonNode response, String operation) throws IOException
+	{
+		JsonNode error = response.path("error");
+		if (!error.isMissingNode() && !error.isNull())
+		{
+			String message = error.path("message").asString("unknown error");
+			throw new IOException("Codex app-server refused " + operation + ": " + message);
+		}
+		if (!response.path("result").isObject())
+			throw new IOException("Codex app-server returned no result object for " + operation);
 	}
 
 	@Override
@@ -719,20 +798,29 @@ public final class CodexProcess implements HarnessProcess
 	 *
 	 * @param requestId the request identifier
 	 * @param request the JSON-RPC request line
-	 * @return the response line
-	 * @throws IOException if the app-server exits or omits the response
+	 * @return the decoded response
+	 * @throws IOException if the app-server returns invalid JSON, exits or omits the response
 	 */
-	private String readResponse(long requestId, String request) throws IOException
+	private JsonNode readResponse(long requestId, String request) throws IOException
 	{
 		assert requestId > 0;
 		assert request != null;
 		writeDuringStartup(request, "before responding to request " + requestId);
-		String expected = "\"id\":" + requestId;
 		String line = nextLine();
 		while (line != null)
 		{
-			if (line.contains(expected))
-				return line;
+			try
+			{
+				JsonNode event = scope.json().readTree(line);
+				JsonNode id = event.path("id");
+				if (!event.has("method") && id.isIntegralNumber() && id.canConvertToLong() && id.longValue() == requestId)
+					return event;
+			}
+			catch (JacksonException e)
+			{
+				throw new IOException("Codex app-server returned malformed JSON while responding to request " +
+					requestId, e);
+			}
 			startupEvents.append(line).append('\n');
 			line = nextLine();
 		}
@@ -787,25 +875,18 @@ public final class CodexProcess implements HarnessProcess
 	 * @return the non-blank thread ID
 	 * @throws IOException if Codex did not start the thread, or the response is malformed or omits the ID
 	 */
-	private String threadId(String response) throws IOException
+	private String threadId(JsonNode response) throws IOException
 	{
 		assert response != null;
-		try
-		{
-			JsonNode tree = scope.json().readTree(response);
-			JsonNode error = tree.path("error").path("message");
-			if (error.isString())
-				throw new IOException("Codex app-server did not start the thread: " + error.stringValue());
-			JsonNode id = tree.path("result").path("thread").path("id");
-			if (!id.isString() || id.stringValue().isBlank())
-				throw new IOException("Codex app-server returned no thread identifier");
-			rollout = tree.path("result").path("thread").path("path").asString("");
-			return id.stringValue();
-		}
-		catch (JacksonException e)
-		{
-			throw new IOException("Codex app-server returned malformed thread/start response", e);
-		}
+		JsonNode error = response.path("error").path("message");
+		if (error.isString())
+			throw new IOException("Codex app-server did not start the thread: " + error.stringValue());
+		JsonNode thread = response.path("result").path("thread");
+		JsonNode id = thread.path("id");
+		if (!id.isString() || id.stringValue().isBlank())
+			throw new IOException("Codex app-server returned no thread identifier");
+		rollout = thread.path("path").asString("");
+		return id.stringValue();
 	}
 
 	/**

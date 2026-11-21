@@ -26,6 +26,9 @@ was writing. -->
 
 ## Guidance
 
+When selecting or running checks that exercise different behaviors after the same scenario setup, lazy load
+`testing/repeated-scenarios.md` before deciding what to reuse or restart.
+
 When measuring or reducing a unit test's runtime, or deciding whether a costly test fixture is needed, lazy load
 `testing/unit-runtime.md` before choosing which test work to keep.
 

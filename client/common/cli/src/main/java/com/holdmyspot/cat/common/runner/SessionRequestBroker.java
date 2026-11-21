@@ -64,9 +64,11 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class SessionRequestBroker implements Closeable
 {
 	/**
-	 * The most bytes of a requested runner's refusal that the broker reads.
+	 * The maximum bytes the broker reads from a requested runner's stderr.
 	 */
-	private static final int MAXIMUM_REFUSAL_BYTES = 65_536;
+	private static final int MAXIMUM_RUNNER_DIAGNOSTIC_BYTES = 65_536;
+	/** The directory in a response that holds the request's extracted inputs. */
+	static final String INPUTS = "inputs";
 	/**
 	 * The directory of a response directory that holds the results copy of the requested session, which the requester
 	 * reads.
@@ -136,7 +138,6 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	private final Site site;
-	private final RequestedSessionStarter starter;
 	private final JsonMapper json = JsonMapper.builder().build();
 	private final ExecutorService children = Executors.newVirtualThreadPerTaskExecutor();
 	/**
@@ -267,22 +268,19 @@ public final class SessionRequestBroker implements Closeable
 	{
 		this(new NestedSessionSite(nestedSession, manager, options, catPlugin, limits, new SessionSlots(
 			SessionRequestAccess.requestedSlotsDirectory(nestedSession), options.maximumConcurrency(), liveness,
-			manager.fileLocks())), starter);
+			manager.fileLocks()), starter));
 	}
 
 	/**
 	 * Creates a broker that serves the requests of a site.
 	 *
 	 * @param site    where the requests arrive and what their children receive
-	 * @param starter resolves and starts child runners
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	SessionRequestBroker(Site site, RequestedSessionStarter starter)
+	SessionRequestBroker(Site site)
 	{
 		requireThat(site, "site").isNotNull();
-		requireThat(starter, "starter").isNotNull();
 		this.site = site;
-		this.starter = starter;
 	}
 
 	/**
@@ -391,6 +389,8 @@ public final class SessionRequestBroker implements Closeable
 			return takeDiscard(id, file, directory);
 		if (id.startsWith(RetainedTrialRequest.PREFIX))
 			return takeRetainedTrial(id, file, directory);
+		if (id.startsWith(HookComparisonRequest.PREFIX))
+			return takeHookComparison(id, file, directory);
 		if (stopped)
 		{
 			respond(id, "", site.closedStatus(), site.closedReason(), "", directory);
@@ -478,6 +478,109 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
+	 * Takes a hook comparison for a site that has an authenticated native comparison service.
+	 *
+	 * @param id the request identity
+	 * @param file the published archive
+	 * @param directory the broker-owned response directory
+	 * @return whether the broker took the request, false if the sender still holds the archive open
+	 * @throws IOException if the response cannot be published
+	 */
+	private boolean takeHookComparison(String id, Path file, Path directory) throws IOException
+	{
+		Optional<HookComparisonService> service = site.hookComparison();
+		if (stopped)
+		{
+			WorktreeResponse.failed(site.closedReason()).write(json, id, directory);
+			return true;
+		}
+		if (service.isEmpty())
+		{
+			WorktreeResponse.refused("This request server cannot compare Codex plugin hooks").write(json, id,
+				directory);
+			return true;
+		}
+		Path inputs = directory.resolve(INPUTS);
+		HookComparisonRequest request;
+		try
+		{
+			unpack(file, directory, inputs);
+			request = HookComparisonRequest.read(json, inputs);
+		}
+		catch (RequestArchiveBusyException _)
+		{
+			Files.delete(directory);
+			return false;
+		}
+		catch (IOException | IllegalArgumentException | JacksonException e)
+		{
+			TemporaryDirectories.deleteRecursively(inputs);
+			WorktreeResponse.refused(String.valueOf(e.getMessage())).write(json, id, directory);
+			return true;
+		}
+		children.submit(() -> serveHookComparison(id, directory, inputs, request, service.orElseThrow()));
+		return true;
+	}
+
+	/**
+	 * Compares the captured inputs and cleans them up before publishing an answer.
+	 *
+	 * @param id the request identity
+	 * @param directory the broker-owned response directory
+	 * @param inputs the extracted request archive
+	 * @param request the validated workspace and plugins
+	 * @param service the broker's authenticated native runner service
+	 */
+	private void serveHookComparison(String id, Path directory, Path inputs, HookComparisonRequest request,
+		HookComparisonService service)
+	{
+		try
+		{
+			HookComparisonResult result;
+			try
+			{
+				result = service.compare(request, directory);
+			}
+			finally
+			{
+				TemporaryDirectories.deleteRecursively(inputs);
+			}
+			result.write(json, id, directory);
+		}
+		catch (InterruptedException _)
+		{
+			writeComparisonFailure(id, directory, "The request server stopped the hook comparison");
+			Thread.currentThread().interrupt();
+		}
+		catch (IOException | IllegalArgumentException e)
+		{
+			writeComparisonFailure(id, directory, String.valueOf(e.getMessage()));
+		}
+	}
+
+	/**
+	 * Reports a comparison failure without publishing an incomplete result.
+	 *
+	 * @param id the request identity
+	 * @param directory the broker-owned response directory
+	 * @param reason the failure message
+	 */
+	private void writeComparisonFailure(String id, Path directory, String reason)
+	{
+		try
+		{
+			WorktreeResponse.failed(reason).write(json, id, directory);
+		}
+		catch (IOException e)
+		{
+			synchronized (this)
+			{
+				recordFailure(e);
+			}
+		}
+	}
+
+	/**
 	 * Answers or submits one worktree request whose response directory this scan created. A request whose archive is
 	 * busy is left for a later scan, as a launch is.
 	 *
@@ -495,7 +598,7 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		WorktreeRequest request;
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		try
 		{
 			unpack(file, directory, inputs);
@@ -539,7 +642,7 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		DiscardRequest request;
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		try
 		{
 			unpack(file, directory, inputs);
@@ -625,7 +728,7 @@ public final class SessionRequestBroker implements Closeable
 			return true;
 		}
 		RetainedTrialRequest request;
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		try
 		{
 			unpack(file, directory, inputs);
@@ -852,7 +955,7 @@ public final class SessionRequestBroker implements Closeable
 	 */
 	private LaunchRequest read(Path file, Path directory) throws IOException
 	{
-		Path inputs = directory.resolve("inputs");
+		Path inputs = directory.resolve(INPUTS);
 		unpack(file, directory, inputs);
 		return site.read(json, inputs);
 	}
@@ -917,8 +1020,8 @@ public final class SessionRequestBroker implements Closeable
 		request.sessionRole().ifPresent(role -> arguments.addAll(List.of("--session-role", role)));
 		request.toolOutputTokenLimit().ifPresent(limit ->
 			arguments.addAll(List.of("--tool-output-token-limit", String.valueOf(limit))));
-		for (Path plugin : request.plugins())
-			arguments.addAll(List.of("--plugin", plugin.toString()));
+		for (TrialPluginInput plugin : request.plugins())
+			plugin.appendArguments(arguments);
 		request.agent().ifPresent(agent -> arguments.addAll(List.of("--agent", agent)));
 		if (!request.model().isEmpty())
 			arguments.addAll(List.of("--model", request.model()));
@@ -985,7 +1088,7 @@ public final class SessionRequestBroker implements Closeable
 				slot.slotId()));
 			options.addAll(List.of(RunnerArguments.STARTUP_PERMIT_OPTION, startupGeneration));
 			options.addAll(arguments);
-			options.addAll(site.options(request, slot.root()));
+			RequestedRunner.Start launch = site.prepare(request, slot.root());
 			synchronized (this)
 			{
 				if (stopped || cancelled.contains(id))
@@ -993,7 +1096,7 @@ public final class SessionRequestBroker implements Closeable
 				childRoots.put(id, slot.root().resolve(request.harness()));
 				slots.put(id, slot);
 			}
-			process = starter.start(request.harness(), options, directory);
+			process = launch.run(options, directory);
 			synchronized (this)
 			{
 				processes.put(id, process);
@@ -1034,15 +1137,17 @@ public final class SessionRequestBroker implements Closeable
 				else if (exit == HarnessRunnerOptions.REFUSED_LAUNCH_STATUS)
 				{
 					status = "refused";
-					reason = refusal(directory, reason);
+					reason = runnerDiagnostic(directory, reason);
 				}
 				else if (request.resume().isPresent() && SessionSlots.isRetained(slot))
 				{
 					// The runner ended before it recorded an end, so the harness did not continue the session
 					status = UNRESUMABLE;
-					reason = refusal(directory, "The harness could not continue the session " +
+					reason = runnerDiagnostic(directory, "The harness could not continue the session " +
 						request.resume().get());
 				}
+				else
+					reason = runnerDiagnostic(directory, reason);
 				finish(id, request.harness(), status, reason, directory);
 			}
 		}
@@ -1168,18 +1273,22 @@ public final class SessionRequestBroker implements Closeable
 	}
 
 	/**
-	 * Reads why a requested runner refused its launch, which it wrote to its standard error.
+	 * Reads the requested runner's diagnostic from the broker's private response directory.
 	 *
 	 * @param directory the private response directory, which holds the runner's diagnostics
-	 * @param fallback  the reason to give if the runner wrote none
-	 * @return the runner's reason
+	 * @param fallback  the reason to give if the diagnostic is unavailable
+	 * @return the runner's reason or the fallback
 	 */
-	private static String refusal(Path directory, String fallback)
+	private static String runnerDiagnostic(Path directory, String fallback)
 	{
+		Path file = directory.resolve(RequestedSessionStarter.ERROR_FILE);
+		if (!Files.isRegularFile(file, LinkOption.NOFOLLOW_LINKS))
+			return fallback;
+
 		try
 		{
-			String reason = BoundedInput.readUtf8(directory.resolve(RequestedSessionStarter.ERROR_FILE),
-				MAXIMUM_REFUSAL_BYTES, "requested runner refusal").strip();
+			String reason = BoundedInput.readUtf8(Files.newInputStream(file, LinkOption.NOFOLLOW_LINKS), file,
+				MAXIMUM_RUNNER_DIAGNOSTIC_BYTES, "requested runner diagnostic").strip();
 			if (!reason.isEmpty())
 				return reason;
 		}
@@ -1378,7 +1487,7 @@ public final class SessionRequestBroker implements Closeable
 				continue;
 			String id = directory.getFileName().toString();
 			if (id.startsWith(WorktreeRequest.PREFIX) || id.startsWith(DiscardRequest.PREFIX) ||
-				id.startsWith(RetainedTrialRequest.PREFIX))
+				id.startsWith(RetainedTrialRequest.PREFIX) || id.startsWith(HookComparisonRequest.PREFIX))
 				WorktreeResponse.failed(ENDED).write(json, id, directory);
 			else
 				respond(id, "", "failed", ENDED, "", directory);
@@ -1646,16 +1755,15 @@ public final class SessionRequestBroker implements Closeable
 		FileLocks fileLocks();
 
 		/**
-		 * Returns the options that the site adds to an accepted request's child, on the request's own thread before
-		 * the child starts.
+		 * Prepares a launch with the site's policy and runner, on the request's own thread before the child starts.
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
-		 * @return the options
+		 * @return the prepared launch
 		 * @throws SessionRefusedException if the site refuses the request; the message says why
 		 * @throws IOException             if the options cannot be determined
 		 */
-		List<String> options(LaunchRequest request, Path resultsFolder) throws IOException;
+		RequestedRunner.Start prepare(LaunchRequest request, Path resultsFolder) throws IOException;
 
 		/**
 		 * Returns the status of the requests that remain unanswered when the broker closes.
@@ -1690,12 +1798,41 @@ public final class SessionRequestBroker implements Closeable
 		WorktreeResponse worktree(WorktreeRequest request);
 
 		/**
+		 * Returns the site's authenticated Codex comparison service, if it has one.
+		 *
+		 * @return the service, or empty when execution is unsupported
+		 */
+		default Optional<HookComparisonService> hookComparison()
+		{
+			return Optional.empty();
+		}
+
+		/**
 		 * Releases a request's archive once the broker has copied it, or answered the request without reading it.
 		 *
 		 * @param file the request archive
 		 * @throws IOException if the archive cannot be released
 		 */
 		void taken(Path file) throws IOException;
+	}
+
+	/**
+	 * Runs one request using the broker's authenticated native installation and owner policy.
+	 */
+	@FunctionalInterface
+	public interface HookComparisonService
+	{
+		/**
+		 * Performs the comparison and returns observations only.
+		 *
+		 * @param request the captured workspace copies and plugins
+		 * @param scratch the broker-owned response directory
+		 * @return the native comparison result
+		 * @throws IOException if the comparison cannot run under the owner's policy
+		 * @throws InterruptedException if the broker interrupts the comparison
+		 */
+		HookComparisonResult compare(HookComparisonRequest request, Path scratch)
+			throws IOException, InterruptedException;
 	}
 
 	/**
@@ -1710,9 +1847,11 @@ public final class SessionRequestBroker implements Closeable
 	 *                      session's requested sessions may read, or {@code null} if the nested session has none
 	 * @param limits        the bounds that each request's archive must stay within
 	 * @param slots         the slots, each a results folder, that the nested session's requested sessions take
+	 * @param starter       resolves and starts child runners
 	 */
 	private record NestedSessionSite(NestedSession nestedSession, NestedSessionManager manager,
-		HarnessRunnerOptions options, Path catPlugin, RequestLimits limits, SessionSlots slots) implements Site
+		HarnessRunnerOptions options, Path catPlugin, RequestLimits limits, SessionSlots slots,
+		RequestedSessionStarter starter) implements Site
 	{
 		/**
 		 * Carries out the nested session's worktree requests.
@@ -1729,6 +1868,7 @@ public final class SessionRequestBroker implements Closeable
 		 *                      session's requested sessions may read, or {@code null} if the nested session has none
 		 * @param limits        the bounds that each request's archive must stay within
 		 * @param slots         the slots, each a results folder, that the nested session's requested sessions take
+		 * @param starter       resolves and starts child runners
 		 * @throws NullPointerException if any of the arguments other than {@code catPlugin} are null
 		 */
 		private NestedSessionSite
@@ -1738,6 +1878,7 @@ public final class SessionRequestBroker implements Closeable
 			requireThat(options, "options").isNotNull();
 			requireThat(limits, "limits").isNotNull();
 			requireThat(slots, "slots").isNotNull();
+			requireThat(starter, "starter").isNotNull();
 		}
 
 		@Override
@@ -1821,11 +1962,11 @@ public final class SessionRequestBroker implements Closeable
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
-		 * @return the options
+		 * @return the prepared launch
 		 * @throws IOException if a directory of the parent's results folder cannot be listed
 		 */
 		@Override
-		public List<String> options(LaunchRequest request, Path resultsFolder) throws IOException
+		public RequestedRunner.Start prepare(LaunchRequest request, Path resultsFolder) throws IOException
 		{
 			List<String> arguments = new ArrayList<>(List.of("--capacity-wait", "600", "--max-concurrency",
 				String.valueOf(options.maximumConcurrency())));
@@ -1843,7 +1984,12 @@ public final class SessionRequestBroker implements Closeable
 				if (childDepth > 0)
 					arguments.addAll(List.of("--request-depth", String.valueOf(childDepth)));
 			}
-			return arguments;
+			return (base, directory) ->
+			{
+				List<String> child = new ArrayList<>(base);
+				child.addAll(arguments);
+				return starter.start(request.harness(), child, directory);
+			};
 		}
 
 		/**

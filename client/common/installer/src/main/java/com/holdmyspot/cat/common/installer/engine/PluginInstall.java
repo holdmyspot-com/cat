@@ -105,8 +105,8 @@ public final class PluginInstall
 	}
 
 	/**
-	 * Writes a plugin tree into CAT's marketplace in the harness home, bound to the Java runtime that the plugin will
-	 * have in its version folder, and asks the harness to install it into that version folder.
+	 * Writes a plugin tree into CAT's marketplace in the harness home and asks the harness to install it into its
+	 * version folder. Legacy packages receive an absolute binding to that version's Java runtime.
 	 *
 	 * @param home    the real harness home
 	 * @param plugin  the plugin tree, which this method does not change
@@ -151,7 +151,8 @@ public final class PluginInstall
 		Path staged = parent.resolve("." + marketplace.getFileName() + "-staged");
 		LinkSafeDeletion.delete(staged, home, waiting);
 		TreeCopy.copy(plugin, staged);
-		RuntimeBinding.write(staged, versionFolder.resolve(PluginDirectory.RUNTIME));
+		if (!RuntimeBinding.selectsBundled(staged))
+			RuntimeBinding.write(staged, versionFolder.resolve(PluginDirectory.RUNTIME));
 		LinkSafeDeletion.delete(marketplace, home, waiting);
 		Files.move(staged, marketplace);
 	}

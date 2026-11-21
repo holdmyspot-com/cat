@@ -16,10 +16,12 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.EnumMap;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Predicate;
 
 /**
@@ -59,6 +61,43 @@ public final class Scheduler
 	 */
 	public static List<Admission> plan(Campaign campaign, Instant now, int freeCapacity)
 	{
+		return plan(campaign, now, freeCapacity, _ -> true);
+	}
+
+	/**
+	 * Plans admissions for cells whose evaluators can start work. An assigned trial for a held evaluator waits
+	 * without reserving a slot in the plan. Running or judged trials still count toward the concurrency windows.
+	 *
+	 * @param campaign the campaign
+	 * @param now the current time
+	 * @param freeCapacity the maximum number of sessions that may start
+	 * @param runnableCell selects cells whose evaluators can start work
+	 * @return the admissions in priority order
+	 * @throws NullPointerException if an argument is null
+	 */
+	public static List<Admission> plan(Campaign campaign, Instant now, int freeCapacity,
+		Predicate<String> runnableCell)
+	{
+		return plan(campaign, now, freeCapacity, runnableCell, Set.of());
+	}
+
+	/**
+	 * Plans admissions with the identities of known retained continuations waiting on a hold. These continuations
+	 * also release their window slots because the broker can resume them and no session runs.
+	 *
+	 * @param campaign the campaign
+	 * @param now the current time
+	 * @param freeCapacity the maximum number of sessions that may start
+	 * @param runnableCell selects cells whose evaluators can start work
+	 * @param heldContinuations the recorded continuations with resumable prefixes and no active session
+	 * @return the admissions in priority order
+	 * @throws NullPointerException if an argument is null
+	 */
+	public static List<Admission> plan(Campaign campaign, Instant now, int freeCapacity,
+		Predicate<String> runnableCell, Set<TrialKey> heldContinuations)
+	{
+		requireThat(runnableCell, "runnableCell").isNotNull();
+		requireThat(heldContinuations, "heldContinuations").isNotNull();
 		requireThat(campaign, "campaign").isNotNull();
 		requireThat(now, "now").isNotNull();
 		List<Admission> plan = new ArrayList<>();
@@ -68,12 +107,18 @@ public final class Scheduler
 		{
 			return plan;
 		}
+		Set<TrialKey> deferred = new HashSet<>(heldContinuations);
 		for (LogicalTrial trial : campaign.trials())
 		{
-			if (trial.state() == TrialState.ASSIGNED)
-				plan.add(new Admission.Rerun(trial.key()));
+			if (trial.state() != TrialState.ASSIGNED)
+				continue;
+			TrialKey key = trial.key();
+			if (runnableCell.test(key.cell()))
+				plan.add(new Admission.Rerun(key));
+			else
+				deferred.add(key);
 		}
-		Allocations allocations = new Allocations(campaign.evidenceRevision(), now);
+		Allocations allocations = new Allocations(campaign.evidenceRevision(), now, runnableCell, deferred);
 		planTargeted(campaign, plan, allocations);
 		Optional<CertificationAttempt> running = campaign.runningAttempt();
 		if (running.isPresent())
@@ -110,7 +155,7 @@ public final class Scheduler
 		Map<Integer, Map<String, Integer>> inFlight = new HashMap<>();
 		for (LogicalTrial trial : campaign.trials())
 		{
-			if (trial.key().purpose() == Purpose.RACE)
+			if (trial.key().purpose() == Purpose.RACE && allocations.occupiesWindow(trial.key()))
 				inFlight.computeIfAbsent(trial.key().series(), _ -> new HashMap<>()).
 					merge(trial.key().cell(), 1, Integer::sum);
 		}
@@ -131,6 +176,8 @@ public final class Scheduler
 					continue;
 				for (String cell : race.cells())
 				{
+					if (!allocations.runnableCell().test(cell))
+						continue;
 					int assigned = racer.count(cell).outcomes() +
 						inFlight.getOrDefault(racer.attempt(), Map.of()).getOrDefault(cell, 0) +
 						plannedInCell(plan, racer.attempt(), cell);
@@ -188,8 +235,11 @@ public final class Scheduler
 		if (diagnosis != null && !diagnosis.pending().isEmpty() && diagnosis.rerun() == null)
 		{
 			DrawnTestCase testCase = diagnosis.pending().getFirst();
-			plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, testCase.cellId(),
-				testCase, allocations.of(AllocationRule.TARGETED)));
+			if (allocations.runnableCell().test(testCase.cellId()))
+			{
+				plan.add(new Admission.Assign(Purpose.DIAGNOSTIC, development.series(), working, testCase.cellId(),
+					testCase, allocations.of(AllocationRule.TARGETED)));
+			}
 		}
 		Round round = development.round();
 		List<PromptAuthorAttempt> pending = ConcurrencyPolicy.pendingPromptAuthors(campaign);
@@ -198,7 +248,7 @@ public final class Scheduler
 			for (PromptAuthorAttempt attempt : round.validationAttempts())
 			{
 				if (pending.contains(attempt))
-					planPromotion(attempt, working, plan, allocations, promotionSlots(campaign, attempt), _ -> true);
+					planPromotion(attempt, working, plan, allocations, promotionSlots(campaign, attempt, allocations), _ -> true);
 				else
 				{
 					planPromotion(attempt, working, plan, allocations, Integer.MAX_VALUE,
@@ -208,7 +258,7 @@ public final class Scheduler
 			return;
 		}
 		for (PromptAuthorAttempt attempt : pending)
-			planPromotion(attempt, working, plan, allocations, promotionSlots(campaign, attempt), _ -> true);
+			planPromotion(attempt, working, plan, allocations, promotionSlots(campaign, attempt, allocations), _ -> true);
 	}
 
 	/**
@@ -243,14 +293,15 @@ public final class Scheduler
 	 *
 	 * @param campaign the campaign
 	 * @param attempt the attempt
+	 * @param allocations the allocation decisions of this plan
 	 * @return the number of replays, possibly negative
 	 */
-	private static int promotionSlots(Campaign campaign, PromptAuthorAttempt attempt)
+	private static int promotionSlots(Campaign campaign, PromptAuthorAttempt attempt, Allocations allocations)
 	{
 		int inFlight = 0;
 		for (PromotionReplay replay : attempt.replays())
 		{
-			if (replay.trial() != null && replay.verdict() == null)
+			if (replay.trial() != null && replay.verdict() == null && allocations.occupiesWindow(replay.trial()))
 				++inFlight;
 		}
 		return ConcurrencyPolicy.limit(campaign, WorkUnit.promotion(attempt)) - inFlight;
@@ -275,8 +326,11 @@ public final class Scheduler
 		{
 			if (planned >= slots)
 				return;
-			if (replay.trial() != null || replay.verdict() != null || !due.test(replay))
+			if (replay.trial() != null || replay.verdict() != null ||
+				!allocations.runnableCell().test(replay.testCase().cellId()) || !due.test(replay))
+			{
 				continue;
+			}
 			++planned;
 			plan.add(new Admission.Assign(Purpose.PROMOTION, promptAuthor.number(), Promotion.snapshot(promptAuthor,
 				replay, working), replay.testCase().cellId(), replay.testCase(), allocations.of(AllocationRule.TARGETED)));
@@ -289,15 +343,17 @@ public final class Scheduler
 	 * @param campaign the campaign
 	 * @param purpose the trial purpose to count
 	 * @param series the development series or baseline, certification or prompt-author-attempt number to count
+	 * @param allocations the allocation decisions of this plan
 	 * @return the number of trials per cell
 	 */
-	private static Map<String, Integer> countInFlight(Campaign campaign, Purpose purpose, int series)
+	private static Map<String, Integer> countInFlight(Campaign campaign, Purpose purpose, int series,
+		Allocations allocations)
 	{
 		Map<String, Integer> inFlight = new HashMap<>();
 		for (LogicalTrial trial : campaign.trials())
 		{
 			TrialKey key = trial.key();
-			if (key.purpose() == purpose && key.series() == series)
+			if (key.purpose() == purpose && key.series() == series && allocations.occupiesWindow(key))
 				inFlight.merge(key.cell(), 1, Integer::sum);
 		}
 		return inFlight;
@@ -340,17 +396,18 @@ public final class Scheduler
 	private static void planFormal(Campaign campaign, CertificationAttempt attempt, List<Admission> plan,
 		int freeCapacity, Allocations allocations)
 	{
-		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.FORMAL, attempt.index());
+		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.FORMAL, attempt.index(), allocations);
 		Map<Reference, Map<String, Integer>> referencesInFlight = new EnumMap<>(Reference.class);
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
 		for (Reference reference : Reference.values())
 		{
-			Map<String, Integer> references = countInFlight(campaign, reference.purpose(), attempt.index());
+			Map<String, Integer> references = countInFlight(campaign, reference.purpose(), attempt.index(), allocations);
 			referencesInFlight.put(reference, references);
 			slots -= total(references);
 		}
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
-		List<Cell> openCells = CellTier.openCells(campaign, attempt);
+		List<Cell> openCells = CellTier.openCells(campaign, attempt).stream().
+			filter(cell -> allocations.runnableCell().test(cell.id())).toList();
 		Map<String, Integer> unitLimits = new HashMap<>();
 		for (Cell cell : openCells)
 		{
@@ -616,7 +673,8 @@ public final class Scheduler
 		for (int i = 0; i < groups.size(); ++i)
 		{
 			FailureGroup group = groups.get(i);
-			if (group.status() == FailureGroup.Status.REPRODUCING && !group.round().awaitsValues())
+			if (group.status() == FailureGroup.Status.REPRODUCING && !group.round().awaitsValues() &&
+				allocations.runnableCell().test(group.round().cellId()))
 			{
 				remaining[i] = FailureGroup.TRIALS - group.round().trials();
 				window[i] = ConcurrencyPolicy.limit(campaign, ConcurrencyPolicy.reproductionUnit(i + 1, group));
@@ -625,7 +683,7 @@ public final class Scheduler
 		for (LogicalTrial trial : campaign.trials())
 		{
 			TrialKey key = trial.key();
-			if (key.purpose() != Purpose.REPRODUCTION)
+			if (key.purpose() != Purpose.REPRODUCTION || !allocations.occupiesWindow(key))
 				continue;
 			++inFlight;
 			int index = key.series() - 1;
@@ -675,9 +733,10 @@ public final class Scheduler
 	{
 		Development development = campaign.development();
 		Contract contract = campaign.contract();
-		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.DEVELOPMENT, development.series());
+		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.DEVELOPMENT, development.series(), allocations);
 		int slots = ConcurrencyPolicy.window(campaign) - total(inFlight);
-		List<Cell> developmentCells = CellTier.developmentCells(campaign);
+		List<Cell> developmentCells = CellTier.developmentCells(campaign).stream().
+			filter(cell -> allocations.runnableCell().test(cell.id())).toList();
 		while (slots > 0 && plan.size() < freeCapacity)
 		{
 			List<Cell> eligible = new ArrayList<>();
@@ -772,11 +831,12 @@ public final class Scheduler
 			return;
 		IncumbentBaseline baseline = campaign.baseline();
 		List<String> cells = CellTier.scopeCellIds(campaign.contract());
-		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.BASELINE, baseline.index());
+		Map<String, Integer> inFlight = countInFlight(campaign, Purpose.BASELINE, baseline.index(), allocations);
 		// Baseline failures end no work, so only the campaign ceiling and the infrastructure halvings bound its trials
 		int capacity = freeCapacity - (campaign.ceiling() - campaign.windows().halve(campaign.ceiling()));
+		List<String> runnable = cells.stream().filter(allocations.runnableCell()).toList();
 		Map<String, Integer> needed = new HashMap<>();
-		for (String cell : cells)
+		for (String cell : runnable)
 		{
 			CellCounts counts = baseline.count(cell);
 			int target = Baseline.target(counts, baseline.index(), cells.size(),
@@ -787,7 +847,7 @@ public final class Scheduler
 		while (added)
 		{
 			added = false;
-			for (String cell : cells)
+			for (String cell : runnable)
 			{
 				int need = needed.get(cell);
 				if (need <= 0 || plan.size() >= capacity)
@@ -801,13 +861,27 @@ public final class Scheduler
 	}
 
 	/**
-	 * The evidence revision and time that every allocation decision of one plan shares.
+	 * The inputs that every allocation decision in this plan shares.
 	 *
 	 * @param evidenceRevision the campaign's evidence revision
 	 * @param now the assignment time
+	 * @param runnableCell selects cells whose evaluators can start work
+	 * @param deferred queued assignments and retained continuations waiting for their evaluator's hold to end
 	 */
-	private record Allocations(long evidenceRevision, Instant now)
+	private record Allocations(long evidenceRevision, Instant now, Predicate<String> runnableCell,
+		Set<TrialKey> deferred)
 	{
+		/**
+		 * Indicates whether an existing trial occupies a window slot.
+		 *
+		 * @param key the trial's key
+		 * @return whether the trial is running, awaiting adoption, or ready to start
+		 */
+		boolean occupiesWindow(TrialKey key)
+		{
+			return !deferred.contains(key);
+		}
+
 		/**
 		 * Returns the allocation decision of a rule.
 		 *

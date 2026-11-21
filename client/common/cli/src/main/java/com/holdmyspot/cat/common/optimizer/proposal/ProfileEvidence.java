@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.proposal;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileBinding;
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
@@ -12,6 +13,7 @@ import com.holdmyspot.cat.common.optimizer.contract.TrialProfile;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -32,8 +34,10 @@ import tools.jackson.databind.node.ObjectNode;
  * @param ranking the capability ranking that CAT ships for the harness
  * @param bindings the profile that each file binds, keyed by the file's path as the fork names it: relative to the
  *   project, or absolute outside it. A file that binds nothing is absent.
+ * @param byEvaluator the individual trial evaluator inventories, or empty to use the owner inventory
  */
-public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking ranking, Map<String, TrialProfile> bindings)
+public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking ranking, Map<String, TrialProfile> bindings,
+	Map<Harness, ProfileEvidence> byEvaluator)
 {
 	/**
 	 * The separator between a link's path and its resolved target in a requirement's source.
@@ -46,8 +50,9 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 	 * @param inventory the harness's profile inventory and its source
 	 * @param ranking the capability ranking that CAT ships for the harness
 	 * @param bindings the profile that each file binds, keyed by the file's path as the fork names it
+	 * @param byEvaluator the individual trial evaluator inventories
 	 * @throws NullPointerException if any of the arguments are null
-	 * @throws IllegalArgumentException if a binding binds nothing
+	 * @throws IllegalArgumentException if a binding binds nothing or an evaluator holds another evaluator map
 	 */
 	public ProfileEvidence
 	{
@@ -57,6 +62,23 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 		for (Map.Entry<String, TrialProfile> entry : bindings.entrySet())
 			requireThat(entry.getValue().isBound(), "bindings[" + entry.getKey() + "].isBound()").isTrue();
 		bindings = Map.copyOf(bindings);
+		byEvaluator = Map.copyOf(byEvaluator);
+		for (ProfileEvidence evaluator : byEvaluator.values())
+			requireThat(evaluator.byEvaluator(), "nestedEvaluatorProfiles").isEmpty();
+	}
+
+	/**
+	 * Creates evidence for a single harness.
+	 *
+	 * @param inventory the harness's profile inventory and its source
+	 * @param ranking the capability ranking that CAT ships for the harness
+	 * @param bindings the profile that each file binds, keyed by its path
+	 * @throws NullPointerException if any of the arguments are null
+	 * @throws IllegalArgumentException if a binding binds nothing
+	 */
+	public ProfileEvidence(ProfileCatalog inventory, CapabilityRanking ranking, Map<String, TrialProfile> bindings)
+	{
+		this(inventory, ranking, bindings, Map.of());
 	}
 
 	/**
@@ -121,6 +143,15 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 			writeProfile(entry.getValue(), binding);
 			binding.put("file", entry.getKey());
 		}
+		if (!byEvaluator.isEmpty())
+		{
+			ArrayNode evaluators = node.putArray("by_evaluator");
+			for (Map.Entry<Harness, ProfileEvidence> entry : new EnumMap<>(byEvaluator).entrySet())
+			{
+				ObjectNode evaluator = evaluators.addObject().put("harness", entry.getKey().commandName());
+				entry.getValue().write(evaluator.putObject("profiles"));
+			}
+		}
 	}
 
 	/**
@@ -146,6 +177,18 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 	public static ProfileEvidence read(JsonNode node)
 	{
 		requireThat(node, "node").isNotNull();
+		return read(node, true);
+	}
+
+	/**
+	 * Reads the evidence and allows evaluator data only at its outer level.
+	 *
+	 * @param node the object
+	 * @param allowEvaluators whether the object may name trial evaluators
+	 * @return the evidence
+	 */
+	private static ProfileEvidence read(JsonNode node, boolean allowEvaluators)
+	{
 		if (!node.path("inventory_source").isString() || !node.path("inventory").isArray() ||
 			!node.path("ranking_source").isString() || !node.path("ranking").isArray() ||
 			!node.path("bindings").isArray())
@@ -170,7 +213,32 @@ public record ProfileEvidence(ProfileCatalog inventory, CapabilityRanking rankin
 				binding.get("effort").asString()));
 		}
 		return new ProfileEvidence(new ProfileCatalog(node.get("inventory_source").asString(), profiles),
-			new CapabilityRanking(families, node.get("ranking_source").asString()), bindings);
+			new CapabilityRanking(families, node.get("ranking_source").asString()), bindings,
+			readEvaluators(node.path("by_evaluator"), allowEvaluators));
+	}
+
+	/**
+	 * Reads the profile evidence of explicitly selected evaluators, if present.
+	 *
+	 * @param node the evaluator array
+	 * @param allowed whether the profile evidence may hold evaluator data
+	 * @return the evidence keyed by evaluator
+	 */
+	private static Map<Harness, ProfileEvidence> readEvaluators(JsonNode node, boolean allowed)
+	{
+		if (node.isMissingNode())
+			return Map.of();
+		if (!allowed || !node.isArray() || node.isEmpty())
+			throw new IllegalArgumentException("Expected a nonempty array of evaluator profile evidence");
+		Map<Harness, ProfileEvidence> evaluators = new EnumMap<>(Harness.class);
+		for (JsonNode item : node)
+		{
+			Harness harness = Harness.fromCommandName(item.path("harness").asString()).
+				orElseThrow(() -> new IllegalArgumentException("Unknown trial evaluator in the profile evidence"));
+			if (evaluators.putIfAbsent(harness, read(item.path("profiles"), false)) != null)
+				throw new IllegalArgumentException("Repeated profile evidence for " + harness.productName());
+		}
+		return evaluators;
 	}
 
 	/**

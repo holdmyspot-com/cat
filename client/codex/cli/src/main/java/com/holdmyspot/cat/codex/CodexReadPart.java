@@ -147,6 +147,24 @@ public final class CodexReadPart
 	public static int run(String[] args, CommandShell shell, Path readPart, Map<String, String> environment,
 		OutputStream output, PrintStream error)
 	{
+		return run(args, shell, readPart, environment, output, error, 0);
+	}
+
+	/**
+	 * Prints a part, retaining the original budget when its prefix has already been shown.
+	 *
+	 * @param args the path and optional position
+	 * @param shell the shell for the continuation command
+	 * @param readPart the continuation launcher
+	 * @param environment the caller's environment
+	 * @param output receives the part
+	 * @param error receives diagnostics
+	 * @param pageLimit the budget already used by the caller, or 0 to read the current limit
+	 * @return the result of printing the part
+	 */
+	static int run(String[] args, CommandShell shell, Path readPart, Map<String, String> environment,
+		OutputStream output, PrintStream error, long pageLimit)
+	{
 		requireThat(args, "args").isNotNull();
 		requireThat(shell, "shell").isNotNull();
 		requireThat(readPart, "readPart").isNotNull();
@@ -205,7 +223,10 @@ public final class CodexReadPart
 					"with a tool for its format instead");
 				return 1;
 			}
-			Part part = new Part(path, shell.command(readPart.toString(), path), limit(environment), count,
+			long budget = pageLimit;
+			if (budget == 0)
+				budget = limit(environment);
+			Part part = new Part(path, shell.command(readPart.toString(), path), budget, count,
 				Files.size(file));
 			long line = parse(position.group("line"), Long.MAX_VALUE);
 			int column = 1;
@@ -348,13 +369,39 @@ public final class CodexReadPart
 	 * @param environment the environment
 	 * @return the number of bytes, or {@link #NO_LIMIT} outside a Codex thread
 	 */
-	private static long limit(Map<String, String> environment)
+	static long limit(Map<String, String> environment)
 	{
 		String thread = environment.get("CODEX_THREAD_ID");
 		if (thread == null || thread.isEmpty())
 			return NO_LIMIT;
 		long tokens = Math.min(DEFAULT_TOKENS, configuredTokens(environment));
 		return Math.max(1, tokens * BYTES_PER_TOKEN - RESERVED_BYTES);
+	}
+
+	/**
+	 * Returns the byte budget for streamed lines after reserving the largest possible first-page ending.
+	 *
+	 * @param path the saved output's path
+	 * @param command the command that reads the next part
+	 * @param limit the first-page byte limit
+	 * @return the byte budget left for complete lines
+	 */
+	static long streamingPrefixLimit(String path, String command, long limit)
+	{
+		return Part.streamingLimit(path, command, limit);
+	}
+
+	/**
+	 * Returns the number of bytes Codex shows after JSON escaping.
+	 *
+	 * @param text the bytes
+	 * @param from the first byte
+	 * @param to the index after the last byte
+	 * @return the escaped length
+	 */
+	static long shownLength(byte[] text, int from, int to)
+	{
+		return Part.shownLength(text, from, to);
 	}
 
 	/**
@@ -591,6 +638,22 @@ public final class CodexReadPart
 	private record Part(String path, String command, long limit, long count, long size)
 	{
 		/**
+		 * Returns the budget left after reserving the largest possible page ending.
+		 *
+		 * @param path the saved output's path
+		 * @param command the command that reads the next part
+		 * @param limit the page limit
+		 * @return the remaining budget
+		 */
+		static long streamingLimit(String path, String command, long limit)
+		{
+			Part part = new Part(path, command, limit, Long.MAX_VALUE, Long.MAX_VALUE);
+			byte[] footer = part.footer(String.valueOf(Long.MAX_VALUE), 0, false);
+			byte[] closing = part.closing();
+			return limit - Math.max(shownLength(footer, 0, footer.length), shownLength(closing, 0, closing.length));
+		}
+
+		/**
 		 * The result of printing parts when the last part was printed.
 		 */
 		static final int LAST = -2;
@@ -780,7 +843,7 @@ public final class CodexReadPart
 		 * @param to the index after the last byte
 		 * @return the number of bytes
 		 */
-		private static long shownLength(byte[] text, int from, int to)
+		static long shownLength(byte[] text, int from, int to)
 		{
 			long length = 0;
 			int i = from;

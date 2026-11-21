@@ -11,13 +11,13 @@ import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.DrawnTestCase;
+import com.holdmyspot.cat.common.optimizer.evidence.EvidencePrompt;
 import com.holdmyspot.cat.common.optimizer.execution.JudgeProtocol;
 import com.holdmyspot.cat.common.optimizer.execution.Judgment;
 import com.holdmyspot.cat.common.optimizer.port.SessionRequest;
 import com.holdmyspot.cat.common.optimizer.port.SessionResult;
 import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.proposal.JsonResponse;
-import com.holdmyspot.cat.common.optimizer.proposal.PromptTemplate;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 
 import java.nio.file.Path;
@@ -29,6 +29,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.function.UnaryOperator;
 
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
@@ -122,28 +123,31 @@ public final class JudgePrompt implements JudgeProtocol
 				put("passed", result.passed()).
 				put("observed", result.observed());
 		}
+		Path originalTranscript = evidence.transcript();
+		Path originalEffects = evidence.effects();
 		Map<String, String> values = new HashMap<>(Map.of(
 			"rubric", profile.rubric(),
 			"decision_rule", profile.decisionRule(),
 			"assertions", pretty(assertionArray),
 			"test_case", pretty(TestCaseJson.encode(json, testCase)),
 			"responses", pretty(responseArray),
-			"effects", evidence.effects().toString(),
-			"transcript", evidence.transcript().toString(),
+			"effects", originalEffects.toString(),
+			"transcript", originalTranscript.toString(),
 			"evidence", evidenceSection,
 			"tool_results", pretty(resultArray),
 			"result_schema", pretty(json.readTree(profile.resultSchema()))));
 		values.keySet().removeIf(name -> !profile.prompt().contains("{{" + name + "}}"));
-		String turn = new PromptTemplate(profile.prompt()).fill(values);
+		EvidencePrompt prompt = new EvidencePrompt(profile.prompt(), values, originalTranscript, originalEffects);
 
 		List<Path> readOnly = new ArrayList<>();
-		readOnly.add(evidence.effects());
-		Path transcriptDirectory = evidence.transcript().getParent();
+		readOnly.add(originalEffects);
+		Path transcriptDirectory = originalTranscript.getParent();
 		if (profile.prompt().contains("{{transcript}}") && transcriptDirectory != null &&
 			!readOnly.contains(transcriptDirectory))
 			readOnly.add(transcriptDirectory);
-		return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory, List.of(turn), readOnly, TIME_LIMIT,
-			profile.profile());
+		return new SessionRequest(SessionRole.JUDGE, Part.HELD_OUT, judgeDirectory,
+			List.of(prompt.render(UnaryOperator.identity())), readOnly, TIME_LIMIT, profile.profile()).
+			withEvidencePrompt(prompt);
 	}
 
 	/**

@@ -3,6 +3,7 @@ package com.holdmyspot.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.report.EnumNames;
 import java.io.IOException;
 import java.io.InputStream;
@@ -11,6 +12,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -50,6 +52,7 @@ public final class ProposalSchema
 	 * The property that holds the trial profiles, which CAT computes rather than the contract author.
 	 */
 	public static final String TRIAL_PROFILES = "trial_profiles";
+	private static final String EVALUATORS = "evaluators";
 
 	/**
 	 * The proposal field holding the paths of recorded scenarios covered by a test.
@@ -99,6 +102,7 @@ public final class ProposalSchema
 	private final JsonMapper json;
 	private final String schemaText;
 	private final SchemaValidator validator;
+	private final SchemaValidator evaluated;
 	private final ObjectNode derivationSchema;
 	private final SchemaValidator derivation;
 	private final ObjectNode proposalFileSchema;
@@ -117,10 +121,48 @@ public final class ProposalSchema
 		this.json = json;
 		schemaText = readResource(SCHEMA_RESOURCE);
 		validator = new SchemaValidator(json.readTree(schemaText));
+		evaluated = new SchemaValidator(evaluatedSchema(json, schemaText));
 		derivationSchema = derivationSchema(json, schemaText);
 		derivation = new SchemaValidator(derivationSchema);
 		proposalFileSchema = proposalFileSchema(json, derivationSchema);
 		proposalFileValidator = new SchemaValidator(proposalFileSchema);
+	}
+
+	/**
+	 * Defines evaluator assignments in stored contracts using the individual profile schema for each evaluator.
+	 *
+	 * @param json       the operation-owned JSON mapper
+	 * @param schemaText the base contract schema
+	 * @return the schema for a contract with recorded evaluator assignments
+	 */
+	private static ObjectNode evaluatedSchema(JsonMapper json, String schemaText)
+	{
+		ObjectNode root = (ObjectNode) json.readTree(schemaText);
+		ObjectNode properties = (ObjectNode) root.get("properties");
+		JsonNode local = properties.get(TRIAL_PROFILES);
+		ObjectNode assigned = (ObjectNode) json.readTree("""
+			{
+			  "type": "object",
+			  "additionalProperties": false,
+			  "required": ["evaluators"],
+			  "properties": {
+			    "evaluators": {
+			      "type": "array",
+			      "minItems": 1,
+			      "items": {
+			        "type": "object",
+			        "additionalProperties": false,
+			        "required": ["evaluator", "profiles"],
+			        "properties": { "evaluator": { "type": "string" } }
+			      }
+			    }
+			  }
+			}
+			""");
+		ObjectNode evaluator = (ObjectNode) assigned.get("properties").get(EVALUATORS).get("items").get("properties");
+		evaluator.set("profiles", local);
+		properties.set(TRIAL_PROFILES, assigned);
+		return root;
 	}
 
 	/**
@@ -269,7 +311,24 @@ public final class ProposalSchema
 	public Contract parse(String proposal) throws InvalidProposalException
 	{
 		requireThat(proposal, "proposal").isNotNull();
-		return parse(proposal, validator, null, null, null, Map.of(), Map.of());
+		return parse(proposal, null, null, null, Map.of(), Map.of(), Set.of());
+	}
+
+	/**
+	 * Reads a stored campaign's contract and checks its assignments against the campaign header.
+	 *
+	 * @param proposal   the contract's JSON form
+	 * @param evaluators the evaluation harnesses from the saved campaign header
+	 * @return the contract with its cells assigned to evaluators
+	 * @throws NullPointerException     if either argument is null
+	 * @throws IllegalArgumentException if the supplied evaluator set is empty
+	 * @throws InvalidProposalException if the contract is invalid or disagrees with the campaign's evaluators
+	 */
+	public Contract parseRecorded(String proposal, Set<Harness> evaluators) throws InvalidProposalException
+	{
+		requireThat(proposal, "proposal").isNotNull();
+		requireThat(evaluators, "evaluators").isNotEmpty();
+		return parse(proposal, null, null, null, Map.of(), Map.of(), Set.copyOf(evaluators));
 	}
 
 	/**
@@ -301,14 +360,13 @@ public final class ProposalSchema
 		requireThat(seeds, "seeds").isNotNull();
 		requireThat(committed, "committed").isNotNull();
 		requireThat(recorded, "recorded").isNotNull();
-		return parse(proposal, derivation, profiles, salt, seeds, committed, recorded);
+		return parse(proposal, profiles, salt, seeds, committed, recorded, Set.of());
 	}
 
 	/**
 	 * Validates a proposal and converts it to a contract.
 	 *
 	 * @param proposal the JSON text
-	 * @param schema the schema that the proposal must satisfy
 	 * @param profiles computes the trial profiles, or {@code null} to read them from the proposal
 	 * @param salt the contract's salt, or {@code null} to read it from the proposal
 	 * @param seeds the source of the seeds that CAT adds to each generator call, or {@code null} if each call carries
@@ -316,11 +374,12 @@ public final class ProposalSchema
 	 * @param committed the committed test cases that CAT adds, by prompt test identifier, to tests whose JSON holds none
 	 * @param recorded the recorded workspace files that CAT adds, by prompt test identifier, to tests whose JSON holds
 	 *   none
+	 * @param evaluators the evaluation harnesses from the campaign header, or empty for a standalone proposal
 	 * @return the contract
 	 * @throws InvalidProposalException if the proposal is invalid
 	 */
-	private Contract parse(String proposal, SchemaValidator schema, ProfileRule profiles, Long salt,
-		RandomGenerator seeds, Map<String, List<TestCase>> committed, Map<String, List<WorkspaceFile>> recorded)
+	private Contract parse(String proposal, ProfileRule profiles, Long salt, RandomGenerator seeds,
+		Map<String, List<TestCase>> committed, Map<String, List<WorkspaceFile>> recorded, Set<Harness> evaluators)
 		throws InvalidProposalException
 	{
 		JsonNode root;
@@ -335,12 +394,19 @@ public final class ProposalSchema
 		if (root == null || root.isMissingNode())
 			throw new InvalidProposalException(List.of("$: not valid JSON: the proposal is empty"));
 
+		SchemaValidator schema = derivation;
+		if (profiles == null)
+		{
+			schema = validator;
+			if (root.path(TRIAL_PROFILES).has(EVALUATORS))
+				schema = evaluated;
+		}
 		List<String> violations = schema.violations(root);
 		if (!violations.isEmpty())
 			throw new InvalidProposalException(violations);
 
 		List<String> problems = new ArrayList<>();
-		Contract contract = new Builder(problems, seeds, committed, recorded).contract(root, profiles, salt);
+		Contract contract = new Builder(problems, seeds, committed, recorded).contract(root, profiles, salt, evaluators);
 		if (contract == null)
 			throw new InvalidProposalException(problems);
 		return contract;
@@ -363,13 +429,13 @@ public final class ProposalSchema
 		ArrayNode tests = root.putArray("tests");
 		for (PromptTest test : contract.tests())
 			write(test, tests.addObject());
-		write(contract.profiles(), root.putObject(TRIAL_PROFILES));
+		writeProfiles(contract.profiles(), root.putObject(TRIAL_PROFILES));
 		write(contract.judge(), root.putObject("judge"));
 		ArrayNode limitations = root.putArray("limitations");
 		contract.limitations().forEach(limitations::add);
 		root.put("minimum_pass_rate", contract.minimumPassRate());
 		root.put(SALT, contract.salt());
-		writeDependents(contract, root);
+		writeDependents(contract.dependents(), root);
 		writeReferencedFiles(contract, root);
 		return json.writeValueAsString(root);
 	}
@@ -389,6 +455,20 @@ public final class ProposalSchema
 	 */
 	public String toJson(Contract contract, PromptTest test)
 	{
+		return toJson(contract, test, null);
+	}
+
+	/**
+	 * Writes a prompt test definition for one evaluator's control trials.
+	 *
+	 * @param contract the contract
+	 * @param test a prompt test of {@code contract}
+	 * @param evaluator whose packaged dependents to retain, or null to retain every dependent
+	 * @return the definition with the test, checked requirements, judge, applicable dependents and referenced files
+	 * @throws NullPointerException if a required argument is null
+	 */
+	public String toJson(Contract contract, PromptTest test, Harness evaluator)
+	{
 		requireThat(contract, "contract").isNotNull();
 		requireThat(test, "test").isNotNull();
 		ObjectNode root = json.createObjectNode();
@@ -400,7 +480,14 @@ public final class ProposalSchema
 				write(requirement, requirements.addObject());
 		}
 		write(contract.judge(), root.putObject("judge"));
-		writeDependents(contract, root);
+		List<Dependent> dependents = contract.dependents();
+		if (evaluator != null)
+		{
+			dependents = dependents.stream().
+				filter(dependent -> dependent.evaluator().isEmpty() || dependent.evaluator().orElseThrow() == evaluator).
+				toList();
+		}
+		writeDependents(dependents, root);
 		writeReferencedFiles(contract, root);
 		return json.writeValueAsString(root);
 	}
@@ -439,16 +526,16 @@ public final class ProposalSchema
 	/**
 	 * Writes the dependents of the target prompt file, if the contract lists any.
 	 *
-	 * @param contract the contract
+	 * @param selected the dependents to write in order
 	 * @param root the object that receives the {@value #DEPENDENTS} property
 	 */
-	private static void writeDependents(Contract contract, ObjectNode root)
+	private static void writeDependents(List<Dependent> selected, ObjectNode root)
 	{
 		// A contract without dependents keeps the identity that it had before the property existed
-		if (contract.dependents().isEmpty())
+		if (selected.isEmpty())
 			return;
 		ArrayNode dependents = root.putArray(DEPENDENTS);
-		for (Dependent dependent : contract.dependents())
+		for (Dependent dependent : selected)
 		{
 			ObjectNode node = dependents.addObject();
 			node.put("location", EnumNames.lowerCase(dependent.location()));
@@ -456,6 +543,7 @@ public final class ProposalSchema
 				node.putNull("plugin");
 			else
 				node.put("plugin", dependent.plugin());
+			dependent.evaluator().ifPresent(evaluator -> node.put("evaluator", evaluator.commandName()));
 			node.put("path", PortablePaths.text(dependent.path()));
 			node.putNull("text");
 			node.putNull("event");
@@ -500,6 +588,28 @@ public final class ProposalSchema
 	 *
 	 * @param profiles the trial profiles
 	 * @param node the object that receives their properties
+	 */
+	private static void writeProfiles(TrialProfiles profiles, ObjectNode node)
+	{
+		if (profiles.byEvaluator().isEmpty())
+		{
+			write(profiles, node);
+			return;
+		}
+		ArrayNode evaluators = node.putArray(EVALUATORS);
+		profiles.byEvaluator().forEach((evaluator, local) ->
+		{
+			ObjectNode entry = evaluators.addObject();
+			entry.put("evaluator", evaluator.commandName());
+			write(local, entry.putObject("profiles"));
+		});
+	}
+
+	/**
+	 * Writes one evaluator's trial profiles.
+	 *
+	 * @param profiles the trial profiles
+	 * @param node     the object that receives their properties
 	 */
 	private static void write(TrialProfiles profiles, ObjectNode node)
 	{
@@ -728,9 +838,10 @@ public final class ProposalSchema
 		 * @param root the proposal
 		 * @param rule computes the trial profiles, or {@code null} to read them from the proposal
 		 * @param salt the contract's salt, or {@code null} to read it from the proposal
+		 * @param evaluators the evaluation harnesses saved with the contract, or empty outside a campaign
 		 * @return the contract, or null if a problem was added
 		 */
-		Contract contract(JsonNode root, ProfileRule rule, Long salt)
+		Contract contract(JsonNode root, ProfileRule rule, Long salt, Set<Harness> evaluators)
 		{
 			if (seeds != null)
 				takeStatedSeeds(root);
@@ -763,7 +874,7 @@ public final class ProposalSchema
 				return null;
 			TrialProfiles profiles;
 			if (rule == null)
-				profiles = attempt("$." + TRIAL_PROFILES, () -> profiles(root.get(TRIAL_PROFILES)));
+				profiles = attempt("$." + TRIAL_PROFILES, () -> storedProfiles(root.get(TRIAL_PROFILES), evaluators));
 			else
 				profiles = attempt("$." + TRIAL_PROFILES, () -> rule.profiles(requirements, tests));
 			if (profiles == null)
@@ -826,7 +937,11 @@ public final class ProposalSchema
 			String plugin = optionalText(node, "plugin");
 			if (plugin == null)
 				plugin = "";
-			return new Dependent(location, plugin, Path.of(text(node, "path")), removal, text(node, "serves"));
+			Optional<Harness> evaluator = Optional.ofNullable(optionalText(node, "evaluator")).map(name ->
+				Harness.fromCommandName(name).orElseThrow(() ->
+					new IllegalArgumentException("Unknown dependent evaluator '" + name + "'")));
+			return new Dependent(location, plugin, Path.of(text(node, "path")), removal, text(node, "serves"),
+				evaluator);
 		}
 
 		/**
@@ -847,13 +962,47 @@ public final class ProposalSchema
 		}
 
 		/**
-		 * Builds the trial profiles that a proposal holds.
+		 * Reads the profile sets, assigning an earlier individual set to the evaluator in its saved header.
 		 *
-		 * @param node the {@value #TRIAL_PROFILES} object
+		 * @param node       the {@value #TRIAL_PROFILES} object
+		 * @param evaluators the saved evaluation harnesses, or empty for a standalone profile document
+		 * @return the trial profiles
+		 * @throws IllegalArgumentException if an evaluator assignment conflicts with the recorded scope
+		 */
+		private static TrialProfiles storedProfiles(JsonNode node, Set<Harness> evaluators)
+		{
+			if (!node.has(EVALUATORS))
+			{
+				TrialProfiles local = profiles(node, Optional.empty());
+				if (evaluators.isEmpty())
+					return local;
+				if (evaluators.size() != 1)
+					throw new IllegalArgumentException("A shared campaign must record every evaluator's profiles");
+				return TrialProfiles.forEvaluators(Map.of(evaluators.iterator().next(), local));
+			}
+			Map<Harness, TrialProfiles> assigned = new EnumMap<>(Harness.class);
+			for (JsonNode entry : node.get(EVALUATORS))
+			{
+				String name = text(entry, "evaluator");
+				Harness evaluator = Harness.fromCommandName(name).orElseThrow(() ->
+					new IllegalArgumentException("Unknown evaluation harness '" + name + "'"));
+				if (assigned.put(evaluator, profiles(entry.get("profiles"), Optional.of(evaluator))) != null)
+					throw new IllegalArgumentException("Repeated evaluation harness '" + name + "'");
+			}
+			if (!evaluators.isEmpty() && !assigned.keySet().equals(evaluators))
+				throw new IllegalArgumentException("The stored profile sets do not match the campaign's evaluation harnesses");
+			return TrialProfiles.forEvaluators(assigned);
+		}
+
+		/**
+		 * Builds the individual trial profiles that a proposal holds.
+		 *
+		 * @param node      the individual trial profiles object
+		 * @param evaluator the recorded evaluator, or empty before assignment
 		 * @return the trial profiles
 		 * @throws IllegalArgumentException if a model constructor rejects a value
 		 */
-		private static TrialProfiles profiles(JsonNode node)
+		private static TrialProfiles profiles(JsonNode node, Optional<Harness> evaluator)
 		{
 			List<TrialProfile> inventory = new ArrayList<>();
 			for (JsonNode profileNode : node.get("inventory"))
@@ -875,7 +1024,7 @@ public final class ProposalSchema
 				scope = EnumNames.parse(node.get("scope").asString(), CertificationScope.class);
 			List<Cell> cells = new ArrayList<>();
 			for (JsonNode cellNode : node.get("cells"))
-				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "test"), sessionProfile(cellNode)));
+				cells.add(new Cell(text(cellNode, "id"), text(cellNode, "test"), sessionProfile(cellNode), evaluator));
 			return new TrialProfiles(new ProfileCatalog(text(node, "inventory_source"), inventory), ranking,
 				bindings, restriction, described, scope, cells);
 		}

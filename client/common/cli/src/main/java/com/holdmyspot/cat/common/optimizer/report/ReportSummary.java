@@ -354,7 +354,8 @@ final class ReportSummary
 			tier.scopeCells() + " cells)");
 		for (CellTierReport.TestCells cells : tier.tests())
 		{
-			lines.add("Test " + cells.test() + ": weakest cell " + cells.weakestCell() +
+			String evaluator = cells.evaluator().map(harness -> " (" + harness.commandName() + ")").orElse("");
+			lines.add("Test " + cells.test() + evaluator + ": weakest cell " + cells.weakestCell() +
 				"; development cells " + String.join(", ", cells.developmentCells()));
 		}
 	}

@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.nio.file.FileSystemException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -52,20 +53,35 @@ public final class RealPaths
 	 */
 	private static Path resolve(Path original, Path path, int linksFollowed) throws IOException
 	{
-		Path existing = path;
-		while (existing.getParent() != null && Files.notExists(existing, LinkOption.NOFOLLOW_LINKS))
-			existing = existing.getParent();
+		Path existing;
 		Path base;
-		boolean danglingLink = Files.isSymbolicLink(existing) && Files.notExists(existing);
-		if (danglingLink)
+		boolean retried = false;
+		while (true)
 		{
-			if (linksFollowed >= MAX_LINKS)
-				throw new FileSystemException(original.toString(), null, "Too many levels of symbolic links");
-			Path target = existing.resolveSibling(Files.readSymbolicLink(existing));
-			base = resolve(original, target, linksFollowed + 1);
+			existing = path;
+			while (existing.getParent() != null && Files.notExists(existing, LinkOption.NOFOLLOW_LINKS))
+				existing = existing.getParent();
+			boolean danglingLink = Files.isSymbolicLink(existing) && Files.notExists(existing);
+			if (danglingLink)
+			{
+				if (linksFollowed >= MAX_LINKS)
+					throw new FileSystemException(original.toString(), null, "Too many levels of symbolic links");
+				Path target = existing.resolveSibling(Files.readSymbolicLink(existing));
+				base = resolve(original, target, linksFollowed + 1);
+				break;
+			}
+			try
+			{
+				base = existing.toRealPath();
+				break;
+			}
+			catch (NoSuchFileException e)
+			{
+				if (retried || !Files.notExists(existing, LinkOption.NOFOLLOW_LINKS))
+					throw e;
+				retried = true;
+			}
 		}
-		else
-			base = existing.toRealPath();
 		if (existing.getNameCount() == path.getNameCount())
 			return base;
 		return base.resolve(path.subpath(existing.getNameCount(), path.getNameCount())).normalize();

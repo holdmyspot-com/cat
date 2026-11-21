@@ -177,7 +177,7 @@ public final class RequestServer
 	 */
 	public record Host(String harness, Set<String> running, Optional<String> refusal, Path plugin,
 		Supplier<String> sandboxed, SessionFinder sessions, Function<Path, ToolScope> scopes,
-		RequestedSessionStarter starter, ProcessTable processes, Pause pause)
+		RequestedRunner.Resolver starter, ProcessTable processes, Pause pause)
 	{
 		/**
 		 * Creates what a plugin gives its server.
@@ -253,11 +253,11 @@ public final class RequestServer
 	 * @return the needs
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static ChildNeedsSource runnerNeeds(RequestedSessionStarter starter, TemporaryDirectories cleanup)
+	private static ChildNeedsSource runnerNeeds(RequestedRunner.Start starter, TemporaryDirectories cleanup)
 	{
 		requireThat(starter, "starter").isNotNull();
 		requireThat(cleanup, "cleanup").isNotNull();
-		RunnerChildNeeds runner = new RunnerChildNeeds(starter);
+		RunnerChildNeeds runner = new RunnerChildNeeds((_, arguments, directory) -> starter.run(arguments, directory));
 		return (harness, sessionFolder, deniedReads, bound) ->
 		{
 			Path directory = cleanup.add(Files.createTempDirectory(Files.createDirectories(sessionFolder),
@@ -449,9 +449,26 @@ public final class RequestServer
 	 */
 	public static int serve(String[] args, Host host, PrintWriter errors) throws IOException
 	{
+		return serve(args, host, errors, Optional.empty());
+	}
+
+	/**
+	 * Serves the owner session and its native comparison requests when the plugin supports them.
+	 *
+	 * @param args the server's command arguments
+	 * @param host the serving plugin's native services
+	 * @param errors receives refusals and lifecycle messages
+	 * @param comparison binds a native comparison to the authenticated owner and selected runner
+	 * @return the server's exit status
+	 * @throws IOException if the server cannot serve the session or finish a request
+	 */
+	public static int serve(String[] args, Host host, PrintWriter errors, Optional<ComparisonHost> comparison)
+		throws IOException
+	{
 		requireThat(args, "args").isNotNull();
 		requireThat(host, "host").isNotNull();
 		requireThat(errors, "errors").isNotNull();
+		requireThat(comparison, "comparison").isNotNull();
 		Optional<String> refusal = refusal(args, host);
 		if (refusal.isPresent())
 		{
@@ -484,7 +501,7 @@ public final class RequestServer
 			ChildBound bound;
 			try
 			{
-				bound = new ChildBound(session.policy(), runnerNeeds(host.starter(), cleanup)).
+				bound = new ChildBound(session.policy()).
 					snapshot(session.transcript()).snapshot(host.plugin());
 				bound.parentPolicy(session.askingThread());
 			}
@@ -503,10 +520,28 @@ public final class RequestServer
 			}
 			try (ExclusiveFileLock _ = lock.get())
 			{
-				serve(session, directory, bound, host, errors, tools.fileLocks());
+				serve(session, directory, bound, host, errors, tools.fileLocks(), cleanup, comparison);
 			}
 		}
 		return 0;
+	}
+
+	/**
+	 * Supplies the authenticated owner and selected-runner boundary to the harness's comparison service.
+	 */
+	@FunctionalInterface
+	public interface ComparisonHost
+	{
+		/**
+		 * Binds one server instance's authenticated owner session.
+		 *
+		 * @param session the owner found by the serving harness
+		 * @param bound the owner policy reader retaining its earlier readings
+		 * @param runners selects the installed native runner
+		 * @return the service handling the owner's comparison requests
+		 */
+		SessionRequestBroker.HookComparisonService open(Session session, ChildBound bound,
+			RequestedRunner.Resolver runners);
 	}
 
 	/**
@@ -605,18 +640,22 @@ public final class RequestServer
 	 * @param host      what the plugin gives the server
 	 * @param errors    receives a line once the server serves the session
 	 * @param fileLocks coordinates startup and cleanup locks
+	 * @param cleanup removes temporary policy probe directories
+	 * @param comparison binds a native hook comparison if the serving plugin supports it
 	 * @throws IOException if the request directories cannot be created or a request cannot be answered
 	 */
 	private static void serve(Session session, SessionDirectory directory, ChildBound bound, Host host,
-		PrintWriter errors, FileLocks fileLocks) throws IOException
+		PrintWriter errors, FileLocks fileLocks, TemporaryDirectories cleanup, Optional<ComparisonHost> comparison)
+		throws IOException
 	{
 		Path requests = directory(directory.directory().resolve(REQUESTS));
 		Path responses = directory(directory.directory().resolve(RESPONSES));
 		SessionSlots slots = new SessionSlots(directory.directory().resolve(RUNS), HarnessCapacity.MAXIMUM_CONCURRENCY,
 			new ProcessHandleLiveness(), fileLocks);
 		ServerSite site = new ServerSite(requests, responses, slots, fileLocks, bound, session.askingThread(), directory,
-			new WorktreeService(new GitWorktreeRegistrar()));
-		try (SessionRequestBroker broker = new SessionRequestBroker(site, host.starter()))
+			new WorktreeService(new GitWorktreeRegistrar()), host.harness(), host.starter(), cleanup,
+			comparison.map(service -> service.open(session, bound, host.starter())));
+		try (SessionRequestBroker broker = new SessionRequestBroker(site))
 		{
 			errors.println("The request server serves this " + productName(host.harness()) +
 				" session's launches until the session ends.");
@@ -679,9 +718,15 @@ public final class RequestServer
 	 * @param session      the CAT session directory of the session that runs the server, in the project that the
 	 *                     session's transcript names
 	 * @param worktrees    carries out the session's worktree requests
+	 * @param ownerHarness the harness of the session this server serves
+	 * @param runners      selects the installed runner for each requested harness
+	 * @param cleanup      removes temporary policy probe directories
+	 * @param hookComparison the authenticated hook comparison service, when available
 	 */
 	private record ServerSite(Path requests, Path responses, SessionSlots slots, FileLocks fileLocks, ChildBound bound,
-		Optional<String> askingThread, SessionDirectory session, WorktreeService worktrees)
+		Optional<String> askingThread, SessionDirectory session, WorktreeService worktrees,
+		String ownerHarness, RequestedRunner.Resolver runners, TemporaryDirectories cleanup,
+		Optional<SessionRequestBroker.HookComparisonService> hookComparison)
 		implements SessionRequestBroker.Site
 	{
 		/**
@@ -751,15 +796,16 @@ public final class RequestServer
 		 *
 		 * @param request       the request
 		 * @param resultsFolder the request's results folder
-		 * @return the options
+		 * @return the prepared launch
 		 * @throws SessionRefusedException if the session's policy cannot be read safely or does not allow what the new
 		 *                                 session needs
 		 * @throws IOException             if what the new session needs cannot be determined, or the bound cannot be
 		 *                                 written
 		 */
 		@Override
-		public List<String> options(LaunchRequest request, Path resultsFolder) throws IOException
+		public RequestedRunner.Start prepare(LaunchRequest request, Path resultsFolder) throws IOException
 		{
+			RequestedRunner.Selection selected = runners.select(request.harness());
 			List<String> options = new ArrayList<>();
 			request.capacityWait().ifPresent(seconds ->
 				options.addAll(List.of("--capacity-wait", String.valueOf(seconds))));
@@ -770,9 +816,19 @@ public final class RequestServer
 			if (request.requestDepth() > 0)
 				options.addAll(List.of("--request-depth", String.valueOf(request.requestDepth())));
 			ChildPolicy child = bound.bound(request.harness(), resultsFolder, request.deniedReads(),
-				request.extraPermissions(), askingThread);
+				request.extraPermissions(), askingThread, runnerNeeds(selected.start(), cleanup), policies ->
+				{
+					if (!ownerHarness.equals(request.harness()))
+						selected.requireTrusted(policies);
+				});
 			Path folder = Files.createTempDirectory(Files.createDirectories(resultsFolder), ".policy-bound-");
-			return PolicyBoundFile.boundArguments(JsonMapper.builder().build(), options, folder, child);
+			List<String> added = PolicyBoundFile.boundArguments(JsonMapper.builder().build(), options, folder, child);
+			return (base, directory) ->
+			{
+				List<String> arguments = new ArrayList<>(base);
+				arguments.addAll(added);
+				return selected.start().run(arguments, directory);
+			};
 		}
 
 		@Override

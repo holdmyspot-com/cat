@@ -16,7 +16,7 @@ import com.holdmyspot.cat.common.runner.HarnessEnvironment;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
-import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
+import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.launcher.ParentPolicySource;
 import com.holdmyspot.cat.common.runner.launcher.ProcessHandleTable;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -93,7 +93,11 @@ public final class ClaudeRequestServerCli
 				directory -> ToolScope.forSession(directory, environment, SessionHarness.installed(), scope.waiting()),
 				starter(scope, plugin, environment), new ProcessHandleTable(HarnessProcesses.system()),
 				Pause.sleeping(POLL));
-			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8));
+			Optional<RequestServer.ComparisonHost> comparison = Optional.empty();
+			if (Platform.current().isLinux())
+				comparison = Optional.of(ClaudeCodexComparison.host(environment));
+			status = RequestServer.serve(args, host, new PrintWriter(System.err, true, StandardCharsets.UTF_8),
+				comparison);
 		}
 		System.exit(status);
 	}
@@ -126,14 +130,13 @@ public final class ClaudeRequestServerCli
 	 * @return the starter
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static RequestedSessionStarter starter(JvmScope scope, Path artifact, Map<String, String> environment)
+	public static RequestedRunner.Resolver starter(JvmScope scope, Path artifact, Map<String, String> environment)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		Map<String, String> copy = Map.copyOf(ClaudeRunnerCli.MARKERS.without(environment));
-		return (harness, arguments, directory) -> ClaudeRunnerCli.requestedRunner(scope, artifact, harness, copy).
-			start(arguments, directory, copy);
+		return harness -> ClaudeRunnerCli.requestedRunner(scope, artifact, harness, copy).select(copy);
 	}
 
 	/**
@@ -257,6 +260,15 @@ public final class ClaudeRequestServerCli
 		@Override
 		public ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal
 		{
+			ParentPolicy bound = ParentPolicy.UNSANDBOXED;
+			for (ParentPolicy policy : readings(askingThread))
+				bound = bound.intersect(policy);
+			return bound;
+		}
+
+		@Override
+		public List<ParentPolicy> readings(Optional<String> askingThread) throws IOException, PolicyRefusal
+		{
 			requireThat(askingThread, "askingThread").isNotNull();
 			synchronized (this)
 			{
@@ -264,9 +276,9 @@ public final class ClaudeRequestServerCli
 				if (snapshot == null)
 				{
 					snapshot = reader.read(session);
-					return snapshot.policy();
+					return List.of(snapshot.policy());
 				}
-				return reader.reread(session, snapshot);
+				return List.of(snapshot.policy(), reader.currentPolicy(session, snapshot));
 			}
 		}
 	}

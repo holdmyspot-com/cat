@@ -1,10 +1,14 @@
 package com.holdmyspot.cat.common.runner.test;
 
+import com.holdmyspot.cat.common.AbstractJvmScope;
 import com.holdmyspot.cat.common.FileLocks;
 import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.fakes.test.Yielding;
+import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
+import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
+import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessEvaluationResult;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.LaunchRefusedException;
@@ -16,6 +20,7 @@ import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.HarnessSession;
 import com.holdmyspot.cat.common.runner.RetainedTrialResponse.Identity;
 import com.holdmyspot.cat.common.runner.SessionRequestForwarder;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -50,6 +55,7 @@ import tools.jackson.databind.json.JsonMapper;
 import tools.jackson.databind.node.ObjectNode;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
+import static org.testng.Assert.expectThrows;
 
 /**
  * Tests that a runner launched inside a nested session hands its launch to the parent runner through
@@ -513,6 +519,104 @@ public final class SessionRequestForwarderTest
 			requireThat(senderLockHeld[0], "senderLockHeld").isTrue();
 			requireThat(fixture.entries.get("project/marker"), "projectArchive").isEqualTo("project bytes");
 			requireThat(output.toString(), "transcript").isEqualTo(Fixture.TRANSCRIPT);
+		}
+	}
+
+	/**
+	 * Verifies that an installed peer evaluator uses the owner's broker and request identifier with the evaluator's
+	 * harness and artifact.
+	 *
+	 * @throws IOException if the fixture request or response cannot be read or written
+	 */
+	@Test(expectedExceptions = LaunchRefusedException.class, expectedExceptionsMessageRegExp = "The fixture stopped")
+	public void servesPeerEvaluatorThroughOwnerRoute() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"forward-evaluator-")).toRealPath());
+			UUID requestId = UUID.randomUUID();
+			Path evaluatorArtifact = Files.createDirectory(fixture.root.resolve("claude-artifact"));
+			Path results = fixture.root.resolve("results");
+			JsonMapper json = jvm.json();
+			Pause respond = () ->
+			{
+				requireThat(fixture.requests.resolve(requestId + ".tar"), "ownerRequest").isRegularFile();
+				fixture.readRequest();
+				JsonNode request = json.readTree(fixture.entries.get("request.json"));
+				requireThat(request.path("harness").asString(), "evaluatorHarness").isEqualTo("claude");
+				requireThat(request.path("agent").asString(), "evaluatorAgent").isEqualTo("evaluator-agent");
+				requireThat(request.path("install_cat").asBoolean(false), "installCat").isTrue();
+				requireThat(request.path("plugins").size(), "extraPlugins").isEqualTo(0);
+				Path response = Files.createDirectories(fixture.responseDirectory());
+				json.writeValue(response.resolve("response.json").toFile(),
+					json.createObjectNode().put("status", "refused").put("reason", "The fixture stopped"));
+			};
+			try (AbstractJvmScope scope = new AbstractJvmScope(fixture.root, _ -> respond)
+			{
+			})
+			{
+				RunnerSessions.Settings settings = new RunnerSessions.Settings(scope, evaluatorArtifact, results,
+					List::of, false, Map.of(), fixture.root, HarnessCapacity.unlimited(), Clock.systemUTC(),
+					Yielding.fileReplacer());
+				Bridge bridge = RunnerSessions.evaluatorBridge(settings, "claude",
+					SessionRequestForwarder.Route.SERVER, fixture.requests);
+				bridge.serveTrial(requestId, Optional.empty(), fixture.project, List.of("--project",
+					fixture.project.toString(), "--results", results.toString(), "--model", "model-a", "--effort",
+					"effort-a", "--agent", "evaluator-agent", "--install-cat", "--artifact",
+					evaluatorArtifact.toString()), new StringReader(""), new StringWriter());
+			}
+		}
+	}
+
+	/**
+	 * Preserves the identifiers beside their archive paths when the served launch prepends a candidate CAT.
+	 *
+	 * @throws IOException if the request fixture cannot be read or written
+	 */
+	@Test(expectedExceptions = LaunchRefusedException.class, expectedExceptionsMessageRegExp = "The fixture stopped")
+	public void preservesPluginIdsInArchiveOrder() throws IOException
+	{
+		try (TestJvmScope jvm = new TestJvmScope();
+			TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Fixture fixture = new Fixture(cleanup.add(Files.createTempDirectory(jvm.temporaryDirectory(),
+				"forward-plugin-provenance-")).toRealPath());
+			Path artifact = Files.createDirectory(fixture.root.resolve("artifact"));
+			Path candidate = Files.createDirectory(fixture.root.resolve("candidate"));
+			Path first = Files.createDirectory(fixture.root.resolve("first"));
+			Path legacy = Files.createDirectory(fixture.root.resolve("legacy"));
+			Path last = Files.createDirectory(fixture.root.resolve("last"));
+			JsonMapper json = jvm.json();
+			Pause respond = () ->
+			{
+				fixture.readRequest();
+				JsonNode request = json.readTree(fixture.entries.get("request.json"));
+				requireThat(request.path("plugins"), "paths").
+					isEqualTo(json.readTree("[\"plugins/0\",\"plugins/1\",\"plugins/2\",\"plugins/3\"]"));
+				JsonNode provenance = request.path(TrialPluginInput.PROVENANCE_FIELD);
+				requireThat(provenance, "provenance").
+					isEqualTo(json.readTree("[null,\"guide@one\",null,\"guide@two\"]"));
+				List<Path> paths = List.of(candidate, first, legacy, last);
+				List<TrialPluginInput> inputs = TrialPluginInput.readProvenance(paths, provenance);
+				requireThat(inputs, "inputs").isEqualTo(List.of(new TrialPluginInput(candidate, Optional.empty()),
+					new TrialPluginInput(first, Optional.of("guide@one")), new TrialPluginInput(legacy, Optional.empty()),
+					new TrialPluginInput(last, Optional.of("guide@two"))));
+				requireThat(TrialPluginInput.readProvenance(paths, request.path("absent")), "legacy").
+					isEqualTo(TrialPluginInput.unbound(paths));
+				expectThrows(IOException.class, () -> TrialPluginInput.readProvenance(paths, json.readTree("[null]")));
+				Path response = Files.createDirectories(fixture.responseDirectory());
+				json.writeValue(response.resolve("response.json").toFile(),
+					json.createObjectNode().put("status", "refused").put("reason", "The fixture stopped"));
+			};
+
+			SessionRequestForwarder.serve(SessionRequestForwarder.Route.SERVER, "test command", "codex", artifact,
+				List.of("--project", fixture.project.toString(), "--results", fixture.root.resolve("results").toString(),
+					"--artifact", candidate.toString(), "--install-cat", "--model", "model-a", "--effort", "effort-a",
+					"--plugin", first.toString(), TrialPluginInput.ID_OPTION, "guide@one", "--plugin", legacy.toString(),
+					"--plugin", last.toString(), TrialPluginInput.ID_OPTION, "guide@two"), new StringReader(""),
+				new StringWriter(), fixture.requests, respond);
 		}
 	}
 

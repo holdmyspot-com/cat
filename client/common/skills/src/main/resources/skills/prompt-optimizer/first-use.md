@@ -11,6 +11,8 @@
 	stop.
 - Let a campaign continue after the session that drove it ends, without discarding it or starting another for the same
 	target unless the user chooses.
+- Start a new campaign with the user's choice of evaluation harnesses and continue an existing campaign with its
+	recorded choice.
 
 ## Supported environments
 
@@ -66,13 +68,27 @@ that reason to the user. While a background driver holds the lock, `status` read
 and start time, a second `run` is `busy`, and a refusal of `revise`, `choose` or `confirm` names `status` and `cancel`.
 A failed exit notice does not change the outcome; the next `status` reports the failure.
 
-1. **Start.** Run `start <target>` with the prompt file the user named. A campaign optimizes one prompt file, so if the
-	user named a directory, ask which prompt file in it to optimize. When the user stated what the prompt should
-	achieve, add `--goal <text>` with the user's own words, quoted as one argument; otherwise leave it out. When the
-	user says the campaign's sessions need writes or hosts beyond their own, such as a package registry, write them
+1. **Start.** A campaign optimizes one prompt file, so if the user named a directory, ask which prompt file in it to
+	optimize. If the user left the harness selection open and the conversation leaves it unclear whether they are
+	starting or continuing a campaign, call `status <target>`. A result with `lifecycle` `active` or `cancelled`
+	identifies a campaign that can continue.
+	Follow its status and any notice that directs you to resume its owning session. A result with `lifecycle`
+	`finished` or `closed`, a certification history with a null `campaign`, or a refusal with `reason`
+	`no_campaign_or_certification_record` lets you proceed with the new campaign procedure. For any other refusal or
+	error, show its `message` and stop.
+	- For an optimization request, use the evaluation harnesses the user named. If they omitted the selection and
+		are starting a new campaign, ask whether the prompt should support Codex, Claude Code, or both. Include the
+		current harness alone as a choice. Wait for the answer before calling `start`. Add `--harness codex`,
+		`--harness claude`, or both to `start <target>` for the selected harnesses.
+	- For a request to resume an existing campaign, keep its recorded harness selection. When the workflow calls for
+		another `start <target>` for that campaign, omit `--harness`.
+
+	When the user stated what the prompt should achieve, add `--goal <text>` with the user's own words, quoted as
+	one argument; otherwise leave it out. When the user says the campaign's sessions need writes or hosts beyond
+	their own, such as a package registry, write them
 	with a file-writing tool into `{"format_version":1,"writes":["<absolute path>"],"hosts":["<host name>"]}` and add
-	`--extra-permissions <file>`; otherwise leave it out. It creates a campaign or resumes the one that already exists
-	for that target. Use its `campaign` value in every later command.
+	`--extra-permissions <file>`; otherwise leave it out. Run `start` with the resulting arguments. Use its
+	`campaign` value in every later command.
 	- A resumed campaign keeps the goal and the extra permissions it started with. When `start` is refused because the
 		`--goal` or the file differs from the campaign's, show its `message` to the user and ask whether to continue the
 		campaign without that option, or to cancel it and start a new campaign with it. Never cancel on the user's

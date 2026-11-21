@@ -5,6 +5,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 
 import com.holdmyspot.cat.common.Identifier;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
 import com.holdmyspot.cat.common.optimizer.contract.BuiltInTool;
 import com.holdmyspot.cat.common.optimizer.contract.CapabilityRanking;
@@ -18,6 +19,7 @@ import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestFiles;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTestLocations;
 import com.holdmyspot.cat.common.optimizer.contract.ProposalSchema;
+import com.holdmyspot.cat.common.optimizer.contract.Requirement;
 import com.holdmyspot.cat.common.optimizer.contract.Scenario;
 import com.holdmyspot.cat.common.optimizer.contract.ScenarioFormatException;
 import com.holdmyspot.cat.common.optimizer.contract.TestCase;
@@ -42,6 +44,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -310,8 +313,7 @@ public final class ProposalCheck
 			proposalFile.remove(Findings.PROFILE_RESTRICTION));
 		List<TrialProfile> described = findings.certificationProfiles(
 			proposalFile.remove(Findings.CERTIFICATION_PROFILES));
-		CapabilityRanking ranking = findings.capabilityRanking(proposalFile.remove(Findings.CAPABILITY_RANKING)).
-			orElse(profiles.ranking());
+		Optional<CapabilityRanking> ranking = findings.capabilityRanking(proposalFile.remove(Findings.CAPABILITY_RANKING));
 		if (proposalFile.remove(ProposalSchema.TRIAL_PROFILES) != null)
 		{
 			problems.add("$." + ProposalSchema.TRIAL_PROFILES +
@@ -351,8 +353,8 @@ public final class ProposalCheck
 		try
 		{
 			contract = schema.parse(json.writeValueAsString(assembled.proposal()), (requirements, tests) ->
-					TrialProfiles.compute(profiles.inventory(), ranking, profiles.bindingsOf(requirements),
-						restriction, described, requirements, tests), salt, new SplittableRandom(salt),
+					trialProfiles(profiles, ranking, restriction, described, requirements, tests),
+				salt, new SplittableRandom(salt),
 				assembled.committed(), assembled.workspaceFiles());
 			problems.addAll(unreportedExitStatuses(contract));
 			problems.addAll(referencedFileProblems(contract, project));
@@ -368,6 +370,86 @@ public final class ProposalCheck
 			throw new InvalidProposalException(problems);
 		return new DerivedProposal(contract, List.of(), scopeConditions, conflicts, observedSources, derivation, draft,
 			Map.of());
+	}
+
+	/**
+	 * Computes one profile set per evaluation harness, using only its inventory, bindings and model-family order.
+	 *
+	 * @param profiles the owner and evaluator profile evidence
+	 * @param ranking a proposal-supplied capability ranking, if any
+	 * @param restriction the profile patterns that restrict trials
+	 * @param described the profile patterns for the described scope
+	 * @param requirements the requirements covered by the tests
+	 * @param tests the prompt tests of the proposal
+	 * @return the trial profiles
+	 */
+	private static TrialProfiles trialProfiles(ProfileEvidence profiles, Optional<CapabilityRanking> ranking,
+		List<TrialProfile> restriction, List<TrialProfile> described, List<Requirement> requirements,
+		List<PromptTest> tests)
+	{
+		if (profiles.byEvaluator().isEmpty())
+		{
+			return TrialProfiles.compute(profiles.inventory(), ranking.orElse(profiles.ranking()),
+				profiles.bindingsOf(requirements), restriction, described, requirements, tests);
+		}
+		for (TrialProfile pattern : Stream.concat(restriction.stream(), described.stream()).toList())
+		{
+			if (profiles.byEvaluator().values().stream().noneMatch(local -> supports(local, pattern)))
+				throw new IllegalArgumentException("The profile " + pattern.label() + " matches no selected evaluator");
+		}
+		Map<Harness, TrialProfiles> assigned = new EnumMap<>(Harness.class);
+		for (Map.Entry<Harness, ProfileEvidence> entry : new EnumMap<>(profiles.byEvaluator()).entrySet())
+		{
+			Harness evaluator = entry.getKey();
+			ProfileEvidence local = entry.getValue();
+			List<TrialProfile> selected = restriction.stream().filter(pattern -> supports(local, pattern)).toList();
+			List<TrialProfile> scoped = described.stream().filter(pattern -> supports(local, pattern)).toList();
+			if ((!restriction.isEmpty() && selected.isEmpty()) || (!described.isEmpty() && scoped.isEmpty()))
+				throw new IllegalArgumentException("The profile selection leaves " + evaluator.productName() +
+					" without an eligible profile");
+			try
+			{
+				assigned.put(evaluator, TrialProfiles.compute(local.inventory(), localRanking(local, ranking),
+					local.bindingsOf(requirements), selected, scoped, requirements, tests));
+			}
+			catch (IllegalArgumentException e)
+			{
+				throw new IllegalArgumentException(evaluator.productName() + ": " + e.getMessage(), e);
+			}
+		}
+		return TrialProfiles.forEvaluators(assigned);
+	}
+
+	/**
+	 * Returns whether the evaluator offers a profile matched by the pattern.
+	 *
+	 * @param profiles the evaluator profile evidence
+	 * @param pattern the requested profile pattern
+	 * @return whether the inventory contains a match
+	 */
+	private static boolean supports(ProfileEvidence profiles, TrialProfile pattern)
+	{
+		return profiles.inventory().profiles().stream().anyMatch(profile -> profile.matches(pattern));
+	}
+
+	/**
+	 * Applies a supplied model-family order to the evaluator whose inventory offers those families.
+	 *
+	 * @param profiles the evaluator profile evidence
+	 * @param ranking a proposal-supplied ranking, if any
+	 * @return the evaluator's capability ranking
+	 */
+	private static CapabilityRanking localRanking(ProfileEvidence profiles, Optional<CapabilityRanking> ranking)
+	{
+		if (ranking.isEmpty())
+			return profiles.ranking();
+		Set<String> inventory = new HashSet<>();
+		for (TrialProfile profile : profiles.inventory().profiles())
+			inventory.add(CapabilityRanking.family(profile.model()));
+		List<String> families = ranking.get().families().stream().filter(inventory::contains).toList();
+		if (families.isEmpty())
+			return profiles.ranking();
+		return new CapabilityRanking(families, ranking.get().source());
 	}
 
 	/**

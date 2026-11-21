@@ -473,6 +473,60 @@ public final class CodexProcessTest
 	}
 
 	/**
+	 * The read-only inspection returns native hook identity and trust fields after the handshake. An unrelated
+	 * notification may contain the request's ID in its payload, while the real response may use whitespace.
+	 *
+	 * @throws IOException if inspection fails
+	 */
+	@Test(timeOut = 10_000)
+	public void inspectsNativeHooksWithoutCreatingThread() throws IOException
+	{
+		// Requirement: R-C28
+		JsonMapper json = JsonMapper.builder().build();
+		JsonNode expected = json.readTree("""
+			{"data":[{"cwd":"/project","hooks":[{
+				"key":"fixture","currentHash":"exact-synthetic-hash","sourcePath":"/project/.codex/hooks.json",
+				"enabled":true,"trustStatus":"untrusted","pluginId":null}]}],"errors":[]}
+			""");
+		AppServer appServer = new AppServer(NO_ANSWER, NO_ANSWER);
+		appServer.hookResult = expected;
+		try (CodexProcess process = new CodexProcess(appServer.process, new TestHarnessRunnerScope(), false, null))
+		{
+			requireThat(process.inspectHooks(PROJECT), "nativeHooks").isEqualTo(expected);
+		}
+		List<JsonNode> requests = appServer.process.requests().stream().map(json::readTree).toList();
+		requireThat(requests.stream().map(request -> request.path("method").asString()).toList(), "requests").
+			isEqualTo(List.of("initialize", "initialized", "hooks/list"));
+		requireThat(requests.getLast().path("params").path("cwds").path(0).asString(), "directory").
+			isEqualTo(PROJECT.toString());
+	}
+
+	/**
+	 * A session that depends on CAT instructions refuses disabled native hooks before creating a thread.
+	 *
+	 * @throws IOException if the test process cannot close
+	 */
+	@Test(timeOut = 10_000)
+	public void refusesDisabledHookBeforeThread() throws IOException
+	{
+		JsonMapper json = JsonMapper.builder().build();
+		AppServer appServer = new AppServer(NO_ANSWER, NO_ANSWER);
+		appServer.hookResult = json.readTree("""
+			{"data":[{"hooks":[
+				{"key":"cat@cat:hooks/hooks.json:session_start:0:0","enabled":false,"trustStatus":"trusted"}
+			]}]}
+			""");
+		try (CodexProcess process = new CodexProcess(appServer.process, new TestHarnessRunnerScope(), true, null))
+		{
+			IOException failure = expectThrows(IOException.class, () -> process.initialize(PROJECT, ""));
+			requireThat(failure.getMessage(), "disabledHook").contains("session start hook is disabled");
+		}
+		List<String> methods = appServer.process.requests().stream().map(json::readTree).
+			map(request -> request.path("method").asString()).toList();
+		requireThat(methods, "requestMethods").isEqualTo(List.of("initialize", "initialized", "hooks/list"));
+	}
+
+	/**
 	 * Verifies that notifications Codex prints during start-up, such as {@code thread/started}, reach the first
 	 * turn's listener ahead of that turn's own lines, that the first turn's archived events are those same lines,
 	 * and that a later turn's listener does not receive the start-up notifications again.
@@ -858,6 +912,7 @@ public final class CodexProcessTest
 		private volatile boolean notifiesThreadStarted;
 		private volatile String threadStartError = "";
 		private volatile boolean endsAtStartup;
+		private volatile JsonNode hookResult;
 
 		/**
 		 * Creates an app-server that has not started.
@@ -1096,6 +1151,8 @@ public final class CodexProcessTest
 						json.writeValueAsString(request.path("params").path("threadId").asString("")) +
 						",\"path\":\"/codex-home/sessions/rollout-root.jsonl\"}}}");
 				}
+				case "hooks/list" -> process.emit("{\"method\":\"hooks/updated\",\"params\":{\"id\":" + id + "}}",
+					"{\"result\":" + hookResult + ",\"id\" : " + id + "}");
 				case "turn/start" ->
 				{
 					turnRequestId = id;

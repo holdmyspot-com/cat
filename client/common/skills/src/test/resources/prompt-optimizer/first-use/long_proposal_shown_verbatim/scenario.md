@@ -2,6 +2,7 @@
 
 ## Design Goals
 
+- Prove that the skill passes the user's explicit choice of harness to `start`.
 - Prove that, when the launcher answers `start` for the target with
 	[long-proposal.json](../launcher/long-proposal.json), whose `proposal_file` names a file that holds the 25 KB of
 	contract text of [long-proposal.md](../launcher/long-proposal.md), the skill shows that text to the user verbatim and
@@ -14,9 +15,15 @@
 
 ## Scenario
 
-Use the prompt-optimizer skill to optimize and certify the compliance of {{target}}.
+Use the prompt-optimizer skill to optimize and certify the compliance of {{target}} for the harness we're using now.
 
 ## Assertions
+
+### explicit_harness_used
+
+- **kind**: effect
+- **description**: The first `start` call passes exactly one `--harness` argument naming the current harness.
+	The agent uses the supplied selection without asking for it again.
 
 ### proposal_in_reply
 

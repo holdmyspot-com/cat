@@ -445,10 +445,9 @@ public final class Proposal
 	 */
 	private static String pluginHooksLimit(List<String> unapprovedHooks)
 	{
-		return "Trials do not run these hooks of the trial plugins, because the user has not approved them in " +
-			"the harness: " + String.join("; ", unapprovedHooks) + ". A hook also does not run if its declaration " +
-			"changed after the user approved it. Approve the hooks in the harness and run revise, or accept that " +
-			"trials can behave differently from sessions in which those hooks run.";
+		return "Trials skip these hooks of the trial plugins because CAT could not verify their approval for the " +
+			"installed trial copies: " + String.join("; ", unapprovedHooks) + ". Review those hooks and their " +
+			"approvals in the harness, then run revise to check them again.";
 	}
 
 	/**

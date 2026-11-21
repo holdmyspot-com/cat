@@ -10,11 +10,15 @@ import com.holdmyspot.cat.common.optimizer.campaign.CertificationAttempt;
 import com.holdmyspot.cat.common.optimizer.campaign.Comparability;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.DecisionTable;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.IncumbentBaseline;
+import com.holdmyspot.cat.common.optimizer.campaign.Lineage;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Reference;
 import com.holdmyspot.cat.common.optimizer.campaign.CommitGate;
 import com.holdmyspot.cat.common.optimizer.contract.Assertion;
+import com.holdmyspot.cat.common.optimizer.contract.Cell;
+import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.PromptTest;
 import com.holdmyspot.cat.common.optimizer.statistics.PairedComparison;
 import com.holdmyspot.cat.common.optimizer.statistics.Comparison;
@@ -99,8 +103,14 @@ final class CellReports
 		}
 		else
 		{
+			Contract contract = campaign.contract();
+			if (campaign.header().evaluationHarnesses().size() > 1)
+			{
+				contract = campaign.lineages().stream().filter(lineage -> lineage.number() == attempt.lineage()).
+					map(Lineage::contract).findFirst().orElseThrow();
+			}
 			for (String cell : attempt.procedure().cells())
-				reports.add(formal(campaign, attempt, cell));
+				reports.add(formal(campaign, attempt, cell, evaluator(contract, cell)));
 		}
 		return reports;
 	}
@@ -122,7 +132,22 @@ final class CellReports
 			errorBars.add(wilson(counts));
 		return new CellReport(cell, counts.passes(), trials, passRate,
 			developmentImprovement(campaign, cell, counts),
-			developmentComparison(counts, campaign.contract().minimumPassRate()), errorBars);
+			developmentComparison(counts, campaign.contract().minimumPassRate()), errorBars,
+			evaluator(campaign.contract(), cell));
+	}
+
+	/**
+	 * Finds the evaluator label for a resolved cell in a shared contract.
+	 *
+	 * @param contract the contract that assigned the cell
+	 * @param cell     the cell's identifier
+	 * @return the evaluator, or empty for a singleton report
+	 */
+	private static Optional<Harness> evaluator(Contract contract, String cell)
+	{
+		if (contract.profiles().byEvaluator().size() < 2)
+			return Optional.empty();
+		return contract.findCell(cell).flatMap(Cell::evaluator);
 	}
 
 	/**
@@ -200,12 +225,14 @@ final class CellReports
 	/**
 	 * Builds the report of a cell from a certification attempt's counts.
 	 *
-	 * @param campaign the campaign
-	 * @param attempt the attempt
-	 * @param cell the cell's identifier
+	 * @param campaign  the campaign
+	 * @param attempt   the attempt
+	 * @param cell      the cell's identifier
+	 * @param evaluator the evaluator if the attempt covers more than one harness
 	 * @return the report
 	 */
-	private static CellReport formal(Campaign campaign, CertificationAttempt attempt, String cell)
+	private static CellReport formal(Campaign campaign, CertificationAttempt attempt, String cell,
+		Optional<Harness> evaluator)
 	{
 		CellCounts counts = attempt.count(cell);
 		DecisionBoundaries boundaries = attempt.procedure().boundaries();
@@ -240,7 +267,7 @@ final class CellReports
 		errorBars.add(wilson(counts));
 		return new CellReport(cell, counts.passes(), counts.outcomes(),
 			passRate(FORMAL_ESTIMATE, counts, "no adopted formal outcomes"),
-			formalImprovement(campaign, attempt, cell, counts, lower, upper), comparison, errorBars);
+			formalImprovement(campaign, attempt, cell, counts, lower, upper), comparison, errorBars, evaluator);
 	}
 
 	/**

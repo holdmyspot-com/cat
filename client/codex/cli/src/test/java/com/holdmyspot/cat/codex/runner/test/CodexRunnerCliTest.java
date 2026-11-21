@@ -19,6 +19,7 @@ import com.holdmyspot.cat.common.runner.HarnessCapacity;
 import com.holdmyspot.cat.common.runner.HarnessCapacityWaitExpiredException;
 import com.holdmyspot.cat.common.runner.HarnessRunnerOptions;
 import com.holdmyspot.cat.common.runner.HarnessTemporaryRoot;
+import com.holdmyspot.cat.common.runner.HookComparisonLaunch;
 import com.holdmyspot.cat.common.runner.InvalidArgumentsException;
 import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.ParentSandbox;
@@ -65,6 +66,36 @@ public final class CodexRunnerCliTest
 	 */
 	private static final String AGENT = "probe-agent";
 	private static final CodexRunnerCliAccess ACCESS = CodexRunnerCliSecrets.getCodexRunnerCliAccess();
+
+	/**
+	 * Refuses forwarded or marked comparison commands before reading a launch or opening a native process.
+	 */
+	@Test
+	public void reservesComparisonForRequestServer()
+	{
+		String option = HookComparisonLaunch.OPTION;
+		String[] command = {"serve", option};
+		List<Map<String, String>> marked = List.of(Map.of("CODEX_THREAD_ID", THREAD_ID),
+			Map.of("CLAUDECODE", "1"), Map.of("CODEX_THREAD_ID", ""),
+			Map.of(SessionRequestAccess.REQUESTS_VARIABLE, "/requests"));
+		for (Map<String, String> environment : marked)
+		{
+			StringWriter errors = new StringWriter();
+			requireThat(CodexRunnerCli.refusesLaunch(command, WORKING_DIRECTORY, environment, Platform.LINUX_X64,
+				new PrintWriter(errors)), "refused").isTrue();
+			requireThat(errors.toString(), "reason").contains("Only the request server");
+		}
+
+		StringWriter malformed = new StringWriter();
+		requireThat(CodexRunnerCli.refusesLaunch(new String[]{"serve", option, "extra"}, WORKING_DIRECTORY, Map.of(),
+			Platform.LINUX_X64, new PrintWriter(malformed)), "malformed").isTrue();
+		requireThat(malformed.toString(), "reason").contains("Only the request server");
+
+		StringWriter internal = new StringWriter();
+		requireThat(CodexRunnerCli.refusesLaunch(command, WORKING_DIRECTORY, Map.of(), Platform.LINUX_X64,
+			new PrintWriter(internal)), "markerFree").isFalse();
+		requireThat(internal.toString(), "reason").isEmpty();
+	}
 
 	/**
 	 * Verifies that in a Codex thread a runner command keeps its nested sessions in the temporary directory of the

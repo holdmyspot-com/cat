@@ -1,6 +1,7 @@
 package com.holdmyspot.cat.common.optimizer.campaign.test;
 
 import static com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures.BIG_HIGH;
+import static com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures.BIG_LOW;
 import static com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures.BIG_MEDIUM;
 import static com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures.SAFETY;
 import static com.holdmyspot.cat.common.optimizer.contract.test.TierFixtures.SMALL_HIGH;
@@ -8,6 +9,7 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.Pairing;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.PairCounts;
@@ -147,6 +149,35 @@ public final class CellTierTest
 		requireThat(ids(CellTier.scopeCells(profiles, CertificationScope.LATEST_VERSIONS)), "latest").
 			isEqualTo(List.of(formatting("gpt-6.1-luna", "low"), formatting("gpt-6.1-luna", "high"),
 				formatting("gpt-6-sol", "low"), SAFETY));
+	}
+
+	/**
+	 * Verifies that shared development and certification keep each evaluator's weakest test cells and that stress
+	 * settings follow the assigned evaluator even when the other evaluator offers the same model and effort.
+	 */
+	@Test
+	public void sharedCandidateUsesLocalCellTiers()
+	{
+		// Requirement: R-L7
+		// Requirement: R-L8
+		Contract codex = TierFixtures.tieredContract().withScope(CertificationScope.WEAKEST_CELL);
+		CapabilityRanking claudeRanking = new CapabilityRanking(List.of("small", "big"),
+			"the Claude evaluator's ranking");
+		TrialProfiles claude = TierFixtures.contract(TierFixtures.TIERED_PROFILES, claudeRanking, List.of(),
+			new TrialProfile("big", "high")).withScope(CertificationScope.WEAKEST_CELL).profiles();
+		TrialProfiles shared = TrialProfiles.forEvaluators(Map.of(Harness.CLAUDE, claude, Harness.CODEX,
+			codex.profiles()));
+		Contract contract = new Contract(codex.requirements(), codex.tests(), shared, codex.judge(),
+			codex.limitations(), codex.minimumPassRate(), codex.salt());
+
+		List<String> expected = List.of("claude:" + BIG_LOW, "claude:" + SAFETY,
+			"codex:" + SMALL_HIGH, "codex:" + SAFETY);
+		requireThat(CellTier.scopeCellIds(contract), "weakestScope").isEqualTo(expected);
+		requireThat(ids(CellTier.developmentCells(contract, 1, List.of())), "developmentCells").isEqualTo(expected);
+		requireThat(ids(CellTier.stressCells(contract, Harness.CODEX, "claude:" + BIG_LOW)), "claudeStressCells").
+			isEmpty();
+		requireThat(ids(CellTier.stressCells(contract, Harness.CLAUDE, "codex:" + BIG_LOW)), "codexStressCells").
+			isEqualTo(List.of("codex:" + BIG_LOW + "/tool-output-5000"));
 	}
 
 	/**

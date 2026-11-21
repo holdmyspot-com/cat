@@ -28,12 +28,10 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 public final class ChildBound
 {
 	private final ParentPolicySource parent;
-	private final ChildNeedsSource needs;
 	/**
-	 * The policy that every reading of the parent's is narrowed to: the snapshots' readings combined, or
-	 * {@link ParentPolicy#UNSANDBOXED}, which narrows nothing, before the first snapshot.
+	 * The original policy readings, kept so trust checks can detect a write grant from any snapshot.
 	 */
-	private final ParentPolicy snapshot;
+	private final List<ParentPolicy> snapshots;
 	/**
 	 * The absolute paths that a reading of the parent's policy must keep the parent's commands from writing.
 	 */
@@ -43,33 +41,28 @@ public final class ChildBound
 	 * Creates a bound that reads the parent's policy for each launch.
 	 *
 	 * @param parent reads the policy of the parent session
-	 * @param needs  says what the child needs
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public ChildBound(ParentPolicySource parent, ChildNeedsSource needs)
+	public ChildBound(ParentPolicySource parent)
 	{
-		this(parent, needs, ParentPolicy.UNSANDBOXED, List.of());
+		this(parent, List.of(), List.of());
 	}
 
 	/**
 	 * Creates a bound.
 	 *
 	 * @param parent   reads the policy of the parent session
-	 * @param needs    says what the child needs
-	 * @param snapshot the policy that every reading of the parent's is narrowed to
+	 * @param snapshots the original policy readings
 	 * @param trusted  the absolute paths that a reading of the parent's policy must keep the parent's commands from
 	 *                 writing
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	private ChildBound(ParentPolicySource parent, ChildNeedsSource needs, ParentPolicy snapshot, List<Path> trusted)
+	private ChildBound(ParentPolicySource parent, List<ParentPolicy> snapshots, List<Path> trusted)
 	{
 		requireThat(parent, "parent").isNotNull();
-		requireThat(needs, "needs").isNotNull();
-		requireThat(snapshot, "snapshot").isNotNull();
 		requireThat(trusted, "trusted").isNotNull();
 		this.parent = parent;
-		this.needs = needs;
-		this.snapshot = snapshot;
+		this.snapshots = List.copyOf(snapshots);
 		this.trusted = List.copyOf(trusted);
 	}
 
@@ -91,7 +84,7 @@ public final class ChildBound
 			throw new IllegalArgumentException("trusted must be absolute: " + trusted);
 		List<Path> allTrusted = new ArrayList<>(this.trusted);
 		allTrusted.add(trusted);
-		return new ChildBound(parent, needs, readParent(snapshot, allTrusted, Optional.empty()), allTrusted);
+		return new ChildBound(parent, readPolicies(allTrusted, Optional.empty()), allTrusted);
 	}
 
 	/**
@@ -107,7 +100,31 @@ public final class ChildBound
 	public ParentPolicy parentPolicy(Optional<String> askingThread) throws SessionRefusedException
 	{
 		requireThat(askingThread, "askingThread").isNotNull();
-		return readParent(snapshot, trusted, askingThread);
+		return intersect(readPolicies(trusted, askingThread));
+	}
+
+	/**
+	 * Returns the narrowed owner policy after verifying a source against each authenticated reading separately.
+	 *
+	 * @param askingThread the requesting thread, or empty for the parent's main thread
+	 * @param check verifies trust before the policy can be used outside the owner's sandbox
+	 * @return the narrowed policy
+	 * @throws IOException if trust or the owner policy cannot be established
+	 */
+	public ParentPolicy parentPolicy(Optional<String> askingThread, PolicyCheck check) throws IOException
+	{
+		requireThat(askingThread, "askingThread").isNotNull();
+		requireThat(check, "check").isNotNull();
+		List<ParentPolicy> policies = readPolicies(trusted, askingThread);
+		try
+		{
+			check.requireTrusted(policies);
+		}
+		catch (PolicyRefusal e)
+		{
+			throw new SessionRefusedException(e.messageFor(parent.harnessName()), e);
+		}
+		return intersect(policies);
 	}
 
 	/**
@@ -119,6 +136,7 @@ public final class ChildBound
 	 * @param extra         the writes and hosts that the child's commands need beyond what its harness needs
 	 * @param askingThread  the identifier that the parent's harness gives the thread that asks for the child, or
 	 *                      empty for the parent's main thread
+	 * @param needs         says what the child needs
 	 * @return the bound
 	 * @throws NullPointerException     if any of the arguments are null
 	 * @throws IllegalArgumentException if {@code harness} is blank
@@ -127,16 +145,42 @@ public final class ChildBound
 	 * @throws IOException              if what the child needs cannot be determined
 	 */
 	public ChildPolicy bound(String harness, Path resultsFolder, List<Path> deniedReads, ExtraPermissions extra,
-		Optional<String> askingThread) throws IOException
+		Optional<String> askingThread, ChildNeedsSource needs) throws IOException
+	{
+		return bound(harness, resultsFolder, deniedReads, extra, askingThread, needs, _ ->
+		{
+			// This needs source does not execute an installed peer.
+		});
+	}
+
+	/**
+	 * Bounds the child after checking every observed owner policy against the source of its needs.
+	 *
+	 * @param harness the child's harness identifier
+	 * @param resultsFolder the folder that holds the child's nested session
+	 * @param deniedReads the absolute paths the launch denies the child
+	 * @param extra the writes and hosts the child's commands need beyond what its harness needs
+	 * @param askingThread the requesting thread, or empty for the parent's main thread
+	 * @param needs says what the child needs
+	 * @param check verifies trust before reading the child's needs
+	 * @return the bound
+	 * @throws IOException if trust or needs cannot be determined, or if the parent refuses the launch
+	 */
+	public ChildPolicy bound(String harness, Path resultsFolder, List<Path> deniedReads, ExtraPermissions extra,
+		Optional<String> askingThread, ChildNeedsSource needs, PolicyCheck check) throws IOException
 	{
 		requireThat(harness, "harness").isNotBlank();
 		requireThat(resultsFolder, "resultsFolder").isNotNull();
 		requireThat(deniedReads, "deniedReads").isNotNull();
 		requireThat(extra, "extra").isNotNull();
 		requireThat(askingThread, "askingThread").isNotNull();
-		ParentPolicy policy = readParent(snapshot, trusted, askingThread);
+		requireThat(needs, "needs").isNotNull();
+		requireThat(check, "check").isNotNull();
+		List<ParentPolicy> policies = readPolicies(trusted, askingThread);
 		try
 		{
+			check.requireTrusted(policies);
+			ParentPolicy policy = intersect(policies);
 			return ChildPolicy.intersect(policy, needs.needs(harness, resultsFolder, deniedReads, policy).with(extra));
 		}
 		catch (PolicyRefusal e)
@@ -166,24 +210,30 @@ public final class ChildBound
 	}
 
 	/**
-	 * Reads the parent's policy, checks that it keeps the parent's commands from writing some paths, and narrows it to
-	 * a snapshot.
+	 * Reads the parent's policy, checks the paths it must protect and appends the reading to the existing snapshots.
 	 *
-	 * @param narrowedTo   the policy that the reading is narrowed to
 	 * @param trustedPaths the absolute paths that the reading must keep the parent's commands from writing
 	 * @param askingThread the thread whose policy is read, or empty for the parent's main thread
-	 * @return the policy
+	 * @return the snapshot readings and the current reading
 	 * @throws SessionRefusedException if the policy cannot be read safely
 	 */
-	private ParentPolicy readParent(ParentPolicy narrowedTo, List<Path> trustedPaths, Optional<String> askingThread)
+	private List<ParentPolicy> readPolicies(List<Path> trustedPaths, Optional<String> askingThread)
 		throws SessionRefusedException
 	{
 		try
 		{
-			ParentPolicy policy = parent.read(askingThread);
-			for (Path path : trustedPaths)
-				policy.requireTrusted(path);
-			return narrowedTo.intersect(policy);
+			List<ParentPolicy> current = parent.readings(askingThread);
+			if (current.isEmpty())
+				throw new IOException("No authenticated owner policy was available");
+			List<ParentPolicy> policies = new ArrayList<>(snapshots);
+			for (ParentPolicy policy : current)
+				policies.add(ParentPolicy.UNSANDBOXED.intersect(policy));
+			for (ParentPolicy policy : policies)
+			{
+				for (Path path : trustedPaths)
+					policy.requireTrusted(path);
+			}
+			return List.copyOf(policies);
 		}
 		catch (PolicyRefusal e)
 		{
@@ -193,5 +243,43 @@ public final class ChildBound
 		{
 			throw new SessionRefusedException(unreadablePolicy(parent.harnessName(), e), e);
 		}
+	}
+
+	/**
+	 * Returns the permissions common to all readings of the parent's policy.
+	 *
+	 * @param policies the individual readings
+	 * @return the narrowed policy
+	 * @throws SessionRefusedException if a path cannot be resolved
+	 */
+	private ParentPolicy intersect(List<ParentPolicy> policies) throws SessionRefusedException
+	{
+		try
+		{
+			ParentPolicy result = ParentPolicy.UNSANDBOXED;
+			for (ParentPolicy policy : policies)
+				result = result.intersect(policy);
+			return result;
+		}
+		catch (IOException e)
+		{
+			throw new SessionRefusedException(unreadablePolicy(parent.harnessName(), e), e);
+		}
+	}
+
+	/**
+	 * Validates a source before it runs outside the parent's sandbox.
+	 */
+	@FunctionalInterface
+	public interface PolicyCheck
+	{
+		/**
+		 * Checks the source against every observed parent policy, including the current reading.
+		 *
+		 * @param policies the individual readings, before intersection
+		 * @throws IOException if the source's files cannot be determined
+		 * @throws PolicyRefusal if the source is writable under a sandbox policy
+		 */
+		void requireTrusted(List<ParentPolicy> policies) throws IOException, PolicyRefusal;
 	}
 }

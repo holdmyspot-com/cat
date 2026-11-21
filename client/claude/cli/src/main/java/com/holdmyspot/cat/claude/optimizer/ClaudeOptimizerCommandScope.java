@@ -13,6 +13,7 @@ import com.holdmyspot.cat.common.FileReplacer;
 import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.optimizer.adapter.DeferredInterruptSignal;
+import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.MainOptimizerCommandScope;
@@ -138,6 +139,18 @@ public final class ClaudeOptimizerCommandScope extends MainOptimizerCommandScope
 				this::heldOutDirectories, clock(), fileReplacer());
 		}
 		return sessions;
+	}
+
+	@Override
+	protected SessionPort evaluatorSessions(RunnerSessions.Settings settings, Bridge bridge)
+	{
+		return new ClaudeSessions(settings, bridge);
+	}
+
+	@Override
+	protected Path peerEvaluatorArtifact(Harness evaluator) throws IOException
+	{
+		return ClaudeRunnerCli.requestedRunner(this, artifact, evaluator.commandName(), environment).artifact();
 	}
 
 	@Override

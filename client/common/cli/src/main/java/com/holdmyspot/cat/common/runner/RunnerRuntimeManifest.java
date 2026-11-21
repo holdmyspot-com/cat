@@ -25,9 +25,9 @@ import static java.nio.file.LinkOption.NOFOLLOW_LINKS;
  * registration must start a new evaluation environment. The package builder writes this file from the authoritative
  * runtime roots; evaluators verify every listed path before using its hash as the runner identity.
  * <p>
- * The plugin's {@link RuntimeBinding runtime binding} is written by each installation, so it is not a packaged entry:
- * binding the same package to another installation keeps its packaged identity. The Java runtime that the binding
- * names is part of the execution identity instead, so a changed runtime also starts a new evaluation environment.
+ * The packaged entries already cover the bundled runtime and its selector. An absolute binding used by earlier
+ * packages is written by each installation and excluded from the packaged identity. The runtime it names is part of
+ * the execution identity, so a changed runtime also starts a new evaluation environment.
  * The installation also writes the plugin's {@link StartupCache startup cache}, which only speeds up the start of the
  * same programs, so neither identity includes it.
  */
@@ -70,7 +70,8 @@ public final class RunnerRuntimeManifest
 	 *
 	 * @param artifact the assembled plugin directory
 	 *
-	 * @return the SHA-256 identity of every verified packaged entry and of the bound runtime's manifest
+	 * @return the SHA-256 identity of every verified packaged entry and, for an absolute binding, the bound runtime's
+	 *   manifest
 	 *
 	 * @throws IOException if a runtime input is missing, changed, omitted, or malformed, the plugin has no valid
 	 *   runtime binding, or the bound runtime does not match its manifest. The message names the file at fault.
@@ -79,9 +80,12 @@ public final class RunnerRuntimeManifest
 	{
 		Path root = root(artifact);
 		List<Entry> entries = verifiedEntries(root);
-		String runtime = InstalledRuntime.identity(RuntimeBinding.read(root));
 		MessageDigest digest = identityDigest(entries);
-		digest.update(("\nruntime\t" + runtime).getBytes(UTF_8));
+		if (!RuntimeBinding.selectsBundled(root))
+		{
+			String runtime = InstalledRuntime.identity(RuntimeBinding.read(root));
+			digest.update(("\nruntime\t" + runtime).getBytes(UTF_8));
+		}
 		return HexFormat.of().formatHex(digest.digest());
 	}
 

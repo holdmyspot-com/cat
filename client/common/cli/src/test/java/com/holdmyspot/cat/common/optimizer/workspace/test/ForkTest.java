@@ -565,6 +565,46 @@ public final class ForkTest
 	}
 
 	/**
+	 * A preparation checkout runs Git against the recorded source and leaves the base's ignore files unchanged.
+	 *
+	 * @throws IOException if the Git fixture cannot be used
+	 */
+	@Test
+	public void preparesCheckoutWithoutEditingBase() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path root = cleanup.add(Files.createTempDirectory("cat-fork-"));
+			Path base = repository(root);
+			Path scratch = root.resolve("preparation");
+			Git git = new Git(base);
+			String head = git.lines("rev-parse", "HEAD").getFirst();
+			String excludeBefore = Files.readString(excludeFile(base), UTF_8);
+			String ignoreBefore = Files.readString(ignoreFile(base), UTF_8);
+			Forks forks = new GitForks(Yielding.fileReplacer(), REGISTRAR);
+
+			ForkView prepared = forks.prepare(base, scratch, Set.of(Path.of("ignored.md")));
+			try
+			{
+				Path worktree = scratch.resolve("worktree");
+				requireThat(new Git(worktree).lines("rev-parse", "HEAD"), "checkoutHead").isEqualTo(List.of(head));
+				requireThat(Files.readString(worktree.resolve("ignored.md"), UTF_8), "participant").
+					isEqualTo(Files.readString(base.resolve("ignored.md"), UTF_8));
+				requireThat(prepared.ignoreNotice(), "ignoreNotice").isEmpty();
+				requireThat(worktreeCount(git), "registeredWorktrees").isEqualTo(2L);
+			}
+			finally
+			{
+				forks.remove(base, scratch);
+			}
+			requireThat(worktreeCount(git), "remainingWorktrees").isEqualTo(1L);
+			requireThat(Files.readString(ignoreFile(base), UTF_8), "gitignore").isEqualTo(ignoreBefore);
+			requireThat(Files.readString(excludeFile(base), UTF_8), "exclude").isEqualTo(excludeBefore);
+			requireThat(git.lines("status", "--porcelain", "--untracked-files=all"), "status").isEmpty();
+		}
+	}
+
+	/**
 	 * Verifies that CAT's lines are appended to the base's {@code .gitignore}, unstaged and nowhere else, when Git does
 	 * not ignore CAT's session directories, so campaign files never make the base dirty, and that the fork reports it.
 	 *

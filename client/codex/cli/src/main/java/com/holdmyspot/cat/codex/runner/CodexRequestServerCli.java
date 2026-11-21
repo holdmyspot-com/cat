@@ -10,7 +10,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
 import com.holdmyspot.cat.common.runner.ProcessTreeStop;
 import com.holdmyspot.cat.common.runner.RequestServer;
-import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
+import com.holdmyspot.cat.common.runner.RequestedRunner;
 import com.holdmyspot.cat.common.runner.launcher.ProcessHandleTable;
 import com.holdmyspot.cat.common.runner.policy.ChildPolicy;
 import com.holdmyspot.cat.common.runner.policy.HarnessProcesses;
@@ -85,14 +85,13 @@ public final class CodexRequestServerCli
 	 * @return the starter
 	 * @throws NullPointerException if any of the arguments are null
 	 */
-	public static RequestedSessionStarter starter(JvmScope scope, Path artifact, Map<String, String> environment)
+	public static RequestedRunner.Resolver starter(JvmScope scope, Path artifact, Map<String, String> environment)
 	{
 		requireThat(scope, "scope").isNotNull();
 		requireThat(artifact, "artifact").isNotNull();
 		requireThat(environment, "environment").isNotNull();
 		Map<String, String> copy = Map.copyOf(CodexRunnerCli.MARKERS.without(environment));
-		return (harness, arguments, directory) -> CodexRunnerCli.requestedRunner(scope, artifact, harness, copy).
-			start(arguments, directory, copy);
+		return harness -> CodexRunnerCli.requestedRunner(scope, artifact, harness, copy).select(copy);
 	}
 
 	/**

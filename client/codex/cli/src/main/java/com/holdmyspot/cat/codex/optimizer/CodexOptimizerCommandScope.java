@@ -14,6 +14,7 @@ import com.holdmyspot.cat.common.Platform;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
 import com.holdmyspot.cat.common.optimizer.adapter.DeferredInterruptSignal;
+import com.holdmyspot.cat.common.optimizer.adapter.Bridge;
 import com.holdmyspot.cat.common.optimizer.adapter.RunnerSessions;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.MainOptimizerCommandScope;
@@ -21,10 +22,15 @@ import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.runner.HarnessCapacity;
+import com.holdmyspot.cat.common.runner.MainHarnessRunnerScope;
+import com.holdmyspot.cat.common.runner.policy.ParentPolicy;
+import com.holdmyspot.cat.common.runner.policy.PolicyRefusal;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeAccess;
 import com.holdmyspot.cat.codex.CodexSessionHarness;
 import com.holdmyspot.cat.codex.runner.CodexConnectionConfiguration;
+import com.holdmyspot.cat.codex.runner.CodexRunner;
 import com.holdmyspot.cat.codex.runner.CodexRunnerCli;
+import com.holdmyspot.cat.codex.runner.CodexStartupHookComparison;
 import com.holdmyspot.cat.codex.secrets.CodexOptimizerCommandScopeSecrets;
 import com.holdmyspot.cat.common.Waiting;
 import com.holdmyspot.cat.common.runner.PluginDirectory;
@@ -149,6 +155,42 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 	}
 
 	@Override
+	protected Optional<HookPairResolver> nativeHookComparison(Harness evaluator, Path project, String prompt)
+	{
+		if (evaluator != Harness.CODEX || !Platform.current().isLinux() || CodexRunner.bubblewrap(environment).isEmpty())
+			return Optional.empty();
+		return Optional.of((production, trial, trialHome, inputs) ->
+		{
+			try (MainHarnessRunnerScope runner = new MainHarnessRunnerScope(environment, waiting()))
+			{
+				CodexStartupHookComparison.Context context = new CodexStartupHookComparison.Context(project,
+					configurationDirectory, EXECUTABLE, environment, boundary.hookPolicy(), runner);
+				return CodexStartupHookComparison.resolve(context, inputs, production, trial, trialHome, prompt);
+			}
+			catch (PolicyRefusal e)
+			{
+				throw new IOException(e.messageFor("Codex"), e);
+			}
+		});
+	}
+
+	@Override
+	protected Process startHookProcess(ProcessBuilder builder, Path scratch, Optional<Path> trialHome)
+		throws IOException
+	{
+		try
+		{
+			ParentPolicy policy = boundary.hookPolicy();
+			CodexHookProcess.prepare(builder, scratch, trialHome, environment, policy, json());
+			return executableFiles().run(builder);
+		}
+		catch (PolicyRefusal e)
+		{
+			throw new IOException(e.messageFor("Codex"), e);
+		}
+	}
+
+	@Override
 	protected void backgroundEnded(String campaign) throws IOException, InterruptedException
 	{
 		CodexExitNotice.send(boundary.session(), environment, campaign);
@@ -164,6 +206,18 @@ public final class CodexOptimizerCommandScope extends MainOptimizerCommandScope
 				this::heldOutDirectories, clock(), fileReplacer());
 		}
 		return sessions;
+	}
+
+	@Override
+	protected SessionPort evaluatorSessions(RunnerSessions.Settings settings, Bridge bridge)
+	{
+		return new CodexSessions(settings, bridge);
+	}
+
+	@Override
+	protected Path peerEvaluatorArtifact(Harness evaluator) throws IOException
+	{
+		return CodexRunnerCli.requestedRunner(this, artifact, evaluator.commandName(), environment).artifact();
 	}
 
 	@Override

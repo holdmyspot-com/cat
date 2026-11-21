@@ -216,8 +216,8 @@ public final class CodexProfileInventoryTest
 	}
 
 	/**
-	 * Verifies that the shipped capability ranking puts {@code astra} above {@code sol} above {@code luna}, names the
-	 * documentation's address and reading date, and ranks every model of the recorded inventory.
+	 * Verifies that the shipped capability ranking puts {@code astra}, {@code sol}, {@code terra} and {@code luna}
+	 * in descending order, names the documentation's address and reading date, and ranks the recorded inventory.
 	 *
 	 * @throws IOException if the inventory or the ranking cannot be read
 	 */
@@ -231,9 +231,9 @@ public final class CodexProfileInventoryTest
 			CodexProfileInventory port = new CodexProfileInventory(artifact, "codex",
 				launcher(recorded(), new CopyOnWriteArrayList<>()));
 			CapabilityRanking ranking = port.ranking();
-			requireThat(ranking.families(), "families").isEqualTo(List.of("astra", "sol", "luna"));
+			requireThat(ranking.families(), "families").isEqualTo(List.of("astra", "sol", "terra", "luna"));
 			requireThat(ranking.source(), "source").
-				isEqualTo("https://developers.openai.com/api/docs/models, read 2026-10-04");
+				isEqualTo("https://developers.openai.com/api/docs/models, read 2026-11-20");
 			requireThat(ranking.unranked(port.inventory()), "unranked").isEmpty();
 		}
 	}

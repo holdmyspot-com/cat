@@ -88,6 +88,59 @@ public final class TrialSelection
 	}
 
 	/**
+	 * Returns the union of input files that the selected trial evaluators can load on the same snapshot.
+	 *
+	 * @param evaluators the selected harnesses
+	 * @param promptSources the project's prompt files and directories
+	 * @param loaderConfiguration the files that configure loading for the selected harnesses
+	 * @param contract the proposal or confirmed contract
+	 * @param plugins the campaign's trial plugins
+	 * @return the selection
+	 * @throws NullPointerException if an argument or evaluator is null
+	 * @throws IllegalArgumentException if no evaluator is selected or a prompt source is absolute
+	 */
+	public static SourceSelection base(Set<Harness> evaluators, Set<Path> promptSources, Set<Path> loaderConfiguration,
+		Contract contract, List<TrialPlugin> plugins)
+	{
+		requireThat(contract, "contract").isNotNull();
+		SourceSelection initial = base(evaluators, promptSources, loaderConfiguration, plugins);
+		Set<Path> roots = new HashSet<>(initial.roots());
+		roots.addAll(contract.referencedFiles());
+		for (Dependent dependent : contract.dependents())
+		{
+			if (dependent.location() == Dependent.Location.PROJECT)
+				roots.add(dependent.path());
+		}
+		return new SourceSelection(roots, initial.names(), List.of());
+	}
+
+	/**
+	 * Returns the files that load the shared prompt system before a contract exists.
+	 *
+	 * @param evaluators the selected harnesses
+	 * @param promptSources the project's prompt files and directories, relative to the project
+	 * @param loaderConfiguration the files that configure loading for the selected harnesses
+	 * @param plugins the campaign's configured trial plugins
+	 * @return the union of the selected harnesses' base sources
+	 * @throws NullPointerException if an argument or evaluator is null
+	 * @throws IllegalArgumentException if no evaluator is selected or a prompt source is absolute
+	 */
+	public static SourceSelection base(Set<Harness> evaluators, Set<Path> promptSources, Set<Path> loaderConfiguration,
+		List<TrialPlugin> plugins)
+	{
+		requireThat(evaluators, "evaluators").isNotEmpty();
+		Set<Path> roots = new HashSet<>();
+		Set<String> names = new HashSet<>();
+		for (Harness evaluator : evaluators)
+		{
+			SourceSelection local = base(evaluator, promptSources, loaderConfiguration, plugins);
+			roots.addAll(local.roots());
+			names.addAll(local.names());
+		}
+		return new SourceSelection(roots, names, List.of());
+	}
+
+	/**
 	 * Returns the files that load the prompt system into a session before a contract exists: the prompt sources, the
 	 * in-project loader configuration, the project rules, the harness's instruction files in any directory and its
 	 * top-level project directories, and the project files that plugin mappings write into trial plugins.

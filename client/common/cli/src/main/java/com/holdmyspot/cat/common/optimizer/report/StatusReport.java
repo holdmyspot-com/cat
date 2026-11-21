@@ -735,8 +735,14 @@ public record StatusReport(ReportStatus status, String campaignId, Lifecycle lif
 		if (contract.profiles().scope() != CertificationScope.WEAKEST_CELL)
 			return claim;
 		List<String> profiles = new ArrayList<>();
+		boolean shared = contract.profiles().byEvaluator().size() > 1;
 		for (Cell cell : scopeCells)
-			profiles.add(cell.testId() + " under " + cell.profile().label());
+		{
+			String evaluator = "";
+			if (shared)
+				evaluator = " in " + cell.evaluator().orElseThrow().commandName();
+			profiles.add(cell.testId() + evaluator + " under " + cell.profile().label());
+		}
 		return claim + " Certification covered only each test's weakest cell: " + String.join(", ", profiles) +
 			". No other profile was certified.";
 	}

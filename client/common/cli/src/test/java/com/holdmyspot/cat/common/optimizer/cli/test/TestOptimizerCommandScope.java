@@ -14,9 +14,11 @@ import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.cli.HarnessVersion;
 import com.holdmyspot.cat.common.optimizer.cli.OptimizerCommandScope;
 import com.holdmyspot.cat.common.optimizer.cli.AbstractOptimizerCommandScope;
+import com.holdmyspot.cat.common.optimizer.cli.EvaluatorMetadata;
 import com.holdmyspot.cat.common.fakes.test.TestJvmScope;
 import com.holdmyspot.cat.common.optimizer.execution.CapCalibrator;
 import com.holdmyspot.cat.common.optimizer.execution.test.FixedCalibrator;
+import com.holdmyspot.cat.common.optimizer.port.HookInspection;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeHostInterruptSignal;
 import com.holdmyspot.cat.common.optimizer.port.test.FakeProfileInventory;
@@ -81,6 +83,7 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private String launchRefusal;
 	String nestedQuotaRefusal;
 	String sandboxRefusal;
+	Optional<List<String>> nativeUnapprovedHooks = Optional.empty();
 	TrialStatusResponder retainedTrialLookup;
 
 	/**
@@ -106,6 +109,13 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	Waiting controlledWaiting = Yielding.waiting();
 
 	@Override
+	protected Optional<HookPairResolver> nativeHookComparison(Harness evaluator, Path project, String prompt)
+	{
+		return nativeUnapprovedHooks.map(unapproved -> (_, _, _, _) ->
+			new HookInspection(List.of(), Optional.of(unapproved)));
+	}
+
+	@Override
 	public Waiting waiting()
 	{
 		return controlledWaiting;
@@ -124,6 +134,8 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	private volatile ExecutableFiles.ProcessLauncher processes = ProcessBuilder::start;
 	private volatile GitProjects git = GitProjects.IGNORING;
 	private Path home;
+	private Path peerArtifact;
+	private SessionPort peerTrials;
 	private final ExecutableFiles executableFiles = ExecutableFilesSecrets.getExecutableFilesAccess().create(
 		Thread::yield, Clock.systemUTC(), this::startProcess);
 
@@ -255,6 +267,43 @@ final class TestOptimizerCommandScope<S extends SessionPort> extends AbstractOpt
 	{
 		ensureOpen();
 		return executableFiles;
+	}
+
+	/**
+	 * Supplies the installed artifact selected for a test peer.
+	 *
+	 * @param artifact the artifact selected by the fake resolver
+	 */
+	void usePeerArtifact(Path artifact)
+	{
+		peerArtifact = artifact;
+	}
+
+	/**
+	 * Supplies a model-free trial port for the selected peer.
+	 *
+	 * @param sessions the peer's trial sessions
+	 */
+	void usePeerTrials(SessionPort sessions)
+	{
+		peerTrials = sessions;
+	}
+
+	@Override
+	protected SessionPort peerTrialSessions(Harness evaluator, EvaluatorMetadata metadata) throws IOException
+	{
+		if (peerTrials == null)
+			return super.peerTrialSessions(evaluator, metadata);
+		requireThat(metadata.harness(), "harness").isEqualTo(evaluator);
+		return peerTrials;
+	}
+
+	@Override
+	protected Path peerEvaluatorArtifact(Harness evaluator) throws IOException
+	{
+		if (peerArtifact == null)
+			return super.peerEvaluatorArtifact(evaluator);
+		return peerArtifact;
 	}
 
 	/**

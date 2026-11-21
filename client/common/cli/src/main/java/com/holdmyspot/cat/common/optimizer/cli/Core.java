@@ -2,10 +2,12 @@ package com.holdmyspot.cat.common.optimizer.cli;
 
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.Set;
 
 /**
  * What the commands call. Each method implements one {@link Command} on already validated input.
@@ -141,8 +143,32 @@ public interface Core
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
-		throws CommandRefusedException, IOException, InterruptedException;
+	default CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		return start(target, ceiling, goal, extraPermissions, Set.of());
+	}
+
+	/**
+	 * Starts or resumes a campaign with an optional explicit choice of evaluation harnesses.
+	 *
+	 * @param target the prompt file or prompt system
+	 * @param ceiling the maximum simultaneous nested sessions of a new campaign
+	 * @param goal the user's goal for a new campaign, or {@code null} if the user stated none
+	 * @param extraPermissions the file of extra permissions for a new campaign, or {@code null} for none
+	 * @param evaluationHarnesses the requested evaluators, or an empty set to use the starting harness for a new
+	 *   campaign and the recorded evaluators for a resumed campaign
+	 * @return the campaign result
+	 * @throws NullPointerException if {@code target} or {@code evaluationHarnesses} are null, or if the set
+	 *   contains a null entry
+	 * @throws IllegalArgumentException if the ceiling is out of range or a supplied goal is blank
+	 * @throws CommandRefusedException as {@link #start(Path, int, String, Path)} refuses, or if the requested
+	 *   evaluators differ from the campaign's recorded evaluators or cannot evaluate the target
+	 * @throws IOException if the store, the workspace or a session fails
+	 * @throws InterruptedException if the thread is interrupted while it waits for a session
+	 */
+	CommandResult start(Path target, int ceiling, String goal, Path extraPermissions,
+		Set<Harness> evaluationHarnesses) throws CommandRefusedException, IOException, InterruptedException;
 
 	/**
 	 * Advances a campaign for one slice.

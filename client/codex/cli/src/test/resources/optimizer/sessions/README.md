@@ -49,3 +49,26 @@ Existing recordings keep their established substitutions:
 Connection-local JSON-RPC response IDs retain their recorded values. All other recorded event fields and values remain unchanged apart from the substitutions above.
 
 The interrupt check replays the complete interrupted-turn recording.
+
+## E5 file and text evidence
+
+These streams come from Codex CLI 0.171.0 on installed CAT `1.0+b30730961acbe`, campaign
+`20261121T140529Z-86d2a1`. The retained `evidence/verified-codex-pilot.json` in session
+`01a1f722-8002-7742-8a1f-0d65e844b167` under `temp/e5-codex-path-retry-a8lJvx/` ties the native pairs
+to file pilot position 17 and chat pilot position 7. Both trial sessions used `gpt-6-luna` at low effort.
+
+| Resource | Lines | Raw source SHA-256 |
+| --- | ---: | --- |
+| e5-file-trial-turn-1.jsonl | 141 | ffa08553be09e7e170ebeae1390e422851666cfdab2439ce87ee7097505af74b |
+| e5-file-judge-turn-1.jsonl | 307 | 78eff866dfa5a207b05a723241f4436f06fb5acf66ecc779f94ef79582d23a34 |
+| e5-text-trial-turn-1.jsonl | 30 | bcfe91c38fb794e139c6649c6a6809c80125b2feff5b1588afa43296e74fe61f |
+| e5-text-judge-turn-1.jsonl | 203 | 4d8aa5e9daa534c34083041cd9b34565378bcde86b456f815102e77ad07de340 |
+
+The four streams preserve event order and response IDs. The capture directory and remaining home prefixes are
+replaced with `/recorded/e5` and `/recorded/user`. Root thread IDs use their resource role names. Other UUIDs
+and command process IDs receive consistent replacements in first-observed order.
+
+`e5-answer.md` contains the original staged file bytes. The file trial recorded a completed add, and the judge
+received the same bytes in the trial's unified diff. The replay stages those bytes to model the recorded file
+effect. The two replay tests feed the native events through the Codex adapter and parse the recorded verdicts
+with the production judge parser.

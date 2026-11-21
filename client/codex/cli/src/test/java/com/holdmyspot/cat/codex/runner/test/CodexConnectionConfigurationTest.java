@@ -1334,6 +1334,7 @@ public final class CodexConnectionConfigurationTest
 
 				[hooks.state."cat@cat:hooks/hooks.json:post_tool_use:0:0"]
 				trusted_hash = "sha256:d29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
+				enabled = false
 
 				[hooks.state."other:hooks/hooks.json:session_start:0:0"]
 				trusted_hash = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -1349,25 +1350,24 @@ public final class CodexConnectionConfigurationTest
 					"trusted_hash = \"sha256:b29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
 				contains("[hooks.state.\"cat@cat:hooks/hooks.json:post_tool_use:0:0\"]").contains(
 					"trusted_hash = \"sha256:d29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
+				contains(System.lineSeparator() + "enabled = false" + System.lineSeparator()).
 				doesNotContain("other:hooks/hooks.json").doesNotContain("enabled = true");
 		}
 	}
 
 	/**
-	 * Verifies the user's approvals of a plugin's hooks reach the isolated configuration under the session-local
-	 * marketplace that bears the plugin's name, and that no other plugin's approvals do.
+	 * Verifies that the legacy proposal inspection recognizes a configured declaration by plugin name.
 	 *
 	 * @throws IOException if fixture I/O fails
 	 */
 	@Test
-	public void copiesTrustedPluginHooks() throws IOException
+	public void readsPluginApprovalDeclarations() throws IOException
 	{
 		// Requirement: R-W12
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path root = cleanup.add(Files.createTempDirectory("cat-codex-hook-trust-"));
 			Path source = root.resolve("host.toml");
-			Path destination = root.resolve("isolated/config.toml");
 			Files.writeString(source, """
 				[hooks.state."release-docs@acme:hooks/hooks.json:session_start:0:0"]
 				trusted_hash = "sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
@@ -1380,13 +1380,9 @@ public final class CodexConnectionConfigurationTest
 				trusted_hash = "sha256:d29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"
 				""");
 
-			CodexConnectionConfiguration.copyTrustedHooks(source, destination, "release-docs");
-
-			String configuration = Files.readString(destination);
-			requireThat(configuration, "configuration").contains(
-				"[hooks.state.\"release-docs@release-docs:hooks/hooks.json:session_start:0:0\"]").contains(
-					"trusted_hash = \"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3\"").
-				doesNotContain("release-docs-extra").doesNotContain("cat@cat").doesNotContain("enabled = true");
+			requireThat(CodexConnectionConfiguration.pluginHookApprovals(source, "release-docs"), "declarations").
+				isEqualTo(Map.of("hooks/hooks.json:session_start:0:0",
+					"sha256:c29ae6b8ed88cfdd4efd276d17a56b6a2d042b642cb79d6559ee64f91203a3d3"));
 		}
 	}
 

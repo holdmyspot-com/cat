@@ -2,10 +2,12 @@ package com.holdmyspot.cat.common.optimizer.report;
 
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.statistics.Interval;
 
 import java.math.BigDecimal;
 import java.util.List;
+import java.util.Optional;
 
 /**
  * The four outputs for one cell: the estimated pass rate, the improvement over
@@ -15,17 +17,18 @@ import java.util.List;
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param cell the cell's identifier
- * @param passes the candidate's adopted passes in the reported phase
- * @param trials the candidate's adopted outcomes in the reported phase
- * @param passRate the estimated pass rate
+ * @param cell        the cell's identifier
+ * @param passes      the candidate's adopted passes in the reported phase
+ * @param trials      the candidate's adopted outcomes in the reported phase
+ * @param passRate    the estimated pass rate
  * @param improvement the improvement over the incumbent
- * @param comparison the comparison with the minimum pass rate
- * @param errorBars the error bars; the one-sided certification bound is kept apart from descriptive two-sided
+ * @param comparison  the comparison with the minimum pass rate
+ * @param errorBars   the error bars; the one-sided certification bound is kept apart from descriptive two-sided
  *   intervals
+ * @param evaluator   the evaluator if the report covers more than one harness
  */
 public record CellReport(String cell, int passes, int trials, PassRate passRate, Improvement improvement,
-	Threshold comparison, List<ErrorBar> errorBars)
+	Threshold comparison, List<ErrorBar> errorBars, Optional<Harness> evaluator)
 {
 	/**
 	 * The candidate's observed pass rate under the frozen judge.
@@ -308,14 +311,15 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 	/**
 	 * Creates a cell's report.
 	 *
-	 * @param cell the cell's identifier
-	 * @param passes the candidate's adopted passes in the reported phase
-	 * @param trials the candidate's adopted outcomes in the reported phase
-	 * @param passRate the estimated pass rate
+	 * @param cell        the cell's identifier
+	 * @param passes      the candidate's adopted passes in the reported phase
+	 * @param trials      the candidate's adopted outcomes in the reported phase
+	 * @param passRate    the estimated pass rate
 	 * @param improvement the improvement over the incumbent
-	 * @param comparison the comparison with the minimum pass rate
-	 * @param errorBars the error bars
-	 * @throws NullPointerException if any argument is null
+	 * @param comparison  the comparison with the minimum pass rate
+	 * @param errorBars   the error bars
+	 * @param evaluator   the evaluator if the report covers more than one harness
+	 * @throws NullPointerException     if any argument is null
 	 * @throws IllegalArgumentException if {@code trials} is negative or {@code passes} is outside
 	 *   [0, {@code trials}]
 	 */
@@ -328,6 +332,7 @@ public record CellReport(String cell, int passes, int trials, PassRate passRate,
 		requireThat(improvement, "improvement").isNotNull();
 		requireThat(comparison, "comparison").isNotNull();
 		requireThat(errorBars, "errorBars").isNotNull();
+		requireThat(evaluator, "evaluator").isNotNull();
 		errorBars = List.copyOf(errorBars);
 	}
 }

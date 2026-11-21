@@ -6,6 +6,7 @@ import com.holdmyspot.cat.common.optimizer.campaign.CommandCounts;
 import com.holdmyspot.cat.common.optimizer.campaign.Purpose;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
 import com.holdmyspot.cat.common.optimizer.campaign.ExaminedJudge;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.RejectedJudge;
 import com.holdmyspot.cat.common.optimizer.campaign.Revert;
 import com.holdmyspot.cat.common.optimizer.contract.Cell;
@@ -288,6 +289,7 @@ final class ReportJson
 	private static void cell(ObjectNode node, CellReport report)
 	{
 		node.put("cell", report.cell());
+		report.evaluator().ifPresent(evaluator -> node.put("evaluator", evaluator.commandName()));
 		node.put("passes", report.passes());
 		node.put("trials", report.trials());
 		ObjectNode passRate = node.putObject("pass_rate");
@@ -401,6 +403,33 @@ final class ReportJson
 			return;
 		}
 		ObjectNode node = root.putObject("trial_profiles");
+		if (profiles.byEvaluator().size() > 1)
+		{
+			ArrayNode evaluators = node.putArray("evaluators");
+			for (Map.Entry<Harness, TrialProfiles> entry : profiles.byEvaluator().entrySet())
+			{
+				ObjectNode evaluator = evaluators.addObject();
+				evaluator.put("evaluator", entry.getKey().commandName());
+				TrialProfiles local = entry.getValue();
+				ObjectNode ranking = evaluator.putObject("ranking");
+				ranking.put("source", local.ranking().source());
+				ArrayNode families = ranking.putArray("families");
+				local.ranking().families().forEach(families::add);
+				localTrialProfiles(evaluator, local);
+			}
+			return;
+		}
+		localTrialProfiles(node, profiles);
+	}
+
+	/**
+	 * Writes the inventory and cells of an individual evaluator.
+	 *
+	 * @param node     the object that receives the profile set
+	 * @param profiles the individual profile set
+	 */
+	private static void localTrialProfiles(ObjectNode node, TrialProfiles profiles)
+	{
 		node.put("inventory_source", profiles.inventory().source());
 		ArrayNode inventory = node.putArray("inventory");
 		for (TrialProfile profile : profiles.inventory().profiles())
@@ -447,6 +476,7 @@ final class ReportJson
 		{
 			ObjectNode test = tests.addObject();
 			test.put("test", cells.test());
+			cells.evaluator().ifPresent(evaluator -> test.put("evaluator", evaluator.commandName()));
 			test.put("weakest_cell", cells.weakestCell());
 			ArrayNode development = test.putArray("development_cells");
 			for (String cell : cells.developmentCells())

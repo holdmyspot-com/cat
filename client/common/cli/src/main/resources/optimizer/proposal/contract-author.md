@@ -199,6 +199,8 @@ registration are dependents.
 
 {{trial_plugins}}
 
+- When the same plugin name identifies different packaged builds, use `evaluator` with `codex` or `claude` to name
+	the build that holds the dependent. If both builds require separate removals, list each with its evaluator.
 - Every hook that trials register, from the project's settings and from the trial plugins, with the file that
 	registers it:
 

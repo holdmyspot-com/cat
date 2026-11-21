@@ -24,6 +24,7 @@ import com.holdmyspot.cat.common.runner.NestedSessionManager;
 import com.holdmyspot.cat.common.runner.NestedSessionReceipt;
 import com.holdmyspot.cat.common.runner.ProcessHandleLiveness;
 import com.holdmyspot.cat.common.runner.RequestLimits;
+import com.holdmyspot.cat.common.runner.RequestedSessionStarter;
 import com.holdmyspot.cat.common.runner.RetainedNestedSessionClient;
 import com.holdmyspot.cat.common.runner.RetainedTrialClaim;
 import com.holdmyspot.cat.common.runner.RetainedTrialPrefix;
@@ -116,25 +117,35 @@ public final class SessionRequestBrokerTest
 	}
 
 	/**
-	 * Supplies runner exit statuses and the broker classifications they must produce.
+	 * Supplies runner exits, their available diagnostics, and the broker responses.
 	 *
-	 * @return exit status and response status pairs
+	 * @return runner exit and stderr, followed by the expected response status and reason
 	 */
 	@DataProvider
 	public Object[][] outcomes()
 	{
-		return new Object[][]{{0, "completed"}, {1, "failed"}, {75, "capacity"}};
+		String startupFailure = "The requested session could not create its working directory";
+		// An ordinary failure preserves an available diagnostic and otherwise reports the exit.
+		Object[][] failures = {
+			{1, startupFailure, "failed", startupFailure},
+			{1, "", "failed", "Requested runner exited with status 1"}
+		};
+		// Successful and capacity outcomes use their existing classifications and reasons.
+		Object[][] otherOutcomes = {{0, "", "completed", ""}, {75, "", "capacity", "capacity"}};
+		return Stream.concat(Arrays.stream(failures), Arrays.stream(otherOutcomes)).toArray(Object[][]::new);
 	}
 
 	/**
-	 * Verifies input snapshots, prompt ordering, capacity bounds, transcript copies, and exit classifications.
+	 * Verifies input snapshots, prompt ordering, capacity bounds, transcript copies, and exit reports.
 	 *
-	 * @param exit the modeled runner exit status
-	 * @param expected the required response classification
+	 * @param exit           the modeled runner exit status
+	 * @param stderr         the runner's diagnostic, or empty if it wrote none
+	 * @param expected       the required response classification
+	 * @param expectedReason the expected reason available to the requester
 	 * @throws IOException if fixture or broker I/O fails
 	 */
 	@Test(dataProvider = "outcomes", timeOut = 30_000)
-	public void retainsChildEvidence(int exit, String expected) throws IOException
+	public void retainsChildEvidence(int exit, String stderr, String expected, String expectedReason) throws IOException
 	{
 		FileLocks fileLocks = new FileLocks();
 		// Requirement: R-I9
@@ -153,6 +164,11 @@ public final class SessionRequestBrokerTest
 					requireThat(Files.readString(plugin.resolve("plugin.txt")), "plugin").isEqualTo("plugin bytes");
 					Files.writeString(fixture.project.resolve("marker"), "changed");
 					requireThat(Files.readString(project.resolve("marker")), "snapshot").isEqualTo("original");
+					if (!stderr.isEmpty())
+					{
+						Files.writeString(directory.resolve(RequestedSessionStarter.ERROR_FILE),
+							stderr + System.lineSeparator());
+					}
 					if (exit != 75)
 					{
 						NestedSessionManager manager = new NestedSessionManager(fileLocks, Path.of(option(options, "--results")),
@@ -175,6 +191,7 @@ public final class SessionRequestBrokerTest
 				broker.scan();
 				JsonNode response = fixture.await("first");
 				requireThat(response.path("status").asString(), "status").isEqualTo(expected);
+				requireThat(response.path("reason").asString(), "reason").isEqualTo(expectedReason);
 				requireThat(option(arguments.get(), "--capacity-wait"), "capacityWait").isEqualTo("600");
 				requireThat(option(arguments.get(), "--model"), "model").isEqualTo("haiku");
 				requireThat(option(arguments.get(), "--effort"), "effort").isEqualTo("low");

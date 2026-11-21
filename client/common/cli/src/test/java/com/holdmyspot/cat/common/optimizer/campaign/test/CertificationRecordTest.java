@@ -39,6 +39,7 @@ import java.util.EnumMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 import org.testng.annotations.Test;
@@ -97,6 +98,7 @@ public final class CertificationRecordTest
 		requireThat(record.certificationIndex(), "certificationIndex").isEqualTo(2);
 		requireThat(record.scope(), "scope").isEqualTo(CertificationScope.WEAKEST_CELL);
 		requireThat(record.parameters(), "parameters").isEqualTo(attempt.parameters());
+		requireThat(record.snapshot(), "snapshot").isEqualTo(Optional.of(attempt.candidate().snapshot()));
 		requireThat(record.cells(), "cells").isEqualTo(List.of(
 			new CellResult("formatting", "formatting@big/high", 120, 0, Map.of(TONE, BIG_PAIRS),
 				Map.of(TONE, BIG_INCUMBENT_PAIRS)),
@@ -175,7 +177,9 @@ public final class CertificationRecordTest
 		JsonNode entry = root.get("records").get(0);
 		requireThat(new HashSet<>(entry.propertyNames()), "fields").isEqualTo(Set.of("target", "label",
 			"certification_index", "scope", "minimum_pass_rate", "control_margin", "comparisons_implied", "alpha",
-			"cells", "prompt_files", "identity"));
+			"cells", "prompt_files", "identity", "snapshot"));
+		requireThat(entry.get("snapshot").asString(), "snapshot").
+			isEqualTo(campaign.attempt(2).candidate().snapshot().hex());
 		requireThat(entry.get("control_margin").asString(), "controlMargin").isEqualTo("0.05");
 		requireThat(entry.get("scope").asString(), "scope").isEqualTo("weakest_cell");
 	}

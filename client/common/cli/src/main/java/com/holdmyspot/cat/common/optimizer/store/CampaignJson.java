@@ -157,11 +157,12 @@ import tools.jackson.databind.node.ObjectNode;
  * <p>
  * Counts, rounds, review points, trial keys, sequences and certification procedures are keyed by cell, and the
  * observed model and reasoning are recorded per cell. Big numbers and instants are written as strings so that they
- * round-trip exactly. Version-43 to version-47 documents are upgraded on read: version 43 lacks the saved approach
+ * round-trip exactly. Version-43 to version-48 documents are upgraded on read: version 43 lacks the saved approach
  * rotation, so existing rounds keep their nine-approach rotation; version 44 lacks the roles of paired replays, which
  * its promotion replays never use; versions 43 to 45 lack the throttle's peak window; and versions 43 to 47 name the
  * promotion replays {@code runs} and {@code accepted_runs} and the roles of paired replays {@code regression_rerun}
- * and {@code working_rerun}. An upgraded snapshot's peak window is 1 while a rejection's backoffs are counted, and
+ * and {@code working_rerun}. A snapshot through version 48 supplies its recorded starting harness as the only
+ * evaluation harness. An upgraded snapshot's peak window is 1 while a rejection's backoffs are counted, and
  * otherwise the campaign's ceiling, because its window cap may hold a window that had just dropped. An upgraded trial
  * session's peak window is its window cap, the level at which that throttle stopped growth. Other unsupported versions
  * are refused with a message that asks the user to start a new campaign.
@@ -198,8 +199,10 @@ final class CampaignJson
 	/**
 	 * The version of the layout that this class writes.
 	 */
-	private static final int FORMAT_VERSION = 48;
+	private static final int FORMAT_VERSION = 50;
+	private static final String EVALUATOR_PLUGINS = "evaluator_plugins";
 	private static final int TRIAL_RECOVERY_VERSION = 1;
+	private static final String EVALUATION_HARNESSES = "evaluation_harnesses";
 	/**
 	 * The names that version-43 to version-47 documents gave the arrays of promotion replays, mapped to their current
 	 * names.
@@ -235,11 +238,20 @@ final class CampaignJson
 	private final JsonMapper json;
 	private final ProposalSchema schema;
 	/**
-	 * The contracts that {@link #readLineage} parsed, by the exact JSON text that they were parsed from. A contract
-	 * is immutable, so a read of the same text may reuse it; a read of other text never does. When the map is full,
-	 * the next contract to add empties it first.
+	 * The contracts that {@link #readLineage} parsed, by exact JSON text and evaluation scope. An earlier contract can
+	 * have identical text in two campaigns with different evaluators. The map resets when it reaches capacity.
 	 */
-	private final Map<String, Contract> contracts = new ConcurrentHashMap<>();
+	private final Map<RecordedContract, Contract> contracts = new ConcurrentHashMap<>();
+
+	/**
+	 * Inputs that determine a stored contract's typed cells.
+	 *
+	 * @param text       the stored contract's JSON text
+	 * @param evaluators the saved campaign's evaluation harnesses
+	 */
+	private record RecordedContract(String text, Set<Harness> evaluators)
+	{
+	}
 
 	/**
 	 * Creates a converter.
@@ -332,9 +344,17 @@ final class CampaignJson
 			root.putNull("plugins");
 		else
 		{
-			ArrayNode plugins = root.putArray("plugins");
-			for (TrialPlugin plugin : campaign.plugins().get())
-				writePlugin(plugins.addObject(), plugin);
+			writePlugins(root.putArray("plugins"), campaign.plugins().get());
+		}
+		if (!campaign.evaluatorPlugins().isEmpty())
+		{
+			ObjectNode evaluators = root.putObject(EVALUATOR_PLUGINS);
+			for (Harness evaluator : Harness.values())
+			{
+				List<TrialPlugin> plugins = campaign.evaluatorPlugins().get(evaluator);
+				if (plugins != null)
+					writePlugins(evaluators.putArray(evaluator.commandName()), plugins);
+			}
 		}
 		putConstant(root, "outcome", campaign.outcome());
 		DeliveryRequest delivery = campaign.delivery();
@@ -366,9 +386,10 @@ final class CampaignJson
 		requireVersion(root);
 		ProjectPaths paths = paths(root, project);
 		paths.resolve(root);
+		Header header = readHeader(field(root, "header"), paths);
 		List<Lineage> lineages = new ArrayList<>();
 		for (JsonNode node : elements(root, "lineages"))
-			lineages.add(readLineage(node));
+			lineages.add(readLineage(node, header.evaluationHarnesses()));
 		IncumbentBaseline baseline = null;
 		JsonNode baselineNode = nullable(root, "baseline");
 		if (baselineNode != null)
@@ -415,19 +436,68 @@ final class CampaignJson
 		Optional<List<TrialPlugin>> plugins = Optional.empty();
 		if (nullable(root, "plugins") != null)
 		{
-			List<TrialPlugin> recorded = new ArrayList<>();
-			for (JsonNode node : elements(root, "plugins"))
-				recorded.add(readPlugin(node));
-			plugins = Optional.of(recorded);
+			plugins = Optional.of(readPlugins(root, "plugins"));
 		}
-		return new Campaign(readHeader(field(root, "header"), paths), ceiling, lineages,
+		return new Campaign(header, ceiling, lineages,
 			readIdentity(field(root, "identity")), readCandidate(field(root, "incumbent")),
 			integer(root, "candidates"), integer(root, "prompt_author_attempts"),
 			readDevelopment(field(root, "development")), baseline, attempts, trials, sequences,
 			longInteger(root, "evidence_revision"), windows,
 			readThrottle(field(root, "throttle")), pending, bool(root, "revision_requested"),
 			nullableConstant(root, "outcome", Outcome.class), delivery, readOptimization(field(root, "optimization")),
-			answered, readTestRevisions(field(root, "test_revisions")), plugins, DevelopmentJudgeJson.read(root));
+			answered, readTestRevisions(field(root, "test_revisions")), plugins, DevelopmentJudgeJson.read(root),
+			readEvaluatorPlugins(root, header));
+	}
+
+	/**
+	 * Writes an ordered trial plugin list.
+	 *
+	 * @param array the array that receives the list
+	 * @param plugins the ordered trial plugins
+	 */
+	private void writePlugins(ArrayNode array, List<TrialPlugin> plugins)
+	{
+		for (TrialPlugin plugin : plugins)
+			writePlugin(array.addObject(), plugin);
+	}
+
+	/**
+	 * Reads an ordered trial plugin list.
+	 *
+	 * @param node the document containing the list
+	 * @param name the name of the list
+	 * @return the plugins, in order
+	 */
+	private static List<TrialPlugin> readPlugins(JsonNode node, String name)
+	{
+		List<TrialPlugin> plugins = new ArrayList<>();
+		for (JsonNode plugin : elements(node, name))
+			plugins.add(readPlugin(plugin));
+		return plugins;
+	}
+
+	/**
+	 * Reads the shared campaign's scoped trial plugin lists, if recorded.
+	 *
+	 * @param root the document
+	 * @param header the campaign's evaluator scope
+	 * @return the plugin lists, or an empty map if the record has no scoped lists
+	 */
+	private static Map<Harness, List<TrialPlugin>> readEvaluatorPlugins(JsonNode root, Header header)
+	{
+		if (!root.has(EVALUATOR_PLUGINS))
+			return Map.of();
+		JsonNode node = object(root, EVALUATOR_PLUGINS);
+		Map<Harness, List<TrialPlugin>> plugins = new EnumMap<>(Harness.class);
+		for (String name : node.propertyNames())
+		{
+			Harness evaluator = Harness.fromCommandName(name).orElseThrow(() ->
+				new IllegalArgumentException(EVALUATOR_PLUGINS + ": unknown harness " + name));
+			plugins.put(evaluator, readPlugins(node, name));
+		}
+		if (plugins.isEmpty() || !plugins.keySet().equals(header.evaluationHarnesses()))
+			throw new IllegalArgumentException(EVALUATOR_PLUGINS + ": expected exactly " + header.evaluationHarnesses());
+		return plugins;
 	}
 
 	/**
@@ -1447,6 +1517,9 @@ final class CampaignJson
 		node.put("root", header.root().toString());
 		node.put("target", ProjectPaths.write(header.target(), header.root()));
 		node.put("harness", EnumNames.lowerCase(header.harness()));
+		ArrayNode evaluators = node.putArray(EVALUATION_HARNESSES);
+		for (Harness harness : header.evaluationHarnesses().stream().sorted().toList())
+			evaluators.add(EnumNames.lowerCase(harness));
 		node.put("lifecycle", EnumNames.lowerCase(header.lifecycle()));
 		node.put("goal", header.goal());
 		if (!header.extraPermissions().isEmpty())
@@ -1478,9 +1551,17 @@ final class CampaignJson
 		Path root = paths.current();
 		if (root == null)
 			root = Path.of(text(node, "root"));
+		Set<Harness> evaluators = EnumSet.noneOf(Harness.class);
+		for (JsonNode element : elements(node, EVALUATION_HARNESSES))
+		{
+			Harness evaluator = constantValue(element, EVALUATION_HARNESSES, Harness.class);
+			if (!evaluators.add(evaluator))
+				throw new IllegalArgumentException(EVALUATION_HARNESSES + ": evaluator appears twice: " +
+					evaluator.commandName());
+		}
 		return new Header(text(node, "id"), root, paths.read(text(node, "target")),
 			constant(node, "harness", Harness.class), constant(node, "lifecycle", Lifecycle.class),
-			nullableText(node, "goal"), extra);
+			nullableText(node, "goal"), extra, evaluators);
 	}
 
 	/**
@@ -1639,19 +1720,20 @@ final class CampaignJson
 	/**
 	 * Converts a document to a contract lineage.
 	 *
-	 * @param node the document
+	 * @param node       the document
+	 * @param evaluators the evaluation scope from the recorded header
 	 * @return the lineage
 	 */
-	private Lineage readLineage(JsonNode node)
+	private Lineage readLineage(JsonNode node, Set<Harness> evaluators)
 	{
 		JsonNode contractNode = field(node, "contract");
-		String contractText = json.writeValueAsString(contractNode);
-		Contract contract = contracts.get(contractText);
+		RecordedContract recorded = new RecordedContract(json.writeValueAsString(contractNode), evaluators);
+		Contract contract = contracts.get(recorded);
 		if (contract == null)
 		{
 			try
 			{
-				contract = schema.parse(contractText);
+				contract = schema.parseRecorded(recorded.text(), recorded.evaluators());
 			}
 			catch (InvalidProposalException e)
 			{
@@ -1659,7 +1741,7 @@ final class CampaignJson
 			}
 			if (contracts.size() >= MAX_CACHED_CONTRACTS)
 				contracts.clear();
-			contracts.put(contractText, contract);
+			contracts.put(recorded, contract);
 		}
 		List<RegressionTestCase> regressionSet = new ArrayList<>();
 		for (JsonNode element : elements(node, "regression_set"))
@@ -3280,7 +3362,10 @@ final class CampaignJson
 			upgradeVersion45(document);
 		// Version 46 differs from version 47 only by recording absolute paths inside the project, which reading moves
 		// below the project root
-		renamePromotionReplays(document);
+		if (version <= 47)
+			renamePromotionReplays(document);
+		if (version <= 48 && document.get("header") instanceof ObjectNode header)
+			header.putArray(EVALUATION_HARNESSES).add(text(header, "harness"));
 		document.put(VERSION, FORMAT_VERSION);
 	}
 

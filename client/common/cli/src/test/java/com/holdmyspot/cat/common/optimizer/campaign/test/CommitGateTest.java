@@ -239,6 +239,23 @@ public final class CommitGateTest
 	}
 
 	/**
+	 * Extra development passes from one evaluator cannot make up a shortfall in another evaluator's cell for the
+	 * same test.
+	 */
+	@Test
+	public void sharedGateNeedsBothEvaluators()
+	{
+		// Requirement: R-L8
+		Builder shared = CommitTest.readyShared();
+		Campaign claudeShort = shared.development("claude:safety", 99, 0).development("codex:safety", 101, 0).build();
+		Campaign codexShort = shared.development("claude:safety", 101, 0).development("codex:safety", 99, 0).build();
+		Campaign complete = shared.development("claude:safety", 100, 0).development("codex:safety", 100, 0).build();
+		requireThat(CommitGate.isCommitDue(claudeShort), "claudeShort").isFalse();
+		requireThat(CommitGate.isCommitDue(codexShort), "codexShort").isFalse();
+		requireThat(CommitGate.isCommitDue(complete), "complete").isTrue();
+	}
+
+	/**
 	 * Verifies that the gate applies to the development cells only: an empty cell outside them does not
 	 * block it, and a cell where a certification attempt of the lineage adopted a failure must meet it too.
 	 */

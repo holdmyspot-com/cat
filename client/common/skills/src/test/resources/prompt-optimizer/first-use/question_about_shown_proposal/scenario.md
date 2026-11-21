@@ -17,7 +17,7 @@
 
 ### Turn 1
 
-Use the prompt-optimizer skill to optimize and certify the compliance of {{target}}.
+Use the prompt-optimizer skill to optimize and certify the compliance of {{target}} for the harness we're using now.
 
 ### Turn 2
 

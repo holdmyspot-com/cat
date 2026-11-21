@@ -3,8 +3,10 @@ package com.holdmyspot.cat.common.optimizer.contract;
 import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.requireThat;
 
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 
 import java.nio.file.Path;
+import java.util.Optional;
 
 /**
  * A part of the prompt system that exists only to deliver the target prompt file or to carry out, enforce or repair
@@ -17,8 +19,10 @@ import java.nio.file.Path;
  * @param path the file that holds the dependent, relative to the project root or to the plugin directory
  * @param removal the part of the file that control trials remove
  * @param serves the target instruction that the dependent serves
+ * @param evaluator an optional evaluator that selects the packaged plugin representation
  */
-public record Dependent(Location location, String plugin, Path path, Removal removal, String serves)
+public record Dependent(Location location, String plugin, Path path, Removal removal, String serves,
+	Optional<Harness> evaluator)
 {
 	/**
 	 * Creates a dependent in the project.
@@ -36,7 +40,7 @@ public record Dependent(Location location, String plugin, Path path, Removal rem
 	}
 
 	/**
-	 * Creates a dependent.
+	 * Creates a dependent without an evaluator qualifier.
 	 *
 	 * @param location where {@code path} lies
 	 * @param plugin the name of the project-built trial plugin that holds {@code path}, or an empty string for a
@@ -49,16 +53,36 @@ public record Dependent(Location location, String plugin, Path path, Removal rem
 	 *   {@code serves} is blank, or if {@code plugin} is blank for a dependent in a plugin or not empty for one in the
 	 *   project
 	 */
+	public Dependent(Location location, String plugin, Path path, Removal removal, String serves)
+	{
+		this(location, plugin, path, removal, serves, Optional.empty());
+	}
+
+	/**
+	 * Creates a dependent.
+	 *
+	 * @param location where the file lies
+	 * @param plugin the configured built plugin name or empty for a project file
+	 * @param path the file relative to its location
+	 * @param removal the part of the file to remove
+	 * @param serves the target instruction that this dependent serves
+	 * @param evaluator selects one evaluator's packaged plugin, or empty when unqualified
+	 * @throws NullPointerException if any argument is null
+	 * @throws IllegalArgumentException if the location, path, name, or qualifier is invalid
+	 */
 	public Dependent
 	{
 		requireThat(location, "location").isNotNull();
 		requireThat(plugin, "plugin").isNotNull();
+		requireThat(evaluator, "evaluator").isNotNull();
 		switch (location)
 		{
 			case PROJECT ->
 			{
 				if (!plugin.isEmpty())
 					throw new IllegalArgumentException("A dependent in the project names the plugin " + plugin);
+				if (evaluator.isPresent())
+					throw new IllegalArgumentException("A dependent in the project cannot name an evaluator");
 			}
 			case PLUGIN -> requireThat(plugin, "plugin").isNotBlank();
 		}

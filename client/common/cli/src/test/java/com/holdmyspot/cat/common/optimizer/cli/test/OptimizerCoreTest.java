@@ -15,6 +15,7 @@ import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.fakes.test.GitProjects;
 import com.holdmyspot.cat.common.fakes.test.ManualClock;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
@@ -48,6 +49,7 @@ import com.holdmyspot.cat.common.optimizer.cli.CommandRefusedException;
 import com.holdmyspot.cat.common.optimizer.cli.CommandResult;
 import com.holdmyspot.cat.common.optimizer.cli.Commands;
 import com.holdmyspot.cat.common.optimizer.cli.OptimizerCore;
+import com.holdmyspot.cat.common.optimizer.cli.PromptOptimizerCli;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Part;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
@@ -129,6 +131,7 @@ import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -2510,6 +2513,518 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * A public start command refuses a different evaluator scope before changing the campaign or starting a session.
+	 *
+	 * @throws IOException             if the project or campaign cannot be read or written
+	 * @throws CommandRefusedException if the campaign directory cannot be resolved
+	 */
+	@Test
+	public void resumeRefusesChangedEvaluatorScope() throws IOException, CommandRefusedException
+	{
+		// Requirement: R-L6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}));
+			String target = "CLAUDE.md";
+			String id = output(repository, List.of("start", target)).get("campaign").asString();
+			Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
+			byte[] before = Files.readAllBytes(snapshot);
+			int requests = repository.sessions().requests().size();
+			String requested = Harness.CODEX.commandName();
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				Commands commands = new Commands(repository.core(), JSON, ZoneOffset.UTC, _ -> Optional.empty(),
+					Platform.LINUX_X64);
+				requireThat(commands.execute(List.of("start", target, "--harness", requested), out), "exitCode").
+					isEqualTo(1);
+			}
+			JsonNode result = JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
+			requireThat(result.get("status").asString(), "status").isEqualTo("refused");
+			requireThat(result.get("message").asString(), "refusal").contains(Harness.CLAUDE.commandName()).
+				contains(requested).contains("start a new campaign");
+			requireThat(Files.readAllBytes(snapshot), "snapshot").isEqualTo(before);
+			requireThat(repository.sessions().requests().size(), "requests").isEqualTo(requests);
+		}
+	}
+
+	/**
+	 * Verifies that a new shared campaign tries the requested peer against a staged project before creating a
+	 * campaign or launching the contract author.
+	 *
+	 * @throws Exception if the fixture or command fails
+	 */
+	@Test
+	public void probesPeerBeforeCreatingCampaign() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Repository repository = repository(cleanup, _ -> derivation(_ ->
+			{
+			}), Set.of(target, entry));
+			Files.writeString(repository.root().resolve(entry), "Instructions loaded by the peer.");
+			configure(repository.root(), "{\"claude\":{\"plugins\":[]},\"codex\":{\"plugins\":[]}}");
+			repository.scope().usePeerArtifact(repository.root().resolve("installed-peer"));
+			AtomicInteger probes = new AtomicInteger();
+			repository.scope().launchProcesses(builder ->
+			{
+				requireThat(builder.command().get(1), "command").isEqualTo("evaluator-info");
+				Path staged = Path.of(builder.command().get(3));
+				requireThat(Files.readString(staged.resolve(entry)), "peerEntry").
+					isEqualTo("Instructions loaded by the peer.");
+				requireThat(Files.exists(staged.resolve("extra.local.md")), "untrackedSource").isFalse();
+				probes.incrementAndGet();
+				throw new IOException("fixture peer cannot start");
+			});
+
+			String refused = refusal(() -> repository.core().start(target, Campaign.DEFAULT_CEILING, null, null,
+				Set.of(Harness.CLAUDE, Harness.CODEX)));
+
+			requireThat(probes.get(), "metadataProbes").isEqualTo(1);
+			requireThat(refused, "refusal").contains(Harness.CODEX.productName()).contains("fixture peer cannot start");
+			requireThat(Files.exists(repository.campaigns()), "campaignDirectory").isFalse();
+			requireThat(repository.sessions().requests(), "requests").isEmpty();
+		}
+	}
+
+	/**
+	 * Exercises one shared prompt, through the CLI, from the evaluator probes through pilot and development.
+	 *
+	 * @throws Exception if a fixture or command fails
+	 */
+	@Test
+	public void measuresBothEvaluatorsFromCli() throws Exception
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Path ownerManifest = Path.of("owner-bundle", ".claude-plugin", "plugin.json");
+			Repository repository = repository(cleanup, _ -> derivation(OptimizerCoreTest::keepFirstTest),
+				Set.of(target, entry, ownerManifest));
+			Files.writeString(repository.root().resolve(entry), "Read CLAUDE.md for the shared instructions.\n");
+			Files.createDirectories(repository.root().resolve(ownerManifest).getParent());
+			Files.writeString(repository.root().resolve(ownerManifest),
+				"{\"name\":\"owner-tools\",\"version\":\"1.2\"}");
+			configure(repository.root(), """
+				{
+				  "claude": {"plugins": [{"name": "owner-tools", "build": {"output": "owner-bundle"}}]},
+				  "codex": {"plugins": [{"name": "peer-tools@market"}]}
+				}
+				""");
+			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			int judgeVersion = repository.sessions().port().judgeVersion();
+			peer.port().judgeVersion(judgeVersion + 1);
+			Path installedManifest = prepareSharedPlugin(repository, peer, cleanup, target, entry);
+
+			ObjectNode started = output(repository, List.of("start", target.toString(), "--harness", "codex",
+				"--harness", "claude", "--max-concurrency", "2"));
+			String id = started.get("campaign").asString();
+			JsonNode pilots = JSON.readTree(Files.readString(repository.directory(id).resolve("held_out/pilot.json")));
+			Set<String> pilotsByHarness = new HashSet<>();
+			for (JsonNode pilot : pilots.path("tests"))
+				pilotsByHarness.add(pilot.path("evaluator").asString());
+			requireThat(pilotsByHarness, "pilotsByHarness").isEqualTo(Set.of("codex", "claude"));
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "ownerPilot").isEqualTo(20);
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerPilot").isEqualTo(20);
+			sharedTrialPlugins(repository, peer, id);
+
+			output(repository, List.of("confirm", id));
+			Campaign confirmed = repository.load(id);
+			requireThat(confirmed.header().evaluationHarnesses(), "evaluators").
+				isEqualTo(Set.of(Harness.CODEX, Harness.CLAUDE));
+			requireThat(confirmed.identity().values().containsKey(MeasurementCondition.PROVIDER), "globalProvider").
+				isFalse();
+			requireThat(confirmed.identity().values().get(MeasurementCondition.JUDGE_HARNESS), "judgeHarness").
+				isEqualTo("claude");
+			for (Cell cell : confirmed.contract().cells())
+			{
+				requireThat(confirmed.identity().valueOf(cell.id(), MeasurementCondition.JUDGE), "judgeVersion").
+					isEqualTo(String.valueOf(judgeVersion));
+				requireThat(confirmed.identity().valueOf(cell.id(), MeasurementCondition.PROVIDER), "cellProvider").
+					isEqualTo(cell.evaluator().orElseThrow().commandName());
+				Harness evaluator = cell.evaluator().orElseThrow();
+				String version = "owner-tools 1.2";
+				if (evaluator == Harness.CODEX)
+					version = "peer-tools@market 2.3";
+				requireThat(confirmed.identity().valueOf(cell.id(), MeasurementCondition.PLUGIN_VERSIONS),
+					"pluginVersions").isEqualTo(version);
+			}
+
+			Files.writeString(installedManifest, "{\"name\":\"peer-tools\",\"version\":\"3.4\"}");
+			repository.sessions().sessionDuration(Duration.ofSeconds(8));
+			peer.sessionDuration(Duration.ofSeconds(8));
+			output(repository, List.of("run", id));
+			Campaign measured = repository.load(id);
+			requireThat(measured.development().working().snapshot(), "snapshot").
+				isEqualTo(confirmed.development().working().snapshot());
+			requireThat(measured.development().counts().keySet(), "developmentCells").
+				isEqualTo(Set.copyOf(confirmed.contract().cells().stream().map(Cell::id).toList()));
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isGreaterThan(20);
+			requireThat(repository.sessions().requests(SessionRole.TRIAL).size(), "ownerTrials").isGreaterThan(20);
+			Repository reopened = new Repository(repository.root(), repository.scope(), repository.sessions(),
+				new OptimizerCore(repository.scope()), repository.trialEnd());
+			resumeSharedCampaign(reopened, target, peer, measured);
+			sharedTrialPlugins(reopened, peer, id);
+			sharedEvaluatorDriftRefusal(reopened, peer, id);
+			cancelSharedCampaignWithoutPeer(reopened, peer, id);
+		}
+	}
+
+	/**
+	 * Starts and resumes a Codex-only evaluation from its Claude Code owner, with the configured peer plugin.
+	 *
+	 * @throws Exception if a fixture or command fails
+	 */
+	@Test
+	public void resumesPeerOnlyPilotFromCli() throws Exception
+	{
+		// Requirement: R-L6
+		// Requirement: R-L7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Repository repository = repository(cleanup, _ -> derivation(OptimizerCoreTest::keepFirstTest),
+				Set.of(target, entry));
+			Files.writeString(repository.root().resolve(entry), "Read CLAUDE.md for the shared instructions.\n");
+			configure(repository.root(), """
+				{"codex": {"plugins": [{"name": "peer-tools@market"}]}}
+				""");
+			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			installSharedPeerPlugin(peer, cleanup);
+
+			ObjectNode started = output(repository, List.of("start", target.toString(), "--harness", "codex",
+				"--max-concurrency", "2"));
+			String id = started.path("campaign").asString();
+			Campaign campaign = repository.load(id);
+			requireThat(campaign.header().harness(), "owner").isEqualTo(Harness.CLAUDE);
+			requireThat(campaign.header().evaluationHarnesses(), "evaluators").isEqualTo(Set.of(Harness.CODEX));
+			requireThat(campaign.pluginsFor(Harness.CLAUDE), "ownerPlugins").isEmpty();
+			requireThat(campaign.pluginsFor(Harness.CODEX).orElseThrow().stream().map(TrialPlugin::name).toList(),
+				"peerPlugins").isEqualTo(List.of("peer-tools@market"));
+			Path pilotFile = repository.directory(id).resolve("held_out/pilot.json");
+			JsonNode pilots = JSON.readTree(Files.readString(pilotFile));
+			JsonNode tests = pilots.path("tests");
+			requireThat(tests.size(), "pilots").isEqualTo(1);
+			JsonNode pilot = tests.get(0);
+			requireThat(pilot.has("evaluator"), "qualifiedPilot").isFalse();
+			requireThat(pilot.path("trials").size(), "pilotOutcomes").isEqualTo(20);
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isEqualTo(20);
+			for (SessionRequest request : peer.requests(SessionRole.TRIAL))
+				checkSharedPluginRequest(request, Harness.CODEX, "\"2.3\"");
+			requireThat(repository.sessions().requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
+
+			Repository reopened = new Repository(repository.root(), repository.scope(), repository.sessions(),
+				new OptimizerCore(repository.scope()), repository.trialEnd());
+			resumeSharedCampaign(reopened, target, peer, campaign);
+			requireThat(JSON.readTree(Files.readString(pilotFile)), "resumedPilot").isEqualTo(pilots);
+			output(reopened, List.of("confirm", id));
+			Cell cell = reopened.load(id).contract().findCell(pilot.path("cell").asString()).orElseThrow();
+			requireThat(cell.evaluator(), "confirmedCellEvaluator").isEqualTo(Optional.of(Harness.CODEX));
+		}
+	}
+
+	/**
+	 * After the owner's judge changes, a peer-only proposal must be shown with a fresh pilot before confirmation.
+	 *
+	 * @throws Exception if a fixture or command fails
+	 */
+	@Test
+	public void refreshesPeerPilotForChangedJudge() throws Exception
+	{
+		// Requirement: R-L7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Repository repository = repository(cleanup, _ -> derivation(OptimizerCoreTest::keepFirstTest),
+				Set.of(target, entry));
+			Files.writeString(repository.root().resolve(entry), "Read CLAUDE.md for the shared instructions.\n");
+			configure(repository.root(), "{\"codex\":{\"plugins\":[]}}");
+			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			String id = output(repository, List.of("start", target.toString(), "--harness", "codex")).
+				path("campaign").asString();
+			Path heldOut = repository.directory(id).resolve("held_out");
+			Path snapshot = heldOut.resolve("campaign.json");
+			Path pilot = heldOut.resolve("pilot.json");
+			byte[] originalSnapshot = Files.readAllBytes(snapshot);
+			byte[] originalPilot = Files.readAllBytes(pilot);
+			SessionScript owner = repository.sessions();
+			int ownerRequests = owner.requests().size();
+			int peerRequests = peer.requests().size();
+			int newVersion = owner.port().judgeVersion() + 1;
+			owner.port().judgeVersion(newVersion);
+
+			ObjectNode refusal = output(repository, List.of("confirm", id), 1);
+
+			requireThat(refusal.path("message").asString(), "refusal").contains("guard pilot").contains("`start`");
+			requireThat(Files.readAllBytes(snapshot), "snapshot").isEqualTo(originalSnapshot);
+			requireThat(Files.readAllBytes(pilot), "pilot").isEqualTo(originalPilot);
+			requireThat(owner.requests().size(), "ownerRequests").isEqualTo(ownerRequests);
+			requireThat(peer.requests().size(), "peerRequests").isEqualTo(peerRequests);
+			int authorRequests = owner.requests(SessionRole.CONTRACT_AUTHOR).size();
+			requireThat(output(repository, List.of("start", target.toString())).path("campaign").asString(),
+				"refreshedCampaign").isEqualTo(id);
+			requireThat(owner.requests(SessionRole.CONTRACT_AUTHOR).size(), "authorRequests").isEqualTo(authorRequests);
+			requireThat(owner.requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isEqualTo(2 * GuardPilot.TRIALS);
+
+			output(repository, List.of("confirm", id));
+			Campaign confirmed = repository.load(id);
+			String cell = confirmed.contract().cells().getFirst().id();
+			requireThat(confirmed.identity().valueOf(cell, MeasurementCondition.JUDGE), "judgeVersion").
+				isEqualTo(String.valueOf(newVersion));
+		}
+	}
+
+	/**
+	 * Exercises a missing peer plugin and a peer loader that does not load the target in the same project.
+	 *
+	 * @param repository the shared campaign's project and owner
+	 * @param peer the peer trial script and installation lookup
+	 * @param cleanup removes temporary plugin directories
+	 * @param target the shared target
+	 * @param entry the Codex instruction entry
+	 * @return the manifest of the peer's installed copy
+	 * @throws Exception if the fixture cannot be created
+	 */
+	private static Path prepareSharedPlugin(Repository repository, SessionScript peer, TemporaryDirectories cleanup,
+		Path target, Path entry) throws Exception
+	{
+		List<String> start = List.of("start", target.toString(), "--harness", "codex", "--harness", "claude");
+		ObjectNode refused = output(repository, start, 1);
+		requireThat(refused.path("reason").asString(), "reason").isEqualTo("evaluator_unavailable");
+		requireThat(refused.path("message").asString(), "message").contains("peer-tools@market");
+
+		Path manifest = installSharedPeerPlugin(peer, cleanup);
+		List<DerivedSource> sources = sharedPeerSources(target, entry);
+		peer.derivedSources(List.of(sources.getFirst()));
+
+		ObjectNode unloaded = output(repository, start, 1);
+
+		requireThat(unloaded.path("reason").asString(), "unloadedReason").isEqualTo("evaluator_unavailable");
+		requireThat(unloaded.path("message").asString(), "unloadedMessage").contains(Harness.CODEX.productName()).
+			contains(target.toString());
+		requireThat(repository.sessions().requests(), "ownerRequests").isEmpty();
+		requireThat(peer.requests(), "peerRequests").isEmpty();
+		requireThat(Files.exists(repository.campaigns()), "campaignDirectory").isFalse();
+		peer.derivedSources(sources);
+		return manifest;
+	}
+
+	/**
+	 * Registers the Codex fixture's installed trial plugin.
+	 *
+	 * @param peer the Codex fixture
+	 * @param cleanup removes temporary plugin directories
+	 * @return the installed plugin manifest
+	 * @throws IOException if the fixture cannot be written
+	 */
+	private static Path installSharedPeerPlugin(SessionScript peer, TemporaryDirectories cleanup) throws IOException
+	{
+		Path installed = cleanup.add(Files.createTempDirectory("shared-installed-plugin-")).toRealPath();
+		Path manifest = installed.resolve(".codex-plugin/plugin.json");
+		Files.createDirectories(manifest.getParent());
+		Files.writeString(manifest, "{\"name\":\"peer-tools\",\"version\":\"2.3\"}");
+		peer.install("peer-tools@market", List.of(installed));
+		return manifest;
+	}
+
+	/**
+	 * Checks the persisted ordered plugin lists and trial requests.
+	 *
+	 * @param repository the shared campaign's project and owner
+	 * @param peer the peer trial script
+	 * @param id the campaign
+	 * @throws Exception if the campaign cannot be read
+	 */
+	private static void sharedTrialPlugins(Repository repository, SessionScript peer, String id) throws Exception
+	{
+		Campaign campaign = repository.load(id);
+		List<TrialPlugin> ownerPlugins = campaign.pluginsFor(Harness.CLAUDE).orElseThrow();
+		List<TrialPlugin> peerPlugins = campaign.pluginsFor(Harness.CODEX).orElseThrow();
+		requireThat(ownerPlugins.stream().map(TrialPlugin::name).toList(), "ownerPlugins").
+			isEqualTo(List.of("owner-tools"));
+		requireThat(peerPlugins.stream().map(TrialPlugin::name).toList(), "peerPlugins").
+			isEqualTo(List.of("peer-tools@market"));
+		for (SessionRequest request : repository.sessions().requests(SessionRole.TRIAL))
+			checkSharedPluginRequest(request, Harness.CLAUDE, "\"owner-tools\"");
+		for (SessionRequest request : peer.requests(SessionRole.TRIAL))
+			checkSharedPluginRequest(request, Harness.CODEX, "\"2.3\"");
+	}
+
+	/**
+	 * Checks the manifest that a trial's prepared source supplies.
+	 *
+	 * @param request a trial request
+	 * @param evaluator the evaluator's manifest convention
+	 * @param expected the expected manifest content
+	 * @throws IOException if the prepared plugin cannot be read
+	 */
+	private static void checkSharedPluginRequest(SessionRequest request, Harness evaluator, String expected)
+		throws IOException
+	{
+		requireThat(request.plugins().size(), "plugins").isEqualTo(1);
+		String manifest = Files.readString(request.plugins().getFirst().resolve(evaluator.pluginManifest()));
+		requireThat(manifest, "manifest").contains(expected);
+	}
+
+	/**
+	 * Reopens the campaign without selecting harnesses and reads the outcomes from the same fork.
+	 *
+	 * @param repository the shared campaign in a freshly opened optimizer
+	 * @param target the project's shared prompt
+	 * @param peer the peer trial script
+	 * @param measured the evidence recorded before reopening the optimizer
+	 * @throws Exception if the campaign cannot be read
+	 */
+	private static void resumeSharedCampaign(Repository repository, Path target, SessionScript peer, Campaign measured)
+		throws Exception
+	{
+		String id = measured.header().id();
+		int ownerRequests = repository.sessions().requests().size();
+		int peerRequests = peer.requests().size();
+
+		ObjectNode resumed = output(repository, List.of("start", target.toString()));
+
+		requireThat(resumed.path("campaign").asString(), "resumedCampaign").isEqualTo(id);
+		Campaign loaded = repository.load(id);
+		requireThat(loaded.header().evaluationHarnesses(), "resumedEvaluators").
+			isEqualTo(measured.header().evaluationHarnesses());
+		requireThat(loaded.development(), "resumedEvidence").isEqualTo(measured.development());
+		requireThat(repository.sessions().requests().size(), "ownerRequests").isEqualTo(ownerRequests);
+		requireThat(peer.requests().size(), "peerRequests").isEqualTo(peerRequests);
+	}
+
+	/**
+	 * Changes the peer's runtime environment version and checks the public refusal before another trial starts.
+	 *
+	 * @param repository the shared campaign's project and owner
+	 * @param peer the peer trial script
+	 * @param id the campaign
+	 * @throws Exception if the campaign cannot be read
+	 */
+	private static void sharedEvaluatorDriftRefusal(Repository repository, SessionScript peer, String id)
+		throws Exception
+	{
+		Path snapshot = repository.directory(id).resolve("held_out/campaign.json");
+		byte[] before = Files.readAllBytes(snapshot);
+		int ownerRequests = repository.sessions().requests().size();
+		int peerRequests = peer.requests().size();
+		peer.port().sessionEnvironmentVersion(peer.port().sessionEnvironmentVersion() + 1);
+
+		ObjectNode refused = output(repository, List.of("run", id), 1);
+
+		requireThat(refused.path("reason").asString(), "reason").isEqualTo("evaluator_conditions_changed");
+		requireThat(refused.path("message").asString(), "message").contains(Harness.CODEX.productName());
+		requireThat(Files.readAllBytes(snapshot), "snapshot").isEqualTo(before);
+		requireThat(repository.sessions().requests().size(), "ownerRequests").isEqualTo(ownerRequests);
+		requireThat(peer.requests().size(), "peerRequests").isEqualTo(peerRequests);
+	}
+
+	/**
+	 * Cancels a shared campaign when its owner can no longer open the peer trial port.
+	 *
+	 * @param repository the shared campaign's project and owner
+	 * @param peer the peer trial script
+	 * @param id the campaign
+	 * @throws Exception if the campaign cannot be read
+	 */
+	private static void cancelSharedCampaignWithoutPeer(Repository repository, SessionScript peer, String id)
+		throws Exception
+	{
+		int ownerRequests = repository.sessions().requests().size();
+		int peerRequests = peer.requests().size();
+		repository.scope().usePeerTrials(null);
+
+		output(repository, List.of("cancel", id));
+
+		requireThat(repository.load(id).lifecycle(), "lifecycle").isEqualTo(Lifecycle.CANCELLED);
+		requireThat(repository.sessions().requests().size(), "ownerRequests").isEqualTo(ownerRequests);
+		requireThat(peer.requests().size(), "peerRequests").isEqualTo(peerRequests);
+	}
+
+	/**
+	 * Reduces the contract fixture to a single prompt test.
+	 *
+	 * @param proposal the contract author's output
+	 */
+	private static void keepFirstTest(ObjectNode proposal)
+	{
+		for (String key : List.of("requirements", "tests"))
+		{
+			ArrayNode values = (ArrayNode) proposal.get(key);
+			JsonNode first = values.get(0);
+			values.removeAll().add(first);
+		}
+		proposal.putArray("scope_conditions");
+		proposal.putArray("conflicts");
+	}
+
+	/**
+	 * Supplies the peer's read-only metadata command and model-free trial sessions.
+	 *
+	 * @param repository the project and its owner scope
+	 * @param target the shared target
+	 * @param entry the peer's entry file
+	 * @param cleanup removes temporary trial sources
+	 * @return the peer script
+	 * @throws IOException if the fixture cannot be created
+	 */
+	private static SessionScript sharedPeer(Repository repository, Path target, Path entry,
+		TemporaryDirectories cleanup) throws IOException
+	{
+		Path scratch = cleanup.add(Files.createTempDirectory("shared-peer-"));
+		Path transcript = Files.createFile(scratch.resolve("transcript.jsonl"));
+		AtomicInteger sequence = new AtomicInteger();
+		SessionScript peer = new SessionScript(repository.scope().clock(), request ->
+		{
+			requireThat(request.role(), "peerRole").isEqualTo(SessionRole.TRIAL);
+			requireThat(Files.isRegularFile(request.source().resolve(entry)), "peerEntry").isTrue();
+			return trialResult(request, scratch.resolve("trial-" + sequence.incrementAndGet()), transcript);
+		});
+		peer.derivedSources(sharedPeerSources(target, entry));
+		repository.scope().usePeerArtifact(scratch.resolve("installed-peer"));
+		repository.scope().usePeerTrials(peer.port());
+		repository.scope().launchProcesses(builder ->
+		{
+			ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+			try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
+			{
+				List<String> args = builder.command().subList(1, builder.command().size());
+				int exit = PromptOptimizerCli.run(args.toArray(String[]::new), () -> new TestOptimizerCommandScope<>(
+					Harness.CODEX, repository.root(), Set.of(target, entry), _ -> peer.port()), ZoneOffset.UTC, out);
+				requireThat(exit, "metadataExit").isEqualTo(0);
+			}
+			FakeHarnessCli process = new FakeHarnessCli(_ ->
+			{
+			}, 0);
+			process.emit(bytes.toString(StandardCharsets.UTF_8).stripTrailing());
+			process.exit();
+			return process;
+		});
+		return peer;
+	}
+
+	/**
+	 * Describes the native loader observations returned by the model-free Codex fixture.
+	 *
+	 * @param target the shared prompt file
+	 * @param entry the Codex entry file
+	 * @return the loaded paths
+	 */
+	private static List<DerivedSource> sharedPeerSources(Path target, Path entry)
+	{
+		return List.of(new DerivedSource(entry.toString(), "Codex uses this instruction entry."),
+			new DerivedSource(target.toString(), "The Codex entry includes the shared prompt."));
+	}
+
+	/**
 	 * Verifies that a resumed {@code start} that names a goal that differs from the campaign's refuses, names both
 	 * goals and tells the user to start a new campaign, and starts no session and changes nothing.
 	 *
@@ -2978,12 +3493,25 @@ public final class OptimizerCoreTest
 	 */
 	private static ObjectNode output(Repository repository, List<String> arguments)
 	{
+		return output(repository, arguments, 0);
+	}
+
+	/**
+	 * Executes a CLI command with the expected exit code and returns its JSON output.
+	 *
+	 * @param repository the test project and core
+	 * @param arguments the command arguments
+	 * @param expectedExit the command's expected exit code
+	 * @return the command output
+	 */
+	private static ObjectNode output(Repository repository, List<String> arguments, int expectedExit)
+	{
 		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
 		try (PrintStream out = new PrintStream(bytes, true, StandardCharsets.UTF_8))
 		{
 			requireThat(new Commands(repository.core(), JSON, ZoneOffset.UTC, _ -> Optional.empty(), Platform.LINUX_X64).
 				execute(arguments, out), "exitCode").withContext(bytes.toString(StandardCharsets.UTF_8), "output").
-				isEqualTo(0);
+				isEqualTo(expectedExit);
 		}
 		return (ObjectNode) JSON.readTree(bytes.toString(StandardCharsets.UTF_8));
 	}
@@ -3993,6 +4521,55 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * Verifies that a selected peer's startup hook is compared against the shared campaign's trial sources
+	 * before the contract author or either evaluator starts, and that a successful comparison is persisted by
+	 * evaluator. Two public starts and the guard pilots can take more than one second.
+	 *
+	 * @throws Exception if a project fixture or command fails
+	 */
+	@Test
+	public void sharedStartRefusesFailedPeerHook() throws Exception
+	{
+		// Requirement: R-C28, R-L7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Path convention = Path.of("docs/peer-convention.md");
+			Repository repository = repository(cleanup, _ -> derivation(OptimizerCoreTest::keepFirstTest),
+				Set.of(target, entry, convention));
+			Files.writeString(repository.root().resolve(entry), "Read CLAUDE.md for the shared instructions.\n");
+			Path file = repository.root().resolve(convention);
+			Files.createDirectories(file.getParent());
+			Files.writeString(file, "Use tabs.\n");
+			configure(repository.root(), "{\"claude\":{\"plugins\":[]},\"codex\":{\"plugins\":[]}}");
+			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			peer.earlyHooks(List.of("cat docs/peer-convention.md"), repository.root());
+
+			CommandResult result = repository.core().start(target, Campaign.DEFAULT_CEILING, null, null,
+				Set.of(Harness.CLAUDE, Harness.CODEX));
+
+			requireThat(result.proposalFile(), "proposalFile").isNull();
+			requireThat(result.message(), "message").isNotNull().contains("Codex").
+				contains("cat docs/peer-convention.md").contains("exits with status 1");
+			requireThat(repository.sessions().roles(), "ownerRoles").isEmpty();
+			requireThat(peer.roles(), "peerRoles").isEmpty();
+
+			peer.earlyHooks(List.of("pwd"), repository.root());
+			CommandResult retried = repository.core().start(target, Campaign.DEFAULT_CEILING, null, null,
+				Set.of(Harness.CLAUDE, Harness.CODEX));
+
+			requireThat(retried.status().campaignId(), "campaign").isEqualTo(result.status().campaignId());
+			requireThat(proposalText(retried), "proposal").isNotNull().contains("Codex").
+				contains("/trial/project").contains("/session/project");
+			Path report = repository.directory(retried.status().campaignId()).resolve("hooks.json");
+			JsonNode scoped = JSON.readTree(Files.readString(report)).path("evaluators");
+			requireThat(scoped.path("codex").path("checked").asInt(), "codexChecks").isEqualTo(1);
+			requireThat(scoped.path("claude").path("checked").asInt(), "claudeChecks").isEqualTo(0);
+		}
+	}
+
+	/**
 	 * Verifies that each real hook process runs in its own copy of the project, a trial's workspace or the user's
 	 * session, and receives the environment that the harness sets for it, such as the root of its plugin, and that
 	 * its output reaches the proposal. How the check compares the outputs is tested in {@code HookComparisonTest},
@@ -4308,6 +4885,38 @@ public final class OptimizerCoreTest
 			CommandResult started = repository.core().start(Path.of("CLAUDE.md"));
 
 			requireThat(proposalText(started), "proposal").contains("tools@market SessionStart `./start.sh`");
+		}
+	}
+
+	/**
+	 * Verifies that a completed native inspection supersedes the declaration-only warning and persists an empty
+	 * result when the installed trial copy has no unapproved hooks.
+	 */
+	@Test
+	public void proposalUsesVerifiedHookApprovals() throws Exception
+	{
+		// Requirement: R-W12
+		try (TemporaryDirectories scope = new TemporaryDirectories())
+		{
+			Repository repository = repository(scope, _ -> derivation(_ ->
+			{
+			}));
+			configure(repository.root(), "{\"claude\": {\"plugins\": [{\"name\": \"tools@market\"}]}}");
+			Path plugin = scope.add(Files.createTempDirectory("installed-plugin")).toRealPath();
+			Files.createDirectories(plugin.resolve(".claude-plugin"));
+			Files.writeString(plugin.resolve(".claude-plugin/plugin.json"), "{\"name\": \"tools\"}\n");
+			repository.sessions().install("tools@market", List.of(plugin));
+			repository.sessions().unapprovedHooks(InventoryScanner.scan(plugin, Set.of()).identity().hex(),
+				List.of("SessionStart `./start.sh`"));
+			repository.scope().nativeUnapprovedHooks = Optional.of(List.of());
+
+			CommandResult result = repository.core().start(Path.of("CLAUDE.md"));
+
+			requireThat(proposalText(result), "proposal").isNotNull().doesNotContain("SessionStart `./start.sh`");
+			Path report = repository.directory(result.status().campaignId()).resolve("hooks.json");
+			JsonNode unapproved = JSON.readTree(Files.readString(report)).path("unapproved");
+			requireThat(unapproved.isArray(), "inspected").isTrue();
+			requireThat(unapproved.size(), "unapproved").isEqualTo(0);
 		}
 	}
 

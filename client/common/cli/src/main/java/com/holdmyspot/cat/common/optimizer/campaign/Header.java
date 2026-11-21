@@ -4,39 +4,40 @@ import static io.github.cowwoc.requirements13.java.DefaultJavaValidators.require
 
 import com.holdmyspot.cat.common.runner.policy.ExtraPermissions;
 import java.nio.file.Path;
+import java.util.Set;
 
 /**
  * A campaign's identity, project and prompt target, the user's goal for the target, the extra permissions that the
- * user asked for the campaign's sessions, starting harness, and lifecycle state.
+ * user asked for the campaign's sessions, starting harness, evaluation harnesses, and lifecycle state.
  * <p>
  * <b>Thread Safety:</b> This class is thread-safe.
  *
- * @param id the campaign's identity
- * @param root the canonical project root
- * @param target the canonical path of the prompt file or prompt system
- * @param harness the harness that started the campaign
- * @param lifecycle indicates whether the campaign is active, cancelled, closed or finished
- * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user stated
- *   no goal
- * @param extraPermissions the writes and hosts that every session of the campaign needs beyond its own, as the user
- *   named them when the campaign started, or {@link ExtraPermissions#NONE}
+ * @param id                  the campaign's identity
+ * @param root                the canonical project root
+ * @param target              the canonical path of the prompt file or prompt system
+ * @param harness             the harness that started and owns the campaign
+ * @param lifecycle           indicates whether the campaign is active, cancelled, closed or finished
+ * @param goal                the user's goal for the target, or {@code null} if the user stated no goal
+ * @param extraPermissions    the writes and hosts that every session of the campaign needs beyond its own, as the
+ *   user named them when the campaign started, or {@link ExtraPermissions#NONE}
+ * @param evaluationHarnesses the nonempty set of harnesses that evaluate the target
  */
 public record Header(String id, Path root, Path target, Harness harness, Lifecycle lifecycle, String goal,
-	ExtraPermissions extraPermissions)
+	ExtraPermissions extraPermissions, Set<Harness> evaluationHarnesses)
 {
 	/**
 	 * Creates a header.
 	 *
-	 * @param id the campaign's identity
-	 * @param root the canonical project root
-	 * @param target the canonical path of the prompt file or prompt system
-	 * @param harness the harness that started the campaign
-	 * @param lifecycle whether the campaign is active, cancelled, closed or finished
-	 * @param goal what the user wants the target to achieve, in the user's own words, or {@code null} if the user
-	 *   stated no goal
-	 * @param extraPermissions the writes and hosts that every session of the campaign needs beyond its own
-	 * @throws NullPointerException if any argument other than {@code goal} is null
-	 * @throws IllegalArgumentException if {@code id} or {@code goal} are blank
+	 * @param id                  the campaign's identity
+	 * @param root                the canonical project root
+	 * @param target              the canonical path of the prompt file or prompt system
+	 * @param harness             the harness that started and owns the campaign
+	 * @param lifecycle           whether the campaign is active, cancelled, closed or finished
+	 * @param goal                the user's goal for the target, or {@code null} if the user stated no goal
+	 * @param extraPermissions    the writes and hosts that every session of the campaign needs beyond its own
+	 * @param evaluationHarnesses the harnesses that evaluate the target
+	 * @throws NullPointerException     if any argument other than {@code goal} is null or an evaluator is null
+	 * @throws IllegalArgumentException if {@code id} or {@code goal} are blank or there are no evaluators
 	 */
 	public Header
 	{
@@ -48,6 +49,27 @@ public record Header(String id, Path root, Path target, Harness harness, Lifecyc
 		requireThat(extraPermissions, "extraPermissions").isNotNull();
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
+		requireThat(evaluationHarnesses, "evaluationHarnesses").isNotEmpty();
+		evaluationHarnesses = Set.copyOf(evaluationHarnesses);
+	}
+
+	/**
+	 * Creates a campaign whose starting harness evaluates the target.
+	 *
+	 * @param id               the campaign's identity
+	 * @param root             the canonical project root
+	 * @param target           the canonical path of the prompt file or prompt system
+	 * @param harness          the harness that started, owns, and evaluates the campaign
+	 * @param lifecycle        whether the campaign is active, cancelled, closed or finished
+	 * @param goal             the user's goal for the target, or {@code null} if the user stated no goal
+	 * @param extraPermissions the writes and hosts that every session of the campaign needs beyond its own
+	 * @throws NullPointerException     if any argument other than {@code goal} is null
+	 * @throws IllegalArgumentException if {@code id} or {@code goal} are blank
+	 */
+	public Header(String id, Path root, Path target, Harness harness, Lifecycle lifecycle, String goal,
+		ExtraPermissions extraPermissions)
+	{
+		this(id, root, target, harness, lifecycle, goal, extraPermissions, Set.of(harness));
 	}
 
 	/**
@@ -93,6 +115,6 @@ public record Header(String id, Path root, Path target, Harness harness, Lifecyc
 	 */
 	public Header withLifecycle(Lifecycle state)
 	{
-		return new Header(id, root, target, harness, state, goal, extraPermissions);
+		return new Header(id, root, target, harness, state, goal, extraPermissions, evaluationHarnesses);
 	}
 }

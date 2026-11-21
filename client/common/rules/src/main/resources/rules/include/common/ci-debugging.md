@@ -37,10 +37,12 @@ retained or reproducible inputs, run it locally before dispatching a replacement
 the cause and repair the responsible source; a passing local run does not establish that a hosted-only boundary passed.
 
 If the local run does not reproduce the failure, or the local machine cannot run the failing platform, such as a
-Windows-only failure on a Linux machine, open an interactive session on a runner of the same kind through the
-`cat:remote-runner-session` skill before you push any fix attempt. Reproduce the failure there, find its cause, and
-try each fix there until it passes. Every push and hosted run costs minutes and API calls and tests only one guess, so
-do not use a hosted run to find out whether a guess works. Do not substitute a similar local command for that session.
+Windows-only failure on a Linux machine, find a runner of the same kind whose session can retain its workspace.
+Arrange the session through the `cat:remote-runner-session` skill before dispatching a diagnostic rerun that needs
+that worker, even when the command is unchanged. Connect before the failing step starts. Reproduce the failure
+there, find its cause, and try each fix there before pushing it. Every push and hosted run costs minutes and API calls,
+so use the confirming run for a fix that already passed in the session. Do not substitute a similar local command for
+that session.
 When you delegate the investigation or the fix, open the session yourself unless the delegate can open one, give the
 delegate the failure as reproduced there, and try its fix in the session before you push it; a fix that a delegate
 made without the session is a guess.

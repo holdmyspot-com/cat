@@ -13,10 +13,13 @@ import com.holdmyspot.cat.common.BoundedInput;
 import com.holdmyspot.cat.common.ExecutableFiles;
 import com.holdmyspot.cat.common.PluginInfo;
 import com.holdmyspot.cat.common.PortablePaths;
+import com.holdmyspot.cat.common.SessionIgnore;
 import com.holdmyspot.cat.common.ProjectRuleLoader;
+import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.SessionDirectory;
 import com.holdmyspot.cat.common.optimizer.campaign.Campaign;
 import com.holdmyspot.cat.common.optimizer.campaign.CampaignEvent;
+import com.holdmyspot.cat.common.optimizer.campaign.CellTier;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationHistory;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
@@ -39,6 +42,7 @@ import com.holdmyspot.cat.common.optimizer.contract.CertificationScope;
 import com.holdmyspot.cat.common.optimizer.contract.Contract;
 import com.holdmyspot.cat.common.optimizer.contract.Dependent;
 import com.holdmyspot.cat.common.optimizer.contract.DerivedSource;
+import com.holdmyspot.cat.common.optimizer.contract.Cell;
 import com.holdmyspot.cat.common.optimizer.contract.InvalidProposalException;
 import com.holdmyspot.cat.common.optimizer.contract.ProfileCatalog;
 import com.holdmyspot.cat.common.optimizer.contract.PromptConfiguration;
@@ -83,6 +87,7 @@ import com.holdmyspot.cat.common.optimizer.port.ExtraPermissionSessions;
 import com.holdmyspot.cat.common.optimizer.port.HookRegistration;
 import com.holdmyspot.cat.common.optimizer.port.LoadedSources;
 import com.holdmyspot.cat.common.optimizer.port.PluginBase;
+import com.holdmyspot.cat.common.optimizer.port.PluginRemovals;
 import com.holdmyspot.cat.common.optimizer.port.ProfileInventory;
 import com.holdmyspot.cat.common.optimizer.port.SessionHandle;
 import com.holdmyspot.cat.common.optimizer.port.SessionPort;
@@ -92,6 +97,7 @@ import com.holdmyspot.cat.common.optimizer.port.SessionRole;
 import com.holdmyspot.cat.common.optimizer.port.SourceSelection;
 import com.holdmyspot.cat.common.optimizer.port.UnreachableReference;
 import com.holdmyspot.cat.common.optimizer.port.WorkspacePort;
+import com.holdmyspot.cat.common.runner.TrialPluginInput;
 import com.holdmyspot.cat.common.optimizer.proposal.ContractAuthorProtocol;
 import com.holdmyspot.cat.common.optimizer.proposal.DerivedProposal;
 import com.holdmyspot.cat.common.optimizer.proposal.DraftDirectory;
@@ -113,10 +119,12 @@ import com.holdmyspot.cat.common.optimizer.store.CertificationHistoryJson;
 import com.holdmyspot.cat.common.optimizer.store.FileCampaignStore;
 import com.holdmyspot.cat.common.optimizer.store.FileCandidateOverlays;
 import com.holdmyspot.cat.common.optimizer.workspace.ControlSource;
+import com.holdmyspot.cat.common.optimizer.workspace.ForkTree;
 import com.holdmyspot.cat.common.optimizer.workspace.ForkView;
 import com.holdmyspot.cat.common.optimizer.workspace.LinkReport;
 import com.holdmyspot.cat.common.optimizer.workspace.PluginBuild;
 import com.holdmyspot.cat.common.optimizer.workspace.ReferencedFiles;
+import com.holdmyspot.cat.common.optimizer.workspace.StagedSources;
 import com.holdmyspot.cat.common.optimizer.workspace.WorkspaceException;
 import com.holdmyspot.cat.common.optimizer.workspace.WorktreeRefusedException;
 import com.holdmyspot.cat.common.runner.PluginManifest;
@@ -126,6 +134,7 @@ import com.holdmyspot.cat.common.optimizer.execution.BackgroundDriver;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.port.HostInterruptSignal;
 import java.io.IOException;
+import java.io.InterruptedIOException;
 import java.io.UncheckedIOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
@@ -137,6 +146,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumMap;
 import java.util.HashMap;
@@ -197,11 +207,6 @@ public final class OptimizerCore implements Core
 	 * The most prompt test configurations that a refusal lists.
 	 */
 	private static final int MAXIMUM_CONFIGURATIONS_LISTED = 20;
-	/**
-	 * The typical length of one line that the loader configuration's identity digests: a file's path and its content
-	 * hash, or the user's loader settings.
-	 */
-	private static final int LOADER_LINE_CAPACITY = 128;
 	private final AbstractOptimizerCommandScope scope;
 	private final ExecutableFiles executables;
 	private final ProposalSchema schema;
@@ -489,11 +494,34 @@ public final class OptimizerCore implements Core
 	 */
 	private ContractAuthorProtocol contractAuthor(Path root, Campaign campaign) throws IOException
 	{
+		return contractAuthor(root, campaign, reports(campaign));
+	}
+
+	/**
+	 * Returns a protocol that validates exit-status evidence against every selected evaluator.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param evaluators the staged evaluator reports
+	 * @return the owner's contract-author protocol
+	 * @throws IOException if an installed role profile or recorded scenario cannot be read
+	 */
+	private ContractAuthorProtocol contractAuthor(Path root, Campaign campaign,
+		Map<Harness, EvaluatorMetadata> evaluators) throws IOException
+	{
 		Header header = campaign.header();
-		return new ContractAuthorProtocol(scope.json(), schema, new JudgeTemplate(scope.json(),
-			scope.profiles().roleProfile()), regressionScenarios(root),
-			header.target(), header.goal(), scope.sessions().reportsExitStatus(), campaign.plugins().orElseThrow(),
-			scope.launcher(), scope.profiles()::toolOutputBytes);
+		boolean reportsExitStatus = scope.sessions().reportsExitStatus();
+		if (!evaluators.isEmpty())
+			reportsExitStatus = evaluators.values().stream().allMatch(evaluator -> evaluator.runtime().reportsExitStatus());
+		JudgeTemplate judge = new JudgeTemplate(scope.json(), scope.profiles().roleProfile());
+		RegressionScenarios scenarios = regressionScenarios(root);
+		if (!evaluators.isEmpty())
+		{
+			return new ContractAuthorProtocol(scope.json(), schema, judge, scenarios, header.target(), header.goal(),
+				reportsExitStatus, evaluatorPlugins(campaign), scope.launcher(), scope.profiles()::toolOutputBytes);
+		}
+		return new ContractAuthorProtocol(scope.json(), schema, judge, scenarios, header.target(), header.goal(),
+			reportsExitStatus, campaign.plugins().orElseThrow(), scope.launcher(), scope.profiles()::toolOutputBytes);
 	}
 
 	/**
@@ -560,17 +588,18 @@ public final class OptimizerCore implements Core
 	}
 
 	@Override
-	public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
-		throws CommandRefusedException, IOException, InterruptedException
+	public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions,
+		Set<Harness> evaluationHarnesses) throws CommandRefusedException, IOException, InterruptedException
 	{
 		requireThat(target, "target").isNotNull();
 		requireThat(ceiling, "ceiling").isBetween(1, true, Campaign.MAXIMUM_CEILING, true);
 		if (goal != null)
 			requireThat(goal, "goal").isNotBlank();
+		Set<Harness> requested = Set.copyOf(evaluationHarnesses);
 		Instant sliceStart = scope.clock().instant();
 		refuseWithoutWorktrees();
 		refuseUnlaunchable();
-		return withCleanup(_ -> startBody(target, ceiling, goal, extraPermissions, sliceStart));
+		return startBody(target, ceiling, goal, extraPermissions, requested, sliceStart);
 	}
 
 	/**
@@ -614,43 +643,294 @@ public final class OptimizerCore implements Core
 	 * @param extraPermissions the file of extra permissions for a new campaign, or {@code null} if the user named
 	 *   none. A resumed campaign keeps the permissions it was started with, so a file whose permissions differ from
 	 *   them is refused.
+	 * @param requested the explicit evaluator set, or empty to use the default for a new or resumed campaign
 	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the command is refused
 	 * @throws IOException if the store, the workspace or a session fails
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session
 	 */
-	private CommandResult startBody(Path target, int ceiling, String goal, Path extraPermissions, Instant sliceStart)
-		throws CommandRefusedException, IOException, InterruptedException
+	private CommandResult startBody(Path target, int ceiling, String goal, Path extraPermissions,
+		Set<Harness> requested, Instant sliceStart) throws CommandRefusedException, IOException, InterruptedException
 	{
 		Path root = scope.projectRoot();
-		Optional<String> exposure = scope.sessions().findHeldOutExposure(root);
-		if (exposure.isPresent())
-			throw new CommandRefusedException(exposure.get());
-		Path absolute = scope.directory().toRealPath().resolve(target).normalize();
-		if (!Files.exists(absolute))
-			throw new CommandRefusedException("The target does not exist: " + absolute);
-		absolute = absolute.toRealPath();
+		String ownerSession = scope.sessionDirectory().sessionId();
+		Path named = scope.directory().toRealPath().resolve(target).normalize();
+		if (!Files.exists(named))
+			throw new CommandRefusedException("The target does not exist: " + named);
+		Path absolute = named.toRealPath();
 		requireInsideProject(root, absolute);
 		if (!Files.isRegularFile(absolute))
 		{
 			throw new CommandRefusedException("A campaign optimizes one prompt file, so the target must be a file, but " +
 				absolute + " is not. Run start with the prompt file to optimize.");
 		}
-		regressionScenarios(root);
 		CampaignStore store = scope.store();
-		Registry.Opening opening = Registry.open(headers(), scope.sessionDirectory().sessionId(), root, absolute,
-			scope.harness());
-		return switch (opening)
+		Registry.Opening opening = Registry.open(headers(), ownerSession, root, absolute, scope.harness());
+		Set<Harness> evaluators = switch (opening)
 		{
 			case Registry.Opening.Refuse refuse -> throw refused(refuse.owner());
 			case Registry.Opening.Resume resume ->
 			{
-				requireUnchangedInputs(resume.header(), goal, extraPermissions);
-				yield resume(root, store, resume.header(), sliceStart);
+				Header header = resume.header();
+				Set<Harness> recorded = header.evaluationHarnesses();
+				if (!requested.isEmpty() && !requested.equals(recorded))
+				{
+					throw new CommandRefusedException("Campaign " + header.id() + " evaluates with " +
+						evaluatorNames(recorded) + ". The start command requests " + evaluatorNames(requested) +
+						". To change evaluation harnesses, start a new campaign.");
+				}
+				yield recorded;
 			}
-			case Registry.Opening.Create _ -> create(root, store, absolute, ceiling, goal, extraPermissions, sliceStart);
+			case Registry.Opening.Create _ ->
+			{
+				if (requested.isEmpty())
+					yield Set.of(scope.harness());
+				yield requested;
+			}
 		};
+		return withCleanup(_ ->
+		{
+			Optional<String> exposure = scope.sessions().findHeldOutExposure(root);
+			if (exposure.isPresent())
+				throw new CommandRefusedException(exposure.get());
+			regressionScenarios(root);
+			if (opening instanceof Registry.Opening.Resume resume)
+			{
+				requireUnchangedInputs(resume.header(), goal, extraPermissions);
+				return resume(root, store, resume.header(), sliceStart);
+			}
+			return create(root, store, absolute, ceiling, goal, extraPermissions, evaluators, sliceStart);
+		});
+	}
+
+	/**
+	 * Verifies that each selected evaluator can read the initial target before creating an optimizer campaign.
+	 *
+	 * @param root the project root
+	 * @param target the project-relative target
+	 * @param selected the requested evaluation harnesses
+	 * @param cleanup the owner of any temporary source and frozen bases
+	 * @return the preflight fork and frozen plugins, if a new shared campaign needs plugins
+	 * @throws CommandRefusedException if the shared configuration or an evaluator cannot be used
+	 * @throws IOException if the command cannot prepare the temporary source
+	 * @throws InterruptedException if the command is interrupted waiting for an evaluator
+	 */
+	private Optional<ForkInputs> prepareStart(Path root, Path target, Set<Harness> selected,
+		TemporaryDirectories cleanup)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		if (selected.equals(Set.of(scope.harness())))
+			return Optional.empty();
+		Map<Harness, List<PromptConfiguration.ConfiguredPlugin>> configured = new EnumMap<>(Harness.class);
+		for (Harness evaluator : new TreeSet<>(selected))
+		{
+			try
+			{
+				configured.put(evaluator, configuredPlugins(root, target, evaluator));
+			}
+			catch (CommandRefusedException e)
+			{
+				throw evaluatorUnavailable(evaluator, e.getMessage(), e);
+			}
+		}
+		Path scratch = cleanup.add(Files.createTempDirectory(scope.temporaryDirectory(), "evaluator-preflight-"));
+		if (configured.values().stream().anyMatch(plugins -> !plugins.isEmpty()))
+			return Optional.of(prepareSharedPlugins(root, target, scratch, configured));
+		Set<Path> paths = new HashSet<>();
+		paths.add(target);
+		for (Path path : scope.forks().tracked(root))
+		{
+			if (!InventoryScanner.isOmitted(path))
+				paths.add(path);
+		}
+		ForkTree tree = ForkTree.record(root, scratch, paths);
+		Path staged = new StagedSources(tree, scratch.resolve("stage")).stage(Overlay.of(tree.inventory()), Set.of());
+		verifyTrialRoutes(evaluatorReports(root, staged, target, selected, Map.of()));
+		return Optional.empty();
+	}
+
+	/**
+	 * A fork and the ordered plugin lists frozen in its workspace.
+	 *
+	 * @param fork the verified project files and base copies
+	 * @param plugins the plugins prepared for each selected evaluator in configuration order
+	 */
+	private record ForkInputs(ForkView fork, Map<Harness, List<TrialPlugin>> plugins)
+	{
+	}
+
+	/**
+	 * Builds or copies the selected trial plugins in a provisional worktree and verifies their native loader inputs.
+	 *
+	 * @param root the project root
+	 * @param target the project-relative target
+	 * @param scratch the temporary directory to own this worktree and its pinned copies
+	 * @param configured the ordered trial plugin configurations by evaluator
+	 * @return the frozen inputs
+	 * @throws CommandRefusedException if the fork, a plugin or an evaluator is unavailable
+	 * @throws IOException if the source or plugin bases cannot be created or removed
+	 * @throws InterruptedException if a build or a peer process is interrupted
+	 */
+	private ForkInputs prepareSharedPlugins(Path root, Path target, Path scratch,
+		Map<Harness, List<PromptConfiguration.ConfiguredPlugin>> configured)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		ForkView fork;
+		try
+		{
+			fork = scope.forks().prepare(root, scratch, Set.of(target));
+		}
+		catch (WorkspaceException e)
+		{
+			throw new CommandRefusedException(e.getMessage(), e);
+		}
+		try
+		{
+			Map<Harness, List<TrialPlugin>> prepared = new EnumMap<>(Harness.class);
+			for (Map.Entry<Harness, List<PromptConfiguration.ConfiguredPlugin>> entry : configured.entrySet())
+			{
+				Harness evaluator = entry.getKey();
+				try
+				{
+					SortedSet<Path> prompts = new TreeSet<>(Set.of(target));
+					prepared.put(evaluator, prepareTrialPlugins(root, fork, target, prompts, entry.getValue(), evaluator));
+				}
+				catch (CommandRefusedException | IOException e)
+				{
+					throw evaluatorUnavailable(evaluator, e.getMessage(), e);
+				}
+			}
+			verifyPreparedEvaluators(root, target, fork, prepared);
+			return new ForkInputs(fork, Map.copyOf(prepared));
+		}
+		finally
+		{
+			scope.forks().remove(root, scratch);
+		}
+	}
+
+	/**
+	 * Checks that every selected evaluator loads the target with its own frozen plugin copies.
+	 *
+	 * @param root the project root
+	 * @param target the project-relative target
+	 * @param fork the project files and frozen bases
+	 * @param plugins the trial plugins of each evaluator
+	 * @throws CommandRefusedException if an evaluator cannot load the target or start trials
+	 * @throws IOException if the source cannot be staged
+	 * @throws InterruptedException if an evaluator probe is interrupted
+	 */
+	private void verifyPreparedEvaluators(Path root, Path target, ForkView fork,
+		Map<Harness, List<TrialPlugin>> plugins) throws CommandRefusedException, IOException, InterruptedException
+	{
+		WorkspacePort workspace = fork.workspace();
+		Path staged = workspace.stage(Overlay.of(fork.inventory()), Set.of());
+		verifyTrialRoutes(evaluatorReports(root, staged, target, plugins.keySet(), evaluatorBases(plugins, workspace)));
+	}
+
+	/**
+	 * Checks whether the serving owner can launch each peer that successfully probed its loader.
+	 *
+	 * @param observed the evaluator evidence
+	 * @throws CommandRefusedException if a peer cannot launch through the owner
+	 */
+	private void verifyTrialRoutes(Map<Harness, EvaluatorMetadata> observed) throws CommandRefusedException
+	{
+		for (EvaluatorMetadata metadata : observed.values())
+		{
+			if (metadata.harness() != scope.harness())
+				requirePeerPort(metadata);
+		}
+	}
+
+	/**
+	 * Observes loader and profile evidence for each selected evaluator, or names the evaluator that cannot run.
+	 *
+	 * @param root the project root
+	 * @param staged the existing staged source
+	 * @param target the project-relative target
+	 * @param selected the requested evaluation harnesses
+	 * @param plugins the pinned plugin bases the evaluator will install, with absent keys meaning no plugins
+	 * @return the evaluator reports
+	 * @throws CommandRefusedException if a report cannot be read or its evaluator does not load the target
+	 * @throws InterruptedException if the command is interrupted waiting for an evaluator
+	 */
+	private Map<Harness, EvaluatorMetadata> evaluatorReports(Path root, Path staged, Path target, Set<Harness> selected,
+		Map<Harness, List<PluginBase>> plugins)
+		throws CommandRefusedException, InterruptedException
+	{
+		Map<Harness, EvaluatorMetadata> observed = new EnumMap<>(Harness.class);
+		for (Harness evaluator : new TreeSet<>(selected))
+		{
+			EvaluatorMetadata metadata;
+			try
+			{
+				List<PluginBase> bases = plugins.getOrDefault(evaluator, List.of());
+				if (evaluator == scope.harness())
+					metadata = EvaluatorInfo.inspect(scope, root, staged, target, bases);
+				else
+					metadata = scope.peerEvaluatorMetadata(evaluator, root, staged, target, bases);
+			}
+			catch (IOException e)
+			{
+				throw evaluatorUnavailable(evaluator, e.getMessage(), e);
+			}
+			if (metadata.refusal().isPresent())
+				throw new CommandRefusedException(metadata.refusal().get(), null,
+					CommandRefusedException.Reason.EVALUATOR_UNAVAILABLE);
+			List<UnreachableReference> unreachable = metadata.observations().map(EvaluatorObservations::unreachable).
+				orElse(List.of());
+			if (!unreachable.isEmpty())
+				throw evaluatorUnavailable(evaluator, unreachableNotice(unreachable), null);
+			observed.put(evaluator, metadata);
+		}
+		return observed;
+	}
+
+	/**
+	 * Returns the peer's installed trial route without launching a session.
+	 *
+	 * @param metadata the peer observation
+	 * @return the trial port
+	 * @throws CommandRefusedException if the owner cannot dispatch to this evaluator
+	 */
+	private SessionPort requirePeerPort(EvaluatorMetadata metadata) throws CommandRefusedException
+	{
+		Harness evaluator = metadata.harness();
+		try
+		{
+			return scope.peerTrialSessions(evaluator, metadata);
+		}
+		catch (IOException e)
+		{
+			throw evaluatorUnavailable(evaluator, e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Reports why a particular evaluator cannot participate.
+	 *
+	 * @param evaluator the unavailable evaluator
+	 * @param reason what prevented evaluation
+	 * @param cause the underlying exception
+	 * @return the typed refusal
+	 */
+	private static CommandRefusedException evaluatorUnavailable(Harness evaluator, String reason, Exception cause)
+	{
+		return new CommandRefusedException("Could not validate the " + evaluator.productName() + " evaluator. " +
+			reason, cause, CommandRefusedException.Reason.EVALUATOR_UNAVAILABLE);
+	}
+
+	/**
+	 * Lists the selected harnesses in command-name order.
+	 *
+	 * @param evaluators the selected harnesses
+	 * @return their command names
+	 */
+	private static String evaluatorNames(Set<Harness> evaluators)
+	{
+		return evaluators.stream().map(Harness::commandName).sorted().collect(Collectors.joining(", "));
 	}
 
 	/**
@@ -759,14 +1039,24 @@ public final class OptimizerCore implements Core
 	private void requireReachableReferences(Path root) throws CommandRefusedException, IOException
 	{
 		List<UnreachableReference> unreachable = scope.sessions().loadedSources(root, List.of()).unreachable();
-		if (unreachable.isEmpty())
-			return;
+		if (!unreachable.isEmpty())
+			throw new CommandRefusedException(unreachableNotice(unreachable));
+	}
+
+	/**
+	 * Describes the source references that would disappear from trials.
+	 *
+	 * @param unreachable the unsupported references
+	 * @return the refusal text
+	 */
+	private static String unreachableNotice(List<UnreachableReference> unreachable)
+	{
 		StringJoiner message = new StringJoiner("\n", "Trials receive only the project's files, so they cannot " +
 			"receive these files that the prompt system refers to:\n",
 			"\nMove each file into the project, or remove the reference, then run `start` again.");
 		for (UnreachableReference reference : unreachable)
 			message.add("- " + reference.describe());
-		throw new CommandRefusedException(message.toString());
+		return message.toString();
 	}
 
 	/**
@@ -815,7 +1105,7 @@ public final class OptimizerCore implements Core
 			scope.takeIgnoreNotice().ifPresent(notice -> notices.add(0, notice));
 			if (notices.isEmpty())
 				throw e;
-			throw new CommandRefusedException(e.getMessage() + "\n" + String.join("\n", notices), e);
+			throw new CommandRefusedException(e.getMessage() + "\n" + String.join("\n", notices), e, e.reason());
 		}
 		scope.takeIgnoreNotice().ifPresent(notice -> notices.add(0, notice));
 		return result.withNotices(notices);
@@ -948,11 +1238,14 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		ForkView fork = openFork(root, campaign);
+		verifyEvaluatorConditions(root, campaign, fork);
 		// A build that failed left the trial plugins unrecorded, so start builds them again
-		if (campaign.plugins().isEmpty())
+		if (campaign.plugins().isEmpty() && campaign.evaluatorPlugins().isEmpty())
 		{
-			campaign = withTrialPlugins(root, store, campaign, fork,
-				configuredPlugins(root, relativeTarget(campaign)));
+			List<PromptConfiguration.ConfiguredPlugin> configured = List.of();
+			if (campaign.header().evaluationHarnesses().equals(Set.of(scope.harness())))
+				configured = configuredPlugins(root, relativeTarget(campaign));
+			campaign = withTrialPlugins(root, store, campaign, fork, configured);
 		}
 		Optional<DerivedProposal> stored;
 		try
@@ -986,6 +1279,7 @@ public final class OptimizerCore implements Core
 	 * @param goal what the user wants the target to achieve, or {@code null} if the user stated no goal
 	 * @param extraPermissions the file that lists the writes and hosts that the campaign's sessions need beyond their
 	 *   own, or {@code null} if the user named none
+	 * @param evaluators the validated evaluation harnesses
 	 * @param sliceStart when the command started, which bounds the guard pilot that the command runs
 	 * @return the result
 	 * @throws CommandRefusedException if the file of extra permissions is missing or invalid, the prompt test
@@ -995,7 +1289,8 @@ public final class OptimizerCore implements Core
 	 * @throws InterruptedException if the thread is interrupted while it waits for a session or a build
 	 */
 	private CommandResult create(Path root, CampaignStore store, Path target, int ceiling, String goal,
-		Path extraPermissions, Instant sliceStart) throws CommandRefusedException, IOException, InterruptedException
+		Path extraPermissions, Set<Harness> evaluators, Instant sliceStart)
+		throws CommandRefusedException, IOException, InterruptedException
 	{
 		ExtraPermissions extra = readExtraPermissions(extraPermissions);
 		String id = ID_TIME.format(scope.clock().instant()) + "-" +
@@ -1004,19 +1299,14 @@ public final class OptimizerCore implements Core
 		Path relative = root.relativize(target);
 		// The configuration and the prompt system's references are checked before anything is created, so a refusal
 		// leaves nothing behind
-		List<PromptConfiguration.ConfiguredPlugin> configured = configuredPlugins(root, relative);
-		requireReachableReferences(root);
-		// Nothing can refuse the command after this point, so creating the CAT session directory is the first change
-		scope.createdSessionDirectory();
-		ForkView fork;
-		try
+		List<PromptConfiguration.ConfiguredPlugin> configured = List.of();
+		if (evaluators.equals(Set.of(scope.harness())))
 		{
-			fork = scope.forks().create(root, directory, Set.of(relative));
+			configured = configuredPlugins(root, relative);
+			requireReachableReferences(root);
 		}
-		catch (WorkspaceException e)
-		{
-			throw new CommandRefusedException(e.getMessage(), e);
-		}
+		ForkInputs inputs = prepareFork(root, directory, relative, evaluators);
+		ForkView fork = inputs.fork();
 		CommandResult result;
 		// The fork creates the campaign's directory, which holds the lock file
 		try (CampaignLock _ = lock(id))
@@ -1024,10 +1314,21 @@ public final class OptimizerCore implements Core
 			FileInventory inventory = fork.inventory();
 			Overlay incumbent = Overlay.of(inventory);
 			new FileCandidateOverlays(directory, inventory, scope.json(), scope.fileReplacer()).save(incumbent);
-			Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal, extra);
-			Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), environment(inventory::entry));
-			store.replaceSnapshot(campaign);
-			campaign = withTrialPlugins(root, store, campaign, fork, configured);
+			Header header = new Header(id, root, target, scope.harness(), Lifecycle.ACTIVE, goal, extra, evaluators);
+			MeasurementIdentity identity = campaignEnvironment();
+			if (evaluators.equals(Set.of(scope.harness())))
+				identity = environment(inventory::entry);
+			Campaign campaign = Campaign.start(header, ceiling, incumbent.identity(), identity);
+			if (inputs.plugins().isEmpty())
+			{
+				store.replaceSnapshot(campaign);
+				campaign = withTrialPlugins(root, store, campaign, fork, configured);
+			}
+			else
+			{
+				campaign = withPreparedPlugins(campaign, fork.workspace(), inputs.plugins());
+				store.replaceSnapshot(campaign);
+			}
 			result = derive(root, store, campaign, fork, null, null, sliceStart);
 		}
 		if (fork.ignoreNotice().isEmpty())
@@ -1036,6 +1337,130 @@ public final class OptimizerCore implements Core
 		if (result.message() != null)
 			message += "\n" + result.message();
 		return new CommandResult(result.status(), result.harness(), result.proposalFile(), result.delivery(), message);
+	}
+
+	/**
+	 * Validates shared inputs in a disposable workspace, then creates the campaign fork and verifies its copies.
+	 *
+	 * @param root the project root
+	 * @param directory the intended campaign directory
+	 * @param target the project-relative target
+	 * @param evaluators the selected scope
+	 * @return the prepared fork and any evaluator-specific plugins
+	 * @throws CommandRefusedException if the fork or a shared evaluator is unavailable
+	 * @throws IOException if a worktree or a plugin base cannot be created or read
+	 * @throws InterruptedException if a plugin build or a peer probe is interrupted
+	 */
+	private ForkInputs prepareFork(Path root, Path directory, Path target, Set<Harness> evaluators)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		try (TemporaryDirectories temporary = new TemporaryDirectories())
+		{
+			Optional<ForkInputs> prepared = prepareStart(root, target, evaluators, temporary);
+			scope.createdSessionDirectory();
+			ForkView fork;
+			try
+			{
+				fork = scope.forks().create(root, directory, Set.of(target));
+			}
+			catch (WorkspaceException e)
+			{
+				throw new CommandRefusedException(e.getMessage(), e);
+			}
+			if (evaluators.equals(Set.of(scope.harness())))
+				return new ForkInputs(fork, Map.of());
+			try
+			{
+				return new ForkInputs(fork, installPreparedPlugins(root, target, prepared, fork, evaluators));
+			}
+			catch (CommandRefusedException | IOException | InterruptedException e)
+			{
+				try
+				{
+					scope.forks().remove(root, directory);
+					TemporaryDirectories.deleteRecursively(directory);
+				}
+				catch (IOException cleanup)
+				{
+					e.addSuppressed(cleanup);
+				}
+				throw e;
+			}
+		}
+	}
+
+	/**
+	 * Transfers the validated frozen bases into the final campaign and checks them against its staged project.
+	 *
+	 * @param root the project root
+	 * @param target the project-relative target
+	 * @param prepared the provisional fork and its pinned bases, empty for plugin-free evaluation
+	 * @param fork the final fork
+	 * @param evaluators the selected scope
+	 * @return the ordered, frozen plugins for each selected evaluator
+	 * @throws CommandRefusedException if the project changed or the final sources do not load the target
+	 * @throws IOException if the bases or staged sources cannot be read or written
+	 * @throws InterruptedException if an evaluator probe is interrupted
+	 */
+	private Map<Harness, List<TrialPlugin>> installPreparedPlugins(Path root, Path target,
+		Optional<ForkInputs> prepared, ForkView fork, Set<Harness> evaluators)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		if (prepared.isEmpty())
+		{
+			Map<Harness, List<TrialPlugin>> empty = new EnumMap<>(Harness.class);
+			for (Harness evaluator : evaluators)
+				empty.put(evaluator, List.of());
+			verifyPreparedEvaluators(root, target, fork, empty);
+			return empty;
+		}
+		ForkInputs inputs = prepared.get();
+		verifyPublicationInventory(inputs.fork(), fork);
+		WorkspacePort workspace = fork.workspace();
+		for (List<TrialPlugin> plugins : inputs.plugins().values())
+		{
+			for (TrialPlugin plugin : plugins)
+			{
+				String digest = plugin.baseDigest();
+				String copied = workspace.copyPluginBase(inputs.fork().workspace().pluginBase(digest));
+				if (!copied.equals(digest))
+					throw new IOException("The prepared trial plugin " + plugin.name() + " changed while it was copied");
+			}
+		}
+		verifyPreparedEvaluators(root, target, fork, inputs.plugins());
+		return inputs.plugins();
+	}
+
+	/**
+	 * Requires the production fork to match the provisional source that built the plugins, allowing exactly the
+	 * generated session ignore entry that creation may append.
+	 *
+	 * @param prepared the verified source
+	 * @param created the production fork
+	 * @throws IOException if the original ignore file cannot be read
+	 * @throws CommandRefusedException if the fork now contains different user files
+	 */
+	private static void verifyPublicationInventory(ForkView prepared, ForkView created)
+		throws IOException, CommandRefusedException
+	{
+		FileInventory inventory = prepared.inventory();
+		if (inventory.equals(created.inventory()))
+			return;
+		Map<Path, FileEntry> expected = new HashMap<>(inventory.entries());
+		Path ignore = Path.of(SessionIgnore.FILE_NAME);
+		if (expected.get(ignore) instanceof FileEntry.RegularFile original)
+		{
+			byte[] content = prepared.workspace().readFile(Overlay.of(inventory), ignore).orElseThrow().bytes();
+			String suffix = SessionIgnore.BLOCK;
+			if (content.length > 0 && content[content.length - 1] != '\n')
+				suffix = "\n" + suffix;
+			byte[] addition = suffix.getBytes(StandardCharsets.UTF_8);
+			byte[] combined = Arrays.copyOf(content, content.length + addition.length);
+			System.arraycopy(addition, 0, combined, content.length, addition.length);
+			expected.put(ignore, new FileEntry.RegularFile(Sha256.of(combined), original.permissions()));
+		}
+		if (!expected.equals(created.inventory().entries()))
+			throw new CommandRefusedException("The project changed while CAT prepared the trial plugins. Run start again.");
 	}
 
 	/**
@@ -1174,9 +1599,25 @@ public final class OptimizerCore implements Core
 	private List<PromptConfiguration.ConfiguredPlugin> configuredPlugins(Path root, Path target)
 		throws CommandRefusedException, IOException
 	{
+		return configuredPlugins(root, target, scope.harness());
+	}
+
+	/**
+	 * Reads the trial plugins that the target configures for one evaluator.
+	 *
+	 * @param root the project root
+	 * @param target the target, relative to the project
+	 * @param evaluator the harness whose configuration is required
+	 * @return the plugins, in configuration order
+	 * @throws CommandRefusedException if the configuration for this evaluator is invalid or missing
+	 * @throws IOException if the configuration or tracked files cannot be read
+	 */
+	private List<PromptConfiguration.ConfiguredPlugin> configuredPlugins(Path root, Path target, Harness evaluator)
+		throws CommandRefusedException, IOException
+	{
 		Path file = PromptConfiguration.location(target);
 		Path absolute = root.resolve(file);
-		String harness = scope.harness().commandName();
+		String harness = evaluator.commandName();
 		String retry = "Run `start` again once the configuration names the plugins that trials install.";
 		if (!Files.isRegularFile(absolute))
 		{
@@ -1200,10 +1641,10 @@ public final class OptimizerCore implements Core
 		{
 			throw new CommandRefusedException("The prompt test configuration " + PortablePaths.text(file) + " has " +
 				"no \"" + harness + "\" key, so it does not say which plugins trials in " + harness + " install. Add " +
-				"the key, with an empty plugin list if trials install none.\n" + configurationsWithKey(root, file) +
+				"the key, with an empty plugin list if trials install none.\n" + configurationsWithKey(root, file, harness) +
 				pluginChoices(root) + retry);
 		}
-		requireBuiltWhenTracked(root, file, plugins.get());
+		requireBuiltWhenTracked(root, file, plugins.get(), evaluator);
 		return plugins.get();
 	}
 
@@ -1217,12 +1658,12 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param excluded the configuration that the refusal is about, relative to the project
+	 * @param harness the evaluator's command name
 	 * @return the heading and one line per configuration, in order of configuration path, each ending with a line
 	 *   break, or an empty string if no other configuration has the key
 	 */
-	private String configurationsWithKey(Path root, Path excluded)
+	private String configurationsWithKey(Path root, Path excluded, String harness)
 	{
-		String harness = scope.harness().commandName();
 		Path tests = root.resolve(".cat").resolve("tests");
 		List<Path> files;
 		try (Stream<Path> walk = Files.walk(tests, MAXIMUM_CONFIGURATION_DEPTH))
@@ -1388,7 +1829,20 @@ public final class OptimizerCore implements Core
 	 */
 	private List<Path> trackedManifests(Path root) throws IOException
 	{
-		Path manifest = scope.harness().pluginManifest();
+		return trackedManifests(root, scope.harness());
+	}
+
+	/**
+	 * Returns the selected evaluator's plugin manifests that Git tracks.
+	 *
+	 * @param root the project root
+	 * @param evaluator the harness whose manifests to look for
+	 * @return the project-relative manifests in path order
+	 * @throws IOException if Git cannot list the tracked files
+	 */
+	private List<Path> trackedManifests(Path root, Harness evaluator) throws IOException
+	{
+		Path manifest = evaluator.pluginManifest();
 		List<Path> manifests = new ArrayList<>();
 		for (Path tracked : new TreeSet<>(scope.forks().tracked(root)))
 		{
@@ -1420,10 +1874,12 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param file the configuration, relative to the project
 	 * @param plugins the configured plugins
+	 * @param evaluator the harness that installs the plugins
 	 * @throws CommandRefusedException if such a plugin exists
 	 * @throws IOException if Git cannot list the tracked files
 	 */
-	private void requireBuiltWhenTracked(Path root, Path file, List<PromptConfiguration.ConfiguredPlugin> plugins)
+	private void requireBuiltWhenTracked(Path root, Path file, List<PromptConfiguration.ConfiguredPlugin> plugins,
+		Harness evaluator)
 		throws CommandRefusedException, IOException
 	{
 		Map<String, String> unbuilt = new HashMap<>();
@@ -1434,8 +1890,8 @@ public final class OptimizerCore implements Core
 		}
 		if (unbuilt.isEmpty())
 			return;
-		Path manifest = scope.harness().pluginManifest();
-		for (Path tracked : trackedManifests(root))
+		Path manifest = evaluator.pluginManifest();
+		for (Path tracked : trackedManifests(root, evaluator))
 		{
 			Path directory = pluginDirectory(root, tracked, manifest);
 			String name;
@@ -1485,7 +1941,66 @@ public final class OptimizerCore implements Core
 		List<PromptConfiguration.ConfiguredPlugin> configured)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
+		if (!campaign.header().evaluationHarnesses().equals(Set.of(scope.harness())))
+		{
+			if (!configured.isEmpty())
+				throw new IllegalArgumentException("Shared evaluation requires its evaluator-specific configurations");
+			Map<Harness, List<TrialPlugin>> empty = new EnumMap<>(Harness.class);
+			campaign.header().evaluationHarnesses().forEach(evaluator -> empty.put(evaluator, List.of()));
+			Campaign withoutPlugins = withPreparedPlugins(campaign, fork.workspace(), empty);
+			store.replaceSnapshot(withoutPlugins);
+			return withoutPlugins;
+		}
+		SortedSet<Path> promptFiles = authority(root, campaign, fork.inventory()).promptFiles(fork.inventory());
+		List<TrialPlugin> mapped = prepareTrialPlugins(root, fork, relativeTarget(campaign), promptFiles, configured,
+			scope.harness());
+		Map<String, String> versions = pluginVersions(fork.workspace(), scope.harness(), mapped);
+		Campaign built = campaign.withPlugins(mapped, versions);
+		store.replaceSnapshot(built);
+		return built;
+	}
+
+	/**
+	 * Records frozen plugin lists, using the single list when the campaign evaluates in just one harness.
+	 *
+	 * @param campaign the campaign's recorded evaluation scope
+	 * @param workspace the workspace holding the frozen plugin bases
+	 * @param plugins the prepared plugin list for every selected evaluator
+	 * @return the campaign with the prepared plugin lists recorded
+	 * @throws IOException if a base's manifest cannot be read
+	 */
+	private static Campaign withPreparedPlugins(Campaign campaign, WorkspacePort workspace,
+		Map<Harness, List<TrialPlugin>> plugins) throws IOException
+	{
+		if (plugins.size() == 1)
+		{
+			Map.Entry<Harness, List<TrialPlugin>> evaluator = plugins.entrySet().iterator().next();
+			return campaign.withPlugins(evaluator.getValue(),
+				pluginVersions(workspace, evaluator.getKey(), evaluator.getValue()));
+		}
+		return campaign.withEvaluatorPlugins(plugins);
+	}
+
+	/**
+	 * Builds or copies and maps one evaluator's plugins, restoring the worktree after the build.
+	 *
+	 * @param root the project root
+	 * @param fork the source and temporary build worktree
+	 * @param target the project-relative target
+	 * @param promptFiles the project prompt files that may require mapping
+	 * @param configured the ordered plugins of the evaluator
+	 * @param evaluator the harness that installs the plugins
+	 * @return the mapped plugins backed by frozen copies
+	 * @throws CommandRefusedException if a plugin cannot be built, installed or mapped
+	 * @throws IOException if the source or a plugin base cannot be read or written
+	 * @throws InterruptedException if a build or evaluator probe is interrupted
+	 */
+	private List<TrialPlugin> prepareTrialPlugins(Path root, ForkView fork, Path target, SortedSet<Path> promptFiles,
+		List<PromptConfiguration.ConfiguredPlugin> configured, Harness evaluator)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
 		WorkspacePort workspace = fork.workspace();
+		FileInventory inventory = fork.inventory();
 		// A build that runs Git in the worktree needs the worktree's links to name the project where it is now
 		workspace.reconnectWorktree(Overlay.of(fork.inventory()));
 		List<TrialPlugin> copied = new ArrayList<>();
@@ -1494,21 +2009,26 @@ public final class OptimizerCore implements Core
 			for (PromptConfiguration.ConfiguredPlugin plugin : configured)
 			{
 				if (plugin.build().isPresent())
-					copied.add(builtPlugin(workspace, plugin.name(), plugin.build().get()));
+					copied.add(builtPlugin(workspace, plugin.name(), plugin.build().get(), evaluator));
 				else
-					copied.add(installedPlugin(workspace, plugin.name()));
+					copied.add(installedPlugin(root, workspace, plugin.name(), evaluator));
 			}
 		}
 		finally
 		{
 			// The build output is not one of the fork's files, so it must not reach the trials' staged sources
-			workspace.materialize(Overlay.of(fork.inventory()));
+			workspace.materialize(Overlay.of(inventory));
 		}
-
-		FileInventory inventory = fork.inventory();
-		Path target = relativeTarget(campaign);
-		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
-		Set<Path> fromProject = loadsFromProject(root, bases(copied, workspace), promptFiles);
+		List<PluginBase> bases = bases(copied, workspace);
+		Set<Path> fromProject;
+		if (evaluator == scope.harness())
+			fromProject = loadsFromProject(root, bases, promptFiles);
+		else
+		{
+			Path staged = workspace.stage(Overlay.of(inventory), Set.of());
+			EvaluatorMetadata report = scope.peerEvaluatorMetadata(evaluator, root, staged, target, unmappedBases(bases));
+			fromProject = projectSources(evaluator, report.loadedSources(), promptFiles);
+		}
 		List<TrialPlugin> mapped = new ArrayList<>();
 		Map<String, FileInventory> baseFiles = new HashMap<>();
 		for (TrialPlugin plugin : copied)
@@ -1527,16 +2047,29 @@ public final class OptimizerCore implements Core
 		Optional<String> refusal = coverage.targetRefusal(target);
 		if (refusal.isPresent())
 			throw new CommandRefusedException(refusal.get());
+		return List.copyOf(mapped);
+	}
+
+	/**
+	 * Reads the versions recorded by the evaluator's exact plugin bases.
+	 *
+	 * @param workspace the workspace that holds the frozen bases
+	 * @param evaluator the harness that installs the listed plugins
+	 * @param plugins the evaluator's ordered frozen plugins
+	 * @return the versions by plugin name
+	 * @throws IOException if a base's manifest cannot be read
+	 */
+	private static Map<String, String> pluginVersions(WorkspacePort workspace, Harness evaluator,
+		List<TrialPlugin> plugins) throws IOException
+	{
 		Map<String, String> versions = new HashMap<>();
-		Path manifest = scope.harness().pluginManifest();
-		for (TrialPlugin plugin : mapped)
+		Path manifest = evaluator.pluginManifest();
+		for (TrialPlugin plugin : plugins)
 		{
 			PluginManifest.version(workspace.pluginBase(plugin.baseDigest()), manifest).
 				ifPresent(version -> versions.put(plugin.name(), version));
 		}
-		Campaign built = campaign.withPlugins(mapped, versions);
-		store.replaceSnapshot(built);
-		return built;
+		return versions;
 	}
 
 	/**
@@ -1545,13 +2078,14 @@ public final class OptimizerCore implements Core
 	 * @param workspace the campaign's workspace, whose optimization worktree the build runs in
 	 * @param name the plugin's name
 	 * @param build the plugin's build
+	 * @param evaluator the harness that installs the plugin
 	 * @return the plugin, without mappings, with the repository that the output's manifest states
 	 * @throws CommandRefusedException if the build cannot start, exits with a status other than zero, or its output
 	 *   holds no harness manifest or one of another name
 	 * @throws IOException if the base cannot be copied or its manifest cannot be read
 	 * @throws InterruptedException if the thread is interrupted while it waits for the build
 	 */
-	private TrialPlugin builtPlugin(WorkspacePort workspace, String name, TrialPlugin.Build build)
+	private TrialPlugin builtPlugin(WorkspacePort workspace, String name, TrialPlugin.Build build, Harness evaluator)
 		throws CommandRefusedException, IOException, InterruptedException
 	{
 		String command = "`" + String.join(" ", build.command()) + "`";
@@ -1578,7 +2112,7 @@ public final class OptimizerCore implements Core
 					" failed." + outcome);
 			}
 		}
-		Path manifest = scope.harness().pluginManifest();
+		Path manifest = evaluator.pluginManifest();
 		Path output = workspace.worktree().resolve(build.output());
 		String built;
 		try
@@ -1600,24 +2134,32 @@ public final class OptimizerCore implements Core
 				"the plugin " + built + " in " + PortablePaths.text(build.output()) + ". Name the plugin as its " +
 				"manifest does in the prompt test configuration." + outcome);
 		}
-		return new TrialPlugin(name, workspace.copyPluginBase(output), build, List.of(),
-			PluginManifest.repository(output, manifest).orElse(null));
+		String digest = workspace.copyPluginBase(output);
+		return new TrialPlugin(name, digest, build, List.of(),
+			PluginManifest.repository(workspace.pluginBase(digest), manifest).orElse(null));
 	}
 
 	/**
 	 * Copies the base of a trial plugin that the project does not build from the user's installed copy.
 	 *
+	 * @param root the project root
 	 * @param workspace the campaign's workspace
 	 * @param name the plugin's name, {@code <plugin>@<marketplace>}
+	 * @param evaluator the harness that installs the plugin
 	 * @return the plugin, with the repository that the installed copy's manifest states
 	 * @throws CommandRefusedException if the harness's install records do not name exactly one installed copy
 	 * @throws IOException if the install records cannot be read, or the copy cannot be copied or its manifest read
+	 * @throws InterruptedException if the evaluator's install lookup is interrupted
 	 */
-	private TrialPlugin installedPlugin(WorkspacePort workspace, String name)
-		throws CommandRefusedException, IOException
+	private TrialPlugin installedPlugin(Path root, WorkspacePort workspace, String name, Harness evaluator)
+		throws CommandRefusedException, IOException, InterruptedException
 	{
-		String harness = scope.harness().commandName();
-		List<Path> copies = scope.sessions().installedPlugins(name);
+		String harness = evaluator.commandName();
+		List<Path> copies;
+		if (evaluator == scope.harness())
+			copies = scope.sessions().installedPlugins(name);
+		else
+			copies = scope.peerInstalledPlugins(evaluator, root, name);
 		if (copies.isEmpty())
 		{
 			throw new CommandRefusedException("The trial plugin " + name + " is not installed in " + harness + ": its " +
@@ -1632,8 +2174,9 @@ public final class OptimizerCore implements Core
 				"`start` again.");
 		}
 		Path copy = copies.getFirst();
-		return new TrialPlugin(name, workspace.copyPluginBase(copy), new TrialPlugin.Installed(), List.of(),
-			PluginManifest.repository(copy, scope.harness().pluginManifest()).orElse(null));
+		String digest = workspace.copyPluginBase(copy);
+		return new TrialPlugin(name, digest, new TrialPlugin.Installed(), List.of(),
+			PluginManifest.repository(workspace.pluginBase(digest), evaluator.pluginManifest()).orElse(null));
 	}
 
 	/**
@@ -1652,6 +2195,48 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
+	 * Returns the exact base directories of each evaluator's ordered plugin list.
+	 *
+	 * @param plugins the evaluator's plugins
+	 * @param workspace the workspace that holds their bases
+	 * @return the bases by evaluator
+	 */
+	private static Map<Harness, List<PluginBase>> evaluatorBases(Map<Harness, List<TrialPlugin>> plugins,
+		WorkspacePort workspace)
+	{
+		Map<Harness, List<PluginBase>> result = new EnumMap<>(Harness.class);
+		plugins.forEach((evaluator, configured) -> result.put(evaluator, bases(configured, workspace)));
+		return result;
+	}
+
+	/**
+	 * Returns all ordered plugin lists of a shared campaign, including empty lists stored by its old schema.
+	 *
+	 * @param campaign the shared campaign
+	 * @return the prepared plugins by evaluator
+	 */
+	private static Map<Harness, List<TrialPlugin>> evaluatorPlugins(Campaign campaign)
+	{
+		if (!campaign.evaluatorPlugins().isEmpty())
+			return campaign.evaluatorPlugins();
+		Map<Harness, List<TrialPlugin>> result = new EnumMap<>(Harness.class);
+		for (Harness evaluator : campaign.header().evaluationHarnesses())
+			result.put(evaluator, campaign.pluginsFor(evaluator).orElse(List.of()));
+		return result;
+	}
+
+	/**
+	 * Returns the plugins for the purpose of including every mapped source in the common staged project.
+	 *
+	 * @param campaign the campaign
+	 * @return the relevant mappings across its selected evaluator lists
+	 */
+	private static List<TrialPlugin> sourcePlugins(Campaign campaign)
+	{
+		return evaluatorPlugins(campaign).values().stream().flatMap(List::stream).distinct().toList();
+	}
+
+	/**
 	 * Returns the prompt files that trials load from the staged project itself rather than from a trial plugin.
 	 *
 	 * @param root the project root
@@ -1664,6 +2249,18 @@ public final class OptimizerCore implements Core
 	 */
 	private Set<Path> loadsFromProject(Path root, List<PluginBase> bases, Set<Path> promptFiles) throws IOException
 	{
+		return projectSources(scope.harness(), scope.sessions().loadedSources(root, unmappedBases(bases)).trials(),
+			promptFiles);
+	}
+
+	/**
+	 * Hides the project mappings so the native loader reports files of a plugin's base as plugin sources.
+	 *
+	 * @param bases the evaluator's frozen bases and mappings
+	 * @return the same bases without mappings
+	 */
+	private static List<PluginBase> unmappedBases(List<PluginBase> bases)
+	{
 		// Without mappings, a file that loads from a plugin's base is named by its absolute path, never as a project
 		// file
 		List<PluginBase> unmapped = new ArrayList<>();
@@ -1673,8 +2270,21 @@ public final class OptimizerCore implements Core
 			unmapped.add(new PluginBase(new TrialPlugin(plugin.name(), plugin.baseDigest(), plugin.source(), List.of(),
 				plugin.repository()), base.directory()));
 		}
+		return unmapped;
+	}
+
+	/**
+	 * Returns the project sources that were discovered directly or that the evaluator's loader recognizes.
+	 *
+	 * @param evaluator the harness whose loader is used
+	 * @param loaded the native loader observations with unmapped bases
+	 * @param promptFiles the editable prompt files from the project
+	 * @return the project-relative source paths
+	 */
+	private static Set<Path> projectSources(Harness evaluator, List<DerivedSource> loaded, Set<Path> promptFiles)
+	{
 		Set<Path> paths = new HashSet<>();
-		for (DerivedSource source : scope.sessions().loadedSources(root, unmapped).trials())
+		for (DerivedSource source : loaded)
 		{
 			Path path = Path.of(source.path());
 			if (!path.isAbsolute())
@@ -1683,7 +2293,7 @@ public final class OptimizerCore implements Core
 		Path projectRules = ProjectRuleLoader.rulesDirectory(Path.of(""));
 		for (Path promptFile : promptFiles)
 		{
-			if (scope.harness().readsFromProject(promptFile) || promptFile.startsWith(projectRules))
+			if (evaluator.readsFromProject(promptFile) || promptFile.startsWith(projectRules))
 				paths.add(promptFile);
 		}
 		return paths;
@@ -1740,6 +2350,8 @@ public final class OptimizerCore implements Core
 		while (true)
 		{
 			Campaign loaded = require(scope.store(), id, true);
+			if (loaded.lifecycle() == Lifecycle.ACTIVE && !reports(loaded).isEmpty())
+				verifyEvaluatorConditions(root, loaded, openFork(root, loaded));
 			if (loaded.lifecycle() == Lifecycle.ACTIVE && loaded.awaitsTestRevision() && !loaded.revisionRequested())
 			{
 				if (loaded.pending() instanceof PendingDecision.PilotFailure)
@@ -1749,7 +2361,7 @@ public final class OptimizerCore implements Core
 				if (unfinished.isPresent())
 					return report(root, loaded, null, unfinished.get());
 			}
-			SliceResult result = SliceRunner.run(context(root, loaded), id, List.of(), lock.lend(), started);
+			SliceResult result = SliceRunner.run(context(root, loaded, true), id, List.of(), lock.lend(), started);
 			loaded = require(scope.store(), id, true);
 			if (!background || loaded.lifecycle() != Lifecycle.ACTIVE || !loaded.awaitsTestRevision() ||
 				loaded.revisionRequested() || loaded.pending() instanceof PendingDecision.TestRevisionBlocked)
@@ -1809,7 +2421,7 @@ public final class OptimizerCore implements Core
 			revisions = examined.revisions();
 			blocked = examined.blocked();
 			if (!revisions.isEmpty())
-				revisionFile.write(current, stored.profiles(), revisions, blocked);
+				revisionFile.write(current, stored, revisions, blocked);
 		}
 
 		campaign = require(scope.store(), id, true);
@@ -2027,15 +2639,15 @@ public final class OptimizerCore implements Core
 		CertificationScope certificationScope = campaign.contract().profiles().scope();
 		if (!proposal.isConfirmable(certificationScope))
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-		requireParticipantsHeld(root, fork, revised, trialSelection(root, campaign, revised, plugin));
+		requireParticipantsHeld(root, fork, revised, trialSelection(root, campaign, revised));
 		// The stored proposal changes only once nothing blocks confirming it, so it stays the confirmed contract's
 		new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer()).write(revised,
-			stored.profiles());
+			stored.profiles(), stored.evaluators());
 
 		List<CampaignEvent> events = new ArrayList<>();
 		events.add(revise);
 		events.addAll(moveOnto(campaign, fork));
-		events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
+		events.addAll(confirmation(proposal, certificationScope, stored.evaluators(), campaign, fork.workspace()));
 		return new RevisedContract(events, null);
 	}
 
@@ -2173,7 +2785,8 @@ public final class OptimizerCore implements Core
 			String absent = "no campaign or certification record exists for " + relative + ".";
 			if (isId)
 				throw new CommandRefusedException("No campaign has the identifier " + subject + ", and " + absent);
-			throw new CommandRefusedException("N" + absent.substring(1));
+			throw new CommandRefusedException("N" + absent.substring(1), null,
+				CommandRefusedException.Reason.NO_CAMPAIGN_OR_CERTIFICATION_RECORD);
 		}
 		Entries files = path -> InventoryScanner.entry(root, path);
 		MeasurementIdentity known = environment(files);
@@ -2332,19 +2945,61 @@ public final class OptimizerCore implements Core
 				pilotPausedNotice(loaded));
 		}
 		ForkView fork = openFork(root, loaded);
+		try
+		{
+			verifyEvaluatorConditions(root, loaded, fork);
+		}
+		catch (InterruptedException e)
+		{
+			Thread.currentThread().interrupt();
+			InterruptedIOException interrupted = new InterruptedIOException("Interrupted while validating evaluators");
+			interrupted.initCause(e);
+			throw interrupted;
+		}
 		DerivedProposal derived = stored(root, loaded).orElseThrow(() -> new CommandRefusedException(
 			"Campaign " + campaign + " has no proposal to confirm. Run `revise` or `start` to derive one."));
 		// A revision after confirmation runs on the files that its presentation recorded beside the fork's
 		if (loaded.isConfirmed())
 			fork = fork.including(participants(root, derived));
 		PluginCheck plugin = pluginCheck(root, loaded, fork);
-		Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(), plugin);
+		Map<String, PilotResult> pilots = pilotFile(loaded).read();
+		Proposal proposal = proposal(root, loaded, fork, derived, pilots, plugin);
 		if (!proposal.isConfirmable(certificationScope))
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-		requireParticipantsHeld(root, fork, derived, trialSelection(root, loaded, derived, plugin));
+		SourceSelection selection = trialSelection(root, loaded, derived);
+		requireParticipantsHeld(root, fork, derived, selection);
+		requireFreshPeerPilot(loaded, fork, derived, selection, pilots);
 		List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
-		events.addAll(proposal.confirmation(certificationScope, scope.random().nextLong()));
+		events.addAll(confirmation(proposal, certificationScope, reports(loaded), loaded, fork.workspace()));
 		return apply(root, loaded, events, lock);
+	}
+
+	/**
+	 * Verifies that the first proposal evaluated by a sole peer still has evidence under the current owner judge.
+	 * The evaluator probe pins the peer conditions, but a sole peer does not exercise the owner's judge version.
+	 *
+	 * @param campaign the campaign awaiting confirmation
+	 * @param fork the proposal's frozen sources
+	 * @param derived the proposal
+	 * @param selection the sources the trials receive
+	 * @param pilots the displayed pilot results
+	 * @throws IOException if the frozen sources or trial ports cannot be read
+	 * @throws CommandRefusedException if the pilot's measurement conditions changed
+	 */
+	private void requireFreshPeerPilot(Campaign campaign, ForkView fork, DerivedProposal derived,
+		SourceSelection selection, Map<String, PilotResult> pilots) throws IOException, CommandRefusedException
+	{
+		Set<Harness> evaluators = campaign.header().evaluationHarnesses();
+		if (campaign.isConfirmed() || evaluators.size() != 1 || evaluators.contains(campaign.header().harness()) ||
+			pilots.isEmpty())
+			return;
+		Harness evaluator = evaluators.iterator().next();
+		if (!guardPilot(campaign, fork).matchesStored(derived.contract(), evaluator, evaluatorPlugins(campaign).
+			get(evaluator), pilotControl(campaign, fork, derived), selection, pilots))
+		{
+			throw new CommandRefusedException("The guard pilot ran under measurement conditions that have changed. " +
+				"Run `start` for the same target to see the proposal with a refreshed guard pilot before confirming it.");
+		}
 	}
 
 	/**
@@ -2653,7 +3308,7 @@ public final class OptimizerCore implements Core
 				else if (chosen.lifecycle() == Lifecycle.FINISHED && (chosen.delivery() != null || chosen.isIncumbentKept()))
 				{
 					// A choice that ends the campaign delivers the selected candidate, or the kept incumbent's prompt tests
-					SliceResult slice = SliceRunner.run(context(root, chosen), campaign, List.of(), lock.lend());
+					SliceResult slice = SliceRunner.run(context(root, chosen, true), campaign, List.of(), lock.lend());
 					delivery = Optional.ofNullable(slice.delivery()).map(DeliveryReport::result).orElse(null);
 					result = new CommandResult(slice.status(), scope.harness(), null, slice.delivery(), null);
 				}
@@ -2793,12 +3448,10 @@ public final class OptimizerCore implements Core
 		throws CommandRefusedException, IOException
 	{
 		String id = campaign.header().id();
-		DriverContext context = context(root, campaign);
-		Driver driver = Driver.open(context, id, lock.lend());
-		try (driver)
+		DriverContext context = context(root, campaign, false);
+		try
 		{
-			for (CampaignEvent event : events)
-				driver.apply(event);
+			Driver.applyEvents(context, id, lock.lend(), events);
 		}
 		catch (IllegalStateException | IllegalArgumentException e)
 		{
@@ -2837,32 +3490,58 @@ public final class OptimizerCore implements Core
 			require(campaign.incumbent().snapshot());
 		// The contract author reads the regression scenarios, so nothing is left out
 		Path staged = fork.workspace().stage(incumbent, Set.of());
-		ContractAuthorProtocol protocol = contractAuthor(root, campaign);
 		ProfileEvidence profiles = profileEvidence(staged);
 		String unsupported = unsupportedBindings(profiles);
 		if (!unsupported.isEmpty())
 			return report(root, campaign, null, unsupported);
-		List<PluginBase> bases = bases(campaign.plugins().orElseThrow(), fork.workspace());
-		List<HookRegistration> hooks = scope.sessions().hookRegistrations(staged, bases);
-		List<DerivedSource> loaded = scope.sessions().loadedSources(root, bases).trials();
+		Map<Harness, EvaluatorMetadata> evaluators = Map.of();
+		Set<Harness> selected = campaign.header().evaluationHarnesses();
+		if (!selected.equals(Set.of(scope.harness())))
+		{
+			try
+			{
+				evaluators = evaluatorReports(root, staged, relativeTarget(campaign), selected,
+					evaluatorBases(evaluatorPlugins(campaign), fork.workspace()));
+			}
+			catch (CommandRefusedException e)
+			{
+				return report(root, campaign, null, e.getMessage());
+			}
+			Map<Harness, ProfileEvidence> observations = new EnumMap<>(Harness.class);
+			evaluators.forEach((harness, metadata) -> observations.put(harness, metadata.profiles()));
+			profiles = new ProfileEvidence(profiles.inventory(), profiles.ranking(), profiles.bindings(), observations);
+		}
+		ContractAuthorProtocol protocol = contractAuthor(root, campaign, evaluators);
+		List<PluginBase> bases = bases(campaign.pluginsFor(scope.harness()).orElse(List.of()), fork.workspace());
+		List<HookRegistration> hooks = List.of();
+		if (selected.contains(scope.harness()))
+			hooks = scope.sessions().hookRegistrations(staged, bases);
+		Map<Harness, List<HookRegistration>> scopedHooks = scopedHooks(evaluators, hooks);
+		List<DerivedSource> loaded = proposalSources(root, bases, evaluators);
+		Optional<String> failedHooks = checkHooks(root, campaign, fork, incumbent, staged, loaded, evaluators);
+		if (failedHooks.isPresent())
+			return report(root, campaign, null, failedHooks.get());
 		SessionRequest request;
 		long salt;
 		String invalidRetry;
 		if (previous == null)
 		{
-			Optional<String> failedHooks = checkHooks(root, campaign, fork, incumbent, staged, bases, loaded);
-			if (failedHooks.isPresent())
-				return report(root, campaign, null, failedHooks.get());
 			salt = scope.random().nextLong();
-			request = protocol.request(staged, profiles, hooks, loaded, salt);
+			if (scopedHooks.isEmpty())
+				request = protocol.request(staged, profiles, hooks, loaded, salt);
+			else
+				request = protocol.request(staged, profiles, scopedHooks, loaded, salt);
 			invalidRetry = "Run `start` again to retry.";
 		}
 		else
 		{
 			// Revision keeps the salt, so the test cases that the user reviewed keep their parts
 			salt = previous.contract().salt();
-			request = protocol.request(staged, profiles, hooks, loaded, previous, feedback,
-				pilotFile(campaign).read());
+			Map<String, PilotResult> pilots = pilotFile(campaign).read();
+			if (scopedHooks.isEmpty())
+				request = protocol.request(staged, profiles, hooks, loaded, previous, feedback, pilots);
+			else
+				request = protocol.request(staged, profiles, scopedHooks, loaded, previous, feedback, pilots);
 			// The proposal that the user gave feedback on is still stored, so revise can regenerate it again
 			invalidRetry = "Run `revise` with feedback, or `start`, to retry.";
 		}
@@ -2935,14 +3614,62 @@ public final class OptimizerCore implements Core
 			return report(root, campaign, null, "The contract author's proposal is invalid: " +
 				String.join("; ", e.problems()) + ". " + invalidRetry);
 		}
-		derived = derived.withDerivedSources(scope.sessions().loadedSources(root, bases).trials());
+		derived = derived.withDerivedSources(proposalSources(root, bases, evaluators));
 		// The draft's values files hold the expected outcomes of both parts, so it moves into the held-out directory
 		Path heldOut = heldOutDirectory(campaign.header().id());
 		derived = derived.withDraft(DraftDirectory.store(derived.draft(), heldOut), derived.changes());
 		// A new proposal replaces the revised contract of a test revision, whose draft directory the write removes
 		revisionFile(campaign.header().id()).delete();
-		new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).write(derived, profiles);
+		new ProposalFile(heldOut, scope.json(), scope.fileReplacer()).write(derived, profiles, evaluators);
 		return present(root, store, campaign, fork, derived, sliceStart);
+	}
+
+	/**
+	 * Returns the native hook declarations for the proposal's explicitly scoped evaluators.
+	 *
+	 * @param evaluators the native evaluator reports
+	 * @param ownerHooks the owner's declarations when its report omitted the optional observations
+	 * @return the hook declarations by evaluator, empty for a legacy singleton
+	 */
+	private Map<Harness, List<HookRegistration>> scopedHooks(Map<Harness, EvaluatorMetadata> evaluators,
+		List<HookRegistration> ownerHooks)
+	{
+		Map<Harness, List<HookRegistration>> hooks = new EnumMap<>(Harness.class);
+		for (EvaluatorMetadata evaluator : evaluators.values())
+		{
+			List<HookRegistration> fallback = List.of();
+			if (evaluator.harness() == scope.harness())
+				fallback = ownerHooks;
+			hooks.put(evaluator.harness(),
+				evaluator.observations().map(EvaluatorObservations::hookRegistrations).orElse(fallback));
+		}
+		return hooks;
+	}
+
+	/**
+	 * Reports the files each evaluator loads, labeled where a proposal covers multiple harnesses.
+	 *
+	 * @param root the project root
+	 * @param bases the owner's trial plugin bases
+	 * @param evaluators the observations of explicitly assigned evaluators
+	 * @return the loaded sources of the proposal
+	 * @throws IOException if the owner's loading settings cannot be read
+	 */
+	private List<DerivedSource> proposalSources(Path root, List<PluginBase> bases,
+		Map<Harness, EvaluatorMetadata> evaluators) throws IOException
+	{
+		if (evaluators.isEmpty())
+			return scope.sessions().loadedSources(root, bases).trials();
+		List<DerivedSource> sources = new ArrayList<>();
+		for (EvaluatorMetadata evaluator : new EnumMap<>(evaluators).values())
+		{
+			for (DerivedSource source : evaluator.loadedSources())
+			{
+				sources.add(new DerivedSource(source.path(),
+					evaluator.harness().productName() + " loads this source. " + source.rule()));
+			}
+		}
+		return sources;
 	}
 
 	/**
@@ -2954,24 +3681,116 @@ public final class OptimizerCore implements Core
 	 * @param fork      the campaign's fork
 	 * @param incumbent the incumbent's overlay on the fork
 	 * @param staged    a staged source that holds every file of the fork
-	 * @param bases     the campaign's trial plugins with their base copies
 	 * @param loaded    the prompt files that load in trials
+	 * @param evaluators the current native observations for explicitly selected evaluators
 	 * @return the reason to refuse the campaign if a hook succeeds in the user's sessions and fails in trials
 	 * @throws IOException          if a source cannot be staged or copied, a hook cannot be started or the result
 	 *                              cannot be stored
 	 * @throws InterruptedException if the thread is interrupted while it waits for a hook
 	 */
 	private Optional<String> checkHooks(Path root, Campaign campaign, ForkView fork, Overlay incumbent, Path staged,
-		List<PluginBase> bases, List<DerivedSource> loaded) throws IOException, InterruptedException
+		List<DerivedSource> loaded, Map<Harness, EvaluatorMetadata> evaluators) throws IOException, InterruptedException
 	{
 		Path directory = campaignDirectory(campaign.header().id());
 		HookReportFile file = new HookReportFile(directory, scope.json(), scope.fileReplacer());
-		// Most projects declare no such hook, and staging and copying their sources is then wasted
-		if (scope.sessions().earlyHooks(staged, bases, Optional.empty(), HookCheck.PROMPT).isEmpty())
+		Set<Harness> selected = campaign.header().evaluationHarnesses();
+		Map<Harness, List<PluginBase>> plugins = evaluatorBases(evaluatorPlugins(campaign), fork.workspace());
+		Map<Harness, HookReport> reports = new EnumMap<>(Harness.class);
+		Map<Harness, List<String>> unapproved = new EnumMap<>(Harness.class);
+		List<String> failures = new ArrayList<>();
+		Path trialSource = null;
+		for (Harness evaluator : new TreeSet<>(selected))
 		{
-			file.write(HookReport.NONE);
-			return Optional.empty();
+			List<PluginBase> bases = plugins.getOrDefault(evaluator, List.of());
+			HookCheck.InvocationSource hooks = hookInvocations(evaluator, root, bases);
+			Optional<AbstractOptimizerCommandScope.HookPairResolver> nativeComparison =
+				scope.nativeHookComparison(evaluator, root, HookCheck.PROMPT);
+			Optional<HookCheck.PeerComparator> peerComparison = scope.peerHookComparison(evaluator);
+			boolean inspectPlugins = (nativeComparison.isPresent() || peerComparison.isPresent()) && !bases.isEmpty();
+			if (!inspectPlugins && hooks.read(staged, Optional.empty()).isEmpty())
+			{
+				reports.put(evaluator, HookReport.NONE);
+				continue;
+			}
+			if (nativeComparison.isEmpty() && peerComparison.isEmpty())
+			{
+				Optional<String> refused = scope.hookComparisonRefusal(evaluator);
+				if (refused.isPresent())
+					return refused;
+			}
+			if (trialSource == null)
+				trialSource = fork.workspace().stage(incumbent, Set.of(),
+					hookSourceSelection(root, campaign, loaded, evaluators));
+			List<TrialPluginInput> inputs = new ArrayList<>();
+			if (inspectPlugins)
+			{
+				for (PluginBase base : bases)
+				{
+					TrialPlugin plugin = base.plugin();
+					Optional<String> id = Optional.empty();
+					if (plugin.source() instanceof TrialPlugin.Installed)
+						id = Optional.of(plugin.name());
+					inputs.add(new TrialPluginInput(
+						fork.workspace().pluginCopy(plugin, trialSource, PluginRemovals.NONE), id));
+				}
+			}
+			HookCheck.Result result;
+			if (peerComparison.isPresent())
+				result = HookCheck.runPeer(peerComparison.orElseThrow(), trialSource, staged, inputs, directory);
+			else
+			{
+				AbstractOptimizerCommandScope.HookPairResolver pairs =
+					nativeComparison.orElseGet(() -> HookCheck.matchingDeclarations(hooks));
+				result = HookCheck.run(pairs, scope::startHookProcess, trialSource, staged, inputs, directory);
+			}
+			reports.put(evaluator, result.report());
+			result.unapproved().ifPresent(values -> unapproved.put(evaluator, values));
+			for (String failure : result.failures())
+			{
+				if (evaluators.isEmpty())
+					failures.add(failure);
+				else
+					failures.add(evaluator.productName() + ": " + failure);
+			}
 		}
+		if (evaluators.isEmpty())
+			file.write(reports.get(scope.harness()), Optional.ofNullable(unapproved.get(scope.harness())));
+		else
+			file.writeByEvaluator(reports, unapproved);
+		if (failures.isEmpty())
+			return Optional.empty();
+		return Optional.of("These hooks succeed in your sessions but fail in a trial's workspace, which holds only " +
+			"the files that trials receive: " + String.join("; ", failures) + ". Change each hook so that " +
+			"it reads only files that trials receive, such as the prompt system's files, then run `start` again.");
+	}
+
+	/**
+	 * Resolves hook invocations in the selected evaluator's native configuration.
+	 *
+	 * @param evaluator the selected harness
+	 * @param root the original project
+	 * @param plugins the selected evaluator's frozen plugin bases
+	 * @return a reader for the two copies of the project
+	 */
+	private HookCheck.InvocationSource hookInvocations(Harness evaluator, Path root, List<PluginBase> plugins)
+	{
+		if (evaluator == scope.harness())
+			return (project, home) -> scope.sessions().earlyHooks(project, plugins, home, HookCheck.PROMPT);
+		return (project, home) -> PeerEvaluator.earlyHooks(scope, evaluator, root, project, plugins, home);
+	}
+
+	/**
+	 * Returns the common set of trial inputs available before the contract author runs.
+	 *
+	 * @param root the original project
+	 * @param campaign the campaign being prepared
+	 * @param loaded the prompt files observed by the selected evaluators
+	 * @param evaluators the current native observations for explicitly selected evaluators
+	 * @return the trial source selection to compare against the complete staged fork
+	 */
+	private SourceSelection hookSourceSelection(Path root, Campaign campaign, List<DerivedSource> loaded,
+		Map<Harness, EvaluatorMetadata> evaluators)
+	{
 		Set<Path> sources = new LinkedHashSet<>();
 		sources.add(relativeTarget(campaign));
 		for (Path path : derivedPaths(root, loaded))
@@ -2979,16 +3798,10 @@ public final class OptimizerCore implements Core
 			if (!path.isAbsolute())
 				sources.add(path);
 		}
-		SourceSelection selection = TrialSelection.base(scope.harness(), sources,
-			Set.copyOf(scope.loaderConfiguration()), campaign.plugins().orElseThrow());
-		Path trialSource = fork.workspace().stage(incumbent, Set.of(), selection);
-		HookCheck.Result result = HookCheck.run(scope.sessions(), trialSource, staged, bases, directory);
-		file.write(result.report());
-		if (result.failures().isEmpty())
-			return Optional.empty();
-		return Optional.of("These hooks succeed in your sessions but fail in a trial's workspace, which holds only " +
-			"the files that trials receive: " + String.join("; ", result.failures()) + ". Change each hook so that " +
-			"it reads only files that trials receive, such as the prompt system's files, then run `start` again.");
+		Set<Path> loaders = new HashSet<>(scope.loaderConfiguration());
+		for (EvaluatorMetadata evaluator : evaluators.values())
+			loaders.addAll(evaluator.loaderFiles());
+		return TrialSelection.base(campaign.header().evaluationHarnesses(), sources, loaders, sourcePlugins(campaign));
 	}
 
 	/**
@@ -3164,19 +3977,56 @@ public final class OptimizerCore implements Core
 		// Control trials cannot run without dependents that they cannot remove
 		if (!controlRefusals(campaign, fork, derived, plugin).isEmpty())
 			return Map.of();
-		FileInventory inventory = fork.inventory();
 		PilotFile file = pilotFile(campaign);
-		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(campaign),
-			derived.contract().projectRemovals(), scope.json());
-		GuardPilot pilot = new GuardPilot(sessions(campaign), fork.workspace(), relativeTarget(campaign),
-			judgePrompt(campaign), schema, scope.json(), campaign.ceiling());
+		Overlay control = pilotControl(campaign, fork, derived);
+		GuardPilot pilot = guardPilot(campaign, fork);
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(campaign), root);
 		// Each decided trial is stored as soon as it is decided, so that a command that ends before the pilot does
 		// loses only the trials in flight
-		Map<String, PilotResult> pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded,
-			trialSelection(root, campaign, derived, plugin), file.read(), scope.random(), file::write, slice);
+		SourceSelection selection = trialSelection(root, campaign, derived);
+		Map<String, PilotResult> pilots;
+		if (plugin.byEvaluator().isEmpty())
+		{
+			pilots = pilot.run(derived.contract(), plugin.plugins(), control, excluded, selection, file.read(),
+				scope.random(), file::write, slice);
+		}
+		else
+		{
+			pilots = pilot.run(derived.contract(), evaluatorPlugins(campaign), control, excluded, selection,
+				file.read(), scope.random(), file::write, slice);
+		}
 		file.write(pilots);
 		return pilots;
+	}
+
+	/**
+	 * Returns the control overlay of the exact sources the proposal's pilot sees.
+	 *
+	 * @param campaign the campaign
+	 * @param fork the proposal's frozen sources
+	 * @param derived the proposal
+	 * @return the control overlay
+	 * @throws IOException if a frozen source cannot be read
+	 */
+	private Overlay pilotControl(Campaign campaign, ForkView fork, DerivedProposal derived) throws IOException
+	{
+		return ControlSource.of(fork.workspace(), fork.inventory(), relativeTarget(campaign),
+			derived.contract().projectRemovals(), scope.json());
+	}
+
+	/**
+	 * Binds the pilot to the owning judge and each selected evaluator's trial port.
+	 *
+	 * @param campaign the campaign
+	 * @param fork the proposal's frozen sources
+	 * @return the guard pilot
+	 * @throws IOException if the trial ports or judge prompt cannot be read
+	 */
+	private GuardPilot guardPilot(Campaign campaign, ForkView fork) throws IOException
+	{
+		SessionPort owner = sessions(campaign);
+		return new GuardPilot(owner, trialSessions(campaign, owner), fork.workspace(), relativeTarget(campaign),
+			judgePrompt(campaign), schema, scope.json(), campaign.ceiling());
 	}
 
 	/**
@@ -3185,13 +4035,13 @@ public final class OptimizerCore implements Core
 	 * @param root the project root
 	 * @param campaign the campaign
 	 * @param derived the proposal
-	 * @param plugin the check of the campaign's trial plugins
 	 * @return the selection
 	 */
-	private SourceSelection trialSelection(Path root, Campaign campaign, DerivedProposal derived, PluginCheck plugin)
+	private SourceSelection trialSelection(Path root, Campaign campaign, DerivedProposal derived)
+		throws IOException
 	{
-		return TrialSelection.base(scope.harness(), promptSources(root, campaign, derived),
-			Set.copyOf(scope.loaderConfiguration()), derived.contract(), plugin.plugins());
+		return TrialSelection.base(campaign.header().evaluationHarnesses(), promptSources(root, campaign, derived),
+			loaderFiles(campaign), derived.contract(), sourcePlugins(campaign));
 	}
 
 	/**
@@ -3255,7 +4105,7 @@ public final class OptimizerCore implements Core
 			incumbent = certificationStatus(history, inventory::entry, campaign.identity(),
 				record -> derived.contract().minimumPassRate());
 		}
-		SourceSelection selection = trialSelection(root, campaign, derived, plugin);
+		SourceSelection selection = trialSelection(root, campaign, derived);
 		List<String> trialFiles = new ArrayList<>();
 		for (Path file : inventory.entries().keySet())
 		{
@@ -3289,24 +4139,25 @@ public final class OptimizerCore implements Core
 		Path target = relativeTarget(campaign);
 		List<String> problems = new ArrayList<>(ControlSource.problems(fork.workspace(), fork.inventory(), target,
 			contract.projectRemovals(), scope.json()));
-		Set<String> projectBuilt = new HashSet<>();
-		for (TrialPlugin trialPlugin : plugin.plugins())
+		Map<Harness, PluginCheck> checks = plugin.byEvaluator();
+		if (checks.isEmpty())
+			checks = Map.of(campaign.header().harness(), plugin);
+		for (Map.Entry<Harness, PluginCheck> entry : checks.entrySet())
 		{
-			if (!trialPlugin.isProjectBuilt())
-				continue;
-			projectBuilt.add(trialPlugin.name());
-			problems.addAll(ControlSource.pluginProblems(trialPlugin,
-				fork.workspace().pluginBase(trialPlugin.baseDigest()), target, contract.pluginRemovals(trialPlugin),
-				scope.json()));
+			for (TrialPlugin trialPlugin : entry.getValue().plugins())
+			{
+				if (trialPlugin.isProjectBuilt())
+				{
+					problems.addAll(ControlSource.pluginProblems(trialPlugin,
+						fork.workspace().pluginBase(trialPlugin.baseDigest()), target,
+						contract.pluginRemovals(trialPlugin, entry.getKey()), scope.json()));
+				}
+			}
 		}
 		for (Dependent dependent : contract.dependents())
 		{
-			// Trials install the user's copy of any other plugin as it is, so they cannot remove a part of it
-			if (dependent.location() == Dependent.Location.PLUGIN && !projectBuilt.contains(dependent.plugin()))
-			{
-				problems.add("the dependent " + PortablePaths.text(dependent.path()) + " lies in the plugin " +
-					dependent.plugin() + ", which is not a trial plugin that the project builds");
-			}
+			if (dependent.location() == Dependent.Location.PLUGIN)
+				controlPluginRefusal(dependent, checks).ifPresent(problems::add);
 		}
 		if (problems.isEmpty())
 			return List.of();
@@ -3315,9 +4166,33 @@ public final class OptimizerCore implements Core
 	}
 
 	/**
+	 * Validates that a packaged dependent identifies the intended project-built trial plugin.
+	 *
+	 * @param dependent a packaged dependent
+	 * @param checks the selected evaluators' plugin checks
+	 * @return why the reference cannot be applied to a control trial, if applicable
+	 */
+	private static Optional<String> controlPluginRefusal(Dependent dependent, Map<Harness, PluginCheck> checks)
+	{
+		List<TrialPlugin> built = checks.entrySet().stream().
+			filter(entry -> dependent.evaluator().isEmpty() || dependent.evaluator().get() == entry.getKey()).
+			flatMap(entry -> entry.getValue().plugins().stream()).filter(TrialPlugin::isProjectBuilt).
+			filter(plugin -> plugin.name().equals(dependent.plugin())).distinct().toList();
+		String subject = "the dependent " + PortablePaths.text(dependent.path()) + " lies in the plugin " +
+			dependent.plugin();
+		if (dependent.evaluator().isPresent())
+			subject += " for " + dependent.evaluator().get().productName();
+		if (built.isEmpty())
+			return Optional.of(subject + ", which is not a trial plugin that the project builds");
+		if (built.size() > 1)
+			return Optional.of(subject + ", which has different builds across evaluators. Name its evaluator");
+		return Optional.empty();
+	}
+
+	/**
 	 * Checks a campaign's trial plugins against the fork's files and the plugins' bases: the prompt files that no
 	 * mapping covers, the mapped files that differ from the base's, the files that load in production but not in
-	 * trials, and the plugins' hooks that trials do not run because the user has not approved them in the harness.
+	 * trials, and the plugins' hooks whose trial approval could not be verified.
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign, whose trial plugins are recorded
@@ -3328,13 +4203,58 @@ public final class OptimizerCore implements Core
 	 */
 	private PluginCheck pluginCheck(Path root, Campaign campaign, ForkView fork) throws IOException
 	{
+		Map<Harness, EvaluatorMetadata> reports = reports(campaign);
+		if (reports.isEmpty())
+		{
+			return pluginCheck(root, campaign, fork, scope.harness(), campaign.plugins().orElseThrow(),
+				Optional.empty());
+		}
+		Map<Harness, PluginCheck> checks = new EnumMap<>(Harness.class);
+		for (Map.Entry<Harness, List<TrialPlugin>> entry : evaluatorPlugins(campaign).entrySet())
+		{
+			Harness evaluator = entry.getKey();
+			checks.put(evaluator, pluginCheck(root, campaign, fork, evaluator, entry.getValue(),
+				Optional.of(reports.get(evaluator))));
+		}
+		return PluginCheck.forEvaluators(checks);
+	}
+
+	/**
+	 * Checks one evaluator's plugin coverage using only its native loading observations and frozen bases.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork its source and frozen bases
+	 * @param evaluator the harness that uses these plugins
+	 * @param plugins the harness's ordered plugins
+	 * @param observed the persisted native loader evidence for a shared evaluator
+	 * @return the evaluator's coverage
+	 * @throws IOException if the recorded source, plugin base or loader data cannot be read
+	 */
+	private PluginCheck pluginCheck(Path root, Campaign campaign, ForkView fork, Harness evaluator,
+		List<TrialPlugin> plugins, Optional<EvaluatorMetadata> observed) throws IOException
+	{
 		FileInventory inventory = fork.inventory();
-		List<TrialPlugin> plugins = campaign.plugins().orElseThrow();
 		SortedSet<Path> promptFiles = authority(root, campaign, inventory).promptFiles(inventory);
 		List<PluginBase> bases = bases(plugins, fork.workspace());
-		LoadedSources loaded = scope.sessions().loadedSources(root, bases);
+		Optional<EvaluatorObservations> observations = observed.flatMap(EvaluatorMetadata::observations);
+		LoadedSources loaded;
+		if (observations.isPresent())
+		{
+			EvaluatorObservations facts = observations.get();
+			loaded = new LoadedSources(List.of(), facts.projectSources(), facts.productionOnly(), facts.homeOnly(),
+				facts.unreachable());
+		}
+		else if (evaluator == scope.harness())
+			loaded = scope.sessions().loadedSources(root, bases);
+		else
+			loaded = new LoadedSources(List.of(), observed.orElseThrow().loadedSources(), List.of(), List.of(),
+				List.of());
 		Map<String, FileInventory> baseFiles = new HashMap<>();
-		List<String> hooks = new ArrayList<>();
+		Optional<List<String>> nativeHooks = new HookReportFile(campaignDirectory(campaign.header().id()), scope.json(),
+			scope.fileReplacer()).unapproved(evaluator);
+		List<String> hooks = new ArrayList<>(nativeHooks.orElseGet(() ->
+			observations.map(EvaluatorObservations::unapprovedHooks).orElse(List.of())));
 		Map<String, Path> baseDirectories = new HashMap<>();
 		for (PluginBase base : bases)
 		{
@@ -3342,11 +4262,18 @@ public final class OptimizerCore implements Core
 			baseDirectories.put(name, base.directory());
 			if (base.plugin().isProjectBuilt())
 				baseFiles.put(name, InventoryScanner.scan(base.directory(), Set.of()));
-			for (String hook : scope.sessions().unapprovedHooks(base.directory()))
-				hooks.add(name + " " + hook);
+			if (nativeHooks.isEmpty() && observations.isEmpty() && evaluator == scope.harness())
+			{
+				for (String hook : scope.sessions().unapprovedHooks(base.directory()))
+					hooks.add(name + " " + hook);
+			}
 		}
-		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles,
-			loadsFromProject(root, bases, promptFiles), plugins, baseFiles);
+		Set<Path> projectSources;
+		if (observations.isEmpty() && evaluator == scope.harness())
+			projectSources = loadsFromProject(root, bases, promptFiles);
+		else
+			projectSources = projectSources(evaluator, loaded.trials(), promptFiles);
+		PluginMapping.Coverage coverage = PluginMapping.check(inventory, promptFiles, projectSources, plugins, baseFiles);
 		return new PluginCheck(plugins, coverage.uncovered(), coverage.differing(), loaded.productionOnly(),
 			loaded.homeOnly(), hooks, baseDirectories);
 	}
@@ -3402,7 +4329,139 @@ public final class OptimizerCore implements Core
 	 */
 	private Optional<ProposalFile.Stored> storedProposal(Campaign campaign) throws IOException
 	{
-		return new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json(), scope.fileReplacer()).read();
+		Optional<ProposalFile.Stored> stored = new ProposalFile(heldOutDirectory(campaign.header().id()), scope.json(),
+			scope.fileReplacer()).read();
+		if (stored.isPresent())
+		{
+			Set<Harness> selected = campaign.header().evaluationHarnesses();
+			Set<Harness> observed = stored.get().evaluators().keySet();
+			if (!selected.equals(observed) && !(observed.isEmpty() && selected.equals(Set.of(campaign.header().harness()))))
+				throw new IOException("The stored proposal does not hold evidence for " + evaluatorNames(selected));
+		}
+		return stored;
+	}
+
+	/**
+	 * Returns the staged observations needed by a shared evaluation.
+	 *
+	 * @param campaign the campaign
+	 * @return the evaluator observations, or none when only the owner evaluates
+	 * @throws IOException if the stored evidence cannot be read
+	 */
+	private Map<Harness, EvaluatorMetadata> reports(Campaign campaign) throws IOException
+	{
+		if (campaign.header().evaluationHarnesses().equals(Set.of(campaign.header().harness())))
+			return Map.of();
+		return storedProposal(campaign).map(ProposalFile.Stored::evaluators).orElse(Map.of());
+	}
+
+	/**
+	 * Verifies the proposed measurement conditions before launching more work.
+	 *
+	 * @param root the project root
+	 * @param campaign the campaign
+	 * @param fork the existing fork
+	 * @throws CommandRefusedException if an evaluator cannot launch or its observations changed
+	 * @throws IOException if the stored evidence or staged source cannot be read
+	 * @throws InterruptedException if the evaluator probe is interrupted
+	 */
+	private void verifyEvaluatorConditions(Path root, Campaign campaign, ForkView fork)
+		throws CommandRefusedException, IOException, InterruptedException
+	{
+		Map<Harness, EvaluatorMetadata> pinned = reports(campaign);
+		if (pinned.isEmpty())
+			return;
+		Path directory = campaignDirectory(campaign.header().id());
+		Overlay incumbent = new FileCandidateOverlays(directory, fork.inventory(), fork::version, scope.json(),
+			scope.fileReplacer()).require(campaign.incumbent().snapshot());
+		Path staged = fork.workspace().stage(incumbent, Set.of());
+		Map<Harness, EvaluatorMetadata> current = evaluatorReports(root, staged, relativeTarget(campaign), pinned.keySet(),
+			evaluatorBases(evaluatorPlugins(campaign), fork.workspace()));
+		for (Map.Entry<Harness, EvaluatorMetadata> entry : current.entrySet())
+		{
+			Harness evaluator = entry.getKey();
+			EvaluatorMetadata observed = entry.getValue();
+			if (!observed.matchesPinned(pinned.get(evaluator)))
+			{
+				throw new CommandRefusedException(evaluator.productName() +
+					" no longer supplies the loader, profiles or runtime recorded in this proposal. Restore its " +
+					"recorded configuration before continuing.", null,
+					CommandRefusedException.Reason.EVALUATOR_CONDITIONS_CHANGED);
+			}
+			if (evaluator != scope.harness())
+				requirePeerPort(observed);
+		}
+	}
+
+	/**
+	 * Returns the selected trial ports with the campaign's approved extra permissions.
+	 *
+	 * @param campaign the campaign
+	 * @param owner the owner's session port
+	 * @return the evaluator trial ports, or empty for the ordinary owner-only route
+	 * @throws IOException if a required peer port cannot be built
+	 */
+	private Map<Harness, SessionPort> trialSessions(Campaign campaign, SessionPort owner) throws IOException
+	{
+		Map<Harness, SessionPort> sessions = new EnumMap<>(Harness.class);
+		for (EvaluatorMetadata metadata : reports(campaign).values())
+		{
+			Harness evaluator = metadata.harness();
+			SessionPort port = owner;
+			if (evaluator != scope.harness())
+			{
+				port = new ExtraPermissionSessions(scope.peerTrialSessions(evaluator, metadata),
+					campaign.header().extraPermissions());
+			}
+			sessions.put(evaluator, port);
+		}
+		return sessions;
+	}
+
+	/**
+	 * Returns the loader files that the campaign requires, including those of each selected evaluator.
+	 *
+	 * @param campaign the campaign
+	 * @return the files that configure loading
+	 * @throws IOException if the evaluator evidence cannot be read
+	 */
+	private Set<Path> loaderFiles(Campaign campaign) throws IOException
+	{
+		Set<Path> files = new HashSet<>(scope.loaderConfiguration());
+		for (EvaluatorMetadata evaluator : reports(campaign).values())
+			files.addAll(evaluator.loaderFiles());
+		return files;
+	}
+
+	/**
+	 * Binds the confirmed contract's cell addresses to the evidence that the user reviewed.
+	 *
+	 * @param proposal the displayed proposal
+	 * @param certificationScope the chosen certification scope
+	 * @param evaluators the evaluator runtime and loader evidence
+	 * @param campaign the campaign with pinned trial plugins
+	 * @param workspace the frozen plugin bases
+	 * @return the confirmation events
+	 * @throws IOException if a plugin manifest cannot be read
+	 */
+	private List<CampaignEvent> confirmation(Proposal proposal, CertificationScope certificationScope,
+		Map<Harness, EvaluatorMetadata> evaluators, Campaign campaign, WorkspacePort workspace) throws IOException
+	{
+		List<CampaignEvent> events = proposal.confirmation(certificationScope, scope.random().nextLong());
+		if (evaluators.isEmpty())
+			return events;
+		List<CampaignEvent> scoped = new ArrayList<>();
+		for (CampaignEvent event : events)
+		{
+			if (event instanceof CampaignEvent.Confirm confirm)
+			{
+				scoped.add(new CampaignEvent.Confirm(confirm.contract(), confirm.contractHash(), confirm.seed(),
+					evaluatorEnvironment(confirm.contract(), evaluators, evaluatorPlugins(campaign), workspace)));
+			}
+			else
+				scoped.add(event);
+		}
+		return scoped;
 	}
 
 	/**
@@ -3543,16 +4602,25 @@ public final class OptimizerCore implements Core
 		if (delivery == null || delivery.label() != Outcome.CERTIFIED)
 			return null;
 		MeasurementIdentity measured = campaign.attempt(delivery.attempt()).identity();
+		CertificationRecord recorded = null;
 		for (CertificationRecord record : history(root, relativeTarget(campaign)).records())
 		{
 			if (record.certificationIndex() != delivery.attempt() || !record.identity().equals(measured))
 				continue;
-			Entries files = path -> InventoryScanner.entry(root, path);
-			CertificationStatus status = certificationStatus(new CertificationHistory(List.of(record)), files,
-				environment(files), certified -> certified.parameters().minimumPassRate());
-			return CertifiedEnvironment.of(record, status.latest().getFirst().applicability().unchecked());
+			if (record.snapshot().isEmpty())
+				recorded = record;
+			else if (record.snapshot().get().equals(delivery.candidate().snapshot()))
+			{
+				recorded = record;
+				break;
+			}
 		}
-		return null;
+		if (recorded == null)
+			return null;
+		Entries files = path -> InventoryScanner.entry(root, path);
+		CertificationStatus status = certificationStatus(new CertificationHistory(List.of(recorded)), files,
+			environment(files), certified -> certified.parameters().minimumPassRate());
+		return CertifiedEnvironment.of(recorded, status.latest().getFirst().applicability().unchecked());
 	}
 
 	/**
@@ -3623,11 +4691,13 @@ public final class OptimizerCore implements Core
 	 *
 	 * @param root the project root
 	 * @param campaign the campaign
+	 * @param runningSlice whether the driver must open evaluator trial sessions
 	 * @return the context
 	 * @throws CommandRefusedException if the campaign holds no fork
 	 * @throws IOException if the fork cannot be read
 	 */
-	private DriverContext context(Path root, Campaign campaign) throws CommandRefusedException, IOException
+	private DriverContext context(Path root, Campaign campaign, boolean runningSlice)
+		throws CommandRefusedException, IOException
 	{
 		Path directory = campaignDirectory(campaign.header().id());
 		ForkView fork = openFork(root, campaign);
@@ -3642,10 +4712,15 @@ public final class OptimizerCore implements Core
 		JudgePrompt judge = judgePrompt(campaign);
 		TriagePrompt triage = new TriagePrompt(scope.json(), triageDirectory);
 		PromptAuthorPrompt promptAuthor = new PromptAuthorPrompt(scope.json(), schema, promptSources,
-			Set.copyOf(scope.loaderConfiguration()));
+			loaderFiles(campaign));
 		ValuesPrompt values = new ValuesPrompt(scope.json(), schema, valuesDirectory,
 			new SplittableRandom(scope.random().nextLong()));
-		return new DriverContext(scope.fileLocks(), store, sessions(campaign), fork.workspace(), runInterrupts(),
+		MeasurementIdentity known = driverEnvironment(campaign, fork);
+		SessionPort owner = sessions(campaign);
+		Map<Harness, SessionPort> evaluators = Map.of();
+		if (runningSlice)
+			evaluators = trialSessions(campaign, owner);
+		return new DriverContext(scope.fileLocks(), store, owner, fork.workspace(), runInterrupts(),
 			scope.clock(),
 			new FileCandidateOverlays(directory, inventory, fork::version, scope.json(), scope.fileReplacer()), judge, triage,
 			new ApproachRankingPrompt(scope.json(), triageDirectory), promptAuthor,
@@ -3653,9 +4728,99 @@ public final class OptimizerCore implements Core
 			new Delivery(store, fork.workspace(), scope.forks(), scope.json(), scope.fileReplacer())::deliver,
 			scope.calibrator(),
 			new ProcessHandleTerminator(), new LeftoverNestedSessions(scope.sessions(), scope.json()), authority,
-			promptSources, environment(inventory::entry), lockFile(campaign.header().id()), scope.random(),
+			promptSources, known, lockFile(campaign.header().id()), scope.random(),
 			runSettings(), scope.json(), scope.profiles().candidateJudgeProfiles(), scope.judgeRecords(),
+			evaluators,
 			scope.temporaryDirectory());
+	}
+
+	/**
+	 * Returns the driver's environmental conditions. A shared campaign stores each harness's inputs on its cells.
+	 *
+	 * @param campaign the campaign
+	 * @param fork the fork's file inventory and plugin bases
+	 * @return the driver environment
+	 * @throws IOException if the loader inputs or the stored evaluator evidence cannot be read
+	 */
+	private MeasurementIdentity driverEnvironment(Campaign campaign, ForkView fork) throws IOException
+	{
+		if (campaign.header().evaluationHarnesses().equals(Set.of(campaign.header().harness())))
+			return environment(fork.inventory()::entry);
+		if (!campaign.isConfirmed())
+			return campaignEnvironment();
+		Map<Harness, EvaluatorMetadata> evaluators = reports(campaign);
+		if (evaluators.isEmpty())
+			throw new IOException("The confirmed shared campaign has no evaluator evidence");
+		return evaluatorEnvironment(campaign.contract(), evaluators, evaluatorPlugins(campaign), fork.workspace());
+	}
+
+	/**
+	 * Returns conditions that apply equally to each selected evaluator in the same CAT release.
+	 *
+	 * @return the common conditions
+	 */
+	private static MeasurementIdentity campaignEnvironment()
+	{
+		return new MeasurementIdentity(Map.of(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION,
+			MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION));
+	}
+
+	/**
+	 * Projects proposal observations onto every configured and stress cell of the confirmed contract.
+	 *
+	 * @param contract the confirmed contract
+	 * @param evaluators the evaluator observations
+	 * @param pluginsByEvaluator the ordered frozen plugins by evaluator
+	 * @param workspace the workspace that holds those bases
+	 * @return the common conditions and the conditions assigned to each cell
+	 * @throws IOException if a plugin manifest cannot be read
+	 */
+	private MeasurementIdentity evaluatorEnvironment(Contract contract, Map<Harness, EvaluatorMetadata> evaluators,
+		Map<Harness, List<TrialPlugin>> pluginsByEvaluator, WorkspacePort workspace) throws IOException
+	{
+		Map<Harness, Map<MeasurementCondition, String>> conditions = new EnumMap<>(Harness.class);
+		for (Map.Entry<Harness, EvaluatorMetadata> entry : evaluators.entrySet())
+		{
+			Harness evaluator = entry.getKey();
+			List<TrialPlugin> plugins = pluginsByEvaluator.get(evaluator);
+			Map<String, String> versions = pluginVersions(workspace, evaluator, plugins);
+			Map<MeasurementCondition, String> local = new EnumMap<>(evaluatorConditions(entry.getValue()));
+			local.putAll(MeasurementIdentity.ofPlugins(plugins, versions).values());
+			conditions.put(evaluator, local);
+		}
+		Map<String, Map<MeasurementCondition, String>> cells = new HashMap<>();
+		for (Cell cell : contract.cells())
+		{
+			Harness evaluator = cell.evaluator().orElseThrow();
+			Map<MeasurementCondition, String> local = conditions.get(evaluator);
+			cells.put(cell.id(), local);
+			for (Cell stress : CellTier.stressCells(contract, scope.harness(), cell.id()))
+				cells.put(stress.id(), local);
+		}
+		Map<MeasurementCondition, String> shared = new EnumMap<>(campaignEnvironment().values());
+		shared.put(MeasurementCondition.JUDGE_HARNESS, scope.harness().commandName());
+		shared.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
+		return new MeasurementIdentity(shared, cells);
+	}
+
+	/**
+	 * Returns the installed evaluator and staged loader conditions that are known before trials run.
+	 *
+	 * @param report the observation of the evaluator
+	 * @return the conditions for that evaluator
+	 */
+	private static Map<MeasurementCondition, String> evaluatorConditions(EvaluatorMetadata report)
+	{
+		EvaluatorRuntime runtime = report.runtime();
+		StringJoiner files = new StringJoiner("\n").setEmptyValue("none");
+		for (Path path : report.loaderFiles())
+			files.add(PortablePaths.text(path));
+		return Map.of(MeasurementCondition.PROVIDER, report.harness().commandName(),
+			MeasurementCondition.HARNESS_VERSION, runtime.harnessVersion(),
+			MeasurementCondition.SESSION_ENVIRONMENT_VERSION, String.valueOf(runtime.environmentVersion()),
+			MeasurementCondition.SESSION_ENVIRONMENT_RELEASE, runtime.environmentRelease(),
+			MeasurementCondition.LOADER_CONFIGURATION, report.loaderIdentity(),
+			MeasurementCondition.LOADER_FILES, files.toString());
 	}
 
 	/**
@@ -3669,7 +4834,7 @@ public final class OptimizerCore implements Core
 	 */
 	private Authority authority(Path root, Campaign campaign, FileInventory inventory) throws IOException
 	{
-		return new Authority(promptSources(root, campaign), Set.copyOf(scope.loaderConfiguration()), inventory);
+		return new Authority(promptSources(root, campaign), loaderFiles(campaign), inventory);
 	}
 
 	/**
@@ -3724,7 +4889,7 @@ public final class OptimizerCore implements Core
 			if (!path.isAbsolute())
 				sources.add(path);
 		}
-		return TrialSelection.promptSources(sources, campaign.plugins().orElse(List.of()));
+		return TrialSelection.promptSources(sources, sourcePlugins(campaign));
 	}
 
 	/**
@@ -3761,28 +4926,14 @@ public final class OptimizerCore implements Core
 		values.put(MeasurementCondition.JUDGE, String.valueOf(scope.sessions().judgeVersion()));
 		values.put(MeasurementCondition.RUNNER_VERSION, PluginInfo.CAT_VERSION);
 		values.put(MeasurementCondition.CAT_VERSION, PluginInfo.CAT_VERSION);
-		values.put(MeasurementCondition.LOADER_CONFIGURATION, loaderConfiguration(files));
-		values.put(MeasurementCondition.LOADER_FILES, loaderFiles(files));
-		return new MeasurementIdentity(values);
-	}
-
-	/**
-	 * Names the loader configuration files that the project has.
-	 *
-	 * @param files reads the files
-	 * @return the files' paths in path order, one per line, or {@code none} if the project has none of them
-	 * @throws IOException if a file cannot be read
-	 */
-	private String loaderFiles(Entries files) throws IOException
-	{
+		LoaderIdentity loader = LoaderIdentity.read(scope.loaderConfiguration(), files::entry, scope.userLoaderSettings());
+		values.put(MeasurementCondition.LOADER_CONFIGURATION, loader.digest());
 		StringJoiner present = new StringJoiner("\n");
 		present.setEmptyValue("none");
-		for (Path path : scope.loaderConfiguration().stream().sorted().toList())
-		{
-			if (files.entry(path).isPresent())
-				present.add(PortablePaths.text(path));
-		}
-		return present.toString();
+		for (Path path : loader.files())
+			present.add(PortablePaths.text(path));
+		values.put(MeasurementCondition.LOADER_FILES, present.toString());
+		return new MeasurementIdentity(values);
 	}
 
 	/**
@@ -3799,40 +4950,5 @@ public final class OptimizerCore implements Core
 		 * @throws IOException if the file cannot be read
 		 */
 		Optional<FileEntry> entry(Path path) throws IOException;
-	}
-
-	/**
-	 * Returns the identity of the loader configuration: the files and the user's settings that decide which prompt
-	 * files load. The digest of a user who sets none is the digest of the files alone.
-	 *
-	 * @param files reads the files
-	 * @return a digest of the files' paths and contents and of the user's settings
-	 * @throws IOException if a file or the user's settings cannot be read
-	 */
-	private String loaderConfiguration(Entries files) throws IOException
-	{
-		List<Path> paths = scope.loaderConfiguration().stream().sorted().toList();
-		StringBuilder lines = new StringBuilder(LOADER_LINE_CAPACITY * (paths.size() + 1));
-		for (Path path : paths)
-		{
-			lines.append(PortablePaths.text(path)).append('=');
-			Optional<FileEntry> entry = files.entry(path);
-			if (entry.isEmpty())
-				lines.append("absent");
-			else
-			{
-				switch (entry.get())
-				{
-					case FileEntry.RegularFile file -> lines.append(file.contentHash().hex());
-					case FileEntry.SymbolicLink link -> lines.append("link:").append(PortablePaths.text(link.target()));
-					case FileEntry.SpecialFile _ -> lines.append("special");
-				}
-			}
-			lines.append('\n');
-		}
-		Optional<String> userSettings = scope.userLoaderSettings();
-		if (userSettings.isPresent())
-			lines.append("user settings=").append(userSettings.get()).append('\n');
-		return Sha256.of(lines.toString().getBytes(StandardCharsets.UTF_8)).hex();
 	}
 }

@@ -136,13 +136,13 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			ChildBound bound = new ChildBound(failing(failure), (_, _, _, _) ->
-			{
-				throw new AssertionError("The child's needs were asked for");
-			});
+			ChildBound bound = new ChildBound(failing(failure));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty()));
+				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty(), (_, _, _, _) ->
+			{
+				throw new AssertionError("The child's needs were asked for");
+			}));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo(expected);
 		}
@@ -163,13 +163,13 @@ public final class ChildBoundTest
 			Path sessionFolder = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
 			PolicyRefusal login = new PolicyRefusal("its sandbox denies its commands reading /h/auth.json",
 				"Let the session's sandbox read /h/auth.json, then start a new session");
-			ChildBound bound = new ChildBound(parent(ParentPolicy.UNSANDBOXED), (_, _, _, _) ->
-			{
-				throw login;
-			});
+			ChildBound bound = new ChildBound(parent(ParentPolicy.UNSANDBOXED));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty()));
+				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty(), (_, _, _, _) ->
+			{
+				throw login;
+			}));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo(login.messageFor(HARNESS_NAME));
 		}
@@ -193,11 +193,11 @@ public final class ChildBoundTest
 			Path cache = root.resolve("cache");
 			ChildNeedsSource needs = (_, folder, deniedReads, _) -> new ChildNeeds(folder, List.of(cache),
 				deniedReads, Set.of(MODEL_HOST, "zeta.example", "other.example"));
-			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder), List.of(), Set.of())),
-				needs);
+			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder), List.of(), Set.of())));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty()));
+				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty(),
+					needs));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " and reach " +
@@ -223,11 +223,11 @@ public final class ChildBoundTest
 			Path sessionFolder = Files.createDirectory(work.resolve("session"));
 			Path denial = Files.createDirectory(work.resolve("protected"));
 			Path cache = denial.resolve("cache");
-			ChildBound bound = new ChildBound(parent(sandboxed(List.of(work), List.of(denial), Set.of())),
-				needing(List.of(cache)));
+			ChildBound bound = new ChildBound(parent(sandboxed(List.of(work), List.of(denial), Set.of())));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty()));
+				() -> bound.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty(),
+					needing(List.of(cache))));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " (denied by " + denial +
@@ -252,10 +252,11 @@ public final class ChildBoundTest
 			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path cache = Files.createDirectory(root.resolve("registry cache"));
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder, cache), List.of(),
-				Set.of("registry.example", "unused.example"))), needing(List.of()));
+				Set.of("registry.example", "unused.example"))));
 
 			ChildPolicy child = bound.bound("codex", sessionFolder, List.of(),
-				new ExtraPermissions(List.of(cache), Set.of("registry.example")), Optional.empty());
+				new ExtraPermissions(List.of(cache), Set.of("registry.example")), Optional.empty(),
+					needing(List.of()));
 
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder, cache));
 			requireThat(child.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST, "registry.example"));
@@ -278,9 +279,10 @@ public final class ChildBoundTest
 			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path denied = root.resolve("denied");
 			ChildBound bound = new ChildBound(parent(sandboxed(List.of(root), List.of(),
-				Set.of("registry.example"))), needing(List.of()));
+				Set.of("registry.example"))));
 
-			ChildPolicy child = bound.bound("codex", sessionFolder, List.of(denied), ExtraPermissions.NONE, Optional.empty());
+			ChildPolicy child = bound.bound("codex", sessionFolder, List.of(denied), ExtraPermissions.NONE, Optional.empty(),
+					needing(List.of()));
 
 			requireThat(child.writeRoots(), "writeRoots").isEqualTo(List.of(sessionFolder));
 			requireThat(child.hosts(), "hosts").isEqualTo(Set.of(MODEL_HOST));
@@ -303,12 +305,12 @@ public final class ChildBoundTest
 			Path root = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
 			Path sessionFolder = Files.createDirectory(root.resolve("session"));
 			Path cache = root.resolve("registry cache");
-			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder), List.of(), Set.of())),
-				needing(List.of()));
+			ChildBound bound = new ChildBound(parent(sandboxed(List.of(sessionFolder), List.of(), Set.of())));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
 				() -> bound.bound("codex", sessionFolder, List.of(),
-					new ExtraPermissions(List.of(cache), Set.of("registry.example")), Optional.empty()));
+					new ExtraPermissions(List.of(cache), Set.of("registry.example")), Optional.empty(),
+					needing(List.of())));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + cache + " and reach " +
@@ -333,7 +335,7 @@ public final class ChildBoundTest
 		try (TemporaryDirectories cleanup = new TemporaryDirectories())
 		{
 			Path state = cleanup.add(Files.createTempDirectory("cat-bound-")).toRealPath();
-			ChildBound bound = new ChildBound(failing(failure), needing(List.of()));
+			ChildBound bound = new ChildBound(failing(failure));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () -> bound.snapshot(state));
 
@@ -361,13 +363,14 @@ public final class ChildBoundTest
 			Path launchCache = Files.createDirectory(root.resolve("launch cache"));
 			FakeParentPolicySource parent = parent(sandboxed(List.of(sessionFolder, snapshotCache), List.of(),
 				Set.of("snapshot.example")));
-			ChildBound bound = new ChildBound(parent, needing(List.of())).snapshot(state);
+			ChildBound bound = new ChildBound(parent).snapshot(state);
 			parent.allow(sandboxed(List.of(sessionFolder, launchCache), List.of(), Set.of("launch.example")));
 			ExtraPermissions extra = new ExtraPermissions(List.of(snapshotCache, launchCache),
 				Set.of("snapshot.example", "launch.example"));
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class,
-				() -> bound.bound("codex", sessionFolder, List.of(), extra, Optional.empty()));
+				() -> bound.bound("codex", sessionFolder, List.of(), extra, Optional.empty(),
+					needing(List.of())));
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: this " +
 				HARNESS_NAME + " session's sandbox does not let its commands write " + snapshotCache + ", " +
@@ -415,13 +418,14 @@ public final class ChildBoundTest
 			else
 				atSnapshot = sandboxed(List.of(sessionFolder), List.of(), Set.of());
 			FakeParentPolicySource parent = parent(atSnapshot);
-			ChildBound bound = new ChildBound(parent, needing(List.of()));
+			ChildBound bound = new ChildBound(parent);
 
 			SessionRefusedException refusal = expectThrows(SessionRefusedException.class, () ->
 			{
 				ChildBound snapshot = bound.snapshot(state);
 				parent.allow(writesState);
-				snapshot.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty());
+				snapshot.bound("codex", sessionFolder, List.of(), ExtraPermissions.NONE, Optional.empty(),
+					needing(List.of()));
 			});
 
 			requireThat(refusal.getMessage(), "message").isEqualTo("CAT cannot start the session: it cannot read " +

@@ -49,4 +49,18 @@ public interface ParentPolicySource
 	 * @throws PolicyRefusal        if the policy cannot be established safely
 	 */
 	ParentPolicy read(Optional<String> askingThread) throws IOException, PolicyRefusal;
+
+	/**
+	 * Reads the individual authenticated policies that determine the current bound. A source that keeps its own
+	 * snapshots includes them before intersection, so a trust check can see every write grant.
+	 *
+	 * @param askingThread the request's thread identifier, or empty for the main thread
+	 * @return the authenticated readings, including the current policy
+	 * @throws IOException if a source of the policy cannot be read
+	 * @throws PolicyRefusal if the policy cannot be established safely
+	 */
+	default List<ParentPolicy> readings(Optional<String> askingThread) throws IOException, PolicyRefusal
+	{
+		return List.of(read(askingThread));
+	}
 }

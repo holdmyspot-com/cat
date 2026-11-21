@@ -9,9 +9,11 @@ import com.holdmyspot.cat.common.PortablePaths;
 import com.holdmyspot.cat.common.optimizer.campaign.Applicability;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationParameters;
 import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord;
+import com.holdmyspot.cat.common.optimizer.campaign.CertificationRecord.CellResult;
 import com.holdmyspot.cat.common.optimizer.campaign.Choice;
 import com.holdmyspot.cat.common.optimizer.campaign.Harness;
 import com.holdmyspot.cat.common.optimizer.campaign.MeasurementCondition;
+import com.holdmyspot.cat.common.optimizer.campaign.MeasurementIdentity;
 import com.holdmyspot.cat.common.optimizer.campaign.Outcome;
 import com.holdmyspot.cat.common.optimizer.campaign.Throttle;
 import com.holdmyspot.cat.common.optimizer.campaign.test.Builder;
@@ -30,6 +32,7 @@ import com.holdmyspot.cat.common.optimizer.execution.DeliveryReport;
 import com.holdmyspot.cat.common.optimizer.execution.SliceSettings;
 import com.holdmyspot.cat.common.optimizer.inventory.DeliveryChange;
 import com.holdmyspot.cat.common.optimizer.inventory.FileContent;
+import com.holdmyspot.cat.common.optimizer.inventory.Sha256;
 import com.holdmyspot.cat.common.optimizer.report.CertificationStatus;
 import com.holdmyspot.cat.common.optimizer.report.CertifiedEnvironment;
 import com.holdmyspot.cat.common.optimizer.report.ReportEvidence;
@@ -210,14 +213,15 @@ public final class CommandsTest
 			}
 
 			@Override
-			public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions)
+			public CommandResult start(Path target, int ceiling, String goal, Path extraPermissions,
+				Set<Harness> evaluationHarnesses)
 				throws CommandRefusedException, IOException, InterruptedException
 			{
 				calls.add("start " + target);
 				Project.this.ceiling = ceiling;
 				Project.this.goal = goal;
 				Project.this.extraPermissions = extraPermissions;
-				return core.start(target, ceiling, goal, extraPermissions);
+				return core.start(target, ceiling, goal, extraPermissions, evaluationHarnesses);
 			}
 
 			@Override
@@ -557,6 +561,78 @@ public final class CommandsTest
 	}
 
 	/**
+	 * Verifies that {@code start} accepts distinct evaluation harnesses in either order and alongside other options.
+	 */
+	@Test
+	public void parsesEvaluationHarnesses() throws IOException
+	{
+		// Requirement: R-L6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			Harness first = Harness.values()[0];
+			Harness second = Harness.values()[1];
+			Command.Start start = (Command.Start) project.parse(List.of("start", "prompts/a.md", "--harness",
+				first.commandName(),
+				"--goal", "Be brief.", "--harness", second.commandName()));
+			Command reversed = project.parse(List.of("start", "prompts/a.md", "--harness", second.commandName(),
+				"--harness", first.commandName(), "--goal", "Be brief."));
+
+			requireThat(start.evaluationHarnesses(), "evaluationHarnesses").isEqualTo(Set.of(first, second));
+			requireThat(start, "start").isEqualTo(reversed);
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} distinguishes an omitted selection from an explicit single harness.
+	 */
+	@Test
+	public void preservesOmittedEvaluationHarnesses() throws IOException
+	{
+		// Requirement: R-L6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			Harness harness = Harness.values()[0];
+			Command.Start omitted = (Command.Start) project.parse(List.of("start", "prompts/a.md"));
+			Command.Start explicit = (Command.Start) project.parse(List.of("start", "prompts/a.md", "--harness",
+				harness.commandName()));
+
+			requireThat(omitted.evaluationHarnesses(), "omitted").isEmpty();
+			requireThat(explicit.evaluationHarnesses(), "explicit").isEqualTo(Set.of(harness));
+		}
+	}
+
+	/**
+	 * Verifies that {@code start} refuses absent, unknown or repeated harness names before calling the core.
+	 */
+	@Test
+	public void refusesInvalidEvaluationHarnesses() throws IOException
+	{
+		// Requirement: R-L6
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Project project = Project.create(cleanup);
+			String name = Harness.values()[0].commandName();
+			Map<List<String>, String> invalidOptions = Map.of(
+				List.of("--harness"), "--harness needs a value",
+				List.of("--harness", "unknown-harness"), "Unknown evaluation harness 'unknown-harness'.",
+				List.of("--harness", name, "--goal", "Be brief.", "--harness", name),
+				"Repeated evaluation harness '" + name + "'.");
+			for (Map.Entry<List<String>, String> invalid : invalidOptions.entrySet())
+			{
+				List<String> args = new ArrayList<>(List.of("start", "prompts/a.md"));
+				args.addAll(invalid.getKey());
+				StringBuilder output = new StringBuilder();
+				requireThat(project.run(args, output), "exit").isEqualTo(2);
+				requireThat(JSON.readTree(output.toString()).get("message").asString(), "message").
+					contains(invalid.getValue());
+				requireThat(project.calls, "calls").isEmpty();
+			}
+		}
+	}
+
+	/**
 	 * Verifies that command usage lists the ceiling option and its range.
 	 */
 	@Test
@@ -851,6 +927,7 @@ public final class CommandsTest
 		requireThat(json.get("latest").size(), "latestSize").isEqualTo(1);
 		JsonNode latest = json.get("latest").get(0);
 		requireThat(latest.get("harness").asString(), "harness").isEqualTo("provider-1");
+		requireThat(latest.has("evaluation_harnesses"), "hasEvaluationHarnesses").isFalse();
 		requireThat(latest.get("attempt").asInt(), "attempt").isEqualTo(2);
 		requireThat(latest.get("scope").asString(), "scope").isEqualTo("latest_versions");
 		requireThat(json.get("earlier").size(), "earlierSize").isEqualTo(1);
@@ -888,6 +965,39 @@ public final class CommandsTest
 		requireThat(json.get("proposal_file").isNull(), "proposalFileIsNull").isTrue();
 		requireThat(json.get("delivery_result").isNull(), "deliveryResultIsNull").isTrue();
 		requireThat(json.get("message").isNull(), "messageIsNull").isTrue();
+	}
+
+	/**
+	 * A joint certification reports one attempt with all measured evaluators and the frozen snapshot.
+	 *
+	 * @throws IOException if the project fixture cannot be created
+	 */
+	@Test
+	public void printsJointCertificationRecord() throws IOException
+	{
+		// Requirement: R-L9
+		MeasurementIdentity identity = new MeasurementIdentity(Map.of(), Map.of(
+			"codex:test", Map.of(MeasurementCondition.PROVIDER, "codex"),
+			"claude:test", Map.of(MeasurementCondition.PROVIDER, "claude")));
+		List<CellResult> cells = List.of(new CellResult("test", "codex:test", 100, 0, Map.of(), Map.of()),
+			new CellResult("test", "claude:test", 100, 0, Map.of(), Map.of()));
+		Sha256 snapshot = new Sha256("1".repeat(64));
+		CertificationRecord record = new CertificationRecord(Path.of("CLAUDE.md"), 1,
+			CertificationScope.LATEST_VERSIONS, CertificationParameters.current(1, Contract.DEFAULT_MINIMUM_PASS_RATE),
+			cells, Map.of(), identity, Optional.of(snapshot));
+		Applicability applicability = new Applicability(Applicability.Status.CURRENT, false, List.of(), List.of());
+		CertificationStatus status = new CertificationStatus(
+			List.of(new CertificationStatus.Latest(record, applicability)), List.of());
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			JsonNode json = JSON.readTree(Project.create(cleanup).render(ZoneOffset.UTC, CommandResult.of(status)));
+			requireThat(json.get("latest").size(), "latestSize").isEqualTo(1);
+			JsonNode latest = json.get("latest").get(0);
+			requireThat(latest.get("evaluation_harnesses").toString(), "evaluationHarnesses").
+				isEqualTo("[\"claude\",\"codex\"]");
+			requireThat(latest.get("snapshot").asString(), "snapshot").isEqualTo(snapshot.hex());
+			requireThat(json.get("summary").asString(), "summary").contains("Latest certification in claude and codex");
+		}
 	}
 
 	/**
