@@ -1,109 +1,45 @@
-name: Build
-
+name: Build private acceptance archives
 on:
   push:
     branches:
-      - '**'
-    tags-ignore:
-      - 'v*'
-  pull_request:
-
+      - rehearsal/native-package-189773d673a7
 permissions:
   contents: read
-
 jobs:
-  build:
-    name: ${{ matrix.platform }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux-x64
-            runner: ubuntu-26.04
-          - platform: linux-arm64
-            runner: ubuntu-26.04-arm
-          - platform: macos-x64
-            runner: macos-26-intel
-          - platform: macos-arm64
-            runner: macos-26
-          - platform: windows-x64
-            runner: windows-2025
-    runs-on: ${{ matrix.runner }}
+  package:
+    runs-on: ubuntu-26.04
+    timeout-minutes: 30
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v7
+        with:
+          ref: 189773d673a7dfb5d27b2c91bdcd294d66fe88aa
+          persist-credentials: false
       - uses: actions/setup-java@v6
         with:
           distribution: zulu
           java-version: '27'
           cache: maven
           cache-dependency-path: client/pom.xml
-      - name: Install test tools on Linux
-        if: runner.os == 'Linux'
+      - name: Install test tools
         run: .github/scripts/install-linux-test-tools.sh
-      - name: Install test tools on macOS
-        if: runner.os == 'macOS'
-        run: brew install bats-core jq shellcheck
-      # Chocolatey's community feed can be unavailable to GitHub's runners, and choco then reports success without
-      # installing anything, so ShellCheck comes from its own GitHub release, pinned by checksum.
-      - name: Install test tools on Windows
-        if: runner.os == 'Windows'
+      - name: Verify and package
         run: |
-          shellcheck_directory="$(cygpath --unix "${RUNNER_TEMP}")/shellcheck"
-          archive="${shellcheck_directory}/shellcheck.zip"
-          mkdir -p "${shellcheck_directory}"
-          curl -fsSL --retry 3 --retry-all-errors -o "${archive}" \
-            https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip
-          echo "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e  ${archive}" |
-            sha256sum --check --strict
-          pwsh -NoProfile -Command "Expand-Archive -LiteralPath '$(cygpath --windows "${archive}")' -DestinationPath \
-            '$(cygpath --windows "${shellcheck_directory}")'"
-          cygpath --windows "${shellcheck_directory}" >> "${GITHUB_PATH}"
-          "${shellcheck_directory}/shellcheck.exe" --version
-          npm install --global bats@1.13.0
-          bats --version
-      - name: Verify
-        run: client/mvnw -f client/pom.xml verify
-      # The job log names a failing module but not why its tests could not run; the reports and dump files hold that.
-      - name: Keep the test reports of a failed Windows build
-        if: failure() && runner.os == 'Windows'
+          test "$(git rev-parse HEAD)" = 189773d673a7dfb5d27b2c91bdcd294d66fe88aa
+          test -z "$(git status --porcelain)"
+          client/mvnw -q -f client/pom.xml verify -Dcat.build=189773d673a7
+      - name: Verify native archive checksums
+        working-directory: client/common/distribution/target/release
+        run: sha256sum --check --strict SHA256SUMS.txt
+      - name: Upload native archives
         uses: actions/upload-artifact@v7
         with:
-          name: test-reports-${{ matrix.platform }}
-          path: client/**/target/surefire-reports/
-          if-no-files-found: ignore
-      - name: Verify bootstrap boundaries
-        if: runner.os != 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/installer-launcher.bats
-      # Claude Code installs CAT from Git Bash on Windows, and Codex from PowerShell through cat.ps1, which
-      # bootstrap-windows.bats tests.
-      # bootstrap-codex.bats runs the Windows Codex plugin's hooks through their .cmd launchers, as Codex does, because
-      # that plugin has no POSIX launchers, and codex-plugin-launchers-windows.bats runs that plugin's batch launchers
-      # from PowerShell. A Windows installation's installer launchers are PowerShell scripts, which
-      # installer-launcher-windows.bats tests in place of installer-launcher.bats and its POSIX launchers.
-      - name: Verify bootstrap boundaries on Windows
-        if: runner.os == 'Windows'
-        run: >-
-          bats client/common/distribution/src/test/bats/bootstrap-common.bats
-          client/common/distribution/src/test/bats/bootstrap-claude.bats
-          client/common/distribution/src/test/bats/bootstrap-codex.bats
-          client/common/distribution/src/test/bats/bootstrap-windows.bats
-          client/common/distribution/src/test/bats/codex-plugin-launchers-windows.bats
-          client/common/distribution/src/test/bats/installer-launcher-windows.bats
-      # The installer's sources rewrite runs here, where the shell and sed are macOS's, as well as on Linux.
-      - name: Verify the Linux test-tool installer's mirror rewrite
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/install-linux-test-tools.bats
-      # The POSIX launcher templates; codex-plugin-launchers-windows.bats tests the batch launchers on Windows
-      - name: Verify the jlink launcher template
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/jlink-launchers.bats
-      - name: Verify the Codex plugin's part launchers
-        if: runner.os != 'Windows'
-        run: bats client/common/distribution/src/test/bats/codex-plugin-launchers.bats
+          name: cat-linux-x64-189773d673a7
+          if-no-files-found: error
+          retention-days: 1
+          path: |
+            client/common/distribution/target/release/cat-*-*.tar.gz
+            client/common/distribution/target/release/SHA256SUMS.txt
+            client/common/distribution/target/release/cat-release-assets-*.json
