@@ -1499,7 +1499,11 @@ public final class RequestServerTest
 	{
 		private final TemporaryDirectories cleanup = new TemporaryDirectories();
 		private final JsonMapper json = JsonMapper.builder().build();
-		private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
+		/**
+		 * Runs the server and the output observer on platform threads so their polling leaves the broker's virtual
+		 * thread scheduler available to handle requests.
+		 */
+		private final ExecutorService executor = Executors.newThreadPerTaskExecutor(Thread.ofPlatform().factory());
 		private final Path root;
 		private final Path project;
 		private final Path home;
