@@ -7,11 +7,15 @@ import com.holdmyspot.cat.common.Pause;
 import com.holdmyspot.cat.common.TemporaryDirectories;
 import com.holdmyspot.cat.common.installation.PluginVersion;
 import com.holdmyspot.cat.common.installer.activation.InstalledState;
+import com.holdmyspot.cat.common.installer.engine.HarnessSession;
+import com.holdmyspot.cat.common.installer.engine.PluginInstall;
 import com.holdmyspot.cat.common.installer.engine.ReleaseSource;
 import com.holdmyspot.cat.common.installer.engine.UpdateEngine;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult;
 import com.holdmyspot.cat.common.installer.engine.UpdateResult.Result;
 import com.holdmyspot.cat.common.installer.trust.TrustException;
+import com.holdmyspot.cat.common.runner.PluginDirectory;
+import com.holdmyspot.cat.common.runner.RuntimeBinding;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -93,6 +97,35 @@ public final class EngineTest
 			requireThat(result.result(), "result").isEqualTo(Result.REFUSED);
 			requireThat(result.message(), "message").contains("1.2").contains("1.1");
 			requireThat(fixture.integration.registered(), "registered").isEmpty();
+		}
+	}
+
+	/**
+	 * Delivers a package that selects its bundled Java without adding an installation-specific binding.
+	 *
+	 * @throws IOException if the fixture cannot extract or install the plugin
+	 */
+	@Test
+	public void deliversPackageWithBundledRuntime() throws IOException
+	{
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			String release = "1.1";
+			EngineFixture fixture = new EngineFixture(cleanup.add(testDirectory("engine-bundled-runtime-")),
+				new ReleaseCatalog(release, NO_MIGRATION));
+			Path artifact = fixture.extract(release);
+			Files.createFile(artifact.resolve(RuntimeBinding.BUNDLED_PATH));
+			HarnessSession harness = fixture.integration.session();
+			PluginInstall installer = new PluginInstall(harness.integration(), harness.cli(), harness.replacer(),
+				interval -> () ->
+				{
+				});
+
+			Path installed = installer.deliver(fixture.home, artifact, PluginVersion.parse(Releases.pluginVersion(release)));
+
+			requireThat(installed.resolve(RuntimeBinding.BUNDLED_PATH), "bundledSelector").isRegularFile();
+			requireThat(Files.exists(installed.resolve(RuntimeBinding.PATH)), "legacyBindingExists").isFalse();
+			requireThat(RuntimeBinding.read(installed), "runtime").isEqualTo(installed.resolve(PluginDirectory.RUNTIME));
 		}
 	}
 

@@ -100,12 +100,6 @@ public final class DistributionMain
 			}
 
 			@Override
-			public void writeRuntimeBinding(Path plugin, Path runtime) throws IOException
-			{
-				DistributionMain.writeRuntimeBinding(plugin, runtime);
-			}
-
-			@Override
 			public void writeStartupCacheTraining(Path bin, String harness, JsonMapper json) throws IOException
 			{
 				DistributionMain.writeStartupCacheTraining(bin, harness, json);
@@ -354,9 +348,6 @@ public final class DistributionMain
 		RuleReferences.requireResolvable(claudeRoot);
 		RuleReferences.requireResolvable(codexRoot);
 
-		writeRuntimeBinding(claudeRoot, releaseRuntime);
-		writeRuntimeBinding(codexRoot, releaseRuntime);
-
 		ReleasePackager packager = new ReleasePackager(PluginInfo.CAT_VERSION);
 		Path claudeArchive = packager.packageArtifact("claude", platform, claudeRoot, releaseDirectory);
 		Path codexArchive = packager.packageArtifact("codex", platform, codexRoot, releaseDirectory);
@@ -534,7 +525,7 @@ public final class DistributionMain
 
 	/**
 	 * Stages the folder that becomes a plugin's {@code bin} folder with the release's Java runtime, the plugin's modules
-	 * beside the runtime's own folders, and the plugin's runtime requirement.
+	 * beside the runtime's own folders, the bundled-runtime selector and the plugin's runtime requirement.
 	 *
 	 * @param application the plugin's modules
 	 * @param runtime     the release's Java runtime
@@ -553,6 +544,7 @@ public final class DistributionMain
 		Files.createDirectories(modules);
 		for (Path jar : application.jars())
 			Files.copy(jar, modules.resolve(jar.getFileName()));
+		Files.createFile(bin.resolve(PluginDirectory.BIN.relativize(RuntimeBinding.BUNDLED_PATH)));
 		application.writeRequirement(bin.resolve(RUNTIME_REQUIREMENT), json);
 		return bin;
 	}
@@ -621,21 +613,6 @@ public final class DistributionMain
 		training.put("input", SESSION_START_INPUT);
 		Files.writeString(bin.resolve(PluginDirectory.BIN.relativize(StartupCache.TRAINING)),
 			json.writeValueAsString(training) + "\n", UTF_8);
-	}
-
-	/**
-	 * Binds a plugin assembled in the source checkout to the release runtime that the build wrote, so that the plugin
-	 * runs from the checkout without being installed. The binding is written after the plugin's runtime manifest,
-	 * because it names a path on the building machine, and release archives leave it out.
-	 *
-	 * @param plugin  the assembled plugin
-	 * @param runtime the release runtime
-	 * @throws IOException if the binding cannot be written
-	 */
-	static void writeRuntimeBinding(Path plugin, Path runtime) throws IOException
-	{
-		Files.writeString(plugin.resolve(RuntimeBinding.PATH),
-			runtime.toAbsolutePath().normalize() + "\n", UTF_8);
 	}
 
 	/**
