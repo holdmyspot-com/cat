@@ -290,6 +290,36 @@ public final class GuardPilot
 	}
 
 	/**
+	 * Checks whether the stored controls for a sole evaluator ran under the proposed conditions, without starting any
+	 * sessions. A result that recorded failed trials can still match its conditions.
+	 *
+	 * @param contract the proposal's contract
+	 * @param evaluator the sole evaluator
+	 * @param plugins its prepared trial plugins
+	 * @param control the control overlay
+	 * @param selection the files the control trials receive
+	 * @param stored the previously presented pilot results
+	 * @return whether each stored result matches its current conditions
+	 */
+	public boolean matchesStored(Contract contract, Harness evaluator, List<TrialPlugin> plugins, Overlay control,
+		SourceSelection selection, Map<String, PilotResult> stored)
+	{
+		TrialProfiles profiles = contract.profiles().forEvaluator(evaluator);
+		Sha256 files = control.snapshot().identity();
+		for (PilotResult result : stored.values())
+		{
+			Optional<PromptTest> test = contract.findTest(result.testId());
+			if (test.isEmpty() || profiles.cellsOf(result.testId()).isEmpty())
+				return false;
+			Optional<Cell> cell = pilotCell(profiles, result.testId());
+			if (cell.isEmpty() || !conditionsFor(contract, test.orElseThrow(), cell.orElseThrow(), false, files,
+				selection, plugins).matches(result))
+				return false;
+		}
+		return true;
+	}
+
+	/**
 	 * Runs each applicable test and evaluator whose stored pilot needs more trials.
 	 * <p>
 	 * A stored pilot is reused when it ran every trial, every trial ended with a decision, and its test's definition,
@@ -490,21 +520,14 @@ public final class GuardPilot
 				if (selected.isEmpty())
 					continue;
 				Cell cell = selected.orElseThrow();
-				Harness evaluator = cell.evaluator().orElse(null);
-				Sha256 definition = Sha256.of(schema.toJson(contract, test, evaluator).getBytes(UTF_8));
-				SessionPort trials = trialSessions(evaluator);
-				List<TrialPlugin> plugins = List.copyOf(pluginSelection.apply(evaluator));
-				Harness pilotEvaluator = null;
-				if (shared)
-					pilotEvaluator = evaluator;
-				PilotConditions conditions = new PilotConditions(cell, pilotEvaluator, trials, definition,
-					controlIdentity(files, selection, trials, evaluator, plugins), plugins);
-				String key = PilotResult.key(test.id(), pilotEvaluator);
+				List<TrialPlugin> plugins = List.copyOf(pluginSelection.apply(cell.evaluator().orElse(null)));
+				PilotConditions conditions = conditionsFor(contract, test, cell, shared, files, selection, plugins);
+				String key = PilotResult.key(test.id(), conditions.evaluator());
 				PilotResult earlier = stored.get(key);
-				if (earlier != null && earlier.ranIn(definition, cell.id(), conditions.control()))
+				if (earlier != null && conditions.matches(earlier))
 				{
 					matching.add(key);
-					if (earlier.appliesTo(definition, cell.id(), conditions.control()))
+					if (earlier.appliesTo(conditions.definition(), cell.id(), conditions.control()))
 					{
 						pilots.put(key, earlier);
 						continue;
@@ -552,6 +575,31 @@ public final class GuardPilot
 		for (Pilot pilot : pending)
 			pilots.put(pilot.key(), pilot.result());
 		return pilots;
+	}
+
+	/**
+	 * Builds the identities used both to reuse a stored pilot and to confirm its proposal.
+	 *
+	 * @param contract the proposal's contract
+	 * @param test the prompt test
+	 * @param cell the selected pilot cell
+	 * @param shared whether the persisted pilot key includes the evaluator
+	 * @param files the control snapshot's identity
+	 * @param selection the files the control trials receive
+	 * @param plugins the trial plugins in installation order
+	 * @return the current control conditions
+	 */
+	private PilotConditions conditionsFor(Contract contract, PromptTest test, Cell cell, boolean shared, Sha256 files,
+		SourceSelection selection, List<TrialPlugin> plugins)
+	{
+		Harness evaluator = cell.evaluator().orElse(null);
+		Sha256 definition = Sha256.of(schema.toJson(contract, test, evaluator).getBytes(UTF_8));
+		SessionPort trials = trialSessions(evaluator);
+		Harness pilotEvaluator = null;
+		if (shared)
+			pilotEvaluator = evaluator;
+		return new PilotConditions(cell, pilotEvaluator, trials, definition,
+			controlIdentity(files, selection, trials, evaluator, plugins), plugins);
 	}
 
 	/**
@@ -774,6 +822,16 @@ public final class GuardPilot
 	private record PilotConditions(Cell cell, Harness evaluator, SessionPort trialSessions, Sha256 definition,
 		Sha256 control, List<TrialPlugin> plugins)
 	{
+		/**
+		 * Checks that a stored result describes these controls.
+		 *
+		 * @param result the stored pilot
+		 * @return whether it ran under these conditions
+		 */
+		private boolean matches(PilotResult result)
+		{
+			return result.ranIn(definition, cell.id(), control);
+		}
 	}
 
 	/**

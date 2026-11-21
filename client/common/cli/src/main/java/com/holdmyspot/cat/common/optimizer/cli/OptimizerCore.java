@@ -2962,13 +2962,44 @@ public final class OptimizerCore implements Core
 		if (loaded.isConfirmed())
 			fork = fork.including(participants(root, derived));
 		PluginCheck plugin = pluginCheck(root, loaded, fork);
-		Proposal proposal = proposal(root, loaded, fork, derived, pilotFile(loaded).read(), plugin);
+		Map<String, PilotResult> pilots = pilotFile(loaded).read();
+		Proposal proposal = proposal(root, loaded, fork, derived, pilots, plugin);
 		if (!proposal.isConfirmable(certificationScope))
 			throw new CommandRefusedException(proposal.confirmationRefusal(certificationScope));
-		requireParticipantsHeld(root, fork, derived, trialSelection(root, loaded, derived));
+		SourceSelection selection = trialSelection(root, loaded, derived);
+		requireParticipantsHeld(root, fork, derived, selection);
+		requireFreshPeerPilot(loaded, fork, derived, selection, pilots);
 		List<CampaignEvent> events = new ArrayList<>(moveOnto(loaded, fork));
 		events.addAll(confirmation(proposal, certificationScope, reports(loaded), loaded, fork.workspace()));
 		return apply(root, loaded, events, lock);
+	}
+
+	/**
+	 * Verifies that the first proposal evaluated by a sole peer still has evidence under the current owner judge.
+	 * The evaluator probe pins the peer conditions, but a sole peer does not exercise the owner's judge version.
+	 *
+	 * @param campaign the campaign awaiting confirmation
+	 * @param fork the proposal's frozen sources
+	 * @param derived the proposal
+	 * @param selection the sources the trials receive
+	 * @param pilots the displayed pilot results
+	 * @throws IOException if the frozen sources or trial ports cannot be read
+	 * @throws CommandRefusedException if the pilot's measurement conditions changed
+	 */
+	private void requireFreshPeerPilot(Campaign campaign, ForkView fork, DerivedProposal derived,
+		SourceSelection selection, Map<String, PilotResult> pilots) throws IOException, CommandRefusedException
+	{
+		Set<Harness> evaluators = campaign.header().evaluationHarnesses();
+		if (campaign.isConfirmed() || evaluators.size() != 1 || evaluators.contains(campaign.header().harness()) ||
+			pilots.isEmpty())
+			return;
+		Harness evaluator = evaluators.iterator().next();
+		if (!guardPilot(campaign, fork).matchesStored(derived.contract(), evaluator, evaluatorPlugins(campaign).
+			get(evaluator), pilotControl(campaign, fork, derived), selection, pilots))
+		{
+			throw new CommandRefusedException("The guard pilot ran under measurement conditions that have changed. " +
+				"Run `start` for the same target to see the proposal with a refreshed guard pilot before confirming it.");
+		}
 	}
 
 	/**
@@ -3946,13 +3977,9 @@ public final class OptimizerCore implements Core
 		// Control trials cannot run without dependents that they cannot remove
 		if (!controlRefusals(campaign, fork, derived, plugin).isEmpty())
 			return Map.of();
-		FileInventory inventory = fork.inventory();
 		PilotFile file = pilotFile(campaign);
-		Overlay control = ControlSource.of(fork.workspace(), inventory, relativeTarget(campaign),
-			derived.contract().projectRemovals(), scope.json());
-		SessionPort owner = sessions(campaign);
-		GuardPilot pilot = new GuardPilot(owner, trialSessions(campaign, owner), fork.workspace(), relativeTarget(campaign),
-			judgePrompt(campaign), schema, scope.json(), campaign.ceiling());
+		Overlay control = pilotControl(campaign, fork, derived);
+		GuardPilot pilot = guardPilot(campaign, fork);
 		Set<Path> excluded = PromptTestLocations.excluded(derived.contract(), relativeTarget(campaign), root);
 		// Each decided trial is stored as soon as it is decided, so that a command that ends before the pilot does
 		// loses only the trials in flight
@@ -3970,6 +3997,36 @@ public final class OptimizerCore implements Core
 		}
 		file.write(pilots);
 		return pilots;
+	}
+
+	/**
+	 * Returns the control overlay of the exact sources the proposal's pilot sees.
+	 *
+	 * @param campaign the campaign
+	 * @param fork the proposal's frozen sources
+	 * @param derived the proposal
+	 * @return the control overlay
+	 * @throws IOException if a frozen source cannot be read
+	 */
+	private Overlay pilotControl(Campaign campaign, ForkView fork, DerivedProposal derived) throws IOException
+	{
+		return ControlSource.of(fork.workspace(), fork.inventory(), relativeTarget(campaign),
+			derived.contract().projectRemovals(), scope.json());
+	}
+
+	/**
+	 * Binds the pilot to the owning judge and each selected evaluator's trial port.
+	 *
+	 * @param campaign the campaign
+	 * @param fork the proposal's frozen sources
+	 * @return the guard pilot
+	 * @throws IOException if the trial ports or judge prompt cannot be read
+	 */
+	private GuardPilot guardPilot(Campaign campaign, ForkView fork) throws IOException
+	{
+		SessionPort owner = sessions(campaign);
+		return new GuardPilot(owner, trialSessions(campaign, owner), fork.workspace(), relativeTarget(campaign),
+			judgePrompt(campaign), schema, scope.json(), campaign.ceiling());
 	}
 
 	/**

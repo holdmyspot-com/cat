@@ -2730,6 +2730,59 @@ public final class OptimizerCoreTest
 	}
 
 	/**
+	 * After the owner's judge changes, a peer-only proposal must be shown with a fresh pilot before confirmation.
+	 *
+	 * @throws Exception if a fixture or command fails
+	 */
+	@Test
+	public void refreshesPeerPilotForChangedJudge() throws Exception
+	{
+		// Requirement: R-L7
+		try (TemporaryDirectories cleanup = new TemporaryDirectories())
+		{
+			Path target = Path.of("CLAUDE.md");
+			Path entry = Path.of("AGENTS.md");
+			Repository repository = repository(cleanup, _ -> derivation(OptimizerCoreTest::keepFirstTest),
+				Set.of(target, entry));
+			Files.writeString(repository.root().resolve(entry), "Read CLAUDE.md for the shared instructions.\n");
+			configure(repository.root(), "{\"codex\":{\"plugins\":[]}}");
+			SessionScript peer = sharedPeer(repository, target, entry, cleanup);
+			String id = output(repository, List.of("start", target.toString(), "--harness", "codex")).
+				path("campaign").asString();
+			Path heldOut = repository.directory(id).resolve("held_out");
+			Path snapshot = heldOut.resolve("campaign.json");
+			Path pilot = heldOut.resolve("pilot.json");
+			byte[] originalSnapshot = Files.readAllBytes(snapshot);
+			byte[] originalPilot = Files.readAllBytes(pilot);
+			SessionScript owner = repository.sessions();
+			int ownerRequests = owner.requests().size();
+			int peerRequests = peer.requests().size();
+			int newVersion = owner.port().judgeVersion() + 1;
+			owner.port().judgeVersion(newVersion);
+
+			ObjectNode refusal = output(repository, List.of("confirm", id), 1);
+
+			requireThat(refusal.path("message").asString(), "refusal").contains("guard pilot").contains("`start`");
+			requireThat(Files.readAllBytes(snapshot), "snapshot").isEqualTo(originalSnapshot);
+			requireThat(Files.readAllBytes(pilot), "pilot").isEqualTo(originalPilot);
+			requireThat(owner.requests().size(), "ownerRequests").isEqualTo(ownerRequests);
+			requireThat(peer.requests().size(), "peerRequests").isEqualTo(peerRequests);
+			int authorRequests = owner.requests(SessionRole.CONTRACT_AUTHOR).size();
+			requireThat(output(repository, List.of("start", target.toString())).path("campaign").asString(),
+				"refreshedCampaign").isEqualTo(id);
+			requireThat(owner.requests(SessionRole.CONTRACT_AUTHOR).size(), "authorRequests").isEqualTo(authorRequests);
+			requireThat(owner.requests(SessionRole.TRIAL), "ownerTrials").isEmpty();
+			requireThat(peer.requests(SessionRole.TRIAL).size(), "peerTrials").isEqualTo(2 * GuardPilot.TRIALS);
+
+			output(repository, List.of("confirm", id));
+			Campaign confirmed = repository.load(id);
+			String cell = confirmed.contract().cells().getFirst().id();
+			requireThat(confirmed.identity().valueOf(cell, MeasurementCondition.JUDGE), "judgeVersion").
+				isEqualTo(String.valueOf(newVersion));
+		}
+	}
+
+	/**
 	 * Exercises a missing peer plugin and a peer loader that does not load the target in the same project.
 	 *
 	 * @param repository the shared campaign's project and owner
