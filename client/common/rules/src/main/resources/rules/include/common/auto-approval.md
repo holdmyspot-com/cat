@@ -1,4 +1,4 @@
-# Approval-Ready Commands
+# Commands for Auto Approval
 
 ## Design Goals
 

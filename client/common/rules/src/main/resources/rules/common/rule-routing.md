@@ -188,7 +188,7 @@ session, or when defining or changing a resumable workflow's controller or its s
 
 When writing a shell command that may need approval or a sandbox exception, or that an approval reviewer agent may
 judge before it runs, such as Claude Code's auto mode classifier or Codex's automatic approval reviewer, lazy load
-`../include/common/approval-ready-commands.md`.
+`../include/common/auto-approval.md`.
 
 When a recommendation, procedure, or workflow relies on an input, authority, handoff, or deferred action; before
 running a search across a directory tree, or a command that prints files or records whose size you have not
