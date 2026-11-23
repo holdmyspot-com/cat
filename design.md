@@ -153,6 +153,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Variable | A named input of a prompt test, declared in its `## Variables` section and written `{{name}}` in its turns, assertions and workspace files ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Test case | A prompt test with one value for each of its variables, together with its expected outcome. The contract author writes the test cases. Every trial of the same values is a trial of the same test case ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Expected outcome | The result that a compliant reply gives for a test case, such as the date that the turn asks for. CAT splits test cases into parts by it, and adds to every prompt test an assertion that the reply's result matches it ([§6.3](#63-prompt-tests-and-test-cases)). "Expected outcome" never means a trial's pass or fail result. |
+| Boundary class | A snake_case label that the contract author gives each test case of a prompt test for the kind of input boundary it exercises, such as `same_day`, `crosses_midnight` or `arrives_exactly_at_midnight`. Every class has test cases in both parts, and a formal failure tells development its test case's class, never its values ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Held-out part | The test cases of each prompt test that only formal trials, control trials of an attempt and the incumbent's baseline trials draw. No session that shapes a candidate sees them ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Workspace file | A file in a prompt test's `workspace/` directory, or the copy of the file or directory that a symbolic link there reaches. CAT copies it into each trial's workspace at its path below `workspace/`, replacing each variable in its name, and in the content of a file from a test root, with the test case's value ([§6.3](#63-prompt-tests-and-test-cases)). |
 | Value generator | A function built into CAT that expands a seed and parameters, such as a line count, into the text of a workspace file, giving the same bytes on every machine ([§6.3](#63-prompt-tests-and-test-cases)). |
@@ -162,6 +163,7 @@ platforms, Docker or another packaged runtime, and product feedback submission.
 | Reply | Every assistant message the trial agent sends during one turn, in order: its interim messages, such as a progress note before a tool call, and its final response (D29). |
 | Built-in tool | A tool that ships with CAT and decides one assertion from the trial record without a model. An assertion names it in its `tool` key, and its `on_tool_failure` key says whether a failure of the tool fails its assertion or leaves the assertion to the judge ([§6.4](#64-judge)). |
 | Trial record | The normalized record of one trial that CAT builds from the harness events and the trial's file changes. Built-in tools read it, and the judge receives it as its evidence section ([§6.4](#64-judge)). |
+| Verdict record | The stored verdict of one judged assertion under one key: the test case, the assertion, the judge's identity and the evidence that the judge read. A later trial with the same key takes the verdict and starts no judge session ([§6.4](#64-judge)). |
 | Decision procedure | The built-in tools plus the frozen judge, which together give each assertion of a trial its pass label ([§2.1](#21-claims), [§6.4](#64-judge)). |
 | Control trial | A trial of the incumbent with the target prompt file emptied, its dependents removed and the rest of the prompt system unchanged, which measures each assertion without the prompt ([§2.3](#23-sequential-tests), [§4.4](#44-trial-staging)). |
 | Incumbent trial | A trial of the incumbent, paired with a candidate formal trial and running its test case, which measures each assertion with the prompt system that the candidate would replace ([§2.3](#23-sequential-tests)). Baseline trials also run the incumbent, but they draw their own test cases and measure the whole trial. |
@@ -1546,6 +1548,7 @@ optimizer never starts its sessions in place (user ruling, 2026-11-07). Its data
 		test case's values and expected outcome, and the salt of the split;
 	- the guard pilot's trial records. Pilot format 5 writes `failed_trials` for trials that ended without a verdict.
 		CAT also reads formats 3 and 4, which used `failed_runs`, and preserves the pending trials stored by format 4;
+	- the verdict records of the campaign, for both parts ([§6.4](#64-judge));
 	- one record file per logical trial;
 - the base copy of each trial plugin ([§4.4](#44-trial-staging));
 - candidate overlays, and staged sources, which are caches: CAT deletes a staged source once its snapshot is no longer
@@ -2354,7 +2357,8 @@ Work on what the author is drafting is a contract tool, a command that the reque
 
 - `contract check` applies to the proposal file and the draft directory, as they stand, every validation that CAT
 	applies when the session ends, and prints every problem at once with its file and line or its JSON path. It also
-	prints each prompt test's number of distinct expected outcomes. It does not split them into parts, so that the author
+	prints each prompt test's number of distinct expected outcomes and each boundary class's number of test cases and
+	distinct expected outcomes. It does not split them into parts, so that the author
 	cannot tell which of its test cases are held out; CAT checks the split when the session ends
 	([§6.3](#63-prompt-tests-and-test-cases)).
 - `contract workspace` writes one test case's workspace files into a new directory that the author names outside the draft directory; the
@@ -2389,8 +2393,9 @@ Aggregate counts never stand in for the items themselves. The proposal that CAT 
 	and the minimum session count ([§6.6](#66-trial-profiles));
 - every prompt test with its risk rank, which allocation uses: the requirements it proves; its scenario, marked as
 	recorded, created by the contract author, or recorded and edited, with an edit shown as a difference from the recorded
-	file; its applicability; its test cases with their values and expected outcomes, and the number of distinct expected
-	outcomes in the development part and in the held-out part ([§6.3](#63-prompt-tests-and-test-cases)); its time limit;
+	file; its applicability; its test cases with their values, boundary classes and expected outcomes, and the number of
+	distinct expected outcomes in the development part and in the held-out part, for the test and for each boundary class
+	([§6.3](#63-prompt-tests-and-test-cases)); its time limit;
 	and any material interaction it cannot cover;
 - for every requirement that applies only under a trigger, that trigger and at least one test where it is absent, whose
 	expected behaviour is that the obligated action does not occur (D40);
@@ -2433,11 +2438,12 @@ The scope is part of the confirmed contract, so changing it later is a revision
 **Guard pilot (user ruling, 2026-10-10).** A guard assertion states that the agent passes it almost always even without
 the target prompt. If that is false, the control comparison on it needs many pairs or ends the attempt, so the user
 should learn it before confirming. After a proposal validates and before CAT presents it, CAT runs about 20 control
-trials per prompt test in that test's weakest cell in each requested harness. It draws only development test cases and
+trials per prompt test in that test's weakest cell in each requested harness, and at least 2 trials of each boundary
+class of the test (user ruling, 2026-11-23). It draws only development test cases, which every class has, and
 decides them with the proposed decision procedure. As in every trial, a failed built-in tool with `on_tool_failure: fail` fails only its
 own assertion, and the judge still decides the others ([§6.4](#64-judge)), so a fail-mode tool that fails every control
 trial leaves no judged guard without a rate (user ruling, 2026-11-16). The proposal shows each
-assertion's pass rate in those trials, and why each trial that
+assertion's pass rate in those trials, the assertion disagreements below, and why each trial that
 ended without a decision ended, such as a built-in tool that the trial's record cannot decide, so that the user can
 correct the proposal. A guard assertion whose rate is below the minimum pass rate `p_min` is a warning, not a refusal:
 the contract author may have misclassified it, its test cases may be too hard, or the agent may really fail it without
@@ -2445,6 +2451,29 @@ the prompt, which only the user can judge. A revision reruns the pilot for each 
 [§7.1](#71-shared-optimization-across-harnesses), and the contract author's revision brief includes the latest pilot
 results. Pilot trials are targeted:
 they never enter representative, formal or baseline counts and spend no allowance.
+
+**Assertion agreement (user ruling, 2026-11-23).** The expected-outcome assertion and the contract author's own assertions
+judge the same replies, and nothing else stops an assertion from asking more of a reply than the expected outcome does.
+A prompt test with the expected outcome "00:00 the next day, in any equivalent time format" and an assertion that
+asks for "an unambiguous day" fails the reply "It arrives at midnight", which the outcome accepts, and every such
+failure counts against the minimum pass rate although the reply is compliant. Only an assertion stricter than the
+expected outcome does this. A looser one changes no verdict, because a trial passes only when every assertion passes,
+`expected_outcome` included. CAT therefore checks one direction, with the pilot's own trials and no further session:
+
+- A **disagreement** is a pilot trial in which `expected_outcome` passes and a judged guard assertion fails. A built-in
+	tool's failure under `on_tool_failure: fail` is no disagreement, because the tool then defines its assertion. A
+	judged effect assertion is out of scope: without the target prompt it fails by design, so its failure beside a
+	passing `expected_outcome` says nothing about its wording.
+- The proposal lists, for each assertion with at least one disagreement, its disagreements by boundary class, and for
+	each one the test case, the reply and both rationales. The flag is a warning, not a refusal, like a guard below
+	`p_min`: the judge may have erred, or `expected_outcome` may have passed a reply that really fails the assertion, which
+	only the user can judge. The contract author's revision brief repeats the flags, and a revision that rewrites the
+	assertion or the expected outcomes reruns the pilot for the affected cell as for any change.
+- Replies that are identical for one test case get one verdict per assertion ([§6.4](#64-judge)), so a flag is not
+	one judge's inconsistency on one reply.
+- The contract author's duty comes first and this check is the net: a requirement that asks more of the reply than its
+	result, such as the day of an arrival, is stated in the expected outcome of every test case it covers, so that the
+	assertion and the expected outcome cannot disagree ([§6.3](#63-prompt-tests-and-test-cases), test design rule 4).
 
 A pilot trial, or its judge, that ends without a pass or fail outcome because of a provider error, a crash or a session
 failure is an infrastructure attempt, as a formal trial's is: the same logical trial runs again with the same test
@@ -2487,8 +2516,11 @@ CAT, not the contract author, does these things:
 - refuses a proposal in which a Codex prompt file binds a model below version 6 ([§6.6](#66-trial-profiles));
 - refuses a target that would not load in trials ([§4.4](#44-trial-staging));
 - validates every scenario and test case, gives each generated value its seed and version, splits each prompt test's
-	test cases by expected outcome, and refuses a prompt test with fewer than 2 distinct expected outcomes in either part
-	([§6.3](#63-prompt-tests-and-test-cases));
+	test cases by expected outcome, stratified by boundary class, and refuses a prompt test with fewer than 2 distinct
+	expected outcomes in either part, a test case without a boundary class, and a class that would have no test case in
+	either part ([§6.3](#63-prompt-tests-and-test-cases));
+- refuses a prompt test whose `expected_outcome` is judged although every test case's expected outcome is a bare
+	value ([§6.4](#64-judge));
 - runs the guard pilot.
 
 ### 6.2 Test distribution
@@ -2508,7 +2540,7 @@ behaviour. A prompt test that always presents the same test case cannot be certi
 candidate on that test case, so certifying on it measures the candidate on its own training data.
 
 **Test design rules (user rulings, 2026-10-13).** The contract author writes, and a test revision rewrites, every prompt
-test by three rules:
+test by four rules:
 
 1. **It proves its requirements.** It lists the requirements it proves, and its assertions check those requirements'
 	outcomes, not a mechanism that a prompt file prescribes unless a requirement names that mechanism.
@@ -2517,6 +2549,14 @@ test by three rules:
 	each trial; it never reduces the number of trials.
 3. **It is organic.** No turn, workspace file or file name tells the agent the expected outcome or that it is being
 	tested.
+4. **Its assertions ask no more and no less of a reply than its expected outcomes (user ruling, 2026-11-23).** A
+	judged assertion about what a reply states accepts every reply that the expected outcome of each test case it
+	covers accepts, in every notation the outcome accepts, and rejects the replies that the outcome rejects. Where a
+	requirement asks more of the reply than its result, such as the day of an arrival, the expected outcome of every test
+	case that the requirement covers states it, so that the assertion and the outcome say the same thing. The contract
+	author checks each such assertion against the expected outcome of every boundary class before it writes the
+	proposal; the guard pilot flags an assertion that fails a reply that the outcome accepts
+	([§6.1](#61-derivation-and-confirmation)).
 
 **Scenario format (user rulings, 2026-10-10).** A prompt test is a directory named by its case in snake_case, under
 `<root>/.cat/tests/<path>/` or `<module>/src/test/resources/<path>/` ([§8](#8-skill-and-command-interface)). It holds
@@ -2635,6 +2675,31 @@ test cases with the same values are the same test case, so CAT records a repeate
 case, and every outcome on a test case counts toward its record. "Expected outcome" never means a trial's pass or fail
 result.
 
+**Boundary classes (user ruling, 2026-11-23).** The contract author tags every test case with a **boundary class**: a
+snake_case label for the kind of input boundary that the test case exercises, chosen so that one defect of a reply can
+fail every test case of the class and no other test case. A turn that asks when a shipment arrives has the classes
+`same_day`, `crosses_midnight` and `arrives_exactly_at_midnight`. A boundary that a prompt could mishandle on its own
+is a class of its own, because a wider class hides it behind the class's other test cases, and a split that puts every
+test case of the boundary in one part leaves the other part unable to see it.
+
+- The class is the values file's `boundary_class` key of the test case. Format version 2 adds it; CAT still reads a
+	version 1 file, whose test cases have no class. The contract author tags every test case of a prompt test in the draft
+	directory, committed ones included. The class is no part of a test case's identity: tagging a committed test case, or
+	changing its tag, leaves it the same test case.
+- The classes of one prompt test partition its test cases: each test case has one class, and test cases that share a
+	normalized expected outcome share a class, because they share a part. CAT refuses a test case without a class and two
+	test cases that share an outcome and differ in class.
+- A class needs test cases in both parts, so it needs at least 2 distinct normalized expected outcomes, or one beside a
+	committed outcome of the class, which development already holds. A class with a **single case** (one distinct outcome
+	and no committed one) is refused, and so is a class that only committed test cases fill, because its test cases would
+	fall into one part and the other part could not see the boundary. The refusal names the class and does not name a part,
+	so `contract check` can print it without telling the author which test cases are held out. The author adds a test case
+	of that class with a different expected outcome, writing the outcome as the case's own result, such as the day as well
+	as the time, since test cases that share an outcome share a part; or it tags the test case with a wider class, which
+	hides the boundary again.
+- The class of a test case that a failed attempt adds is the failed group's class; the author does not write it
+	(below).
+
 **Values.** A value is text or a call to a value generator built into CAT. The contract author writes a call as
 `{"generator": "log_lines", "count": 18000}`; when it creates the test case, CAT adds a random `seed` and the
 generator's current `version`, and never changes them afterwards. Two test cases that the contract author writes with
@@ -2657,13 +2722,23 @@ assertion, a `tool` value or a file name.
 
 **Development and held-out parts (user ruling, 2026-10-10).** CAT draws a random salt when it validates a campaign's
 first proposal and keeps it for the campaign. It assigns each test case to the **development part** or the **held-out
-part** by a hash of its normalized expected outcome under the salt, each with probability ½, before any trial and
+part**, stratified by boundary class (user ruling, 2026-11-23), before any trial and
 whatever the outcomes. Normalizing applies Unicode NFC, removes leading and trailing whitespace, replaces each run of
 whitespace with one space and converts to lower case, so test cases whose outcomes differ only in spelling land in the
-same part. Splitting on the expected outcome keeps every held-out answer out of development: a split on all values
+same part.
+
+Within a prompt test, CAT orders the distinct normalized expected outcomes that no committed test case holds by the
+SHA-256 hash of the salt and the outcome, and assigns them in that order. Each goes to the part that holds fewer distinct
+outcomes of its class so far, where a committed outcome counts for development; a tie goes to the part that the hash's
+lowest bit names. So a class with 2 new outcomes has one in each part, a class with committed outcomes and one new
+outcome has the new one in the held-out part, and the two parts of a class differ by at most one outcome except where
+committed ones tip it. The assignment depends on the test's test cases and the salt only, never on a trial's outcome, and
+a test revision, which writes new test cases, splits them afresh. Splitting on the expected outcome keeps every
+held-out answer out of development: a split on all values
 together would let a held-out test case repeat a development test case's answer in a different workspace, so tuning
 could fit it. CAT refuses a prompt test with fewer than 2 distinct expected outcomes in either part, so that each part
-varies; the contract author then adds test cases.
+varies, and a class that has no test case in a part, so that each part covers every boundary; the contract author then
+adds test cases.
 
 Test cases from a committed values file belong to the development part in every later campaign, because an earlier
 campaign's development may have tuned on them and its report may have shown the held-out ones. The held-out part of a
@@ -2675,7 +2750,9 @@ sees them with the scenario and writes new test cases that differ from them.
 	development test cases only.
 - Formal trials, their control trials and the incumbent's baseline trials draw held-out test cases only.
 - A held-out test case, its reply and its judge rationale never reach a session that shapes a candidate. From a formal
-	failure, development receives only its cell, its prompt test, the assertions it failed and their behaviors. The
+	failure, development receives only its cell, its prompt test, its test case's boundary class (user ruling, 2026-11-23),
+	the assertions it failed and their behaviors. The class is a label that development test cases carry too, so it
+	tells development which kind of input failed and none of the failed test case's values. The
 	user's report may show held-out test cases.
 
 **Held-out content on disk.** Both harnesses' sandboxes limit what a session writes, not what it reads, so withholding
@@ -2693,10 +2770,12 @@ settings turn the sandbox off.
 **Development test cases after a failed attempt (user ruling, 2026-10-04).** The development part may hold no test
 case that triggers a formal failure, so development could find nothing to edit. When a certification attempt ends with
 formal failures, a contract author session receives, for each prompt test with a formal failure, that prompt test with
-only its development test cases, and each failure's cell, failed assertions and behaviors. It writes new development
-test cases for that test, at least 4, that exercise the failed assertions through that behavior, or reports with a
-reason that the confirmed test admits no 4 valid new ones (user ruling, 2026-11-01). CAT refuses a new test
-case whose normalized expected outcome equals a held-out one, and validates it like any other. When CAT refuses
+only its development test cases, and each failure's cell, boundary class, failed assertions and behaviors. It writes new
+development test cases for that test, at least 4, of the failed class, that exercise the failed assertions through that
+behavior, or reports with a
+reason that the confirmed test admits no 4 valid new ones (user ruling, 2026-11-01). CAT gives each new test
+case the group's class, refuses a new test case whose normalized expected outcome equals a held-out one, and validates
+it like any other. When CAT refuses
 the session's test cases, it sends the problems back to the same session once, without naming the part that holds a
 refused outcome, so that the session corrects them with the group still in context; that turn has a time limit of its
 own. A corrected response that CAT also refuses stops the slice with an infrastructure failure, which `run` retries
@@ -2713,15 +2792,17 @@ the wrong one when it knows only the assertion. The contract lists, per requirem
 fail, such as no tool call, a required file not read in full, a search where a read was required, a read where a
 search was required, or an unneeded call. A failed built-in tool names the behavior it detects, and the judge names
 one of the requirement's listed behaviors, or `other`, for each assertion it fails. A behavior names no content of a
-test case, so a formal failure's summary carries it to development along with the cell, the test and the failed
-assertions.
+test case, so a formal failure's summary carries it to development along with the cell, the test, the boundary class and the
+failed assertions.
 
 **Reproduction before tuning (user ruling, 2026-10-04).** A formal failure can be too rare in development to edit
 against, and an edit made without the failure in view tends to trade one rare failure for another. So after a failed
 attempt, before any prompt author session works on it, CAT reproduces each **failure group**: the formal failures that
-share a cell, a test, a failed assertion and a behavior.
+share a cell, a test, a boundary class, a failed assertion and a behavior.
 
-1. The contract author writes the group's new development test cases, as above. When it reports that the confirmed
+1. The contract author writes the group's new development test cases of the group's class, as above, so that a group
+	of failures on an arrival at exactly midnight is reproduced with test cases of that class and not with others that
+	the failed assertion could also fail. When it reports that the confirmed
 	test admits no more, the group is recorded as not reproduced, as after the round limit, and the other groups go
 	on.
 2. CAT runs reproduction trials of those test cases in the group's cell, up to 100 per round, and stops the round once
@@ -2835,6 +2916,31 @@ rejects. A trial whose tools decide every assertion, `expected_outcome` included
 halves the sessions of a test whose assertions are all mechanical. The contract author gives every assertion that a
 built-in tool can decide under these rules that tool, `expected_outcome` included.
 
+**Mechanically decidable expected outcomes (user ruling, 2026-11-23).** The expected outcomes of a prompt test are
+**mechanically decidable** when a built-in tool expression over the test case's values and `{{expected_outcome}}` passes
+every reply that states the outcome and passes no reply that the outcome rejects. The outcome is the case's own result in
+a form that a list of notations names: a number, a date or time of day, a name or word, a count or a file's content,
+whether the reply must equal it (`exact-text`), contain it (`pattern`) or contain a listed notation of it
+(`pattern` with the notations as alternatives, such as `00:00` and `12:00 am`). The outcome needs the judge only when
+acceptance depends on meaning that no list of notations or patterns captures: a paraphrase, a summary, an
+explanation or justification, or whether a reply is relevant, complete or appropriate. A reply that a listed notation
+misses but the outcome accepts is no reason to leave the judge in charge: the author gives the tool
+`on_tool_failure: judge`, which passes the listed notations without a session and leaves only the other wordings to the
+judge.
+
+The contract author gives `expected_outcome` a tool whenever its outcomes are mechanically decidable, and lists for a
+judged `expected_outcome` the one sentence that the "Judged assertions" list already requires, saying which meaning
+the judge must read. CAT does not read meaning, so it enforces only what a unit test can verify:
+
+- CAT refuses a prompt test whose `expected_outcome` has no tool when **every** test case's normalized expected outcome is
+	a **bare value**: at most 3 tokens (runs of characters without whitespace), with no `,`, `;`, `!` or `?`, and no `.`
+	that is followed by whitespace or ends the outcome. `2025-03-04`, `00:00`, `3.5` and `Ivy route` are bare values; "00:00
+	the next day, in any equivalent time format" is not. The refusal names the test and says to give `expected_outcome` a
+	tool, with `on_tool_failure: judge` when other wordings of the value are valid. A test that has even one outcome that is
+	not a bare value is not refused, because a tool must observe every test case's outcome.
+- Every other judged `expected_outcome` stays visible: the proposal shows it under "Judged assertions" with its sentence,
+	so that the user can ask for a tool through `revise`.
+
 **Built-in tools (user rulings, 2026-10-10).** A mechanical assertion names a tool built into CAT in its `tool` key. CAT
 runs the tool on the trial record with no model, and its verdict is final unless the assertion leaves a failure to the
 judge (below): the judge neither repeats nor overrides it. The built-in tools are a closed set that CAT implements and
@@ -2909,6 +3015,58 @@ order, ending with the final response. A built-in tool whose evidence the trial 
 that Claude does not report (H30), is an infrastructure failure of the decision procedure, never a pass or fail outcome;
 CAT refuses a proposal that names such a built-in tool for a harness that cannot supply its evidence.
 
+**Consistent verdicts (user ruling, 2026-11-23).** A judge can pass and fail the same reply to the same test case, and
+every such disagreement counts against the minimum pass rate although nothing about the reply differs: one reply to one
+test case was failed 6 times and passed once in one campaign. Identical evidence therefore gets one verdict per assertion,
+and a stored verdict is returned **without any model session**.
+
+- **The key.** A verdict record is stored under the SHA-256 of these parts, each delimited and length-prefixed so that no
+	two different inputs give one key:
+	1. the case: the prompt test's identifier and the test case's values, each generated value as its generator, version,
+		seed and parameters, and its expected outcome;
+	2. the assertion: its identifier, its statement with the test case's values in place of the placeholders, its
+		requirement, and the behaviors that it admits for a failure;
+	3. the judge: the harness, model and effort of the profile that judges, the judge version, and the digests of the prompt
+		template, the rubric, the decision rule and the result schema (the frozen decision procedure);
+	4. the evidence that the assertion reads: the replies of every turn in order, the evidence section (the trial record's
+		tool calls with their inputs and complete outputs, the children's activity, the files the trial changed and their
+		differences), and the results of the built-in tools that the judge receives, each with its observed value. When the
+		frozen template names the effects directory or the transcript, their bytes join the evidence, so a trial whose
+		transcript differs, as every trial's does, has no stored verdict to take.
+	The trial's identity, purpose, cell, candidate, session and times are no part of the key: a verdict is about a reply, and
+	a reply to a test case reads the same whichever trial or candidate produced it. A change to any part, such as a rewritten
+	assertion, a new judge version or a test revision, gives a new key, so a record is never edited or deleted and a stale
+	record is simply never found again. The digest leaves out the evidence section's heading, which names the trial's own
+	transcript and effects directories, so two trials with the same replies and activity have one key. A path that a reply
+	or a tool's output quotes stays as recorded, so trials whose commands print their own different paths do not share a
+	key, which costs a session and never a wrong verdict.
+- **A hit.** A trial whose judged assertions all have records under the key takes every verdict, rationale and behavior
+	from them, starts no judge session and records the trial's outcome as for any judged trial, naming the trial whose
+	session made each verdict. When some judged assertions have records, the session decides only the others, as the
+	judge request already takes the assertions that it decides.
+- **A miss.** A verdict that a valid judge result gives is written under its key once, before the trial's outcome. The first
+	verdict recorded under a key is final: a later verdict for it, such as a session that ended after another trial's
+	session did, is dropped. A judge result that does not match the result schema, or a session that fails, writes no
+	record, and the judge reruns as before.
+- **Concurrent trials.** A trial whose key matches a judge session that is running waits for that session instead of
+	starting its own, so that two trials that finish together with the same reply get the same verdict. When the running
+	session ends without a valid verdict, a waiting trial starts its own.
+- **Scope.** The records belong to the campaign and serve every part, purpose and lineage: development, race, targeted,
+	formal, control, incumbent and baseline trials and the guard pilot take and write them. A held-out test case and a
+	development one are different test cases (CAT refuses a new development test case with a held-out outcome), so their
+	keys differ and no development trial finds a held-out record. Nothing crosses a campaign: a later campaign judges again.
+- **Held-out secrecy.** The records live in the held-out directory ([§4.1](#41-storage)), which every session whose output
+	reaches development is denied reading, and only CAT reads and writes them. A development session sees a verdict only as
+	it sees any development trial's, and a formal trial's verdict reaches development only as the failure summary it already
+	is.
+- **Judge disagreement.** A record names the judge that made it, so the frozen judge's verdict and a development judge
+	candidate's verdict for the same evidence are two records and the frozen verdict counts for the trial, as before
+	(development judge, above). A hit starts no judge, so it adds no shadowed trial, no spot check and no
+	agreement count: a comparison counts once, when its sessions ran. A candidate therefore qualifies on distinct judgments,
+	not on repeats, and a test whose replies repeat may never reach 299 of them and keep the frozen judge, which costs
+	few sessions because they repeat. Frozen sessions that disagree on one key cannot arise in a campaign, since the
+	second is never started or its verdict is dropped.
+
 **Trial record.** CAT renders one normalized **trial record** from the trial's harness events and its file changes, so
 neither a built-in tool nor the judge reads a log. It holds, per turn and in order: every tool call with its input, its
 exit status when the harness reports one (H30) and its complete output; each child agent's activity in the same form;
@@ -2949,6 +3107,8 @@ session on the same evidence is not a change. A change to a built-in tool's beha
 how assertions are decided, so it gets a new tool name or version in the same way as a value generator.
 
 CAT runs the built-in tools first. When they decide every assertion, CAT records the outcome without a judge session.
+Before it starts a judge session, CAT takes every verdict that a verdict record already holds for the trial
+(consistent verdicts, below).
 Otherwise the judge decides every assertion that no tool decided, whether or not a tool failed under
 `on_tool_failure: fail` (user ruling, 2026-11-16): one assertion's failure policy never decides another assertion, so a
 failed tool fails its own assertion and the judge reads the rest as usual, in development, race, formal, control,
@@ -4204,6 +4364,11 @@ These decisions go beyond what the product requirements fix. Each was chosen for
 | D150 | In a runner conversation, end a Claude turn at the first `idle` that follows the turn's reply, whatever background work is listed; trials and every other use keep ending at `idle` with an empty task list (user ruling, 2026-11-16). | A user message written while Claude works is queued and answered (H41), nothing in a conversation is scored per turn, and a real user can type at idle; in the E2, E3 and E5 runs on Claude the second turn stayed open 40 to 50 minutes because `run --background` kept the driver listed, so the asking session could not send its next message. The trial rule exists because each trial turn's reply is judged and must be whole (H17, H24, H25), which no conversation turn needs. | A conversation turn may end while a child or command still runs, and the child's completion reply then arrives as a late follow-up reported on the next turn. A conversation that must see a child's result waits for it itself. Codex is unaffected: its turn already ends while a background command runs. |
 | D151 | Keep every interrupted nested session, whatever its options: when its launcher, its server or the requesting session ends before the nested session does, the server stops its processes and retains its slot, with the project copy, home, harness session and `session.json`, and slot reuse passes it over. The session that started the nested session continues the same harness session in the same slot with `--resume <session-id>`, and the optimizer resumes an interrupted trial, or else discards its nested session as corrupt and reruns the trial. Every nested session keeps its harness session in its home, its results are copied at a normal end, a nested session that ended normally cannot be resumed, retained slots do not count toward the concurrency limit, and a retained nested session is deleted when it is resumed to its end, when the optimizer discards it, or with the directory that holds its slot (user rulings, 2026-11-19). | "Interruption is something that happens, not something you plan for ahead of time" (user, 2026-11-19): in E1 a parent restart lost a certified campaign although the launch named `--keep-run`. A copy without the home cannot continue the harness session, and with it the campaign's owner (D17); moving campaigns between sessions was ruled out (2026-11-10); moving the slot would break the absolute paths in transcripts and worktree registrations; a time limit could delete an uncollected certified campaign. Both harnesses keep the session's ID across a resume (P18, P19). | Disk for each retained slot (2.4 GB in E1) until one of the three deletions, with no bound on their number; a harness session and login copy in every nested session's home while the session lasts; a resume mode in both runners and a discard request. A resumed trial's context holds its interrupted turn's prompt and partial work, and its project copy that turn's file changes, before the turn is sent again, and Claude Code adds an empty reply to the unanswered prompt (P18). A top-level nested session whose resume cannot continue keeps its slot until the requesting session's directory goes. |
 | D152 | One owner develops a shared candidate against all requested harnesses and certifies one frozen snapshot in a single attempt ([§7.1](#71-shared-optimization-across-harnesses)). | Per-harness development results expose regressions before formal testing. A certificate identifies the exact snapshot and every harness in which it passed. | Each requested harness needs its own evaluation route, applicable pilot and formal evidence. All evaluations share one campaign budget, attempt index and delivery. |
+| D153 | Store each judged assertion's verdict under a key of the case, the assertion, the judge's identity and the evidence read, return it to any later trial with the same key without a model session, keep the first verdict final, make a concurrent identical trial wait for the running session, and scope the records to the campaign across parts (user ruling, 2026-11-23). | Judging every trial afresh let one reply to one test case be failed 6 times and passed once, and each judge error counts against the minimum pass rate. Keying by the reply text alone would ignore a tool record that the assertion reads. A cache that spans campaigns would carry one campaign's held-out verdicts into another's records, and one that is keyed by the trial would never hit. | The key must hash a complete rendering of the evidence, so a template that reads the transcript never hits. A candidate judge qualifies only on distinct judgments, and a trial waits for an identical trial's session. A wrong first verdict is final for every identical trial. |
+| D154 | Tag every test case with a boundary class, split each prompt test's test cases by expected outcome stratified by class, and refuse a test case without a class and a class that would fall into one part, including a class with a single case (user ruling, 2026-11-23). | A hash of the outcome alone put the only test case with an arrival at exactly midnight into the held-out part, so no development or reproduction case exercised it and 5 of 29 formal trials failed on it. Balancing within a class keeps a stable split from the test's own test cases and the salt. Refusing only classes that hash into one part would let a blind correction fail often, because the author cannot see the parts, and the derivation allows one correction turn. Exempting a single-case class would keep the hole that this closes. | A class needs 2 distinct outcomes, so the author writes outcomes that state each case's own result, and a wide class that satisfies the split can still hide a boundary. A split depends on the whole case set, so it is recomputed for a revised test. |
+| D155 | Tell the reproduction author the failed test case's boundary class and give the failure group, its new test cases and the formal failure summary that class, never the failed values (user ruling, 2026-11-23). | A summary of the cell, test, assertion and behavior let a group about a failed assertion be reproduced with test cases of other kinds, so 400 reproduction trials never exercised the failed boundary. Telling the values would reveal a held-out test case. | A class label that the author chose too widely describes the failure less sharply, and groups that differ only in class reproduce separately. |
+| D156 | Check assertion wording against the expected outcome in the guard pilot, in one direction: a judged guard assertion that fails where `expected_outcome` passes is a disagreement that the proposal lists by class with the reply and both rationales, as a warning; the contract author also states in each expected outcome what a requirement asks beyond the result (user ruling, 2026-11-23). | An author-only check cannot be verified, a CAT check of the prose needs a model or a heuristic that no unit test verifies, and a reference reply for each class needs a synthetic trial record and an extra judge session for every effect assertion. A looser assertion changes no verdict, so the opposite direction needs no check. The pilot already runs judged control trials and the verdicts exist, so the check costs no session. | The pilot grows to 2 trials per class when a test has more than 10 classes, a disagreement can be the judge's error, and an effect assertion's wording is not covered. |
+| D157 | Refuse a judged `expected_outcome` when every test case's expected outcome is a bare value, and make the contract author give a built-in tool whenever the outcomes are mechanically decidable, defined as a value whose notations a list names (user ruling, 2026-11-23). | A judge session for `expected_outcome` is the dearest part of a trial, and it cost inconsistent verdicts on a reply that a text match decides. Having CAT recognise a decidable outcome in prose needs a model or a heuristic that no unit test verifies (D144), so CAT refuses only the case that a defined syntax identifies and shows every other judged outcome with its reason. | An outcome that is not a bare value but is decidable stays with the author's duty and the user's review, so CAT can miss one. |
 
 ## 14. Acceptance evidence
 
@@ -4216,12 +4381,12 @@ behavior that depends on a third-party tool, such as Git, by a unit test that ru
 | Goal | Required evidence |
 |---|---|
 | G1 | **End-to-end in both harnesses:** a deliberately deficient prompt system is improved in the optimization worktree; unselected attempts never touch the base; a certified, non-regressing candidate is delivered as a Git diff that includes its certification record, after which nothing of the campaign remains under `.cat/sessions/`. **Real Git:** a base with staged, unstaged or untracked changes, an empty untracked regular file included, is refused before any fork, and a base whose only untracked entries are character devices forks without them. **Removal:** keeping the incumbent instead of a regressing certified candidate also removes the campaign's files, an uncertified campaign keeps its files, and an interrupted removal completes on the next command (driver and delivery tests, because a regressing certified candidate costs hundreds of trials end to end). **Delivery:** disjoint post-fork base edits survive; same-file changes stop for direction; a target prompt file that differs in the base from the fork's record stops delivery before any write even when the candidate does not edit it, while a delivery of test files alone is not stopped by it; a fault between writes resumes without duplicating or overwriting. **Uncertified outcomes:** they leave the base unchanged unless the user explicitly chooses. An improvement proven by an inconclusive attempt is offered and, when kept, delivered as `improved, not certified`; when several attempts qualify, the best candidate so far is offered, even after later candidates fail. Driver and delivery tests prove these, because an uncertified certification attempt costs hundreds of trials end to end. An accepted uncertified candidate is labelled `not certified`. **Authoring:** an attempt whose manifest omits a changed hunk or cites an unknown test case is rejected; the minimality pass removes a hunk that the promotion replays do not need and keeps one they do; a weak round's 3 attempts promote only the best accepted one, unless the accepted attempts tie or classify one failing kind differently, when they race; the round after a revert and the round before a stalled-development pause are race rounds of 3 attempts per failing prompt test (6 where every assertion has a tool); a racer is dropped when another racer's lower 95% Wilson bound exceeds its upper bound in a development cell and no cell favours it, or when its upper bound falls below the working candidate's retained lower bound, always on equal prefixes; racers meet the same draw at the same position; the race ends with one racer, none, or 100 outcomes per cell and the fewest failures; the winner is minimised and promoted with its counts only if the pass leaves it unchanged; no racer is committed or certified, and the commit gate cannot pass during a race; an attempt that fixes some triggering test cases but not all is promoted; a triggering test case gets extra runs until its streak is unlikely for the working candidate; a promoted candidate that falls clearly below its predecessor is reverted; each attempt of a round receives its own approach (driver tests with a fake `SessionPort`). |
-| G2 | **Proposal content:** every file that trials receive from the base source, every hook whose output differs in a trial's workspace, every workspace file and its source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per applicable prompt test in each selected harness's weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns only cells with changed pilot inputs, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a target that trials would not load is refused, a participating prompt file that does not load from the project and has no mapping is listed, and a mapped file that differs from the base is a warning. A prompt file may map into several plugins, and each receives it. `start` refuses a missing or external import and a hook that fails only in a trial's workspace, and a candidate that loads or runs a project file its trials do not receive contributes no candidate. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** the proposal lists, for each assertion that has no tool, why no built-in tool decides it; every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key or section, a workspace link that is absolute, is missing, leaves the project, forms a cycle, holds itself or reaches a prompt test directory, a link that copies a prompt file, a link that Git records where the checkout holds another kind of file, a malformed variable, an undeclared or generated placeholder outside workspace-file contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** workspace files are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation defaults to the weakest cell for each applicable test and harness unless the user chooses another certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. |
+| G2 | **Proposal content:** every file that trials receive from the base source, every hook whose output differs in a trial's workspace, every workspace file and its source, including linked and external files, the symbolic-link report, and the volume warning. **Confirmation:** nothing but the guard pilot runs before confirmation; feedback produces a complete new proposal. **Guard pilot:** it runs about 20 control trials per applicable prompt test in each selected harness's weakest cell on development test cases only, the proposal shows each assertion's rate and warns on a guard below the minimum pass rate `p_min`, a revision reruns only cells with changed pilot inputs, and its trials enter no count and spend no allowance. **Loading:** conditional and later-loaded prompt files are covered, with the loader configuration fixed from the fork through delivery. **Refusals:** forbidden edits are rejected (any edit to an external file, link and mode changes, loader configuration), and a proposal that lists a conflict cannot be confirmed; a target that trials would not load is refused, a participating prompt file that does not load from the project and has no mapping is listed, and a mapped file that differs from the base is a warning. A prompt file may map into several plugins, and each receives it. `start` refuses a missing or external import and a hook that fails only in a trial's workspace, and a candidate that loads or runs a project file its trials do not receive contributes no candidate. **Unavailable claims:** remote governing instructions, image/audio/video outputs and response-contingent obligations make the claim unavailable instead of being omitted. **Contract completeness:** the proposal lists, for each assertion that has no tool, why no built-in tool decides it; every prompt test gets the expected-outcome assertion, a guard exactly when every other assertion is one; a scenario that declares that id, a missing section, prose in a section of key-value pairs, a `## Scenario` or turn of key-value pairs without a `description`, an unknown key or section, a workspace link that is absolute, is missing, leaves the project, forms a cycle, holds itself or reaches a prompt test directory, a link that copies a prompt file, a link that Git records where the checkout holds another kind of file, a malformed variable, an undeclared or generated placeholder outside workspace-file contents, an unknown built-in tool, an `on_tool_failure` other than `fail` or `judge` or without a `tool`, or a check whose evidence the harness cannot supply is refused. **Test cases:** workspace files are copied with placeholders replaced in names and UTF-8 contents and other files copied unchanged; an invalid file-name value or a name collision is refused; a generator call gets a seed and version once, two identical calls get different seeds, and each version expands to the same bytes on every run; the values file round-trips and rejects unknown fields. **Profiles:** a file binding a complete profile yields one cell; an unbound file yields one cell per inventory profile; a partial binding fixes only its dimension; a user restriction narrows the set. **Scope and templates:** confirmation defaults to the weakest cell for each applicable test and harness unless the user chooses another certification scope, the proposal shows the cells, weakest cells and minimum session count of each choice, and a described scope outside the inventory is refused; a prompt test with fewer than 2 distinct expected outcomes in either part is refused; the minimum pass rate outside 0.80–0.99 or with more than two decimals is refused. **Boundary classes:** a test case without a class, a class with a single distinct outcome, a class that only committed test cases fill, and two test cases that share an outcome and differ in class are refused; the split puts every class with 2 new outcomes into both parts, whatever the salt; a version 1 values file reads with untagged test cases. **Assertion agreement:** the guard pilot draws at least 2 trials of each class and lists each judged guard assertion that fails where `expected_outcome` passes, by class, as a warning. **Mechanical expected outcome:** a judged `expected_outcome` whose every outcome is a bare value is refused, and one with another outcome is not. |
 | G3 | **Statistical fixtures:** the joint budget sequence; exact decisions at the boundary, including equality not certifying; the [§2.4](#24-caps) caps and all-pass minimums; deficiency thresholds; improvement following from certification plus deficiency; and the proven-better and proven-worse decisions at `β_i / K` against frozen incumbent bounds; caps, all-pass minimums, bets, the commit gate and the baseline at minimum pass rates other than 0.95; the control and incumbent e-values on fixed pair paths, including `not certified: below control`, `not certified: below incumbent` and certification held back until both comparisons are decided. **Budget persistence:** restarts, revisions and resumed cancellations never reset the budget, while a new campaign does. **Report wording:** the claim identifies the frozen judge and its running harness, the benchmark, the held-out part and the conditions. A weakest-only claim lists the certified profile for each applicable test and harness. |
 | G4 | **Assignment and order:** formal draws only after freeze; adoption in assignment order regardless of completion order; post-decision outcomes never change a decision. **Retries:** they cannot discard outcomes. **Evidence separation:** targeted trials and development outcomes, racers' included, never enter formal counts, and a race's drop decisions use equal prefixes so completion order cannot change them. **Staging:** it excludes optimizer state. **Dependence:** each trial has its own isolated project and harness home, staging excludes optimizer state, and a fresh judge receives only that trial's evidence, as required by [§2.6](#26-validity-conditions-and-assumption-review). The invalid-assumptions outcome is reserved for a future detector. **Held-out test cases:** the split by normalized expected outcome is fixed at the first validated proposal, and outcomes that differ only in case or whitespace share a part; committed test cases go to development and a new test case sharing a committed outcome does too; development trials, targeted runs and prompt author sessions receive only development test cases; formal and baseline trials draw only held-out ones; a formal failure reaches development only as its cell, test, failed assertions and behaviors, and the development test cases added after it never share a held-out expected outcome and join development only after two reproduction failures with the failure's behavior in its cell or a stressed profile, the contract author replacing test cases that do not reproduce, with a pause after 4 rounds; in both harnesses, no session whose output reaches development can read the held-out directory or the held-out results folder. |
 | G5 | **Outputs:** four outputs in both phases with unavailable values explained. **Applicability:** each unaccepted material change makes a result historical; a changed command that an unchanged prompt tells the model to run leaves it current; a runner or CAT version change with an unchanged session environment version leaves it current; a raised threshold or a lowered error level makes it historical, and a lowered threshold or a raised error level does not; an unaccepted judge version makes it historical; accepting a non-loader change retains evidence, attempts and allowances across restart and discloses the acceptance in reports; after cleanup, `status` reports from the certification record, naming each changed condition and each unchecked one; a comparability field that only one side records makes the comparison `INDETERMINATE`; a new measurement identity ends a running attempt as `not certified: testing environment changed`, and a qualifying attempt under an earlier identity is offered separately, never ranked against current ones. **Remaining work:** minimum remaining trials match hand-computed values; no token total or time estimate is shown. **Size:** the status shows the size of the candidate's target prompt file, and no other file of the prompt system, and median trial input tokens against the incumbent's; a change to a derived source or a project rule alone leaves the size unchanged. |
 | G6 | **End-to-end in both harnesses, recorded once:** a real ESC during a slice is recorded with its harness events, and Codex ESC stops admissions within 15 seconds. **Replay:** unit tests replay each harness's recorded interrupted turn and show that `run` then retains completed outcomes and assignments, reruns in-flight logical trials, and keeps the certification index. **Unit fault injection:** recovery from every persistence step. **Campaign binding:** only the owning session can advance the campaign, including when it dispatches evaluation to another harness. **Background driver:** an end-to-end `--background` run in each harness that supports one wakes an idle session when it ends, through the host's exit notice in Claude and through the queued message in Codex, sent only after the lock is released and the state and delivery are stored, and a refused queue write is reported by the next `status`; a Codex session whose sandbox keeps the launcher inside it has `--background` refused with the reason; while the run is in progress `status` reports from the snapshot and names the driver, a second `run` returns `busy`, `cancel` stops the driver within the grace period plus 30 seconds and leaves the campaign cancelled and resumable, and `revise`, `choose` and `confirm` are refused with a message naming `status` and `cancel`; a host interrupt during the run does not stop it, and no foreground slice limit applies, so a test whose time limit exceeds 8 minutes is admitted; the skill uses the shell tool's own background mode, never `&`, tests nothing at turn starts and names no harness (driver, launcher and skill tests; one recorded end-to-end run). |
-| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners, and a prompt test runs through them; a trial uses a host tool. **Replay:** a text-output case and a file-effect case, each recorded once from a real trial with its judge session, are judged from the recording. **Unit:** a prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool fails only its own assertion, and the judge still decides every assertion that no tool decided, in a trial of every purpose, while a tool whose `on_tool_failure` is `judge` hands its own assertion to the judge; `tool-used` and `tool-unused` with an input expression, and `changed-only`, decide from the record, and a trial that every tool decides starts no judge session and needs no judge qualification; a trial ends after a completed turn exactly when every assertion is settled, settled verdicts equal those of the whole trial, a judged assertion blocks early end, the record shows the turns not run and where each assertion settled, and the share ended early is reported (recorded-trial tests and a fake `SessionPort`); control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Delivery:** every delivery (certified, improved but not certified, an accepted uncertified candidate, and keeping the incumbent) writes each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Trial plugins:** a trial installs exactly the plugins that the prompt test configuration lists for its harness, and a campaign whose configuration lists two plugins installs both; a project-built plugin comes from the build that `start` ran on the fork commit, not from the user's installed copy; a candidate's edit to a target that a project-built plugin ships, and a control's emptied copy, reach the plugin that the trial loads; a configuration without CAT runs trials without CAT; and `start` refuses a target without a configuration. |
+| G7 | **End-to-end in both harnesses:** trials, judges, prompt authors and the contract author run through the existing runners, and a prompt test runs through them; a trial uses a host tool. **Replay:** a text-output case and a file-effect case, each recorded once from a real trial with its judge session, are judged from the recording. **Unit:** a prompt test's fixtures, with a generated value, appear in the trial workspace; a failed built-in tool fails only its own assertion, and the judge still decides every assertion that no tool decided, in a trial of every purpose, while a tool whose `on_tool_failure` is `judge` hands its own assertion to the judge; `tool-used` and `tool-unused` with an input expression, and `changed-only`, decide from the record, and a trial that every tool decides starts no judge session and needs no judge qualification; a trial ends after a completed turn exactly when every assertion is settled, settled verdicts equal those of the whole trial, a judged assertion blocks early end, the record shows the turns not run and where each assertion settled, and the share ended early is reported (recorded-trial tests and a fake `SessionPort`); control trials run on the control source, where the target prompt file is empty and every other prompt file is unchanged, each with its paired formal trial's test case. **Verdicts:** two trials of one test case whose evidence is identical get one verdict per assertion with one judge session between them, whether they finish apart or together; a trial whose judged assertions all have records starts no judge session; a change to the assertion, the test case, the judge's identity or the evidence is a miss; no development trial finds a held-out record; the first verdict recorded is final; a hit adds no shadowed or spot-checked trial. **Failure class:** a formal failure's summary to development names the failed test case's class and none of its values, a failure group is keyed by class, and the new development test cases of a group carry its class. **Delivery:** every delivery (certified, improved but not certified, an accepted uncertified candidate, and keeping the incumbent) writes each confirmed prompt test's values file, and its scenario and fixtures when the contract author created or edited them. Trials run under the profile of their cell, as the harness events show. A trial with a read-only service credential and one with a disposable fixture are both eligible, and a known persistent write is refused before dispatch. **Capacity:** the shared capacity bounds sessions across two concurrent CAT processes. **Trial plugins:** a trial installs exactly the plugins that the prompt test configuration lists for its harness, and a campaign whose configuration lists two plugins installs both; a project-built plugin comes from the build that `start` ran on the fork commit, not from the user's installed copy; a candidate's edit to a target that a project-built plugin ships, and a control's emptied copy, reach the plugin that the trial loads; a configuration without CAT runs trials without CAT; and `start` refuses a target without a configuration. |
 | G8 | **Unit:** representative development trials go only to development cells; the weakest cell is the lowest effort of the least capable model in the harness-specific scope by the proposal's capability ranking, and no trial runs to find it; a cell with a formal failure becomes a development cell; within a prompt test and harness, formal trials go to development cells first and to another scope cell only after every development cell and every cell below it are certified; allocation picks the riskiest prompt test first; control trials run only in cells certified by their built-in tools and judge, and extra formal trials run only to complete pairs; concurrency follows [§3.3](#33-allocation-and-concurrency) exactly, including each unit's starting window, its drop at a consuming failure, its unchanged window at other failures, the halving after infrastructure attempts, the cell limit and the ceilings, and a racer's window within the same ceiling. **Throttling:** it responds to utilization, rejections and provider refusals, and a hold set by one process delays every other process's acquisition. **Volume warning:** the authentication warning appears for a subscription login. |
 | G9 | The optimizer and capacity unit tests pass under parallel methods with `HOME` and `user.home` pointing at a nonexistent directory. A source audit finds no static mutable state, no `Thread.sleep` on tested paths, and no mutable test-class fields. Calibration and each Git operation have exactly one owning test, and no Java test starts a runner, a harness process or a model. |
 | G10 | Both harness artifacts ship the new skill and the `prompt-optimizer` launcher. No reference to the old procedure remains, `failure-regression-promotion.md` follows D13, every recorded regression scenario is a prompt test directory in the format and location that [§6.3](#63-prompt-tests-and-test-cases) and §8 name, and a proposal that omits one is refused. |
