@@ -5428,8 +5428,8 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-156 | Not started; designed 2026-11-23 (`design.md` "Outcome coverage" steps 2 and 3, "Coverage and the held-out part", D158, D159). Not ready: waits for the user's choice of how a condition that no tool covers is checked. Needs WI-155. Closes R-L16. |
 | WI-157 | Not started; designed 2026-11-23 (`design.md` §6.4, "Outcome coverage", "Contracts and campaigns from before this ruling", D158). Not ready: waits for the user's choices of how stored campaigns are treated, whether the judge still receives the expected outcome and whether a covering assertion may name no requirement. Needs WI-155 and WI-156. Closes R-L17. |
 | WI-158 | Implemented 2026-11-23 (`9d20fd2df`, `b4ed36bc4`; clone full build 6407 tests, 0 failures; `design.md` §7 "Revision request", D161). Closes R-L18. |
-| WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, H43, H45, P20 and P22) and revised the same day by the user's source-home ruling, which settles Q17 and Q21. P20 and P22 are not run; Q22 to Q24 await the user's rulings. Needs WI-142 and WI-147. Closes R-I14. |
-| WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. P24 and P26 are not run; Q22 to Q24 await the user's rulings. Needs WI-159. Closes R-I15. |
+| WI-159 | Not started; designed 2026-11-23 (`design.md` §8 "Claude authentication", D162, H42, H43, H45, P20 and P22) and revised the same day by the user's source-home ruling, which settles Q17 and Q21. The user ruled Q22 to Q24 the same day: "Q22-Q24: a". P20 and P22 are not run. Needs WI-142 and WI-147. Closes R-I14. |
+| WI-160 | Not started; designed 2026-11-23 (`design.md` §8 "Codex authentication", D163, H44, H45, P24 and P26) and revised the same day by the user's source-home ruling. The user ruled Q22 to Q24 the same day: "Q22-Q24: a"; the ruling on Q22 refuses a ChatGPT sign-in, which replaces P26. P24 is not run. Needs WI-159. Closes R-I15. |
 | WI-161 | Steps 1 and 2 implemented 2026-11-23 (full build 6492 tests, 0 failures); step 3 open, blocked on WI-156. Designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Steps 1 and 2 close R-L19 except its outcome-review clause; step 3 closes that clause and R-L20. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
 | WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25 and Q26 on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
@@ -5959,8 +5959,8 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I11 | Both plugins hold both runner launchers and the bundled runner rule. Agents name model and effort and supply turns through an --input records file. Every session-starting client, including the optimizer, packs requests inside its sandbox; inside a nested session the nested session's runner serves them within the caller's request/depth limits, and outside a nested session an agent-started request server serves them outside the asking sandbox. Only request-server has the installed sandbox exception; shell startup files remain read-only. A client without a server refuses before changes and names its startup command. The server identifies the session and project from protected harness/transcript evidence, reads settings and command-line policy, and for Codex narrows it by the latest recorded turn policy on each request; unsafe or unreadable policy and unknown options refuse. Child permissions are the intersection of the asking policy and child needs, including optional --extra-permissions writes/hosts; refused needs name each missing permission and its settings entry. The optimizer records those extra permissions and its goal in the campaign header and refuses a mismatched resume with named differences. Requests cannot supply CAT-owned bounds, artifacts or starter options. Launches retain the credential qualifications of R-I8 and the read-only Claude judge exception in design §6.4. Inside a nested session without request access launches refuse. A launcher that no harness session runs, as from a terminal or a script, refuses and says to run it from a Claude Code or Codex session; only CAT's own starters, which name the bound they computed, start a runner outside a harness session. A request server ends and stops its child process trees when the owning harness ends; native Windows refuses launches. The old SessionStart launcher, inbox, holder and ~/.cat/sessions state folder and write denial are removed; an older session lacking the request-server exception must restart. | §8, D107 | WI-128 | U: `ChildPolicyTest`, `ParentPolicyTest`, `ChildBoundTest`, `LaunchRouteTest`, `ProcessHandleTableTest`, `HarnessProcessesTest`, `RunnerChildNeedsTest`, `ClaudeOptionTableTest`, `ClaudePolicyReaderTest`, `CodexPolicyReaderTest`, `CodexRolloutPolicyTest`, `HarnessEnvironmentTest`, `SessionRequestForwarderTest`, `RunnerRelayTest`, `SessionRequestBrokerTest` (depth), `ClaudeConnectionSettingsTest`, `SessionRequestInstructionsTest`, `HarnessRunnerOptionsTest`, `ExtraPermissionsTest`, `SessionRequestCliTest`, `ClaudeRunnerCliTest`, `CodexRunnerCliTest`, `CodexConnectionConfigurationTest`, `CommandsTest`, `OptimizerCoreTest`, `CampaignStoreContract`, `ExtraPermissionSessionsTest`, `RunnerSessionsTest`, `IntegrationTest`, `SandboxEntriesTest`; E: four parent and child pairs on Linux and macOS, a child-to-grandchild launch each way, negative checks of a child's commands, a refused launch, and a session's end stopping its launcher |
 | R-I12 | Every nested session that its launcher, its server or the requesting session interrupts, whatever its options, keeps its slot, with its project copy, home, harness session and `session.json`, when it recorded its harness session ID, and its slot is emptied as corrupt when it did not; no slot reuse empties a retained slot, and retained slots do not count toward the concurrency limit. Every launch holds its request's lock, and every nested session keeps its harness session in its home, records the harness's session ID and publishes it to its caller at once. `--resume <session-id>` from the session that started the nested session continues the same harness session in the same slot under the same ID and the current sandbox bound, in both harnesses, refusing a fixed option, another harness, an unknown or finished nested session and one in use; a nested session's results are copied at a normal end (`--keep-run` is removed; R-I13). The optimizer resumes an interrupted trial, never counting it as a result, and otherwise discards its nested session as corrupt and reruns it. A retained nested session is deleted only when resumed to its end, discarded by the optimizer, or with the directory that holds its slot (user rulings, 2026-11-19). | §3.2, §3.8, §4.1, §8 "Resuming a nested session", D151, P18, P19 | WI-146 | U: slot, broker, forwarder, nested-session-manager, runner (both harnesses), protocol and optimizer reconciliation tests; E: a per-harness parent restart that resumes a child holding a campaign; an optimizer campaign whose host session ends during a trial |
 | R-I13 | The runner's terms follow the user's rulings of 2026-11-19: a run is a nested session, `run.json` is `session.json`, the run root is the results folder, and a nested session's ID is its harness's own session ID, Claude's `session_id` from its `init` event or Codex's thread ID from its `thread/start` response, which CAT adopts once the harness reports it; slots keep their names. `--keep-run` is removed: every nested session's results are copied to the results folder under its session ID once that ID is known, and the folder's owner deletes them once nothing needs them, the optimizer's cleanup included. Every name and value that CAT gives a nested session, its folder, its results copy or its slot says so, such as `CAT_NESTED_SESSION` for `CAT_RUN` (user ruling, 2026-11-20). | §8 (renamed by WI-147), D151 | WI-147 | U: the renamed runner, slot, forwarder and optimizer tests; a results copy named by the reported ID; R: a scan of code, rules, skills and documentation for the old terms |
-| R-I14 | A Claude session authenticates with the authentication parts of a source home's `.claude` folder, which are `apiKeyHelper`, the `env` entries `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` of `settings.json`, and, once Q22 is ruled, `.credentials.json`; the source home is the folder that `--home <dir>` names, or else the runner's home folder. Only those parts reach the session's isolated home, the helper in its settings, wrapped to run with the source home as its home folder, and the tokens in the Claude process's environment with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`; no hook, permission, plugin, MCP server or other source setting does, and Claude Code ranks the parts by its own order. A source home with no Claude authentication, or whose settings select a credential that the runner does not copy, refuses the launch before a capacity slot or nested session, with a message that never quotes a secret. Every source file that holds a secret is a regular file, not a link, that denies group and other access and that the requesting session's sandbox lets it read; the session's commands and file tools, and those of every session that it requests, are denied the file and its copies. The session gets none of the runner's `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and a project or managed settings file that sets one of them or `apiKeyHelper` refuses the session. `--gateway-login-class <subscription|api_key>` is required when the copied parts set `ANTHROPIC_BASE_URL`, and `CAT_HOST_LOGIN` states the class of the credential that Claude Code's order selects. Requested sessions of both harnesses get the runner's source home and class, never a session's home, and `--home` or the class inside a nested session is refused. The prompt optimizer records them per launch, outside its measurement identity, so a resume may change them. `session.json`, the receipt and each response record the source home, the names of the copied parts and the class, never a value. | §8 "Claude authentication", D162, P20, P22 | WI-159 | P: P20, P22; U: `ClaudeRunnerCliTest`, `SecretFileTest`, `ClaudeRunnerTest`, `ClaudeConnectionSettingsTest`, `ParentPolicyTest`, `NestedSessionManagerTest`, `SessionRequestBrokerTest`, `SessionRequestForwarderTest`, `SessionRequestCliTest`, optimizer command tests; E: one live launch from a source home whose settings hold only `apiKeyHelper`, whose `init` reports `apiKeySource` `apiKeyHelper`, and one through the user's local gateway, each with results that hold no secret |
-| R-I15 | A Codex session authenticates with the authentication parts of the source home's `.codex` folder, which are `auth.json`, for a ChatGPT sign-in once Q22 is ruled, and the `model_provider`, `openai_base_url` and `forced_login_method` settings of `config.toml` with the selected `[model_providers.<id>]` table, with R-I14's source home, refusals, checks of a secret file, requester's read check, denied reads, inheritance, gateway class, optimizer treatment and evidence. An inline provider secret reaches Codex in a variable of the app-server's environment that the provider's `env_key` or `env_http_headers` names, never in the session's `config.toml`; a provider's token command runs with the source home as its home folder; and the copy of `auth.json` is readable by its owner alone and removed when the app-server ends. The session's Codex gets neither of the runner's `CODEX_API_KEY` and `OPENAI_API_KEY`, apart from a variable that the selected provider names, and a system or managed layer that sets `openai_base_url`, `forced_login_method`, `model_provider` or `model_providers` refuses the session. The session's `CODEX_HOME` is its home's `.codex` folder, and a resume of a session in the earlier layout moves its files there first. | §8 "Codex authentication", D163, P24, P26 | WI-160 | P: P24, P26 (after Q22); U: `CodexRunnerCliTest`, `CodexRunnerTest`, `CodexConnectionConfigurationTest`, `CredentialsTest`, the optimizer's Codex session tests and WI-159's common tests for Codex; E: one live launch from a source home whose `auth.json` holds an API key and one through a provider's token command, each with results that hold no secret |
+| R-I14 | A Claude session authenticates with the authentication parts of a source home's `.claude` folder, which are `apiKeyHelper`, the `env` entries `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` of `settings.json`, and the stored login `.credentials.json`; the source home is the folder that `--home <dir>` names, or else the runner's home folder, whose `.claude` folder is then the one that the runner's `CLAUDE_CONFIG_DIR` names when set. Only those parts reach the session's isolated home, the helper in its settings, wrapped to run with the source home as its home folder, and the tokens in the Claude process's environment with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, while the stored login is never copied: the runner sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the source `.claude` folder, and the session's Claude Code reads and refreshes that login in place; no hook, permission, plugin, MCP server or other source setting does, and Claude Code ranks the parts by its own order. A source home with no Claude authentication, or whose settings select a credential that the runner does not copy, refuses the launch before a capacity slot or nested session, with a message that never quotes a secret. Every source file that holds a secret is a regular file, not a link, that denies group and other access and that the requesting session's sandbox lets it read; the session's commands and file tools, and those of every session that it requests, are denied the file and its copies. The session gets none of the runner's `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and a project or managed settings file that sets one of them or `apiKeyHelper` refuses the session. `--gateway-login-class <subscription|api_key>` is required when the copied parts set `ANTHROPIC_BASE_URL`, and `CAT_HOST_LOGIN` states the class of the credential that Claude Code's order selects. Requested sessions of both harnesses get the runner's source home and class, never a session's home, and `--home` or the class inside a nested session is refused. One class covers the base URLs of both harnesses, and a request for the other harness whose credential uses a base URL, from a launch that named no class, is refused, naming the option. The prompt optimizer records them per launch, outside its measurement identity, so a resume may change them. `session.json`, the receipt and each response record the source home, the names of the copied parts and the class, never a value. | §8 "Claude authentication", D162, P20, P22 | WI-159 | P: P20, P22; U: `ClaudeRunnerCliTest`, `SecretFileTest`, `ClaudeRunnerTest`, `ClaudeConnectionSettingsTest`, `ParentPolicyTest`, `NestedSessionManagerTest`, `SessionRequestBrokerTest`, `SessionRequestForwarderTest`, `SessionRequestCliTest`, optimizer command tests; E: one live launch from a source home whose settings hold only `apiKeyHelper`, whose `init` reports `apiKeySource` `apiKeyHelper`, and one through the user's local gateway, each with results that hold no secret |
+| R-I15 | A Codex session authenticates with the authentication parts of the source home's `.codex` folder, which are an `auth.json` that holds an API key, while one that holds a ChatGPT sign-in refuses the launch, and the `model_provider`, `openai_base_url` and `forced_login_method` settings of `config.toml` with the selected `[model_providers.<id>]` table, with R-I14's source home, whose `.codex` folder is, without `--home`, the one that the runner's `CODEX_HOME` names when set, and with its refusals, checks of a secret file, requester's read check, denied reads, inheritance, gateway class, optimizer treatment and evidence. An inline provider secret reaches Codex in a variable of the app-server's environment that the provider's `env_key` or `env_http_headers` names, never in the session's `config.toml`; a provider's token command runs with the source home as its home folder; and the copy of `auth.json` is readable by its owner alone and removed when the app-server ends. The session's Codex gets neither of the runner's `CODEX_API_KEY` and `OPENAI_API_KEY`, apart from a variable that the selected provider names, and a system or managed layer that sets `openai_base_url`, `forced_login_method`, `model_provider` or `model_providers` refuses the session. The session's `CODEX_HOME` is its home's `.codex` folder, and a resume of a session in the earlier layout moves its files there first. | §8 "Codex authentication", D163, P24, P26 | WI-160 | P: P24; U: `CodexRunnerCliTest`, `CodexRunnerTest`, `CodexConnectionConfigurationTest`, `CredentialsTest`, the optimizer's Codex session tests and WI-159's common tests for Codex; E: one live launch from a source home whose `auth.json` holds an API key and one through a provider's token command, each with results that hold no secret |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -10616,30 +10616,33 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	on, the bundled rule `harness-runners.md`, `docs/security-model.md` ("Login"), `docs/installation.md`, the 1.0
 	changelog capture scripts that run `claude-runner`, their tests, this design and plan.
 - **Change:** as `design.md` §8 "Claude authentication" and D162 define it, together with the edited "Trial limits"
-	paragraph and the removal of the shared login store. `SourceHome` resolves the folder that `--home` names, which
-	must be absolute, or else the runner's home folder, and is passed from a runner to the runners of the sessions that
-	its session requests. `SecretFile` decides from a file's attributes, given as plain input: a regular file, not a
-	link, whose POSIX mode grants group and other nothing or whose Windows access list grants only the owner, `SYSTEM`
-	and Administrators. `ClaudeAuthentication` reads the source `settings.json`, notes whether `.credentials.json`
-	exists, and owns the copied parts, the helper's wrapper, the process environment's token entries with
-	`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, the refusal of a credential setting that it does not copy, the list of secret
-	files, the denied reads, the model host, the `CAT_HOST_LOGIN` class and the evidence object. `ClaudeRunnerCli`
-	parses `--home` and `--gateway-login-class` and refuses, before a capacity slot or nested session, a source home
-	without Claude authentication, a secret file that fails `SecretFile`, a base URL without a class and a class other
-	than `subscription` or `api_key`; no refusal quotes a secret. `ClaudeRunner.processEnvironment`, `childNeeds`, the
-	isolated settings and `sessionDeniedReads` take the authentication. `requireLogin`, `loginStore` and the login-store
-	variable are removed, as is the login-store classification of D137. `ClaudeConnectionSettings` stops inheriting the
-	four credential variables, keeps inheriting the subagent variables, and refuses a project or managed settings file
-	whose `env` sets one of the four or `CLAUDE_SECURESTORAGE_CONFIG_DIR`, or that sets `apiKeyHelper`, naming the file
-	and the setting. The request server, and each of CAT's own starters through the bound that it names, refuses a
-	source file that the requester's read policy denies. Common code learns of the authentication only as a
-	harness-owned option set that each harness module supplies. The forwarder and `request-session` refuse `--home` and
-	`--gateway-login-class` inside a nested session, and the broker passes the site's source home and class to every
-	child of either harness, refusing a child whose harness's authentication the source home lacks. `session.json`, the
-	receipt and each response carry the evidence object. The prompt optimizer takes the two options on each command that
-	starts sessions, passes them to every session, and records them in each trial's launch record outside the campaign's
-	measurement identity. The rule's option listings outside a nested session gain the two options, and its "Inside a
-	nested session" section says that the parent runner chooses them.
+	paragraph. `SourceHome` resolves the folder that `--home` names, which must be absolute, or else the runner's home
+	folder, and its Claude and Codex folders: `<dir>/.claude` and `<dir>/.codex` with `--home`, and otherwise the folders
+	that the runner's `CLAUDE_CONFIG_DIR` and `CODEX_HOME` name when set. It is passed, with those folders, from a runner
+	to the runners of the sessions that its session requests. `SecretFile` decides from a file's attributes, given as
+	plain input: a regular file, not a link, whose POSIX mode grants group and other nothing or whose Windows access list
+	grants only the owner, `SYSTEM` and Administrators. `ClaudeAuthentication` reads the source `settings.json`, notes
+	whether `.credentials.json` exists, and owns the copied parts, the helper's wrapper, the process environment's token
+	entries with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, the refusal of a credential setting that it does not copy, the list
+	of secret files, the denied reads, the model host, the `CAT_HOST_LOGIN` class and the evidence object.
+	`ClaudeRunnerCli` parses `--home` and `--gateway-login-class` and refuses, before a capacity slot or nested session, a
+	source home without Claude authentication, a secret file that fails `SecretFile`, a base URL without a class and a
+	class other than `subscription` or `api_key`; no refusal quotes a secret. `ClaudeRunner.processEnvironment`,
+	`childNeeds`, the isolated settings and `sessionDeniedReads` take the authentication. `requireLogin` and the
+	login-store classification of D137 are removed, and `loginStore` points `CLAUDE_SECURESTORAGE_CONFIG_DIR` at the
+	source home's Claude folder instead of the runner's own, so the session shares the source's stored login (Q22).
+	`ClaudeConnectionSettings` stops inheriting the four credential variables, keeps inheriting the subagent variables,
+	and refuses a project or managed settings file whose `env` sets one of the four or `CLAUDE_SECURESTORAGE_CONFIG_DIR`,
+	or that sets `apiKeyHelper`, naming the file and the setting. The request server, and each of CAT's own starters
+	through the bound that it names, refuses a source file that the requester's read policy denies. Common code learns of
+	the authentication only as a harness-owned option set that each harness module supplies. The forwarder and
+	`request-session` refuse `--home` and `--gateway-login-class` inside a nested session, and the broker passes the
+	site's source home and class to every child of either harness, refusing a child whose harness's authentication the
+	source home lacks, or whose harness's credential uses a base URL when the launch named no class (Q24). `session.json`,
+	the receipt and each response carry the evidence object. The prompt optimizer takes the two options on each command
+	that starts sessions, passes them to every session, and records them in each trial's launch record outside the
+	campaign's measurement identity. The rule's option listings outside a nested session gain the two options, and its
+	"Inside a nested session" section says that the parent runner chooses them.
 - **Rulings applied (user, 2026-11-23):** the source-home ruling: "default to the runner's own HOME, with --home <dir>
 	as an override. To bill the API key, you would point --home at a home whose .claude/settings.json has only
 	apiKeyHelper."; only the authentication parts are copied, the harness's own order chooses among them, secret files
@@ -10650,7 +10653,9 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	"Changing the auth should be allowed when resuming a campaign and should not invalidate old results.": recorded per
 	launch, outside measurement identity. Q16 "Refuse": a source file that the requester may not read is refused. Q20
 	"The caller says which because for end-users it might not be a subscription": `--gateway-login-class`, required with
-	a base URL.
+	a base URL. Q22, Q23 and Q24, "Q22-Q24: a", as the choices below state: a stored Claude login is shared through
+	`CLAUDE_SECURESTORAGE_CONFIG_DIR` instead of copied, and a Codex ChatGPT sign-in is refused; without `--home`, the
+	runner's own `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the source home's folders; one class covers both harnesses.
 - **Order:** (1) P20 and P22, which need no CAT code. Run each with the working Claude Code executable (2.1.330), model
 	`haiku` and effort `low`, in a disposable `CLAUDE_CONFIG_DIR` and a disposable source home under the task directory,
 	with the five variables unset but those that the premise sets, and with the key file or token that the user names,
@@ -10658,22 +10663,26 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	command that reads zero bytes (`head -c0`) and to print the names of any `ANTHROPIC_` or `CLAUDE_CODE_OAUTH`
 	variables in its environment; P22's session also runs with CAT installed and reports what its hooks gave it. The
 	agent never reads, prints or copies a secret. A failed premise selects its fallback before step 2. (2) The tests
-	below, failing first. (3) The parts that no open choice decides: the source home and `--home`, the copy of every
-	part but a stored login, the helper's wrapper, the token environment and the scrub, the refusals, the secret-file
-	check, the requester's read check, the stripping of the runner's variables, the settings refusal, the denied reads,
-	the removal of the login store, the class of a launch's own harness, the inheritance by both harnesses, the
-	optimizer's options and the evidence. (4) A stored login once Q22 is ruled, the default's `CLAUDE_CONFIG_DIR` once
-	Q23 is ruled, and one class across harnesses once Q24 is ruled. (5) The rule, documentation and capture-script
+	below, failing first. (3) The parts that the source-home ruling decides: the source home and `--home`, the copy of
+	every part but a stored login, the helper's wrapper, the token environment and the scrub, the refusals, the
+	secret-file check, the requester's read check, the stripping of the runner's variables, the settings refusal, the
+	denied reads, the removal of `requireLogin`, the class of a launch's own harness, the inheritance by both harnesses,
+	the optimizer's options and the evidence. (4) The parts that the rulings on Q22 to Q24 decide: the stored login
+	shared through `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the source home's Claude folder, the default's folders from
+	the runner's `CLAUDE_CONFIG_DIR` and `CODEX_HOME`, and one class across harnesses with the refusal of a request for
+	the other harness's base URL from a launch that named no class. (5) The rule, documentation and capture-script
 	updates, and a scan of rules, skills, help and documentation for every mention of the removed options `--api-key`,
-	`--oauth-token`, `--gateway`, `--gateway-token` and `--login` and of the shared login store. (6) The clean full
-	offline build, reporting every test that takes at least one second. (7) The end-to-end checks.
+	`--oauth-token`, `--gateway`, `--gateway-token` and `--login` and of a login store other than the source home's.
+	(6) The clean full offline build, reporting every test that takes at least one second. (7) The end-to-end checks.
 - **Verification:** write these first; none starts a harness or a model.
 	(a) `ClaudeRunnerCliTest`: a launch whose source home holds no Claude authentication, a `--home` that is relative or
 	missing, a source with `ANTHROPIC_BASE_URL` and no `--gateway-login-class`, a class of `unknown` or any value but
 	`subscription` and `api_key`, and a source `env` that sets `CLAUDE_CODE_USE_BEDROCK` or `ANTHROPIC_PROFILE` are each
 	refused with status 2, naming the files read, the option or the setting, and the results folder holds no nested
 	session afterwards. A `--resume` launch and a `--child-needs` request take the same checks. No message contains the
-	fixture key text `sk-ant-api03-fixture`. Without `--home`, the fixture's runner home folder is the source home.
+	fixture key text `sk-ant-api03-fixture`. Without `--home`, the fixture's runner home folder is the source home, and
+	a runner `CLAUDE_CONFIG_DIR` that names another fixture folder makes that folder the source's Claude folder; with
+	`--home`, that variable changes nothing.
 	(b) `SecretFileTest`: the decision accepts mode `0600` and `0400` and refuses any group or other bit, naming the
 	bits. It accepts a Windows access list of the owner, `SYSTEM` and Administrators and refuses one that also grants
 	`Users` or `Everyone`. A file with mode `0200`, which the test's process cannot read, is accepted without being
@@ -10684,8 +10693,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	five variables give an environment that holds none of their values. A source `env` with `ANTHROPIC_API_KEY` gives
 	that variable, `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` and `CAT_HOST_LOGIN=api_key`; one with `CLAUDE_CODE_OAUTH_TOKEN`
 	gives `subscription`; one with `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` gives both, the scrub and the
-	declared class, for each class; a source with only `apiKeyHelper` gives no token, no scrub and `api_key`. No
-	environment holds `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and the caller's subagent variables are still copied.
+	declared class, for each class; a source with only `apiKeyHelper` gives no token, no scrub and `api_key`; a source
+	with only `.credentials.json` gives `subscription`, and the session's home holds no copy of it. Every environment's
+	`CLAUDE_SECURESTORAGE_CONFIG_DIR` names the source's Claude folder, never the runner's value, and the caller's
+	subagent variables are still copied.
 	`childNeeds` reports the source base URL's host, or `api.anthropic.com` without one, while the runner's own
 	`ANTHROPIC_BASE_URL` names another host.
 	(d) `ClaudeRunnerTest`, settings: from a source fixture that also sets hooks, permissions, plugins and MCP servers,
@@ -10712,9 +10723,10 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	fixture secret, and neither does the recorded command.
 	(j) `SessionRequestBrokerTest`: a broker whose site's launch named `--home <fixture>` and a class starts each Claude
 	child and each Codex child with them, never with the nested session's home. A request for a harness whose
-	authentication the fixture lacks is refused with status 2, naming the files read. `SessionRequestForwarderTest` and
-	`SessionRequestCliTest`: a launch or request inside a nested session that names `--home` or `--gateway-login-class`
-	is refused with status 2 before an archive is packed.
+	authentication the fixture lacks is refused with status 2, naming the files read, and so is a Codex request whose
+	source provider uses a base URL from a launch that named no class, naming `--gateway-login-class`.
+	`SessionRequestForwarderTest` and `SessionRequestCliTest`: a launch or request inside a nested session that names
+	`--home` or `--gateway-login-class` is refused with status 2 before an archive is packed.
 	(k) The optimizer: a trial's runner arguments carry the command's `--home` and class, and its launch record holds
 	the evidence object. A resume that names another source home proceeds, keeps the campaign's identity and keeps its
 	earlier trials' results.
@@ -10726,51 +10738,51 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	The receipt records the source home and the copied parts. A session command that reads zero bytes of the key file,
 	and, in the second launch, of the user's `settings.json`, is denied. `grep -rqF -f <key file>` over the first
 	launch's results copy exits 1, which reports only whether the secret occurs.
-- **Open choices (for the user; each blocks only the parts that depend on it):**
-	- **Q22, how a subscription login that the harness refreshes reaches a session:** the ruling copies the source
-		home's `.credentials.json` (Claude) and `auth.json` (Codex) into the session's home and removes the copy when
-		the session ends. A subscription login holds a refresh token that the harness replaces each time it refreshes
-		the login. After one copy refreshes, the source file and every other copy hold a refresh token that no longer
-		works, so the user's own Claude Code or Codex, and the other sessions, must sign in again; Codex's documentation
-		forbids sharing one `auth.json` among concurrent jobs for this reason (H45). On macOS, Claude Code keeps the
-		login in the Keychain, not in the file, and Codex may keep it in the operating system's store, so a copy of the
-		file finds nothing (H43, H44). API keys, an API-key `auth.json`, helpers and tokens are never refreshed and are
-		unaffected. (a) Share instead of copying for Claude: the session's Claude Code reads and refreshes the source
-		home's own login through `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the source's `.claude` folder, as the runner
-		does today with the user's store, under Claude Code's own refresh lock, which also covers the Keychain; nothing
-		is copied or removed, at the cost that a session writes the user's login store, as before 2026-11-23. Codex
-		documents no such setting, so its ChatGPT sign-in is refused until a premise shows that concurrent Codex
-		processes can share one `auth.json`. (b) Copy, and write a refreshed copy back to the source file when the
-		session ends: the source keeps working while one session runs at a time, but concurrent sessions and the user's
-		own harness still invalidate one another, and the runner writes to a secret file. (c) Copy as ruled and accept
-		that a refresh may make the user sign in again; a Keychain or keyring login stays refused. (d) Refuse every
-		stored subscription login and accept only credentials that are never refreshed: a subscription without a gateway
-		then needs a token that the user creates with `claude setup-token`, and Codex's ChatGPT sign-in is unavailable.
-		Recommended: (a), because it is the only choice under which a session can use a stored Claude login without ever
-		stopping the user's own.
-	- **Q23, whether the runner's own `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the default source home's folders:**
-		without `--home`, the ruling reads `.claude` and `.codex` in the runner's home folder, while the user's own
-		Claude Code and Codex read the folders that those variables name when they are set. (a) Follow the variables
-		when no `--home` is given, so that the default bills what the user's own harness in that environment would;
-		`--home <dir>` always means `<dir>/.claude` and `<dir>/.codex`. (b) Always read the home folder's `.claude` and
-		`.codex`: a user whose harness uses another folder gets a refusal, or a credential other than the one that their
-		harness uses, and must name a prepared home with `--home`. Recommended: (a), because under (b) a session can
-		silently bill another credential.
-	- **Q24, whether one `--gateway-login-class` covers both harnesses:** a source home holds both harnesses'
-		authentication, and the launch's class passes to requested sessions of either harness. (a) One class for every
-		base URL in the source home: a launch names it when its own harness's credential uses a base URL and may name it
-		otherwise, and a request for the other harness whose credential uses a base URL, when the launch named no class,
-		is refused, naming the option. A home whose Claude gateway bills a subscription while its Codex gateway bills an
-		API key cannot be described. (b) One class per harness, `--claude-gateway-login-class` and
-		`--codex-gateway-login-class` on both runners: every combination can be described, at the cost of option names
-		that name a harness, which the naming ruling on Q19 avoided. Recommended: (a), because the gateways of one home
-		commonly bill one kind of login, and (b) can be added later without changing (a)'s meaning.
+- **Choices (user rulings, 2026-11-23):**
+	- **Q22, how a subscription login that the harness refreshes reaches a session. Ruled: (a); user's words:
+		"Q22-Q24: a".** The source-home ruling copied the source home's `.credentials.json` (Claude) and `auth.json` (Codex)
+		into the session's home and removed the copy when the session ended. A subscription login holds a refresh token that
+		the harness replaces each time it refreshes the login. After one copy refreshes, the source file and every other
+		copy hold a refresh token that no longer works, so the user's own Claude Code or Codex, and the other sessions, must
+		sign in again; Codex's documentation forbids sharing one `auth.json` among concurrent jobs for this reason (H45). On
+		macOS, Claude Code keeps the login in the Keychain, not in the file, and Codex may keep it in the operating system's
+		store, so a copy of the file finds nothing (H43, H44). API keys, an API-key `auth.json`, helpers and tokens are
+		never refreshed and are unaffected. (a) Share instead of copying for Claude: the session's Claude Code reads and
+		refreshes the source home's own login through `CLAUDE_SECURESTORAGE_CONFIG_DIR` set to the source's `.claude`
+		folder, as the runner does today with the user's store, under Claude Code's own refresh lock, which also covers the
+		Keychain; nothing is copied or removed, at the cost that a session writes the user's login store, as before
+		2026-11-23. Codex documents no such setting, so its ChatGPT sign-in is refused until a premise shows that concurrent
+		Codex processes can share one `auth.json`. (b) Copy, and write a refreshed copy back to the source file when the
+		session ends: the source keeps working while one session runs at a time, but concurrent sessions and the user's own
+		harness still invalidate one another, and the runner writes to a secret file. (c) Copy as ruled and accept that a
+		refresh may make the user sign in again; a Keychain or keyring login stays refused. (d) Refuse every stored
+		subscription login and accept only credentials that are never refreshed: a subscription without a gateway then needs
+		a token that the user creates with `claude setup-token`, and Codex's ChatGPT sign-in is unavailable. Recommended:
+		(a), because it is the only choice under which a session can use a stored Claude login without ever stopping the
+		user's own.
+	- **Q23, whether the runner's own `CLAUDE_CONFIG_DIR` and `CODEX_HOME` move the default source home's folders. Ruled:
+		(a); user's words: "Q22-Q24: a".** Without `--home`, the source-home ruling read `.claude` and `.codex` in the
+		runner's home folder, while the user's own Claude Code and Codex read the folders that those variables name when
+		they are set. (a) Follow the variables when no `--home` is given, so that the default bills what the user's own
+		harness in that environment would; `--home <dir>` always means `<dir>/.claude` and `<dir>/.codex`. (b) Always read
+		the home folder's `.claude` and `.codex`: a user whose harness uses another folder gets a refusal, or a credential
+		other than the one that their harness uses, and must name a prepared home with `--home`. Recommended: (a), because
+		under (b) a session can silently bill another credential.
+	- **Q24, whether one `--gateway-login-class` covers both harnesses. Ruled: (a); user's words: "Q22-Q24: a".** A source
+		home holds both harnesses' authentication, and the launch's class passes to requested sessions of either harness.
+		(a) One class for every base URL in the source home: a launch names it when its own harness's credential uses a base
+		URL and may name it otherwise, and a request for the other harness whose credential uses a base URL, when the launch
+		named no class, is refused, naming the option. A home whose Claude gateway bills a subscription while its Codex
+		gateway bills an API key cannot be described. (b) One class per harness, `--claude-gateway-login-class` and
+		`--codex-gateway-login-class` on both runners: every combination can be described, at the cost of option names that
+		name a harness, which the naming ruling on Q19 avoided. Recommended: (a), because the gateways of one home commonly
+		bill one kind of login, and (b) can be added later without changing (a)'s meaning.
 - **Classes affected:** `ClaudeRunnerCli`, `ClaudeRunner`, `ClaudeConnectionSettings`, `ClaudeAuthentication` (new),
 	`SourceHome` (new, common), `SecretFile` (new, common), `Credentials`, `ClaudeSessions`, `HarnessRunnerOptions`,
 	`SessionRequestForwarder`, `SessionRequestCli`, `SessionRequestBroker`, `RequestedRunner`, the request server and
 	`ParentPolicy`, `NestedSessionManager`, `Session`, `ClaudeRunnerRelay` and `CodexRunnerCli`.
 - **Tier and dependencies:** `optimize-xhigh`. Needs WI-142 and WI-147, which change the same runner classes and rule.
-	Steps 1 to 3 are ready once WI-147's renames are merged; step 4 waits for the rulings on Q22 to Q24.
+	Steps 1 to 4 are ready once WI-147's renames are merged; steps 2 to 4 still follow P20 and P22, which are not run.
 - **Exit:** P20 and P22 passed, tests (a) to (k) pass and failed before, the clean full offline build passes, and both
 	end-to-end checks passed. Closes R-I14.
 
@@ -10803,22 +10815,27 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	`CodexRunnerCli`, the broker and the optimizer treat the source home and class as WI-159 does.
 - **Rulings applied (user, 2026-11-23):** "Design it now, ideally matching what we use for claude-runner"; the
 	source-home ruling of WI-159, with the Codex parts `auth.json` and the provider settings of `config.toml`, and
-	`CODEX_HOME` at the session home's `.codex` folder. It replaces the provider of CAT's own that the ruling on Q18
-	chose and the `--login <file>` of Q19. Q16 and Q20 apply as in WI-159.
+	`CODEX_HOME` at the session home's `.codex` folder. It replaces the provider of CAT's own that the ruling on Q18 chose
+	and the `--login <file>` of Q19. Q16 and Q20 apply as in WI-159. Q22, Q23 and Q24, "Q22-Q24: a", in WI-159: a source
+	`auth.json` that holds a ChatGPT sign-in is refused, without `--home` the runner's own `CODEX_HOME` moves the source
+	home's `.codex` folder, and one class covers both harnesses.
 - **Order:** (1) P24, which needs no CAT code. Run it with the working Codex executable (0.170.0), model `gpt-6-luna`
 	and effort `low`, in a disposable `CODEX_HOME` and a disposable source home under the task directory without
-	`auth.json`, with the key file that the user names. The agent never reads, prints or copies a secret. P26 needs a
-	ChatGPT sign-in copy, which waits for Q22. (2) The tests below, failing first. (3) The parts that no open choice
-	decides: the copied settings and their refusals, the inline-secret move, the passed and excluded variables, the
-	token command's wrapper, the copy of an API-key `auth.json` and its removal, the layer refusal, the secret-file and
-	requester's read checks, the denied reads, the class, the evidence, the move of `CODEX_HOME` and of a resumed
-	session's files, the inheritance and the optimizer's options. (4) A ChatGPT sign-in once Q22 is ruled, the default's
-	`CODEX_HOME` once Q23 is ruled, and the class across harnesses once Q24 is ruled. (5) The rule, documentation and
-	capture-script updates and the scan, as in WI-159. (6) The clean full offline build. (7) The end-to-end checks.
+	`auth.json`, with the key file that the user names. The agent never reads, prints or copies a secret. The ruling on
+	Q22 refuses a ChatGPT sign-in, so P26 is not run. (2) The tests below, failing first. (3) The parts that the
+	source-home ruling decides: the copied settings and their refusals, the inline-secret move, the passed and excluded
+	variables, the token command's wrapper, the copy of an API-key `auth.json` and its removal, the layer refusal, the
+	secret-file and requester's read checks, the denied reads, the class, the evidence, the move of `CODEX_HOME` and of a
+	resumed session's files, the inheritance and the optimizer's options. (4) The parts that the rulings on Q22 to Q24
+	decide: the refusal of a ChatGPT sign-in, the default's `CODEX_HOME`, and the class across harnesses. (5) The rule,
+	documentation and capture-script updates and the scan, as in WI-159. (6) The clean full offline build. (7) The
+	end-to-end checks.
 - **Verification:** write these first; none starts a harness or a model.
 	(a) `CodexRunnerCliTest`: WI-159 (a)'s refusals for a Codex source home, and the refusal of a selected provider with
 	`gateway_oauth` and no `credential_export` and of a `cli_auth_credentials_store` of `keyring` or `auto` with no
-	`auth.json`, each naming the setting, with no message that contains a fixture secret.
+	`auth.json`, each naming the setting, and of an `auth.json` that holds a ChatGPT sign-in, naming the file, with no
+	message that contains a fixture secret. Without `--home`, a runner `CODEX_HOME` that names another fixture folder
+	makes that folder the source's Codex folder; with `--home`, that variable changes nothing.
 	(b) `CodexRunnerTest`, `processEnvironment`: a runner environment that sets `CODEX_API_KEY` and `OPENAI_API_KEY`
 	gives an environment with neither, except a variable that the source provider's `env_key` names, which keeps the
 	runner's value. A source provider with an inline `experimental_bearer_token` gives an app-server variable equal to
@@ -10848,19 +10865,17 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 	whose `config.toml` selects a provider whose token command prints a key file that the user names, each on
 	`gpt-6-luna`/`low`. Each turn completes, the receipt records the source home and the copied parts, a session command
 	that reads zero bytes of a source secret file or of the copy is denied, and `grep -rqF -f <key file>` over the
-	results copy exits 1 once the session has ended. P26 runs with this check once Q22 is ruled: two concurrent launches
-	from one ChatGPT sign-in, then a third after both have ended, each complete a turn; the check reads only the copies'
-	modification times while the sessions run to tell whether Codex refreshed one, and reports the refresh part of P26
-	as not run if none was refreshed.
-- **Open choices (for the user; each blocks only the parts that depend on it):** Q22, Q23 and Q24, in WI-159.
+	results copy exits 1 once the session has ended.
+- **Choices (user rulings, 2026-11-23):** Q22, Q23 and Q24, in WI-159, each ruled (a); user's words:
+	"Q22-Q24: a".
 - **Classes affected:** `CodexRunnerCli`, `CodexRunner`, `CodexConnectionConfiguration`, `CodexAuthentication` (new),
 	`Credentials`, `CodexSessions`, `CodexParentMultiAgentState`, the transcript copy and rollout readers, and the
 	common classes of WI-159.
 - **Tier and dependencies:** `optimize-xhigh`. Needs WI-159, whose source home, secret-file check, broker and optimizer
-	changes it extends. Step 1 is ready now; steps 2 and 3 once WI-159 is integrated; step 4 waits for the rulings on
-	Q22 to Q24.
-- **Exit:** P24 passed, P26 passed or replaced by the ruling on Q22, tests (a) to (g) pass and failed before, the clean
-	full offline build passes, and both end-to-end checks passed. Closes R-I15.
+	changes it extends. Step 1 is ready now; steps 2 to 4 once WI-159 is integrated, and they still follow P24, which is
+	not run.
+- **Exit:** P24 passed, tests (a) to (g) pass and failed before, the clean full offline build passes, and both
+	end-to-end checks passed. Closes R-I15.
 
 ### WI-161 — Evidence scope of judged assertions (user rulings, 2026-11-23)
 
