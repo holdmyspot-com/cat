@@ -4227,7 +4227,7 @@ A mismatch is fixed in the agent definition before any delegation.
 | WI-161 | `optimize-xhigh` | Changes what every judge session reads, how a trial's judged assertions are grouped into sessions, which verdicts are recorded and reused, the scenario and proposal formats, the contract author's instructions and the outcome review; an error judges an assertion about actions without the trial's activity, reuses a verdict whose evidence differed, records or waits on an `actions` verdict, starts more than one session per scope, or loses a stored contract. |
 | WI-162 | `optimize-high` | Carries the user's Codex hook approvals into a trial copy of CAT that the project builds by declaration hash; an error approves a hook of another plugin or a changed declaration, runs a hook that Codex does not report as trusted, or leaves CAT's built hooks skipped. |
 | WI-163 | `optimize-xhigh` | Adds a built-in tool that runs a program of the test's own, sandboxed, on every trial, and changes the scenario format, the proposal checks, outcome coverage, the guard pilot and the runtime; an error passes a trial that the program fails, lets a trial or judge see the program, lets the program reach the network, write outside its scratch directory or read held-out content, accepts a program that its examples contradict, or makes a host problem count as a failure. |
-| WI-164 | `optimize-high` | Changes what the Claude runner does when Claude Code's command sandbox fails to start and, under option (b) of Q27, the environment of every Claude session's commands and hooks; an error lets a session's command run outside its sandbox, counts a sandbox failure as the model's pass or fail outcome, or gives the Claude process a temporary folder whose socket paths exceed the system limit. |
+| WI-164 | `optimize-high` | Adds checks, run once per launch, that refuse a Claude launch before Claude Code starts when its command sandbox cannot start, and changes what the Claude runner does when the sandbox fails to start anyway; an error lets a session's command run outside its sandbox, refuses a launch whose sandbox could start, counts a sandbox failure as the model's pass or fail outcome, or gives the Claude process a temporary folder whose socket paths exceed the system limit. |
 | WI-108 | `optimize-medium` | Changes how every CAT launcher starts its JVM; an error makes launchers fail outside a sandbox too, or lets two JVMs in separate PID namespaces write the same perf-data file. |
 | WI-107 | `optimize-medium` | Changes what every nested session may read and which host permissions a Claude session receives; an error lets trials and judges read the user's project again, denies a session its own run or evidence, or removes a grant that trials need. |
 | WI-15 | Orchestrator, sending ESC for E2 as in P1–P3, with the user as the fallback. `optimize-low` may run the other end-to-end scenarios and collect their receipts. | Accepting the feature is a judgment against §9. ESC needs an interactive host, as in P1–P3. |
@@ -5434,7 +5434,7 @@ models that `codex debug models` reports and asked; given `gpt-6-luna`, `low`, i
 | WI-161 | Steps 1 and 2 implemented 2026-11-23 (full build 6492 tests, 0 failures); step 3 open, blocked on WI-156. Designed 2026-11-23 (`design.md` §6.3 test design rule 5 and the outcome review, §6.4 "Evidence scope", "Sessions by scope", "Why the scopes stay when assertions are split" and "Consistent verdicts", D164, D165) with the user's rulings of the same day. Step 1 needs WI-150; step 3 needs WI-156. Steps 1 and 2 close R-L19 except its outcome-review clause; step 3 closes that clause and R-L20. Closes R-L19 and R-L20. |
 | WI-162 | Implemented 2026-11-23 (clone full build 6472 tests, 0 failures; `design.md` "Each trial installs every trial plugin", D167). Codex campaigns whose trial plugin is CAT built from the project, such as `20261123T152244Z-94bfcc`, measured trials without session rules until a build with WI-162 is installed. Amends R-W12. |
 | WI-163 | Not started; designed 2026-11-23 (`design.md` §6.4 "Check programs", §6.3 test design rule 5, the scenario format and "Outcome coverage" step 1, §6.1 "Guard pilot" and "Assertion agreement", D168, H46 and P27). Not ready: waits for P27, for its macOS part only (the user ruled Q25, Q26 and the check-program limits on 2026-11-23). Needs WI-155, WI-156 and WI-161. Closes R-L21 and R-L22. |
-| WI-164 | Not started; designed 2026-11-23 (`design.md` §8 "Sandbox start", D169, H47 and P28). Step 1 (P28) is ready; step 4 waits for the user's choice Q27. Needs WI-147. Closes R-I16. |
+| WI-164 | Not started; designed 2026-11-23 (`design.md` §8 "Sandbox start", D169, H47, H48 and P28). The user ruled Q27 on 2026-11-23: pre-launch checks and a check of Claude Code's report at the first Bash result, each once per session; the scrub for every session rejected. Step 1 (P28) is ready. Needs WI-147. Closes R-I16. |
 | WI-145 | Implemented 2026-11-16 (Claude implementer; `87db96986`..`a378c7aa5`; clean full build 6034 tests, 0 failures, 0 errors, 6 skipped): one in-place registrar (`GitWorktreeRegistrar`) for add, recreate, remove and repair behind `Fork`, `GitForks` and the session-start sweep; worktree requests (`worktree-<uuid>.tar`, document of operation and campaign only) served on a thread of their own by the request server (with the `.git/config`/`.git/hooks` write check against the session's policy) and by a run's runner (the one campaign of that identifier in the run's project; refused when the run allows no requests), counted against no limit; the client (`WorktreeRequestClient`) sends by the launch route, sends nothing for intact links, and `start`, `run`, `choose` and `cancel` refuse with status 2 before any change when no server serves the session; the Claude runner's `.git/worktrees` grant removed (session environment version 25); the build-command limit stated in the prompt-optimizer skill. Remaining: the live checks in Claude Code and Codex. Decided 2026-11-16: the code stays (`status` never reconnects; a campaign without its worktree is not a fork, `ForksContract.missingWorktreeIsNotAFork`), and the live check names the next command that reconnects (`run` or `choose`) instead. Probe evidence: `~/cat/worktrees/gitwt-probe4/` and `gitwt-probe3/`. |
 | Incremental build-workflow rule (user request, 2026-10-25) | Done 2026-10-27 (Codex; `ebe1687e7d`, released in v1.0). Record: [history](plan-history.md). |
 | G9 Git diff owner (`4da627d85c`) | Done 2026-10-27 (Claude `optimize-high`). Record: [history](plan-history.md). |
@@ -5963,7 +5963,7 @@ tier. Tier abbreviations: U = unit, E = end-to-end.
 | R-I13 | The runner's terms follow the user's rulings of 2026-11-19: a run is a nested session, `run.json` is `session.json`, the run root is the results folder, and a nested session's ID is its harness's own session ID, Claude's `session_id` from its `init` event or Codex's thread ID from its `thread/start` response, which CAT adopts once the harness reports it; slots keep their names. `--keep-run` is removed: every nested session's results are copied to the results folder under its session ID once that ID is known, and the folder's owner deletes them once nothing needs them, the optimizer's cleanup included. Every name and value that CAT gives a nested session, its folder, its results copy or its slot says so, such as `CAT_NESTED_SESSION` for `CAT_RUN` (user ruling, 2026-11-20). | §8 (renamed by WI-147), D151 | WI-147 | U: the renamed runner, slot, forwarder and optimizer tests; a results copy named by the reported ID; R: a scan of code, rules, skills and documentation for the old terms |
 | R-I14 | A Claude session authenticates with the authentication parts of a source home's `.claude` folder, which are `apiKeyHelper`, the `env` entries `ANTHROPIC_BASE_URL`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_API_KEY` and `CLAUDE_CODE_OAUTH_TOKEN` of `settings.json`, and the stored login `.credentials.json`; the source home is the folder that `--home <dir>` names, or else the runner's home folder, whose `.claude` folder is then the one that the runner's `CLAUDE_CONFIG_DIR` names when set. Only those parts reach the session's isolated home, the helper in its settings, wrapped to run with the source home as its home folder, and the tokens in the Claude process's environment with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, while the stored login is never copied: the runner sets `CLAUDE_SECURESTORAGE_CONFIG_DIR` to the source `.claude` folder, and the session's Claude Code reads and refreshes that login in place; no hook, permission, plugin, MCP server or other source setting does, and Claude Code ranks the parts by its own order. A source home with no Claude authentication, or whose settings select a credential that the runner does not copy, refuses the launch before a capacity slot or nested session, with a message that never quotes a secret. Every source file that holds a secret is a regular file, not a link, that denies group and other access and that the requesting session's sandbox lets it read; the session's commands and file tools, and those of every session that it requests, are denied the file and its copies. The session gets none of the runner's `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_OAUTH_TOKEN` and `CLAUDE_SECURESTORAGE_CONFIG_DIR`, and a project or managed settings file that sets one of them or `apiKeyHelper` refuses the session. `--gateway-login-class <subscription|api_key>` is required when the copied parts set `ANTHROPIC_BASE_URL`, and `CAT_HOST_LOGIN` states the class of the credential that Claude Code's order selects. Requested sessions of both harnesses get the runner's source home and class, never a session's home, and `--home` or the class inside a nested session is refused. One class covers the base URLs of both harnesses, and a request for the other harness whose credential uses a base URL, from a launch that named no class, is refused, naming the option. The prompt optimizer records them per launch, outside its measurement identity, so a resume may change them. `session.json`, the receipt and each response record the source home, the names of the copied parts and the class, never a value. | §8 "Claude authentication", D162, P20, P22 | WI-159 | P: P20, P22; U: `ClaudeRunnerCliTest`, `SecretFileTest`, `ClaudeRunnerTest`, `ClaudeConnectionSettingsTest`, `ParentPolicyTest`, `NestedSessionManagerTest`, `SessionRequestBrokerTest`, `SessionRequestForwarderTest`, `SessionRequestCliTest`, optimizer command tests; E: one live launch from a source home whose settings hold only `apiKeyHelper`, whose `init` reports `apiKeySource` `apiKeyHelper`, and one through the user's local gateway, each with results that hold no secret |
 | R-I15 | A Codex session authenticates with the authentication parts of the source home's `.codex` folder, which are an `auth.json` that holds an API key, while one that holds a ChatGPT sign-in refuses the launch, and the `model_provider`, `openai_base_url` and `forced_login_method` settings of `config.toml` with the selected `[model_providers.<id>]` table, with R-I14's source home, whose `.codex` folder is, without `--home`, the one that the runner's `CODEX_HOME` names when set, and with its refusals, checks of a secret file, requester's read check, denied reads, inheritance, gateway class, optimizer treatment and evidence. An inline provider secret reaches Codex in a variable of the app-server's environment that the provider's `env_key` or `env_http_headers` names, never in the session's `config.toml`; a provider's token command runs with the source home as its home folder; and the copy of `auth.json` is readable by its owner alone and removed when the app-server ends. The session's Codex gets neither of the runner's `CODEX_API_KEY` and `OPENAI_API_KEY`, apart from a variable that the selected provider names, and a system or managed layer that sets `openai_base_url`, `forced_login_method`, `model_provider` or `model_providers` refuses the session. The session's `CODEX_HOME` is its home's `.codex` folder, and a resume of a session in the earlier layout moves its files there first. | §8 "Codex authentication", D163, P24, P26 | WI-160 | P: P24; U: `CodexRunnerCliTest`, `CodexRunnerTest`, `CodexConnectionConfigurationTest`, `CredentialsTest`, the optimizer's Codex session tests and WI-159's common tests for Codex; E: one live launch from a source home whose `auth.json` holds an API key and one through a provider's token command, each with results that hold no secret |
-| R-I16 | No command of a nested Claude session runs outside its sandbox. When Claude Code's command sandbox fails to start, the session runs no command outside a sandbox, the runner ends the session, and its turn is an infrastructure failure whose reason names the sandbox failure, never a pass or fail outcome. On Linux and macOS, the Claude process's environment holds no `TMPDIR`, `TMP` or `TEMP`, so its sandbox's sockets lie in `/tmp`. Whether the runner stops the session on Claude Code's failure report or every session runs with `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` is the user's choice Q27. | §8 "Sandbox start", D169, H47, P28 | WI-164 | P: P28; U: `ClaudeRunnerTest` (`processEnvironment`), `ClaudeProcessTest` replaying recorded sandbox failures; E: one live launch whose sandbox cannot start runs no command and ends as an infrastructure failure |
+| R-I16 | No command of a nested Claude session runs outside its sandbox, apart from D169's known limitation. Before Claude Code starts, on Linux, WSL2 included, and macOS, the runner refuses a launch whose sandbox cannot start for a deterministic cause, before it creates or resumes the nested session and with a message that names the check, the value found and the fix: a temporary folder, or a `TMPDIR` that a project or managed settings `env` sets, longer than its sockets allow (72 bytes on Linux, 68 on macOS); on Linux, no executable `bwrap` or `sandbox.bwrapPath`, no `socat` on the Claude process's `PATH`, a failing `bwrap --unshare-user --dev-bind / / true`, or a temporary folder in which no file can be created; on macOS, a missing or failing `/usr/bin/sandbox-exec`. When Claude Code's sandbox fails to start anyway, the runner reads its report at the session's first Bash result, ends the session, and its turn is an infrastructure failure whose reason names the sandbox failure and says whether a Bash result followed it, never a pass or fail outcome. Each check runs once per launch, never once per command (user ruling on Q27, 2026-11-23). On Linux and macOS, the Claude process's environment holds no `TMPDIR`, `TMP` or `TEMP`, so its sandbox's sockets lie in `/tmp`. Bash calls that the model issues in the same assistant message as the call that receives the report can run outside the sandbox before the runner stops the session (D169). | §8 "Sandbox start", D169, H47, H48, P28 | WI-164 | P: P28; U: `ClaudeSessionSandboxTest` (each pre-launch check refuses with its message when its cause is present and passes otherwise), `ClaudeRunnerTest` (refusal before a nested session; `processEnvironment`), `ClaudeProcessTest` replaying recorded sandbox failures, `HarnessEnvironmentTest` (`PATH` search); E: one live launch without `socat` refused before any nested session, and one whose sandbox cannot start past the pre-launch checks runs no command and ends as an infrastructure failure |
 | R-T1 | The testability contract T1–T7 holds. | §10 | WI-1 | U: `TestabilityAuditTest` (source scan of the optimizer and capacity code: no non-`final` static fields, no `Thread.sleep`, no reads of `HOME`, `user.home` or `System.getenv` outside `main` classes and harness production scopes, only `final` fields in test classes); review audit at each work item's exit |
 | R-T2 | Packages, ports and adapters follow §9: the harness-neutral core imports no harness package, and production sources import no test-support type. | §9 | WI-1 | U: `TestabilityAuditTest` (import scan) |
 
@@ -11131,73 +11131,114 @@ formats, before commit `483b3d4c4`. The `prompt-optimizer run` command still sta
 
 - **Problem:** when Claude Code 2.1.330 cannot start its command sandbox, it reports the failure as the result of the
 	session's first Bash call and runs every later call without the sandbox, although the settings that the runner writes
-	hold `sandbox.enabled: true` and `allowUnsandboxedCommands: false` (H47). Only with
-	`CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, which the runner sets for no session today, did it refuse the commands instead.
-	Neither the runner nor `ClaudeProcess` reads the report, so such a session's commands run unsandboxed and its turn
-	ends as a pass or fail outcome. The sandbox's sockets lie in the Claude process's `TMPDIR`, else `/tmp`, and the
-	sandbox fails when a socket path exceeds Linux's 108-byte limit, as P20's first attempts showed with a 110-byte
-	`TMPDIR`. CAT gives the Claude process no `TMPDIR` on Linux and macOS: `ClaudeRunner.processEnvironment` starts from
-	`HarnessEnvironment.scrub`, which copies `TEMP` and `TMP` on Windows only, and nothing else adds one, so the sockets
-	lie in `/tmp`, at most 39 bytes long. `CLAUDE_CODE_TMPDIR`, which the isolated settings set to the nested session's
-	`claude` folder, does not move them. No CAT path lengthens them, but the sandbox can still fail from a shell that
-	forbids Unix sockets, without bubblewrap or `socat`, on a kernel that forbids unprivileged user namespaces, or through
-	a project or managed settings `env` that sets `TMPDIR`, if Claude Code applies it before its sandbox starts, which is
-	unverified.
-- **Scope:** `client/claude/cli/src/main/java/com/holdmyspot/cat/claude/runner/` (`ClaudeRunner`, and `ClaudeProcess`
-	with the reader of its stream), their tests and recorded streams under `client/claude/cli/src/test/resources/runner/`,
-	`docs/security-model.md`, this design and plan.
-- **Change:** as `design.md` §8 "Sandbox start" and D169 define it. The runner recognizes Claude Code's report that its
-	sandbox failed to start in the result of a Bash call, by the forms that 2.1.330 recorded: "Sandbox is enabled but
-	failed to initialize" and, under the scrub, "Sandbox is required but failed to initialize". On the first report it
-	stops the Claude process and reports the turn as an infrastructure failure whose reason quotes the report. A test
-	keeps the Claude process's environment free of `TMPDIR`, `TMP` and `TEMP` on Linux and macOS. Under option (b) of
-	Q27, `processEnvironment` also sets `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` for every session, the Claude session
-	environment version increments, and `design.md` "Trial limits", which sets the scrub only for a session with a token,
-	changes with it.
+	hold `sandbox.enabled: true` and `allowUnsandboxedCommands: false` (H47). Neither the runner nor `ClaudeProcess` reads
+	the report, so such a session's commands run unsandboxed and its turn ends as a pass or fail outcome. The sandbox's
+	bridge sockets, `claude-http-<16 hex digits>.sock` and `claude-socks-<16 hex digits>.sock`, lie in the Claude
+	process's `TMPDIR`, else `/tmp`, and must fit Linux's 108-byte socket path limit, so a `TMPDIR` longer than 72 bytes
+	stops the sandbox, as P20's first attempts showed with a 110-byte `TMPDIR` (H47, H48). CAT gives the Claude process
+	no `TMPDIR` on Linux and macOS: `ClaudeRunner.processEnvironment` starts from `HarnessEnvironment.scrub`, which copies
+	`TEMP` and `TMP` on Windows only, and nothing else adds one, so the sockets lie in `/tmp`, at most 39 bytes long,
+	whatever the runner's own `TMPDIR` is. `CLAUDE_CODE_TMPDIR`, which the isolated settings set to the nested session's
+	`claude` folder, does not move them. The sandbox can still fail from a shell that forbids Unix sockets, without
+	bubblewrap or `socat`, on a kernel that forbids unprivileged user namespaces, with a temporary folder that is missing
+	or not writable, when the bridge misses its 600 ms wait on a slow machine, or through a project or managed settings
+	`env` that sets a long `TMPDIR`, if Claude Code applies it before its sandbox starts, which is unverified.
+- **Scope:** `client/claude/cli/src/main/java/com/holdmyspot/cat/claude/runner/` (`ClaudeSessionSandbox`,
+	`ClaudeRunner`, and `ClaudeProcess` with the reader of its stream), `HarnessEnvironment` in `client/common/cli` and
+	`CodexRunner.bubblewrap` for the shared `PATH` search, their tests and recorded streams under
+	`client/claude/cli/src/test/resources/runner/`, `docs/security-model.md`, this design and plan.
+- **Change:** as `design.md` §8 "Sandbox start" and D169 define it. Every check runs once per launch, never once per
+	command.
+	(1) Pre-launch checks. `ClaudeRunner.start` calls one check of `ClaudeSessionSandbox`, beside its existing native
+	Windows refusal, before it creates or resumes the nested session, so a refused launch leaves no nested session,
+	starts no Claude process and makes no model call, and a request server's or nested runner's launch is checked the
+	same way, since each passes through `start`. A failed check throws `SessionRefusedException` with a message that
+	names the check, the value found and the fix, and the runner exits as for its other refusals. On Linux, WSL2
+	included: the temporary folder, `/tmp`, or a `TMPDIR` that the project's or the managed settings file's `env` sets,
+	is at most 72 bytes long; `bwrap`, or the file that a settings file's `sandbox.bwrapPath` names, is executable, and
+	`socat` is in a directory of the Claude process's `PATH`, as `processEnvironment` derives that `PATH`;
+	`bwrap --unshare-user --dev-bind / / true` exits 0; and the temporary folder is a directory in which the runner can
+	create and remove a file. On macOS: `/usr/bin/sandbox-exec` exists,
+	`/usr/bin/sandbox-exec -p '(version 1)(allow default)' /usr/bin/true` exits 0, and the temporary folder is at most
+	68 bytes long. Messages name the fix, for example "CAT does not start the session: Claude Code's sandbox needs
+	socat, but none of the PATH directories <PATH> holds an executable socat file. Install your distribution's socat
+	package, then start the session again.", and for a failed namespace probe, bubblewrap's error and the AppArmor fix
+	that `CodexRunner.refusalOf` gives. The decision is a method that takes the platform, the `PATH`, the temporary
+	folder, the settings' `sandbox.bwrapPath` and `env` `TMPDIR`, and the probe's exit status and output, and returns
+	the refusal or none; the probe runs once per launch through the runner scope's process starter. `bwrap` and `socat`
+	are found by the `PATH` search of `CodexRunner.bubblewrap`, moved into `HarnessEnvironment` as a search for a named
+	program so that both runners use one.
+	(2) The check of the session's own report. The runner reads the result of the session's first Bash call once, and
+	recognizes Claude Code's report that its sandbox failed to start by the forms that 2.1.330 recorded: "Sandbox is
+	enabled but failed to initialize" and, for a session whose source home puts a token in its Claude process's
+	environment and which therefore runs with the scrub (D162), "Sandbox is required but failed to initialize". On the
+	report it stops the Claude process, sends it no further input and reports the turn as an infrastructure failure whose
+	reason quotes the report and says whether a Bash result followed it, which shows that a command ran outside the
+	sandbox.
+	(3) A test keeps the Claude process's environment free of `TMPDIR`, `TMP` and `TEMP` on Linux and macOS, so the
+	temporary folder is always `/tmp`. The scrub is not set for any further session: WI-159's scrub for a session with a
+	token is unchanged, and the Claude session environment version does not change.
 - **Order:** (1) P28, which needs no CAT code. Run it as P20 was run, with Claude Code 2.1.330, `haiku`, `low` and P20's
-	authentication, and a prompt that issues three Bash calls that each print a marker in one message, then a fourth:
-	(i) with an 80-byte `TMPDIR` and the scrub, (ii) the same without the scrub, and (iii) with the scrub from a shell
-	whose own sandbox forbids Unix sockets. A marker printed after the failure report shows a call that ran outside a
-	sandbox. Keep each stream, with local paths replaced, as a test resource. A failed clause applies P28's fallback
-	before step 4. (2) The user's choice Q27. (3) The tests below, failing first. (4) The change, for the chosen option.
-	(5) `docs/security-model.md` states that a session whose sandbox does not start ends as an infrastructure failure,
-	and, under option (b), that every session runs with the scrub. (6) The clean full offline build. (7) The end-to-end
-	check.
-- **Verification:** write these first; none starts a harness or a model.
-	(a) `ClaudeProcessTest`: each recorded stream of step 1 replays into a turn that ends as an infrastructure failure
+	authentication, without the scrub, and a prompt that issues three Bash calls that each print a marker in one
+	message, then a fourth in a later message: (i) with an 80-byte `TMPDIR`, and (ii) from a shell whose own sandbox
+	forbids Unix sockets. A marker printed after the failure report shows a call that ran outside a sandbox. Keep each
+	stream, with local paths replaced, as a test resource. A failed clause applies P28's fallback before step 3. (2) The
+	tests below, failing first. (3) The change. (4) `docs/security-model.md` states the pre-launch checks, that a session
+	whose sandbox does not start anyway ends as an infrastructure failure, and the known limitation of Bash calls in the
+	same message as the report. (5) The clean full offline build. (6) The end-to-end checks.
+- **Verification:** write these first; they use CAT's real classes, and none starts a harness or a model.
+	(a) `ClaudeSessionSandboxTest`, the pre-launch decision: for each check, an input with its cause present gives a
+	refusal whose message names the check, the value found and the fix, and the same input with that cause absent passes.
+	On Linux: a 73-byte temporary folder is refused and a 72-byte one passes; a 73-byte `TMPDIR` in a project's and in a
+	managed settings file's `env` is each refused; a `PATH` without `bwrap`, a `sandbox.bwrapPath` that names a file that
+	is not executable, and a `PATH` without `socat` are each refused, with test-owned directories that hold executable
+	files as the passing case; a probe that exits 1 with bubblewrap's `setting up uid map: Permission denied` is refused
+	with the user-namespace fix; a temporary folder that does not exist, and one in which no file can be created, are
+	each refused. On macOS: a missing `/usr/bin/sandbox-exec`, a probe that exits 1, and a 69-byte temporary folder are
+	each refused, and a 68-byte one passes. An input with every cause absent passes on each platform.
+	(b) `ClaudeRunnerTest`, `start`: a launch whose pre-launch check fails throws `SessionRefusedException` before the
+	results folder holds a nested session and without starting the Claude executable.
+	(c) `ClaudeRunnerTest`, `processEnvironment`: a runner environment that sets `TMPDIR`, `TMP` and `TEMP` to a 200-byte
+	folder gives a Claude process environment without them on Linux and macOS, so the temporary folder that the
+	pre-launch check reads is `/tmp` and the launch passes the length check.
+	(d) `ClaudeProcessTest`: each recorded stream of step 1 replays into a turn that ends as an infrastructure failure
 	whose reason holds Claude Code's report; the runner stops the process at the first report and sends it no further
-	input. A stream whose Bash calls fail for other reasons, such as a denied permission or an exit status of 1, ends
-	as before.
-	(b) `ClaudeRunnerTest`, `processEnvironment`: a runner environment that sets `TMPDIR`, `TMP` and `TEMP` to a 200-byte
-	folder gives a Claude process environment without them on Linux and macOS. Under option (b) of Q27, every
-	environment holds `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1`, with or without a token, and WI-159's test (c), whose source
-	with only `apiKeyHelper` gives no scrub, expects the scrub instead.
-	End-to-end check: one live `claude-runner` launch on `haiku`/`low` from a shell in which Claude Code's sandbox cannot
-	start, such as one whose own sandbox forbids Unix sockets, with a prompt that runs two commands that print markers:
-	no marker appears in a result after the failure report, the receipt records an infrastructure failure that names the
-	sandbox failure, and no pass or fail outcome is recorded.
-- **Choices (open; each awaits the user's ruling):**
+	input; a stream in which a marker follows the report gives a reason that says a Bash result followed it. P22's
+	recorded refusal under the scrub ends the same way. A stream whose Bash calls fail for other reasons, such as a
+	denied permission or an exit status of 1, ends as before.
+	(e) `HarnessEnvironmentTest`: the `PATH` search finds the first executable file of the name and skips empty entries,
+	missing directories and files that are not executable; the existing `CodexRunner` bubblewrap tests still pass.
+	End-to-end checks: (1) one live `claude-runner` launch whose Claude process `PATH` holds no `socat` is refused with
+	the `socat` message, and the results folder holds no nested session and no model call is recorded; (2) one live
+	launch on `haiku`/`low` from a shell in which every pre-launch check passes but Claude Code's sandbox cannot start,
+	such as one whose own sandbox lets it write `/tmp` but forbids Unix sockets, with a prompt that runs two commands in
+	two messages that print markers: no marker appears in a result after the failure report, the receipt records an
+	infrastructure failure that names the sandbox failure, and no pass or fail outcome is recorded.
+- **Decisions:**
 	- **Q27, how the runner keeps a session's commands inside its sandbox when Claude Code's sandbox fails to start.**
-		CAT's rule is that every nested session runs inside its harness's sandbox, and Claude Code 2.1.330 breaks it when
-		its sandbox fails (H47). Under either option the runner reads the failure report and ends the turn as an
-		infrastructure failure. (a) Stop the session on the report: what the commands see is unchanged, but the guarantee
-		rests on an undocumented message and on stopping Claude Code before it runs the next call, which a call issued in
-		the same message may beat (P28 measures this), and a release that words the message differently fails open without
-		notice. (b) Also set `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` for every session, so that Claude Code itself refuses
-		every command when its sandbox fails, whatever the cause and the wording: every Claude session's commands and hooks
-		then lose `CLAUDE_CONFIG_DIR` and every credential-shaped variable and run in a process namespace of their own,
-		which P22 showed CAT's hooks and commands tolerate; the Claude session environment version changes, so Claude
-		certifications under the earlier version become historical (D21); and the refusal is undocumented, was seen once
-		and needs P28. Recommended: (b), because its guarantee holds at Claude Code's own boundary for every cause of
-		failure, while (a) leaves a window in which a command runs unsandboxed and depends on a message that CAT does not
-		control.
-- **Classes affected:** `ClaudeRunner`, `ClaudeProcess` and its stream reader.
+		Decided 2026-11-23 by the user. The user rejected option (b), setting `CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1` for
+		every session, because, read from the Claude Code 2.1.330 binary, the scrub also removes from every command
+		credential-shaped variables such as `GH_TOKEN` and `GITHUB_TOKEN`, about 100 named cloud, registry and webhook
+		variables, `SSH_AUTH_SOCK`, Git and tool settings such as `GIT_SSH_COMMAND`, `GIT_CONFIG_*`, `XDG_*` and
+		`KUBECONFIG`, protects files such as `~/.gitconfig`, `~/.netrc` and the project's lockfiles and `.env*` files from
+		commands, forces the default permission mode unless allowed tools are declared, and disables a claude-runner
+		feature (H48), which conflicts with the rule that a child session gets what its parent has. On the check, in the
+		user's words: "I'm fine with any approach that only runs once per session." Every check therefore runs once per
+		session, never once per command, so no command-prefix wrapper. The design that follows is D169: the pre-launch
+		checks, and option (a)'s reading of Claude Code's report at the session's first Bash result. No once-per-session
+		check closes the window in which Bash calls issued in the same assistant message as the call that receives the
+		report run outside the sandbox before the runner stops the session, so it is recorded as a known limitation
+		(D169), and P28 measures it.
+- **Classes affected:** `ClaudeSessionSandbox` (the pre-launch decision and its probe), `ClaudeRunner` (`start` calls
+	the check before it creates or resumes the nested session; `processEnvironment` keeps its temporary-folder rule),
+	`ClaudeProcess` and its stream reader (the first Bash result's report), `HarnessEnvironment` (the `PATH` search) and
+	`CodexRunner` (`bubblewrap` uses it).
 - **Tier and dependencies:** `optimize-high`. Needs WI-147, whose merged renames change the same runner classes. Step 1
-	needs no CAT code and is ready now; step 4 waits for Q27. It is independent of WI-159, but both change
-	`processEnvironment`: whichever lands second keeps the other's environment, and under option (b) WI-159's scrub for a
-	session with a token becomes the scrub for every session.
-- **Exit:** P28 ran and the fallback of any failed clause is applied, the user ruled on Q27, the tests above pass and
-	failed before the change, the clean full offline build passes, and the end-to-end check passed. Closes R-I16.
+	needs no CAT code and is ready now. It is independent of WI-159: neither changes the other's part of
+	`processEnvironment`, and WI-159's scrub for a session with a token stays.
+- **Exit:** P28 ran and the fallback of any failed clause is applied, the tests above pass and failed before the
+	change, the clean full offline build passes, both end-to-end checks passed, and `docs/security-model.md` states the
+	known limitation. Closes R-I16.
 
 ## 6. Dependency order
 
@@ -11357,7 +11398,7 @@ blocks only the part of a work item that it names.
 | WI-161 | WI-150; its step 3 also needs WI-156 |
 | WI-162 | WI-81 |
 | WI-163 | WI-161; its step 3 also needs WI-155 and WI-156 |
-| WI-164 | WI-147; its step 4 also needs the user's choice Q27 |
+| WI-164 | WI-147 |
 | WI-15 | WI-14. Its trial-based scenarios (E1 certification, E2, E3, E5, E7 delivery, E8) also need WI-16, WI-17, WI-18, WI-20, WI-32, WI-33, WI-34, WI-35, WI-36, WI-37, WI-38, WI-39, WI-40, WI-41, WI-42, WI-43, WI-44, WI-45, WI-46, WI-49, WI-50, WI-51, WI-52, WI-53, WI-55, WI-56, WI-57, WI-60 to WI-69, WI-90, WI-91, WI-92, WI-93, WI-95, WI-96, WI-97, WI-98, WI-99, WI-100, WI-101, WI-102, WI-103, WI-104, WI-105, WI-107, WI-108, WI-109, WI-110, WI-114, WI-115 and WI-116. |
 
 Do WI-0 and WI-1 first when capacity is limited: they carry the highest risk of changing other work.
